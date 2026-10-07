@@ -1,0 +1,279 @@
+---
+id: bun-shell-scripts
+provider: test
+timeout: 90000
+tags: [beta, docs, tooling, bun, host]
+---
+
+# Add project commands with Bun Shell scripts
+
+Drop a `.bun.sh` file into `.lando/scripts/` and it becomes a `lando` command. The script runs on your host through Bun Shell, from the app root, with your normal `PATH`. No Landofile entry, no Makefile, and no Bun install on your side: Lando runs it with the Bun it already ships. Any app with a `.lando.yml` works, even one with no services.
+
+Save this as `.lando/scripts/build.bun.sh`:
+
+```sh
+# ---
+# desc: Build dist/ from src/ on the host
+# ---
+rm -rf dist
+mkdir -p dist
+cp src/index.html dist/index.html
+echo "built dist/ from src/"
+```
+
+Refresh the app command cache once, then run it:
+
+```sh
+lando app:cache:refresh
+lando build
+```
+
+The script prints `built dist/ from src/` inside Lando's task tree and `lando build` exits with the script's own exit code.
+
+## Write the front matter
+
+Every script opens with a front-matter block. It sits on the first lines of the file (an optional `#!/usr/bin/env bun` shebang may come first), starts and ends with `# ---`, and prefixes each line with `# `.
+
+| Key | What it does |
+| --- | --- |
+| `desc`, `description`, or `summary` | Help text for the command |
+| `service` | Where the script runs. Only `:host`, which is also the default |
+
+That is the whole list. Landofile tooling keys such as `aliases`, `flags`, or `args` refuse with `NotImplementedError` and name the field. Any other unknown key, or a file with no block, refuses with `BunShellScriptFrontMatterError`. An empty file refuses with `BunShellScriptEmptyError`.
+
+## Refresh when the shape changes
+
+The first run in a fresh clone needs one `lando app:cache:refresh`. `lando start` and `lando rebuild` refresh it too. After that:
+
+| You changed | Run |
+| --- | --- |
+| A script body | Nothing. The next call runs the new body |
+| A new script file | Nothing. The next call finds it |
+| A script's front matter | `lando app:cache:refresh` |
+| The Landofile | `lando app:cache:refresh` |
+
+Skip the refresh after a front-matter or Landofile edit and app commands answer with `ToolingCompileError`: the app command cache is missing, stale, or does not contain that task. The refresh fixes it.
+
+## List your commands
+
+Run `lando --help` inside the app. Scripts show up under `THIS APP` with their `desc` line, next to any Landofile tooling. With every script and the `curl` task from this page in place:
+
+```sh
+lando --help
+```
+
+```text
+THIS APP
+  app:build      Build dist/ from src/ on the host
+  app:curl
+  app:env:init   Create .env from .env.example if it is missing
+  app:smoke      Fetch a URL from the running site and fail loudly
+  app:stamp      Write a version stamp into dist/
+```
+
+`lando help --all` prints the same list after every built-in command.
+
+## Pass arguments
+
+Arguments after the command name land in the script as `$1` through `$9`. Save this as `.lando/scripts/stamp.bun.sh`:
+
+```sh
+# ---
+# desc: Write a version stamp into dist/
+# ---
+echo "$1" > dist/version.txt
+echo "stamped dist/version.txt with $1"
+```
+
+Stamp the build with the current commit:
+
+```sh
+lando stamp "$(git rev-parse --short HEAD)"
+```
+
+Your own shell runs `git` before Lando sees the line, so the script gets the short SHA and prints `stamped dist/version.txt with 9f100f9` (your SHA, not ours).
+
+Bun Shell does not expand `$@` or `$#`. They come through as literal text, so name each argument you need with `$1`, `$2`, and so on.
+
+Lando reads its own global flags, such as `--format` and `--verbose`, anywhere on the line. Put `--` in front when the script should get them instead:
+
+```sh
+lando stamp -- --format=json
+```
+
+## Capture output as JSON or YAML
+
+Add `--format=json` or `--format=yaml` and Lando collects the script instead of streaming it. You get one envelope on stdout with the script's output and exit code under `result`:
+
+```sh
+lando stamp abc1234 --format=json
+lando stamp abc1234 --format=yaml
+```
+
+| Key | What it holds |
+| --- | --- |
+| `result.stdout` | Everything the script wrote to stdout |
+| `result.stderr` | Everything it wrote to stderr |
+| `result.exitCode` | The script's exit code |
+
+A script that exits nonzero still gets its output collected, and `lando` exits with that same code. The envelope's `ok` only says Lando ran the script, so branch on `result.exitCode`, not on `ok`. Without a format flag, output streams to your terminal as it happens. Both formats run the script with Lando's embedded Bun, so a host with no Bun installed works the same.
+
+The envelope, `--json=<key>`, and `--jq` work the way they do for every other command. See [Script Lando with JSON](../../scripting-with-json/) for the full contract.
+
+## Group commands in folders
+
+Subfolders become namespaces. `.lando/scripts/env/init.bun.sh` is `app:env:init`:
+
+```sh
+# ---
+# desc: Create .env from .env.example if it is missing
+# ---
+if test -f .env; then
+  echo ".env already exists, leaving it alone"
+else
+  cp .env.example .env
+  echo "created .env"
+fi
+```
+
+```sh
+lando app:env:init
+```
+
+The first run prints `created .env`. Run it again and it prints `.env already exists, leaving it alone`. Names with a colon always take the `app:` prefix. Top-level scripts answer to both `lando build` and `lando app:build`.
+
+Lando lowercases each path segment, turns anything outside `a-z`, `0-9`, `_`, and `-` into `-`, collapses repeated `-` into one, and trims `-` from both ends.
+
+Built-in commands always win over scripts, so pick names `lando help --all` doesn't list.
+
+## Use Bun Shell and your host tools
+
+Bun Shell reads like bash: pipes, redirects, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, your package managers) comes from your host `PATH`.
+
+Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
+
+Calling `lando` from inside a project script currently fails with the compiled CLI ([#1205](https://github.com/AaronFeledy/core4/issues/1205)).
+
+## Smoke test the running site
+
+Host scripts can poke the app through its public URL. Save this as `.lando/scripts/smoke.bun.sh`:
+
+```sh
+# ---
+# desc: Fetch a URL from the running site and fail loudly
+# ---
+curl -sf "$1"
+```
+
+Start the app and pass the `web` URL from `lando info`. Lando adds a port such as `:8443` when 443 was taken:
+
+```sh
+lando start
+lando info
+lando smoke https://web.scripts-demo.lndo.site/version.txt
+```
+
+That prints the stamped SHA. Ask for a path that does not exist and `curl -f` exits `22`, so `lando smoke` exits `22` too. Drop it straight into CI or a git hook.
+
+## Run service work from the Landofile
+
+Scripts run on your host. Setting `service: web` in front matter refuses with `NotImplementedError` and points you at a Landofile tooling task. Commands that belong inside a service go in the Landofile:
+
+```yaml
+name: scripts-demo
+services:
+  web:
+    type: static
+    webroot: /app/dist
+tooling:
+  curl:
+    service: web
+    cmd:
+      - sh
+      - -c
+      - 'curl -sf "http://localhost:80/$1"'
+      - curl
+```
+
+```sh
+lando curl version.txt
+```
+
+That curl runs inside `web` against nginx on port `80`. If a Landofile task and a script share a name, the Landofile task wins. Drop a `curl.bun.sh` next to that Landofile and `lando curl` still runs in `web`.
+
+## Build, stamp, and seed an env file
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="scripts-demo" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="build">
+      <Run command="lando build" />
+      <Verify file="scripts-demo/dist/index.html" expect={{ regex: "hello from a host-built site" }} />
+    </Step>
+    <Step name="stamp">
+      <Run command="lando stamp abc1234" />
+      <Verify file="scripts-demo/dist/version.txt" expect={{ regex: "abc1234" }} />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "stamped dist/version.txt with abc1234" } }} />
+    </Step>
+    <Step name="env-init">
+      <Run command="lando app:env:init" />
+      <Verify file="scripts-demo/.env" expect={{ regex: "APP_ENV=local" }} />
+      <Verify command="lando app:env:init --format=json" expect={{ stdout: { regex: "already exists, leaving it alone" } }} />
+    </Step>
+    <Step name="capture">
+      <Run command="lando stamp abc1234 --format=json" />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0.*\"stdout\":\\s*\"stamped dist/version.txt with abc1234" } }} />
+      <Run command="lando stamp abc1234 --format=yaml" />
+      <Verify command="lando stamp abc1234 --format=yaml" expect={{ stdout: { regex: "exitCode: 0[\\s\\S]*stdout:.*stamped dist/version.txt with abc1234" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="missing-front-matter" render={false} reason="Regression coverage: a script without a front-matter block refuses with a tagged error">
+    <Step name="run-missing-front-matter">
+      <UseFixture name="missing-front-matter" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando hello --format=json" expectExit={1} />
+      <Verify errorTag="BunShellScriptFrontMatterError" expect={{ regex: "missing the front-matter block" }} />
+    </Step>
+    <Step name="cleanup-missing-front-matter">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="nonzero-exit" render={false} reason="Regression coverage: collected scripts keep their exit codes in JSON and YAML">
+    <Step name="run-nonzero-exit">
+      <UseFixture name="exit-code" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando fail --format=json" expectExit={22} />
+      <Run command="lando fail --format=yaml" expectExit={22} />
+    </Step>
+    <Step name="cleanup-nonzero-exit">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="service-front-matter" render={false} reason="Regression coverage: service-targeted scripts refuse and point at Landofile tooling">
+    <Step name="run-service-front-matter">
+      <UseFixture name="service-front-matter" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando hello --format=json" expectExit={1} />
+      <Verify errorTag="NotImplementedError" expect={{ regex: "service-targeted .bun.sh scripts are not supported" }} />
+    </Step>
+    <Step name="cleanup-service-front-matter">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+`<Cleanup />` only removes the scratch copy. If you started the app for the smoke test, run `lando destroy -y` when you are done. `dist/` and `.env` stay on your host until you delete them.
+
+## Next
+
+- [Declare flags and args on a tooling task](../flags-and-args/)
+- [Set tooling defaults and command aliases](../defaults-and-aliases/)

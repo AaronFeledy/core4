@@ -32,7 +32,38 @@ frames under `--format json` and terminate with a single result frame.
 Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 
+## Capture project script output
+
+Project scripts from `.lando/scripts/*.bun.sh` emit the same envelope. With
+`--format=json` or `--format=yaml`, `result` carries the script's `stdout`,
+`stderr`, and `exitCode`, and Lando exits with the script's own code even
+when `ok` is `true`. Writing those scripts is covered in
+[Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts/).
+
+```sh
+lando app:cache:refresh
+lando stamp abc1234 --format=json
+```
+
 <Guide>
+  <Scenario id="capture-project-script-output" render>
+    <Step name="load-project-script">
+      <UseFixture name="project-script" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="capture-script-json">
+      <Run command="lando stamp abc1234 --format=json" />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0.*\"stdout\":\\s*\"stamped abc1234" } }} />
+    </Step>
+    <Step name="capture-script-yaml">
+      <Run command="lando stamp abc1234 --format=yaml" />
+      <Verify command="lando stamp abc1234 --format=yaml" expect={{ stdout: { regex: "exitCode: 0[\\s\\S]*stdout:.*stamped abc1234" } }} />
+    </Step>
+    <Step name="cleanup-project-script">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="list-version-json-keys" render>
     <Step name="list-version-keys">
       <Run command="lando version --json" />
