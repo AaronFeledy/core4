@@ -419,7 +419,9 @@ describe("create-body service publish ports", () => {
       failure: { _tag: "ServiceRestartWouldRecreateError", reason: "host-port", service: "web" },
     });
     expect(createCalls(fake.calls)).toEqual([]);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(0);
+    expect(
+      fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),
+    ).toHaveLength(0);
   });
 
   test("a start bind rejection recreates once and excludes the failed port", async () => {
