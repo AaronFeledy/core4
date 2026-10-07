@@ -6,6 +6,7 @@
  * collections (structured non-JSON input should use `--type json`).
  */
 
+import { causeMessage } from "@lando/sdk/errors";
 import { Result } from "effect";
 
 export type ValueType = "string" | "number" | "boolean" | "json" | "yaml";
@@ -69,11 +70,7 @@ export const parseTypedValue = (raw: string, type: ValueType): Result.Result<unk
       try {
         return Result.succeed(JSON.parse(raw) as unknown);
       } catch (cause) {
-        return fail(
-          "json",
-          raw,
-          `\`${raw}\` is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
-        );
+        return fail("json", raw, `\`${raw}\` is not valid JSON: ${causeMessage(cause)}`);
       }
     case "yaml":
       return parseYamlScalar(raw);

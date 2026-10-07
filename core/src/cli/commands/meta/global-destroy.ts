@@ -13,6 +13,7 @@ import {
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
+import { teardownLine, volumesTrailer } from "../service-summary";
 
 export interface GlobalDestroyOptions {
   readonly yes?: boolean;
@@ -50,10 +51,12 @@ const confirmationError = (): GlobalDestroyConfirmationError =>
 
 export const renderGlobalDestroyResult = (result: GlobalDestroyResult): string => {
   if (!result.materialized) return "Global app is not installed; nothing to destroy.";
-  const services =
-    result.servicesDestroyed.length === 0 ? "no services" : result.servicesDestroyed.join(", ");
-  const trailer = result.volumesRemoved ? "volumes removed" : "volumes preserved";
-  return `destroyed: ${result.app} - ${services} (${trailer})`;
+  return teardownLine(
+    "destroyed",
+    result.app,
+    result.servicesDestroyed,
+    volumesTrailer(result.volumesRemoved),
+  );
 };
 
 export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (

@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
@@ -8,18 +8,17 @@ import { LandofileShape, type LandofileShape as LandofileShapeType } from "@land
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import {
   type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
   decodeIssues,
-  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "@lando/engine/config-write/write-core";
 import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { parseLandofile } from "@lando/landofile/parser";
 import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
+import { renderConfigWriteResult } from "../config-write-render";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
 
@@ -130,21 +129,17 @@ export const globalConfigSet = Effect.fn("GlobalConfig.set")(function* (
       }),
     );
   }
-  const tree = yield* readGlobalTree(filePath);
-  const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: filePath });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const issues = decodeIssues(decodeLandofile(next));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
-  }
-  const dryRun = options.dryRun === true;
-  if (!dryRun) {
-    const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeGlobalText(filePath, emitted.success);
-  }
-  return { subcommand: "set", key, value: mutation.success.value, changed: true, dryRun, filePath };
+  const outcome = yield* runSetVerb({
+    file: filePath,
+    key,
+    raw,
+    type: options.type ?? "string",
+    dryRun: options.dryRun === true,
+    readTree: readGlobalTree(filePath),
+    decode: decodeLandofile,
+    writeText: writeGlobalText,
+  });
+  return { subcommand: "set", key, value: outcome.value, changed: true, dryRun: outcome.dryRun, filePath };
 });
 
 export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
@@ -162,21 +157,15 @@ export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
       }),
     );
   }
-  const tree = yield* readGlobalTree(filePath);
-  const mutation = applyUnsetMutation({ tree, key, file: filePath });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const issues = decodeIssues(decodeLandofile(next));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
-  }
-  const dryRun = options.dryRun === true;
-  if (!dryRun && mutation.success.changed) {
-    const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeGlobalText(filePath, emitted.success);
-  }
-  return { subcommand: "unset", key, changed: mutation.success.changed, dryRun, filePath };
+  const outcome = yield* runUnsetVerb({
+    file: filePath,
+    key,
+    dryRun: options.dryRun === true,
+    readTree: readGlobalTree(filePath),
+    decode: decodeLandofile,
+    writeText: writeGlobalText,
+  });
+  return { subcommand: "unset", key, changed: outcome.changed, dryRun: outcome.dryRun, filePath };
 });
 
 export const globalConfigValidate = Effect.fn("GlobalConfig.validate")(function* (
@@ -206,23 +195,15 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
     runner({ name: "lando-global-config", content: seeded, cwd: dirname(filePath) }),
   );
   if (edited.kind === "no-editor") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: filePath,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(filePath));
   }
   if (edited.kind === "failed") {
     return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `The editor session failed: ${edited.reason}`,
-        file: filePath,
-        issues: [validationIssue([], edited.reason)],
-        remediation: "Re-run `lando meta global config edit` after resolving the editor error.",
-      }),
+      editorFailedError(
+        filePath,
+        edited.reason,
+        "Re-run `lando meta global config edit` after resolving the editor error.",
+      ),
     );
   }
   const parsed = yield* parseLandofile({ file: filePath, content: edited.content, cwd: filePath }).pipe(
@@ -249,32 +230,23 @@ export const renderGlobalConfigResult = (
   _format: "json" | "table" = "table",
 ): string => {
   void _format;
-  switch (result.subcommand) {
-    case "set":
-      return result.dryRun === true
-        ? `${result.filePath ?? ""}: would set ${result.key} (dry run).`
-        : `${result.filePath ?? ""}: set ${result.key}.`;
-    case "unset":
-      if (result.changed !== true)
-        return `${result.filePath ?? ""}: ${result.key} was not present (no change).`;
-      return result.dryRun === true
-        ? `${result.filePath ?? ""}: would unset ${result.key} (dry run).`
-        : `${result.filePath ?? ""}: unset ${result.key}.`;
-    case "edit":
-      return `${result.filePath ?? ""}: saved edited global-app Landofile.`;
-    case "validate":
-      return `${result.filePath ?? ""}: valid.`;
-    default: {
-      const services = Object.keys(result.landofile?.services ?? {});
-      return [
-        `app\t${result.app ?? ""}`,
-        `source\t${result.materialized === true ? "generated" : "not installed"}`,
-        `dist\t${result.distLandofile ?? ""}`,
-        `overlay\t${result.userLandofile ?? ""}`,
-        `services\t${services.length === 0 ? "(none)" : services.join(", ")}`,
-      ].join("\n");
-    }
-  }
+  const writeResult = renderConfigWriteResult({
+    file: result.filePath ?? "",
+    subcommand: result.subcommand,
+    key: result.key,
+    changed: result.changed,
+    dryRun: result.dryRun,
+    editSavedLabel: "global-app Landofile",
+  });
+  if (writeResult !== undefined) return writeResult;
+  const services = Object.keys(result.landofile?.services ?? {});
+  return [
+    `app\t${result.app ?? ""}`,
+    `source\t${result.materialized === true ? "generated" : "not installed"}`,
+    `dist\t${result.distLandofile ?? ""}`,
+    `overlay\t${result.userLandofile ?? ""}`,
+    `services\t${services.length === 0 ? "(none)" : services.join(", ")}`,
+  ].join("\n");
 };
 
 const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<

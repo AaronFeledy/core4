@@ -124,6 +124,7 @@ import {
 } from "./applied-state.ts";
 import { introspectProviderCapabilities, mvpProviderCapabilities } from "./capabilities.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
+import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
@@ -380,6 +381,16 @@ export const bringDown = (
   plan: AppPlan,
   options: Omit<BringDownOptions, "ctx">,
 ): ReturnType<typeof runtimeBringDown> => runtimeBringDown(plan, { ...options, ctx: LANDO_CTX });
+
+const reapRemovedExecConmons = (runtimeBinDir: string | undefined, plan: AppPlan): Effect.Effect<number> =>
+  runtimeBinDir === undefined
+    ? Effect.succeed(0)
+    : reapLingeringExecConmons({
+        conmonPath: managedConmonPath(runtimeBinDir),
+        names: new Set(
+          Object.values(plan.services).map((service) => serviceContainerName(plan, service.name)),
+        ),
+      });
 
 export const exec = (
   plan: AppPlan,
@@ -1324,6 +1335,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             volumes: false,
             purgeCaches: false,
           }).pipe(Effect.asVoid);
+          yield* reapRemovedExecConmons(runtimeBinDir, physicalPlan);
         }),
         destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
           const plan = yield* freshPlanForTeardown(target, false);
@@ -1341,6 +1353,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               }).pipe(Effect.asVoid),
             ),
           );
+          yield* reapRemovedExecConmons(runtimeBinDir, physicalPlan);
           yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
           return DESTROYED;
         }),
@@ -1351,6 +1364,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ctx: LANDO_CTX,
               }),
+            ),
+            Effect.tap(() =>
+              runtimeBinDir === undefined || observed.containerId === undefined
+                ? Effect.void
+                : reapLingeringExecConmons({
+                    conmonPath: managedConmonPath(runtimeBinDir),
+                    containerIds: new Set([observed.containerId]),
+                  }),
             ),
             Effect.map(observedRemoval),
           ),

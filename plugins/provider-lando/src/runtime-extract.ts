@@ -3,7 +3,7 @@ import { gunzipSync, inflateRawSync } from "node:zlib";
 
 import { Clock, Effect } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
@@ -142,7 +142,7 @@ const parseTarGzEntries = (
   try {
     tar = gunzipSync(Buffer.from(archiveBytes), { maxOutputLength: maxDecompressedBytes });
   } catch (cause) {
-    if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE")) throw decompressedCapError(maxDecompressedBytes, cause);
+    if (isErrnoCode(cause, "ERR_BUFFER_TOO_LARGE")) throw decompressedCapError(maxDecompressedBytes, cause);
     throw cause;
   }
   const entries: RuntimeArchiveEntry[] = [];
@@ -285,7 +285,7 @@ const parseZipEntries = (
             maxOutputLength: maxDecompressedBytes - decompressedBytes,
           });
         } catch (cause) {
-          if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE"))
+          if (isErrnoCode(cause, "ERR_BUFFER_TOO_LARGE"))
             throw decompressedCapError(maxDecompressedBytes, cause);
           throw cause;
         }
@@ -357,9 +357,6 @@ const hasInstalledRuntimeEntrypoint = (runtimeBinDir: string, platform: HostPlat
 const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtractError =>
   cause instanceof ProviderRuntimeExtractError ? cause : new ProviderRuntimeExtractError(message, cause);
 
-const hasErrorCode = (cause: unknown, code: string): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
-
 const replaceRuntimeBinDir = async (
   tempDir: string,
   runtimeBinDir: string,
@@ -373,7 +370,7 @@ const replaceRuntimeBinDir = async (
     await rename(runtimeBinDir, backupDir);
     backupCreated = true;
   } catch (cause) {
-    if (!hasErrorCode(cause, "ENOENT")) throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
   }
 
   try {

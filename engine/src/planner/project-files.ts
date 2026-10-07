@@ -4,7 +4,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { type Context, Effect, Stream } from "effect";
 
 import { isPathWithin } from "@lando/paths";
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
 import type {
   FileSystem,
@@ -127,10 +127,7 @@ const readTextBounded = (
     Effect.mapError((cause) =>
       cause instanceof LandofileValidationError
         ? cause
-        : validationError(
-            input,
-            `Unable to read project file ${absolute}: ${cause instanceof Error ? cause.message : String(cause)}.`,
-          ),
+        : validationError(input, `Unable to read project file ${absolute}: ${causeMessage(cause)}.`),
     ),
   );
 

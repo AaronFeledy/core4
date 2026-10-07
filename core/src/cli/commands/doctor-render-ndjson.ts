@@ -1,5 +1,5 @@
 import type { DoctorCheck, DoctorResult, DoctorSelectionRecord } from "./doctor-contract";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import { DOCTOR_CAPABILITY_FIELDS } from "./doctor-provider";
 
 const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): Record<string, unknown> => {
@@ -59,9 +59,6 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "failure",
 ];
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
-  orderKnownKeys(context, CONTEXT_KEY_ORDER);
-
 const selectionEventPayload = (selection: DoctorSelectionRecord): Record<string, unknown> => ({
   providerId: selection.providerId,
   source: selection.source,
@@ -91,12 +88,8 @@ const checkEventPayload = (check: DoctorCheck): Record<string, unknown> => {
       ...(check.runtime.oomKilled === undefined ? {} : { oomKilled: check.runtime.oomKilled }),
     },
     capabilities: orderCapabilityKeys(check.capabilities),
-    context: orderContextKeys(check.context),
-    solutions: check.solutions.map((solution) => ({
-      kind: solution.kind,
-      description: solution.description,
-      ...(solution.command === undefined ? {} : { command: solution.command }),
-    })),
+    context: orderKnownKeys(check.context, CONTEXT_KEY_ORDER),
+    solutions: doctorSolutionPayloads(check.solutions),
   };
   if (check.selection !== undefined) payload.selection = selectionEventPayload(check.selection);
   return payload;

@@ -12,6 +12,7 @@ import {
   LandofileValidationError,
   type NotImplementedError,
   type ToolingIncludeCycleError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
@@ -109,7 +110,7 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
     try: () => Bun.file(filePath).text(),
     catch: (cause) =>
       new LandofileParseError({
-        message: `Could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Could not read ${filePath}: ${causeMessage(cause)}`,
         filePath,
         line: undefined,
         column: undefined,

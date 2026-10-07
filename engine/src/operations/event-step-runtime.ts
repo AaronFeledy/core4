@@ -4,7 +4,7 @@ import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { Clock, type Context, Effect, Option } from "effect";
 
-import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
+import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import {
@@ -95,7 +95,7 @@ const stepFailure = (
     kind: leaf.kind,
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
-    outputTail: options.redactor.redactString(error instanceof Error ? error.message : String(error)),
+    outputTail: options.redactor.redactString(causeMessage(error)),
     remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
   });
 

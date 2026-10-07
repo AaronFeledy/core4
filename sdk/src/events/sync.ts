@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 import { DatasetKind, RemoteEnvId } from "../schema/remote-sync.ts";
-import { Timestamp } from "./_shared.ts";
+import { OutcomeFields, Timestamp } from "./_shared.ts";
 
 const SyncBase = {
   remote: Schema.String,
@@ -17,12 +17,6 @@ const DatasetBase = {
   timestamp: Timestamp,
 };
 
-const PostFields = {
-  outcome: Schema.Literals(["success", "failure"]),
-  failureDetail: Schema.optional(Schema.String),
-  durationMs: Schema.optional(Schema.Number),
-};
-
 export const PrePullEvent = Schema.TaggedStruct("pre-pull", {
   eventName: Schema.Literal("pre-pull"),
   ...SyncBase,
@@ -32,7 +26,7 @@ export type PrePullEvent = typeof PrePullEvent.Type;
 export const PostPullEvent = Schema.TaggedStruct("post-pull", {
   eventName: Schema.Literal("post-pull"),
   ...SyncBase,
-  ...PostFields,
+  ...OutcomeFields,
 });
 export type PostPullEvent = typeof PostPullEvent.Type;
 
@@ -45,7 +39,7 @@ export type PrePushEvent = typeof PrePushEvent.Type;
 export const PostPushEvent = Schema.TaggedStruct("post-push", {
   eventName: Schema.Literal("post-push"),
   ...SyncBase,
-  ...PostFields,
+  ...OutcomeFields,
 });
 export type PostPushEvent = typeof PostPushEvent.Type;
 
@@ -58,7 +52,7 @@ export type PreDatasetFetchEvent = typeof PreDatasetFetchEvent.Type;
 export const PostDatasetFetchEvent = Schema.TaggedStruct("post-dataset-fetch", {
   eventName: Schema.Literal("post-dataset-fetch"),
   ...DatasetBase,
-  ...PostFields,
+  ...OutcomeFields,
 });
 export type PostDatasetFetchEvent = typeof PostDatasetFetchEvent.Type;
 
@@ -71,7 +65,7 @@ export type PreDatasetApplyEvent = typeof PreDatasetApplyEvent.Type;
 export const PostDatasetApplyEvent = Schema.TaggedStruct("post-dataset-apply", {
   eventName: Schema.Literal("post-dataset-apply"),
   ...DatasetBase,
-  ...PostFields,
+  ...OutcomeFields,
 });
 export type PostDatasetApplyEvent = typeof PostDatasetApplyEvent.Type;
 
@@ -84,7 +78,7 @@ export type PreDatasetCaptureEvent = typeof PreDatasetCaptureEvent.Type;
 export const PostDatasetCaptureEvent = Schema.TaggedStruct("post-dataset-capture", {
   eventName: Schema.Literal("post-dataset-capture"),
   ...DatasetBase,
-  ...PostFields,
+  ...OutcomeFields,
 });
 export type PostDatasetCaptureEvent = typeof PostDatasetCaptureEvent.Type;
 
@@ -97,6 +91,6 @@ export type PreDatasetSendEvent = typeof PreDatasetSendEvent.Type;
 export const PostDatasetSendEvent = Schema.TaggedStruct("post-dataset-send", {
   eventName: Schema.Literal("post-dataset-send"),
   ...DatasetBase,
-  ...PostFields,
+  ...OutcomeFields,
 });
 export type PostDatasetSendEvent = typeof PostDatasetSendEvent.Type;

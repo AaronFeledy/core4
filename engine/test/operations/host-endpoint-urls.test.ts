@@ -1,8 +1,58 @@
 import { expect, test } from "bun:test";
 
-import { BindAddress } from "@lando/sdk/schema";
+import { AppId, BindAddress, type EndpointPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 
-import { publishedEndpointUrl, publishedEndpointUrls } from "../../src/operations/authority-url.ts";
+import {
+  publishedEndpointUrl,
+  publishedEndpointUrls,
+  startedServiceRow,
+} from "../../src/operations/authority-url.ts";
+
+test("uses planned endpoints and status when inspect omits endpoints and state", () => {
+  // Given
+  const service = {
+    name: ServiceName.make("web"),
+    endpoints: [
+      { _tag: "internal", protocol: "http", port: 8080 },
+      { _tag: "published", protocol: "http", port: 8080, publication: {} },
+      { _tag: "published", protocol: "https", port: 8443, publication: { hostPort: 38443 } },
+    ] satisfies ReadonlyArray<EndpointPlan>,
+  };
+  // When
+  const row = startedServiceRow(service, {
+    app: AppId.make("app"),
+    service: service.name,
+    providerId: ProviderId.make("test"),
+    status: "running",
+  });
+  // Then
+  expect(row).toEqual({ name: "web", state: "running", endpoints: ["https://localhost:38443"] });
+  expect(Object.keys(row)).toEqual(["name", "state", "endpoints"]);
+});
+
+test("prefers observed state and materialized endpoints when inspect supplies them", () => {
+  // Given
+  const service = { name: ServiceName.make("web"), endpoints: [] };
+  // When
+  const row = startedServiceRow(service, {
+    app: AppId.make("app"),
+    service: service.name,
+    providerId: ProviderId.make("test"),
+    status: "created",
+    state: "running",
+    endpoints: [
+      {
+        _tag: "published",
+        protocol: "http",
+        port: 8080,
+        publication: { hostPort: 1234 },
+        materialization: { bindAddress: BindAddress.make("::1"), hostPort: 49152 },
+      },
+    ],
+  });
+  // Then
+  expect(row).toEqual({ name: "web", state: "running", endpoints: ["http://[::1]:49152"] });
+});
 
 test("renders only explicitly published endpoint URLs", () => {
   const urls = publishedEndpointUrls([

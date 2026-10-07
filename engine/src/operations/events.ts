@@ -4,7 +4,7 @@ import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/e
 import { MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
-import { EventService, ShellRunner } from "@lando/sdk/services";
+import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -204,13 +204,30 @@ export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* 
   );
 });
 
-export const runAppInitEvents = Effect.fn("AppOperation.initEvents")(function* (plan: AppPlan) {
+export const publishAndRunAppEvent = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  name: LandofileEventName,
+  event: LandoEvent & ExpressionContext["event"],
+) {
   const events = yield* EventService;
+  yield* events.publish(event);
+  yield* runAppEvent(plan, name, event);
+});
+
+export const publishAndRunPostAppEvent = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  name: AppLifecycleEventName,
+  event: LandoEvent & ExpressionContext["event"],
+) {
+  const events = yield* EventService;
+  yield* events.publish(event);
+  yield* runPostAppEvent(plan, name, event);
+});
+
+export const runAppInitEvents = Effect.fn("AppOperation.initEvents")(function* (plan: AppPlan) {
   const app = { kind: "user" as const, id: plan.id, root: plan.root };
   const pre = PreInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
-  yield* events.publish(pre);
-  yield* runAppEvent(plan, "pre-init", pre);
+  yield* publishAndRunAppEvent(plan, "pre-init", pre);
   const post = PostInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
-  yield* events.publish(post);
-  yield* runAppEvent(plan, "post-init", post);
+  yield* publishAndRunAppEvent(plan, "post-init", post);
 });

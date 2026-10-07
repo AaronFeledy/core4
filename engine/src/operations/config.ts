@@ -19,14 +19,8 @@ import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath } from "../config-write/dot-path";
-import {
-  type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
-  decodeIssues,
-  emitConfigYaml,
-  writeValidationErrorFromIssues,
-} from "../config-write/write-core";
+import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
+import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
 import { findAgentEnvPatternNames } from "../config/agent-env";
 import { resolveUserConfRoot } from "../config/roots";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../runtime/cli-options";
@@ -243,27 +237,23 @@ const metaConfigSet = Effect.fnUntraced(function* (
     );
   }
   const path = resolveConfigWritePath(options);
-  const tree = yield* readConfigTree(path);
-  const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const decoded = decodeGlobalConfig(next);
-  const issues = decodeIssues(decoded);
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
-  const dryRun = options.dryRun === true;
-  if (!dryRun) {
-    const emitted = emitConfigYaml({ file: path, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeConfigAtomic(path, emitted.success);
-  }
+  const outcome = yield* runSetVerb({
+    file: path,
+    key,
+    raw,
+    type: options.type ?? "string",
+    dryRun: options.dryRun === true,
+    readTree: readConfigTree(path),
+    decode: decodeGlobalConfig,
+    afterDecode: agentEnvPatternError,
+    writeText: writeConfigAtomic,
+  });
   return {
     subcommand: "set",
     key,
-    value: mutation.success.value,
+    value: outcome.value,
     changed: true,
-    dryRun,
+    dryRun: outcome.dryRun,
     configPath: path,
     format: options.format ?? "table",
   };
@@ -284,26 +274,20 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     );
   }
   const path = resolveConfigWritePath(options);
-  const tree = yield* readConfigTree(path);
-  const mutation = applyUnsetMutation({ tree, key, file: path });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const decoded = decodeGlobalConfig(next);
-  const issues = decodeIssues(decoded);
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
-  const dryRun = options.dryRun === true;
-  if (!dryRun && mutation.success.changed) {
-    const emitted = emitConfigYaml({ file: path, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeConfigAtomic(path, emitted.success);
-  }
+  const outcome = yield* runUnsetVerb({
+    file: path,
+    key,
+    dryRun: options.dryRun === true,
+    readTree: readConfigTree(path),
+    decode: decodeGlobalConfig,
+    afterDecode: agentEnvPatternError,
+    writeText: writeConfigAtomic,
+  });
   return {
     subcommand: "unset",
     key,
-    changed: mutation.success.changed,
-    dryRun,
+    changed: outcome.changed,
+    dryRun: outcome.dryRun,
     configPath: path,
     format: options.format ?? "table",
   };
@@ -335,35 +319,19 @@ const metaConfigEdit = Effect.fnUntraced(function* (
   const content = yield* readConfigText(path);
   const runner = options.editorRunner;
   if (runner === undefined) {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: path,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(path));
   }
   const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) }));
   if (edited.kind === "no-editor") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: path,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(path));
   }
   if (edited.kind === "failed") {
     return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `The editor session failed: ${edited.reason}`,
-        file: path,
-        issues: [validationIssue([], edited.reason)],
-        remediation:
-          "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
-      }),
+      editorFailedError(
+        path,
+        edited.reason,
+        "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
+      ),
     );
   }
   const parsed = yield* Effect.try({

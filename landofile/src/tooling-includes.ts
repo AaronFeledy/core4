@@ -8,6 +8,7 @@ import {
   type LandofileParseError,
   type NotImplementedError,
   ToolingIncludeCycleError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
@@ -78,7 +79,7 @@ const readFragmentText = (filePath: string, source: string): Effect.Effect<strin
     try: () => Bun.file(filePath).text(),
     catch: (cause) =>
       includeError({
-        message: `Could not read tooling include ${source} at ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Could not read tooling include ${source} at ${filePath}: ${causeMessage(cause)}`,
         source,
         kind: "fetch-failed",
       }),
@@ -108,7 +109,7 @@ const locateFragment = (
       cause instanceof LandofileIncludeError
         ? cause
         : includeError({
-            message: cause instanceof Error ? cause.message : String(cause),
+            message: causeMessage(cause),
             source: entry.source,
             kind: "fetch-failed",
           }),

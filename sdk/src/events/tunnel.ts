@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { AppId } from "../schema/primitives.ts";
 import { TunnelStatus } from "../schema/tunnel.ts";
-import { Timestamp } from "./_shared.ts";
+import { OutcomeFields, Timestamp } from "./_shared.ts";
 
 const TunnelBase = {
   app: AppId,
@@ -12,12 +12,6 @@ const TunnelBase = {
   detached: Schema.Boolean,
   publicUrlSummary: Schema.optional(Schema.String),
   timestamp: Timestamp,
-};
-
-const OutcomeFields = {
-  outcome: Schema.Literals(["success", "failure"]),
-  failureDetail: Schema.optional(Schema.String),
-  durationMs: Schema.optional(Schema.Number),
 };
 
 export const PreTunnelStartEvent = Schema.TaggedStruct("pre-tunnel-start", {

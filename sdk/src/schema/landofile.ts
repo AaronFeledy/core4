@@ -930,18 +930,37 @@ export const EventCommandInputValue = Schema.Union([
 ]);
 export type EventCommandInputValue = typeof EventCommandInputValue.Type;
 
-export const EventCommandStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
-  task: Schema.optionalKey(Schema.Never),
-  command: Schema.String,
-  defer: Schema.optionalKey(Schema.Never),
-  for: Schema.optionalKey(Schema.Never),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  raw: Schema.optionalKey(Schema.Array(Schema.String)),
+const EventStepTail = {
   ignoreError: Schema.optionalKey(Schema.Boolean),
   if: Schema.optionalKey(EventStepCondition),
   silent: Schema.optionalKey(Schema.Boolean),
+};
+
+const EventCmdFields = {
+  service: Schema.optionalKey(Schema.String),
+  dir: Schema.optionalKey(PortablePath),
+  env: Schema.optionalKey(ToolingEnvironment),
+  user: Schema.optionalKey(Schema.String),
+};
+
+const EventCommandFields = {
+  flags: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
+  args: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
+  raw: Schema.optionalKey(Schema.Array(Schema.String)),
+};
+
+const EventTaskFields = {
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)),
+};
+
+export const EventCommandStep = Schema.Struct({
+  cmd: Forbidden,
+  task: Forbidden,
+  command: Schema.String,
+  defer: Forbidden,
+  for: Forbidden,
+  ...EventCommandFields,
+  ...EventStepTail,
 }).annotate({
   identifier: "EventCommandStep",
   description: "Direct invocation of a canonical Lando command.",
@@ -949,15 +968,13 @@ export const EventCommandStep = Schema.Struct({
 export type EventCommandStep = typeof EventCommandStep.Type;
 
 export const EventTaskStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
   task: Schema.String,
-  command: Schema.optionalKey(Schema.Never),
-  defer: Schema.optionalKey(Schema.Never),
-  for: Schema.optionalKey(Schema.Never),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  command: Forbidden,
+  defer: Forbidden,
+  for: Forbidden,
+  ...EventTaskFields,
+  ...EventStepTail,
 }).annotate({
   identifier: "EventTaskStep",
   description: "Invocation of an effective Landofile tooling task.",
@@ -966,17 +983,12 @@ export type EventTaskStep = typeof EventTaskStep.Type;
 
 export const EventCmdStep = Schema.Struct({
   cmd: Schema.String,
-  task: Schema.optionalKey(Schema.Never),
-  command: Schema.optionalKey(Schema.Never),
-  defer: Schema.optionalKey(Schema.Never),
-  for: Schema.optionalKey(Schema.Never),
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  task: Forbidden,
+  command: Forbidden,
+  defer: Forbidden,
+  for: Forbidden,
+  ...EventCmdFields,
+  ...EventStepTail,
 }).annotate({
   identifier: "EventCmdStep",
   description: "Provider tooling command with optional service targeting.",
@@ -1024,59 +1036,43 @@ export const EventForSelector = Schema.Union([
 export type EventForSelector = typeof EventForSelector.Type;
 
 const EventDeferredCmdShorthand = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
-  task: Schema.optionalKey(Schema.Never),
-  command: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
+  task: Forbidden,
+  command: Forbidden,
   defer: Schema.String,
-  for: Schema.optionalKey(Schema.Never),
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  for: Forbidden,
+  ...EventCmdFields,
+  ...EventStepTail,
 });
 
 const EventDeferredCmdStep = Schema.Struct({
   cmd: Schema.String,
-  task: Schema.optionalKey(Schema.Never),
-  command: Schema.optionalKey(Schema.Never),
+  task: Forbidden,
+  command: Forbidden,
   defer: Schema.Literal(true),
-  for: Schema.optionalKey(Schema.Never),
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  for: Forbidden,
+  ...EventCmdFields,
+  ...EventStepTail,
 });
 
 const EventDeferredTaskStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
   task: Schema.String,
-  command: Schema.optionalKey(Schema.Never),
+  command: Forbidden,
   defer: Schema.Literal(true),
-  for: Schema.optionalKey(Schema.Never),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  for: Forbidden,
+  ...EventTaskFields,
+  ...EventStepTail,
 });
 
 const EventDeferredCommandStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
-  task: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
+  task: Forbidden,
   command: Schema.String,
   defer: Schema.Literal(true),
-  for: Schema.optionalKey(Schema.Never),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  raw: Schema.optionalKey(Schema.Array(Schema.String)),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  for: Forbidden,
+  ...EventCommandFields,
+  ...EventStepTail,
 });
 
 export const EventDeferStep = Schema.Union([
@@ -1092,58 +1088,42 @@ export type EventDeferStep = typeof EventDeferStep.Type;
 
 const EventForCmdStep = Schema.Struct({
   cmd: Schema.String,
-  task: Schema.optionalKey(Schema.Never),
-  command: Schema.optionalKey(Schema.Never),
-  defer: Schema.optionalKey(Schema.Never),
+  task: Forbidden,
+  command: Forbidden,
+  defer: Forbidden,
   for: EventForSelector,
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  ...EventCmdFields,
+  ...EventStepTail,
 });
 
 const EventForTaskStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
   task: Schema.String,
-  command: Schema.optionalKey(Schema.Never),
-  defer: Schema.optionalKey(Schema.Never),
+  command: Forbidden,
+  defer: Forbidden,
   for: EventForSelector,
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  ...EventTaskFields,
+  ...EventStepTail,
 });
 
 const EventForCommandStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
-  task: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
+  task: Forbidden,
   command: Schema.String,
-  defer: Schema.optionalKey(Schema.Never),
+  defer: Forbidden,
   for: EventForSelector,
-  flags: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  raw: Schema.optionalKey(Schema.Array(Schema.String)),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  ...EventCommandFields,
+  ...EventStepTail,
 });
 
 const EventForDeferredCmdStep = Schema.Struct({
-  cmd: Schema.optionalKey(Schema.Never),
-  task: Schema.optionalKey(Schema.Never),
-  command: Schema.optionalKey(Schema.Never),
+  cmd: Forbidden,
+  task: Forbidden,
+  command: Forbidden,
   defer: Schema.String,
   for: EventForSelector,
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
+  ...EventCmdFields,
+  ...EventStepTail,
 });
 
 export const EventForStep = Schema.Union([

@@ -9,6 +9,7 @@ import {
   HostProxyRecursionError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
+  causeMessage,
 } from "@lando/sdk/errors";
 
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
@@ -160,7 +161,7 @@ export const sendHostProxyRunLando = (
         return cause;
       }
       return new HostProxyTransportUnavailableError({
-        message: cause instanceof Error ? cause.message : String(cause),
+        message: causeMessage(cause),
         socketPath: session.socketPath ?? session.url ?? "unknown",
         remediation: "Ensure the host-proxy session is running.",
       });
@@ -177,7 +178,7 @@ export const connectHostProxyRunLando = (
     },
     catch: (cause) =>
       new HostProxyTransportUnavailableError({
-        message: cause instanceof Error ? cause.message : String(cause),
+        message: causeMessage(cause),
         socketPath: session.socketPath ?? session.url ?? "unknown",
         remediation: "Start the app to create a host-proxy runLando session before invoking the shim.",
       }),

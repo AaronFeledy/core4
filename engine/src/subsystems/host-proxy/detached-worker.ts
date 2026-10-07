@@ -1,6 +1,6 @@
 import { DateTime, Effect, Ref, Schema } from "effect";
 
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
@@ -144,7 +144,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
         cause instanceof HostProxyTransportUnavailableError
           ? cause
           : new HostProxyTransportUnavailableError({
-              message: cause instanceof Error ? cause.message : String(cause),
+              message: causeMessage(cause),
               socketPath: workerStatePath(options.app, options.paths),
               remediation:
                 cause instanceof HostProxyWorkerExitedBeforeReadyError

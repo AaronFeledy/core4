@@ -1,5 +1,6 @@
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
-import { ToolingExecError } from "@lando/sdk/errors";
+import { unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
+import type { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { serviceStateRow } from "../service-summary";
@@ -30,11 +31,7 @@ export const withGlobalLifecycleEvents = Effect.fnUntraced(function* <A, E, R, P
 
 type GlobalSelectionCommand = "meta:global:start" | "meta:global:info" | "meta:global:status";
 
-export const availableGlobalServiceList = (services: GlobalServiceNames): string =>
-  Object.values(services)
-    .map((service) => String(service.name))
-    .sort()
-    .join(", ");
+export { availableServiceList as availableGlobalServiceList } from "@lando/engine/operations/unknown-service";
 
 export const unknownGlobalServiceError = ({
   commandId,
@@ -46,20 +43,16 @@ export const unknownGlobalServiceError = ({
   readonly requested: string;
   readonly services: GlobalServiceNames;
   readonly withRemediation: boolean;
-}): ToolingExecError => {
-  const list = availableGlobalServiceList(services);
-  const first = list.split(", ")[0];
-  return new ToolingExecError({
-    message:
-      list.length === 0
-        ? `${commandId}: service ${requested} is not in the global app plan.`
-        : `${commandId}: service ${requested} is not in the global app plan (available: ${list}).`,
+}): ToolingExecError =>
+  unknownPlanServiceError({
+    prefix: commandId,
     tool: commandId,
-    ...(withRemediation && first !== undefined && first.length > 0
-      ? { remediation: `Example: lando ${commandId.slice("meta:".length)} --service ${first}` }
-      : {}),
+    requested,
+    services,
+    planLabel: "global app plan",
+    remediation: (first) =>
+      withRemediation ? `Example: lando ${commandId.slice("meta:".length)} --service ${first}` : undefined,
   });
-};
 
 export const selectGlobalServices = <
   S extends {

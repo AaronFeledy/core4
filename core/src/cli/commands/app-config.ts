@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type {
   AppIdReservedError,
@@ -32,13 +32,11 @@ import { LandofileService, type StateStore } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
+import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import {
   ConfigWriteResultFields,
   type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
   decodeIssues,
-  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "@lando/engine/config-write/write-core";
 import { collectLandofileRedactionTokens } from "@lando/engine/services/app-plan-redaction";
@@ -53,6 +51,7 @@ import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
+import { renderConfigWriteResult } from "./config-write-render";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
@@ -266,28 +265,26 @@ export const appConfigSet = Effect.fn("AppConfig.set")(function* (
   const raw = options.value;
   if (key === undefined || raw === undefined) return yield* Effect.fail(missingArgsError());
   const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "set");
-  const content = yield* readWritableLandofileText(inputPath, "set");
-  const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<string, unknown>;
-  const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: inputPath });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const issues = decodeIssues(decodeLandofile(next));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues, path: key }));
-  }
-  const dryRun = options.dryRun === true;
-  if (!dryRun) {
-    const emitted = emitConfigYaml({ file: inputPath, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeLandofileText(inputPath, emitted.success);
-  }
+  const outcome = yield* runSetVerb({
+    file: inputPath,
+    key,
+    raw,
+    type: options.type ?? "string",
+    dryRun: options.dryRun === true,
+    readTree: readWritableLandofileText(inputPath, "set").pipe(
+      Effect.flatMap((content) => parseLandofile({ file: inputPath, content, cwd: appRoot })),
+      Effect.map((tree) => tree as Record<string, unknown>),
+    ),
+    decode: decodeLandofile,
+    writeText: writeLandofileText,
+  });
   return {
     subcommand: "set",
     key,
-    value: mutation.success.value,
+    value: outcome.value,
     filePath: inputPath,
     changed: true,
-    dryRun,
+    dryRun: outcome.dryRun,
   };
 });
 
@@ -306,22 +303,18 @@ export const appConfigUnset = Effect.fn("AppConfig.unset")(function* (
     );
   }
   const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "unset");
-  const content = yield* readWritableLandofileText(inputPath, "unset");
-  const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<string, unknown>;
-  const mutation = applyUnsetMutation({ tree, key, file: inputPath });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const issues = decodeIssues(decodeLandofile(next));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues, path: key }));
-  }
-  const dryRun = options.dryRun === true;
-  if (!dryRun && mutation.success.changed) {
-    const emitted = emitConfigYaml({ file: inputPath, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeLandofileText(inputPath, emitted.success);
-  }
-  return { subcommand: "unset", key, filePath: inputPath, changed: mutation.success.changed, dryRun };
+  const outcome = yield* runUnsetVerb({
+    file: inputPath,
+    key,
+    dryRun: options.dryRun === true,
+    readTree: readWritableLandofileText(inputPath, "unset").pipe(
+      Effect.flatMap((content) => parseLandofile({ file: inputPath, content, cwd: appRoot })),
+      Effect.map((tree) => tree as Record<string, unknown>),
+    ),
+    decode: decodeLandofile,
+    writeText: writeLandofileText,
+  });
+  return { subcommand: "unset", key, filePath: inputPath, changed: outcome.changed, dryRun: outcome.dryRun };
 });
 
 export const appConfigValidate = Effect.fn("AppConfig.validate")(function* (
@@ -350,24 +343,15 @@ export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (
     );
   const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: appRoot }));
   if (edited.kind === "no-editor") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: inputPath,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(inputPath));
   }
   if (edited.kind === "failed") {
     return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `The editor session failed: ${edited.reason}`,
-        file: inputPath,
-        issues: [validationIssue([], edited.reason)],
-        remediation:
-          "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
-      }),
+      editorFailedError(
+        inputPath,
+        edited.reason,
+        "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
+      ),
     );
   }
   // Validate against the RENDERED tree (a `template:` directive is a synthetic
@@ -429,26 +413,15 @@ const getRender = (result: AppConfigResult): string => {
   return String(result.value);
 };
 
-const writeRender = (result: AppConfigResult): string => {
-  const file = result.filePath ?? "";
-  switch (result.subcommand) {
-    case "set":
-      return result.dryRun === true
-        ? `${file}: would set ${result.key} (dry run).`
-        : `${file}: set ${result.key}.`;
-    case "unset":
-      if (result.changed !== true) return `${file}: ${result.key} was not present (no change).`;
-      return result.dryRun === true
-        ? `${file}: would unset ${result.key} (dry run).`
-        : `${file}: unset ${result.key}.`;
-    case "edit":
-      return `${file}: saved edited Landofile.`;
-    case "validate":
-      return `${file}: valid.`;
-    default:
-      return tableRender(result);
-  }
-};
+const writeRender = (result: AppConfigResult): string =>
+  renderConfigWriteResult({
+    file: result.filePath ?? "",
+    subcommand: result.subcommand,
+    key: result.key,
+    changed: result.changed,
+    dryRun: result.dryRun,
+    editSavedLabel: "Landofile",
+  }) ?? tableRender(result);
 
 export const renderAppConfigResult = (
   result: AppConfigResult,

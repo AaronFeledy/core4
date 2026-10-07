@@ -75,25 +75,45 @@ export type ToolError = ToolManifestError | ToolExtractError | ToolInstallPathEr
 export const resolveHostKey = (platform: string, arch: string): string =>
   `${Schema.is(HostPlatform)(platform) ? hostPlatformFamily(platform) : platform}-${arch}`;
 
-const versionMarkerPath = (binDir: string, toolId: string): string => join(binDir, `.${toolId}.version`);
+export const toolVersionMarkerPath = (binDir: string, toolId: string): string =>
+  join(binDir, `.${toolId}.version`);
 
-const legacyVersionMarkerPath = (binDir: string, toolId: string): string =>
+export const legacyToolVersionMarkerPath = (binDir: string, toolId: string): string =>
   join(binDir, `.${toolId}-installed-version`);
 
-const readInstalledToolVersionMarker = async (
-  binDir: string,
-  toolId: string,
-): Promise<string | undefined> => {
-  for (const path of [versionMarkerPath(binDir, toolId), legacyVersionMarkerPath(binDir, toolId)]) {
-    try {
-      const content = (await readFile(path, "utf-8")).trim();
-      if (content.length > 0) return content;
-    } catch {}
+export const readInstalledToolVersion = async (paths: ReadonlyArray<string>): Promise<string | undefined> => {
+  for (const path of paths) {
+    const content = await readFile(path, "utf-8").then(
+      (value) => value.trim(),
+      () => undefined,
+    );
+    if (content !== undefined && content.length > 0) return content;
   }
   return undefined;
 };
 
-const fingerprintPath = (installPath: string): string => `${installPath}.sha256`;
+const readInstalledToolVersionMarker = (binDir: string, toolId: string): Promise<string | undefined> =>
+  readInstalledToolVersion([
+    toolVersionMarkerPath(binDir, toolId),
+    legacyToolVersionMarkerPath(binDir, toolId),
+  ]);
+
+export const fingerprintPath = (installPath: string): string => `${installPath}.sha256`;
+
+export const recordedFingerprintMatch = async (installPath: string): Promise<string | undefined> => {
+  try {
+    const info = await stat(installPath);
+    if (!info.isFile() || info.size === 0) return undefined;
+    const [bytes, recorded] = await Promise.all([
+      readFile(installPath),
+      readFile(fingerprintPath(installPath), "utf-8"),
+    ]);
+    const actual = sha256Hex(bytes);
+    return actual === recorded.trim() ? actual : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const isContained = (root: string, target: string): boolean => {
   const rel = relative(root, target);
@@ -438,21 +458,7 @@ const isCurrent = Effect.fnUntraced(function* (input: ProvisionToolInput, instal
     readInstalledToolVersionMarker(input.binDir, input.toolId),
   );
   if (markerVersion !== input.manifest.toolVersion) return undefined;
-  const fingerprint = yield* Effect.promise(async () => {
-    try {
-      const info = await stat(installPath);
-      if (!info.isFile() || info.size === 0) return undefined;
-      const [bytes, recorded] = await Promise.all([
-        readFile(installPath),
-        readFile(fingerprintPath(installPath), "utf-8"),
-      ]);
-      const actual = sha256Hex(bytes);
-      return actual === recorded.trim() ? actual : undefined;
-    } catch {
-      return undefined;
-    }
-  });
-  return fingerprint;
+  return yield* Effect.promise(() => recordedFingerprintMatch(installPath));
 });
 
 const installBytes = (
@@ -614,7 +620,7 @@ export const provisionTool = Effect.fn("ToolProvisioning.provision")(function* (
     try: async () => {
       await mkdir(input.binDir, { recursive: true });
       await writeFile(
-        versionMarkerPath(input.binDir, input.toolId),
+        toolVersionMarkerPath(input.binDir, input.toolId),
         `${input.manifest.toolVersion}\n`,
         "utf-8",
       );

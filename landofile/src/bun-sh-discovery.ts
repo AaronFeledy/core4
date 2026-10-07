@@ -7,6 +7,7 @@ import {
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
   NotImplementedError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 
@@ -192,9 +193,7 @@ export const parseScriptFile = Effect.fnUntraced(function* (
     try: () => readFile(scriptPath, "utf-8"),
     catch: (cause) =>
       new BunShellScriptFrontMatterError({
-        message: `Failed to read .bun.sh script at ${scriptPath}: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
+        message: `Failed to read .bun.sh script at ${scriptPath}: ${causeMessage(cause)}`,
         path: scriptPath,
         remediation: FRONT_MATTER_REMEDIATION,
         cause,
@@ -337,9 +336,7 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
     try: () => walkScriptsDir(scriptsDir),
     catch: (cause) =>
       new BunShellScriptFrontMatterError({
-        message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
+        message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${causeMessage(cause)}`,
         path: scriptsDir,
         remediation: "Ensure the directory is readable by the current user.",
         cause,

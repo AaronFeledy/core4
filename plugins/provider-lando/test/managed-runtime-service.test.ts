@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
+import type { ExecConmonReaper } from "../src/exec-conmon.ts";
 import {
   type FsSeam,
   type ManagedRuntimeServiceSpec,
@@ -106,6 +107,32 @@ describe("verifyOwnedRuntimePid", () => {
 });
 
 describe("terminateOwnedRuntimeService", () => {
+  test("SIGKILLs only orphaned managed exec conmons when the pid file is missing", async () => {
+    const killedPids: number[] = [];
+    const processSeam = makeProcessSeam({
+      readPid: () => Effect.fail(new Error("ENOENT")),
+    });
+    const execConmon: ExecConmonReaper = {
+      listArgv: Effect.succeed([
+        { pid: 10, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "orphaned-id", "--exec-attach"] },
+        {
+          pid: 11,
+          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global-traefik"],
+        },
+        { pid: 12, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "--exec-attach"] },
+      ]),
+      kill: (pid) =>
+        Effect.sync(() => {
+          killedPids.push(pid);
+        }),
+    };
+
+    const result = await run(terminateOwnedRuntimeService(baseSpec, { process: processSeam, execConmon }));
+
+    expect(result).toEqual({ terminated: false });
+    expect(killedPids).toEqual([10]);
+  });
+
   test("SIGTERMs and unlinks when the pid is owned", async () => {
     const terminatedPids: number[] = [];
     const unlinkedPaths: string[] = [];

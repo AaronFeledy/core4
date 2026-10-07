@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
 
+import { causeMessage } from "@lando/sdk/errors";
 import { PrivilegeService } from "@lando/sdk/services";
 
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
@@ -546,7 +547,7 @@ const buildRunningAppsStep = async (
     };
   } catch (cause) {
     // Fail closed: discovery failed, cannot verify safety
-    const error = cause instanceof Error ? cause.message : String(cause);
+    const error = causeMessage(cause);
     return {
       ...base,
       target: "Lando apps",
@@ -840,7 +841,7 @@ const executeUninstall = async (
         }
         executed.push({ ...step, outcome: "completed" });
       } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
+        const error = causeMessage(cause);
         executed.push({ ...step, outcome: "failed", error });
         // If cleanup fails, abort to prevent orphaning resources
         break;
@@ -852,7 +853,7 @@ const executeUninstall = async (
         await teardownHostProxySessions(userDataRoot);
         executed.push({ ...step, outcome: "completed" });
       } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
+        const error = causeMessage(cause);
         executed.push({ ...step, outcome: "failed", error });
       }
       continue;
@@ -874,7 +875,7 @@ const executeUninstall = async (
         });
         executed.push({ ...step, outcome });
       } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
+        const error = causeMessage(cause);
         executed.push({ ...step, outcome: "failed", error });
       }
       continue;
@@ -900,7 +901,7 @@ const executeUninstall = async (
         }
         executed.push({ ...step, outcome: unresolved ? "manual" : "completed" });
       } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
+        const error = causeMessage(cause);
         executed.push({ ...step, outcome: "failed", error });
       }
       continue;

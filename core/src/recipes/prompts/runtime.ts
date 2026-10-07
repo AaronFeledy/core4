@@ -15,7 +15,12 @@
 import { access } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
-import { RecipeChoicesError, RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
+import {
+  RecipeChoicesError,
+  RecipeMissingAnswerError,
+  RecipePromptValidationError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import type { RecipeChoicesFrom, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 
 import {
@@ -432,8 +437,6 @@ type ChoicesOutcome =
       readonly exitCode?: number;
     };
 
-const describeCause = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
-
 const runChoicesCommand = async (
   runner: ChoicesCommandRunner,
   choicesFrom: RecipeChoicesFrom,
@@ -442,7 +445,7 @@ const runChoicesCommand = async (
   try {
     result = await runner({ command: choicesFrom.command, args: choicesFrom.args ?? [] });
   } catch (cause) {
-    return { ok: false, kind: "command-failed", reason: `command failed to run: ${describeCause(cause)}` };
+    return { ok: false, kind: "command-failed", reason: `command failed to run: ${causeMessage(cause)}` };
   }
   if (result.exitCode !== 0) {
     return {
@@ -456,7 +459,7 @@ const runChoicesCommand = async (
     return { ok: true, choices: parseChoicesOutput(result.stdout, choicesFrom.parse) };
   } catch (cause) {
     if (cause instanceof ChoicesParseFailure) return { ok: false, kind: cause.kind, reason: cause.message };
-    return { ok: false, kind: "unparseable", reason: describeCause(cause) };
+    return { ok: false, kind: "unparseable", reason: causeMessage(cause) };
   }
 };
 

@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -24,8 +22,9 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
-  resolveTeardownResolution,
+  teardownDesiredOrUnchanged,
   validateResolvedAppTarget,
+  withTeardownResolution,
 } from "./applied-state-target.ts";
 import { runAppInitEvents } from "./events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
@@ -155,14 +154,11 @@ const stopDesiredOrUnchanged = (
   options: StopAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
-  resolveDesiredAppTarget.pipe(
-    Effect.map((desired): ResolvedAppTarget | undefined => desired),
-    Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
-    Effect.flatMap((desired) =>
-      desired === undefined
-        ? Effect.succeed(unchangedResult(basename(resolution.root)))
-        : stopAppWithResolvedPlan(options, desired, false, true).pipe(Effect.map(({ result }) => result)),
-    ),
+  teardownDesiredOrUnchanged(
+    resolution,
+    (desired) =>
+      stopAppWithResolvedPlan(options, desired, false, true).pipe(Effect.map(({ result }) => result)),
+    unchangedResult,
   );
 
 export const stopApp = Effect.fn("AppOperation.stop")(function* (
@@ -171,19 +167,12 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
   return yield* target !== undefined
     ? stopAppForTarget(options, target)
-    : resolveTeardownResolution.pipe(
-        Effect.flatMap((resolution) => {
-          switch (resolution.kind) {
-            case "applied":
-              return stopAppWithResolvedPlan(options, resolution.target, false, false).pipe(
-                Effect.map(({ result }) => result),
-              );
-            case "orphans":
-              return stopOrphans(resolution);
-            case "absent":
-              return stopDesiredOrUnchanged(options, resolution);
-          }
-        }),
+    : withTeardownResolution({
+        applied: (resolved) =>
+          stopAppWithResolvedPlan(options, resolved, false, false).pipe(Effect.map(({ result }) => result)),
+        orphans: (resolution) => stopOrphans(resolution),
+        absent: (resolution) => stopDesiredOrUnchanged(options, resolution),
+      }).pipe(
         Effect.map(
           (result): StopAppResult =>
             result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },

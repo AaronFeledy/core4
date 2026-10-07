@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { Effect } from "effect";
 
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
@@ -5,7 +6,7 @@ import { type AbsolutePath, type AppPlan, appIdentityKey } from "@lando/sdk/sche
 import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
-import { type ResolvedAppTarget, userAppRef } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget, userAppRef } from "../landofile/app-resolution.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 
 const mismatch = (detail: string): AppResolveError =>
@@ -141,3 +142,42 @@ export const resolveTeardownResolution = Effect.gen(function* () {
   const landofilePresent = discovered !== undefined;
   return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget);
 });
+
+export const withTeardownResolution = <A, E, R>(handlers: {
+  readonly applied: (target: ResolvedAppTarget) => Effect.Effect<A, E, R>;
+  readonly orphans: (
+    resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
+  ) => Effect.Effect<A, E, R>;
+  readonly absent: (
+    resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
+  ) => Effect.Effect<A, E, R>;
+}) =>
+  resolveTeardownResolution.pipe(
+    Effect.flatMap((resolution) => {
+      switch (resolution.kind) {
+        case "applied":
+          return handlers.applied(resolution.target);
+        case "orphans":
+          return handlers.orphans(resolution);
+        case "absent":
+          return handlers.absent(resolution);
+        default: {
+          const unreachable: never = resolution;
+          return unreachable;
+        }
+      }
+    }),
+  );
+
+export const teardownDesiredOrUnchanged = <A, E, R>(
+  resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
+  onDesired: (desired: ResolvedAppTarget) => Effect.Effect<A, E, R>,
+  unchanged: (app: string) => A,
+) =>
+  resolveDesiredAppTarget.pipe(
+    Effect.map((desired): ResolvedAppTarget | undefined => desired),
+    Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
+    Effect.flatMap((desired) =>
+      desired === undefined ? Effect.succeed(unchanged(basename(resolution.root))) : onDesired(desired),
+    ),
+  );
