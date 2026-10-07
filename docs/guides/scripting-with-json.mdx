@@ -34,31 +34,16 @@ native registry and dispatcher.
 
 ## Capture project script output
 
-Run a project script with `--format=json` or `--format=yaml` to collect its
-stdout, stderr, and exit code in one envelope. Lando uses its embedded Bun
-runtime in either format; you don't need Bun installed on your host.
-
-For example, save this as `.lando/scripts/stamp.bun.sh` in your app:
-
-```sh
-# ---
-# desc: Print a version stamp
-# ---
-echo "stamped $1"
-```
-
-Refresh the command cache, then run the script:
+Project scripts from `.lando/scripts/*.bun.sh` emit the same envelope. With
+`--format=json` or `--format=yaml`, `result` carries the script's `stdout`,
+`stderr`, and `exitCode`, and Lando exits with the script's own code even
+when `ok` is `true`. Writing those scripts is covered in
+[Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts/).
 
 ```sh
 lando app:cache:refresh
 lando stamp abc1234 --format=json
-lando stamp abc1234 --format=yaml
 ```
-
-Read `result.stdout`, `result.stderr`, and `result.exitCode`. A script that
-exits nonzero still returns its output in `result`, and Lando exits with the
-script's exit code. Check `result.exitCode`, not only the envelope's `ok`.
-Without a format flag, script output streams to your terminal.
 
 <Guide>
   <Scenario id="capture-project-script-output" render>
