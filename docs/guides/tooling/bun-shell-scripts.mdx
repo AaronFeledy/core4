@@ -101,6 +101,25 @@ Lando reads its own global flags, such as `--format` and `--verbose`, anywhere o
 lando stamp -- --format=json
 ```
 
+## Capture output as JSON or YAML
+
+Add `--format=json` or `--format=yaml` and Lando collects the script instead of streaming it. You get one envelope on stdout with the script's output and exit code under `result`:
+
+```sh
+lando stamp abc1234 --format=json
+lando stamp abc1234 --format=yaml
+```
+
+| Key | What it holds |
+| --- | --- |
+| `result.stdout` | Everything the script wrote to stdout |
+| `result.stderr` | Everything it wrote to stderr |
+| `result.exitCode` | The script's exit code |
+
+A script that exits nonzero still gets its output collected, and `lando` exits with that same code. The envelope's `ok` only says Lando ran the script, so branch on `result.exitCode`, not on `ok`. Without a format flag, output streams to your terminal as it happens. Both formats run the script with Lando's embedded Bun, so a host with no Bun installed works the same.
+
+The envelope, `--json=<key>`, and `--jq` work the way they do for every other command. See [Script Lando with JSON](../../scripting-with-json/) for the full contract.
+
 ## Group commands in folders
 
 Subfolders become namespaces. `.lando/scripts/env/init.bun.sh` is `app:env:init`:
@@ -132,6 +151,8 @@ Built-in commands always win over scripts, so pick names `lando help --all` does
 Bun Shell reads like bash: pipes, redirects, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, your package managers) comes from your host `PATH`.
 
 Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
+
+Calling `lando` from inside a project script currently fails with the compiled CLI ([#1205](https://github.com/AaronFeledy/core4/issues/1205)).
 
 ## Smoke test the running site
 
@@ -195,12 +216,18 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
     <Step name="stamp">
       <Run command="lando stamp abc1234" />
       <Verify file="scripts-demo/dist/version.txt" expect={{ regex: "abc1234" }} />
-      <Verify command="lando stamp abc1234" expect={{ stdout: { regex: "stamped dist/version.txt with abc1234" } }} />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "stamped dist/version.txt with abc1234" } }} />
     </Step>
     <Step name="env-init">
       <Run command="lando app:env:init" />
       <Verify file="scripts-demo/.env" expect={{ regex: "APP_ENV=local" }} />
-      <Verify command="lando app:env:init" expect={{ stdout: { regex: "already exists, leaving it alone" } }} />
+      <Verify command="lando app:env:init --format=json" expect={{ stdout: { regex: "already exists, leaving it alone" } }} />
+    </Step>
+    <Step name="capture">
+      <Run command="lando stamp abc1234 --format=json" />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0.*\"stdout\":\\s*\"stamped dist/version.txt with abc1234" } }} />
+      <Run command="lando stamp abc1234 --format=yaml" />
+      <Verify command="lando stamp abc1234 --format=yaml" expect={{ stdout: { regex: "exitCode: 0[\\s\\S]*stdout:.*stamped dist/version.txt with abc1234" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -215,6 +242,18 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
       <Verify errorTag="BunShellScriptFrontMatterError" expect={{ regex: "missing the front-matter block" }} />
     </Step>
     <Step name="cleanup-missing-front-matter">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="nonzero-exit" render={false} reason="Regression coverage: collected scripts keep their exit codes in JSON and YAML">
+    <Step name="run-nonzero-exit">
+      <UseFixture name="exit-code" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando fail --format=json" expectExit={22} />
+      <Run command="lando fail --format=yaml" expectExit={22} />
+    </Step>
+    <Step name="cleanup-nonzero-exit">
       <Cleanup />
     </Step>
   </Scenario>
