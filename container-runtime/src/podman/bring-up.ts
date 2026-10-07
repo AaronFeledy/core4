@@ -878,6 +878,16 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
   }
+  if (options.forbidRecreate === true && options.reconcile === true) {
+    return yield* Effect.fail(
+      new ProviderInternalError({
+        providerId: options.ctx.providerId,
+        operation: "bringUp",
+        message: "forbidRecreate cannot be combined with reconcile.",
+        remediation: "Omit reconcile when forbidding recreate, or omit forbidRecreate when reconciling.",
+      }),
+    );
+  }
   const deps: BringUpDeps = { api, options };
 
   const createdNetworks = new Set<string>();

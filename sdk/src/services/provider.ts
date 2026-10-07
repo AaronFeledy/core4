@@ -128,7 +128,8 @@ export interface ApplyOptions {
   /**
    * When true, bring-up fails instead of removing and recreating a container
    * for publish-port, bind-source, or network drift, and instead of recovering
-   * a host-port bind rejection with a fresh port.
+   * a host-port bind rejection with a fresh port. Cannot be combined with
+   * `reconcile: true`.
    */
   readonly forbidRecreate?: boolean;
 }

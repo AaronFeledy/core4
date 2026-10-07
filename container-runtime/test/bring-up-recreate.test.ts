@@ -605,4 +605,25 @@ describe("Podman publish-port recreate", () => {
     );
     expect(createCalls(fake.calls)).toEqual([]);
   });
+
+  test("forbidRecreate refuses when combined with reconcile", async () => {
+    const fake = makeFakeApi({ deleteStatus: 204 });
+    const exit = await Effect.runPromiseExit(
+      bringUp(planWithHostPort(18080), { api: fake.api, ctx, forbidRecreate: true, reconcile: true }),
+    );
+    const failures = Exit.isFailure(exit)
+      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
+      : [];
+    expect(failures).toContainEqual(
+      expect.objectContaining({
+        _tag: "ProviderInternalError",
+        operation: "bringUp",
+        message: "forbidRecreate cannot be combined with reconcile.",
+      }),
+    );
+    expect(createCalls(fake.calls)).toEqual([]);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
+      false,
+    );
+  });
 });
