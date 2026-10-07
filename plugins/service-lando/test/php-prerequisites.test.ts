@@ -92,12 +92,32 @@ describe("stock PHP prerequisite plan", () => {
 
     // Then: the executable is verified before installation and keyed by release.
     expect(wpCli?.user).toBe("root");
-    expect(wpCli?.buildKeyInputs).toEqual({ wpCli: PHP_WP_CLI });
+    expect(wpCli?.buildKeyInputs).toEqual({
+      wpCli: PHP_WP_CLI,
+      wordpressIni: {
+        path: "/usr/local/etc/php/conf.d/50-lando-wordpress.ini",
+        content: "memory_limit = 512M\n",
+      },
+    });
     expect(wpCli?.command).toContain(PHP_WP_CLI.url);
     expect(wpCli?.command).toContain(`hash_equals("${PHP_WP_CLI.sha256}"`);
     expect(wpCli?.command).toContain("install -m 0755 /tmp/wp-cli.phar /usr/local/bin/wp");
     expect(plan.environment.WP_CLI_ALLOW_ROOT).toBe("1");
   });
+
+  for (const via of ["apache", "fpm", "cli"]) {
+    test(`provisions overridable WordPress memory defaults when serving via ${via}`, async () => {
+      // Given / When: compose stock PHP 8.4 for each WordPress serving mode.
+      const plan = await composePhpPlan({ framework: "wordpress", via }, php84ServiceType);
+      const wpCli = buildStepsFor(plan).find((step) => step.id === "service-lando.php:wp-cli");
+
+      // Then: PHP receives a newline-terminated drop-in before user zz-custom.ini files.
+      expect(wpCli?.command).not.toMatch(/[\r\n\p{Cc}]/u);
+      expect(wpCli?.command).toContain(
+        "printf '%s\\n' 'memory_limit = 512M' > /usr/local/etc/php/conf.d/50-lando-wordpress.ini",
+      );
+    });
+  }
 
   for (const overrides of [
     {},
