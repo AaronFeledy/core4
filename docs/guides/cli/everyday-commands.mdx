@@ -25,7 +25,7 @@ If you only memorize four of these, make them `start`, `info`, `exec`, and `dest
 | `lando exec -- <cmd>` | Run a one-off command in the primary service. Alias of `app:exec`. |
 | `lando logs` | Stream service logs. Alias of `app:logs`. |
 | `lando stop` | Stop this app. Keeps volumes. Alias of `app:stop`. |
-| `lando restart` | Stop then start. Alias of `app:restart`. |
+| `lando restart` | Stop then start. Alias of `app:restart`. Pass `-s` / `--service` to bounce one service. |
 | `lando rebuild` | Recreate containers from the current Landofile. Alias of `app:rebuild`. |
 | `lando destroy -y` | Remove this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
 | `lando doctor` | Report setup, provider, proxy, and cert health. Alias of `meta:doctor`. |
@@ -53,6 +53,8 @@ lando rebuild
 ```
 
 `restart` cycles running processes. `rebuild` recreates containers. Use `rebuild` after you change service types, images, or build steps.
+
+`lando restart --service redis` (or `-s`, repeatable) stops and starts only those named services. Other services keep running and keep their host ports. Lando does not pull in dependencies. If a selected service would need a new container (published-port, bind-source, or network drift), the command refuses and tells you to run `lando rebuild -s <name>`.
 
 ## Wait for another command to finish
 

@@ -1310,6 +1310,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               ? {}
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
+            ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           });
           yield* rememberAppliedPlan(appliedPlans, plan, applyOptions);
           yield* reconcilePublishedServices(physicalPlan);

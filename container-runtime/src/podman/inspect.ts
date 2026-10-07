@@ -12,7 +12,9 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
+import { fingerprintInspectPublishPorts } from "../plan.ts";
 import { withApiReason } from "../redact.ts";
+import { inspectBindSources, inspectNetworkNames } from "./bring-up-recreate.ts";
 
 interface ContainerInspect {
   readonly Id?: string;
@@ -171,6 +173,8 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   const health = healthFromInspect(decoded);
   const startedAt = lastStartedAt(decoded);
   const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
+  const bindSources = inspectBindSources(decoded) ?? {};
+  const networkNames = inspectNetworkNames(decoded) ?? [];
   return {
     app: plan.id,
     appRoot: plan.root,
@@ -185,5 +189,8 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       : {}),
     endpoints: materialized.length > 0 ? materialized : service.endpoints,
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
+    publishFingerprint: fingerprintInspectPublishPorts(decoded),
+    bindSources,
+    networkNames,
   };
 });

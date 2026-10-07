@@ -396,6 +396,32 @@ describe("create-body service publish ports", () => {
     expect(ports).toContain(SERVICE_PUBLISH_PORT_MIN + 1);
   });
 
+  test("forbidRecreate fails a start bind rejection instead of recreating", async () => {
+    const fake = makeFakeApi({
+      exists: true,
+      running: false,
+      inspectHostPort: "30000",
+      inspectBindingHostPort: "30000",
+      startStatuses: [500],
+      startBodies: ["address already in use"],
+    });
+    const result = await Effect.runPromise(
+      bringUp(planWithPublication({}), {
+        api: fake.api,
+        ctx,
+        platform: "linux",
+        forbidRecreate: true,
+        probeBind: () => Effect.succeed({ kind: "success" }),
+      }).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ServiceRestartWouldRecreateError", reason: "host-port", service: "web" },
+    });
+    expect(createCalls(fake.calls)).toEqual([]);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(0);
+  });
+
   test("a start bind rejection recreates once and excludes the failed port", async () => {
     const ports: number[] = [];
     const probeBind: ServicePublishProbe = (_host, port) => {

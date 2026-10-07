@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `RestartAppOptions` additively accepts optional `services` for a scoped restart of named planned services with no dependency pull-in. Unknown names fail with the existing `ServiceNotFoundError`. Bare restart (no `services`) is unchanged. `RestartAppError` additively includes `ProviderError` so scoped restart can surface inspect, stop, apply, and `ServiceRestartWouldRecreateError`. `PreRestartEvent` and `PostRestartEvent` additively accept optional `services`; a full-app restart omits the field. `ApplyOptions.forbidRecreate` asks bring-up to fail instead of recreating on publish-port, bind-source, or network drift, or on host-port bind-rejection recovery. `ServiceRuntimeInfo` additively reports optional `publishFingerprint`, `bindSources`, and `networkNames` when inspect can read them.
+
 - `ToolingInvocation` adds optional `stdinStream`, `terminalResize`, and `signal` using the provider exec contract's types. Keyboard input must be re-iterable for sequential container steps. Omission preserves idle PTY input and noninteractive embedding/event behavior; no service signature or JSON Schema changes.
 
 - `ProxyStatus` adds optional `ports: { http: PortNumber; https: PortNumber }` for the running ingress's host listen ports. Routers that cannot report them and stopped routers omit the field. Existing status values and `RouterService.status` signatures remain valid; exact hostname-and-scheme authorities still take precedence when opening a route.
@@ -934,6 +936,11 @@ It registers no JSON Schema.
 - `LandoPaths.userIncludesDir`
 - `LandoPaths.installRecordFile`
 - `ApplyOptions.serviceEnvironment`
+- `ApplyOptions.forbidRecreate`
+- `RestartAppOptions.services`
+- `ServiceRuntimeInfo.publishFingerprint`
+- `ServiceRuntimeInfo.bindSources`
+- `ServiceRuntimeInfo.networkNames`
 
 ## Additive Beta schema fields
 
@@ -998,6 +1005,8 @@ It registers no JSON Schema.
   `.logging`, `.gpus`, and `.deploy` are new additive optional fields carrying the preserved Compose
   per-container runtime knobs under their Compose spellings. Values canonicalize to one long form;
   keys are never renamed.
+- `PreRestartEvent.services` and `PostRestartEvent.services` are new additive optional fields. A
+  full-app restart omits them so existing payloads stay unchanged.
 
 ## Additive Beta event exports
 
@@ -1131,6 +1140,7 @@ It registers no JSON Schema.
 - `McpAllowlistConflictError`
 - `AppLockTimeoutError`
 - `SqlDumpCompressionError`
+- `ServiceRestartWouldRecreateError`
 
 ## Additive service tags
 

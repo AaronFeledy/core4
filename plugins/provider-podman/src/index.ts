@@ -791,6 +791,7 @@ const assembleRuntimeProvider = (
               ? {}
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
+            ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
         }),

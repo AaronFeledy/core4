@@ -208,10 +208,21 @@ const makeRestartLayer = (
   const plannedApp = options.plannedApp ?? plan;
   const events: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
-  const applyCalls: Array<{ readonly reconcile: boolean }> = [];
+  const applyCalls: Array<{
+    readonly reconcile: boolean;
+    readonly forbidRecreate?: boolean;
+    readonly services: ReadonlyArray<string>;
+    readonly recordedServices: ReadonlyArray<string>;
+  }> = [];
+  const stopCalls: ServiceName[] = [];
   const routeRemovals: string[] = [];
+  const routeApplies: number[] = [];
   const proxy: RouterServiceShape = {
     ...TestRouterService,
+    applyRoutes: (routes, app) =>
+      Effect.sync(() => {
+        routeApplies.push(routes.length);
+      }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, app))),
     removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
   };
   const provider: RuntimeProviderShape = {
@@ -220,10 +231,21 @@ const makeRestartLayer = (
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
     capabilities,
-    apply: (_plan, options) =>
+    apply: (appliedPlan, applyOptions) =>
       Effect.sync(() => {
-        applyCalls.push({ reconcile: options.reconcile ?? false });
+        applyCalls.push({
+          reconcile: applyOptions.reconcile ?? false,
+          ...(applyOptions.forbidRecreate === undefined
+            ? {}
+            : { forbidRecreate: applyOptions.forbidRecreate }),
+          services: Object.keys(appliedPlan.services),
+          recordedServices: Object.keys((applyOptions.recordedPlan ?? appliedPlan).services),
+        });
       }).pipe(Effect.as({ changed: true })),
+    stop: (target) =>
+      Effect.sync(() => {
+        stopCalls.push(target.service);
+      }),
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
@@ -236,7 +258,12 @@ const makeRestartLayer = (
         providerId,
         status: "running",
         state: "running",
-        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+        containerId: `cid-${String(target.service)}`,
+        endpoints: (plannedApp.services[target.service]?.endpoints ?? []).map((endpoint) =>
+          endpoint._tag === "published" && endpoint.publication.hostPort === undefined
+            ? { ...endpoint, materialization: { bindAddress: "127.0.0.1", hostPort: 34567 } }
+            : endpoint,
+        ),
       }),
   };
 
@@ -301,7 +328,7 @@ const makeRestartLayer = (
     ),
   );
 
-  return { layer, events, destroyCalls, applyCalls, routeRemovals };
+  return { layer, events, destroyCalls, applyCalls, stopCalls, routeRemovals, routeApplies };
 };
 
 describe("lando restart", () => {
@@ -359,7 +386,7 @@ describe("lando restart", () => {
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
-    expect(harness.applyCalls).toEqual([{ reconcile: false }]);
+    expect(harness.applyCalls).toEqual([{ reconcile: false, services: ["web"], recordedServices: ["web"] }]);
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
       ["web", "running"],
     ]);
@@ -386,5 +413,45 @@ describe("lando restart", () => {
     expect(exit._tag).toBe("Failure");
     expect(harness.routeRemovals).toEqual([String(plan.id)]);
     expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
+  });
+
+  test("restarts one named service without destroying others or applying routes", async () => {
+    const redis: ServicePlan = {
+      ...web,
+      name: ServiceName.make("redis"),
+      type: "redis",
+      primary: false,
+      endpoints: [{ _tag: "published", port: 6379, protocol: "tcp", name: "redis", publication: {} }],
+    };
+    const plannedApp: AppPlan = { ...plan, services: { [web.name]: web, [redis.name]: redis } };
+    const harness = makeRestartLayer({ plannedApp });
+
+    const result = await Effect.runPromise(
+      restartApp({ services: [redis.name] }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.destroyCalls).toEqual([]);
+    expect(harness.stopCalls).toEqual([redis.name]);
+    expect(harness.applyCalls).toEqual([
+      { reconcile: false, forbidRecreate: true, services: ["redis"], recordedServices: ["web", "redis"] },
+    ]);
+    expect(harness.routeApplies).toEqual([]);
+    expect(harness.routeRemovals).toEqual([]);
+    expect(harness.events.filter((event) => event === "pre-stop" || event === "pre-start")).toEqual([]);
+    expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
+  });
+
+  test("unknown service fails with ServiceNotFoundError before provider action", async () => {
+    const harness = makeRestartLayer();
+    const error = await Effect.runPromise(
+      restartApp({ services: [ServiceName.make("missing")] }).pipe(
+        Effect.provide(harness.layer),
+        Effect.flip,
+      ),
+    );
+    expect(error._tag).toBe("ServiceNotFoundError");
+    expect(harness.stopCalls).toEqual([]);
+    expect(harness.applyCalls).toEqual([]);
+    expect(harness.destroyCalls).toEqual([]);
   });
 });

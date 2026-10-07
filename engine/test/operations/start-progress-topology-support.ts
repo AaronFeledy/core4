@@ -143,6 +143,8 @@ export const makeHarness = (
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
     readonly onApply?: (plan: AppPlan, options?: ApplyOptions) => void;
+    readonly onStop?: (...args: Parameters<RuntimeProviderShape["stop"]>) => void;
+    readonly inspect?: RuntimeProviderShape["inspect"];
     readonly listVolumes?: RuntimeProviderShape["listVolumes"];
     readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly onVolumeLock?: (key: string) => void;
@@ -213,14 +215,20 @@ export const makeHarness = (
       Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
         Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
       ),
-    inspect: (target) =>
-      Effect.succeed<ServiceRuntimeInfo>({
-        app: plannedApp.id,
-        service: target.service,
-        providerId,
-        status: "running",
-        state: "running",
-        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+    inspect:
+      options.inspect ??
+      ((target) =>
+        Effect.succeed<ServiceRuntimeInfo>({
+          app: plannedApp.id,
+          service: target.service,
+          providerId,
+          status: "running",
+          state: "running",
+          endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+        })),
+    stop: (target) =>
+      Effect.sync(() => {
+        options.onStop?.(target);
       }),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(

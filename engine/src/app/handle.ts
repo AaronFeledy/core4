@@ -104,6 +104,9 @@ export const makeAppHandle = (
     stop: (options?: StopAppOptions) =>
       lifecycle.serialize(ops.stopApp(options, target, lifecycle.closeCurrent).pipe(provide)),
     restart: Effect.fn("App.restart")(function* (options?: RestartAppOptions) {
+      if (options?.services !== undefined && options.services.length > 0) {
+        return yield* ops.restartApp(options, target).pipe(provide);
+      }
       const scope = yield* lifecycle.stageFresh;
       return yield* ops
         .restartApp(options, target, {
