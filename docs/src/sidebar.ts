@@ -61,6 +61,7 @@ export const sidebar = [
           { label: "Run the MEAN recipe", slug: "guides/recipes/mean-workflow" },
           { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
           { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
+          { label: "Run Laravel Reverb websockets", slug: "guides/recipes/laravel-reverb" },
           { label: "Run the SvelteKit recipe", slug: "guides/recipes/sveltekit-workflow" },
           { label: "Run the Next.js recipe", slug: "guides/recipes/nextjs-workflow" },
           { label: "Run the Node API recipe", slug: "guides/recipes/node-api-workflow" },

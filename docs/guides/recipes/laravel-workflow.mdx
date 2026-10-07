@@ -67,9 +67,10 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
 ```
 
-Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
+Move `tmp-app` up into the app root and keep `.lando.yml`. `appserver` keeps `vendor/` in a volume of its own, so install the dependencies there, then check the tools:
 
 ```sh
+lando composer install
 lando artisan --version
 lando composer --version
 lando redis-cli ping
@@ -82,7 +83,16 @@ Add a queue worker at init with `--answer=worker=true`:
 lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
 ```
 
-That service runs `php artisan queue:work`.
+That service runs `php artisan queue:work`. It gets its own `vendor/` volume too, so before the first start give both `appserver` and `worker` this block:
+
+```yaml
+    appMount:
+      target: /app
+      includes:
+        - vendor
+```
+
+That keeps `vendor/` in the shared app mount, and the worker boots against the same Composer install. [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx) uses the same block for its worker and Reverb services.
 
 ## Connect Eloquent and Redis
 
@@ -107,6 +117,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 ## Next
 
 - [Laravel recipe](/recipes/laravel/)
+- [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx)
 - [Add PHP](../services/php.mdx)
 - [Add MariaDB](../services/mariadb.mdx)
 - [Add Redis](../services/redis.mdx)
