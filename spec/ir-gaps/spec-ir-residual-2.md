@@ -1,6 +1,6 @@
 # Spec: IR residual defects, second wave
 
-Status: authored design, pre-implementation. Normative for priorities 63..71 in this directory. The thirty stories at priorities 21..62 are shipped; this document covers the defects their QA, review, and babysit passes recorded without queueing, plus the maintainer and CI items that the first residual wave deferred to a checklist.
+Status: authored design, pre-implementation. Normative for priorities 64..75 in this directory. The thirty stories at priorities 21..63 are shipped; this document covers the defects their QA, review, and babysit passes recorded without queueing, plus the maintainer and CI items that the first residual wave deferred to a checklist.
 
 ## 1. Goal
 

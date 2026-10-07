@@ -1,6 +1,6 @@
 # Spec: IR residual defects
 
-Status: authored design, pre-implementation. Normative for priorities 57..62 in this directory. The twenty-four stories at priorities 21..56 are shipped; this document covers only the defects their QA and review passes recorded without queueing.
+Status: authored design, pre-implementation. Normative for priorities 58..63 in this directory. The twenty-four stories at priorities 21..57 are shipped; this document covers only the defects their QA and review passes recorded without queueing.
 
 ## 1. Goal
 
