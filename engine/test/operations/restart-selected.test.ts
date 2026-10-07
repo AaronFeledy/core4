@@ -35,9 +35,22 @@ const redis: ServicePlan = {
   ],
 };
 
+const worker: ServicePlan = {
+  ...redis,
+  name: ServiceName.make("worker"),
+  type: "worker",
+  command: ["node", "worker.js"],
+  endpoints: [],
+};
+
 const twoServicePlan = (): AppPlan => ({
   ...plan,
   services: { [web.name]: web, [redis.name]: redis },
+});
+
+const threeServicePlan = (): AppPlan => ({
+  ...plan,
+  services: { [web.name]: web, [redis.name]: redis, [worker.name]: worker },
 });
 
 const runtimeFor = (
@@ -150,6 +163,19 @@ describe("selected service restart", () => {
       redisHttp && "materialization" in redisHttp ? redisHttp.materialization?.hostPort : undefined,
     ).toBe(34567);
     expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
+  });
+
+  test("stops multiple selected services in reverse plan order", async () => {
+    const plannedApp = threeServicePlan();
+    const selected = runSelected(plannedApp, { services: [web.name, worker.name] });
+
+    const result = await Effect.runPromise(selected.operation);
+
+    expect(selected.stopCalls).toEqual([worker.name, web.name]);
+    expect(selected.destroyCalls).toEqual([]);
+    expect(Object.keys(selected.applyCalls[0]?.plan.services ?? {})).toEqual(["web", "worker"]);
+    expect(result.servicesStarted.map((service) => service.name)).toEqual(["web", "worker"]);
+    expect(selected.runtimes.get("redis")?.containerId).toBe("cid-redis");
   });
 
   test("refuses before stop when publish-port, bind-source, or network drift would recreate", async () => {
