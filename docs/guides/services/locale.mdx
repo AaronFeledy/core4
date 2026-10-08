@@ -86,7 +86,7 @@ That's what every stock image looks like before you add the step: `LANG` points 
 
 ## Set `LANG` in the service environment
 
-`LANG` sets every `LC_*` category at once. Put it under `services.<name>.environment` and every process in the service inherits it, Apache included. `lando exec` passes the service's value, not the one in your host shell.
+`LANG` sets every `LC_*` category at once. Put it under `services.<name>.environment` and every process in the service inherits it, Apache included. `lando exec` uses the service's value, not the one in your host shell.
 
 ## Check PHP
 
@@ -165,15 +165,15 @@ Anything in that service that goes through glibc, like `locale` itself above, st
 
 ## Change the locale
 
-A container keeps the environment it was created with, and `lando restart` reuses the container. Switching `LANG`, even to a locale the image already has, needs a rebuild before Apache sees it:
+Switching `LANG` to a locale the image already has only needs a restart:
 
 ```sh
-lando rebuild -y
+lando restart
 ```
 
-`lando exec` is the trap here. It sends the Landofile's current `environment` with every command, so `lando exec -- locale` shows the new `LANG` before you rebuild anything while the page Apache serves is still on the old one. Check the page.
+`lando start` on an app that is already running keeps the old value. Restart it.
 
-Adding a locale changes the build step, so that's a rebuild too. Append another `localedef` to the same `run` line:
+Adding a locale changes the build step, so rebuild. Append another `localedef` to the same `run` line:
 
 ```yaml
         - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && localedef -i en_GB -c -f UTF-8 -A /usr/share/locale/locale.alias en_GB.UTF-8 && rm -rf /var/lib/apt/lists/*

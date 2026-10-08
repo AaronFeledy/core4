@@ -56,20 +56,11 @@ A Landofile can't reach into your host shell's environment with
 
 ## Apply a changed timezone
 
-After editing `environment:` in `.lando.yml`, run `lando rebuild` to
-recreate the container. A restart reuses the container, so the app's processes
-keep the old `TZ` value:
+After editing `environment:` in `.lando.yml`, restart the app. The
+restarted containers pick up the new `TZ` value:
 
 ```sh
-lando rebuild
+lando restart
 ```
 
-`lando exec` sends the Landofile's current `environment` with every command,
-so `lando exec -- date` shows the new zone before the rebuild. Your server
-process doesn't see it until the container is recreated.
-
 </Guide>
-
-## Next
-
-- Right zone, wrong language: [Set a service's locale](./locale.mdx)
