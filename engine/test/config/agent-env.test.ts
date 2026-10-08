@@ -2,13 +2,17 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_CONTEXT_ENV_ALLOWLIST,
+  AGENT_ENV_ALLOW_EXTRAS_ENV_VAR,
   AGENT_ENV_DISABLE_ENV_VAR,
+  extrasFromResolvedAllowlist,
   filterHostProxyEnv,
   findAgentEnvPatternNames,
   isAgentEnvForwardingDisabled,
   isExactAgentEnvName,
+  parseAgentEnvAllowExtras,
   resolveAgentContextEnv,
   resolveAgentEnvAllowlist,
+  resolveForwardedAgentEnvNames,
   withAgentContextEnv,
 } from "../../src/config/agent-env.ts";
 
@@ -28,6 +32,10 @@ describe("agent-context env allowlist", () => {
       "AUGMENT_AGENT",
       "ANTIGRAVITY_AGENT",
       "PI_CODING_AGENT",
+      "CLINE_ACTIVE",
+      "GOOSE_TERMINAL",
+      "OPENCLAW_SHELL",
+      "GROK_AGENT",
       "AI_AGENT",
       "AGENT",
       "CI",
@@ -44,6 +52,9 @@ describe("resolveAgentContextEnv — presence-gated selection", () => {
     "AUGMENT_AGENT",
     "ANTIGRAVITY_AGENT",
     "PI_CODING_AGENT",
+    "CLINE_ACTIVE",
+    "GOOSE_TERMINAL",
+    "OPENCLAW_SHELL",
     "AI_AGENT",
   ])("forwards %s without forwarding adjacent secret or session names", (name) => {
     const host = { [name]: "present", [`${name}_TOKEN`]: "secret", [`${name}_SESSION`]: "/private/path" };
@@ -76,6 +87,18 @@ describe("resolveAgentContextEnv — presence-gated selection", () => {
   test("never forwards a host name outside the allowlist", () => {
     const resolved = resolveAgentContextEnv({ CLAUDE_SECRET: "x", ANTHROPIC_API_KEY: "y" });
     expect(resolved).toEqual({});
+  });
+
+  test("forwards GROK_AGENT only when the host value is exactly 1", () => {
+    expect(resolveAgentContextEnv({ GROK_AGENT: "1" })).toEqual({ GROK_AGENT: "1" });
+    expect(filterHostProxyEnv({ GROK_AGENT: "1" })).toEqual({ GROK_AGENT: "1" });
+  });
+
+  test("drops GROK_AGENT when the host value is a definition name or path", () => {
+    expect(resolveAgentContextEnv({ GROK_AGENT: "my-agent" })).toEqual({});
+    expect(resolveAgentContextEnv({ GROK_AGENT: "/home/aaron/.grok/agents/dev" })).toEqual({});
+    expect(filterHostProxyEnv({ GROK_AGENT: "my-agent" })).toEqual({});
+    expect(filterHostProxyEnv({ GROK_AGENT: "/home/aaron/.grok/agents/dev" })).toEqual({});
   });
 
   test("reads fresh from the passed host env each call (never cached)", () => {
@@ -200,6 +223,54 @@ describe("resolveAgentEnvAllowlist — built-ins + allow − deny with disable s
   });
 });
 
+describe("resolveForwardedAgentEnvNames — names present on the host and so forwarded", () => {
+  test("returns only allowlisted names that are set on the host", () => {
+    expect(resolveForwardedAgentEnvNames({}, { CLAUDECODE: "1", CI: "true", HOME: "/home/aaron" })).toEqual([
+      "CLAUDECODE",
+      "CI",
+    ]);
+  });
+
+  test("includes allow extras that are present and omits deny names even when set", () => {
+    expect(
+      resolveForwardedAgentEnvNames({ allow: ["FOO_TOKEN"], deny: ["CI"] }, { CI: "true", FOO_TOKEN: "tok" }),
+    ).toEqual(["FOO_TOKEN"]);
+  });
+
+  test("omits GROK_AGENT when the host value is not exactly 1", () => {
+    expect(resolveForwardedAgentEnvNames({}, { GROK_AGENT: "1", CLAUDECODE: "1" })).toEqual([
+      "CLAUDECODE",
+      "GROK_AGENT",
+    ]);
+    expect(resolveForwardedAgentEnvNames({}, { GROK_AGENT: "/tmp/agent.json", CLAUDECODE: "1" })).toEqual([
+      "CLAUDECODE",
+    ]);
+  });
+
+  test("returns empty when forwarding is disabled", () => {
+    expect(resolveForwardedAgentEnvNames({ enabled: false }, { CI: "true" })).toEqual([]);
+    expect(resolveForwardedAgentEnvNames({}, { LANDO_AGENT_ENV: "0", CI: "true" })).toEqual([]);
+  });
+});
+
+describe("agentEnv.allow extras encoding for host-proxy re-entry", () => {
+  test("parseAgentEnvAllowExtras keeps exact names and drops junk", () => {
+    expect(parseAgentEnvAllowExtras("FOO_TOKEN, BAR,CLAUDE_*,")).toEqual(["FOO_TOKEN", "BAR"]);
+    expect(parseAgentEnvAllowExtras(undefined)).toEqual([]);
+  });
+
+  test("withAgentContextEnv encodes extras so the shim can keep them", () => {
+    const merged = withAgentContextEnv(
+      undefined,
+      { FOO_TOKEN: "tok", CI: "true" },
+      { allowlist: [...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"] },
+    );
+    expect(merged?.[AGENT_ENV_ALLOW_EXTRAS_ENV_VAR]).toBe("FOO_TOKEN");
+    expect(merged?.FOO_TOKEN).toBe("tok");
+    expect(extrasFromResolvedAllowlist([...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"])).toEqual(["FOO_TOKEN"]);
+  });
+});
+
 describe("filterHostProxyEnv — shim filter with agent-context append", () => {
   test("keeps safe LANDO_*, LC_*, LANG, TERM and appends the agent-context allowlist", () => {
     const filtered = filterHostProxyEnv({
@@ -254,5 +325,13 @@ describe("filterHostProxyEnv — shim filter with agent-context append", () => {
     const filtered = filterHostProxyEnv({ LANG: undefined, CI: "1" });
     expect(Object.hasOwn(filtered, "LANG")).toBe(false);
     expect(filtered).toEqual({ CI: "1" });
+  });
+
+  test("keeps agentEnv.allow extras when the resolved allowlist is passed", () => {
+    const filtered = filterHostProxyEnv(
+      { FOO_TOKEN: "tok", SECRET_TOKEN: "shh", CI: "true" },
+      [...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"].filter((name) => name !== "CI"),
+    );
+    expect(filtered).toEqual({ FOO_TOKEN: "tok" });
   });
 });

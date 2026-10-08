@@ -30,8 +30,11 @@ lando shell --service appserver
 CLAUDECODE, CLAUDE_CODE, CLAUDE_CODE_IS_COWORK, CURSOR_AGENT,
 OPENCODE, OPENCODE_CLIENT, COPILOT_CLI, GEMINI_CLI,
 CODEX_SANDBOX, CODEX_CI, AUGMENT_AGENT, ANTIGRAVITY_AGENT,
-PI_CODING_AGENT, AI_AGENT, AGENT, CI
+PI_CODING_AGENT, CLINE_ACTIVE, GOOSE_TERMINAL, OPENCLAW_SHELL,
+GROK_AGENT, AI_AGENT, AGENT, CI
 ```
+
+`GROK_AGENT` is forwarded only when its host value is exactly `1`. A definition name or path is dropped.
 
 Forwarded markers are the lowest-precedence layer. Configured service env and explicit command env always win.
 

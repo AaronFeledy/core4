@@ -14,16 +14,21 @@ import { filterHostProxyEnv as filterAllowedHostProxyEnv } from "../../config/ag
  * Env keys the shim forwards to the host. Everything else is dropped so
  * container-leaked env (PATH, secrets, HOME, …) never poisons the host program.
  * The shared primitive also appends the agent-context allowlist so `runLando`
- * re-entry preserves agent markers.
+ * re-entry preserves agent markers. Pass the resolved allowlist (built-in plus
+ * `agentEnv.allow`, minus deny) so extras survive re-entry.
  */
-export const filterHostProxyEnv = (env: Readonly<Record<string, string>>): Record<string, string> =>
-  filterAllowedHostProxyEnv(env);
+export const filterHostProxyEnv = (
+  env: Readonly<Record<string, string>>,
+  allowlist?: ReadonlyArray<string>,
+): Record<string, string> =>
+  allowlist === undefined ? filterAllowedHostProxyEnv(env) : filterAllowedHostProxyEnv(env, allowlist);
 
 export interface BuildRunLandoRequestInput {
   readonly argv: ReadonlyArray<string>;
   readonly cwd: string;
   readonly tty: boolean;
   readonly env?: Readonly<Record<string, string>>;
+  readonly agentEnvAllowlist?: ReadonlyArray<string>;
 }
 
 /**
@@ -33,7 +38,7 @@ export interface BuildRunLandoRequestInput {
  * entirely when the filtered set is empty.
  */
 export const buildRunLandoRequest = (input: BuildRunLandoRequestInput): HostProxyRunLandoRequest => {
-  const filtered = input.env === undefined ? {} : filterHostProxyEnv(input.env);
+  const filtered = input.env === undefined ? {} : filterHostProxyEnv(input.env, input.agentEnvAllowlist);
   const hasEnv = Object.keys(filtered).length > 0;
   return {
     _tag: "runLando",

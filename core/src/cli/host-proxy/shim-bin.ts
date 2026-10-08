@@ -1,29 +1,14 @@
 import { request } from "node:http";
 
 import { cwd, env, exit, stderr, stdout } from "node:process";
+import {
+  AGENT_CONTEXT_ENV_ALLOWLIST,
+  AGENT_ENV_ALLOW_EXTRAS_ENV_VAR,
+  AGENT_ENV_DISABLE_ENV_VAR,
+  filterHostProxyEnv,
+  parseAgentEnvAllowExtras,
+} from "@lando/engine/config/agent-env";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
-import { isHostProxyRunLandoEnvName } from "@lando/engine/subsystems/host-proxy/session-env";
-
-const forwardedEnvNames: ReadonlyArray<string> = ["LANG", "TERM"];
-const agentEnvNames: ReadonlyArray<string> = [
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CLAUDE_CODE_IS_COWORK",
-  "CURSOR_AGENT",
-  "OPENCODE",
-  "OPENCODE_CLIENT",
-  "COPILOT_CLI",
-  "GEMINI_CLI",
-  "CODEX_SANDBOX",
-  "CODEX_CI",
-  "AUGMENT_AGENT",
-  "ANTIGRAVITY_AGENT",
-  "PI_CODING_AGENT",
-  "AI_AGENT",
-  "AGENT",
-  "CI",
-];
-const forwardedEnvPrefixes: ReadonlyArray<string> = ["LANDO_", "LC_"];
 
 type ShimRequest = {
   readonly sessionId: string;
@@ -40,19 +25,13 @@ type ShimRequest = {
   };
 };
 
-const shouldForwardEnv = (name: string): boolean =>
-  !isHostProxyRunLandoEnvName(name) &&
-  (forwardedEnvPrefixes.some((prefix) => name.startsWith(prefix)) ||
-    forwardedEnvNames.includes(name) ||
-    agentEnvNames.includes(name));
-
-const filteredEnv = (): Record<string, string> => {
-  const output: Record<string, string> = {};
-  for (const [name, value] of Object.entries(env)) {
-    if (value !== undefined && shouldForwardEnv(name)) output[name] = value;
-  }
-  return output;
-};
+const filteredEnv = (): Record<string, string> =>
+  filterHostProxyEnv(
+    env,
+    env[AGENT_ENV_DISABLE_ENV_VAR] === "0"
+      ? []
+      : [...AGENT_CONTEXT_ENV_ALLOWLIST, ...parseAgentEnvAllowExtras(env[AGENT_ENV_ALLOW_EXTRAS_ENV_VAR])],
+  );
 
 const requiredEnv = (name: string): string => {
   const value = env[name];

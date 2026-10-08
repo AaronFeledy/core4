@@ -19,6 +19,7 @@ export interface HostProxyRunLandoSessionOptions {
   readonly app: AppRef;
   readonly mountInfo: HostProxyMountInfo;
   readonly allowlist: ReadonlyArray<string>;
+  readonly agentEnvAllowlist?: ReadonlyArray<string>;
   readonly callerService: string;
   readonly executor: HostProxyRunLandoExecutor;
   readonly paths?: RootOverrides;

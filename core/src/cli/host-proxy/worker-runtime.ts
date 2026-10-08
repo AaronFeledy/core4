@@ -9,6 +9,8 @@ import {
   type ShellRunner,
 } from "@lando/sdk/services";
 
+import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
+import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 import { scopedHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
@@ -73,10 +75,14 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
         const runtimeContext = yield* Effect.context<
           ShellRunner | EventService | RedactionService | RouterService
         >();
+        const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(undefined, process.env).pipe(
+          Effect.catch(() => Effect.succeed<ReadonlyArray<string>>([...AGENT_CONTEXT_ENV_ALLOWLIST])),
+        );
         const session = yield* scopedHostProxyRunLandoSession({
           app,
           mountInfo: hostProxyMountInfoFromPlan(input.plan),
           allowlist: HOST_PROXY_RUNLANDO_ALLOWLIST,
+          agentEnvAllowlist,
           callerService: "lando",
           executor: (request) =>
             runOpenForHostProxy(input.plan, request).pipe(Effect.provide(runtimeContext)),

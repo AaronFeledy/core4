@@ -54,8 +54,11 @@ endpoints, not a missing field.
 An optional `agentEnv` block reports whether agent-context env forwarding is
 active for this app. `agentEnv.enabled` is `true` when Lando forwards
 agent-context markers into service exec/shell sessions for this app, and
-`agentEnv.forwarded` lists the names actually forwarded, e.g.
-`["CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "OPENCODE", "COPILOT_CLI", "GEMINI_CLI", "AGENT", "CI"]`. That is a subset of the fixed allowlist documented on the lando-shell guide.
+`agentEnv.forwarded` lists the names actually present on the host and so
+forwarded, e.g.
+`["CLAUDECODE", "CURSOR_AGENT", "CI"]`. That is the host-present subset of the
+fixed allowlist documented on the lando-shell guide. `lando info --deep` is
+the same audit.
 
 ## How context reaches a container
 

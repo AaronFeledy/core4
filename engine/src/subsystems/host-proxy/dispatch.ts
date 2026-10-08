@@ -59,6 +59,8 @@ export interface DispatchRunLandoDeps {
   readonly app: AppRef;
   /** Optional stable call id; a timestamp-derived id is used when omitted. */
   readonly callId?: string;
+  /** Resolved agent-context allowlist (built-in plus allow, minus deny). */
+  readonly agentEnvAllowlist?: ReadonlyArray<string>;
 }
 
 const commandIdFromArgv = (argv: ReadonlyArray<string>): string => {
@@ -85,8 +87,9 @@ const resultSummaryFor = (result: HostProxyRunLandoResult, redactor: Redactor): 
 const forwardedEnvFor = (
   request: HostProxyRunLandoRequest,
   depth: number,
+  agentEnvAllowlist?: ReadonlyArray<string>,
 ): Readonly<Record<string, string>> => ({
-  ...(request.env === undefined ? {} : filterHostProxyEnv(request.env)),
+  ...(request.env === undefined ? {} : filterHostProxyEnv(request.env, agentEnvAllowlist)),
   LANDO_HOST_PROXY_DEPTH: String(depth + 1),
 });
 
@@ -148,7 +151,7 @@ export const dispatchRunLando = Effect.fn("HostProxyService.dispatchRunLando")(f
     argv: request.argv,
     cwd: hostCwd,
     tty: request.tty,
-    env: forwardedEnvFor(request, deps.depth),
+    env: forwardedEnvFor(request, deps.depth, deps.agentEnvAllowlist),
   });
 
   yield* events.publish(
