@@ -47,6 +47,8 @@ exit ${behavior.exitCode}
   await chmod(path, 0o755);
 };
 
+const dashAvailable = Bun.which("dash") !== null;
+
 const shells = [
   { name: "bash", bin: "bash" },
   { name: "dash", bin: "dash" },
@@ -60,7 +62,7 @@ test("everyday-commands documents lando_cd, not a hyphenated function name", asy
 });
 
 for (const shell of shells) {
-  test.skipIf(process.platform === "win32")(
+  test.skipIf(process.platform === "win32" || (shell.bin === "dash" && !dashAvailable))(
     `${shell.name} lando_cd handles success, failures, and awkward roots`,
     async () => {
       const guide = await Bun.file(guidePath).text();
@@ -110,8 +112,9 @@ exit $status
         expect(leadingDash.exitCode).toBe(0);
         expect(leadingDash.pwd).toBe(dashDir);
 
-        const failed = await call("", 3, "demo");
-        expect(failed.exitCode).toBe(3);
+        const failed = await call('{"ok":false}', 2, 'a"b');
+        expect(failed.exitCode).toBe(2);
+        expect(failed.stderr).toContain('lando list --jq failed for a"b');
         expect(failed.pwd).toBe(start);
 
         const empty = await call("", 0, "demo");
@@ -127,7 +130,7 @@ exit $status
         const multiple = await call(`${okDir}\n${dashDir}`, 0, "dup");
         expect(multiple.exitCode).toBe(1);
         expect(multiple.stderr).toContain("multiple apps named dup");
-        expect(multiple.stderr).toContain("--path");
+        expect(multiple.stderr).toContain("lando list --path");
         expect(multiple.pwd).toBe(start);
 
         const stale = await call(join(root, "gone"), 0, "demo");

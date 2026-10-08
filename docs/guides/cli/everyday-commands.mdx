@@ -128,38 +128,43 @@ record, not the filtered table.
 ## Jump to an app folder
 
 `lando list --jq` can print one app root. Check the command status and the
-empty result before `cd`, because `cd ""` is a silent no-op in bash and dash:
+empty result before `cd`, because `cd ""` is a silent no-op in bash, dash,
+and zsh. The recipe targets those shells.
 
 ```sh
 lando_cd() {
-  local app_root
-  app_root=$(command lando list --jq ".result.apps[] | select(.appName==\"$1\") | .appRoot") || return
-  [ -n "$app_root" ] && [ "$app_root" != "null" ] || { echo "no app root for $1" >&2; return 1; }
-  case "$app_root" in
+  _lando_cd_root=$(command lando list --jq ".result.apps[] | select(.appName==\"$1\") | .appRoot") || {
+    _lando_cd_status=$?
+    echo "lando list --jq failed for $1" >&2
+    return $_lando_cd_status
+  }
+  [ -n "$_lando_cd_root" ] && [ "$_lando_cd_root" != "null" ] || { echo "no app root for $1" >&2; return 1; }
+  case "$_lando_cd_root" in
     *'
 '*)
       echo "multiple apps named $1" >&2
-      echo "disambiguate with --path" >&2
+      echo "disambiguate with lando list --path" >&2
       return 1
       ;;
   esac
-  cd -- "$app_root"
+  cd -- "$_lando_cd_root"
 }
 ```
 
 `lando_cd myapp` fails when the name is missing, the inventory is empty,
 `appRoot` is `""` or `null`, more than one app shares that name, or `cd`
 cannot enter the root. Duplicate names print `multiple apps named` and point
-at `--path`. A double quote in the app name breaks the jq program and fails
-with exit 2. The inventory only includes apps that have been applied. Apps
-found only through containers may have an empty `appRoot`.
+at `lando list --path`. A double quote in the app name breaks the jq program,
+prints `lando list --jq failed` on stderr, and fails with exit 2. The
+inventory only includes apps that have been applied. Apps found only through
+containers may have an empty `appRoot`.
 
 <Guide>
   <Scenario id="list-and-prune-empty-inventory" render>
     <Step name="list-apps">
       <Run command="lando list" />
       <Verify command="lando list" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
-      <Verify command="lando list --status=active" expect={{ stdout: { regex: "No Lando apps match the filters" } }} />
+      <Verify command="lando list --status=active" expect={{ stdout: { regex: "No Lando apps match the filters|APP\\s+STATUS" } }} />
       <Verify command="lando list --jq .result.apps" expect={{ stdout: { regex: "^\\s*\\[\\s*\\]\\s*$" } }} />
     </Step>
     <Step name="prune-stale-inventory">
