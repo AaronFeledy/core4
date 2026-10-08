@@ -75,14 +75,14 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("stock PHP prerequisite plan", () => {
-  test("builds mysqli when using a stock PHP image", async () => {
+  test.each(["mysqli", "pcntl"])("builds %s when using a stock PHP image", async (extension) => {
     // Given / When: compose the stock service without extra extensions.
     const plan = await composePhpPlan();
     const prerequisites = buildStepsFor(plan).find((step) => step.id === "service-lando.php:prerequisites");
 
-    // Then: mysqli is installed and participates in the extension inventory.
-    expect(prerequisites?.command).toMatch(/docker-php-ext-install[^&]*\bmysqli\b/);
-    expect(prerequisites?.buildKeyInputs?.extensions).toContain("mysqli");
+    // Then: the extension is installed and participates in the build cache key.
+    expect(prerequisites?.command).toMatch(new RegExp(`docker-php-ext-install[^&]*\\b${extension}\\b`));
+    expect(prerequisites?.buildKeyInputs?.extensions).toContain(extension);
   });
 
   test("installs verified WP-CLI and permits root when framework is wordpress", async () => {
