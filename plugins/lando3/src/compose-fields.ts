@@ -1,5 +1,5 @@
+import { splitComposeCommand } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { splitComposeCommand } from "./compose-command.ts";
 import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
@@ -144,7 +144,7 @@ export const lowerComposeFields = (
               ctx,
               relative,
               message: `Split scalar Compose ${key} into arguments to preserve execution without a shell.`,
-              remediation: "Keep the argument list; a Lando 4 string command runs as a shell script.",
+              remediation: "Keep the explicit argument list to preserve Compose execution without a shell.",
             }),
       );
     } else if (key === "environment") {

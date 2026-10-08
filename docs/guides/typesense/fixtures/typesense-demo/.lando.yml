@@ -9,7 +9,4 @@ services:
       - 8108:8108
     volumes:
       - ./typesense-data:/data
-    environment:
-      TYPESENSE_DATA_DIR: /data
-      TYPESENSE_API_KEY: xyz
-      TYPESENSE_ENABLE_CORS: "true"
+    command: '--data-dir /data --api-key=xyz --enable-cors'
