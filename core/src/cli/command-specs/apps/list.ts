@@ -74,22 +74,21 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
     "include-scratch": Flags.boolean({ description: "Include running scratch apps in the inventory." }),
     all: Flags.boolean({ description: "Include scratch apps along with every discovered user app." }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const path = appsListPathFromInput(input);
-      const status = yield* Effect.try({
-        try: () => appsListStatusFromInput(input),
-        catch: (error) => (error instanceof MalformedCliFlagValueError ? error : invalidStatusError()),
-      });
-      const prune = appsListPruneFromInput(input);
-      const includeScratch = appsListIncludeScratchFromInput(input);
-      const options = {
-        ...(path === undefined ? {} : { path }),
-        ...(status === undefined ? {} : { status }),
-        ...(includeScratch ? { includeScratch: true } : {}),
-      };
-      return yield* prune ? listServicesWithPrune(options) : listServices(options);
-    }),
+  run: Effect.fn("ListCommand.run")(function* (input: unknown) {
+    const path = appsListPathFromInput(input);
+    const status = yield* Effect.try({
+      try: () => appsListStatusFromInput(input),
+      catch: (error) => (error instanceof MalformedCliFlagValueError ? error : invalidStatusError()),
+    });
+    const prune = appsListPruneFromInput(input);
+    const includeScratch = appsListIncludeScratchFromInput(input);
+    const options = {
+      ...(path === undefined ? {} : { path }),
+      ...(status === undefined ? {} : { status }),
+      ...(includeScratch ? { includeScratch: true } : {}),
+    };
+    return yield* prune ? listServicesWithPrune(options) : listServices(options);
+  }),
   render: (result, input, ctx) =>
     renderAppsListResult(result as ListServicesResult, extractFormat(input), ctx, {
       filtered: appsListHasFiltersFromInput(input),
