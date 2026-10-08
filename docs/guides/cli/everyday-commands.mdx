@@ -103,6 +103,11 @@ from runtime discovery, not the saved plan:
 | `unknown` | Discovery could not confirm the app's provider, including when its API socket is gone after `poweroff`. |
 
 Use `lando list --format=json` for the same `status` on each entry in `result.apps`.
+`--status` keeps only matching rows after that one discovery pass. Repeat it to
+keep more than one value: `lando list --status=active --status=stopped`.
+The same filter applies to the table, JSON, and MCP results. `running` is not a
+status; the command rejects it.
+
 The service list includes saved service names; it is not a list of running services.
 The table adds `(stale)` when the recorded root no longer exists; JSON reports
 that separately as `stale: true`.
@@ -117,11 +122,30 @@ Pruning removes only the applied-plan and directory-cache records reported by
 the command. Missing or unreadable provider state is not enough evidence to
 delete a record.
 
+## Jump to an app folder
+
+`lando list --jq` can print one app root. Check the command status and the
+empty result before `cd`, because `cd ""` is a silent no-op in bash and dash:
+
+```sh
+lando-cd() {
+  d=$(command lando list --jq ".result.apps[] | select(.appName==\"$1\") | .appRoot") || return
+  [ -n "$d" ] || { echo "no app root for $1" >&2; return 1; }
+  cd -- "$d"
+}
+```
+
+`lando-cd myapp` fails when the name is missing, the inventory is empty, or
+`appRoot` is `""`. The inventory only includes apps that have been applied.
+Apps found only through containers may have an empty `appRoot`.
+
 <Guide>
   <Scenario id="list-and-prune-empty-inventory" render>
     <Step name="list-apps">
       <Run command="lando list" />
       <Verify command="lando list" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
+      <Verify command="lando list --status=active" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
+      <Verify command="lando list --jq .result.apps" expect={{ stdout: { regex: "^\\s*\\[\\s*\\]\\s*$" } }} />
     </Step>
     <Step name="prune-stale-inventory">
       <Run command="lando list --prune" />
