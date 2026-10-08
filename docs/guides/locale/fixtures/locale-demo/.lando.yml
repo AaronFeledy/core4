@@ -1,0 +1,16 @@
+name: locale-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    environment:
+      LANG: de_DE.UTF-8
+    build:
+      artifact:
+        - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && rm -rf /var/lib/apt/lists/*
+          user: root
+  node:
+    type: "node:22"
+    endpoints: []
+    environment:
+      LANG: de_DE.UTF-8

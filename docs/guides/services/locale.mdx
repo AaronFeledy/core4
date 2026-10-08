@@ -1,0 +1,229 @@
+---
+id: locale
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 90000
+tags: [beta, docs, services, environment, locale]
+---
+
+# Set a service's locale
+
+Generate the locale in a root build step, then set `LANG` in the service's `environment`. The stock PHP and Node images ship `C`, `C.utf8`, and `POSIX` and nothing else, so `LANG` on its own asks for a locale the container doesn't have. PHP's `setlocale()` quietly stays on `C`, and the date your test expected in German comes back in English.
+
+```yaml
+name: locale-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    environment:
+      LANG: de_DE.UTF-8
+    build:
+      artifact:
+        - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && rm -rf /var/lib/apt/lists/*
+          user: root
+  node:
+    type: "node:22"
+    endpoints: []
+    environment:
+      LANG: de_DE.UTF-8
+```
+
+Drop an `index.php` next to it so the web side has something to say:
+
+```php
+<?php
+setlocale(LC_ALL, '');
+$date = new IntlDateFormatter(null, IntlDateFormatter::FULL, IntlDateFormatter::NONE, 'UTC');
+echo setlocale(LC_ALL, 0), PHP_EOL;
+echo $date->format(new DateTime('2025-01-01')), PHP_EOL;
+```
+
+Start it:
+
+```sh
+lando app:config:lint
+lando start
+```
+
+Swap `de_DE` for whatever your app needs. The pattern is the same for every locale.
+
+## Generate the locale in a build step
+
+`build.artifact` runs while Lando builds the image, so the locale is baked in and survives every restart. The step runs as `root` because it installs a package.
+
+The `locales` package carries the source data, and `localedef` compiles one locale from it. Run one `localedef` per locale you need.
+
+Check what the service has now:
+
+```sh
+lando exec -- locale -a
+```
+
+```
+C
+C.utf8
+de_DE.utf8
+POSIX
+```
+
+The `node` service has no build step, so ask it the same question:
+
+```sh
+lando exec node -- locale -a
+```
+
+```
+locale: Cannot set LC_CTYPE to default locale: No such file or directory
+locale: Cannot set LC_MESSAGES to default locale: No such file or directory
+locale: Cannot set LC_COLLATE to default locale: No such file or directory
+C
+C.utf8
+POSIX
+```
+
+That's what every stock image looks like before you add the step: `LANG` points at a locale glibc can't find.
+
+## Set `LANG` in the service environment
+
+`LANG` sets every `LC_*` category at once. Put it under `services.<name>.environment` and every process in the service inherits it, Apache included. `lando exec` uses the service's value, not the one in your host shell.
+
+## Check PHP
+
+```sh
+lando exec -- php -r 'setlocale(LC_ALL, ""); echo setlocale(LC_ALL, 0), PHP_EOL;'
+```
+
+```
+de_DE.UTF-8
+```
+
+`setlocale(LC_ALL, "")` reads `LANG`. Ask for a locale you didn't generate and PHP returns `false` without a warning:
+
+```sh
+lando exec -- php -r 'var_dump(setlocale(LC_ALL, "fr_FR.UTF-8"));'
+```
+
+```
+bool(false)
+```
+
+That silent `false` is the whole bug. If a locale-aware test passes on your laptop and fails in Lando, run `locale -a` in the service before you blame the test.
+
+Shell tools read the same glibc data:
+
+```sh
+lando exec -- date -d 2025-01-01 '+%A, %d. %B %Y'
+```
+
+```
+Mittwoch, 01. Januar 2025
+```
+
+The `intl` extension ships in the `php` service. It formats with its own ICU data and takes its default locale from `LANG`:
+
+```sh
+lando exec -- php -r '$f = new IntlDateFormatter(null, IntlDateFormatter::FULL, IntlDateFormatter::NONE, "UTC"); echo $f->format(new DateTime("2025-01-01")), PHP_EOL;'
+```
+
+```
+Mittwoch, 1. Januar 2025
+```
+
+Open the `appserver` URL from `lando info`. The page Apache serves prints the same two lines:
+
+```
+de_DE.UTF-8
+Mittwoch, 1. Januar 2025
+```
+
+## Know which calls need the build step
+
+Here is the same `php:8.3` service with `LANG: de_DE.UTF-8`, with and without the build step:
+
+| Check | `LANG` only | `LANG` plus build step |
+| --- | --- | --- |
+| `setlocale(LC_ALL, "")`, read back | `C` for every category, `C.UTF-8` for `LC_CTYPE` | `de_DE.UTF-8` |
+| `date -d 2025-01-01 '+%A, %d. %B %Y'` | `Wednesday, 01. January 2025` | `Mittwoch, 01. Januar 2025` |
+| `IntlDateFormatter`, full date | `Mittwoch, 1. Januar 2025` | `Mittwoch, 1. Januar 2025` |
+
+ICU-based formatting follows `LANG` either way. Anything that goes through glibc, like `setlocale()` and `date`, needs the generated locale.
+
+## Check Node
+
+Node bundles its own ICU data and takes its default locale from `LANG`, so `Intl` formatting works without the build step:
+
+```sh
+lando exec node -- node -e 'console.log(new Date(Date.UTC(2025, 0, 1)).toLocaleDateString(undefined, { dateStyle: "full", timeZone: "UTC" }))'
+```
+
+```
+Mittwoch, 1. Januar 2025
+```
+
+Anything in that service that goes through glibc, like `locale` itself above, still has nothing to load. Give the `node` service the same build step when you need that side too.
+
+## Change the locale
+
+Switching `LANG` to a locale the image already has only needs a restart:
+
+```sh
+lando restart
+```
+
+`lando start` on an app that is already running keeps the old value. Restart it.
+
+Adding a locale changes the build step, so rebuild. Append another `localedef` to the same `run` line:
+
+```yaml
+        - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && localedef -i en_GB -c -f UTF-8 -A /usr/share/locale/locale.alias en_GB.UTF-8 && rm -rf /var/lib/apt/lists/*
+          user: root
+```
+
+```sh
+lando rebuild -y
+lando exec -- locale -a
+```
+
+```
+C
+C.utf8
+de_DE.utf8
+en_GB.utf8
+POSIX
+```
+
+## Check what the planner sees
+
+`lando app:config` prints the merged Landofile, so you can confirm `LANG` and the root build step before anything builds.
+
+<Guide>
+  <Scenario id="set-locale" render>
+    <Step name="scaffold">
+      <UseFixture name="locale-demo" />
+    </Step>
+    <Step name="lint-locale">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-locale">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"LANG\":\\s*\"de_DE\\.UTF-8\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale\\.alias de_DE\\.UTF-8" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"root\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- More on root and app-user steps: [Run build steps as root or as your app user](./build-steps.mdx)
+- The other half of "it works on my machine" dates: [Set the timezone](./timezone.mdx)
