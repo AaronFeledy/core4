@@ -33,13 +33,16 @@ import { pruneAppliedPlanState } from "./list-prune-state";
 export type { AppsListEntry } from "./list-discovery";
 export { appliedPlansDirectory } from "./list-discovery";
 
+export const APPS_LIST_STATUSES = ["active", "stopped", "unknown"] as const;
+export type AppsListStatus = (typeof APPS_LIST_STATUSES)[number];
+
 export const AppsListEntrySchema = Schema.Struct({
   appId: Schema.String,
   appName: Schema.String,
   providerId: Schema.String,
   appRoot: Schema.String,
   services: Schema.Array(Schema.String),
-  status: Schema.Literals(["active", "stopped", "unknown"]),
+  status: Schema.Literals([...APPS_LIST_STATUSES]),
   stale: Schema.optionalKey(Schema.Boolean),
   scratch: Schema.optionalKey(Schema.Boolean),
 });
@@ -51,6 +54,7 @@ export const AppsListResultSchema = Schema.Struct({
 
 export interface ListServicesOptions {
   readonly path?: string;
+  readonly status?: ReadonlyArray<AppsListStatus>;
   readonly format?: "json" | "table";
   readonly userDataRoot?: string;
   readonly userCacheRoot?: string;
@@ -218,7 +222,12 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
 
   const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
   const pathFilter = options.path;
-  const filtered = pathFilter === undefined ? listed : listed.filter((a) => a.appRoot.includes(pathFilter));
+  const statusFilter = options.status;
+  const filtered = listed.filter((app) => {
+    if (pathFilter !== undefined && !app.appRoot.includes(pathFilter)) return false;
+    if (statusFilter !== undefined && !statusFilter.includes(app.status)) return false;
+    return true;
+  });
   filtered.sort((a, b) => a.appName.localeCompare(b.appName));
   const visible =
     pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
