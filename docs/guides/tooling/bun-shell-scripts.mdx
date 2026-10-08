@@ -203,7 +203,7 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
 
 ## Declare a host task in the Landofile
 
-A one-liner does not need its own file. Set `service: ":host"` on a Landofile task and it runs on your host the same way a script does: no services required, no Bun install, output in the task tree, and the task's exit code as `lando`'s exit code. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Lando prints the collected output when the task body finishes. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
 
 ```yaml
 name: host-task-demo
