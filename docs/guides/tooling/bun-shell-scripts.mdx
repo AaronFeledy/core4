@@ -144,7 +144,9 @@ The first run prints `created .env`. Run it again and it prints `.env already ex
 
 Lando lowercases each path segment, turns anything outside `a-z`, `0-9`, `_`, and `-` into `-`, collapses repeated `-` into one, and trims `-` from both ends.
 
-Built-in commands always win over scripts, so pick names `lando help --all` doesn't list.
+`lando app:cache:refresh` rejects a script whose canonical command or active top-level name collides with a built-in command. You get `CommandAliasConflictError`, and the invalid command cache is not written. For example, `info.bun.sh` collides with `app:info`, while `version.bun.sh` collides with the default `version` alias. Rename the script and refresh again. Disabling or remapping aliases does not free a built-in canonical id such as `app:info`.
+
+Folders do not claim bare namespaced aliases. `.lando/scripts/db/seed.bun.sh` registers `app:db:seed`, so run `lando app:db:seed`, not `lando db:seed`. A plugin command named `db:seed` does not collide with that script. A folder path that produces an existing canonical id, such as `.lando/scripts/cache/refresh.bun.sh` producing `app:cache:refresh`, still fails.
 
 ## Use Bun Shell and your host tools
 
@@ -307,6 +309,16 @@ lando stamp abc1234
       <Verify errorTag="NotImplementedError" expect={{ regex: "service-targeted .bun.sh scripts are not supported" }} />
     </Step>
     <Step name="cleanup-service-front-matter">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="built-in-command-conflict" render={false} reason="Regression: cache refresh rejects scripts that collide with built-in commands">
+    <Step name="reject-info-script">
+      <UseFixture name="command-conflict" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="CommandAliasConflictError" expect={{ regex: "app:info" }} />
+    </Step>
+    <Step name="cleanup-command-conflict">
       <Cleanup />
     </Step>
   </Scenario>
