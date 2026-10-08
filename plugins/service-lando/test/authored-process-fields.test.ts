@@ -55,8 +55,9 @@ describe.each([...serviceTypes])("%s authored process fields", (_id, serviceType
 
       const plan = await planService(serviceType, fields);
 
-      expect(plan.command).toEqual(command);
-      expect(plan.entrypoint).toEqual(command);
+      const expected = serviceType.id === "compose" && command === "" ? [] : command;
+      expect(plan.command).toEqual(expected);
+      expect(plan.entrypoint).toEqual(expected);
     },
   );
 });
