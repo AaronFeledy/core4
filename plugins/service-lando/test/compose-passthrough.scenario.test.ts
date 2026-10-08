@@ -171,6 +171,8 @@ describe("compose passthrough — scenario: third-party image with default endpo
           home: false,
           image: "traefik/whoami:v1.10",
           ports: ["8080:80"],
+          command: '--port 80 --name "two words"',
+          entrypoint: 'worker --label "embedded spaces"',
         },
       },
     });
@@ -180,6 +182,8 @@ describe("compose passthrough — scenario: third-party image with default endpo
     if (whoami === undefined) throw new Error("whoami service missing from compose passthrough plan");
 
     expect(whoami.type).toBe("compose");
+    expect(whoami.command).toEqual(["--port", "80", "--name", "two words"]);
+    expect(whoami.entrypoint).toEqual(["worker", "--label", "embedded spaces"]);
     expect(whoami.artifact).toEqual({ kind: "ref", ref: "traefik/whoami:v1.10" });
     expect(whoami.endpoints).toEqual([
       {

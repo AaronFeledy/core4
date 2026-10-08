@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import { Clock, Effect, Result } from "effect";
+import { Clock, Effect, Option, Result } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/errors";
 import type { HostTerminal, LandofileShape } from "@lando/sdk/schema";
 
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
+import { collectSecretEnvValues } from "@lando/redaction/service";
 import {
   AppPlanner,
   ConfigService,
@@ -42,6 +42,7 @@ import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
+import { emitBufferedToolingOutput, toolingOutputRedactor } from "./tooling-output.ts";
 import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
@@ -234,6 +235,9 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       invocations,
       requiresProvider: requiresProvider(compiled.normalized),
       redactionTokens,
+      ...(Option.isSome(sink) && invocations.every((invocation) => invocation.service === ":host")
+        ? { onBodyComplete: emitBufferedToolingOutput(sink.value, redactionTokens) }
+        : {}),
     }),
   );
   const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
@@ -245,11 +249,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const result = exit.success;
 
   if (progressEvents !== undefined && !streamedLayer) {
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    const redactor =
-      redaction._tag === "Some"
-        ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env, redactionTokens })
-        : createStandaloneRedactor("secrets", { sourceEnv: process.env, redactionTokens });
+    const redactor = yield* toolingOutputRedactor(redactionTokens);
     yield* emitToolingOutputProgress({
       events: progressEvents,
       tool: result.tool,

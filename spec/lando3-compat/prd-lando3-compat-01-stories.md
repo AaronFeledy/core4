@@ -102,6 +102,14 @@ Spec: [`spec-lando3-compat.md`](./spec-lando3-compat.md). Global priorities, dep
 - [ ] Implement every residual-table and global/CLI row not owned by US-621C1, US-621C3, or US-621C5, including scoped-command guidance, global-map nonimport, no CLI-history lowering, environment reference guidance, custom basenames, plugin/private registry, hoster, pull/push/share, and legacy output flags.
 - [ ] Assert every inventory path has exactly one `target`, `drop`, or `unsupported` owner and one golden diagnostic/output case; no residual bag, fallback, runtime emulation, or unspecified variant remains; applicable standard gates pass.
 
+### US-621C9: Refresh the runtime-bundle Ubuntu apt snapshot pin
+
+**Description:** As a release engineer, CI journey workflows install build packages from a pinned Ubuntu snapshot that still resolves every runner current candidate version, so unrelated PRs are not blocked by apt-pin drift.
+
+**Acceptance Criteria:**
+- [ ] Bump RUNTIME_BUNDLE_UBUNTU_SNAPSHOT in scripts/runtime-bundle-supply-chain.ts to a snapshot date that resolves the current candidate version of every package in its PACKAGES list on all journey runners, including libsqlite3-dev 3.45.1-1ubuntu2.8 on linux-arm64, and regenerate every consuming workflow through the owning codegen entries (ci-workflow, runtime-bundle-workflow, rails-journey-workflow, and any other catalog entry embedding the snapshot); no generated file is hand-edited.
+- [ ] rails-journey-linux-arm64 and the other journey workflows pass on the refreshed pin in CI; codegen:check and applicable standard gates pass; the change carries no lando3-compat translator source edits.
+
 ### US-621D: Commit and guide the complete lowered output set safely
 
 **Description:** As a user, explicit conversion commits through the shared transaction or preserves my originals with actionable remediation.

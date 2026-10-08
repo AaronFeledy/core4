@@ -183,6 +183,7 @@ describe("Landofile package seam", () => {
         "parseLegacyLandofile",
         "routeFilterIdentity",
         "routeFilterMatches",
+        "splitComposeCommand",
         "validateConfigTranslateInput",
         "validateConfigTranslateResult",
       ].sort(),

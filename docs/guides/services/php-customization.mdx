@@ -104,7 +104,7 @@ services:
         readOnly: true
 ```
 
-php.ini drop-ins are read alphabetically after the base `php.ini`. Name your custom file so it sorts after any recipe-provided drop-in you want to override. For example, `zz-custom.ini` loads after the Drupal CMS recipe default `50-lando-drupal-cms.ini`. Mark the mount read-only. The container never needs to write back to your source `php.ini`.
+php.ini drop-ins are read alphabetically after the base `php.ini`. Name your custom file so it sorts after any recipe-provided drop-in you want to override. For example, `zz-custom.ini` loads after the Drupal CMS recipe default `50-lando-drupal-cms.ini` and after the `50-lando-wordpress.ini` that `framework: wordpress` builds into the image. Mark the mount read-only. The container never needs to write back to your source `php.ini`.
 
 ## Grant a php.ini with Compose configs
 
