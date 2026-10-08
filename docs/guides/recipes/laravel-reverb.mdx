@@ -267,7 +267,7 @@ If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s w
 | `Undefined constant "Laravel\Reverb\Servers\Reverb\Console\Commands\SIGINT"` in `lando logs -s reverb` | `pcntl` is missing. Keep the `build.artifact` step and run `lando rebuild -y`. |
 | `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando rebuild -y`. |
 | `tempnam(): file created in the system's temporary directory` on the app URL | Run `chmod -R a+rwX storage bootstrap/cache`. |
-| A changed `command:` doesn't take effect after `lando start` | Run `lando restart`. |
+| A changed `command:` doesn't take effect after `lando start` or `lando restart` | Both reuse the existing container. Run `lando rebuild -y` to recreate it. |
 
 ## Tear down
 
