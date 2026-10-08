@@ -115,7 +115,7 @@ describe("compiled host-proxy shim request serialization", () => {
     });
   });
 
-  test("forwards agentEnv.allow extras and GROK_AGENT=1, and drops a GROK_AGENT path", async () => {
+  test("forwards agentEnv.allow extras and GROK_AGENT=1 through the compiled shim", async () => {
     const capturedRequest = new Promise<Readonly<Record<string, unknown>>>((resolve, reject) => {
       const server = createServer((req, res) => {
         let body = "";
