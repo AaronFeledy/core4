@@ -88,10 +88,15 @@ export const renderAppsListResult = (
   result: ListServicesResult,
   _format: "json" | "table" = "table",
   ctx?: RenderContext,
+  options?: { readonly filtered?: boolean },
 ): string => {
   const linkRoots = contextAllowsHyperlinks(ctx);
   const inventory = (() => {
-    if (result.apps.length === 0) return "No Lando apps applied on this host.";
+    if (result.apps.length === 0) {
+      return options?.filtered === true
+        ? "No Lando apps match the filters."
+        : "No Lando apps applied on this host.";
+    }
     const header = ["APP", "STATUS", "PROVIDER", "SERVICES", "ROOT"];
     const rows = result.apps.map((app) => [
       app.appName,

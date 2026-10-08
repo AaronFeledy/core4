@@ -149,13 +149,19 @@ export const normalizeCliFlagTokens = (
   return normalized;
 };
 
-const malformedFlagValue = (flag: string, issue: FlagValueIssue): MalformedCliFlagValueError => {
+const malformedFlagValue = (
+  flag: string,
+  issue: FlagValueIssue,
+  options: ReadonlyArray<string> = [],
+): MalformedCliFlagValueError => {
   const option = `--${flag}`;
   const remediation =
     issue === "invalid_integer"
       ? `Supply ${option} with a whole integer.`
       : issue === "invalid_option"
-        ? `Supply ${option} with one of its declared values.`
+        ? options.length > 0
+          ? `Supply ${option} with one of: ${options.join(", ")}.`
+          : `Supply ${option} with one of its declared values.`
         : issue === "unexpected"
           ? `Do not supply a value for ${option}.`
           : issue === "repeated"
@@ -204,7 +210,7 @@ export const validateCliFlagValues = (
       return malformedFlagValue(definition.name, "invalid_integer");
     }
     if (definition.options.length > 0 && !definition.options.includes(value)) {
-      return malformedFlagValue(definition.name, "invalid_option");
+      return malformedFlagValue(definition.name, "invalid_option", definition.options);
     }
     if (equalsIndex === -1) index += 1;
   }

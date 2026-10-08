@@ -47,6 +47,7 @@ export interface McpInputMemberView {
   readonly required?: boolean;
   readonly multiple?: boolean;
   readonly valueType?: "string" | "integer";
+  readonly options?: ReadonlyArray<string>;
 }
 
 /** A JSON-Schema-shaped object (the value carried in `McpToolDescriptor.inputSchema`). */
@@ -66,11 +67,17 @@ const jsonTypeFor = (view: McpInputMemberView): string => {
   return view.multiple === true ? "array" : base;
 };
 
+const optionEnum = (view: McpInputMemberView): JsonSchemaObject => {
+  if (view.options === undefined || view.options.length === 0) return {};
+  return { enum: [...view.options] };
+};
+
 const memberSchema = (view: McpInputMemberView): JsonSchemaObject => {
+  const enumerated = optionEnum(view);
   const base: JsonSchemaObject =
     view.multiple === true
-      ? { type: "array", items: { type: memberType(view) } }
-      : { type: memberType(view) };
+      ? { type: "array", items: { type: memberType(view), ...enumerated } }
+      : { type: memberType(view), ...enumerated };
   return view.description === undefined ? base : { ...base, description: view.description };
 };
 
@@ -127,6 +134,22 @@ const typeMatches = (view: McpInputMemberView, value: unknown): boolean => {
   return scalarTypeMatches(view, value);
 };
 
+const declaredOptions = (view: McpInputMemberView): ReadonlyArray<string> | undefined =>
+  view.options !== undefined && view.options.length > 0 ? view.options : undefined;
+
+const optionMatches = (view: McpInputMemberView, value: unknown): boolean => {
+  const options = declaredOptions(view);
+  if (options === undefined) return true;
+  return typeof value === "string" && options.includes(value);
+};
+
+const valuesMatchOptions = (view: McpInputMemberView, value: unknown): boolean => {
+  if (view.multiple === true) {
+    return Array.isArray(value) && value.every((item) => optionMatches(view, item));
+  }
+  return optionMatches(view, value);
+};
+
 const validateGroup = (
   toolId: string,
   group: "flags" | "args",
@@ -151,6 +174,15 @@ const validateGroup = (
         toolId,
         path: `${group}.${name}`,
         remediation: `Provide ${group}.${name} as a ${jsonTypeFor(view)} value.`,
+      });
+    }
+    if (!valuesMatchOptions(view, value)) {
+      const options = declaredOptions(view) ?? [];
+      throw new McpToolInputError({
+        message: `Invalid value for ${group}.${name} on tool ${toolId}; expected one of: ${options.join(", ")}.`,
+        toolId,
+        path: `${group}.${name}`,
+        remediation: `Provide ${group}.${name} as one of: ${options.join(", ")}.`,
       });
     }
   }

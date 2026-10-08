@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 import {
   APPS_LIST_STATUSES,
   AppsListResultSchema,
@@ -7,6 +9,7 @@ import {
   listServicesWithPrune,
   renderAppsListResult,
 } from "../../commands/list";
+import { MalformedCliFlagValueError } from "../../flag-value-validation";
 import { Flags } from "../../spec/metadata";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -18,13 +21,27 @@ const extractFormat = (input: unknown): "json" | "table" =>
 const isAppsListStatus = (value: string): value is AppsListStatus =>
   (APPS_LIST_STATUSES as readonly string[]).includes(value);
 
+const invalidStatusError = (): MalformedCliFlagValueError =>
+  new MalformedCliFlagValueError({
+    message: "--status has a malformed value.",
+    flag: "status",
+    issue: "invalid_option",
+    remediation: `Supply --status with one of: ${APPS_LIST_STATUSES.join(", ")}.`,
+  });
+
 export const appsListPathFromInput = (input: unknown): string | undefined =>
   stringFlag(specFlagsOf(input), "path");
+
+export const appsListHasFiltersFromInput = (input: unknown): boolean => {
+  const flags = specFlagsOf(input);
+  return stringFlag(flags, "path") !== undefined || stringArrayFlag(flags, "status").length > 0;
+};
 
 export const appsListStatusFromInput = (input: unknown): ReadonlyArray<AppsListStatus> | undefined => {
   const values = stringArrayFlag(specFlagsOf(input), "status");
   if (values.length === 0) return undefined;
-  return values.filter(isAppsListStatus);
+  if (!values.every(isAppsListStatus)) throw invalidStatusError();
+  return values;
 };
 
 export const appsListPruneFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "prune");
@@ -57,18 +74,24 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
     "include-scratch": Flags.boolean({ description: "Include running scratch apps in the inventory." }),
     all: Flags.boolean({ description: "Include scratch apps along with every discovered user app." }),
   },
-  run: (input) => {
-    const path = appsListPathFromInput(input);
-    const status = appsListStatusFromInput(input);
-    const prune = appsListPruneFromInput(input);
-    const includeScratch = appsListIncludeScratchFromInput(input);
-    const options = {
-      ...(path === undefined ? {} : { path }),
-      ...(status === undefined ? {} : { status }),
-      ...(includeScratch ? { includeScratch: true } : {}),
-    };
-    return prune ? listServicesWithPrune(options) : listServices(options);
-  },
+  run: (input) =>
+    Effect.gen(function* () {
+      const path = appsListPathFromInput(input);
+      const status = yield* Effect.try({
+        try: () => appsListStatusFromInput(input),
+        catch: (error) => (error instanceof MalformedCliFlagValueError ? error : invalidStatusError()),
+      });
+      const prune = appsListPruneFromInput(input);
+      const includeScratch = appsListIncludeScratchFromInput(input);
+      const options = {
+        ...(path === undefined ? {} : { path }),
+        ...(status === undefined ? {} : { status }),
+        ...(includeScratch ? { includeScratch: true } : {}),
+      };
+      return yield* prune ? listServicesWithPrune(options) : listServices(options);
+    }),
   render: (result, input, ctx) =>
-    renderAppsListResult(result as ListServicesResult, extractFormat(input), ctx),
+    renderAppsListResult(result as ListServicesResult, extractFormat(input), ctx, {
+      filtered: appsListHasFiltersFromInput(input),
+    }),
 };

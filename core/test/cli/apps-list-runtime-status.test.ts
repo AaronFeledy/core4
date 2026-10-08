@@ -5,7 +5,9 @@ import { join } from "node:path";
 
 import { Effect, Schema } from "effect";
 
+import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
+import { McpToolInputError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
@@ -219,6 +221,10 @@ test("filters mixed runtime statuses after a single discovery pass", async () =>
     const none = await mixedStatusInventory(root, { status: [] });
     expect(none.discoveryCalls).toBe(1);
     expect(none.result.apps).toEqual([]);
+    expect(renderAppsListResult(none.result, "table", undefined, { filtered: true })).toBe(
+      "No Lando apps match the filters.",
+    );
+    expect(renderAppsListResult({ apps: [] })).toContain("No Lando apps applied on this host.");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -237,7 +243,23 @@ test("apps:list --status extractor accepts repeatable declared values only", () 
       compiledCommandInputFromArgv("apps:list", ["--status", "active", "--status", "unknown"]),
     ),
   ).toEqual(["active", "unknown"]);
-  expect(appsListStatusFromInput({ flags: { status: ["running"] } })).toEqual([]);
+  expect(() => appsListStatusFromInput({ flags: { status: ["running"] } })).toThrow(
+    MalformedCliFlagValueError,
+  );
+  expect(() => appsListStatusFromInput({ flags: { status: ["active", "RUNNING"] } })).toThrow(
+    MalformedCliFlagValueError,
+  );
+  try {
+    appsListStatusFromInput({ flags: { status: ["running"] } });
+    expect.unreachable("expected MalformedCliFlagValueError");
+  } catch (error) {
+    expect(error).toMatchObject({
+      _tag: "MalformedCliFlagValueError",
+      issue: "invalid_option",
+      remediation: "Supply --status with one of: active, stopped, unknown.",
+    });
+    expect(JSON.stringify(error)).not.toContain("running");
+  }
   expect(() => compiledCommandInputFromArgv("apps:list", ["--status", "running"])).toThrow(
     MalformedCliFlagValueError,
   );
@@ -246,6 +268,39 @@ test("apps:list --status extractor accepts repeatable declared values only", () 
     multiple: true,
     options: APPS_LIST_STATUSES,
   });
+});
+
+test("MCP apps:list rejects unknown --status values and advertises the enum", () => {
+  expect(deriveToolInputSchema(listSpec)).toMatchObject({
+    properties: {
+      flags: {
+        properties: {
+          status: {
+            type: "array",
+            items: { type: "string", enum: ["active", "stopped", "unknown"] },
+          },
+        },
+      },
+    },
+  });
+  expect(() => validateToolInput(listSpec, { flags: { status: ["running"] } })).toThrow(McpToolInputError);
+  expect(() => validateToolInput(listSpec, { flags: { status: ["active", "RUNNING"] } })).toThrow(
+    McpToolInputError,
+  );
+  try {
+    validateToolInput(listSpec, { flags: { status: ["running"] } });
+    expect.unreachable("expected McpToolInputError");
+  } catch (error) {
+    expect(error).toBeInstanceOf(McpToolInputError);
+    expect(error).toMatchObject({
+      _tag: "McpToolInputError",
+      toolId: "apps:list",
+      path: "flags.status",
+    });
+    expect((error as McpToolInputError).message).toContain("active, stopped, unknown");
+    expect(JSON.stringify(error)).not.toContain("running");
+  }
+  expect(validateToolInput(listSpec, { flags: { status: ["active"] } }).flags.status).toEqual(["active"]);
 });
 
 test("documented --jq app-root path reads the real command envelope", async () => {

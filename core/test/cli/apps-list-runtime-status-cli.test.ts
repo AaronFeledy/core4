@@ -223,6 +223,13 @@ test.skipIf(process.platform === "win32")(
       const rejected = await runSourceAppsList(["apps:list", "--status", "running"], env, root);
       expect(rejected.exitCode).toBe(2);
       expect(rejected.stderr).toContain("--status");
+      expect(rejected.stderr).toContain("active, stopped, unknown");
+      expect(rejected.stderr).not.toContain("running");
+
+      const filteredEmpty = await runSourceAppsList(["list", "--status=stopped"], env, root);
+      expect(filteredEmpty.exitCode).toBe(0);
+      expect(filteredEmpty.stdout).toContain("No Lando apps match the filters.");
+      expect(filteredEmpty.stdout).not.toContain("No Lando apps applied on this host.");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
