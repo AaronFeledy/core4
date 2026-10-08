@@ -17,6 +17,7 @@ const bracket = (lookupKey: string, position: "pre" | "post"): LandofileEventNam
 export interface BracketedInvocationsInput extends ExecuteToolingInput {
   /** Effective-tooling key the `pre-`/`post-` bracket names derive from. */
   readonly lookupKey: string;
+  readonly onBodyComplete?: (result: ToolingEngineResult) => Effect.Effect<void>;
 }
 
 /**
@@ -36,6 +37,7 @@ export const runBracketedInvocations = Effect.fnUntraced(function* (
 > {
   yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"));
   const result = yield* executeToolingInvocations(input);
+  if (input.onBodyComplete !== undefined) yield* input.onBodyComplete(result);
   if (result.exitCode === 0) yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"));
   return result;
 });
