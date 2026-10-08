@@ -201,6 +201,31 @@ lando curl version.txt
 
 That curl runs inside `web` against nginx on port `80`. If a Landofile task and a script share a name, the Landofile task wins. Drop a `curl.bun.sh` next to that Landofile and `lando curl` still runs in `web`.
 
+## Declare a host task in the Landofile
+
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Lando prints the collected output when the task body finishes. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
+
+```yaml
+name: host-task-demo
+tooling:
+  greet:
+    description: Say hello from the host
+    service: ":host"
+    cmd: echo "hello from a host task"
+  stamp:
+    description: Print a version stamp
+    service: ":host"
+    cmd: ["printf", "stamped %s\n"]
+```
+
+```sh
+lando app:cache:refresh
+lando greet
+lando stamp abc1234
+```
+
+`lando greet` prints `hello from a host task`, and `lando stamp abc1234` prints `stamped abc1234`. Add `--format=json` and the text lands in `result.stdout`, same envelope as a script. Reach for a `.bun.sh` file when the body outgrows one line, or when you want `if`, pipes, and `$(...)` without quoting a shell string inside YAML.
+
 ## Build, stamp, and seed an env file
 
 <Guide>
@@ -254,6 +279,22 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
       <Run command="lando fail --format=yaml" expectExit={22} />
     </Step>
     <Step name="cleanup-nonzero-exit">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="host-task" render>
+    <Step name="scaffold-host-task">
+      <UseFixture name="host-task" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-host-task">
+      <Run command="lando greet" />
+      <Verify command="lando greet --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0.*\"stdout\":\\s*\"hello from a host task" } }} />
+      <Run command="lando stamp abc1234" />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"stdout\":\\s*\"stamped abc1234" } }} />
+    </Step>
+    <Step name="cleanup-host-task">
       <Cleanup />
     </Step>
   </Scenario>
