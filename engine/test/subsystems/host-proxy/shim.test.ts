@@ -40,12 +40,6 @@ describe("filterHostProxyEnv", () => {
   test("returns an empty object when nothing matches", () => {
     expect(filterHostProxyEnv({ PATH: "/usr/bin", FOO: "bar" })).toEqual({});
   });
-
-  test("keeps agentEnv.allow extras when the resolved allowlist is passed", () => {
-    expect(filterHostProxyEnv({ FOO_TOKEN: "tok", SECRET: "x" }, ["FOO_TOKEN"])).toEqual({
-      FOO_TOKEN: "tok",
-    });
-  });
 });
 
 describe("buildRunLandoRequest", () => {

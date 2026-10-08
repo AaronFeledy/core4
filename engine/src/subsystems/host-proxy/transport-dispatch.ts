@@ -114,7 +114,6 @@ const dispatchProgram = Effect.fn("HostProxyService.dispatchProgram")(function* 
     callerService: wire.callerService,
     depth: wire.depth,
     app: options.app,
-    ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
   };
   return yield* dispatchRunLando(wire.request, deps).pipe(
     Effect.map((result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode })),

@@ -741,11 +741,7 @@ describe("execApp — host agent-context env forwarding", () => {
       else process.env[fooKey] = savedFoo;
     }
 
-    expect(calls[0]?.env).toEqual({
-      CLAUDECODE: "1",
-      FOO_TOKEN: "tok",
-      LANDO_AGENT_ENV_ALLOW: "FOO_TOKEN",
-    });
+    expect(calls[0]?.env).toEqual({ CLAUDECODE: "1", FOO_TOKEN: "tok" });
   });
 
   test("Landofile agentEnv:false opts the app out of all forwarding", async () => {

@@ -3,6 +3,8 @@ import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
 
+// Must stay import-light (no Effect): the compiled host-proxy shim bundle imports this module.
+
 // Presence markers for agent detectors; no tokens, no session/path dumps.
 // Deliberate exclusions (not a parity chase): path-valued names
 // (GROK_PLUGIN_ROOT, GROK_PLUGIN_DATA, KIMI_PLUGIN_ROOT, JUNIE_DATA,
@@ -38,9 +40,6 @@ export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
 
 export const AGENT_ENV_DISABLE_ENV_VAR = "LANDO_AGENT_ENV";
 
-/** Extra `agentEnv.allow` names encoded for the in-container host-proxy shim. */
-export const AGENT_ENV_ALLOW_EXTRAS_ENV_VAR = "LANDO_AGENT_ENV_ALLOW";
-
 const AGENT_ENV_VALUE_MUST_BE_ONE: ReadonlySet<string> = new Set(["GROK_AGENT"]);
 
 const EXACT_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -56,17 +55,6 @@ export const isExactAgentEnvName = (name: string): boolean => EXACT_ENV_NAME_PAT
 
 export const findAgentEnvPatternNames = (names: ReadonlyArray<string>): ReadonlyArray<string> =>
   names.filter((name) => !isExactAgentEnvName(name));
-
-export const parseAgentEnvAllowExtras = (value: string | undefined): ReadonlyArray<string> => {
-  if (value === undefined || value.length === 0) return [];
-  return value
-    .split(",")
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0 && isExactAgentEnvName(name));
-};
-
-export const extrasFromResolvedAllowlist = (allowlist: ReadonlyArray<string>): ReadonlyArray<string> =>
-  allowlist.filter((name) => !AGENT_CONTEXT_ENV_ALLOWLIST.includes(name));
 
 export const isForwardableAgentEnvValue = (name: string, value: string): boolean =>
   !AGENT_ENV_VALUE_MUST_BE_ONE.has(name) || value === "1";
@@ -111,10 +99,7 @@ export const withAgentContextEnv = (
   hostEnv: HostEnv,
   options: AgentContextEnvMergeOptions = {},
 ): Record<string, string> | undefined => {
-  const allowlist = options.allowlist ?? AGENT_CONTEXT_ENV_ALLOWLIST;
-  const forwarded = resolveAgentContextEnv(hostEnv, allowlist);
-  const extras = extrasFromResolvedAllowlist(allowlist);
-  if (extras.length > 0) forwarded[AGENT_ENV_ALLOW_EXTRAS_ENV_VAR] = extras.join(",");
+  const forwarded = resolveAgentContextEnv(hostEnv, options.allowlist ?? AGENT_CONTEXT_ENV_ALLOWLIST);
   for (const name of Object.keys(options.lowerThanEnv ?? {})) delete forwarded[name];
   const merged = { ...forwarded, ...(explicitEnv ?? {}) };
   return Object.keys(merged).length === 0 ? undefined : merged;

@@ -260,36 +260,6 @@ describe("dispatchRunLando", () => {
     expect(serialized).not.toContain("s3cr3tpass");
   });
 
-  test("keeps agentEnv.allow extras on re-entry when the resolved allowlist is passed", async () => {
-    const { layer } = recordingEvents();
-    let capturedEnv: Readonly<Record<string, string>> | undefined;
-    const executor: HostProxyRunLandoExecutor = (input) => {
-      capturedEnv = input.env;
-      return Effect.succeed({ envelope: baseEnvelope as never, exitCode: 0 });
-    };
-    const request = {
-      ...buildRunLandoRequest({ argv: ["open", "--print"], cwd: "/app", tty: false }),
-      env: { FOO_TOKEN: "tok", SECRET_TOKEN: "shh", CI: "true" },
-    };
-
-    await Effect.runPromise(
-      dispatchRunLando(request, {
-        executor,
-        allowlist: ["app:open"],
-        agentEnvAllowlist: ["FOO_TOKEN"],
-        mountInfo: mount,
-        callerService: "web",
-        depth: 0,
-        app: appRef,
-      }).pipe(Effect.provide(Layer.mergeAll(layer, standaloneRedactionLayer))),
-    );
-
-    expect(capturedEnv).toEqual({
-      FOO_TOKEN: "tok",
-      LANDO_HOST_PROXY_DEPTH: "1",
-    });
-  });
-
   test("never leaks a forwarded host-proxy token into events or failures", async () => {
     const { events, layer } = recordingEvents();
     const token = "hp-token-event-canary";

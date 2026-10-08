@@ -1,13 +1,7 @@
 import { request } from "node:http";
 
 import { cwd, env, exit, stderr, stdout } from "node:process";
-import {
-  AGENT_CONTEXT_ENV_ALLOWLIST,
-  AGENT_ENV_ALLOW_EXTRAS_ENV_VAR,
-  AGENT_ENV_DISABLE_ENV_VAR,
-  filterHostProxyEnv,
-  parseAgentEnvAllowExtras,
-} from "@lando/engine/config/agent-env";
+import { AGENT_CONTEXT_ENV_ALLOWLIST, filterHostProxyEnv } from "@lando/engine/config/agent-env";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 type ShimRequest = {
@@ -25,13 +19,7 @@ type ShimRequest = {
   };
 };
 
-const filteredEnv = (): Record<string, string> =>
-  filterHostProxyEnv(
-    env,
-    env[AGENT_ENV_DISABLE_ENV_VAR] === "0"
-      ? []
-      : [...AGENT_CONTEXT_ENV_ALLOWLIST, ...parseAgentEnvAllowExtras(env[AGENT_ENV_ALLOW_EXTRAS_ENV_VAR])],
-  );
+const filteredEnv = (): Record<string, string> => filterHostProxyEnv(env, AGENT_CONTEXT_ENV_ALLOWLIST);
 
 const requiredEnv = (name: string): string => {
   const value = env[name];

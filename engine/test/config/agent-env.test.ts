@@ -2,14 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_CONTEXT_ENV_ALLOWLIST,
-  AGENT_ENV_ALLOW_EXTRAS_ENV_VAR,
   AGENT_ENV_DISABLE_ENV_VAR,
-  extrasFromResolvedAllowlist,
   filterHostProxyEnv,
   findAgentEnvPatternNames,
   isAgentEnvForwardingDisabled,
   isExactAgentEnvName,
-  parseAgentEnvAllowExtras,
   resolveAgentContextEnv,
   resolveAgentEnvAllowlist,
   resolveForwardedAgentEnvNames,
@@ -253,24 +250,6 @@ describe("resolveForwardedAgentEnvNames — names present on the host and so for
   });
 });
 
-describe("agentEnv.allow extras encoding for host-proxy re-entry", () => {
-  test("parseAgentEnvAllowExtras keeps exact names and drops junk", () => {
-    expect(parseAgentEnvAllowExtras("FOO_TOKEN, BAR,CLAUDE_*,")).toEqual(["FOO_TOKEN", "BAR"]);
-    expect(parseAgentEnvAllowExtras(undefined)).toEqual([]);
-  });
-
-  test("withAgentContextEnv encodes extras so the shim can keep them", () => {
-    const merged = withAgentContextEnv(
-      undefined,
-      { FOO_TOKEN: "tok", CI: "true" },
-      { allowlist: [...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"] },
-    );
-    expect(merged?.[AGENT_ENV_ALLOW_EXTRAS_ENV_VAR]).toBe("FOO_TOKEN");
-    expect(merged?.FOO_TOKEN).toBe("tok");
-    expect(extrasFromResolvedAllowlist([...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"])).toEqual(["FOO_TOKEN"]);
-  });
-});
-
 describe("filterHostProxyEnv — shim filter with agent-context append", () => {
   test("keeps safe LANDO_*, LC_*, LANG, TERM and appends the agent-context allowlist", () => {
     const filtered = filterHostProxyEnv({
@@ -325,13 +304,5 @@ describe("filterHostProxyEnv — shim filter with agent-context append", () => {
     const filtered = filterHostProxyEnv({ LANG: undefined, CI: "1" });
     expect(Object.hasOwn(filtered, "LANG")).toBe(false);
     expect(filtered).toEqual({ CI: "1" });
-  });
-
-  test("keeps agentEnv.allow extras when the resolved allowlist is passed", () => {
-    const filtered = filterHostProxyEnv(
-      { FOO_TOKEN: "tok", SECRET_TOKEN: "shh", CI: "true" },
-      [...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"].filter((name) => name !== "CI"),
-    );
-    expect(filtered).toEqual({ FOO_TOKEN: "tok" });
   });
 });
