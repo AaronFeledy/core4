@@ -117,6 +117,16 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       service: service.name,
       plan: target.plan,
     });
+    if (runtime.status === "stopped" && runtime.containerId === undefined) {
+      return yield* Effect.fail(
+        new ProviderUnavailableError({
+          providerId: String(target.plan.provider),
+          operation: "restart",
+          message: `Cannot restart ${service.name} in place because its container is missing.`,
+          remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
+        }),
+      );
+    }
     const reasons = bringUpRecreateReasons(target.plan, service, runtime, { skipAbsentFields: true });
     if (reasons[0] !== undefined) {
       return yield* Effect.fail(

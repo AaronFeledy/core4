@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
-import { ServiceNotFoundError, ServiceRestartWouldRecreateError } from "@lando/sdk/errors";
+import {
+  ProviderUnavailableError,
+  ServiceNotFoundError,
+  ServiceRestartWouldRecreateError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type AppPlan,
@@ -143,6 +147,27 @@ const runSelected = (
 };
 
 describe("selected service restart", () => {
+  test("refuses a missing container before stopping any selected service", async () => {
+    // Given the provider's missing-container inspect response.
+    const selected = runSelected(twoServicePlan(), {
+      services: [web.name, redis.name],
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId: plan.provider,
+          status: "stopped",
+          endpoints: [],
+        }),
+    });
+    // When a selected restart runs.
+    const error = await Effect.runPromise(Effect.flip(selected.operation));
+    // Then it refuses before changing either service.
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(selected.stopCalls).toEqual([]);
+    expect(selected.applyCalls).toEqual([]);
+  });
+
   test("does not stop services when the restart signal is already aborted", async () => {
     const selected = runSelected(twoServicePlan(), { services: [redis.name], signal: AbortSignal.abort() });
 
