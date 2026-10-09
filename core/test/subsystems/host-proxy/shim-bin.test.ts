@@ -36,70 +36,80 @@ const compiledShimArtifact = async (): Promise<string> => {
 const captureShimRequest = async (
   artifact: string,
   extraEnv: Readonly<Record<string, string>>,
-): Promise<Readonly<Record<string, unknown>>> =>
-  new Promise<Readonly<Record<string, unknown>>>((resolve, reject) => {
-    const server = createServer((req, res) => {
-      let body = "";
-      req.setEncoding("utf8");
-      req.on("data", (chunk) => {
-        body += chunk;
-      });
-      req.on("error", reject);
-      req.on("end", () => {
-        const parsed: unknown = JSON.parse(body);
-        if (!Predicate.isObject(parsed)) {
-          reject(new Error("Expected shim request body to be an object"));
-          return;
-        }
-        res.writeHead(200, { "content-type": "application/x-ndjson" });
-        res.end('{"kind":"exit","code":0}\n');
-        resolve(parsed);
-      });
+  responseExitCode = 0,
+): Promise<Readonly<Record<string, unknown>>> => {
+  const capturedRequest = Promise.withResolvers<Readonly<Record<string, unknown>>>();
+  const server = createServer((req, res) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      body += chunk;
     });
-
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", async () => {
-      const address = server.address();
-      if (typeof address !== "object" || address === null) {
-        reject(new Error("Expected TCP test server address"));
+    req.on("error", capturedRequest.reject);
+    req.on("end", () => {
+      const parsed: unknown = JSON.parse(body);
+      if (!Predicate.isObject(parsed)) {
+        capturedRequest.reject(new Error("Expected shim request body to be an object"));
         return;
       }
-
-      const proc = Bun.spawn({
-        cmd: [artifact, "open", "--print"],
-        cwd: "/tmp",
-        env: {
-          LANDO_HOST_PROXY_URL: `http://127.0.0.1:${address.port}`,
-          LANDO_HOST_PROXY_TOKEN: "secret-token",
-          LANDO_HOST_PROXY_SESSION: "session-id",
-          LANDO_HOST_PROXY_APP: "demo",
-          LANDO_HOST_PROXY_DEPTH: "0",
-          ...extraEnv,
-        },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-      server.close();
-      if (exitCode !== 0) reject(new Error(stderr));
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      res.end(`${JSON.stringify({ kind: "exit", code: responseExitCode })}\n`);
+      capturedRequest.resolve(parsed);
     });
   });
 
-describe("host-proxy shim agent-env allowlist sync", () => {
-  test("imports AGENT_CONTEXT_ENV_ALLOWLIST from the engine instead of copying names", async () => {
-    const source = await Bun.file(HOST_PROXY_SHIM_SOURCE).text();
-    expect(source).toContain('from "@lando/engine/config/agent-env"');
-    expect(source).toContain("AGENT_CONTEXT_ENV_ALLOWLIST");
-    expect(source).not.toMatch(/"CLAUDECODE"/);
-    expect(source).not.toMatch(/"CLINE_ACTIVE"/);
-    expect(source).not.toMatch(/"GROK_AGENT"/);
-    for (const name of AGENT_CONTEXT_ENV_ALLOWLIST) {
-      expect(source.includes(`"${name}"`)).toBe(false);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (typeof address !== "object" || address === null) {
+      throw new Error("Expected TCP test server address");
     }
+
+    const proc = Bun.spawn({
+      cmd: [artifact, "open", "--print"],
+      cwd: "/tmp",
+      env: {
+        LANDO_HOST_PROXY_URL: `http://127.0.0.1:${address.port}`,
+        LANDO_HOST_PROXY_TOKEN: "secret-token",
+        LANDO_HOST_PROXY_SESSION: "session-id",
+        LANDO_HOST_PROXY_APP: "demo",
+        LANDO_HOST_PROXY_DEPTH: "0",
+        ...extraEnv,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    if (exitCode !== 0) throw new Error(`Shim exited ${exitCode}: ${stderr}`);
+    return await capturedRequest.promise;
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+};
+
+describe("host-proxy shim agent-env allowlist sync", () => {
+  test("forwards real values for every engine allowlisted marker", async () => {
+    const hostEnv = Object.fromEntries(
+      AGENT_CONTEXT_ENV_ALLOWLIST.map((name) => [name, name === "GROK_AGENT" ? "1" : `host-${name}`]),
+    );
+    const request = await captureShimRequest(await compiledShimArtifact(), hostEnv);
+    expect(request.env).toEqual(hostEnv);
   });
 });
 
 describe("compiled host-proxy shim request serialization", () => {
+  test("rejects a failed shim even after it serializes the request", async () => {
+    // Given a compiled shim and a host response that reports failure.
+    const artifact = await compiledShimArtifact();
+
+    // When capture waits for the shim to finish, then failure is not a successful capture.
+    await expect(captureShimRequest(artifact, {}, 1)).rejects.toThrow();
+  });
+
   test("omits session transport env names while preserving allowed forwarding", async () => {
     const request = await captureShimRequest(await compiledShimArtifact(), {
       LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",

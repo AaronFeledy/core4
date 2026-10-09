@@ -1,7 +1,7 @@
 import { request } from "node:http";
 
 import { cwd, env, exit, stderr, stdout } from "node:process";
-import { AGENT_CONTEXT_ENV_ALLOWLIST, filterHostProxyEnv } from "@lando/engine/config/agent-env";
+import { filterHostProxyEnv } from "@lando/engine/config/agent-env";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 type ShimRequest = {
@@ -18,8 +18,6 @@ type ShimRequest = {
     readonly env?: Readonly<Record<string, string>>;
   };
 };
-
-const filteredEnv = (): Record<string, string> => filterHostProxyEnv(env, AGENT_CONTEXT_ENV_ALLOWLIST);
 
 const requiredEnv = (name: string): string => {
   const value = env[name];
@@ -109,7 +107,7 @@ writeAndExit(
       argv: process.argv.slice(2),
       cwd: cwd(),
       tty: Boolean(stdout.isTTY),
-      env: filteredEnv(),
+      env: filterHostProxyEnv(env),
     },
   },
 );
