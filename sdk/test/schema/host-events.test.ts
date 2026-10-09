@@ -8,7 +8,9 @@ import {
   JSON_SCHEMA_NAMES,
   LANDO_HOST_EVENT_ENV,
   LIFECYCLE_COMMAND_IDS,
+  formatHostEventsIssueMessage,
   hostEventStepLocation,
+  hostEventsConfigIssues,
   hostEventsSemanticIssues,
   isHostEventContainerStep,
   isLifecycleCommandId,
@@ -60,11 +62,17 @@ test("rejects unknown hostEvents keys and forbidden container steps at load", ()
 
 test("rejects lifecycle command steps after alias resolve", () => {
   const issues = hostEventsSemanticIssues({
-    "post-start": [{ command: "start" }, { command: "app:destroy" }, { command: "info" }],
+    "post-start": [
+      { command: "start" },
+      { command: "app:destroy" },
+      { command: "poweroff" },
+      { command: "info" },
+    ],
   });
   expect(issues.map((issue) => issue.message)).toEqual([
     `${hostEventStepLocation("post-start", 0)} cannot run lifecycle command app:start.`,
     `${hostEventStepLocation("post-start", 1)} cannot run lifecycle command app:destroy.`,
+    `${hostEventStepLocation("post-start", 2)} cannot run lifecycle command apps:poweroff.`,
   ]);
 });
 
@@ -81,7 +89,23 @@ test("resolves lifecycle command aliases onto the sdk id list", () => {
     "app:restart",
     "app:rebuild",
     "app:destroy",
+    "apps:poweroff",
   ]);
+  expect(resolveLifecycleCommandId("poweroff")).toBe("apps:poweroff");
+  expect(isLifecycleCommandId("poweroff")).toBe(true);
+});
+
+test("prefixes load issues with config.yml hostEvents.<event>[i] and the bad key", () => {
+  const unknownEvent = hostEventsConfigIssues({ "pre-strat": [{ cmd: "echo host", service: ":host" }] });
+  expect(unknownEvent[0]?.message).toContain("config.yml hostEvents.pre-strat");
+  expect(unknownEvent[0]?.message).toContain('rejects "pre-strat"');
+
+  const forbiddenField = hostEventsConfigIssues({
+    "post-start": [{ cmd: "echo host", service: ":host", env: { A: "1" } }],
+  });
+  expect(forbiddenField[0]?.message).toContain("config.yml hostEvents.post-start[0]");
+  expect(forbiddenField[0]?.message).toContain('rejects "env"');
+  expect(formatHostEventsIssueMessage(forbiddenField[0]!)).toContain('rejects "env"');
 });
 
 test("treats omitted-service strings as container steps", () => {

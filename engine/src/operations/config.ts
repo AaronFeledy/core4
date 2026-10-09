@@ -11,7 +11,7 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { GlobalConfig, GlobalConfigView } from "@lando/sdk/schema";
+import { GlobalConfig, GlobalConfigView, hostEventsConfigIssues } from "@lando/sdk/schema";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
@@ -221,6 +221,9 @@ const configValidationError = (
 ): LandofileWriteValidationError =>
   writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
 
+const hostEventsTreeIssues = (tree: Record<string, unknown>): readonly ValidationIssue[] =>
+  Object.hasOwn(tree, "hostEvents") ? hostEventsConfigIssues(tree.hostEvents) : [];
+
 const HOST_EVENTS_HAND_EDIT =
   "hostEvents can only be changed by editing config.yml. Use `lando config edit` or edit the file itself.";
 
@@ -322,7 +325,7 @@ const metaConfigValidate = Effect.fnUntraced(function* (
   const path = resolveConfigWritePath(options);
   const tree = yield* readConfigTree(path);
   const decoded = decodeGlobalConfig(tree);
-  const issues = decodeIssues(decoded);
+  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(tree)];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);
@@ -368,7 +371,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       }),
   });
   const decoded = decodeGlobalConfig(parsed);
-  const issues = decodeIssues(decoded);
+  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(parsed)];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);

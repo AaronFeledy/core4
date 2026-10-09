@@ -10,7 +10,6 @@ import { LIFECYCLE_COMMAND_IDS } from "@lando/sdk/schema";
  */
 export const HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
   ...LIFECYCLE_COMMAND_IDS,
-  "apps:poweroff",
   "meta:bun",
   "meta:x",
 ];

@@ -10,7 +10,7 @@ import { Effect, Exit } from "effect";
 import { ConfigService } from "@lando/sdk/services";
 
 import { isExcludedFromUserAppDefaults } from "../../src/planner/app-defaults.ts";
-import { layer, loadGlobalConfigSync, takeGlobalConfigTypoWarnings } from "../../src/services/config.ts";
+import { layer, loadGlobalConfigSync, typoWarningsForConfig } from "../../src/services/config.ts";
 
 const previous = new Map<string, string>();
 
@@ -60,7 +60,30 @@ describe("config.yml hostEvents load", () => {
           'hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n      task: nope\n',
         ),
       () => {
-        expect(() => loadGlobalConfigSync()).toThrow(/hostEvents|task|Expected/);
+        expect(() => loadGlobalConfigSync()).toThrow(/config\.yml hostEvents\.pre-start\[0\] rejects "task"/);
+      },
+    );
+  });
+
+  test("names the bad key for a misspelled event and a forbidden field", async () => {
+    await withConfRoot(
+      (dir) =>
+        writeFile(
+          join(dir, "config.yml"),
+          'hostEvents:\n  pre-strat:\n    - cmd: echo host\n      service: ":host"\n',
+        ),
+      () => {
+        expect(() => loadGlobalConfigSync()).toThrow(/config\.yml hostEvents\.pre-strat rejects "pre-strat"/);
+      },
+    );
+    await withConfRoot(
+      (dir) =>
+        writeFile(
+          join(dir, "config.yml"),
+          'hostEvents:\n  post-start:\n    - cmd: echo host\n      service: ":host"\n      env: nope\n',
+        ),
+      () => {
+        expect(() => loadGlobalConfigSync()).toThrow(/config\.yml hostEvents\.post-start\[0\] rejects "env"/);
       },
     );
   });
@@ -75,26 +98,29 @@ describe("config.yml hostEvents load", () => {
       () => {
         const loaded = loadGlobalConfigSync();
         expect(loaded.hostEvents).toBeUndefined();
-        const warnings = takeGlobalConfigTypoWarnings();
+        const warnings = typoWarningsForConfig(loaded);
         expect(warnings.some((warning) => warning.includes('Unknown config.yml key "hostEvent"'))).toBe(true);
         expect(warnings.some((warning) => warning.includes("hostEvents"))).toBe(true);
+        expect(typoWarningsForConfig(loaded)).toEqual(warnings);
       },
     );
   });
 
   test("round-trips hostEvents through emitLandofileYaml and yaml-min", async () => {
-    const emitted = emitLandofileYaml({
-      hostEvents: {
-        "pre-start": [{ cmd: 'echo "a #b"', service: ":host" }],
-      },
-    });
-    const parsed = parseMinimalYaml(emitted) as {
-      readonly hostEvents: {
-        readonly "pre-start": ReadonlyArray<{ readonly cmd: string; readonly service: string }>;
-      };
+    const hostEvents = {
+      "pre-start": [
+        { cmd: 'echo "hi"', service: ":host" },
+        { cmd: "echo 'hi'", service: ":host" },
+        { cmd: "echo a #b", service: ":host" },
+        { cmd: "echo `: `", service: ":host" },
+        { cmd: "- leading", service: ":host" },
+      ],
     };
-    expect(parsed.hostEvents["pre-start"][0]?.cmd).toContain("#");
-    expect(parsed.hostEvents["pre-start"][0]?.service).toBe(":host");
+    let current: unknown = { hostEvents };
+    for (let cycle = 0; cycle < 4; cycle += 1) {
+      current = parseMinimalYaml(emitLandofileYaml(current as Record<string, unknown>));
+    }
+    expect(current).toEqual({ hostEvents });
   });
 
   test("excludes the global app and scratch apps from hostEvents", () => {

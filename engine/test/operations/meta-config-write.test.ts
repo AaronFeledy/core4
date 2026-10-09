@@ -248,6 +248,62 @@ describe("meta config hostEvents hand-edit", () => {
     expect(await readConfig()).toBe(before);
   });
 
+  test("validate rejects a container step in pre-start", async () => {
+    await seed("hostEvents:\n  pre-start:\n    - echo container\n");
+    const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      expect(result.cause.toString()).toContain("config.yml hostEvents.pre-start[0]");
+    }
+  });
+
+  test("validate rejects command: start", async () => {
+    await seed('hostEvents:\n  post-start:\n    - command: start\n');
+    const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      expect(result.cause.toString()).toContain("app:start");
+    }
+  });
+
+  test("edit rejects a container step in pre-start and leaves the file untouched", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    const result = await exit(
+      config({
+        subcommand: "edit",
+        configPath: configPath(),
+        editorRunner: async () => ({
+          kind: "edited",
+          content: "hostEvents:\n  pre-start:\n    - echo container\n",
+        }),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      expect(result.cause.toString()).toContain("config.yml hostEvents.pre-start[0]");
+    }
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("edit rejects command: start and leaves the file untouched", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    const result = await exit(
+      config({
+        subcommand: "edit",
+        configPath: configPath(),
+        editorRunner: async () => ({
+          kind: "edited",
+          content: "hostEvents:\n  post-start:\n    - command: start\n",
+        }),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("app:start");
+    expect(await readConfig()).toBe(before);
+  });
+
   test("rejects unset of hostEvents", async () => {
     await seed('hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n');
     const before = await readConfig();

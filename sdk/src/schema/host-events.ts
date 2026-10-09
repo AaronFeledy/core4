@@ -1,6 +1,6 @@
-import { Schema } from "effect";
+import { Result, Schema } from "effect";
 
-import { type ValidationIssue, validationIssue } from "./validation-issue.ts";
+import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "./validation-issue.ts";
 
 const forbidden = (description: string) => Schema.optionalKey(Schema.Never).annotate({ description });
 
@@ -34,6 +34,7 @@ export const LIFECYCLE_COMMAND_IDS = [
   "app:restart",
   "app:rebuild",
   "app:destroy",
+  "apps:poweroff",
 ] as const;
 export type LifecycleCommandId = (typeof LIFECYCLE_COMMAND_IDS)[number];
 
@@ -48,6 +49,7 @@ export const LIFECYCLE_COMMAND_ALIASES = {
   restart: "app:restart",
   rebuild: "app:rebuild",
   destroy: "app:destroy",
+  poweroff: "apps:poweroff",
 } as const satisfies Readonly<Record<string, LifecycleCommandId>>;
 
 export const resolveLifecycleCommandId = (command: string): string => {
@@ -134,6 +136,39 @@ export const isHostEventContainerStep = (step: HostEventStep): boolean => {
 
 export const hostEventStepLocation = (event: string, index: number): string =>
   `config.yml hostEvents.${event}[${index}]`;
+
+export const formatHostEventsIssueMessage = (issue: ValidationIssue): string => {
+  const path = issue.path[0] === "hostEvents" ? issue.path.slice(1) : issue.path;
+  const event = typeof path[0] === "string" ? path[0] : undefined;
+  const index = typeof path[1] === "number" ? path[1] : undefined;
+  const key =
+    typeof path[1] === "string" ? path[1] : typeof path[2] === "string" ? path[2] : undefined;
+  const location =
+    event === undefined
+      ? "config.yml hostEvents"
+      : index === undefined
+        ? `config.yml hostEvents.${event}`
+        : hostEventStepLocation(event, index);
+  if (key === undefined) return `${location}: ${issue.message}`;
+  return `${location} rejects "${key}": ${issue.message}`;
+};
+
+export const hostEventsConfigIssues = (value: unknown): ReadonlyArray<ValidationIssue> => {
+  const decoded = Schema.decodeUnknownResult(HostEvents)(value, {
+    onExcessProperty: "error",
+    errors: "all",
+  });
+  if (Result.isFailure(decoded)) {
+    return validationIssuesFromCause(decoded.failure, { fallback: "Invalid hostEvents." }).map((issue) =>
+      validationIssue(
+        issue.path[0] === "hostEvents" ? issue.path : ["hostEvents", ...issue.path],
+        formatHostEventsIssueMessage(issue),
+        issue.suggestion,
+      ),
+    );
+  }
+  return hostEventsSemanticIssues(decoded.success);
+};
 
 export const hostEventsSemanticIssues = (events: HostEvents): ReadonlyArray<ValidationIssue> => {
   const issues: ValidationIssue[] = [];
