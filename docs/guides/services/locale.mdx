@@ -8,7 +8,7 @@ tags: [beta, docs, services, environment, locale]
 
 # Set a service's locale
 
-Generate the locale in a root build step, then set `LANG` in the service's `environment`. The stock PHP and Node images ship `C`, `C.utf8`, and `POSIX` and nothing else, so `LANG` on its own asks for a locale the container doesn't have. PHP's `setlocale()` quietly stays on `C`, and the date your test expected in German comes back in English.
+Generate a glibc locale in a root build step, then set `LANG` in the service's `environment`. This example uses Lando's Debian-based PHP image. Setting `LANG` alone doesn't install a locale.
 
 ```yaml
 name: locale-demo
@@ -46,7 +46,7 @@ lando app:config:lint
 lando start
 ```
 
-Swap `de_DE` for whatever your app needs. The pattern is the same for every locale.
+Swap `de_DE` for the locale your app needs. For custom or Alpine-based images, use that image's locale tools instead of this Debian package command.
 
 ## Generate the locale in a build step
 
@@ -60,12 +60,7 @@ Check what the service has now:
 lando exec -- locale -a
 ```
 
-```
-C
-C.utf8
-de_DE.utf8
-POSIX
-```
+Check that the list includes `de_DE.utf8`.
 
 The `node` service has no build step, so ask it the same question:
 
@@ -73,20 +68,13 @@ The `node` service has no build step, so ask it the same question:
 lando exec node -- locale -a
 ```
 
-```
-locale: Cannot set LC_CTYPE to default locale: No such file or directory
-locale: Cannot set LC_MESSAGES to default locale: No such file or directory
-locale: Cannot set LC_COLLATE to default locale: No such file or directory
-C
-C.utf8
-POSIX
-```
-
-That's what every stock image looks like before you add the step: `LANG` points at a locale glibc can't find.
+The unmodified Debian-based Node image has no generated German glibc locale. `locale` may warn that it cannot load the requested locale.
 
 ## Set `LANG` in the service environment
 
-`LANG` sets every `LC_*` category at once. Put it under `services.<name>.environment` and every process in the service inherits it, Apache included. `lando exec` uses the service's value, not the one in your host shell.
+`LANG` supplies the default for locale categories. `LC_ALL` overrides it for every category; individual variables such as `LC_TIME` override it for that category. Remove conflicting overrides if you want `LANG` to control them.
+
+Put it under `services.<name>.environment` so service processes inherit it, Apache included. `lando exec` uses the container environment rather than copying your host's `LANG`.
 
 ## Check PHP
 
@@ -94,21 +82,13 @@ That's what every stock image looks like before you add the step: `LANG` points 
 lando exec -- php -r 'setlocale(LC_ALL, ""); echo setlocale(LC_ALL, 0), PHP_EOL;'
 ```
 
-```
-de_DE.UTF-8
-```
-
-`setlocale(LC_ALL, "")` reads `LANG`. Ask for a locale you didn't generate and PHP returns `false` without a warning:
+Check that the active locale is German. `setlocale(LC_ALL, "")` reads the locale environment. Ask for a locale you didn't generate and PHP returns `false`:
 
 ```sh
 lando exec -- php -r 'var_dump(setlocale(LC_ALL, "fr_FR.UTF-8"));'
 ```
 
-```
-bool(false)
-```
-
-That silent `false` is the whole bug. If a locale-aware test passes on your laptop and fails in Lando, run `locale -a` in the service before you blame the test.
+If this returns `false`, check `locale -a` before debugging your application.
 
 Shell tools read the same glibc data:
 
@@ -116,52 +96,23 @@ Shell tools read the same glibc data:
 lando exec -- date -d 2025-01-01 '+%A, %d. %B %Y'
 ```
 
-```
-Mittwoch, 01. Januar 2025
-```
-
-The `intl` extension ships in the `php` service. It formats with its own ICU data and takes its default locale from `LANG`:
+The `intl` extension ships in the `php` service. It formats with ICU data, independently of generated glibc locales. Its default comes from `intl.default_locale` when configured, otherwise ICU's environment-derived default:
 
 ```sh
 lando exec -- php -r '$f = new IntlDateFormatter(null, IntlDateFormatter::FULL, IntlDateFormatter::NONE, "UTC"); echo $f->format(new DateTime("2025-01-01")), PHP_EOL;'
 ```
 
-```
-Mittwoch, 1. Januar 2025
-```
-
-Open the `appserver` URL from `lando info`. The page Apache serves prints the same two lines:
-
-```
-de_DE.UTF-8
-Mittwoch, 1. Januar 2025
-```
-
-## Know which calls need the build step
-
-Here is the same `php:8.3` service with `LANG: de_DE.UTF-8`, with and without the build step:
-
-| Check | `LANG` only | `LANG` plus build step |
-| --- | --- | --- |
-| `setlocale(LC_ALL, "")`, read back | `C` for every category, `C.UTF-8` for `LC_CTYPE` | `de_DE.UTF-8` |
-| `date -d 2025-01-01 '+%A, %d. %B %Y'` | `Wednesday, 01. January 2025` | `Mittwoch, 01. Januar 2025` |
-| `IntlDateFormatter`, full date | `Mittwoch, 1. Januar 2025` | `Mittwoch, 1. Januar 2025` |
-
-ICU-based formatting follows `LANG` either way. Anything that goes through glibc, like `setlocale()` and `date`, needs the generated locale.
+Run `lando info` and open the `appserver` URL to check the web process too. The example page reports the active glibc locale and an ICU-formatted date. Both should use German unless your PHP or locale environment overrides the defaults.
 
 ## Check Node
 
-Node bundles its own ICU data and takes its default locale from `LANG`, so `Intl` formatting works without the build step:
+The stock Node image bundles ICU data. With no conflicting locale variables, `Intl` uses `LANG` as its default and can format German without generating a glibc locale:
 
 ```sh
 lando exec node -- node -e 'console.log(new Date(Date.UTC(2025, 0, 1)).toLocaleDateString(undefined, { dateStyle: "full", timeZone: "UTC" }))'
 ```
 
-```
-Mittwoch, 1. Januar 2025
-```
-
-Anything in that service that goes through glibc, like `locale` itself above, still has nothing to load. Give the `node` service the same build step when you need that side too.
+glibc tools still need a generated locale. Give the Debian-based `node` service the same build step when you need those tools too. Pass an explicit locale to `Intl` when formatting must not depend on the environment.
 
 ## Change the locale
 
@@ -185,15 +136,9 @@ lando rebuild -y
 lando exec -- locale -a
 ```
 
-```
-C
-C.utf8
-de_DE.utf8
-en_GB.utf8
-POSIX
-```
+Check that both `de_DE.utf8` and `en_GB.utf8` are listed.
 
-## Check what the planner sees
+## Inspect the merged config
 
 `lando app:config` prints the merged Landofile, so you can confirm `LANG` and the root build step before anything builds.
 
