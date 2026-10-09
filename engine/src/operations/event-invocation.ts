@@ -4,6 +4,7 @@ import {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 import type { AppPlan, LandofileEventName } from "@lando/sdk/schema";
+import { eventStepFile } from "./event-step-identity.ts";
 import { Context, Effect, Option } from "effect";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
@@ -81,7 +82,14 @@ export const runCanonicalCommand = Effect.fnUntraced(function* (
   }
   const active = yield* ActiveEventFrames;
   const invokingFrames = active.map((frame, index) =>
-    index === active.length - 1 ? { ...frame, command: leaf.command, index: leaf.authoredIndex } : frame,
+    index === active.length - 1
+      ? {
+          ...frame,
+          command: leaf.command,
+          index: leaf.authoredIndex,
+          file: eventStepFile(leaf.source, plan.metadata.source),
+        }
+      : frame,
   );
   const result = yield* executor.value
     .run({

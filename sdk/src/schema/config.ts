@@ -5,6 +5,7 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { ScannerConfig } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
+import { HostEvents } from "./host-events.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 
@@ -315,6 +316,10 @@ export const GlobalConfig = Schema.Struct({
     }),
   ).annotate({
     description: "Global event delivery policy (global events).",
+  }),
+  hostEvents: Schema.optionalKey(HostEvents).annotate({
+    description:
+      "Host-wide lifecycle steps from config.yml. Distinct from events (delivery policy) and never part of the global-app Landofile.",
   }),
   tracing: Schema.optionalKey(TracingConfig).annotate({
     description: "Global tracing export policy (global tracing).",

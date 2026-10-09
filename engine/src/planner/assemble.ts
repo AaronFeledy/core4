@@ -63,6 +63,7 @@ import {
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
@@ -314,7 +315,15 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     });
   }
   const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
-  const effectiveEvents = compileEffectiveEvents({ landofile });
+  const hostEventCompileBase = {
+    landofile,
+    ...(AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService)
+      ? {}
+      : { hostEvents: globalConfig?.hostEvents }),
+    skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
+  };
+  const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
+    compileEffectiveEvents({ ...hostEventCompileBase, services });
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const cacheKey = deriveAppPlanCacheKey({
     appRoot,
@@ -359,7 +368,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
       return attachServiceCredsScope(
-        attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEvents),
+        attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEventsFor(cached.services)),
         serviceCredsScope,
       );
     }
@@ -468,7 +477,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
       effectiveTooling,
     ),
-    effectiveEvents,
+    effectiveEventsFor(finalized.services),
   );
   attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);

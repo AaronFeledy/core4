@@ -17,6 +17,7 @@ import { parseLandofile } from "@lando/landofile/parser";
 
 import { lookupRecipeSnapshot } from "../../recipes/builtin/snapshots.ts";
 import type { AppConfigExplainResult, ExplainBlockedReason } from "./app-config-explain-output.ts";
+import { hostEventStatusesForLandofile } from "./host-event-status.ts";
 import {
   CANONICAL_LANDOFILE,
   PROGRAMMATIC_LANDOFILE,
@@ -401,6 +402,10 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
   };
   const truncated = Object.values(omitted).some((count) => count > 0);
 
+  const hostEvents = hostEventStatusesForLandofile({
+    events: document.events,
+    services: document.services,
+  });
   return {
     landofilePath,
     form: read.form,
@@ -409,5 +414,6 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
     bounds: truncated ? { _tag: "truncated", omitted } : { _tag: "complete" },
     services: services.slice(0, EXPLAIN_MAX_SERVICES),
     options: reported.slice(0, EXPLAIN_MAX_OPTIONS),
+    ...(hostEvents.length === 0 ? {} : { hostEvents }),
   } satisfies AppConfigExplainResult;
 });

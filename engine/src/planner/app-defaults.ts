@@ -34,16 +34,21 @@ const isPathWithin = (root: string, candidate: string): boolean => {
   );
 };
 
+export const isExcludedFromUserAppDefaults = (
+  appName: string,
+  appRoot: string,
+  paths: AppDefaultPaths | undefined,
+): boolean =>
+  appName === "global" ||
+  (paths !== undefined && (appRoot === paths.globalAppRoot || isPathWithin(paths.scratchDir, appRoot)));
+
 export const resolveUserAppDefaults = (
   appName: string,
   appRoot: string,
   paths: AppDefaultPaths | undefined,
   config: GlobalConfig | undefined,
 ): UserAppDefaults => {
-  const excluded =
-    appName === "global" ||
-    (paths !== undefined && (appRoot === paths.globalAppRoot || isPathWithin(paths.scratchDir, appRoot)));
-  return excluded
+  return isExcludedFromUserAppDefaults(appName, appRoot, paths)
     ? {}
     : {
         ...(config?.appEnv === undefined ? {} : { appEnv: config.appEnv }),

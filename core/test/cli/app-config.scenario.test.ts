@@ -97,6 +97,68 @@ describe("lando app:config", () => {
     });
   });
 
+  test("shows hostEvents steps as ran, skipped, or deduped", async () => {
+    await withTempCwd(async (dir) => {
+      const previous = new Map<string, string>();
+      for (const [key, value] of Object.entries(process.env)) {
+        if (key.startsWith("LANDO_") && value !== undefined) {
+          previous.set(key, value);
+          delete process.env[key];
+        }
+      }
+      process.env.LANDO_USER_CONF_ROOT = dir;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      process.env.LANDO_USER_CACHE_ROOT = join(dir, "cache");
+      await writeFile(
+        join(dir, "config.yml"),
+        [
+          "hostEvents:",
+          "  post-start:",
+          "    - echo shared",
+          "    - cmd: echo missing",
+          "      service: db",
+          "    - cmd: echo host",
+          "      service: \":host\"",
+          "",
+        ].join("\n"),
+      );
+      const landofile = {
+        name: "host-status",
+        services: { web: { type: "node:22", primary: true } },
+        events: { "post-start": ["echo shared"] },
+      };
+      const layer = Layer.succeed(
+        LandofileService,
+        LandofileService.of({
+          discover: Effect.succeed(landofile),
+        }),
+      );
+      try {
+        const result = await Effect.runPromise(
+          appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+        );
+        expect(result.hostEvents).toEqual([
+          { event: "post-start", index: 0, step: "echo shared", status: "deduped" },
+          {
+            event: "post-start",
+            index: 1,
+            step: { cmd: "echo missing", service: "db" },
+            status: "skipped",
+            reason: "service db is not in the plan",
+          },
+          { event: "post-start", index: 2, step: { cmd: "echo host", service: ":host" }, status: "ran" },
+        ]);
+        const table = renderAppConfigResult(result, "table");
+        expect(table).toContain("hostEvents.post-start[0]\tdeduped");
+        expect(table).toContain("hostEvents.post-start[1]\tskipped (service db is not in the plan)");
+        expect(table).toContain("hostEvents.post-start[2]\tran");
+      } finally {
+        for (const key of Object.keys(process.env)) if (key.startsWith("LANDO_")) delete process.env[key];
+        for (const [key, value] of previous) process.env[key] = value;
+      }
+    });
+  });
+
   test("returns a single resolved value for get", async () => {
     const layer = Layer.succeed(
       LandofileService,

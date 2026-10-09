@@ -6,7 +6,9 @@ import { Clock, type Context, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
+import { eventStepLabel } from "./event-step-identity.ts";
 import {
   type EventService,
   RuntimeProviderRegistry,
@@ -87,25 +89,28 @@ const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
   error: unknown,
-): LandofileEventStepFailedError =>
-  new LandofileEventStepFailedError({
-    message: `Event ${options.event} step ${leaf.authoredIndex + 1} failed.`,
+): LandofileEventStepFailedError => {
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  return new LandofileEventStepFailedError({
+    message: `Event ${label} failed.`,
     event: options.event,
     index: leaf.authoredIndex,
     kind: leaf.kind,
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
+    remediation: `Fix ${label}, then rerun the lifecycle command.`,
   });
+};
 
 const nonzeroFailure = (
   options: EventRuntimeOptions,
   leaf: ResolvedToolingStepLeaf,
   result: ToolingEngineResult,
-): LandofileEventStepFailedError =>
-  new LandofileEventStepFailedError({
-    message: `Event ${options.event} step ${leaf.authoredIndex + 1} failed with exit code ${result.exitCode}.`,
+): LandofileEventStepFailedError => {
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  return new LandofileEventStepFailedError({
+    message: `Event ${label} failed with exit code ${result.exitCode}.`,
     event: options.event,
     index: leaf.authoredIndex,
     kind: leaf.kind,
@@ -115,8 +120,26 @@ const nonzeroFailure = (
       options.redactor.redactString(result.stdout),
       options.redactor.redactString(result.stderr),
     ),
-    remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
+    remediation: `Fix ${label}, then rerun the lifecycle command.`,
   });
+};
+
+const withHostEventEnv = <A, E, R>(
+  source: "host" | "project" | undefined,
+  work: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> => {
+  if (source !== "host") return work;
+  const previous = process.env[LANDO_HOST_EVENT_ENV];
+  process.env[LANDO_HOST_EVENT_ENV] = "1";
+  return work.pipe(
+    Effect.ensuring(
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env[LANDO_HOST_EVENT_ENV];
+        else process.env[LANDO_HOST_EVENT_ENV] = previous;
+      }),
+    ),
+  );
+};
 
 const toolingRuntime = Effect.fnUntraced(function* (tool: string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -187,16 +210,21 @@ const runInvocation = Effect.fnUntraced(function* (
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
+  const hostEnv = leaf.source === "host" ? { [LANDO_HOST_EVENT_ENV]: "1" } : undefined;
+  const env = leaf.env === undefined && hostEnv === undefined ? undefined : { ...(leaf.env ?? {}), ...hostEnv };
   const task: ToolingTaskShape = {
     cmd: leaf.command,
     ...(leaf.service === undefined ? {} : { service: leaf.service }),
-    ...(leaf.env === undefined ? {} : { env: leaf.env }),
+    ...(env === undefined ? {} : { env }),
     ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
   };
-  const result = yield* runInvocation(options, `${options.event}`, task, {
-    ...(leaf.user === undefined ? {} : { user: leaf.user }),
-    redactionTokens,
-  }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
+  const result = yield* withHostEventEnv(
+    leaf.source,
+    runInvocation(options, `${options.event}`, task, {
+      ...(leaf.user === undefined ? {} : { user: leaf.user }),
+      redactionTokens,
+    }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error))),
+  );
   return { leaf, result, startedAt, redactor };
 });
 
@@ -279,19 +307,22 @@ export const makeEventStepRunners = (
     runCommand: (leaf) =>
       checked(
         leaf,
-        Clock.currentTimeMillis.pipe(
-          Effect.flatMap((startedAt) => {
-            return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
-              Effect.flatMap(({ redactor, redactionTokens }) =>
-                options.runCanonical(leaf, redactionTokens).pipe(
-                  Effect.mapError((error) =>
-                    isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
+        withHostEventEnv(
+          leaf.source,
+          Clock.currentTimeMillis.pipe(
+            Effect.flatMap((startedAt) => {
+              return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
+                Effect.flatMap(({ redactor, redactionTokens }) =>
+                  options.runCanonical(leaf, redactionTokens).pipe(
+                    Effect.mapError((error) =>
+                      isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
+                    ),
+                    Effect.map((result) => ({ leaf, result, startedAt, redactor })),
                   ),
-                  Effect.map((result) => ({ leaf, result, startedAt, redactor })),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
       ),
     present: (execution) => publish(options, execution.result),

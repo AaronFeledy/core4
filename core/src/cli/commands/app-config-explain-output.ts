@@ -1,6 +1,8 @@
 import { RecipeOptionValue, RecipeProducer } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
+import { HostEventAppStatus } from "./host-event-status.ts";
+
 /**
  * Why semantic comparison against generated authoring data is unavailable.
  *
@@ -100,6 +102,7 @@ export const AppConfigExplainResultSchema = Schema.Struct({
   bounds: ExplainBounds,
   services: Schema.Array(ExplainServiceMapping),
   options: Schema.Array(ExplainOption),
+  hostEvents: Schema.optionalKey(Schema.Array(HostEventAppStatus)),
 });
 
 export type AppConfigExplainResult = typeof AppConfigExplainResultSchema.Type;
@@ -155,6 +158,14 @@ export const renderAppConfigExplainResult = (result: AppConfigExplainResult): st
     }
     for (const site of option.takenOver) {
       lines.push(`  taken over: ${site.path} was ${site.generatedExpression}, now ${site.currentValue}`);
+    }
+  }
+
+  if ((result.hostEvents ?? []).length > 0) {
+    lines.push("", "Host events:");
+    for (const entry of result.hostEvents ?? []) {
+      const reason = entry.reason === undefined ? "" : ` (${entry.reason})`;
+      lines.push(`  hostEvents.${entry.event}[${entry.index}]: ${entry.status}${reason}`);
     }
   }
 

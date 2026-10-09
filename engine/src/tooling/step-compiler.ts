@@ -38,8 +38,13 @@ const deferNode = (leaf: ToolingStepLeaf): ToolingStepDeferNode => ({
   leaf,
 });
 
-const shared = (step: Exclude<EventStep, string>, authoredIndex: number) => ({
+const shared = (
+  step: Exclude<EventStep, string>,
+  authoredIndex: number,
+  source?: "host" | "project",
+) => ({
   authoredIndex,
+  ...(source === undefined ? {} : { source }),
   ...(step.if === undefined ? {} : { condition: step.if }),
   silent: step.silent ?? false,
   ignoreError: "ignoreError" in step ? (step.ignoreError ?? false) : false,
@@ -50,10 +55,11 @@ const cmdLeaf = (
     | Extract<Exclude<EventStep, string>, { readonly cmd: string }>
     | Extract<Exclude<EventStep, string>, { readonly defer: string }>,
   authoredIndex: number,
+  source?: "host" | "project",
 ): ToolingCmdStepLeaf => ({
   kind: "cmd",
   command: "cmd" in step && step.cmd !== undefined ? step.cmd : step.defer,
-  ...shared(step, authoredIndex),
+  ...shared(step, authoredIndex, source),
   ...("service" in step && step.service !== undefined ? { service: step.service } : {}),
   ...("dir" in step && step.dir !== undefined ? { dir: String(step.dir) } : {}),
   ...("env" in step && step.env !== undefined ? { env: step.env } : {}),
@@ -63,32 +69,45 @@ const cmdLeaf = (
 const taskLeaf = (
   step: Extract<Exclude<EventStep, string>, { readonly task: string }>,
   authoredIndex: number,
+  source?: "host" | "project",
 ): ToolingTaskStepLeaf => ({
   kind: "task",
   task: step.task,
-  ...shared(step, authoredIndex),
+  ...shared(step, authoredIndex, source),
   ...(step.vars === undefined ? {} : { vars: step.vars }),
 });
 
 const commandLeaf = (
   step: Extract<Exclude<EventStep, string>, { readonly command: string }>,
   authoredIndex: number,
+  source?: "host" | "project",
 ): ToolingCommandStepLeaf => ({
   kind: "command",
   command: step.command,
   flags: step.flags ?? {},
   args: step.args ?? {},
   raw: step.raw ?? [],
-  ...shared(step, authoredIndex),
+  ...shared(step, authoredIndex, source),
 });
 
-const compileLeaf = (step: EventStep, authoredIndex: number): ToolingStepLeaf => {
+const compileLeaf = (
+  step: EventStep,
+  authoredIndex: number,
+  source?: "host" | "project",
+): ToolingStepLeaf => {
   if (typeof step === "string") {
-    return { kind: "cmd", authoredIndex, command: step, silent: false, ignoreError: false };
+    return {
+      kind: "cmd",
+      authoredIndex,
+      command: step,
+      silent: false,
+      ignoreError: false,
+      ...(source === undefined ? {} : { source }),
+    };
   }
-  if ("task" in step && step.task !== undefined) return taskLeaf(step, authoredIndex);
-  if ("command" in step && step.command !== undefined) return commandLeaf(step, authoredIndex);
-  return cmdLeaf(step, authoredIndex);
+  if ("task" in step && step.task !== undefined) return taskLeaf(step, authoredIndex, source);
+  if ("command" in step && step.command !== undefined) return commandLeaf(step, authoredIndex, source);
+  return cmdLeaf(step, authoredIndex, source);
 };
 
 const unavailableSelector = (selector: "sources" | "generates") =>
@@ -114,22 +133,23 @@ const compileSelector = (
 const compileNode = (
   step: EventStep,
   authoredIndex: number,
+  source?: "host" | "project",
 ): Effect.Effect<ToolingStepNode, ToolingStepSelectorUnavailableError> => {
   if (typeof step !== "string" && "for" in step && step.for !== undefined) {
     return compileSelector(step.for).pipe(
       Effect.map((selector) => {
         const body =
           "defer" in step && step.defer !== undefined
-            ? deferNode(compileLeaf(step, authoredIndex))
-            : leafNode(compileLeaf(step, authoredIndex));
+            ? deferNode(compileLeaf(step, authoredIndex, source))
+            : leafNode(compileLeaf(step, authoredIndex, source));
         return { kind: "for", authoredIndex, selector, body };
       }),
     );
   }
   if (typeof step !== "string" && "defer" in step && step.defer !== undefined) {
-    return Effect.succeed(deferNode(compileLeaf(step, authoredIndex)));
+    return Effect.succeed(deferNode(compileLeaf(step, authoredIndex, source)));
   }
-  return Effect.succeed(leafNode(compileLeaf(step, authoredIndex)));
+  return Effect.succeed(leafNode(compileLeaf(step, authoredIndex, source)));
 };
 
 /** Scalars and array entries are dynamic when any parsed string segment is not literal. */
@@ -177,12 +197,19 @@ const commandLeafHasDynamicInput = (
   );
 };
 
+export interface EventStepIdentity {
+  readonly authoredIndex: number;
+  readonly source?: "host" | "project";
+}
+
 export const compileEventStepProgram = (
   steps: ReadonlyArray<EventStep>,
   validateCommand?: (leaf: ToolingCommandStepLeaf) => Effect.Effect<void, ToolingCompileError>,
+  identities?: ReadonlyArray<EventStepIdentity>,
 ): Effect.Effect<ToolingStepProgram, EventStepCompileError> =>
-  Effect.forEach(steps, (step, authoredIndex) =>
-    compileNode(step, authoredIndex).pipe(
+  Effect.forEach(steps, (step, index) => {
+    const identity = identities?.[index] ?? { authoredIndex: index };
+    return compileNode(step, identity.authoredIndex, identity.source).pipe(
       Effect.tap((node) => {
         const leaf = node.kind === "for" ? node.body.leaf : node.leaf;
         if (leaf.kind !== "command" || validateCommand === undefined) return Effect.void;
@@ -194,13 +221,13 @@ export const compileEventStepProgram = (
         (cause) =>
           new EventStepCompileError({
             message: cause.message,
-            authoredIndex,
-            kind: compileLeaf(step, authoredIndex).kind,
+            authoredIndex: identity.authoredIndex,
+            kind: compileLeaf(step, identity.authoredIndex, identity.source).kind,
             cause,
           }),
       ),
-    ),
-  ).pipe(Effect.map((nodes) => ({ nodes })));
+    );
+  }).pipe(Effect.map((nodes) => ({ nodes })));
 
 export const compileSimpleToolingTaskProgram = (name: string): ToolingStepProgram => ({
   nodes: [

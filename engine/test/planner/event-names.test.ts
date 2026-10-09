@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import { HOST_EVENT_NAMES } from "@lando/sdk/schema";
 import { unknownEventError, unknownEventName, validEventNames } from "../../src/planner/event-names.ts";
 
 const staticNames = [
@@ -17,6 +18,22 @@ const staticNames = [
   "pre-destroy",
   "post-destroy",
 ];
+
+test("hostEvents covers the ten start/stop/restart/rebuild/destroy brackets", () => {
+  expect([...HOST_EVENT_NAMES]).toEqual([
+    "pre-start",
+    "post-start",
+    "pre-stop",
+    "post-stop",
+    "pre-restart",
+    "post-restart",
+    "pre-rebuild",
+    "post-rebuild",
+    "pre-destroy",
+    "post-destroy",
+  ]);
+  for (const name of HOST_EVENT_NAMES) expect(staticNames).toContain(name);
+});
 
 test("enumerates canonical lifecycle names when tooling is empty", () => {
   // Given / When

@@ -92,6 +92,30 @@ lando config validate
 lando config edit
 ```
 
+## Add host-wide lifecycle steps
+
+`hostEvents` in `config.yml` runs the same lifecycle steps for every user app. Only the file can set it: `LANDO_CONFIG__*` overlays drop the key, and `lando config set` / `lando config unset` refuse every `hostEvents` path.
+
+```yaml
+hostEvents:
+  pre-start:
+    - cmd: echo host-wide
+      service: ":host"
+```
+
+Use `lando config edit` or edit the file itself. `lando config --format=json` includes `hostEvents` in the public view. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step shapes, order, dedupe, skip rules, and the `LANDO_HOST_EVENT` guard.
+
+  <Scenario id="host-events-hand-edit" render={false} reason="Reject config set/unset of hostEvents">
+    <Step name="reject-set">
+      <Run command="lando config set hostEvents.pre-start echo --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "config edit" }} />
+    </Step>
+    <Step name="reject-unset">
+      <Run command="lando config unset hostEvents --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "config edit" }} />
+    </Step>
+  </Scenario>
+
 ## Configure the shared global app
 
 `lando global:config` reads or writes the shared global Lando app's Landofile stack. That always-on app hosts host-wide services such as the proxy. It is not the installation config from `lando config`. Lando starts Traefik for you as part of that global app.

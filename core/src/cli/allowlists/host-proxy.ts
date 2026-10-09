@@ -1,4 +1,5 @@
 import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
+import { LIFECYCLE_COMMAND_IDS } from "@lando/sdk/schema";
 
 /**
  * Lifecycle and package-manager commands that MUST NOT ride the host-proxy
@@ -8,11 +9,7 @@ import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
  * at registration with `HostProxyAllowlistConflictError`.
  */
 export const HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
-  "app:start",
-  "app:stop",
-  "app:restart",
-  "app:rebuild",
-  "app:destroy",
+  ...LIFECYCLE_COMMAND_IDS,
   "apps:poweroff",
   "meta:bun",
   "meta:x",

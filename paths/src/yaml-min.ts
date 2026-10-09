@@ -57,10 +57,39 @@ interface ParsedLine {
   readonly text: string;
 }
 
+/** Strip a `#` comment only when it is outside single or double quotes. */
+const stripInlineComment = (line: string): string => {
+  let inSingle = false;
+  let inDouble = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (inDouble && char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === "'" && !inDouble) {
+      if (inSingle && line[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "#" && !inSingle && !inDouble && (index === 0 || /\s/.test(line[index - 1] ?? ""))) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+};
+
 const toLines = (text: string): ReadonlyArray<ParsedLine> => {
   const lines: ParsedLine[] = [];
   for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
-    const withoutComment = rawLine.replace(/\s+#.*$/, "");
+    const withoutComment = stripInlineComment(rawLine);
     const trimmedLine = withoutComment.trim();
     if (trimmedLine === "" || trimmedLine.startsWith("#")) continue;
     lines.push({ indent: withoutComment.match(/^ */)?.[0].length ?? 0, line: index + 1, text: trimmedLine });

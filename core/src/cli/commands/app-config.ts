@@ -52,6 +52,7 @@ import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
 import { renderConfigWriteResult } from "./config-write-render";
+import { HostEventAppStatus, hostEventStatusesForLandofile, renderHostEventStatuses } from "./host-event-status";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
@@ -83,6 +84,7 @@ export interface AppConfigResult {
   readonly issues?: ReadonlyArray<string>;
   readonly filePath?: string;
   readonly redactionTokens?: ReadonlyArray<string>;
+  readonly hostEvents?: ReadonlyArray<HostEventAppStatus>;
 }
 
 export const appConfigRedactionTokens = (result: unknown): ReadonlyArray<string> => {
@@ -109,6 +111,7 @@ export const AppConfigResultSchema = Schema.Struct({
     ),
   ),
   ...ConfigWriteResultFields,
+  hostEvents: Schema.optionalKey(Schema.Array(HostEventAppStatus)),
 });
 
 type AppConfigError =
@@ -404,6 +407,7 @@ const tableRender = (result: AppConfigResult): string => {
     const recipeLabel = typeof recipe === "string" ? recipe : recipe.id;
     lines.push(`recipe\t${recipeLabel}`);
   }
+  lines.push(...renderHostEventStatuses(result.hostEvents ?? []));
   return lines.join("\n");
 };
 
@@ -457,11 +461,13 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
 
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofile(landofileService);
+  const hostEvents = hostEventStatusesForLandofile(landofile);
   return {
     app: landofile.name ?? "",
     source: "resolved",
     landofile,
     sources: getLandofileIncludeSources(landofile),
     redactionTokens: collectLandofileRedactionTokens(landofile),
+    ...(hostEvents.length === 0 ? {} : { hostEvents }),
   };
 });

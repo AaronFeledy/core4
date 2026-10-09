@@ -224,3 +224,36 @@ describe("meta config edit via injected editor seam", () => {
     expect(await readConfig()).toBe(before);
   });
 });
+
+describe("meta config hostEvents hand-edit", () => {
+  test("rejects set of hostEvents and any nested path", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    for (const key of ["hostEvents", "hostEvents.pre-start", "hostEvents.pre-start[0]"]) {
+      const result = await exit(
+        config({
+          subcommand: "set",
+          key,
+          value: "echo host",
+          configPath: configPath(),
+        }),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      if (Exit.isFailure(result)) {
+        const text = result.cause.toString();
+        expect(text).toContain("LandofileWriteValidationError");
+        expect(text).toContain("config edit");
+      }
+    }
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("rejects unset of hostEvents", async () => {
+    await seed("hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: \":host\"\n");
+    const before = await readConfig();
+    const result = await exit(config({ subcommand: "unset", key: "hostEvents.pre-start", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("config edit");
+    expect(await readConfig()).toBe(before);
+  });
+});

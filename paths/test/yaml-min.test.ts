@@ -24,4 +24,20 @@ describe("parseMinimalYaml", () => {
   test("round-trips a config value written as an inline flow object", () => {
     expect(parseMinimalYaml('meta: {"a":1}')).toEqual({ meta: { a: 1 } });
   });
+
+  test("keeps a hash that sits inside a double-quoted command", () => {
+    expect(parseMinimalYaml('cmd: echo "a #b"')).toEqual({ cmd: 'echo "a #b"' });
+  });
+
+  test("keeps a hash that sits inside a single-quoted command", () => {
+    expect(parseMinimalYaml("cmd: echo 'a #b'")).toEqual({ cmd: "echo 'a #b'" });
+  });
+
+  test("still strips a real comment after a quoted hash", () => {
+    expect(parseMinimalYaml('cmd: echo "a #b" # trailing')).toEqual({ cmd: 'echo "a #b"' });
+  });
+
+  test("strips an unquoted trailing comment", () => {
+    expect(parseMinimalYaml("cmd: echo hello # comment")).toEqual({ cmd: "echo hello" });
+  });
 });
