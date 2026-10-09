@@ -101,6 +101,7 @@ const makeFakeApi = (input: {
   readonly existingBindSource?: string;
   readonly existingContainerName?: string;
   readonly existingNetworks?: ReadonlyArray<string>;
+  readonly networkExists?: boolean;
   readonly agentMount?: {
     readonly Type: string;
     readonly Source: string;
@@ -123,7 +124,7 @@ const makeFakeApi = (input: {
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 404, body: "{}" };
+          return { status: input.networkExists === true ? 200 : 404, body: "{}" };
         }
         if (request.method === "POST" && request.path === "/networks/create") {
           return { status: 201, body: "{}" };
@@ -526,7 +527,7 @@ describe("Podman publish-port recreate", () => {
   });
 
   test("forbidRecreate refuses a publish-port mismatch instead of recreating", async () => {
-    const fake = makeFakeApi({ deleteStatus: 204 });
+    const fake = makeFakeApi({ deleteStatus: 204, networkExists: true });
     const plan = planWithHostPort(38080);
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
     const failures = Exit.isFailure(exit)
@@ -541,6 +542,9 @@ describe("Podman publish-port recreate", () => {
     );
     expect(createCalls(fake.calls)).toEqual([]);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
+      false,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
       false,
     );
   });

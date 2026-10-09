@@ -866,7 +866,7 @@ const rollbackPartialApply = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void> {
   // Volumes are preserved so rollback does not discard persistent data.
   yield* cleanupTouchedContainers(deps, touched);
-  yield* removeNetworkSilent(deps, plan);
+  if (deps.options.forbidRecreate !== true) yield* removeNetworkSilent(deps, plan);
   yield* removeCreatedNetworksSilent(deps, createdNetworks);
 });
 
