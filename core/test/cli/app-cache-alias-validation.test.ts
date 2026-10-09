@@ -5,12 +5,21 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { type AppCacheRefreshResult, refreshAppCache } from "@lando/core/cli/operations";
-import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  PluginName,
+  type ProviderCapabilities,
+  ProviderId,
+} from "@lando/core/schema";
 import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
-import { appCommandCachePath } from "@lando/engine/cache/paths";
+import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
+import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
 const providerId = ProviderId.make("lando");
 const capabilities: ProviderCapabilities = {
@@ -49,8 +58,12 @@ const withRefreshFixture = async <T>(
   commandAliases: NonNullable<LandofileShape["commandAliases"]>,
   run: (fixture: {
     readonly cachePath: string;
+    readonly toolingCachePath: string;
+    readonly root: string;
+    readonly cacheRoot: string;
     readonly refresh: Effect.Effect<AppCacheRefreshResult, unknown>;
   }) => Promise<T>,
+  scripts: ReadonlyArray<string> = [],
 ): Promise<T> => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-app-cache-aliases-")));
   const cacheRoot = join(root, "cache");
@@ -87,7 +100,15 @@ const withRefreshFixture = async <T>(
     Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
-        list: Effect.succeed([]),
+        list: Effect.succeed([
+          {
+            name: PluginName.make("@lando/seed"),
+            version: "0.0.0",
+            api: 4,
+            bootstrap: "app",
+            contributes: { commands: ["db:seed"] },
+          },
+        ]),
         load: () => Effect.die("plugin load must not run"),
         loadServiceType: () => Effect.die("service type load must not run"),
         loadServiceFeature: () => Effect.die("service feature load must not run"),
@@ -107,9 +128,17 @@ const withRefreshFixture = async <T>(
   try {
     await mkdir(cacheRoot, { recursive: true });
     await writeFile(join(root, ".lando.yml"), "name: alias-refresh\n");
+    for (const script of scripts) {
+      const path = join(root, ".lando/scripts", script);
+      await mkdir(join(path, ".."), { recursive: true });
+      await writeFile(path, "# ---\n# desc: Script task\n# ---\necho script\n");
+    }
     const refresh = refreshAppCache({ cwd: root, cacheRoot }).pipe(Effect.provide(layer));
     return await run({
       cachePath: appCommandCachePath(cacheRoot, landofile.name, root),
+      toolingCachePath: appToolingCompilationCachePath(cacheRoot, root),
+      root,
+      cacheRoot,
       refresh,
     });
   } finally {
@@ -128,6 +157,91 @@ test("app cache refresh rejects canonical alias collisions before writing", asyn
     expect(await Bun.file(cachePath).exists()).toBe(false);
   });
 });
+
+test.each(["info", "version", "help", "run", "scratch", "cache/refresh"])(
+  "app cache refresh rejects the script %s before writing command caches",
+  async (name) => {
+    // Given
+    await withRefreshFixture(
+      {},
+      async ({ cachePath, toolingCachePath, refresh }) => {
+        // When
+        const error = await Effect.runPromise(Effect.flip(refresh));
+        // Then
+        expect(error).toBeInstanceOf(CommandAliasConflictError);
+        expect(await Bun.file(cachePath).exists()).toBe(false);
+        expect(await Bun.file(toolingCachePath).exists()).toBe(false);
+      },
+      [`${name}.bun.sh`],
+    );
+  },
+);
+
+test.each([{ enabled: false }, { disabled: ["info"] }, { custom: { info: "app:hello" } }])(
+  "canonical script collisions still fail under alias policy %j",
+  async (policy) => {
+    // Given
+    await withRefreshFixture(
+      policy,
+      async ({ refresh }) => {
+        // When
+        const error = await Effect.runPromise(Effect.flip(refresh));
+        // Then
+        expect(error).toMatchObject({
+          _tag: "CommandAliasConflictError",
+          alias: "app:info",
+          reservedFor: "app:info",
+        });
+      },
+      ["info.bun.sh"],
+    );
+  },
+);
+
+test("valid nested scripts and Landofile precedence survive refresh", async () => {
+  // Given
+  await withRefreshFixture(
+    {},
+    async ({ refresh, root, cacheRoot }) => {
+      // When
+      const result = await Effect.runPromise(refresh);
+      const cache = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: root, cacheRoot }));
+      const route = await Effect.runPromise(resolveToolingRoute("app:db:seed", { cwd: root, cacheRoot }));
+      const bare = await Effect.runPromise(resolveToolingRoute("db:seed", { cwd: root, cacheRoot }));
+      // Then
+      expect(result.commandsCompiled).toBe(4);
+      expect(cache?.entries.map(({ id }) => id)).toEqual([
+        "app:build",
+        "app:db:seed",
+        "app:env:init",
+        "app:hello",
+      ]);
+      expect(cache?.entries.find(({ id }) => id === "app:hello")?.source).toBeUndefined();
+      expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:db:seed" });
+      expect(bare).toEqual({ _tag: "not-tooling" });
+    },
+    ["build.bun.sh", "db/seed.bun.sh", "env/init.bun.sh", "hello.bun.sh"],
+  );
+});
+
+test.each([{ enabled: false }, { disabled: ["version"] }, { custom: { version: "app:version" } }])(
+  "noncanonical script alias respects alias policy %j",
+  async (policy) => {
+    // Given
+    await withRefreshFixture(
+      policy,
+      async ({ refresh, root, cacheRoot }) => {
+        // When
+        const result = await Effect.runPromise(refresh);
+        const route = await Effect.runPromise(resolveToolingRoute("app:version", { cwd: root, cacheRoot }));
+        // Then
+        expect(result.commandsCompiled).toBe(2);
+        expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:version" });
+      },
+      ["version.bun.sh"],
+    );
+  },
+);
 
 test("app cache refresh rejects unknown alias targets before writing", async () => {
   await withRefreshFixture({ custom: { hi: "app:missing" } }, async ({ cachePath, refresh }) => {

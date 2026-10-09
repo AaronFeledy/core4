@@ -27,10 +27,10 @@ const CORE_NAME_REMEDIATION =
 export const SOLR_FEATURE_ID = "service-lando.solr";
 export const SOLR_CONFIG_TARGET = PortablePath.make("/etc/lando/solr/conf");
 
-const PRECREATE_SCRIPT =
-  'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"';
-const PRECREATE_WITH_CONFIG_SCRIPT =
-  'port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; exec solr-foreground -p "$port"';
+const CORE_FOREGROUND_SCRIPT =
+  'mode=(); if solr start --help 2>&1 | grep -q -- "--user-managed"; then mode=(--user-managed); fi; exec solr-foreground -p "$port" "${mode[@]}"';
+const PRECREATE_SCRIPT = `port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; ${CORE_FOREGROUND_SCRIPT}`;
+const PRECREATE_WITH_CONFIG_SCRIPT = `port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; ${CORE_FOREGROUND_SCRIPT}`;
 
 /**
  * A Solr core name that names exactly one directory under `/var/solr/data`.

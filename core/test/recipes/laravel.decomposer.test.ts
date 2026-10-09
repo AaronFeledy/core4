@@ -84,7 +84,7 @@ describe("Laravel deterministic decomposition", () => {
   });
 
   test("includes the CLI queue worker when enabled with non-default options", () => {
-    // Given alternate options; when decomposed; then only the selected worker structure is added.
+    // Given alternate options; when decomposed; then both PHP services share host vendor.
     const { fragment, provenance } = Effect.runSync(
       decomposer.decompose({ ...validInput, options: alternate }),
     );
@@ -93,12 +93,17 @@ describe("Laravel deterministic decomposition", () => {
       recipe: provenance,
       services: {
         ...expected.services,
+        appserver: {
+          ...expected.services.appserver,
+          appMount: { target: "/app", includes: ["vendor"] },
+        },
         worker: {
           type: "php:{{ recipe.php }}",
           framework: "laravel",
           via: "cli",
           command: "php artisan queue:work",
           dependsOn: ["database", "cache"],
+          appMount: { target: "/app", includes: ["vendor"] },
         },
       },
     });
