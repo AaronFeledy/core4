@@ -1,6 +1,6 @@
-# Lando v4 — Binary Build and Release Engineering
+# Lando v4: Binary Build and Release Engineering
 
-> **Part 15 of 18** · [Index](./README.md)
+> **Part 15 of 19** · [Index](./README.md)
 > **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part specifies how the §13 distribution artifacts are built, signed, published, installed, and updated.
@@ -59,6 +59,7 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `mcp-allowlist` | Command registry metadata | MCP command allowlist | Derived drift and registry tests |
 | `host-proxy-allowlist` | Command registry metadata | Host-proxy command allowlist | Derived drift and contract tests |
 | `command-registry-manifest` | Built-in command registry and topics | Embedded manifest and command-id list | Derived drift and registry completeness |
+| `compiled-decoders` | The fixed hot-path schema AST list in `core/src/cli/compiled-decoder-targets.ts` and the pinned Effect version | Gitignored generated decoder module plus declaration under `core/src/cli/generated/` (§12.5.1) | Derived regeneration, compiled-decoder parity, perf gates |
 | `command-reference` | Command registry and manifest | CLI command reference | Derived regeneration and docs build |
 | `compose-key-matrix` | Compose dispositions | Compose compatibility reference | Derived regeneration and docs build |
 | `opentui-native-stubs` | Native-root catalog, release targets, installed OpenTUI metadata, lockfile | Target mapping and non-target stubs | Derived drift and per-target relocated smoke |
@@ -79,7 +80,7 @@ Pin manifests and generated workflows remain committed. Pure build products are 
 
 Build-known assets MUST be embedded and runtime-installed plugins remain external validated modules (§9.7). Small JS-shaped data uses static JSON or generated TypeScript imports; binary data and file trees use `Bun.embeddedFiles`. `EmbeddedAssetService` presents the same JSON, byte, and virtual-filesystem contract in compiled and library modes, with library mode reading package assets from disk. Runtime code MUST NOT walk `node_modules` or rely on `import.meta.dir` for assets expected inside the compiled binary.
 
-The main-binary build applies a target-specific OpenTUI rule: exactly one of the eight catalog native packages resolves normally for each of the five release targets, while the other seven exact package-root imports resolve to generated throwing stubs. `@opentui/core/testing`, relative imports, and unknown imports MUST remain untouched. The relocated binary MUST embed only the matching shared library in `$bunfs`, with no native sidecar or adjacent `node_modules`; the native asset remains lazy behind the default TTY renderer path. Musl roots stay in the catalog but are not release targets.
+The main-binary build applies a target-specific OpenTUI rule: exactly one of the eight catalog native packages resolves normally for each of the six release targets (§13.5), while the other seven exact package-root imports resolve to generated throwing stubs. `@opentui/core/testing`, relative imports, and unknown imports MUST remain untouched. The relocated binary MUST embed only the matching shared library in `$bunfs`, with no native sidecar or adjacent `node_modules`; the native asset remains lazy behind the default TTY renderer path. Musl roots stay in the catalog but are not release targets.
 
 ### 17.4 Signing and notarization
 
@@ -95,7 +96,7 @@ Installers and self-update MUST verify checksums and signatures. Trust roots are
 
 ### 17.5 Supply-chain artifacts
 
-Every release publishes a CycloneDX SBOM, SLSA v1.0 provenance for each binary, and keyless cosign signatures and certificates for every binary. The SBOM covers dependencies, bundled plugins and recipes, Bun, and `@lando/sdk`; provenance identifies the source commit, workflow, build inputs, and generated artifacts. v4.0 targets SLSA build level 3.
+Every release publishes a CycloneDX SBOM, SLSA v1.0 provenance for each binary, and keyless cosign signatures and certificates for every binary. The SBOM covers dependencies, bundled plugins and recipes, Bun, and `@lando/sdk`; provenance identifies the source commit, workflow, build inputs, and generated artifacts. Releases target SLSA build level 3.
 
 The pipeline SHOULD produce reproducible binaries from identical source, Bun version, plugin set, and codegen outputs. Weekly independent rebuild drift triggers a release advisory but does not retroactively invalidate signed artifacts.
 
@@ -108,7 +109,7 @@ The pipeline SHOULD produce reproducible binaries from identical source, Bun ver
 3. Compare installed, latest, and minimum compatible versions.
 4. Select the current platform artifact and fetch its binary, checksum manifest, and signature.
 5. Verify all signatures and checksums against embedded trust roots before replacement.
-6. Replace only the v4-owned executable atomically, probe the new version, and re-exec.
+6. Replace only the Lando-owned executable recorded in the install record atomically, probe the new version, and re-exec.
 7. Restore the single prior backup if launch probing fails; `lando4 update --rollback` invokes the same rollback path.
 
 #### 17.6.1 Update manifest
@@ -117,17 +118,17 @@ The pipeline SHOULD produce reproducible binaries from identical source, Bun ver
 
 #### 17.6.2 Atomic replace and rollback
 
-The updater MUST resolve the v4 install record and reject foreign ownership. On POSIX it uses a same-filesystem atomic replacement while retaining one backup. On Windows, where the running executable cannot replace itself, it MUST stage a versioned sibling and complete the rename after process exit or reboot; a documented close-process fallback is required. Both paths preserve existing permissions and ACLs.
+The updater MUST resolve the Lando install record and reject foreign ownership. On POSIX it uses a same-filesystem atomic replacement while retaining one backup. On Windows, where the running executable cannot replace itself, it MUST stage a versioned sibling and complete the rename after process exit or reboot; a documented close-process fallback is required. Both paths preserve existing permissions and ACLs.
 
-Updater operations MUST touch only `lando4` or `lando4.exe` and their recorded siblings. They MUST NOT alter `lando` or `lando.exe`, Lando 3 state, or unrelated PATH entries. Permission failure MUST surface explicit manual elevation instructions; Lando MUST NOT invoke `sudo` or UAC silently.
+Updater operations MUST touch only the recorded executable name (`lando4` or `lando4.exe` under §17.7) and its recorded siblings. They MUST NOT alter a Lando 3 `lando` or `lando.exe`, Lando 3 state, or unrelated PATH entries. Permission failure MUST surface explicit manual elevation instructions; Lando MUST NOT invoke `sudo` or UAC silently.
 
 Update telemetry, when enabled, records only outcome, versions, channel, and platform. It MUST NOT include paths, hostnames, or user identifiers.
 
 ### 17.7 Installation
 
-v4.0 ships exactly two install surfaces: signed GitHub Release artifacts and signed POSIX/PowerShell installers from `get.lando.dev`. Homebrew, scoop, winget, distro packages, and a Lando OCI image are deferred post-v4.0.
+There are exactly two install surfaces: signed GitHub Release artifacts and signed POSIX/PowerShell installers from `get.lando.dev`. Homebrew, scoop, winget, distro packages, and a Lando OCI image are outside this contract; adding one extends this section and the §17.8 workflow together. Which surfaces are live at any time is recorded in `ROADMAP.md`, not here.
 
-During Alpha and Beta the installed executable and npm bin name MUST be `lando4` (`lando4.exe` on Windows); the GA name is decided at RC. Release asset names remain in the `lando-v4-<version>-<platform>` family. Installer, update, uninstall, and shellenv MUST operate only on the v4 install record, reject foreign-owned destinations, preserve unrelated PATH entries, and leave Lando 3 binaries and state byte-for-byte untouched.
+The installed executable and npm bin name is `lando4` (`lando4.exe` on Windows) so it coexists with a Lando 3 `lando` on the same host; changing that name is a public-surface change under §18. Release asset names use the `lando-v4-<version>-<platform>` family. Installer, update, uninstall, and shellenv MUST operate only on the Lando install record, reject foreign-owned destinations, preserve unrelated PATH entries, and leave Lando 3 binaries and state byte-for-byte untouched.
 
 The compiled binary has no Bun, Node, or package-manager prerequisite. Runtime bundles and helper binaries such as Mutagen remain verified on-demand downloads under Lando-owned data paths, not embedded main-binary assets. The library package assumes a consuming Bun runtime.
 
@@ -139,22 +140,22 @@ GitHub Actions owns release automation. The generated release workflow runs shar
 
 | Channel | Tag | Policy |
 |---|---|---|
-| `stable` | `v4.X.Y` | Public release; full pipeline |
-| `next` | `v4.X.Y-next.N` | GitHub prerelease; full pipeline |
-| `dev` | `v4.X.Y-dev.N` or `main` | Snapshot binaries; no npm publish |
+| `stable` | `vX.Y.Z` | Public release; full pipeline |
+| `next` | `vX.Y.Z-next.N` | GitHub prerelease; full pipeline |
+| `dev` | `vX.Y.Z-dev.N` or `main` | Snapshot binaries; no npm publish |
 
-The target matrix covers `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, and `windows-x64`. The reference Linux runner is 4 vCPU and 16 GB RAM. Signing secrets are workflow-scoped; stable publication requires protected-environment approval. Runtime bundles publish independently as immutable `runtime-v*` assets in this repository, and binary releases MUST fail closed on placeholder, missing, mutable, or off-repository bundle pins.
+The target matrix is the six §13.5 targets: `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `windows-x64`, and `windows-arm64`. The reference Linux runner is 4 vCPU and 16 GB RAM. Signing secrets are workflow-scoped; stable publication requires protected-environment approval. Runtime bundles publish independently as immutable `runtime-v*` assets in this repository, and binary releases MUST fail closed on placeholder, missing, mutable, or off-repository bundle pins.
 
 ### 17.9 Acceptance criteria
 
-The following augment §15.C and are release-blocking for v4.0:
+The following augment §15.C and define binary-shipping acceptance. The ROADMAP assigns release milestones to this quality bar:
 
 - `bun run release` produces a launchable local artifact with all credential-available signing steps.
 - The full pipeline completes within 30 minutes for one platform and 60 minutes for the full matrix.
 - Every binary has the §17.4 platform signature, CycloneDX SBOM, SLSA v1.0 provenance, and verifiable cosign signature.
 - The stable update manifest is signed and verifiable by embedded trust roots.
 - `next` self-update succeeds on macOS, Linux, and Windows; launch failure rolls back; permission failure never silently elevates.
-- POSIX and PowerShell installers succeed on clean hosts, verify trust, install the v4-owned name, and agree with `lando4 shellenv`.
+- POSIX and PowerShell installers succeed on clean hosts, verify trust, install the Lando-owned name, and agree with `lando4 shellenv`.
 - Install, update, uninstall, and shellenv leave hostile or valid Lando 3 binaries and state unchanged.
 - A relocated binary reads bundled plugins, recipes, command metadata, schemas, and its one OpenTUI native asset without build-tree or sidecar files.
 - Each target's relocated PTY smoke loads exactly its matching OpenTUI native package; non-TTY, JSON, and level-`none` paths do not load it.
