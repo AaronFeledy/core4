@@ -1,6 +1,6 @@
-# Lando v4 — Subsystems
+# Lando v4: Subsystems
 
-> **Part 11 of 18** · [Index](./README.md)
+> **Part 11 of 19** · [Index](./README.md)
 > **Read next:** [12 Caches and Persistence](./12-caches-and-persistence.md)
 
 This part defines the provider-neutral subsystem contracts between the core runtime and plugins.
@@ -33,12 +33,16 @@ User surfaces say **router** and **routes**. Service `routes:` is preferred; top
 - Router plugins reconcile stale routes on rebuild and destroy. `stop` durably removes all app route definitions without stopping unrelated global services; `status` reports that durable state.
 - `RouteFilter` contributions translate provider-neutral filters. Bundled filters are `stripPrefix`, `addPrefix`, `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `auth.basic`, and `rateLimit` (§6.6). Filters merge by `name`, then unnamed type identity, and retain authored order. Path routes MUST NOT strip implicitly.
 - `router.enabled: false`, resolved by normal precedence (§7.4, §7.5), MUST prevent router startup and publication for the app. `lando info` reports only published endpoints.
+- Route priority is one shared space across every app, derived from the route alone under §6.6. A router that publishes its own routers (dashboard, diagnostics, fallback) MUST pin them outside the app bands defined there: diagnostic fallbacks at `ROUTE_PRIORITY_DIAGNOSTIC`, router-owned hostnames above `ROUTE_PRIORITY_MAX`. Otherwise an app that claims the same hostname captures them.
+- `RouterService.revalidateStartup` re-observes the running router's startup against its live state and refreshes whatever persisted startup observation the implementation keeps. It is distinct from `setup`: it acquires no ports, starts no services, and takes no `Scope`. It fails with `ProxyError` or `RouterWatcherError`. An unavailable router implements it as a no-op, so a record left by an earlier router stays reported until a selected router revalidates it.
+- A remediation MUST NOT name a command that cannot affect the condition it diagnoses. Every operation named as a recovery step for a router diagnostic (`lando global:restart`, `lando global:rebuild`, `lando setup`, `lando doctor --fix`) MUST run `revalidateStartup` on success so a cleared condition clears its record (§20.6.5).
 
 #### 10.2.1 Default global-app realization
 
-`RouterServiceTraefikGlobalAppLive` from `@lando/proxy-traefik` realizes routing through the global app's `traefik` service (§20). The plugin MUST contribute paired `routerServices:` and `globalServices:` entries; otherwise plugin loading fails with `ProxyContributionPairError`.
+The `@lando/proxy-traefik` router layer realizes routing through the global app's `traefik` service (§20). The plugin MUST contribute paired `routerServices:` and `globalServices:` entries; otherwise plugin loading fails with `ProxyContributionPairError`.
 
 - `applyRoutes` persists plugin-owned dynamic configuration in a Lando-managed mount; `setup` calls `GlobalAppService.ensureRunning(["traefik"])`.
+- `setup` and `revalidateStartup` read the router's startup log once, classify file-watcher failures (`inotify-limit`, `disk`, `permission`, `other`), and either clear or rewrite a persisted watcher-diagnostic record under the global app root. A classified failure fails with `RouterWatcherError` carrying `failureClass`, `watcherHost`, redacted `detail`, and ordered remediation. `stop` removes the record. The `router-file-watcher` doctor check reports the record as an unrevalidated observation and never clears it or probes live.
 - Alternative `RouterService` plugins MAY avoid `GlobalAppService`; selection follows §4.3.
 - A legacy out-of-band Traefik container produces `LegacyProxyContainerDetected`; migration is plugin-supplied (§20.10.3).
 
@@ -100,27 +104,29 @@ All Lando-owned egress MUST work behind corporate HTTP(S) proxies and custom CA 
 - Proxy credentials MUST be redacted from logs, telemetry, diagnostics, lockfiles, and cache metadata.
 - Offline-capable commands MUST use valid local state without contacting unavailable trust endpoints (§12.6).
 
-#### 10.3.2 Outbound HTTP (`HttpClient`)
+#### 10.3.2 Outbound HTTP (Effect `HttpClient`)
 
-`HttpClient` is the sole Lando-owned request/response egress port. It exposes `HttpClientCapabilities`, buffered `request`, streaming `stream`, and streaming or buffered `upload` over `HttpRequest`, `HttpResponse`, `HttpStreamResponse`, `HttpUploadRequest`, and `HttpError`. Direct `fetch` and plugin-local trust wiring are forbidden; `BunSelfRunner` remains the package-manager exception.
+Lando's HTTP client is Effect's standard `effect/http` `HttpClient` contract, not a Lando-owned interface (§3.4). `@lando/http-client` is the sole Lando-owned implementation and the single network-egress boundary: it builds the client with `HttpClient.make` over Bun fetch egress and is the only package permitted to call global `fetch` or import Effect's `FetchHttpClient`. Consumers use the standard `HttpClient`, `HttpClientRequest`, and `HttpClientResponse` surface (buffered bodies, byte streams, and request bodies are the contract's own operations); Lando defines no parallel request, response, stream, upload, or capability schemas. Plugins receive the host client through `LandoPluginContext.httpClient` and MUST NOT construct their own transport or trust wiring. `BunSelfRunner` remains the package-manager exception.
 
-- Trust resolution follows §10.3.1 unless a caller supplies an already-resolved override.
-- `stream` MUST expose a byte stream and MUST NOT buffer the full body; `request` buffers only by caller choice.
-- Credentials, URL userinfo, tokens, signed query parameters, and supplied redaction tokens MUST be redacted everywhere except protected active debug logging.
-- Calls publish `pre-http-call` and `post-http-call`; downloader-originated calls retain download correlation and MUST NOT be double-counted.
-- Interrupt closes connections and scope finalization reaps transfers.
-- Offline-only requests fail before opening a connection. Construction of `HttpClientLive` is inert.
+- Per-request Lando policy is fiber-scoped through the `RequestPolicy` reference (`@lando/http-client`): `callerId`, `onBehalfOf`, `redactionTokens`, `allowFileSource`, `offline`, and `redirect`. Policy is provided by the requesting fiber, not baked into the client layer.
+- Trust resolution follows §10.3.1 and is performed per request from `ConfigService` unless a caller supplies an already-resolved `NetworkTrust` override. On Windows, host trust is merged with resolved CAs. Trust failures surface as `HttpTrustError` (`kind`: `proxy-authentication`, `tls-interception`, `missing-custom-ca`, `blocked-endpoint`) carried as the transport cause inside the standard `HttpClientError`.
+- Only `http:` and `https:` are open schemes. `file:` is accepted only when `allowFileSource` is set and is limited to the documented development/CI overrides in §10.3.3; every other scheme fails before connection.
+- Response bodies stream; nothing buffers a full body unless the caller asks the standard contract to.
+- Credentials, URL userinfo, query values, and supplied redaction tokens MUST be redacted before a URL reaches an event, span attribute, log, or error. Each request is a span named `HttpClient.request` with method and redacted URL attributes; the standard client's own URL-bearing spans are disabled.
+- Calls publish `pre-http-call` and `post-http-call` carrying origin, method, redacted caller correlation, duration, status, and redacted failure detail; downloader-originated calls retain download correlation and MUST NOT be double-counted. Events are published once per request, including on failure and interruption.
+- Interrupt aborts the connection and scope finalization completes the post-call event; the layer is inert at construction.
+- `offline: true` fails before opening a connection.
 - Retry belongs to `runProbe`; artifact verification belongs to `Downloader`.
-- Plugin implementations MUST pass the contract suite and MUST NOT weaken trust, redaction, scheme policy, or cancellation.
+- `httpClients:` plugin contributions provide the same `effect/http` `HttpClient` and MUST pass the `@lando/sdk/test` contract suite (`runHttpClientContract`) covering proxy/CA precedence, schemes, streaming, offline behavior, cancellation, events, and redaction. They MUST NOT weaken trust, redaction, scheme policy, or cancellation. `@lando/core/testing` supplies the in-memory test client.
 
-Tagged errors are `HttpRequestError`, `HttpUploadError`, `HttpTrustError`, and `HttpClientUnavailableError`.
+The Lando-owned tagged error is `HttpTrustError`; every other failure is the standard `HttpClientError` family.
 
 #### 10.3.3 Verified downloads (`Downloader`)
 
 `Downloader` consumes `HttpClient` and owns `DownloaderCapabilities`, `DownloadRequest`, `DownloadResult`, `DownloadError`, `ArtifactManifestEntry`, verification, atomic persistence, cache/offline behavior, and progress. All Lando-owned artifact downloads MUST use it.
 
 - Production manifests MUST use HTTPS. `file://` requires explicit `allowFileSource` and is limited to documented development/CI overrides such as `LANDO_RUNTIME_BUNDLE_MANIFEST` (§5.8.1).
-- Egress MUST use `HttpClient.stream`; downloader implementations MUST NOT open sockets or duplicate trust resolution.
+- Egress MUST stream through the standard `HttpClient` (§10.3.2); downloader implementations MUST NOT open sockets or duplicate trust resolution.
 - File downloads stream through SHA-256 verification to atomic persistence; interruption or failure removes temporary state. Memory buffering occurs only when explicitly requested.
 - A matching destination is a cache hit with no network. Offline cache misses fail before connection.
 - Destination paths MUST remain contained.
@@ -219,7 +225,7 @@ The bundled engine is invisible to Landofiles and uses a Lando-owned Mutagen dae
 - Agent deployment uses provider execution ports. Runtime dependency on system code generators or native gRPC addons is forbidden.
 - Upgrades replace incompatible pinned tools and recreate sessions. Proxy/CA policy and redaction remain mandatory.
 - Capabilities include all four sync modes, automatic agent deployment, exclusions, conflicts, and progress; default mode is `two-way-safe`.
-- Port forwarding is out of scope for v4.0.
+- Port forwarding is outside the `FileSyncEngine` contract; the engine moves files only.
 
 #### 10.6.3 Doctor checks and replaceability
 
@@ -271,14 +277,14 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 ### 10.10 Host proxy
 
-`HostProxyService` is the opt-in, per-app container-to-host RPC port installed by `lando.host-proxy` for `type: lando` services. It opens host URLs/paths and re-enters approved Lando or Bun operations. It is not the deferred persistent agent.
+`HostProxyService` is the opt-in, per-app container-to-host RPC port installed by `lando.host-proxy` for `type: lando` services. It opens host URLs/paths and re-enters approved Lando or Bun operations. It is not a persistent agent, which is a non-goal (§14.2).
 
 #### 10.10.1 Architecture and protocol
 
 - The host dispatcher binds `<userDataRoot>/run/<app-id>/host-proxy.sock`, mounted read-only at `/run/lando/host-proxy.sock`, and injects `LANDO_HOST_PROXY_SOCKET`, `LANDO_HOST_PROXY_TOKEN`, and `LANDO_HOST_PROXY_DEPTH` when provider reachability permits.
 - The dispatcher and token live for the app's started scope. One retained `LandoRuntime` serves `runLando` through `@lando/core/cli`.
 - `HostProxyRequest` tags are `openUrl`, `openPath`, `runLando`, and `runBun`; `HostProxyResponse` tags are `ok` and `error`, classified by `HostProxyErrorCode`. Requests require bearer-token authentication. `runLando` streams NDJSON stdout, stderr, exit, or error frames.
-- Container-initiated notification and clipboard relay are unsupported in v4.0.
+- Container-initiated notification and clipboard relay are outside the `HostProxyRequest` union; adding one is a protocol-schema change, not a plugin extension.
 - Default `openUrl` schemes are `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`. `file://` is always forbidden. Extensions use the service layer or global `hostProxy.allowedSchemes`.
 - `runLando` uses the generated `host-proxy-allowlist`. Lifecycle commands, `meta:bun`, and `meta:x` MUST NOT be allowed; violations fail with `HostProxyAllowlistConflictError`.
 - `runBun` uses the non-plugin-extensible `host-proxy-bun-verb-allowlist`: `audit`, `outdated`, `pm`, `info`, and `why`. Mutating verbs fail with `HostProxyBunVerbNotAllowedError`.
@@ -288,7 +294,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 One static client is installed as `xdg-open`, `open`, and `lando`; optional `lando.host-proxy.bun: true` installs `bun` only when it does not shadow an existing Bun. It dispatches by invocation name, filters forwarded environment, remaps cwd through `AppMountInfo`, rejects `BUN_BE_BUN` recursion, and prints deterministic fallback errors when proxy env is absent. It is a signed wire client, not the host `lando` binary.
 
-- `HostProxyServiceLive` MUST construct lazily and do nothing for apps without the feature.
+- The `HostProxyService` implementation layer MUST construct lazily and do nothing for apps without the feature.
 - Every request, including rejection, publishes redacted `pre-host-proxy-call` and `post-host-proxy-call`.
 - Tokens MUST be cryptographically random. Socket creation MUST be atomic and private; stale sockets fail with `HostProxySocketStaleError`.
 - Interrupt MUST close the listener, finalize requests, and unlink the socket. Unsupported provider reachability plans a visible no-op rather than runtime failure.
@@ -321,7 +327,7 @@ Tagged errors are `DataTransferError`, `DataEndpointUnsupportedError`, `DataChec
 
 ### 10.12 Remote data sync (`RemoteSource` + `Dataset`)
 
-This surface is contract-only for Beta 1 and implementation is deferred to 4.1. `RemoteSource` owns network location and transport; `Dataset` owns local capture/apply. Sync covers databases, user files, and config, never application code.
+This surface is contract-only in core: core publishes the schemas, service tags, errors, events, contract suites, and the `app:pull`/`app:push` orchestration, and ships no bundled `RemoteSource` or `Dataset`. With no implementation installed, selection fails with the tagged errors below and installation remediation (§4.3). Which bundled implementations ship, and when, belongs to `ROADMAP.md`. `RemoteSource` owns network location and transport; `Dataset` owns local capture/apply. Sync covers databases, user files, and config, never application code.
 
 `RemoteSource` exposes identity, `RemoteCapabilities`, config schema, `RemoteConfig` environment listing, `RemoteLocator` resolution, scoped fetch/send options, and optional `RemoteTestResult`. `Dataset` exposes identity, `DatasetKind`, `DatasetCapabilities`, `DatasetArtifactFormat`, scoped capture/apply through `DatasetContext` and their option/result contracts, and local-store resolution. Their portable seam is a `DataEndpoint`; core owns `app:pull`, `app:push`, `App.pull()`, and `App.push()` orchestration.
 
@@ -347,7 +353,7 @@ Tagged errors are `RemoteError`, `RemoteUnreachableError`, `RemoteAuthError`, `R
 
 `ManagedFileService` exposes `ManagedFilePlan` through `plan`, scoped `apply` with `ApplyOptions` and `ManagedFileResult`, `remove` through `ManagedFileSelector`, `status` as `ManagedFileInfo`, `adopt`, and `release`.
 
-- `ManagedFileServiceLive` is lazy at bootstrap level `minimal` and inert at construction.
+- The `ManagedFileService` layer (`@lando/managed-file/service`) is lazy at bootstrap level `minimal` and inert at construction.
 - `plan` is side-effect-free and agrees with `apply`; actions are `create`, `update`, `skip-unchanged`, `skip-adopted`, `conflict`, and `adopt-detected`.
 - Writes are atomic and contained under the resolved base. Templates use `TemplateRenderer`; structured content uses shared codecs.
 - Events are `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, and `managed-file-skipped`, without file content.
@@ -368,7 +374,7 @@ The sole tagged error is `ManagedFileError`, with reasons `io`, `decode`, `confl
 - Tools derive from `LandoCommandSpec`, `FlagSpec`, and `ArgSpec`; results use `CommandResultEnvelope` and `encodeCommandResult`; streams use progress notifications and a final result envelope. Each tool declares an `outputSchema` derived from its command result schema, and each result carries the redacted, bounded envelope as `structuredContent` plus a JSON text fallback.
 - Optional tooling projection uses `mcp.tooling` or `--tooling` and `runTooling`. Notifications replay redacted bounded `EventService` history.
 - Resources are `lando://app/config`, `lando://app/info`, `lando://apps`, `lando://doctor`, and the template `lando://schemas/{name}` with name completion from the public schema registry. Payloads reuse the resolved config, deep info, apps list, doctor, and public schema result schemas, and are redacted and bounded. App-scoped resources resolve through `resolveApp`/`AppSelector` and fail with the existing tagged errors.
-- v4.0 transport is stdio. Streamable HTTP is deferred, and future outbound HTTP MUST use `HttpClient`.
+- The transport is stdio. Streamable HTTP is not part of this contract; any future outbound HTTP MUST use the standard `HttpClient` (§10.3.2).
 - `serve` retains one `LandoRuntime`; app resolution uses `resolveApp`/`AppSelector` (§16.3).
 - Effective tools are generated `mcp-allowlist` plus `mcp.allow`/`--allow`, minus `mcp.deny`/`--deny`; deny wins. Destructive commands are never default-allowed.
 - Dispatch is non-interactive; prompt-requiring commands fail rather than hang, and confirmations require an explicit input. That input is `yes: true` or, when the client advertises elicitation, an accepted `{ confirm: boolean }` elicitation whose message names the app and the consequence. Decline, cancel, or no answer within 120 seconds fails with `CommandConfirmationError` reason `declined`; clients without elicitation get reason `non-interactive`. Elicitation never lifts a deny, and destructive commands stay excluded from the default allowlist.
@@ -377,6 +383,6 @@ The sole tagged error is `ManagedFileError`, with reasons `io`, `decode`, `confl
 - Only effective-allowlist tools are registered with the server, so a call naming any other tool gets the protocol's unknown-tool error. Every call that reaches dispatch, including one rejected for input, capacity, or cancellation, publishes `pre-mcp-call` and `post-mcp-call`; dispatch-level rejections return a tool result with `isError: true` carrying the redacted tagged error.
 - `meta:mcp` MUST NOT be host-proxied or recipe-scaffolded. Doctor validates allowlist freshness, catalog generation, and a canary round trip.
 
-Tagged errors are `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError`; command failures remain inside unsuccessful result envelopes. `McpService` is core-owned and not plugin-replaceable in v4.0; `mcpServers:` is deferred.
+Tagged errors are `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError`; command failures remain inside unsuccessful result envelopes. `McpService` is core-owned and not plugin-replaceable; there is no `mcpServers:` contribution surface.
 
 ---

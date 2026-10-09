@@ -44,6 +44,32 @@ test.each([false, true])("Laravel vendor mounts when worker=%s", async (worker) 
         expect.objectContaining({ source: root, target: "/app", type: "bind" }),
       );
     }
+
+    // Then npm runs in a private Node service on the same project bind in either mode.
+    expect(landofile.tooling?.npm).toMatchObject({ service: "node", cmds: ["npm"] });
+    const node = plan.services[ServiceName.make("node")];
+    expect(node).toMatchObject({
+      type: "node:22",
+      artifact: { kind: "ref", ref: "node:22" },
+      primary: false,
+      workingDirectory: "/app",
+      endpoints: [],
+      routes: [],
+    });
+    expect(landofile.services?.[ServiceName.make("node")]).toEqual({
+      type: "node:22",
+      primary: false,
+      endpoints: [],
+    });
+    expect(node?.mounts).toContainEqual(
+      expect.objectContaining({ source: root, target: "/app", type: "bind" }),
+    );
+    expect(node?.healthcheck).toBeUndefined();
+    expect(node?.command).toEqual([
+      "node",
+      "-e",
+      'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
