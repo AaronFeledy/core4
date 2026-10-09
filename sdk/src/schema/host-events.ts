@@ -128,6 +128,37 @@ export const HostEvents = Schema.Struct({
 });
 export type HostEvents = typeof HostEvents.Type;
 
+const hasUnbalancedQuotes = (value: string): boolean => {
+  let inSingle = false;
+  let inDouble = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (inDouble && char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === "'" && !inDouble) {
+      if (inSingle && value[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+    }
+  }
+  return inSingle || inDouble;
+};
+
+const hostEventStepCommand = (step: HostEventStep): string | undefined => {
+  if (typeof step === "string") return step;
+  if ("cmd" in step && step.cmd !== undefined) return step.cmd;
+  if ("command" in step && step.command !== undefined) return step.command;
+  return undefined;
+};
+
 export const isHostEventContainerStep = (step: HostEventStep): boolean => {
   if (typeof step === "string") return true;
   if ("command" in step && step.command !== undefined) return false;
@@ -194,6 +225,19 @@ export const hostEventsSemanticIssues = (events: HostEvents): ReadonlyArray<Vali
         validationIssue(
           ["hostEvents", event, index],
           `${hostEventStepLocation(event, index)} cannot run lifecycle command ${resolved}.`,
+        ),
+      );
+    }
+  }
+  for (const event of HOST_EVENT_NAMES) {
+    const steps = events[event] ?? [];
+    for (const [index, step] of steps.entries()) {
+      const command = hostEventStepCommand(step);
+      if (command === undefined || !hasUnbalancedQuotes(command)) continue;
+      issues.push(
+        validationIssue(
+          ["hostEvents", event, index],
+          `${hostEventStepLocation(event, index)} has unbalanced quotes. Quote the whole value.`,
         ),
       );
     }

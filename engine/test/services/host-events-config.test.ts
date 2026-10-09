@@ -88,6 +88,32 @@ describe("config.yml hostEvents load", () => {
     );
   });
 
+  test("rejects an unquoted command that loses its closing quote at a comment", async () => {
+    await withConfRoot(
+      (dir) =>
+        writeFile(
+          join(dir, "config.yml"),
+          'hostEvents:\n  pre-start:\n    - cmd: echo "a #b"\n      service: ":host"\n',
+        ),
+      () => {
+        expect(() => loadGlobalConfigSync()).toThrow(/Quote the whole value/);
+      },
+    );
+  });
+
+  test("warns when a path-like root value decodes with control characters", async () => {
+    await withConfRoot(
+      (dir) => writeFile(join(dir, "config.yml"), 'userDataRoot: "C:\\temp\\new"\n'),
+      () => {
+        const loaded = loadGlobalConfigSync();
+        const warnings = typoWarningsForConfig(loaded);
+        expect(warnings.some((warning) => warning.includes("userDataRoot"))).toBe(true);
+        expect(warnings.some((warning) => warning.includes("control characters"))).toBe(true);
+        expect(String(loaded.userDataRoot)).toMatch(/\t|\n/);
+      },
+    );
+  });
+
   test("warns about a misspelled top-level key without failing load", async () => {
     await withConfRoot(
       (dir) =>

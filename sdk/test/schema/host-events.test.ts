@@ -111,6 +111,19 @@ test("prefixes load issues with config.yml hostEvents.<event>[i] and the bad key
   expect(formatHostEventsIssueMessage(envIssue)).toContain('rejects "env"');
 });
 
+test("rejects a command string with unbalanced quotes", () => {
+  const issues = hostEventsSemanticIssues({
+    "pre-start": [{ cmd: 'echo "a', service: ":host" }],
+  });
+  expect(issues[0]?.message).toContain("unbalanced quotes");
+  expect(issues[0]?.message).toContain("Quote the whole value");
+  expect(
+    hostEventsSemanticIssues({
+      "pre-start": [{ cmd: 'echo "hi"', service: ":host" }],
+    }),
+  ).toEqual([]);
+});
+
 test("treats omitted-service strings as container steps", () => {
   expect(isHostEventContainerStep("echo")).toBe(true);
   expect(isHostEventContainerStep({ cmd: "echo", service: "web" })).toBe(true);

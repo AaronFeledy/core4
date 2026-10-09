@@ -79,12 +79,12 @@ hostEvents:
       service: web
 ```
 
-v1 steps are a string, `{cmd, service?}`, or `{command}`. `service: ":host"` runs on the host. Omit `service` to use the app's primary. There is no `env`, `flags`, `args`, `dir`, `user`, `task`, `defer`, or `for` on this key; unknown fields fail when config loads. `pre-start`, `post-stop`, and `post-destroy` may only use `:host` (or `{command}`). A `{command}` that names a lifecycle command (`start`, `app:start`, and the rest) also fails at load.
+v1 steps are a string, `{cmd, service?}`, or `{command}`. `service: ":host"` runs on the host. Omit `service` to use the app's primary. There is no `env`, `flags`, `args`, `dir`, `user`, `task`, `defer`, or `for` on this key; unknown fields fail when config loads. `pre-start`, `post-stop`, and `post-destroy` may only use `:host` (or `{command}`). A `{command}` that names a lifecycle command (`start`, `app:start`, and the rest) also fails at load. If a command contains `#` or quotes, quote the whole YAML value (`cmd: "echo a #b"`). An unquoted `echo "a #b"` is cut at the `#` and fails load as unbalanced quotes.
 
 Host steps run first. If a host step is the same command as a project step for that event, Lando drops the host copy: `"x"` matches `{cmd: x}`, an omitted service is the primary, and `:host` is part of the match. A project Landofile cannot turn host steps off.
 
 If the target service is missing from the plan, or its container is exited, stopped, created, dead, or paused, that host step is skipped with an info notice. `:host` steps are never skipped. Other failures behave like project event steps. `post-start` and `post-stop` still warn instead of failing the operation.
 
-Host-step children get `LANDO_HOST_EVENT=1`. A nested `lando` that sees that variable skips `hostEvents` and prints a notice, so a host step cannot start another lifecycle that would run the same host steps again.
+`:host` step children get `LANDO_HOST_EVENT=1`. Container steps from `hostEvents` do not. A nested `lando` that sees that variable skips `hostEvents` and prints a notice, so a host step cannot start another lifecycle that would run the same host steps again.
 
 `lando config set` and `lando config unset` refuse every `hostEvents` path. Edit `config.yml` by hand, or run `lando config edit`. `lando config` shows the key. `lando app config` and `lando app config explain` list each host step for that app as `active`, `skipped` (with the reason), or `deduped`.

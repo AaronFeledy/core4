@@ -71,6 +71,8 @@ The view exposes public settings, not internal bookkeeping. Secret-bearing envir
 
 The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.local/share/lando/config.yml` on Linux.
 
+Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a tab and a newline. Use single quotes (`'C:\temp\new'`) or doubled backslashes (`"C:\\temp\\new"`) for Windows paths. Lando warns at load when a path-like root value decodes with control characters.
+
 `LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
 
 ## Get, set, unset, validate, or edit a key
