@@ -144,7 +144,9 @@ The first run prints `created .env`. Run it again and it prints `.env already ex
 
 Lando lowercases each path segment, turns anything outside `a-z`, `0-9`, `_`, and `-` into `-`, collapses repeated `-` into one, and trims `-` from both ends.
 
-Built-in commands always win over scripts, so pick names `lando help --all` doesn't list.
+`lando app:cache:refresh` rejects a script whose canonical command or active top-level name collides with a built-in command. You get `CommandAliasConflictError`, and the invalid command cache is not written. For example, `info.bun.sh` collides with `app:info`, while `version.bun.sh` collides with the default `version` alias. Rename the script and refresh again. Disabling or remapping aliases does not free a built-in canonical id such as `app:info`.
+
+Folders do not claim bare namespaced aliases. `.lando/scripts/db/seed.bun.sh` registers `app:db:seed`, so run `lando app:db:seed`, not `lando db:seed`. A plugin command named `db:seed` does not collide with that script. A folder path that produces an existing canonical id, such as `.lando/scripts/cache/refresh.bun.sh` producing `app:cache:refresh`, still fails.
 
 ## Use Bun Shell and your host tools
 
@@ -200,6 +202,31 @@ lando curl version.txt
 ```
 
 That curl runs inside `web` against nginx on port `80`. If a Landofile task and a script share a name, the Landofile task wins. Drop a `curl.bun.sh` next to that Landofile and `lando curl` still runs in `web`.
+
+## Declare a host task in the Landofile
+
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Lando prints the collected output when the task body finishes. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
+
+```yaml
+name: host-task-demo
+tooling:
+  greet:
+    description: Say hello from the host
+    service: ":host"
+    cmd: echo "hello from a host task"
+  stamp:
+    description: Print a version stamp
+    service: ":host"
+    cmd: ["printf", "stamped %s\n"]
+```
+
+```sh
+lando app:cache:refresh
+lando greet
+lando stamp abc1234
+```
+
+`lando greet` prints `hello from a host task`, and `lando stamp abc1234` prints `stamped abc1234`. Add `--format=json` and the text lands in `result.stdout`, same envelope as a script. Reach for a `.bun.sh` file when the body outgrows one line, or when you want `if`, pipes, and `$(...)` without quoting a shell string inside YAML.
 
 ## Build, stamp, and seed an env file
 
@@ -258,6 +285,22 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
     </Step>
   </Scenario>
 
+  <Scenario id="host-task" render>
+    <Step name="scaffold-host-task">
+      <UseFixture name="host-task" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-host-task">
+      <Run command="lando greet" />
+      <Verify command="lando greet --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0.*\"stdout\":\\s*\"hello from a host task" } }} />
+      <Run command="lando stamp abc1234" />
+      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"stdout\":\\s*\"stamped abc1234" } }} />
+    </Step>
+    <Step name="cleanup-host-task">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="service-front-matter" render={false} reason="Regression coverage: service-targeted scripts refuse and point at Landofile tooling">
     <Step name="run-service-front-matter">
       <UseFixture name="service-front-matter" />
@@ -266,6 +309,16 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
       <Verify errorTag="NotImplementedError" expect={{ regex: "service-targeted .bun.sh scripts are not supported" }} />
     </Step>
     <Step name="cleanup-service-front-matter">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="built-in-command-conflict" render={false} reason="Regression: cache refresh rejects scripts that collide with built-in commands">
+    <Step name="reject-info-script">
+      <UseFixture name="command-conflict" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="CommandAliasConflictError" expect={{ regex: "app:info" }} />
+    </Step>
+    <Step name="cleanup-command-conflict">
       <Cleanup />
     </Step>
   </Scenario>

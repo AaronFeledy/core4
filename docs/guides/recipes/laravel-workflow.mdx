@@ -57,6 +57,15 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
+  <Scenario id="worker-vendor-sharing" render={false} reason="Verify automatic dependency sharing for the queue worker">
+    <Step name="scaffold-worker">
+      <Run command="lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true" />
+    </Step>
+    <Step name="confirm-shared-vendor">
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Run Artisan, Composer, and the clients
@@ -67,10 +76,12 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
 ```
 
-Move `tmp-app` up into the app root and keep `.lando.yml`. `appserver` keeps `vendor/` in a volume of its own, so install the dependencies there, then check the tools:
+Copy the application into the root, keeping `.lando.yml`, then check its
+dependencies and tools:
 
 ```sh
-lando composer install
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando composer install --no-interaction
 lando artisan --version
 lando composer --version
 lando redis-cli ping
@@ -83,16 +94,15 @@ Add a queue worker at init with `--answer=worker=true`:
 lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
 ```
 
-That service runs `php artisan queue:work`. It gets its own `vendor/` volume too, so before the first start give both `appserver` and `worker` this block:
+The recipe automatically shares host `vendor` between appserver and worker.
+You don't need manual `appMount.includes` overrides. The worker runs
+`php artisan queue:work` only after a Laravel application and its dependencies
+exist. If you started the services before installing Laravel, restart afterward:
 
-```yaml
-    appMount:
-      target: /app
-      includes:
-        - vendor
+```sh
+lando restart
+lando logs --service=worker
 ```
-
-That keeps `vendor/` in the shared app mount, and the worker boots against the same Composer install. [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx) uses the same block for its worker and Reverb services.
 
 ## Connect Eloquent and Redis
 

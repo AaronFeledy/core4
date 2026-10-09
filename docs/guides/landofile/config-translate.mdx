@@ -99,7 +99,7 @@ Quotes keep an argument together: `sh -c "echo a b"` becomes `["sh", "-c", "echo
 
 Compose stops reading a scalar at an unquoted `;`, `&`, `|`, `<`, or `>`, so `echo a && echo b` only ever ran `echo a`. Translation keeps that argument list and adds a `?` diagnostic. If you wanted the whole script, write `["sh", "-c", "echo a && echo b"]` instead.
 
-API-4 `type: l337` services in a Lando 3 file also pass these fields to Compose, so their scalar values become argument lists. API-4 `type: lando` services split a single-line `command` or `entrypoint` the way Lando 3 did: on whitespace, with quotes grouping words and no shell operators. A multi-line value stays a script. Catalog-owned top-level commands, such as a Node service's shell script, keep their existing behavior. Native v4 string commands still mean shell scripts. Translation makes the distinction explicit.
+API-4 `type: l337` services in a Lando 3 file also pass these fields to Compose, so their scalar values become argument lists. API-4 `type: lando` services split a single-line `command` or `entrypoint` the way Lando 3 did: on whitespace, with quotes grouping words and no shell operators. A multi-line value stays a script. Catalog-owned top-level commands, such as a Node service's shell script, keep their existing behavior. In a native v4 Landofile, a string `command` on `type: compose` splits into argv the same way; a string `command` on any other service type still means a shell script. Translation makes the distinction explicit.
 
 <Guide>
   <Scenario id="lando3-compose-arguments" render>

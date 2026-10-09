@@ -14,6 +14,7 @@ export {
   validateConfigTranslateResult,
 } from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
+export { splitComposeCommand, type SplitCommand } from "./compose-command.ts";
 export { LANDOFILE_LAYER_ORDER, landofileLayerRank } from "./layer-order.ts";
 export {
   ARRAY_IDENTITY_KEYS,

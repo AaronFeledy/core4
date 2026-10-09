@@ -31,6 +31,8 @@ services:
       - "internal.test:127.0.0.1"
 ```
 
+A string `command:` or `entrypoint:` on a `type: compose` service splits into argv the way Compose does: whitespace separates, quotes group, no shell runs. Neither a string nor a list starts a shell on its own; put `sh -c '<script>'` in the argv yourself when you need pipes, `&&`, or variable expansion. See [Add a Compose service](../../services/compose-passthrough/) for the details.
+
 ## Keep Lando features on a custom image
 
 Use `type: lando` instead when you want Lando's environment and app mount. Its

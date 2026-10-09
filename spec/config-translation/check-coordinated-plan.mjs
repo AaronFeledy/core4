@@ -81,6 +81,7 @@ const parseIndex = (text, source) => {
 
 const allStories = [];
 const ownedTexts = [];
+const referenceTexts = [];
 const indexRows = new Map();
 let branchName;
 
@@ -118,12 +119,26 @@ for (const set of sets) {
     indexRows.set(id, row);
   }
   ownedTexts.push(markdown, jsonText, indexText);
+  // Notes and explicitly delimited consolidation history may name retired stories.
+  // Current contracts and indexes still require live references; forbidden text
+  // remains checked in the original, unfiltered owned texts below.
+  referenceTexts.push(
+    markdown.replace(/<!-- plan-history:start -->[\s\S]*?<!-- plan-history:end -->/g, ""),
+    JSON.stringify({
+      ...parsed,
+      userStories: parsed.userStories.map(({ notes, ...story }) => story),
+    }),
+    indexText,
+  );
 }
 
 for (const set of sets) {
   for (const file of ["spec-config-translation.md", "spec-lando3-compat.md", "lando3-gap-analysis.md"]) {
-    if (await Bun.file(new URL(`${set.directory}/${file}`, root)).exists())
-      ownedTexts.push(await read(set.directory, file));
+    if (await Bun.file(new URL(`${set.directory}/${file}`, root)).exists()) {
+      const text = await read(set.directory, file);
+      ownedTexts.push(text);
+      referenceTexts.push(text);
+    }
   }
 }
 
@@ -171,11 +186,11 @@ const visit = (id) => {
 for (const id of byId.keys()) visit(id);
 
 const closure = byId.get("US-622B");
-const dependedOnWithoutClosure = new Set(
-  allStories.filter((story) => story.id !== closure.id).flatMap((story) => story.dependsOn),
-);
-const terminalLeaves = allStories
-  .filter((story) => story.id !== closure.id && !dependedOnWithoutClosure.has(story.id))
+// A wave closes its predecessors, not follow-ups queued after that milestone.
+const predecessors = allStories.filter((story) => story.priority < closure.priority);
+const dependedOnBeforeClosure = new Set(predecessors.flatMap((story) => story.dependsOn));
+const terminalLeaves = predecessors
+  .filter((story) => !dependedOnBeforeClosure.has(story.id))
   .map((story) => story.id)
   .sort();
 if (JSON.stringify([...closure.dependsOn].sort()) !== JSON.stringify(terminalLeaves)) {
@@ -215,7 +230,7 @@ for (const [id, dependencies] of Object.entries(expectedRecipeGraph)) {
 }
 
 const joined = ownedTexts.join("\n");
-for (const match of joined.matchAll(/US-\d+[A-Z0-9]*/g)) {
+for (const match of referenceTexts.join("\n").matchAll(/US-\d+[A-Z0-9]*/g)) {
   if (!byId.has(match[0])) fail(`stale or unknown story reference ${match[0]}`);
 }
 for (const forbidden of [

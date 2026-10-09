@@ -149,7 +149,9 @@ Global priorities, dependencies, and standard gates are recorded in the index an
 
 These stories come from an audit of the stories above. Audit findings are historical evidence: they point at where to look, not proof that a defect exists on current source. Each story starts by reproducing on a clean checkout and locking the behavior with a failing test before any fix.
 
+<!-- plan-history:start -->
 One story is one pull request. The audit first produced twenty follow-ups; they were consolidated into these twelve PR-sized deliverables. Ids are sparse on purpose: each surviving story keeps the id it had before consolidation, and the retired ids (US-625, US-627, US-630, US-634, US-636, US-639, US-640, US-641) are absorbed into the story that now owns their scope rather than reopening the original work. Nothing from a retired entry was dropped; product scope moved into the absorbing story named in its notes, and maintainer scope moved to the checklist at the end of this file.
+<!-- plan-history:end -->
 
 Shared gates for every follow-up: focused tests with a positive count, typecheck, lint, and boundaries, plus the schema, codegen, guide coverage, drift, and public transcript gates its acceptance criteria name. Live runtime evidence runs only in an explicit isolated sandbox under the existing runtime env gate. US-638 is the only maintainer-only story and records internal test output instead of a public guide.
 
@@ -311,7 +313,7 @@ Shared gates for every follow-up: focused tests with a positive count, typecheck
 **Acceptance Criteria:**
 - [ ] A downstream consumer that closes the pipe early ends output cleanly on every renderer write path: no unhandled stream error, no internal-error report, no stack trace, and the conventional terminated-pipeline exit status; stdout and stderr are each handled independently because they can be redirected separately.
 - [ ] One YAML scalar and key quoting policy serves both the Compose export serializer and the CLI config emitter; the hand-rolled unquoted emitter is deleted rather than kept beside the shared one, and the policy lives where both callers may import it under the package DAG.
-- [ ] Every `--format=yaml` surface satisfies a round-trip law: parsing emitted YAML yields a document structurally equal to the source model, proven over the redaction sentinel, boolean-like and numeric-like strings, `null`-like strings, values containing `: `, and values with leading indicator characters — not over the redaction sentinel alone.
+- [ ] Every `--format=yaml` surface satisfies a round-trip law: parsing emitted YAML yields a document structurally equal to the source model, proven over the redaction sentinel, boolean-like and numeric-like strings, `null`-like strings, values containing `: `, and values with leading indicator characters - not over the redaction sentinel alone.
 - [ ] Publishing the shared policy on a public SDK subpath is optional; if chosen it follows `sdk/AGENTS.md`, records the additive export, and refreshes the schema artifact set.
 - [ ] Failing regression tests first capture the piped crash and at least one corrupted round trip; focused tests with a positive count, the JSON scripting guide, typecheck, lint, and boundaries pass.
 
@@ -332,7 +334,7 @@ Shared gates for every follow-up: focused tests with a positive count, typecheck
 **Acceptance Criteria:**
 - [ ] For any two routes on concurrently applied apps that match the same request, an exact hostname is selected over a wildcard hostname and a longer path prefix over a shorter one, independently of how many routes each app declared.
 - [ ] The outcome is determined by Lando's emitted priorities rather than by the router's rule-length tie-break; priorities for competing specificity classes are distinct, so an equal-priority wildcard can no longer outrank an exact host.
-- [ ] Route rank derives from properties of the route itself — hostname specificity and path length — rather than from the route's index within its own plan, so plans ranked in isolation compose correctly in the merged router table; the diagnostic fallback keeps its reserved lowest priority and stays below every app route.
+- [ ] Route rank derives from properties of the route itself - hostname specificity and path length - rather than from the route's index within its own plan, so plans ranked in isolation compose correctly in the merged router table; the diagnostic fallback keeps its reserved lowest priority and stays below every app route.
 - [ ] Cross-app hostname ownership is not introduced: two apps may still claim overlapping hostnames, and no hostname registry, cross-app conflict refusal, or per-app priority banding is added.
 - [ ] A failing regression test first writes two apps' dynamic configs into one watched directory and shows the wildcard winning; the route-shorthand guide is corrected from "within an app" to the actual policy; focused tests with a positive count, real-runtime evidence from two concurrently started apps with overlapping hostnames, typecheck, lint, and boundaries pass.
 
@@ -358,7 +360,7 @@ These twelve follow the same rules as the stories above and are normative agains
 - [ ] `yaml` becomes a boundary-owned machine format derived from the same encoded envelope `json` produces, serialized through `@lando/sdk/yaml`; parsing the YAML yields the same model as parsing the JSON for a command with no bespoke format handling.
 - [ ] Redaction, `--json` field projection, `--jq`, warning capture, and the broken-pipe exit policy apply to `yaml` identically to `json`, through the one existing seam rather than a parallel one.
 - [ ] The hand-rolled YAML in `meta:config`, `meta:global:config`, `app:config`, and `app:config:translate` is reconciled against the boundary: envelope duplicates are deleted, and any survivor records in its spec why its document differs.
-- [ ] `meta:doctor`'s report projection is decided explicitly — kept with a recorded reason or folded into the envelope — rather than left as an unexamined exception.
+- [ ] `meta:doctor`'s report projection is decided explicitly - kept with a recorded reason or folded into the envelope - rather than left as an unexamined exception.
 - [ ] A failing test first captures `lando info --format=yaml` emitting a tab-separated document; the scripting guide covers the format; applicable standard gates pass.
 
 ### US-658: Advertise a result format only where it is honored
