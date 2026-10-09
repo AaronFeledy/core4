@@ -688,6 +688,17 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = yield* inspectContainer(deps, name);
+  if (!inspected.exists && deps.options.forbidRecreate === true) {
+    return yield* Effect.fail(
+      new ServiceStartError({
+        providerId: deps.options.ctx.providerId,
+        operation: "bringUp",
+        service: service.name,
+        message: `Cannot restart ${service.name} in place because its container is missing.`,
+        remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
+      }),
+    );
+  }
   const published = service.endpoints.flatMap((endpoint) =>
     endpoint._tag === "published" ? [endpoint] : [],
   );

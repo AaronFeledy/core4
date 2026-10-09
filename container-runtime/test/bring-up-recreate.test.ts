@@ -102,6 +102,7 @@ const makeFakeApi = (input: {
   readonly existingContainerName?: string;
   readonly existingNetworks?: ReadonlyArray<string>;
   readonly networkExists?: boolean;
+  readonly containerExists?: boolean;
   readonly agentMount?: {
     readonly Type: string;
     readonly Source: string;
@@ -110,7 +111,7 @@ const makeFakeApi = (input: {
   };
 }) => {
   const calls: EngineHttpRequest[] = [];
-  let exists = true;
+  let exists = input.containerExists ?? true;
   let running = true;
   let hostPort = "18080";
   let bindSource = input.existingBindSource;
@@ -178,6 +179,19 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 describe("Podman publish-port recreate", () => {
+  test("forbidRecreate refuses a missing container without creating one", async () => {
+    // Given a container removed after the operation's preflight.
+    const fake = makeFakeApi({ deleteStatus: 204, networkExists: true, containerExists: false });
+    // When the provider applies an in-place restart.
+    const exit = await Effect.runPromiseExit(
+      bringUp(planWithHostPort(18080), { api: fake.api, ctx, forbidRecreate: true }),
+    );
+    // Then it fails without creating a replacement or deleting the existing network.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(createCalls(fake.calls)).toHaveLength(0);
+    expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+
   test.each([
     ["bind", "/old/agent", "bind", "/new/agent", true],
     ["bind", "/same/agent", "bind", "/same/agent", false],
