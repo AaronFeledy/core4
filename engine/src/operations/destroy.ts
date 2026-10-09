@@ -34,7 +34,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import { deleteCwdAppMapEntriesForRoot } from "../cache/cwd-app-map.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
-import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import {
   verifyActiveVolumeCoordination,
@@ -50,12 +50,13 @@ import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./a
 import {
   type TeardownResolution,
   missingRootAppliedTarget,
-  resolveTeardownResolution,
+  teardownDesiredOrUnchanged,
   teardownResolutionAt,
   validateResolvedAppTarget,
+  withTeardownResolution,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 
@@ -205,8 +206,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     app: ref,
     timestamp: now(),
   });
-  yield* events.publish(preDestroy);
-  yield* runAppEvent(plan, "pre-destroy", preDestroy);
+  yield* publishAndRunAppEvent(plan, "pre-destroy", preDestroy);
 
   yield* withDestroyProgress({
     events,
@@ -279,8 +279,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     app: ref,
     timestamp: now(),
   });
-  yield* events.publish(postDestroy);
-  yield* runAppEvent(plan, "post-destroy", postDestroy);
+  yield* publishAndRunAppEvent(plan, "post-destroy", postDestroy);
   yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
 
   return {
@@ -360,14 +359,10 @@ const destroyDesiredOrUnchanged = (
   options: DestroyAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
-  resolveDesiredAppTarget.pipe(
-    Effect.map((desired): ResolvedAppTarget | undefined => desired),
-    Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
-    Effect.flatMap((desired) =>
-      desired === undefined
-        ? Effect.succeed(unchangedResult(basename(resolution.root)))
-        : destroyAppWithResolvedTarget(options, desired, false, true),
-    ),
+  teardownDesiredOrUnchanged(
+    resolution,
+    (desired) => destroyAppWithResolvedTarget(options, desired, false, true),
+    unchangedResult,
   );
 
 export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
@@ -376,17 +371,11 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
 ): Effect.fn.Return<DestroyAppResult, DestroyAppError, DestroyAppServices> {
   return yield* target !== undefined
     ? destroyAppForTarget(options, target)
-    : resolveTeardownResolution.pipe(
-        Effect.flatMap((resolution) => {
-          switch (resolution.kind) {
-            case "applied":
-              return destroyAppWithResolvedTarget(options, resolution.target, false, false);
-            case "orphans":
-              return destroyOrphans(options, resolution);
-            case "absent":
-              return destroyDesiredOrUnchanged(options, resolution);
-          }
-        }),
+    : withTeardownResolution({
+        applied: (resolved) => destroyAppWithResolvedTarget(options, resolved, false, false),
+        orphans: (resolution) => destroyOrphans(options, resolution),
+        absent: (resolution) => destroyDesiredOrUnchanged(options, resolution),
+      }).pipe(
         Effect.map(
           (result): DestroyAppResult =>
             result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },

@@ -18,7 +18,7 @@
  *     to `lando-<hash>` so the name remains a valid identifier.
  */
 
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { FileSyncSessionRef, type FileSyncSessionSpec } from "@lando/sdk/schema";
 
@@ -37,8 +37,7 @@ const COLLAPSE_DASH = /-+/gu;
 const TRIM_DASH = /^-+|-+$/gu;
 const VALID_NAME = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/u;
 
-const shortHash = (input: string): string =>
-  createHash("sha256").update(input).digest("hex").slice(0, SHORT_HASH_LEN);
+const shortHash = (input: string): string => sha256Hex(input).slice(0, SHORT_HASH_LEN);
 
 const sanitize = (raw: string): string =>
   raw.toLowerCase().replace(INVALID_CHAR, "-").replace(COLLAPSE_DASH, "-").replace(TRIM_DASH, "");

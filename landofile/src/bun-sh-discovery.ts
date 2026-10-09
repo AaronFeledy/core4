@@ -7,6 +7,7 @@ import {
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
   NotImplementedError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 
@@ -184,7 +185,7 @@ export const canonicalIdFromRelativePath = (relativePath: string): { name: strin
   return { name, id: `app:${name}` };
 };
 
-const parseScriptFile = Effect.fnUntraced(function* (
+export const parseScriptFile = Effect.fnUntraced(function* (
   scriptPath: string,
   relativePath: string,
 ): Effect.fn.Return<DiscoveredBunShellScript, BunShellScriptDiscoveryError> {
@@ -192,9 +193,7 @@ const parseScriptFile = Effect.fnUntraced(function* (
     try: () => readFile(scriptPath, "utf-8"),
     catch: (cause) =>
       new BunShellScriptFrontMatterError({
-        message: `Failed to read .bun.sh script at ${scriptPath}: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
+        message: `Failed to read .bun.sh script at ${scriptPath}: ${causeMessage(cause)}`,
         path: scriptPath,
         remediation: FRONT_MATTER_REMEDIATION,
         cause,
@@ -322,6 +321,8 @@ const scriptsDirExists = async (scriptsDir: string): Promise<boolean> => {
 
 export interface DiscoverBunShellScriptsOptions {
   readonly appRoot: string;
+  /** Fingerprints skip a script that cannot be parsed. Command discovery still fails. */
+  readonly skipInvalid?: boolean;
 }
 
 export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScripts")(function* (
@@ -335,9 +336,7 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
     try: () => walkScriptsDir(scriptsDir),
     catch: (cause) =>
       new BunShellScriptFrontMatterError({
-        message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
+        message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${causeMessage(cause)}`,
         path: scriptsDir,
         remediation: "Ensure the directory is readable by the current user.",
         cause,
@@ -347,7 +346,12 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
   const seen = new Map<string, string>();
   const out: DiscoveredBunShellScript[] = [];
   for (const entry of entries) {
-    const script = yield* parseScriptFile(entry.absolutePath, entry.relativePath);
+    const parsed = yield* Effect.result(parseScriptFile(entry.absolutePath, entry.relativePath));
+    if (parsed._tag === "Failure") {
+      if (options.skipInvalid === true) continue;
+      return yield* Effect.fail(parsed.failure);
+    }
+    const script = parsed.success;
     const previous = seen.get(script.id);
     if (previous !== undefined) {
       return yield* Effect.fail(

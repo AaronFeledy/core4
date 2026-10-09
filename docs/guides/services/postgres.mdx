@@ -75,6 +75,12 @@ The `postgres` type ships the `psql` client task. After start:
 lando psql
 ```
 
+That's a live session: type queries, page through long results, `\q` to leave. Need one answer, not a session? Pass `-c`:
+
+```sh
+lando psql -c 'SELECT version();'
+```
+
 Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can still pipe into `psql` with `lando exec`.
 
 ## Use your own postgresql.conf

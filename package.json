@@ -112,6 +112,10 @@
   "overrides": {
     "devalue": "^5.9.3",
     "fast-uri": "^3.1.7",
+    "postcss-selector-parser": "^7.1.6",
+    "sharp": "^0.35.5",
+    "smol-toml": "^1.9.0",
+    "source-map-js": "^1.2.2",
     "undici": "^8.10.2"
   }
 }

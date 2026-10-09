@@ -40,3 +40,28 @@ export const serviceStateRow = (name: string, state: string, endpoints: Readonly
   `${name} (${state}) ${endpointText(endpoints)}`;
 
 export const joinServiceRows = (rows: ReadonlyArray<string>): string => rows.join("; ");
+
+export const serviceRowsText = (
+  services: ReadonlyArray<{
+    readonly name: string;
+    readonly state: string;
+    readonly endpoints: ReadonlyArray<string>;
+  }>,
+): string =>
+  joinServiceRows(services.map((service) => serviceStateRow(service.name, service.state, service.endpoints)));
+
+export const lifecycleLine = (verb: string, app: string, rows: string): string =>
+  `${verb}: ${app}${rows.length === 0 ? "" : ` - ${rows}`}`;
+
+export const teardownLine = (
+  verb: string,
+  app: string,
+  names: ReadonlyArray<string>,
+  trailer?: string,
+): string =>
+  `${verb}: ${app} - ${names.length === 0 ? "no services" : names.join(", ")}${trailer === undefined ? "" : ` (${trailer})`}`;
+
+export const unchangedLine = (app: string): string => teardownLine("unchanged", app, []);
+
+export const volumesTrailer = (removed: boolean): string =>
+  removed ? "volumes removed" : "volumes preserved";

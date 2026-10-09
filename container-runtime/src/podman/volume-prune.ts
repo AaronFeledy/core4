@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
+import { apiResponseFailure, missingRequest } from "../engine-errors.ts";
 import { encodeEngineFilters, parseJsonOrUndefined } from "../engine-json.ts";
-import { redactDetails, redactString, withApiReason } from "../redact.ts";
 
 /** Podman libpod filter map: filter key -> list of values, ANDed across entries. */
 export type VolumeFilterMap = Readonly<Record<string, ReadonlyArray<string>>>;
@@ -172,32 +172,29 @@ export const parseVolumePruneResult = (body: string): VolumePruneParse => {
   return EMPTY;
 };
 
-const missingRequest = (ctx: ProviderErrorContext): ProviderInternalError =>
-  new ProviderInternalError({
-    providerId: ctx.providerId,
-    operation: "pruneVolumes",
-    message: "The Podman API client does not support requests required for volume prune.",
-    remediation: ctx.remediation,
-  });
-
-const pruneFailure = (ctx: ProviderErrorContext, status: number, body: string): ProviderUnavailableError =>
-  new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation: "pruneVolumes",
-    message: redactString(withApiReason(`Podman volume prune failed with HTTP ${status}.`, { body })),
-    details: redactDetails({ status, body }),
-    remediation: ctx.remediation,
-  });
-
 export const pruneVolumes = Effect.fn("RuntimeProvider.pruneVolumes")(function* (
   api: EngineHttpApi,
   options: VolumePruneOptions,
 ): Effect.fn.Return<VolumePruneReport, ProviderUnavailableError | ProviderInternalError> {
   const requestFn = api.request;
-  if (requestFn === undefined) return yield* Effect.fail(missingRequest(options.ctx));
+  if (requestFn === undefined)
+    return yield* Effect.fail(
+      missingRequest(
+        options.ctx,
+        "pruneVolumes",
+        "The Podman API client does not support requests required for volume prune.",
+      ),
+    );
   const response = yield* requestFn(buildVolumePruneRequest(options));
   if (response.status < 200 || response.status >= 300) {
-    return yield* Effect.fail(pruneFailure(options.ctx, response.status, response.body));
+    return yield* Effect.fail(
+      apiResponseFailure(
+        options.ctx,
+        "pruneVolumes",
+        response,
+        `Podman volume prune failed with HTTP ${response.status}.`,
+      ),
+    );
   }
   return { ...parseVolumePruneResult(response.body), dryRun: options.dryRun === true };
 });

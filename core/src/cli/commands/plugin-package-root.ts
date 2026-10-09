@@ -1,14 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import { PluginManifestError } from "@lando/sdk/errors";
+import { PluginManifestError, isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";
-
-const isMissingPathError = (cause: unknown): boolean =>
-  typeof cause === "object" &&
-  cause !== null &&
-  "code" in cause &&
-  (cause as { readonly code?: unknown }).code === "ENOENT";
 
 const parsePackageJson = async (
   packagePath: string,
@@ -36,7 +30,7 @@ export const findNearestPluginPackageRoot = async (cwd: string, commandId: strin
   while (true) {
     const packagePath = join(current, "package.json");
     const packageStat = await stat(packagePath).catch((cause: unknown) => {
-      if (isMissingPathError(cause)) return undefined;
+      if (isErrnoCode(cause, "ENOENT")) return undefined;
       throw cause;
     });
     if (packageStat?.isFile() === true) {

@@ -1,9 +1,12 @@
 import { Effect, Layer, Schema } from "effect";
 
 import {
+  type BunShellScriptEmptyError,
+  type BunShellScriptFrontMatterError,
   type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
+  type NotImplementedError,
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
@@ -23,10 +26,11 @@ import {
   emitJsonListModeIfRequested,
   resetActiveCommandInvocation,
   runCompiledCommand,
+  runWithProcessAbortSignal,
   setActiveCommandId,
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
-import { attachedHostTerminal } from "./exec-host-io";
+import { attachToolingHostIo } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
@@ -65,40 +69,51 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
-  const hostTerminal =
-    isEnvelopeResultFormat(activeResultFormat) || activeRendererMode === "json"
-      ? undefined
-      : attachedHostTerminal();
-  return runCompiledCommand(
-    runTooling({
-      name,
-      args: commandArgv,
-      renderProgress: true,
-      tty: hostTerminal !== undefined,
-      ...(hostTerminal === undefined ? {} : { hostTerminal }),
-    }),
-    makeLandoRuntime(
-      cliRuntimeOptions({
-        bootstrap: "app",
-        plugins: { policy: "discovery" },
-      }),
-    ),
-    renderRunToolingResult,
-    {
-      ...dynamicToolingOptions,
-      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
-    },
+  const { restore, ...hostIo } = attachToolingHostIo(
+    !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
+  const interactive = hostIo.stdinStream !== undefined;
+  return runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      runTooling({
+        name,
+        args: commandArgv,
+        renderProgress: !interactive,
+        ...hostIo,
+        signal,
+      }),
+      makeLandoRuntime(
+        cliRuntimeOptions({
+          bootstrap: "app",
+          plugins: { policy: "discovery" },
+        }),
+      ),
+      renderRunToolingResult,
+      {
+        ...dynamicToolingOptions,
+        ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
+      },
+    ),
+  ).finally(restore);
 };
 
 const runDynamicBunShellTooling = (
-  name: string,
+  route: Extract<ToolingRoute, { readonly _tag: "bun-script" }>,
   argv: ReadonlyArray<string>,
-  appRoot: string,
 ): Promise<void> => {
-  prepareDynamicToolingInvocation(name, argv);
+  const { name, appRoot, relativePath } = route;
+  const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
+  prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
-  const effect = runBunShellTooling({ name, renderProgress: true }, appRoot).pipe(
+  const effect = runBunShellTooling(
+    {
+      name,
+      args: commandArgv,
+      renderProgress: true,
+      relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,
+    },
+    appRoot,
+  ).pipe(
     Effect.flatMap((result) =>
       result === undefined
         ? Effect.fail(
@@ -120,14 +135,24 @@ const runDynamicBunShellTooling = (
       }),
     ),
     renderRunToolingResult,
-    dynamicToolingOptions,
+    {
+      ...dynamicToolingOptions,
+      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
+    },
   );
 };
 
 const runDynamicToolingFailure = (
   name: string,
   argv: ReadonlyArray<string>,
-  error: ToolingCompileError | CacheError | CommandAliasConflictError | CommandAliasTargetError,
+  error:
+    | ToolingCompileError
+    | CacheError
+    | CommandAliasConflictError
+    | CommandAliasTargetError
+    | BunShellScriptEmptyError
+    | BunShellScriptFrontMatterError
+    | NotImplementedError,
 ): Promise<void> => {
   prepareDynamicToolingInvocation(name, argv);
   return runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, dynamicToolingOptions);
@@ -175,7 +200,7 @@ export const routeResolvedTooling = async (
     case "bun-script":
       // A tooling task renders its own streams and declares no opt-in format.
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
-      await runDynamicBunShellTooling(route.name, argv, route.appRoot);
+      await runDynamicBunShellTooling(route, argv);
       return true;
     case "tooling":
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;

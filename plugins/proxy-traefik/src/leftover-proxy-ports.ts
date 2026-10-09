@@ -1,7 +1,4 @@
 import { readFile } from "node:fs/promises";
-import http from "node:http";
-import https from "node:https";
-import { Socket } from "node:net";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
@@ -10,6 +7,7 @@ import { Effect, absurd } from "effect";
 
 import { type TraefikPublishState, resolveTraefikPublishPorts } from "./global-services/traefik.ts";
 import { commLooksLikeRootlessport, identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
+import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
@@ -52,50 +50,6 @@ const idleSnapshot = (port: number): LoopbackPortSnapshot => ({
   listening: false,
 });
 
-type TcpProbe = "refused" | "open" | "unknown";
-
-const probeTcp = (port: number): Promise<TcpProbe> =>
-  new Promise((resolve) => {
-    const socket = new Socket();
-    const finish = (result: TcpProbe) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(result);
-    };
-    socket.setTimeout(TCP_PROBE_MS);
-    socket.once("connect", () => finish("open"));
-    socket.once("timeout", () => finish("unknown"));
-    socket.once("error", (error: Error) => {
-      const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
-      finish(code === "ECONNREFUSED" ? "refused" : "unknown");
-    });
-    socket.connect(port, LOOPBACK_HOST);
-  });
-
-const probeHttp = (port: number, role: LoopbackPortRole): Promise<boolean> =>
-  new Promise((resolve) => {
-    const request = (role === "https" ? https : http).request(
-      {
-        host: LOOPBACK_HOST,
-        port,
-        path: "/",
-        method: "GET",
-        timeout: HTTP_PROBE_MS,
-        rejectUnauthorized: false,
-      },
-      (response) => {
-        response.resume();
-        resolve(response.statusCode !== undefined);
-      },
-    );
-    request.once("timeout", () => {
-      request.destroy();
-      resolve(false);
-    });
-    request.once("error", () => resolve(false));
-    request.end();
-  });
-
 const readPort = async (
   port: number,
   platform: HostPlatform,
@@ -103,7 +57,7 @@ const readPort = async (
 ): Promise<LoopbackPortSnapshot> => {
   if (platform !== "linux" && platform !== "wsl") return idleSnapshot(port);
 
-  const tcp = await probeTcp(port);
+  const tcp = await probeTcp({ host: LOOPBACK_HOST, port, timeoutMs: TCP_PROBE_MS });
   switch (tcp) {
     case "refused":
       return idleSnapshot(port);
@@ -115,7 +69,7 @@ const readPort = async (
       return absurd<never>(tcp);
   }
 
-  if (await probeHttp(port, role)) {
+  if (await probeHttp({ host: LOOPBACK_HOST, port, role, timeoutMs: HTTP_PROBE_MS })) {
     return { port, host: LOOPBACK_HOST, listening: true, kind: "healthy-proxy" };
   }
 

@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Context, DateTime, Effect } from "effect";
 
@@ -45,7 +45,7 @@ export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): n
  * wait on the first lock.
  */
 export const appMutationLockKey = (appId: string, canonicalRoot: string): string =>
-  `app-${createHash("sha256").update(`${appId}\0${canonicalRoot}`).digest("hex")}`;
+  `app-${sha256Hex(`${appId}\0${canonicalRoot}`)}`;
 
 const parseHolderEntries = (raw: string | undefined): ReadonlyArray<readonly [string, string]> => {
   if (raw === undefined || raw === "") return [];

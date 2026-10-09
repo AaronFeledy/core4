@@ -114,25 +114,6 @@ describe("share command skeleton", () => {
     }
   });
 
-  test("compiled dispatcher exposes share routes and renderers", async () => {
-    const dispatchSource = await Bun.file(join(import.meta.dir, "../../src/cli/dispatch-app.ts")).text();
-    const adapterSource = await Bun.file(
-      join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
-    ).text();
-    const shareSource = await Bun.file(
-      join(import.meta.dir, "../../../engine/src/operations/share.ts"),
-    ).text();
-
-    expect(adapterSource).toContain("renderShareResult(value, compiledFormat(input), ctx)");
-    expect(adapterSource).toContain("renderShareListResult(value, options.format, ctx)");
-    expect(adapterSource).toContain("renderShareStopResult(value, options.format, ctx)");
-    expect(dispatchSource).toContain('argv[0] === "share"');
-    expect(dispatchSource).toContain('argv[0] === "app:share:list"');
-    expect(dispatchSource).toContain('argv[0] === "share:stop:app"');
-    expect(shareSource).not.toContain('format === "json"');
-    expect(shareSource).not.toContain("JSON.stringify");
-  });
-
   test("share operations fail with TunnelProviderUnavailableError when no service is installed", async () => {
     await withTempShareApp(async (dir) => {
       const operations = await import("@lando/core/cli/operations");

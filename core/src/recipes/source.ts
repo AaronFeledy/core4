@@ -26,6 +26,7 @@ import {
   type RecipeManifestParseError,
   RecipeManifestValidationError,
   type RecipeSourceError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import type { RecipeManifest } from "@lando/sdk/schema";
 
@@ -140,7 +141,7 @@ const resolveLocalTs = Effect.fnUntraced(function* (
     try: () => Bun.file(tsPath).text(),
     catch: (cause) =>
       new RecipeManifestNotFoundError({
-        message: `Could not read recipe.ts at ${tsPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        message: `Could not read recipe.ts at ${tsPath}: ${causeMessage(cause)}.`,
         source: tsPath,
       }),
   });
@@ -173,7 +174,7 @@ const resolveLocal = Effect.fnUntraced(function* (
     try: () => Promise.all([Bun.file(manifestPath).exists(), Bun.file(tsPath).exists()]),
     catch: (cause) =>
       new RecipeManifestNotFoundError({
-        message: `Could not stat recipe manifest at ${expanded}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        message: `Could not stat recipe manifest at ${expanded}: ${causeMessage(cause)}.`,
         source: expanded,
       }),
   });
@@ -205,7 +206,7 @@ const resolveLocal = Effect.fnUntraced(function* (
     try: () => Bun.file(manifestPath).text(),
     catch: (cause) =>
       new RecipeManifestNotFoundError({
-        message: `Could not read recipe.yml at ${manifestPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        message: `Could not read recipe.yml at ${manifestPath}: ${causeMessage(cause)}.`,
         source: manifestPath,
       }),
   });

@@ -4,13 +4,15 @@ WordPress scaffold with PHP, MariaDB, and an optional Redis cache.
 
 ## Generated services
 
-- `appserver` — `php:8.2` or `php:8.3` (prompt: `php`), `framework: wordpress`.
+- `appserver` — `php:8.4` by default (prompt: `php`), `framework: wordpress`,
+  with mysqli and pinned, checksum-verified WP-CLI on stock images,
+  plus `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`) for CLI and web PHP.
 - `database` — `mariadb`.
 - `cache` — `redis` (only when prompt `redis` answers `true`).
 
 ## Generated tooling
 
-- `lando wp …` — WP-CLI inside `appserver`.
+- `lando wp …` — WP-CLI inside `appserver`, with root tooling enabled.
 - `lando composer …` — Composer inside `appserver`.
 
 ## Alpha limitations
@@ -19,8 +21,7 @@ WordPress scaffold with PHP, MariaDB, and an optional Redis cache.
   install WordPress through the generated tooling or by adding files manually.
   Built-in source/template fetch (`postInit: bun install`, git clone) is
   deferred to Beta.
-- Multi-site, WP-CLI plugins, automatic SSL, and PHP-version pinning beyond
-  the bundled service catalog (`8.2`, `8.3`) are deferred.
+- Multi-site, WP-CLI plugins, and automatic SSL are deferred.
 
 ## Host prerequisites
 

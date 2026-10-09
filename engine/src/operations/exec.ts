@@ -20,10 +20,14 @@ import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanRedactionTokens,
+  registerAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
+import { availableServiceList, unknownPlanServiceError } from "./unknown-service.ts";
 
 export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
@@ -47,12 +51,6 @@ export const execAppRedactionTokens = (result: unknown): ReadonlyArray<string> =
 
 export type ExecAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
-const availableServiceList = (services: AppPlan["services"]): string =>
-  Object.values(services)
-    .map((service) => String(service.name))
-    .sort()
-    .join(", ");
-
 const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
   const first = list.split(", ")[0];
@@ -61,21 +59,6 @@ const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError 
       list.length === 0
         ? "exec needs a service, but this app has none."
         : `exec needs a service (available: ${list}).`,
-    tool: "app:exec",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando exec ${first} -- <command>` }),
-  });
-};
-
-const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
-  const list = availableServiceList(services);
-  const first = list.split(", ")[0];
-  return new ToolingExecError({
-    message:
-      list.length === 0
-        ? `exec: service ${requested} is not in the app plan.`
-        : `exec: service ${requested} is not in the app plan (available: ${list}).`,
     tool: "app:exec",
     ...(first === undefined || first.length === 0
       ? {}
@@ -105,7 +88,16 @@ const resolveService = (
 ): Effect.Effect<ServicePlan, ToolingExecError> => {
   if (requested !== undefined && requested.length > 0) {
     const match = Object.values(plan.services).find((service) => String(service.name) === requested);
-    if (match === undefined) return Effect.fail(unknownServiceError(requested, plan.services));
+    if (match === undefined)
+      return Effect.fail(
+        unknownPlanServiceError({
+          prefix: "exec",
+          tool: "app:exec",
+          requested,
+          services: plan.services,
+          remediation: (first) => `Example: lando exec ${first} -- <command>`,
+        }),
+      );
     return Effect.succeed(match);
   }
   const primary = Object.values(plan.services).find((service) => service.primary === true);
@@ -178,12 +170,16 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     ...(tty
       ? {
           tty: true,
+          ...(options.hostTerminal?.columns !== undefined && options.hostTerminal.rows !== undefined
+            ? { terminalSize: { columns: options.hostTerminal.columns, rows: options.hostTerminal.rows } }
+            : {}),
           ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
         }
       : {}),
     ...(attachStdin ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
   };
 
+  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const result = yield* collectExecStream(provider.execStream(target, spec), sink);
 

@@ -34,7 +34,8 @@ interface RunResult {
 const runCommand = async (cmd: ReadonlyArray<string>, env: NodeJS.ProcessEnv = {}): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
-    cwd: repoRoot,
+    // Outside any app: app commandAliases disable the version/help/shellenv fast paths.
+    cwd: tmpdir(),
     env: {
       ...process.env,
       ...env,
@@ -207,9 +208,7 @@ describe("exhaustive level-none fast paths", () => {
           expect(result.stdout).toContain("COMMON");
           break;
         case "meta-version":
-          expect(result.stdout.trim()).toBe(
-            `@lando/core ${corePackage.version} (bun ${Bun.version} on ${process.platform})`,
-          );
+          expect(result.stdout.trim()).toBe(corePackage.version);
           break;
         case "shellenv":
           expectShellenvOutput(result.stdout);
@@ -257,6 +256,36 @@ describe("exhaustive level-none fast paths", () => {
       expect(stderr).not.toContain("FAST_PATH_CANARY");
       expect(exitCode).toBe(0);
       expect(stdout).toStartWith("Bundled recipes (");
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("version prints the same text inside an app, through the dispatcher, and with diagnostics", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-fast-path-app-"));
+    const run = async (argv: readonly string[], cwd: string, env: NodeJS.ProcessEnv = {}) => {
+      const proc = Bun.spawn({
+        cmd: [process.execPath, binaryEntry, ...argv],
+        cwd,
+        env: { ...process.env, ...env },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+      return { exitCode, stdout: stdout.trim() };
+    };
+    try {
+      await Bun.write(join(appRoot, ".lando.yml"), "name: fast-path-app\n");
+      // In-app `version` and `LANDO_LOG_LEVEL` both skip the fast path and render through the dispatcher.
+      const results = await Promise.all([
+        run(["version"], tmpdir()),
+        run(["version"], appRoot),
+        run(["meta:version"], appRoot),
+        run(["version"], tmpdir(), { LANDO_LOG_LEVEL: "debug" }),
+      ]);
+      for (const result of results) {
+        expect(result).toEqual({ exitCode: 0, stdout: corePackage.version });
+      }
     } finally {
       await rm(appRoot, { recursive: true, force: true });
     }

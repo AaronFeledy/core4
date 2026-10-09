@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
-import { RecipeSourceError } from "@lando/sdk/errors";
+import { RecipeSourceError, causeMessage, isErrnoCode } from "@lando/sdk/errors";
 
 import type { ResolvedRecipe } from "./source";
 import {
@@ -74,7 +74,6 @@ export const defaultGitRecipeCloner: GitRecipeCloner = {
   },
 };
 
-const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 const authFailure = (cause: unknown): boolean =>
   /auth|credential|permission denied|publickey|could not read username|terminal prompts disabled/i.test(
     causeMessage(cause),
@@ -96,9 +95,6 @@ interface PublishFileSystem {
 
 const publishFileSystem = { rename, cp, rm, fileExists: recipeFileExists } satisfies PublishFileSystem;
 
-const hasErrorCode = (cause: unknown, code: string): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
-
 export const publish = async (
   stagingDir: string,
   publishedDir: string,
@@ -111,7 +107,7 @@ export const publish = async (
       await fs.rm(stagingDir, { recursive: true, force: true });
       return;
     }
-    if (hasErrorCode(cause, "EXDEV")) {
+    if (isErrnoCode(cause, "EXDEV")) {
       try {
         await fs.cp(stagingDir, publishedDir, { recursive: true, errorOnExist: true, force: false });
       } catch (copyCause) {
@@ -156,7 +152,7 @@ export const resolveGitRecipeSource = async (
     });
   });
 
-  const pointer = join(cacheRoot, ".url", createHash("sha256").update(options.url).digest("hex"));
+  const pointer = join(cacheRoot, ".url", sha256Hex(options.url));
   const cachedSha = (await recipeFileExists(pointer)) ? (await Bun.file(pointer).text()).trim() : "";
   let commitSha =
     cachedSha !== "" && (await recipeFileExists(join(cacheRoot, cachedSha))) ? cachedSha : undefined;

@@ -594,8 +594,8 @@ describe("ProviderExecToolingEngine.layer", () => {
     expect(provider.calls[0]?.command.tty).not.toBe(true);
   });
 
-  test("does not request an exec TTY resize, even when a stream sink is present", async () => {
-    // Given: live streaming is enabled (this is what triggered Podman resize-before-start).
+  test("does not request an exec TTY resize when a stream sink is present without PTY intent", async () => {
+    // Given: live streaming is enabled without a PTY.
     const plan = makePlan([baseServicePlan("web", true)]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
     const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
@@ -694,7 +694,177 @@ describe("ProviderExecToolingEngine.layer", () => {
     );
 
     // Then
-    expect(provider.calls[0]?.command.env).toEqual({ COLUMNS: "90", LINES: "30", TERM: "xterm-test" });
+    expect(provider.calls[0]?.command.env).toEqual({
+      COLUMNS: "90",
+      LINES: "30",
+      TERM: "xterm-test",
+      PAGER: "cat",
+    });
+  });
+
+  test("an attached PTY is sized from the host terminal", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql", "-c", "select 1"]],
+      tty: true,
+      hostTerminal: { term: "xterm-test", columns: 160, rows: 40 },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then
+    expect(provider.calls[0]?.command.terminalSize).toEqual({ columns: 160, rows: 40 });
+  });
+
+  test("a tooling PTY defaults PAGER to cat when its stdin is not forwarded", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql", "-c", "select generate_series(1, 200)"]],
+      tty: true,
+      hostTerminal: { columns: 160, rows: 40 },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then
+    expect(provider.calls[0]?.command.env?.PAGER).toBe("cat");
+    const iterator = provider.calls[0]?.command.stdinStream?.[Symbol.asyncIterator]();
+    expect(iterator).toBeDefined();
+    const pending = iterator?.next();
+    await iterator?.return?.();
+    await expect(pending).resolves.toMatchObject({ done: true });
+  });
+
+  test("uses forwarded keyboard input for every container command without forcing a pager", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const stdinStream: AsyncIterable<Uint8Array> = {
+      async *[Symbol.asyncIterator]() {
+        yield new TextEncoder().encode("select 42;\r");
+      },
+    };
+    const received: string[] = [];
+    const specs: CommandSpec[] = [];
+    const provider: RuntimeProviderShape = {
+      ...makeFakeProvider([]),
+      execStream: (_target, command) =>
+        Stream.fromEffect(
+          Effect.promise(async () => {
+            specs.push(command);
+            if (command.stdinStream !== undefined) {
+              for await (const chunk of command.stdinStream) received.push(new TextDecoder().decode(chunk));
+            }
+            return { exitCode: 0 };
+          }),
+        ),
+    };
+    // When
+    await Effect.runPromise(
+      runEngine({ tool: "psql", tty: true, stdinStream, commands: [["first"], ["second"]] }, plan, provider),
+    );
+    // Then
+    expect(received).toEqual(["select 42;\r", "select 42;\r"]);
+    expect(specs.map((spec) => spec.env?.PAGER)).toEqual([undefined, undefined]);
+  });
+
+  test("forwards cancellation and resize independently of keyboard attachment", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([]);
+    const signal = new AbortController().signal;
+    const terminalResize = Stream.make({ columns: 120, rows: 35 });
+    // When
+    await Effect.runPromise(
+      runEngine(
+        { tool: "wait", tty: true, commands: [["sleep", "300"]], signal, terminalResize },
+        plan,
+        provider,
+      ),
+    );
+    // Then
+    expect(provider.calls[0]?.command.signal).toBe(signal);
+    expect(provider.calls[0]?.command.terminalResize).toBe(terminalResize);
+  });
+
+  test("returns a nonzero exit and skips later commands when attachment is aborted", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const controller = new AbortController();
+    let calls = 0;
+    const provider: RuntimeProviderShape = {
+      ...makeFakeProvider([]),
+      execStream: () =>
+        Stream.fromEffect(
+          Effect.sync(() => {
+            calls++;
+            controller.abort();
+            return { exitCode: 0 };
+          }),
+        ),
+    };
+    // When
+    const result = await Effect.runPromise(
+      runEngine(
+        { tool: "wait", commands: [["first"], ["second"]], signal: controller.signal },
+        plan,
+        provider,
+      ),
+    );
+    // Then
+    expect(result.exitCode).toBe(130);
+    expect(calls).toBe(1);
+  });
+
+  test("non-PTY tooling gets no PAGER default", async () => {
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = { tool: "psql", commands: [["psql", "-c", "select 1"]] };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.env?.PAGER).toBeUndefined();
+  });
+
+  test("tooling task env PAGER overrides the PTY default", async () => {
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql"]],
+      tty: true,
+      hostTerminal: { columns: 160, rows: 40 },
+      env: { PAGER: "less -S" },
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.env?.PAGER).toBe("less -S");
+  });
+
+  test("service environment PAGER suppresses the PTY default", async () => {
+    // Given: the service image already declares its own pager.
+    const plan = makePlan([baseServicePlan("database", true, { PAGER: "more" })]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql"]],
+      tty: true,
+      hostTerminal: { columns: 160, rows: 40 },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then: the exec env does not mask the service value applied to the container.
+    expect(provider.calls[0]?.command.env).not.toHaveProperty("PAGER");
   });
 
   describe("host agent-context env forwarding", () => {

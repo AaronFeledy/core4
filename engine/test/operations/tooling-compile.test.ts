@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 
 import { PortablePath, type ToolingTaskShape } from "@lando/sdk/schema";
 
@@ -15,6 +15,29 @@ const compile = (name: string, task: ToolingTaskShape, options: Record<string, u
   );
 
 describe("compileToolingInvocations", () => {
+  test("forwards keyboard, resize, and cancellation to every sequential container step", () => {
+    // Given
+    const stdinStream: AsyncIterable<Uint8Array> = {
+      async *[Symbol.asyncIterator]() {
+        yield new Uint8Array([3]);
+      },
+    };
+    const terminalResize = Stream.make({ columns: 120, rows: 35 });
+    const signal = new AbortController().signal;
+    // When
+    const invocations = compile(
+      "input",
+      { service: "web", cmds: ["first", "second"] },
+      { tty: true, stdinStream, terminalResize, signal },
+    );
+    // Then
+    expect(invocations).toHaveLength(2);
+    for (const invocation of invocations) {
+      expect(invocation.stdinStream).toBe(stdinStream);
+      expect(invocation.terminalResize).toBe(terminalResize);
+      expect(invocation.signal).toBe(signal);
+    }
+  });
   test.each([true, false])(
     "preserves PTY intent %s separately from terminal facts on every normalized step",
     (tty) => {

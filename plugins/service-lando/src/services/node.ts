@@ -1,7 +1,8 @@
 import { Schema } from "effect";
 import { satisfies, subset, valid, validRange } from "semver";
 
-import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { causeMessage } from "@lando/sdk/errors";
+import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -18,6 +19,7 @@ import {
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
@@ -30,7 +32,12 @@ export const NODE_FEATURE_PRIORITY = 600;
 export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
-const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
+// The kernel drops default-disposition signals to PID 1, so the idle process handles them itself.
+const DEFAULT_COMMAND = [
+  "node",
+  "-e",
+  'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
+] as const;
 const DEFAULT_PORT = 3000;
 const NODE_HEALTHCHECK_SCRIPT =
   'const net=require("node:net");const socket=net.connect(Number(process.argv[1]),"127.0.0.1");socket.once("connect",()=>socket.end());socket.once("error",()=>process.exit(1));';
@@ -147,7 +154,7 @@ const packageEngine = (
     parsed = JSON.parse(input.text);
   } catch (cause) {
     throw new NodeInferenceError(
-      `Node inference could not parse ${input.path} as valid JSON: ${cause instanceof Error ? cause.message : String(cause)}.`,
+      `Node inference could not parse ${input.path} as valid JSON: ${causeMessage(cause)}.`,
       "Fix package.json or remove bare type: node.",
     );
   }
@@ -257,29 +264,13 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const { version } = ctx.config as NodeFeatureConfig;
   const serviceType = `node:${version}`;
   const port = service.port ?? DEFAULT_PORT;
-  const appMount = {
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough" as const,
-  };
-  const bindMount = {
-    type: "bind" as const,
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    realization: "passthrough" as const,
-  };
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setAppMount(appMount);
-  ctx.addMount(bindMount);
+  mountAppRoot(ctx, { realization: "passthrough" });
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   if (service.command !== undefined) {

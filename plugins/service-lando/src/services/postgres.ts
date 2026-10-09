@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Schema } from "effect";
 
@@ -20,8 +20,7 @@ const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
 export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");
 
-const defaultPassword = (appId: string): string =>
-  `lando-${createHash("sha256").update(appId).digest("hex").slice(0, 16)}`;
+const defaultPassword = (appId: string): string => `lando-${sha256Hex(appId).slice(0, 16)}`;
 
 const credsFor = (input: {
   readonly appName?: string | undefined;

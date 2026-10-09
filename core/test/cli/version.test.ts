@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -40,7 +41,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       const build = await runCommand([process.execPath, "run", "build"]);
       expect(build.exitCode).toBe(0);
 
-      const version = await runCommand([binaryPath, "version"]);
+      // Outside any app: app commandAliases route `version` past the bare-version fast path.
+      const version = await runCommand([binaryPath, "version"], tmpdir());
 
       expect(version.exitCode).toBe(0);
       expect(version.stdout.trim()).not.toBe("0.0.0");

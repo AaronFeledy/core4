@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect, Stream } from "effect";
 
 import { isPathWithin } from "@lando/paths";
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
 import type {
   FileSystem,
@@ -121,16 +121,13 @@ const readTextBounded = (
       }
       return {
         text: new TextDecoder().decode(content),
-        sha256: createHash("sha256").update(content).digest("hex"),
+        sha256: sha256Hex(content),
       };
     }),
     Effect.mapError((cause) =>
       cause instanceof LandofileValidationError
         ? cause
-        : validationError(
-            input,
-            `Unable to read project file ${absolute}: ${cause instanceof Error ? cause.message : String(cause)}.`,
-          ),
+        : validationError(input, `Unable to read project file ${absolute}: ${causeMessage(cause)}.`),
     ),
   );
 

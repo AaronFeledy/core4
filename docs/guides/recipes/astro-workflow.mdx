@@ -144,13 +144,11 @@ services:
 
 Then `lando rebuild`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
-Ping from the database service, no password needed:
+Query it with the `psql` tooling. It logs in with the service credentials, so you never type the password:
 
 ```sh
-lando exec database -- psql -U lando -d astro-pg -c 'SELECT version();'
+lando psql -c 'SELECT version();'
 ```
-
-Swap `astro-pg` for your app name.
 
 ## Destroy without surprises
 

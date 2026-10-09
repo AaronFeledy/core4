@@ -7,6 +7,7 @@ import {
   ToolingCommandLookupError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
+import { PostStartEvent, PreStartEvent } from "@lando/sdk/events";
 import {
   AbsolutePath,
   AppId,
@@ -30,7 +31,11 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { runAppEvent } from "../../src/operations/events.ts";
+import {
+  publishAndRunAppEvent,
+  publishAndRunPostAppEvent,
+  runAppEvent,
+} from "../../src/operations/events.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import {
@@ -54,6 +59,63 @@ const eventPlan = (): AppPlan => ({
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
+});
+
+test("publishes the supplied event before running its steps", async () => {
+  // Given
+  const plan = attachEffectiveEvents(eventPlan(), { "pre-start": [{ command: "info" }] });
+  const event = PreStartEvent.make({
+    scope: "app",
+    triggeredBy: "app:start",
+    app: { kind: "user", id: plan.id, root: plan.root },
+    plan,
+    timestamp: DateTime.makeUnsafe("2026-08-16T00:00:00Z"),
+  });
+  const order: string[] = [];
+  // When
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const events = yield* EventService;
+      yield* publishAndRunAppEvent(plan, "pre-start", event).pipe(
+        Effect.provideService(EventCommandExecutor, {
+          run: () =>
+            Effect.gen(function* () {
+              const published = yield* events.query("pre-start");
+              order.push(...published.map((value) => value._tag), "step");
+              return { exitCode: 0, stdout: "", stderr: "" };
+            }),
+        }),
+      );
+    }).pipe(Effect.provide(eventRuntime([]))),
+  );
+  // Then
+  expect(order).toEqual(["pre-start", "step"]);
+});
+
+test("publishes a post event and warns instead of failing when its step fails", async () => {
+  // Given
+  const plan = attachEffectiveEvents(eventPlan(), { "post-start": ["fatal"] });
+  const event = PostStartEvent.make({
+    scope: "app",
+    app: { kind: "user", id: plan.id, root: plan.root },
+    plan,
+    timestamp: DateTime.makeUnsafe("2026-08-16T00:00:00Z"),
+  });
+  const invocations: ToolingInvocation[] = [];
+  // When
+  const observed = await Effect.runPromise(
+    Effect.gen(function* () {
+      const events = yield* EventService;
+      yield* publishAndRunPostAppEvent(plan, "post-start", event);
+      return { post: yield* events.query("post-start"), warnings: yield* events.query("message.warn") };
+    }).pipe(Effect.provide(eventRuntime(invocations, [], new Set(['fatal "$@"'])))),
+  );
+  // Then
+  expect(observed.post).toEqual([event]);
+  expect(observed.warnings.map((warning) => warning.body)).toEqual([
+    "Event post-start step 1 failed with exit code 7. Fix post-start step 1, then rerun the lifecycle command.",
+  ]);
+  expect(invocations).toHaveLength(1);
 });
 
 const runWithFakes = (

@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect, Exit } from "effect";
 
+import { sha256Hex } from "@lando/sdk/digest";
 import { ToolManifestError } from "@lando/sdk/errors";
 
 import {
@@ -53,6 +54,24 @@ describe("mkcertInstallPath", () => {
 });
 
 describe("provisionMkcert", () => {
+  test("ignores a legacy marker even when the pinned binary fingerprint matches", async () => {
+    // Given an intact binary and only the legacy marker.
+    const dirs = await makeTempDirs("lando-mkcert-legacy-");
+    try {
+      await mkdir(dirs.binDir);
+      const path = mkcertInstallPath(dirs.binDir, "linux");
+      await writeFile(path, MKCERT_BIN);
+      await writeFile(`${path}.sha256`, `${sha256Hex(MKCERT_BIN)}\n`);
+      await writeFile(join(dirs.binDir, ".mkcert-installed-version"), `${MKCERT_TOOL_VERSION}\n`);
+      // When reporting installed mkcert status.
+      const status = await readInstalledMkcertStatus(dirs.binDir, "linux", "x64");
+      // Then the legacy marker does not establish an installed version.
+      expect(status).toEqual({ isCurrent: false });
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
   test("installs the pinned binary and records the version marker", async () => {
     const dirs = await makeTempDirs("lando-mkcert-provision-");
     const patch = patchHostBinary("linux-x64", MKCERT_BIN, "mkcert");

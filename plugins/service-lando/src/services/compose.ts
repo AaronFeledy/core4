@@ -1,6 +1,7 @@
 import { Effect, Predicate, Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
+import { splitComposeCommand } from "@lando/sdk/landofile";
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 
@@ -10,6 +11,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
   classifyComposeVolume,
+  mountAppRoot,
   occupiedTargets,
   parseServiceMount,
 } from "./_volume-helpers.ts";
@@ -38,19 +40,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const optedOutOfAppMount =
     service.appMount === false || authoredMounts.some((mount) => mount.target === APP_MOUNT_TARGET);
   if (!optedOutOfAppMount) {
-    ctx.setAppMount({
-      source: AbsolutePath.make(ctx.appRoot),
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-      excludes: [],
-      includes: [],
-    });
-    ctx.addMount({
-      type: "bind",
-      source: ctx.appRoot,
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-    });
+    mountAppRoot(ctx);
   }
 
   for (const mount of authoredMounts) {
@@ -110,7 +100,27 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user", "workingDirectory"]);
+  for (const field of ["command", "entrypoint"] as const) {
+    const authored = service[field];
+    if (authored === undefined) continue;
+    const argv = typeof authored === "string" ? splitComposeCommand(authored)?.argv : authored;
+    if (argv === undefined) {
+      throw new Error(
+        `Compose ${field} has malformed quoting or escaping; use valid quoting or an argv list.`,
+      );
+    }
+    switch (field) {
+      case "command":
+        ctx.setCommand(argv);
+        break;
+      case "entrypoint":
+        ctx.setEntrypoint(argv);
+        break;
+      default:
+        field satisfies never;
+    }
+  }
+  applyAuthoredProcessFields(ctx, ["user", "workingDirectory"]);
   for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
   if (tmpfsEntries.length > 0) {
     const existing = service.providers?.compose;

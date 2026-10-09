@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   commandHealthcheck,
@@ -11,6 +11,7 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 
@@ -105,24 +106,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  const passthrough = { realization: "passthrough" as const };
-  const appMount = {
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: true,
-    excludes: [],
-    includes: [],
-    ...passthrough,
-  };
-  const bindMount = {
-    type: "bind" as const,
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: true,
-    ...passthrough,
-  };
-  ctx.setAppMount(appMount);
-  ctx.addMount(bindMount);
+  mountAppRoot(ctx, { readOnly: true, realization: "passthrough" });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 

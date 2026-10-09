@@ -1,4 +1,4 @@
-# Drupal CMS
+# Start a Drupal CMS app
 
 If this README is inside a generated Drupal CMS app, you're already in the app directory. Start it:
 
@@ -34,6 +34,8 @@ lando drupal-cms-install
 lando drush --version
 lando drush user:login --no-browser
 ```
+
+The scaffold installs Git in `appserver` and pins the upstream SVG Image security patch from [merge request 65](https://git.drupalcode.org/project/svg_image/-/merge_requests/65) at commit `c788b1e2f2be29f62c9812b2b0558472afa61d6d`. This is a `3.x-dev` development build, not a tagged release. It lets Drupal CMS use the fixed `enshrined/svg-sanitize` 1.0 release without ignoring security advisories. The source pin and its package metadata stay in your `composer.json` and `composer.lock`; a mismatch or failed audit stops scaffolding before it touches your app.
 
 The generated Drush task uses the current app URL, including its proxy port, for login links. Set `DRUSH_OPTIONS_URI` or pass Drush `--uri` to choose another URL.
 

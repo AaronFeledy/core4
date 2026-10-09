@@ -20,7 +20,7 @@ import { gunzipSync } from "node:zlib";
 
 import { Effect, Layer } from "effect";
 
-import { RecipeSourceError } from "@lando/sdk/errors";
+import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import { Downloader } from "@lando/sdk/services";
 
 import * as LandoConfigService from "@lando/engine/services/config";
@@ -62,8 +62,6 @@ export interface ResolveTarballRecipeSourceOptions {
 export interface ResolvedTarballRecipe extends ResolvedRecipe {
   readonly sha256: string;
 }
-
-const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 const sourceError = (input: {
   readonly message: string;

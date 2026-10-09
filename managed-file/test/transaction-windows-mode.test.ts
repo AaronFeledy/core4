@@ -1,14 +1,8 @@
 import { expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
-import {
-  createStage,
-  digestOf,
-  finishAppliedMode,
-  mutateEntry,
-  sameState,
-  snapshot,
-} from "../src/transaction-fs.ts";
+import { sha256Hex } from "@lando/sdk/digest";
+import { createStage, finishAppliedMode, mutateEntry, sameState, snapshot } from "../src/transaction-fs.ts";
 import type { Entry, Stage } from "../src/transaction-journal.ts";
 import { preflight } from "../src/transaction-preflight.ts";
 import { fixture } from "./transaction-fixture.ts";
@@ -23,11 +17,11 @@ for (const platform of ["win32", "linux"] as const) {
     const originalPlatform = process.platform;
     try {
       Object.defineProperty(process, "platform", { value: platform });
-      const state = { present: true as const, digest: digestOf("content"), mode: 0o600 };
+      const state = { present: true as const, digest: sha256Hex("content"), mode: 0o600 };
       expect(sameState(state, { ...state, mode: 0o666 })).toBe(platform === "win32");
       expect(sameState({ ...state, mode: 0o400 }, { ...state, mode: 0o444 })).toBe(platform === "win32");
       expect(sameState(state, { ...state, mode: 0o444 })).toBe(false);
-      expect(sameState(state, { ...state, digest: digestOf("changed") })).toBe(false);
+      expect(sameState(state, { ...state, digest: sha256Hex("changed") })).toBe(false);
       expect(sameState(state, { present: false })).toBe(false);
     } finally {
       Object.defineProperty(process, "platform", { value: originalPlatform });
@@ -55,7 +49,7 @@ for (const operation of ["publish", "finish-mode"] as const) {
     const entry: Entry = {
       path: ".lando.yml",
       before: { present: false },
-      after: { present: true, digest: digestOf(bytes), mode: 0o600 },
+      after: { present: true, digest: sha256Hex(bytes), mode: 0o600 },
       stage,
     };
     if (operation === "finish-mode") await fs.rename(stage.path, target);
@@ -76,7 +70,11 @@ for (const operation of ["publish", "finish-mode"] as const) {
         ? mutateEntry(appRoot, entry, privateFileAccess)
         : finishAppliedMode(appRoot, entry, privateFileAccess));
       // Then the bytes are committed and recovery recognizes the synthetic mode as applied.
-      expect((await snapshot(target)).state).toEqual({ present: true, digest: digestOf(bytes), mode: 0o666 });
+      expect((await snapshot(target)).state).toEqual({
+        present: true,
+        digest: sha256Hex(bytes),
+        mode: 0o666,
+      });
       expect(await fs.readFile(target, "utf8")).toBe("name: windows-app\n");
       expect(
         await preflight(

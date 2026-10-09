@@ -1,3 +1,4 @@
+import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 /**
  * `CommandRegistry` Live Layer.
  *
@@ -76,35 +77,53 @@ const writeCachesForLandofile = (
     },
   );
 
-export const layer = Layer.effect(
-  CommandRegistry,
-  Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
-    return CommandRegistry.of({
-      list: Effect.gen(function* () {
-        const cached = yield* readFreshAppCommandCacheForCwd().pipe(Effect.catch(() => Effect.succeed(null)));
-        if (cached !== null) return toRegisteredCommands(cached.entries);
+export const layerWith = (
+  registrationError: (
+    policy: LandofileShape["commandAliases"],
+    entries: ReadonlyArray<CommandIndexEntry>,
+  ) => CommandAliasConflictError | CommandAliasTargetError | undefined,
+) =>
+  Layer.effect(
+    CommandRegistry,
+    Effect.gen(function* () {
+      const landofileService = yield* LandofileService;
+      const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
+      return CommandRegistry.of({
+        list: Effect.gen(function* () {
+          const cached = yield* readFreshAppCommandCacheForCwd({ includeScriptInventory: true }).pipe(
+            Effect.catch(() => Effect.succeed(null)),
+          );
+          if (cached !== null) {
+            const error = registrationError(cached.aliasPolicy, cached.entries);
+            if (error !== undefined) return yield* Effect.fail(error);
+            return toRegisteredCommands(cached.entries);
+          }
 
-        const landofile = yield* loadUserLandofile(landofileService);
-        const scripts = yield* discoverScriptsForCwd(process.cwd());
-        const pluginManifests =
-          pluginRegistryOption._tag === "Some"
-            ? yield* pluginRegistryOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))
-            : undefined;
-        const hasServices = Object.keys(landofile.services ?? {}).length > 0;
-        if (hasServices) {
-          yield* writePluginCommandCache(pluginManifests === undefined ? {} : { manifests: pluginManifests });
-          return [];
-        }
-        const entries = compileAppCommands(landofile, scripts);
-        yield* writeCachesForLandofile(landofile, entries, pluginManifests);
-        return toRegisteredCommands(entries);
-      }).pipe(
-        Effect.catchCause(() =>
-          writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
+          const landofile = yield* loadUserLandofile(landofileService);
+          const scripts = yield* discoverScriptsForCwd(process.cwd());
+          const pluginManifests =
+            pluginRegistryOption._tag === "Some"
+              ? yield* pluginRegistryOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))
+              : undefined;
+          const hasServices = Object.keys(landofile.services ?? {}).length > 0;
+          if (hasServices) {
+            yield* writePluginCommandCache(
+              pluginManifests === undefined ? {} : { manifests: pluginManifests },
+            );
+            return [];
+          }
+          const entries = compileAppCommands(landofile, scripts);
+          const error = registrationError(landofile.commandAliases, entries);
+          if (error !== undefined) return yield* Effect.fail(error);
+          yield* writeCachesForLandofile(landofile, entries, pluginManifests);
+          return toRegisteredCommands(entries);
+        }).pipe(
+          Effect.catchCause(() =>
+            writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
+          ),
         ),
-      ),
-    });
-  }),
-);
+      });
+    }),
+  );
+
+export const layer = layerWith(() => undefined);

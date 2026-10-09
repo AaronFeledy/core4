@@ -3,7 +3,7 @@ import { basename, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { NotImplementedError } from "@lando/sdk/errors";
+import { NotImplementedError, causeMessage } from "@lando/sdk/errors";
 import type { PromptSpec } from "@lando/sdk/schema";
 
 import {
@@ -208,7 +208,7 @@ export const pluginNew = (
     catch: (error) =>
       error instanceof NotImplementedError
         ? error
-        : commandError("Unable to scaffold plugin.", error instanceof Error ? error.message : String(error)),
+        : commandError("Unable to scaffold plugin.", causeMessage(error)),
   });
 
 export const renderPluginNewResult = (result: PluginNewResult): string =>

@@ -2,6 +2,8 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
 
+import { valueAfter } from "./_acceptance-harness.ts";
+
 export {
   buildProviderAcceptancePlan,
   PROVIDER_ACCEPTANCE_CELLS,
@@ -66,12 +68,6 @@ const isCellId = (value: string): value is ProviderAcceptanceCellId => {
     default:
       return false;
   }
-};
-
-const valueAfter = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  if (index < 0) return undefined;
-  return args[index + 1];
 };
 
 const parseCliOptions = (args: readonly string[]): CliOptions => {

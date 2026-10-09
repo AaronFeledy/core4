@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -13,7 +13,7 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { parseServiceMount } from "./_volume-helpers.ts";
+import { mountAppRoot, parseServiceMount } from "./_volume-helpers.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
@@ -38,6 +38,7 @@ import {
   phpLogSources,
   resolvePhpVia,
 } from "./php-via.ts";
+import { PHP_WP_CLI_STEP } from "./php-wp-cli.ts";
 import {
   assertPhpXdebugSupported,
   phpXdebugBuildStep,
@@ -177,6 +178,10 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const composerRelease = resolvePhpComposer(service.composer);
   if (!customImage) {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
+    if (service.framework === "wordpress") {
+      ctx.addBuildStep(PHP_WP_CLI_STEP);
+      addEnvRecord(ctx, { WP_CLI_ALLOW_ROOT: "1" });
+    }
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
   const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
@@ -190,19 +195,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
   if (!authoredMounts.some((mount) => mount.target === APP_MOUNT_TARGET)) {
-    ctx.setAppMount({
-      source: AbsolutePath.make(ctx.appRoot),
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-      excludes: [],
-      includes: [],
-    });
-    ctx.addMount({
-      type: "bind",
-      source: ctx.appRoot,
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-    });
+    mountAppRoot(ctx);
   }
   for (const mount of authoredMounts) {
     ctx.addMount({

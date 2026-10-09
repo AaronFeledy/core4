@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import { Effect, Result, Schema } from "effect";
 
-import { NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { NotImplementedError, PluginManifestError, causeMessage } from "@lando/sdk/errors";
 import { PluginManifest, type PluginManifest as PluginManifestShape } from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
 
@@ -45,7 +45,7 @@ const decodePackageJson = (content: string, packageDir: string): PluginManifestS
   } catch (cause) {
     throw new PluginManifestError({
       message: `package.json in ${packageDir} is not valid JSON.`,
-      issues: [cause instanceof Error ? cause.message : String(cause)],
+      issues: [causeMessage(cause)],
     });
   }
   const candidate = (parsed as { landoPlugin?: unknown })?.landoPlugin ?? parsed;

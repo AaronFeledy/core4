@@ -1,0 +1,13 @@
+name: scripts-demo
+services:
+  web:
+    type: static
+    webroot: /app/dist
+tooling:
+  curl:
+    service: web
+    cmd:
+      - sh
+      - -c
+      - 'curl -sf "http://localhost:80/$1"'
+      - curl

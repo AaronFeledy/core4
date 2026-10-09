@@ -1,0 +1,10 @@
+name: host-task-demo
+tooling:
+  greet:
+    description: Say hello from the host
+    service: ":host"
+    cmd: echo "hello from a host task"
+  stamp:
+    description: Print a version stamp
+    service: ":host"
+    cmd: ["printf", "stamped %s\n"]

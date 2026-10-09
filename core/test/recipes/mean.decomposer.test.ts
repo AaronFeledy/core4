@@ -59,6 +59,7 @@ describe("mean decomposition", () => {
           type: "node:{{ recipe.node }}",
           primary: true,
           port: 3000,
+          command: "npm install --no-audit --no-fund && exec node server.js",
           environment: {
             NODE_ENV: "development",
             PORT: 3000,
@@ -116,7 +117,7 @@ describe("mean decomposition", () => {
       "sha256:494be86d9ac5c547086e9ad5a231f926852ada98db9dcd88412765bf0ca92cdb",
     );
     expect(recipeAssetDigest(MEAN_SERVER_JS)).toBe(
-      "sha256:ad6025fbbae9fe0b72e6170de266435baea8eea56067c3adf9bf70a55c112187",
+      "sha256:540dfe82273a2308d18fe047c50788e950147abe7b970fab40d1738df4a9c9a9",
     );
   });
 
@@ -126,7 +127,7 @@ describe("mean decomposition", () => {
     expect(meanSnapshot.identity.contentDigest).toBe(MEAN_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(MEAN_CONTENT_DIGEST).toBe(
-      "sha256:c848948037d130c7abefe3d50bce55206d98261ab63cedcabb65383d526f022f",
+      "sha256:d7e6de6d2b9c54794877b71e73e6b520ada7c6f8b9bbf196621934378eeb3fc0",
     );
   });
 

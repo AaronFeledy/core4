@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { causeMessage } from "@lando/sdk/errors";
 import { DateTime, Effect } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
@@ -111,7 +112,7 @@ const redactSetupReadinessSummary = (summary: SetupReadinessSummary): SetupReadi
 });
 
 export const setupFailureEvidence = (stepId: string, cause: unknown): string => {
-  const message = cause instanceof Error ? cause.message : String(cause);
+  const message = causeMessage(cause);
   return redactString(`${stepId} setup failed: ${message}`);
 };
 
@@ -127,6 +128,4 @@ const setupFailurePlatformHint = (stepId: string): string => {
 };
 
 export const setupFailureRemediation = (stepId: string, cause: unknown): string =>
-  redactString(
-    `${setupFailurePlatformHint(stepId)} Last failure: ${cause instanceof Error ? cause.message : String(cause)}`,
-  );
+  redactString(`${setupFailurePlatformHint(stepId)} Last failure: ${causeMessage(cause)}`);

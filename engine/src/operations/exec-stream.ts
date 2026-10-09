@@ -1,6 +1,6 @@
-import { Effect, Option, type Scope, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
 
-import type { ExecChunk, ProviderError } from "@lando/sdk/services";
+import type { ExecChunk } from "@lando/sdk/services";
 
 import type { StreamFrameSinkShape } from "./stream-frame-sink.ts";
 
@@ -13,14 +13,10 @@ export const emitRaw = (
   return sink.value.emit({ _tag: kind, chunk: text, raw: true });
 };
 
-export const collectExecStream = Effect.fnUntraced(function* (
-  stream: Stream.Stream<ExecChunk, ProviderError, Scope.Scope>,
+export const collectExecStream = Effect.fnUntraced(function* <E, R>(
+  stream: Stream.Stream<ExecChunk, E, R>,
   sink: Option.Option<StreamFrameSinkShape>,
-): Effect.fn.Return<
-  { readonly exitCode: number; readonly stdout: string; readonly stderr: string },
-  ProviderError,
-  Scope.Scope
-> {
+): Effect.fn.Return<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }, E, R> {
   const stdoutDecoder = new TextDecoder();
   const stderrDecoder = new TextDecoder();
   let exitCode = 0;

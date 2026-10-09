@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { Schema } from "effect";
 
+import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { LogSource } from "./log-source.ts";
@@ -175,7 +174,7 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
  * from this function so one root always yields one key.
  */
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
-  createHash("sha256").update(`${kind}\0${canonicalPath}`).digest("hex");
+  sha256Hex(`${kind}\0${canonicalPath}`);
 
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),

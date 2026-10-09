@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:ec038aa2eceb103271c217eb3f943f4b3b584898e29304a02a19ae3c846fd4f8";
+  "sha256:9d0a43bc508ef91bf00d51e85bb554b3349761fc2929ac2d4f9b34f77d8dc652";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -23,20 +23,48 @@ const expression: ExpressionNode = obj([
       obj([
         [
           "appserver",
-          obj([
-            ["type", lit("php:{{ recipe.php }}")],
-            ["primary", lit(true)],
-            ["framework", lit("laravel")],
-            ["webroot", lit("{{ recipe.webroot }}")],
-            ["composer", lit("{{ recipe.composer }}")],
-            ["allowOverride", lit(true)],
-            ["port", lit(80)],
-            ["dependsOn", arr(lit("database"), lit("cache"))],
-            ["routes", arr(defaultRoute())],
-          ]),
+          call(
+            "merge",
+            obj([
+              ["type", lit("php:{{ recipe.php }}")],
+              ["primary", lit(true)],
+              ["framework", lit("laravel")],
+              ["webroot", lit("{{ recipe.webroot }}")],
+              ["composer", lit("{{ recipe.composer }}")],
+              ["allowOverride", lit(true)],
+              ["port", lit(80)],
+              ["dependsOn", arr(lit("database"), lit("cache"))],
+              ["routes", arr(defaultRoute())],
+            ]),
+            cond(
+              call(
+                "eq",
+                { kind: "Path", head: "options", segments: [{ type: "prop", name: "worker" }] },
+                lit(true),
+              ),
+              obj([
+                [
+                  "appMount",
+                  obj([
+                    ["target", lit("/app")],
+                    ["includes", arr(lit("vendor"))],
+                  ]),
+                ],
+              ]),
+              obj([]),
+            ),
+          ),
         ],
         ["database", obj([["type", lit("{{ recipe.database }}")]])],
         ["cache", obj([["type", lit("redis")]])],
+        [
+          "node",
+          obj([
+            ["type", lit("node:22")],
+            ["primary", lit(false)],
+            ["endpoints", arr()],
+          ]),
+        ],
       ]),
       cond(
         call(
@@ -53,6 +81,13 @@ const expression: ExpressionNode = obj([
               ["via", lit("cli")],
               ["command", lit("php artisan queue:work")],
               ["dependsOn", arr(lit("database"), lit("cache"))],
+              [
+                "appMount",
+                obj([
+                  ["target", lit("/app")],
+                  ["includes", arr(lit("vendor"))],
+                ]),
+              ],
             ]),
           ],
         ]),
@@ -68,7 +103,7 @@ const expression: ExpressionNode = obj([
         toolNode("appserver", "Run a Laravel Artisan command inside the appserver service.", "php artisan"),
       ],
       ["composer", toolNode("appserver", "Run Composer inside the appserver service.", "composer")],
-      ["npm", toolNode("appserver", "Run npm inside the appserver service.", "npm")],
+      ["npm", toolNode("node", "Run npm inside the node service.", "npm")],
     ]),
   ],
 ]);

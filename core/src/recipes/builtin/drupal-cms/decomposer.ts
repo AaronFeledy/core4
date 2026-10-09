@@ -1,6 +1,6 @@
 import { DRUSH_TOOLING_COMMAND } from "../drush-command";
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
-import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "./commands.ts";
+import { DRUPAL_CMS_GIT_ARTIFACT, DRUPAL_CMS_SCAFFOLD_COMMAND } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config";
 import {
   DRUPAL_CMS_MYSQL_INSTALL_COMMAND,
@@ -37,6 +37,7 @@ export const drupalCmsDecomposer = makeOptionBearingDecomposer({
                   readOnly: true,
                 },
               ],
+              build: { artifact: [DRUPAL_CMS_GIT_ARTIFACT] },
             },
             edge: {
               type: "nginx",
@@ -63,6 +64,7 @@ export const drupalCmsDecomposer = makeOptionBearingDecomposer({
                   readOnly: true,
                 },
               ],
+              build: { artifact: [DRUPAL_CMS_GIT_ARTIFACT] },
               routes: primaryRoutes,
             },
             database,

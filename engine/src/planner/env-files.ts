@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect } from "effect";
 
@@ -77,7 +77,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
       );
     }
     Object.assign(environment, parsed.environment);
-    inputs.push({ source, hash: createHash("sha256").update(content).digest("hex") });
+    inputs.push({ source, hash: sha256Hex(content) });
   }
   return { environment, inputs };
 });

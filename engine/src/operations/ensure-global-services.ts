@@ -28,7 +28,7 @@ import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { publishedEndpointUrls } from "./authority-url.ts";
+import { startedServiceRow } from "./authority-url.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { globalInstall } from "./global-install.ts";
@@ -175,13 +175,9 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
   );
 
   const servicesStarted = yield* Effect.forEach(selected, (service) =>
-    provider.inspect({ app: plan.id, service: service.name, plan: realizedPlan }).pipe(
-      Effect.map((runtime) => ({
-        name: String(service.name),
-        state: runtime.state ?? runtime.status,
-        endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-      })),
-    ),
+    provider
+      .inspect({ app: plan.id, service: service.name, plan: realizedPlan })
+      .pipe(Effect.map((runtime) => startedServiceRow(service, runtime))),
   );
 
   yield* events.publish(

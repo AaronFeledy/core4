@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Schema } from "effect";
 
@@ -28,7 +28,7 @@ const ARCH_REMEDIATION =
 export const MSSQL_FEATURE_ID = "service-lando.mssql";
 
 const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `Lando!${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
+  `Lando!${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
 
 const defaultCreds = (appName: string, serviceName: string) => ({
   user: "lando",

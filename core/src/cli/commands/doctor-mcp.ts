@@ -31,9 +31,9 @@ import { startStdioClient } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { serviceLayer } from "../../mcp-command-executor";
 import type { LandoCommandSpec } from "../spec/command-base";
-import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import { renderDoctorChecksAsNdjson, sectionCheckEventPayload } from "./doctor-ndjson";
+import { renderSectionCheck } from "./doctor-section-render";
 
 export interface McpDoctorCheck {
   readonly name: "mcp";
@@ -212,15 +212,8 @@ export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> 
   Layer.provide(EnvSecretStore.layer),
 );
 
-const renderCheck = (check: McpDoctorCheck): ReadonlyArray<string> => {
-  const lines: string[] = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];
-  for (const [field, value] of Object.entries(check.context)) lines.push(`${field}: ${value}`);
-  for (const solution of check.solutions) lines.push(renderSolution(solution));
-  return lines;
-};
-
 export const renderMcpDoctorResult = (result: McpDoctorResult): string =>
-  result.checks.flatMap((check) => renderCheck(check)).join("\n");
+  result.checks.flatMap((check) => renderSectionCheck(check)).join("\n");
 
 const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "allowlistFresh",
@@ -233,22 +226,6 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "canaryError",
 ];
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
-  orderKnownKeys(context, CONTEXT_KEY_ORDER);
-
-const checkEventPayload = (check: McpDoctorCheck): Record<string, unknown> => ({
-  _tag: "doctor.check",
-  name: check.name,
-  status: check.status,
-  severity: check.severity,
-  context: orderContextKeys(check.context),
-  solutions: check.solutions.map((solution) => ({
-    kind: solution.kind,
-    description: solution.description,
-    ...(solution.command === undefined ? {} : { command: solution.command }),
-  })),
-});
-
 export interface McpDoctorNdjsonOptions {
   readonly now?: Date;
 }
@@ -260,5 +237,5 @@ export const renderMcpDoctorResultAsNdjson = (
   renderDoctorChecksAsNdjson({
     checks: result.checks,
     now: options.now,
-    checkEventPayload,
+    checkEventPayload: (check) => sectionCheckEventPayload(check, CONTEXT_KEY_ORDER),
   });

@@ -2,7 +2,7 @@ import { chmod, copyFile, mkdir } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { Effect } from "effect";
 
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
 import type { HostProxyContainerTarget } from "@lando/sdk/schema";
 import { bunDevDistRoot } from "../../composition.ts";
 
@@ -62,7 +62,7 @@ export const installHostProxyShim = (
     },
     catch: (cause) =>
       new HostProxyTransportUnavailableError({
-        message: cause instanceof Error ? cause.message : String(cause),
+        message: causeMessage(cause),
         socketPath: artifact,
         remediation: Bun.isStandaloneExecutable
           ? "Reinstall the Lando executable and retry; its embedded host-proxy shim could not be installed."

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 
@@ -25,8 +25,7 @@ export const pluginCommandCachePath = (cacheRoot: string): string =>
 // other's app-scoped caches; 12 hex chars (48 bits) is enough to avoid
 // collisions across one user's filesystem while keeping the dir name
 // grep-friendly.
-const appRootFingerprint = (appRoot: string): string =>
-  createHash("sha256").update(appRoot).digest("hex").slice(0, 12);
+const appRootFingerprint = (appRoot: string): string => sha256Hex(appRoot).slice(0, 12);
 
 export const appCommandCachePath = (cacheRoot: string, appName: string, appRoot: string): string =>
   `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}/commands.bin`;

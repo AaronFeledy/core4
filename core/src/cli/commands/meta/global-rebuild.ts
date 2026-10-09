@@ -1,6 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { startedServiceRow } from "@lando/engine/operations/authority-url";
 import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
   GlobalDistConflictError,
@@ -25,7 +25,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { joinServiceRows } from "../service-summary";
+import { joinServiceRows, lifecycleLine } from "../service-summary";
 import { globalAppRef, renderGlobalServiceRow, withGlobalLifecycleEvents } from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
@@ -139,13 +139,9 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
       );
 
       const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
-        provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-          Effect.map((runtime) => ({
-            name: String(service.name),
-            state: runtime.state ?? runtime.status,
-            endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-          })),
-        ),
+        provider
+          .inspect({ app: builtPlan.id, service: service.name, plan: builtPlan })
+          .pipe(Effect.map((runtime) => startedServiceRow(service, runtime))),
       );
 
       // Re-observe the router before the post event: a rebuild that leaves the
@@ -161,7 +157,6 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
 
 export const renderGlobalRebuildResult = (result: GlobalRebuildResult): string => {
   if (!result.materialized) return "global app is not installed";
-  if (result.servicesRebuilt.length === 0) return `rebuilt: ${result.app} - no services`;
   const services = joinServiceRows(result.servicesRebuilt.map(renderGlobalServiceRow));
-  return `rebuilt: ${result.app} - ${services}`;
+  return lifecycleLine("rebuilt", result.app, services.length === 0 ? "no services" : services);
 };

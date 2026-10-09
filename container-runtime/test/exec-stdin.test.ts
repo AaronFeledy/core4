@@ -372,3 +372,73 @@ describe("podman exec delayed output", () => {
     });
   }, 5_000);
 });
+
+describe("podman exec terminal size", () => {
+  const makeSizingApi = (resizeStatus: (started: boolean) => number) => {
+    const calls: EngineHttpRequest[] = [];
+    let started = false;
+    const api: EngineHttpApi = {
+      request: (input) =>
+        Effect.sync((): EngineHttpResponse => {
+          calls.push(input);
+          if (input.path === createPath) return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
+          if (input.path === "/exec/exec-1/json")
+            return { status: 200, body: JSON.stringify({ ExitCode: 0 }) };
+          if (input.path.startsWith("/exec/exec-1/resize?"))
+            return { status: resizeStatus(started), body: "" };
+          return { status: 500, body: `unexpected ${input.method} ${input.path}` };
+        }),
+      stream: (input) =>
+        Stream.suspend(() => {
+          calls.push(input);
+          started = true;
+          input.onResponseHead?.();
+          return Stream.fromEffect(Effect.sleep(Duration.millis(20)).pipe(Effect.as(new Uint8Array([0x6f]))));
+        }),
+    };
+    return { api, calls };
+  };
+
+  const ttyCommand: CommandSpec = {
+    command: ["stty", "size"],
+    tty: true,
+    terminalSize: { columns: 160, rows: 40 },
+  };
+
+  test("sends the initial size on the start request and resizes only after the start head", async () => {
+    // Given: a runtime that rejects resize before /start, like Podman.
+    const fake = makeSizingApi((started) => (started ? 200 : 409));
+
+    // When
+    const result = await runExec(fake.api, ttyCommand);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    const paths = fake.calls.map((call) => call.path);
+    const startIndex = paths.indexOf("/exec/exec-1/start");
+    const resizeIndex = paths.indexOf("/exec/exec-1/resize?h=40&w=160");
+    expect(fake.calls[startIndex]?.body).toMatchObject({ h: 40, w: 160, ConsoleSize: [40, 160] });
+    expect(resizeIndex).toBeGreaterThan(startIndex);
+  });
+
+  test("a rejected initial resize does not fail the session", async () => {
+    // Given
+    const fake = makeSizingApi(() => 500);
+
+    // When
+    const result = await runExec(fake.api, ttyCommand);
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "o", stderr: "" });
+    expect(fake.calls.some((call) => call.path === "/exec/exec-1/resize?h=40&w=160")).toBe(true);
+  });
+
+  test("a non-TTY exec start carries no console size", async () => {
+    const fake = makeFakeApi();
+
+    await runExec(fake.api, { command: ["true"], terminalSize: { columns: 160, rows: 40 } });
+
+    const start = fake.calls.find((call) => call.path === "/exec/exec-1/start");
+    expect(start?.body).toEqual({ Detach: false, Tty: false });
+  });
+});

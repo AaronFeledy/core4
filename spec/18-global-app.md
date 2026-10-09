@@ -1,7 +1,7 @@
-# Lando v4 — The Global App
+# Lando v4: The Global App
 
-> **Part 18 of 18** · [Index](./README.md)
-> **Read next:** *(end of spec)*
+> **Part 18 of 19** · [Index](./README.md)
+> **Read next:** [19 Scratch Apps](./19-scratch-apps.md)
 
 The **global app** is the reserved host-level Lando app for services shared across user apps. Plugins contribute those services through `globalServices:`, and `AppFeature` activations declare user-app dependencies on them (§6.11.4).
 
@@ -17,11 +17,12 @@ The global app uses the standard `AppPlan`, `RuntimeProvider`, build orchestrati
 - Its root is `<userDataRoot>/global/`, owned by Lando.
 - Plugins contribute services through `globalServices:`; user overrides remain layered through the Landofile.
 - Required services auto-start through `AppFeature.requires.globalServices`.
+- It is always planned and applied with the Lando-managed provider (§5.8), independent of the user's `defaultProviderId`, so the `ssh-agent` sidecar and the `traefik` router host every app's traffic from one place. Code that observes global-app containers MUST pin that provider rather than selecting the active one.
 - Providers with `sharedCrossAppNetwork` expose services at `<service>.global.internal` and through the `LANDO_GLOBAL_*` environment family (§5.4, §6.9, §10.1).
 - `apps:poweroff` stops it unless `--keep-global` is set. Destroying one user app MUST NOT affect it.
 - `scope: global` storage survives user-app and global-app destruction under §6.5 and §20.9.
 
-The global app is not a daemon, a place to promote user-defined services, or a replacement for `RouterService` or `CertificateAuthority`. The persistent agent remains deferred (§14.2). Plugins MAY contribute new global services but MUST NOT promote a user service into the global app.
+The global app is not a daemon, a place to promote user-defined services, or a replacement for `RouterService` or `CertificateAuthority`. A persistent agent is a non-goal (§14.2). Plugins MAY contribute new global services but MUST NOT promote a user service into the global app.
 
 ### 20.2 Identity
 
@@ -30,7 +31,7 @@ The global app is not a daemon, a place to promote user-defined services, or a r
 | `AppRef.kind` | `global` |
 | `name`, `slug`, id | Reserved literal `global` |
 | Root | `<userDataRoot>/global/` |
-| Provider | Active default provider from global config; per-app and cross-provider overrides are deferred (§5.9). |
+| Provider | The Lando-managed provider, regardless of a user `defaultProviderId`; per-app and cross-provider overrides are excluded (§5.9). |
 
 User-authored Landofiles resolving to `global`, including normalized directory names, fail with `AppIdReservedError` and remediation to choose an explicit different name. Inside global services, `LANDO_APP_NAME` and `LANDO_PROJECT` are `global`; `LANDO_GLOBAL_*` is reserved for cross-app discovery.
 
@@ -109,17 +110,21 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 
 #### 20.6.3 Auto-start integration with user apps
 
-`AppFeature.requires.globalServices` is the only v4.0 dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
+`AppFeature.requires.globalServices` is the only dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
 - A healthy set emits the start pair with `cached: true` and proceeds without provider work.
 - A cold or unhealthy set starts the required services with `cached: false` before user-app build.
 - A required id absent from the resolved global plan emits `pre-global-start`, fails with `GlobalServiceMissingError`, aborts user-app start, and MUST NOT emit `post-global-start`.
 
-Direct Landofile `dependsOn` syntax remains deferred (§14.2).
+Direct Landofile `dependsOn` syntax for global services is not part of this contract (§14.2).
 
 #### 20.6.4 Standard event sequence
 
 The global start event pair is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
+
+#### 20.6.5 Restart, rebuild, and router revalidation
+
+`meta:global:restart` is `stop` then `start`; `meta:global:rebuild` is regenerate, destroy, build, then apply. Neither reaches `RouterService.setup`, which is reached only from app start, `lando setup`, and doctor's proxy fix. Because the router is the reason these commands are prescribed as recovery steps, both MUST call `RouterService.revalidateStartup` (§10.2) after the global app is running again, on the same terms as `setup`: the persisted router startup observation is refreshed or cleared, and a classified watcher failure fails the command with `RouterWatcherError`. A remediation that names `lando global:restart` or `lando global:rebuild` therefore clears the diagnostic it names once the condition is gone; the `router-file-watcher` doctor check keeps reporting the record as an unrevalidated observation and never probes live. The restart result schema is the start result schema, and the error channel adds `ProxyError` and `RouterWatcherError`.
 
 ### 20.7 CLI surface (`meta:global:*`)
 
@@ -131,8 +136,8 @@ The global start event pair is nested inside user-app `pre-start`; any required 
 | `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |
 | `meta:global:list` | `global:list` | `minimal` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
 | `meta:global:logs` | `global:logs` | `global` | Stream logs with standard service, follow, tail, and since filters. |
-| `meta:global:rebuild` | `global:rebuild` | `global` | Stop, rebuild, and restart with §6.13 up-to-date semantics. |
-| `meta:global:restart` | `global:restart` | `global` | Stop then start. |
+| `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, then apply, followed by router revalidation (§20.6.5); build follows §6.13 up-to-date semantics. |
+| `meta:global:restart` | `global:restart` | `global` | Stop, then start, then router startup revalidation (§20.6.5). |
 | `meta:global:start` | `global:start` | `global` | Start all enabled services or repeated `--service` selections. |
 | `meta:global:status` | `global:status` | `global` | Report live runtime status. |
 | `meta:global:stop` | `global:stop` | `global` | Stop all running services or selected services. |
@@ -170,15 +175,15 @@ Global-app resources carry the standard ownership labels plus a global-app marke
 
 ### 20.10 Proxy and CA realization through the global app
 
-#### 20.10.1 Default `RouterService` Live Layer
+#### 20.10.1 Default `RouterService` layer
 
-The default `RouterService` Live Layer is refactored to realize routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
+The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
 
 Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection keeps §4.3 precedence: explicit Landofile selection, global default, plugin `defaultFor`, then sole implementation.
 
 #### 20.10.2 `CertificateAuthority` realization
 
-`@lando/ca-mkcert` remains a host-level `CertificateAuthority` in v4.0 and is not migrated into the global app. Future plugins MAY provide a global-app-resident CA through the existing §4.2 swap contract.
+`@lando/ca-mkcert` is a host-level `CertificateAuthority` and is not resident in the global app. Other plugins MAY provide a global-app-resident CA through the existing §4.2 swap contract.
 
 #### 20.10.3 Migration policy
 
@@ -215,17 +220,18 @@ All errors are tagged and include remediation where applicable:
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
 - `GlobalAppError`, the umbrella for global state-transition failures
+- `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)
 
 This surface also uses the shared `CommandAliasConflictError` and `ConfigExpressionScopeNotPermittedError` tags defined by their owning contracts (§7.3.1, §8.1.2).
 
-### 20.14 Non-goals for v4.0
+### 20.14 Non-goals
 
 - Multi-host shared global apps are not supported.
 - The global root is not independently relocatable; changing `<userDataRoot>` relocates it (§7.5).
-- Per-app or cross-provider global-app selection is deferred with §5.9.
-- Explicit Landofile `dependsOn: ["global:<service>"]` is deferred; only `AppFeature.requires.globalServices` applies.
+- Per-app or cross-provider global-app selection is excluded with §5.9.
+- Explicit Landofile `dependsOn: ["global:<service>"]` is not a contract; only `AppFeature.requires.globalServices` applies.
 - Users cannot promote user-app services into the global app.
 - Plugins MUST NOT register canonical ids under `meta:global:*`; they MAY operate on the global app through commands in their own namespaces.
-- `globalServices:` contributions are not sandboxed in v4.0.
+- `globalServices:` contributions are not sandboxed; isolation is cooperative (§10.9.1).
 
 ---

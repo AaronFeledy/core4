@@ -107,12 +107,14 @@ const makeFakeApi = (
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
-    stream: (request) => {
-      calls.push(request);
-      if (streamOverride !== undefined) return streamOverride(request);
-      const chunks = [frame("stdout", stdout), ...(stderr.length === 0 ? [] : [frame("stderr", stderr)])];
-      return Stream.fromIterable(chunks);
-    },
+    stream: (request) =>
+      Stream.suspend(() => {
+        calls.push(request);
+        request.onResponseHead?.();
+        if (streamOverride !== undefined) return streamOverride(request);
+        const chunks = [frame("stdout", stdout), ...(stderr.length === 0 ? [] : [frame("stderr", stderr)])];
+        return Stream.fromIterable(chunks);
+      }),
   };
 
   return { api, calls };

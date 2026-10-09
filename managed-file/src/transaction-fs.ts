@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, rename, unlink } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import { syncDirectory } from "@lando/state-store/atomic";
 import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
@@ -10,9 +10,6 @@ import type { Entry, FileState, Stage } from "./transaction-journal.ts";
 import { createPrivateFile, statMaybe, targetPath } from "./transaction-private-file.ts";
 
 export { canonicalRoot, ensureDirectory, statMaybe, targetPath } from "./transaction-private-file.ts";
-
-export const digestOf = (bytes: string | Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
 
 export const snapshot = async (path: string) => {
   const stats = await statMaybe(path);
@@ -29,7 +26,7 @@ export const snapshot = async (path: string) => {
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
       throw transactionError("conflict", "prepare");
     }
-    return { state: { present: true, digest: digestOf(bytes), mode: opened.mode & 0o7777 } as const, bytes };
+    return { state: { present: true, digest: sha256Hex(bytes), mode: opened.mode & 0o7777 } as const, bytes };
   } finally {
     await handle.close();
   }
@@ -119,7 +116,7 @@ export const ensureBackup = async (options: EnsureBackupOptions): Promise<void> 
   } catch (cause) {
     if (!isErrnoCode(cause, "EEXIST")) throw cause;
   }
-  await verifyPrivateFile(options.path, digestOf(options.bytes), options.privateFileAccess);
+  await verifyPrivateFile(options.path, sha256Hex(options.bytes), options.privateFileAccess);
 };
 
 /**

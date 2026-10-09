@@ -30,6 +30,7 @@ import {
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
+  errnoCode,
 } from "@lando/sdk/errors";
 import {
   DataTransferProgressEvent,
@@ -771,13 +772,8 @@ const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransfe
       }),
   }).pipe(Effect.map((info) => info.isDirectory()));
 
-const hostErrno = (cause: unknown): string | undefined =>
-  typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
-    ? cause.code
-    : undefined;
-
 const hostReadError = (path: string, cause: unknown): DataTransferError => {
-  const code = hostErrno(cause);
+  const code = errnoCode(cause);
   const missing = code === "ENOENT";
   const denied = code === "EACCES" || code === "EPERM";
   return new DataTransferError({

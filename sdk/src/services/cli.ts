@@ -1,4 +1,4 @@
-import { Context, type Effect } from "effect";
+import { Context, type Effect, type Stream } from "effect";
 
 import type { EventError, ToolingCompileError, ToolingExecError } from "../errors/index.ts";
 import type { AppPlan, HostTerminal, RendererCapabilities } from "../schema/index.ts";
@@ -91,6 +91,12 @@ export interface ToolingInvocation {
   readonly tty?: boolean;
   /** Attached output-terminal facts, independent from PTY allocation intent. */
   readonly hostTerminal?: HostTerminal;
+  /** Re-iterable host keyboard input; each container step acquires its own reader. */
+  readonly stdinStream?: AsyncIterable<Uint8Array>;
+  /** Attached terminal resize events, forwarded to each container PTY. */
+  readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
+  /** Host cancellation, independent of keyboard input and PTY allocation. */
+  readonly signal?: AbortSignal;
   /** Pre-normalized argv forms, executed in order. */
   readonly commands: ReadonlyArray<ReadonlyArray<string>>;
   /** Structural Bun Shell forms for host execution, executed in order. */

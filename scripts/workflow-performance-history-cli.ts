@@ -2,6 +2,7 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import { valueAfter } from "./_acceptance-harness.ts";
 import {
   type WorkflowPerformanceHistoryCandidate,
   buildWorkflowPerformanceHistory,
@@ -26,11 +27,6 @@ class WorkflowPerformanceHistoryArgumentError extends Error {
     this.name = "WorkflowPerformanceHistoryArgumentError";
   }
 }
-
-const valueAfter = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  return index < 0 ? undefined : args[index + 1];
-};
 
 const requiredPath = (args: readonly string[], flag: string): string => {
   const value = valueAfter(args, flag);

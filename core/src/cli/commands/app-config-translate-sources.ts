@@ -1,6 +1,6 @@
 import { readdir, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { ConfigTranslateError } from "@lando/sdk/errors";
+import { ConfigTranslateError, causeMessage } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
@@ -119,7 +119,7 @@ export const discoverSourceFiles = (
     },
     catch: (cause) =>
       new ConfigTranslateError({
-        message: `Could not discover config translator source files: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Could not discover config translator source files: ${causeMessage(cause)}`,
         cause,
       }),
   });

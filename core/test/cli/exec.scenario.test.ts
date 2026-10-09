@@ -113,6 +113,7 @@ interface ExecRecord {
   readonly tty?: boolean;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
+  readonly terminalSize?: { readonly columns: number; readonly rows: number };
 }
 
 const makeProvider = (
@@ -153,6 +154,7 @@ const makeProvider = (
         ...(spec.tty === undefined ? {} : { tty: spec.tty }),
         ...(spec.stdin === undefined ? {} : { stdin: spec.stdin }),
         ...(spec.stdinStream === undefined ? {} : { stdinStream: spec.stdinStream }),
+        ...(spec.terminalSize === undefined ? {} : { terminalSize: spec.terminalSize }),
       };
       calls.push(record);
       const response = responses[i] ?? { exitCode: 0 };
@@ -173,6 +175,7 @@ const makeProvider = (
         ...(spec.tty === undefined ? {} : { tty: spec.tty }),
         ...(spec.stdin === undefined ? {} : { stdin: spec.stdin }),
         ...(spec.stdinStream === undefined ? {} : { stdinStream: spec.stdinStream }),
+        ...(spec.terminalSize === undefined ? {} : { terminalSize: spec.terminalSize }),
       };
       calls.push(record);
       const response = responses[i] ?? { exitCode: 0 };
@@ -922,6 +925,24 @@ describe("execApp — interactive TTY terminal-capability env", () => {
     });
     expect(Object.hasOwn(calls[0]?.env ?? {}, "TERM_PROGRAM")).toBe(false);
     expect(Object.hasOwn(calls[0]?.env ?? {}, "HOST_SECRET")).toBe(false);
+  });
+
+  test("TTY with attached facts sizes the PTY from the host terminal", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost }, () =>
+      Effect.runPromise(
+        execApp({
+          service: "appserver",
+          command: ["stty", "size"],
+          tty: true,
+          hostTerminal: { term: "xterm-ghostty", columns: 160, rows: 40 },
+        }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+      ),
+    );
+
+    expect(calls[0]?.terminalSize).toEqual({ columns: 160, rows: 40 });
   });
 
   test("TTY off leaves capability vars absent even when set on the host", async () => {
