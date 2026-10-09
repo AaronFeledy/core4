@@ -1,6 +1,6 @@
-# Lando v4 — Testing, Distribution, and Quality Gates
+# Lando v4: Testing, Distribution, and Quality Gates
 
-> **Part 13 of 18** · [Index](./README.md)
+> **Part 13 of 19** · [Index](./README.md)
 > **Read next:** [14 Appendices](./14-appendices.md)
 
 This part defines the release quality bar, test architecture, distribution forms, CI cadences, and release channels.
@@ -27,7 +27,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Host proxy contract | Authentication, exact request union, allowlists, recursion, backpressure, socket ownership, redaction, streaming, and cleanup are enforced. |
 | TunnelService contract | Targets, egress, provisioning, scope ownership, detached state, probes, events, and redaction remain within the declared port. |
 | File sync engine contract | Capabilities, setup, containment, content fidelity, conflicts, events, cancellation, and pinned-tool ownership are enforced. |
-| HttpClient contract | Proxy/CA precedence, schemes, streaming, offline behavior, cancellation, events, and redaction are enforced. |
+| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced (§10.3.2). |
 | Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced. |
 | Redaction contract | The canonical value and pattern layers produce byte-stable profile output and cannot be weakened by plugins. |
 | Interaction contract | Answer precedence, mode selection, validation, secret handling, cancellation, dynamic choices, and renderer routing are enforced. |
@@ -59,6 +59,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Executable guides | §19 MDX generates source-mapped scenario tests and visibility-separated transcripts for every applicable variant. |
 | Deprecation | Every notice records use, publishes `deprecation-used`, warns once, appears in doctor, and obeys `removeIn`. |
 | Perf budget | Compiled-artifact tests enforce §2.1 end-to-end, first-paint, hot-path, concurrency, and runtime-reuse budgets. |
+| Compiled decoder parity | Interpreted and compiled decoding of the shared Landofile corpus (guide and recipe fixtures plus curated valid and invalid inputs) run in separate processes and MUST produce identical verdicts, values, and issue paths and messages (§2.5, §12.5.1). |
 | End-to-end | The relocated compiled binary runs against real operating systems, providers, plugins, routes, files, and offline-after-build state. |
 
 **Effect testing rules:** tests MUST inject mocks with Layers, provide them per test, use `TestClock` from `effect/testing` (provided with `TestClock.layer()`) and `TestRandom` for nondeterminism, and feed stream services with deterministic Streams. Tests MUST NOT patch globals.
@@ -100,6 +101,7 @@ A PR cannot merge unless:
 - Boundary gates pass through the shared `check:boundaries` surface, with package seams primary and residual AST rules limited to behavior package edges cannot express.
 - The `effect-idioms` boundary rule keeps retired Effect forms out of the shared shipped-runtime tier (core, primitive packages, engine, renderer, data-mover, MCP, telemetry, and bundled plugins): `Data.TaggedError` and `Data.Error`; `Date.now()` and `new Date(` in modules that import `effect`; named functions or methods whose body only returns `Effect.gen(...)`; local definitions named `isRecord`, `isPlainObject`, or `isObject`; exports named `*Live`; and imports from `@effect/*`. It has no carve-outs.
 - Command, service, event, deprecation, export, and package-DAG registry drift checks pass.
+- The compiled-decoder parity suite passes whenever the compiled target list, a listed schema, the decoder generator, or the Effect version changes (§12.5.1).
 - New CLI or library behavior has scenario coverage; new CLI behavior also has e2e coverage.
 - New recipes have recipe and e2e smoke coverage; new schemas have annotations and round-trip coverage.
 - Public `@lando/core` or `@lando/sdk` additions have documentation and the corresponding library/schema tests.
@@ -113,8 +115,8 @@ Lando ships two synchronized forms:
 
 | Form | Audience | Contract |
 |---|---|---|
-| Compiled CLI | End users without prerequisites | One bytecode-enabled executable for `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, and `windows-x64`, built through §17.3. |
-| `@lando/core` library | Bun embedding hosts and package-manager CLI users | ESM entry points from §2.7 plus `package.json#bin`; Alpha/Beta installs the CLI as `lando4` beside untouched Lando 3. |
+| Compiled CLI | End users without prerequisites | One bytecode-enabled executable for each of the six targets `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `windows-x64`, and `windows-arm64` (§2.1), built through §17.3. |
+| `@lando/core` library | Bun embedding hosts and package-manager CLI users | ESM entry points from §2.7 plus `package.json#bin`; the bin installs under the side-by-side name `lando4` so an existing Lando 3 `lando` stays untouched (§17.7). |
 
 No OCLIF tarball or third distribution form ships. Both forms use the same native dispatcher, version, schemas, and public contracts.
 
@@ -128,11 +130,12 @@ Releases include public schema and command-schema artifacts, declaration bundles
 
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|
-| Per PR | macOS arm64, Linux x64/arm64, Windows x64 | All fast layers and quality gates; scenario guides everywhere; e2e smoke and gating perf on Linux x64. |
+| Per PR: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke, and scenario guides. Compilation alone is not evidence of live-provider readiness. |
+| Per PR: unit and runtime gates | Linux x64 | Sharded unit tests, e2e smoke, and gating performance tests. The platform matrix MUST NOT be reported as full native unit-suite coverage on every target. |
 | Nightly | Linux x64/arm64, macOS arm64 | Full e2e against the default managed runtime, all generated e2e guides, release-shaped binaries, library publish rehearsal, and gating platform perf. |
 | Weekly | Managed runtime, Docker Desktop/Engine, Podman Desktop/Podman, Lima, OrbStack on applicable hosts | Provider contracts plus full e2e and generated e2e guide scenarios across the provider matrix. |
 
-Each cadence is a scope superset of the preceding cadence.
+Scheduled cadences add provider and runtime coverage to the PR gates; a broader compile matrix does not substitute for that live coverage.
 
 ### 13.7 Release flow
 
@@ -140,7 +143,7 @@ Each cadence is a scope superset of the preceding cadence.
 - Versioning is strict semver. Core API breaks require a major; plugin SDK compatibility tracks the core major.
 - `lando update` follows the active channel and the signed atomic-update protocol in §17.6.
 - Every release uses the signing and supply-chain policy in §17.4–§17.5.
-- v4.0 installs through GitHub Releases and `get.lando.dev`; Homebrew, scoop, winget, and distro packages are deferred (§17.7).
+- The install surfaces are signed GitHub Release artifacts and the `get.lando.dev` installers (§17.7). Homebrew, scoop, winget, and distro packages are outside this contract; adding one is a §17.7 change, not a channel.
 - Plugins publish independently and declare their compatible `@lando/core` range.
 
 ### 13.8 Boundary gate substrate
