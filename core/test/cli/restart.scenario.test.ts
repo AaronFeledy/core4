@@ -299,6 +299,7 @@ const makeRestartLayer = (
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
+        resolveAppliedPlan: () => Effect.succeed(plannedApp),
       }),
     ),
     Layer.succeed(

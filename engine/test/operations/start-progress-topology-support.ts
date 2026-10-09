@@ -257,6 +257,7 @@ export const makeHarness = (
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(provider),
+    resolveAppliedPlan: () => Effect.succeed(plannedApp),
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
