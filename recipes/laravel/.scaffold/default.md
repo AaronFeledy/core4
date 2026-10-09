@@ -1,6 +1,6 @@
 # Start a Laravel app
 
-`lando init --recipe laravel` scaffolds PHP, Composer, MariaDB or PostgreSQL, Redis, Artisan, and an optional queue worker.
+`lando init --recipe laravel` scaffolds PHP, Composer, Node 22, MariaDB or PostgreSQL, Redis, Artisan, npm, and an optional queue worker.
 
 ```sh
 lando init --recipe laravel --name=my-laravel-app --yes
@@ -32,7 +32,19 @@ lando composer install --no-interaction
 lando artisan --version
 ```
 
-The default single-service app keeps `vendor` in an appserver volume.
+Then install and build the frontend. `lando npm` runs in the `node` service, a
+`node:22` container that idles until you call it:
+
+```sh
+lando npm --version
+lando npm install
+lando npm run build
+```
+
+`public/build` lands in the shared `/app`, so Apache serves the built assets.
+`node_modules` lives in a volume private to the `node` service.
+
+The default app keeps `vendor` in an appserver volume.
 With `--answer=worker=true`, the recipe automatically shares the host `vendor`
 directory between appserver and worker. No manual mount overrides are needed.
 The worker needs a Laravel application and dependencies before it can run
