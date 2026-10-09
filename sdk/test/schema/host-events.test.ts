@@ -112,16 +112,19 @@ test("prefixes load issues with config.yml hostEvents.<event>[i] and the bad key
 });
 
 test("rejects a command string with unbalanced quotes", () => {
-  const issues = hostEventsSemanticIssues({
-    "pre-start": [{ cmd: 'echo "a', service: ":host" }],
-  });
-  expect(issues[0]?.message).toContain("unbalanced quotes");
-  expect(issues[0]?.message).toContain("Quote the whole value");
-  expect(
-    hostEventsSemanticIssues({
-      "pre-start": [{ cmd: 'echo "hi"', service: ":host" }],
-    }),
-  ).toEqual([]);
+  const accept = (cmd: string) =>
+    expect(hostEventsSemanticIssues({ "pre-start": [{ cmd, service: ":host" }] })).toEqual([]);
+  const reject = (cmd: string) => {
+    const issues = hostEventsSemanticIssues({ "pre-start": [{ cmd, service: ":host" }] });
+    expect(issues[0]?.message).toContain("unbalanced quotes");
+    expect(issues[0]?.message).toContain("Quote the whole value");
+  };
+  accept('echo "hi"');
+  accept("echo it\\'s");
+  accept('echo \\"x');
+  reject("echo don't");
+  reject('echo "a');
+  reject("$'a\\'b'");
 });
 
 test("treats omitted-service strings as container steps", () => {

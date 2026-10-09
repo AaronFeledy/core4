@@ -133,7 +133,7 @@ const hasUnbalancedQuotes = (value: string): boolean => {
   let inDouble = false;
   for (let index = 0; index < value.length; index += 1) {
     const char = value[index];
-    if (inDouble && char === "\\") {
+    if (!inSingle && char === "\\") {
       index += 1;
       continue;
     }
