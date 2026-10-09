@@ -157,6 +157,7 @@ describe("restart lifecycle brackets", () => {
         triggeredBy: "app:restart",
       },
     ]);
+    expect(byTag(harness.events, "pre-restart")[0]).not.toHaveProperty("services");
     expect(byTag(harness.events, "post-restart")).toMatchObject([
       {
         scope: "app",
@@ -164,6 +165,7 @@ describe("restart lifecycle brackets", () => {
         plan: harness.plannedApp,
       },
     ]);
+    expect(byTag(harness.events, "post-restart")[0]).not.toHaveProperty("services");
   });
 
   test("post-restart does not run when the stop/start pair fails", async () => {

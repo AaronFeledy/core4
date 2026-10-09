@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { AppPlan } from "../schema/app-plan.ts";
 import { AppRef } from "../schema/networking.ts";
+import { ServiceName } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
 export const PreInitEvent = Schema.TaggedStruct("pre-init", {
@@ -53,6 +54,9 @@ export const PreRestartEvent = Schema.TaggedStruct("pre-restart", {
   plan: AppPlan.annotate({ description: "Resolved app plan." }),
   triggeredBy: Schema.String.annotate({ description: "Command that triggered the restart." }),
   timestamp: Timestamp.annotate({ description: "Time the restart bracket opened." }),
+  services: Schema.optionalKey(Schema.Array(ServiceName)).annotate({
+    description: "Selected services for a scoped restart. Omitted for a full-app restart.",
+  }),
 });
 export type PreRestartEvent = typeof PreRestartEvent.Type;
 
@@ -61,6 +65,9 @@ export const PostRestartEvent = Schema.TaggedStruct("post-restart", {
   app: AppRef.annotate({ description: "App being restarted." }),
   plan: AppPlan.annotate({ description: "Resolved app plan." }),
   timestamp: Timestamp.annotate({ description: "Time the restart bracket closed." }),
+  services: Schema.optionalKey(Schema.Array(ServiceName)).annotate({
+    description: "Selected services for a scoped restart. Omitted for a full-app restart.",
+  }),
 });
 export type PostRestartEvent = typeof PostRestartEvent.Type;
 

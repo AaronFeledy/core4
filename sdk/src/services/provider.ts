@@ -16,6 +16,7 @@ import type {
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
+  ServiceRestartWouldRecreateError,
   ServiceStartError,
   VolumeOperationError,
 } from "../errors/index.ts";
@@ -68,6 +69,7 @@ export type ProviderError =
   | ProviderUnavailableError
   | ServiceExecError
   | ServiceNotFoundError
+  | ServiceRestartWouldRecreateError
   | ServiceStartError
   | VolumeOperationError
   | ServiceCopyError
@@ -123,6 +125,13 @@ export interface ApplyOptions {
   readonly recordedPlan?: AppPlan;
   readonly signal?: AbortSignal;
   readonly serviceEnvironment?: ServiceEnvironmentOverrides;
+  /**
+   * When true, bring-up fails instead of removing and recreating a container
+   * for publish-port, bind-source, or network drift, and instead of recovering
+   * a host-port bind rejection with a fresh port. Cannot be combined with
+   * `reconcile: true`.
+   */
+  readonly forbidRecreate?: boolean;
 }
 
 export type ServiceEnvironmentOverrides = Readonly<
@@ -227,6 +236,12 @@ export interface ServiceRuntimeInfo {
   readonly imageIdentity?: string;
   readonly endpoints?: ReadonlyArray<EndpointInfo>;
   readonly lastStartedAt?: Date;
+  /** Inspect fingerprint of published host ports. Absent when the container is missing. */
+  readonly publishFingerprint?: string;
+  /** Inspected bind and agent-socket mount sources, keyed by container target. */
+  readonly bindSources?: Readonly<Record<string, string>>;
+  /** Inspected network names attached to the container. */
+  readonly networkNames?: ReadonlyArray<string>;
 }
 
 export interface ServiceRuntimeIdentity {
