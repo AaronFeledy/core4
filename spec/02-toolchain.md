@@ -1,9 +1,11 @@
-# Lando v4 — Toolchain
+# Lando v4: Toolchain
 
-> **Part 2 of 18** · [Index](./README.md)
+> **Part 2 of 19** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
 This part defines the technology stack and the architectural rules each component imposes.
+
+**Version rule.** This spec names capability and architecture requirements. Actual internal dependency versions (Bun, TypeScript, Effect, OpenTUI, and other toolchain or framework packages) live in `.bun-version`, package manifests, pin manifests, and `bun.lock`, never in spec prose. External host and provider minimums (operating systems, Podman, Docker) remain normative here.
 
 ---
 
@@ -19,23 +21,23 @@ Bun is the runtime, package manager, test runner, bundler, binary packager, subp
 - Dependencies are installed with `bun install`; plugin install hooks invoke it through `BunSelfRunner`.
 - Core tests use `bun test`. Vitest, Jest, and Mocha are forbidden in core; plugins may choose their own test framework.
 - `Bun.spawn` is reserved for argv-precise execution through `ProcessRunner`. `node:child_process` is forbidden in core except behind a compatibility adapter.
-- `Bun.$` is reserved for shell-shaped work through `ShellRunner`. Core MUST NOT use `ProcessRunner` to invoke a shell or use `ShellRunner` to re-encode an argv call. Release and codegen scripts outside `LandoRuntimeLive` MAY use `Bun.$` directly (§17.1).
+- `Bun.$` is reserved for shell-shaped work through `ShellRunner`. Core MUST NOT use `ProcessRunner` to invoke a shell or use `ShellRunner` to re-encode an argv call. Release and codegen scripts outside the runtime Layer built by `makeLandoRuntime` MAY use `Bun.$` directly (§17.1).
 - `Bun.file` and `Bun.write` are the filesystem primitives. `node:fs` is allowed only inside the `FileSystem` adapter when Bun lacks equivalent behavior.
 - Bun `fetch` is available only through `HttpClient`, the single egress chokepoint for Lando-owned network access (§10.3.2). Package-manager work through `BunSelfRunner` and standalone installers are the only carve-outs.
 - TypeScript executes natively; `tsc --noEmit` is a type gate, not a development build step.
 - Core is ESM-only. Plugins may publish CommonJS through loader interop.
 
-The Bun version floor is TBD (§14). It MUST support stable `--bytecode` on every release target and the `BUN_BE_BUN` standalone-executable mode; either capability regressing moves the floor.
+This spec states capability requirements for Bun, not a numeric version. The selected Bun MUST support stable `--bytecode` on every release target and the `BUN_BE_BUN` standalone-executable mode; the actual selection lives in `.bun-version`, the package manifests, and `bun.lock`, and a release that regresses either capability is not eligible.
 
 **The compiled binary is itself Bun.** Core, plugins, and recipe scaffolding that need Bun self-spawn the running `lando` executable with `BUN_BE_BUN=1`; core MUST NOT resolve a system `bun` from `PATH`. `BunSelfRunner` is the only core service allowed to construct that child, publishes `pre-bun-self-exec` and `post-bun-self-exec`, and remains plugin-replaceable (§3.4, §4.2). The compiled distribution therefore has no separate Bun prerequisite. Library mode MAY fall back to host Bun, and embedding hosts MAY replace that fallback with a strict variant. `lando meta bun`/`lando bun`, `lando meta x`/`lando x`, recipe Bun actions, and plugin authoring all use this service (§8.2, §8.8.8, §9.10). These invocations require at least `minimal` bootstrap and MUST NOT enter the level-`none` fast path (§3.2).
 
-The default binary uses `bun build --compile` with bytecode enabled. `--bytecode` is REQUIRED and is part of the cold-start budget. Releases target `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-darwin-x64`, and `bun-windows-x64`; every release ships all five. Release-shaped main binaries use the build wrapper required by §17.3; bare compilation is allowed only for helper binaries without OpenTUI.
+The default binary uses `bun build --compile` with bytecode enabled. `--bytecode` is REQUIRED and is part of the cold-start budget. The compile matrix is `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-x64`, `bun-darwin-arm64`, `bun-windows-x64`, and `bun-windows-arm64`; every release ships all six. Release-shaped main binaries use the build wrapper required by §17.3; bare compilation is allowed only for helper binaries without OpenTUI.
 
 Build-visible code and data MUST be statically imported or explicitly embedded. Bundled plugins are statically imported, external plugins load only from validated locked stores or trusted `pluginDirs:`, and the native command-registry manifest is generated and embedded (§8.4.1, §17.2–§17.3). Asset ownership remains in §17.3.
 
 **Performance commitments:**
 
-| Command | v4 budget (cold) | v4 budget (hot) |
+| Command | Budget (cold) | Budget (hot) |
 |---|---|---|
 | `lando --version` / `lando version` | < 50 ms | < 30 ms |
 | `lando shellenv` | < 50 ms | < 30 ms |
@@ -56,7 +58,7 @@ Per-PR performance tests and the §13.4 merge gate enforce both budget tables.
 
 ### 2.2 TypeScript
 
-TypeScript uses `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`, `moduleResolution: "bundler"`, `module: "esnext"`, `target: "esnext"`, `lib: ["esnext"]`, `types: ["bun-types"]`, `isolatedModules`, and `skipLibCheck: false`. The TypeScript floor is `^5.9.0`, Effect 4's minimum. `exactOptionalPropertyTypes` is required for Effect Schema optional-property semantics.
+TypeScript uses `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`, `moduleResolution: "bundler"`, `module: "esnext"`, `target: "esnext"`, `lib: ["esnext"]`, `types: ["bun-types"]`, `isolatedModules`, and `skipLibCheck: false`. The selected TypeScript version MUST satisfy the selected Effect dependency's compatibility requirements; package manifests and the lockfile own the version selection. `exactOptionalPropertyTypes` is required for Effect Schema optional-property semantics.
 
 Public types MUST be inferred from Effect Schema wherever a schema can own the contract; parallel public `interface` or `type` declarations are forbidden. Internal types may use either. `@lando/sdk` exports schemas and their inferred types. Top-level exports SHOULD prefer one public symbol per file, barrels belong only at package boundaries, and side-effect imports are forbidden in core.
 
@@ -100,6 +102,8 @@ Effect Schema is the only schema library in core. Its Effect-native decode, tagg
 
 Schemas that decode authored input (Landofile, global config, plugin and recipe manifests, includes, lockfiles, and the app-plan and command caches) MUST declare optional properties with `Schema.optionalKey`. `Schema.optional` emits `anyOf [X, null]` into JSON Schema while the decoder rejects `null`, so an editor would accept what Lando rejects. Output-only schemas (errors, events, command results) may use `Schema.optional`.
 
+**Compiled decoders.** The schema is the only contract; a decoder's execution strategy is an implementation detail that MUST NOT change verdicts, decoded values, or issue paths and messages. The CLI MAY install ahead-of-time compiled decoders for a fixed, explicitly listed set of hot-path schemas, and the compiled binary installs that set at CLI entry, before any command runs. Membership in the set is earned by end-to-end measurement against the §2.1 hot-path budgets on compiled binaries, not by in-process microbenchmarks, and a schema that does not pay for itself stays interpreted. The generated decoder module is a derived codegen output (§17.2, §12.5.1), never hand-edited and never a git source of truth; its install order and schema AST identity are the contract, so it MUST be regenerated whenever a listed schema or the Effect version changes, and the target list MUST NOT import from the generated module so the generator runs on a clean checkout. Library embedders keep the interpreter; `@lando/sdk` and `@lando/core` consumers never observe the compiled set. A parity gate decodes a shared corpus of valid and invalid inputs in interpreted and compiled processes and MUST require identical verdicts, values, and issues (§13.4).
+
 ### 2.6 Forbidden runtime dependencies
 
 | Forbidden in core source | Required replacement or ownership |
@@ -139,7 +143,7 @@ Effect plus a small set of YAML/CA primitives are the only target runtime depend
 | `@lando/core/docs/components` | executable-guide runtime and AST helpers (§19.3) |
 | `@lando/core/docs/redactions` | transcript redaction list (§19.6) |
 
-The removed `./oclif` adapter is not public. The default entry MUST NOT pull a heavy CLI framework into its graph; `./cli` MUST NOT require `@oclif/core`; `./schema` MUST be tree-shakeable per schema; `./paths` MUST be Effect-free and OCLIF-free; `./landofile` MUST remain OCLIF-free and avoid the full runtime. `./testing` is supported on `next` and `dev` for Beta 1 but is not published on `stable` before v4.0.0 GA. Docs entry points MUST be tree-shakeable and MUST NOT pull the Effect runtime or `@oclif/core`.
+The removed `./oclif` adapter is not public. The default entry MUST NOT pull a heavy CLI framework into its graph; `./cli` MUST NOT require `@oclif/core`; `./schema` MUST be tree-shakeable per schema; `./paths` MUST be Effect-free and OCLIF-free; `./landofile` MUST remain OCLIF-free and avoid the full runtime. `./testing` follows the compatibility contract in §16.8; its publication schedule belongs to the ROADMAP. Docs entry points MUST be tree-shakeable and MUST NOT pull the Effect runtime or `@oclif/core`.
 
 Every entry point ships its own declarations, uses type-only re-exports where appropriate, and is ESM-only. `bin/lando.ts` consumes `@lando/core/cli`; the compiled binary is one consumer, not a separate architecture (§16.4).
 

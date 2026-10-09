@@ -96,6 +96,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const aliasError = commandAliasRegistrationError(
     landofile.commandAliases,
     entries.map((entry) => entry.id),
+    entries,
   );
   if (aliasError !== undefined) yield* Effect.fail(aliasError);
 

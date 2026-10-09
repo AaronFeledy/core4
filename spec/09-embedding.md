@@ -1,6 +1,6 @@
-# Lando v4 — Embedding and Library Use
+# Lando v4: Embedding and Library Use
 
-> **Part 9 of 18** · [Index](./README.md)
+> **Part 9 of 19** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
 An embedding host is a Bun program that uses the same Effect runtime, planner, providers, plugins, and lifecycle bus as the CLI (§3.6), with resource lifetime owned by `Scope`.
@@ -21,7 +21,7 @@ Embedding is first-class for:
 | Web UIs and dashboards | Expose typed Lando operations through a host transport. |
 | Custom CLIs and wrappers | Pair core with curated plugins and host-owned UX. |
 | Monorepo orchestrators | Drive multiple apps within one fiber tree. |
-| Config translation tools | Explicitly invoke contributed translators and emit v4 authoring fragments. |
+| Config translation tools | Explicitly invoke contributed translators and emit canonical authoring fragments. |
 
 Hosts MUST use core’s provider registry rather than wrapping Docker or Podman directly. They MAY replace abstractions declared pluggable in §4, but non-pluggable service contracts remain private. Parsing CLI output is not an embedding API.
 
@@ -41,10 +41,10 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/events` | `EventService`, event schemas, priority bands, and standard sequences. |
 | `@lando/core/cli` | Programmatic built-in command operations (§16.7). |
 | `@lando/core/testing` | Supported deterministic test fixtures (§16.8). |
-| `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable until GA. |
-| `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable until GA. |
+| `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable, outside the semver-stable set. |
+| `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
 
-The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. `RemoteSource` and `Dataset` remain contract-only for Beta 1, do not sync application code, and are deferred to the 4.1 feature wave (§10.12).
+The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. `RemoteSource` and `Dataset` remain contract-only, never sync application code, and their implementation is sequenced in the ROADMAP (§10.12).
 
 ### 16.3 The `LandoRuntime` factory
 
@@ -73,7 +73,7 @@ The returned opaque, SDK-published `App` handle captures app identity and runtim
 | `info` | Typed app and service information. |
 | `exec`, `tooling`, `logs` | Scoped execution and streaming operations. |
 | `share`, `shareList`, `shareStop` | Scoped or detached tunnel operations (§10.2.2). |
-| `pull`, `push`, `remote` | Frozen remote-sync contract; connector wiring is deferred to 4.1 (§10.12). |
+| `pull`, `push`, `remote` | Frozen remote-sync contract; connector wiring is sequenced in the ROADMAP (§10.12). |
 | `config`, `events` | App-scoped configuration and lifecycle access. |
 
 Inputs are option objects. One-shot methods require no runtime services after binding; live resources and subscriptions retain `Scope.Scope`. Typed Effects are returned directly, not renderer envelopes. `app.start()` is managed by default; detached behavior requires explicit opt-in.
@@ -152,7 +152,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 | `ScenarioContext` | Runtime for executable guides and generated scenarios (§19.4). |
 | `TestClock`, `TestRandom` | Effect test primitives wired through the runtime. |
 
-`TestRuntime` MUST NOT touch the host filesystem without an explicit override and MUST NOT make network calls. Every export MUST carry API documentation. `@lando/core/testing` is API-stable on `next` during Beta 1, also ships on `dev`, and joins `stable` at v4.0.0 GA.
+`TestRuntime` MUST NOT touch the host filesystem without an explicit override and MUST NOT make network calls. Every export MUST carry API documentation. `@lando/core/testing` is API-stable wherever it is published; its publication schedule belongs to the ROADMAP (§13.7).
 
 ### 16.9 Versioning and compatibility
 
@@ -160,10 +160,10 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 - Hosts pin a compatible major; patch and minor releases are non-breaking.
 - Manifest plugins are compatibility-checked through `requires."@lando/core"`; hosts supplying raw Layers own compatibility.
 - Persisted schemas and caches carry version discriminators; hosts retaining caches across versions MUST honor §12.2.
-- Docs component/redaction entry points remain unstable until GA; the core runtime, services, schema, errors, events, paths, landofile, and CLI entry points are semver-stable within a major.
+- Docs component/redaction entry points are unstable; the core runtime, services, schema, errors, events, paths, landofile, and CLI entry points are semver-stable within a major.
 
 ### 16.10 Non-goals
 
-v4.0.0 does not provide a Promise facade, synchronous API, browser build, Node runtime compatibility, cross-runtime resource sharing, plugin hot reload, stable access to unlisted internals, or a replaceable `EventService`. Multiple isolated runtimes MAY coexist, but changing a plugin set requires closing and rebuilding its runtime scope.
+The library does not provide a Promise facade, synchronous API, browser build, Node runtime compatibility, cross-runtime resource sharing, plugin hot reload, stable access to unlisted internals, or a replaceable `EventService`. Multiple isolated runtimes MAY coexist, but changing a plugin set requires closing and rebuilding its runtime scope.
 
 ---

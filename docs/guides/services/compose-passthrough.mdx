@@ -44,6 +44,24 @@ Start it. Lando puts the passthrough service on the app network:
     </Step>
   </Scenario>
 
+## Set `command` or `entrypoint`
+
+A string `command:` or `entrypoint:` splits into argv like Compose: whitespace separates words, quotes group them, and no shell runs. `command: --port 8080` reaches the image's entrypoint as `["--port", "8080"]`. A list passes through as written. Splitting does not expand variables, and an unquoted `;`, `&`, `|`, `<`, or `>` ends the argv there.
+
+`command` appends to the image's `ENTRYPOINT`, same as Compose. For shell features you need an image with a shell and no binary entrypoint in the way, then an explicit `sh -c` with the script in one quoted argument:
+
+```yaml
+services:
+  sleeper:
+    type: compose
+    image: alpine:3.20
+    appMount: false
+    home: false
+    command: sh -c "printf ready && exec sleep infinity"
+```
+
+That becomes `["sh", "-c", "printf ready && exec sleep infinity"]`. Malformed quotes fail planning with `LandofileValidationError`. Only `type: compose` splits strings this way; other service types run a string `command` as a shell script.
+
 ## Probe the service
 
 The fixture above declares `probe` as an app tooling alias. Run it once the

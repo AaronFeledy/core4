@@ -2,7 +2,7 @@
 id: laravel-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, laravel, php, mariadb, redis]
+tags: [beta, docs, recipes, laravel, php, node, mariadb, redis]
 ---
 
 # Run the Laravel recipe
@@ -24,8 +24,9 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 | `appserver` | `php:8.4`, `framework: laravel`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
 | `database` | `type: mariadb:11.4` |
 | `cache` | `type: redis` |
+| `node` | `node:22`, `primary: false`, no `command`, idle until `lando npm` runs |
 | `worker` (optional) | `php:8.4`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
-| Tooling | `lando artisan` and `lando composer` on `appserver` |
+| Tooling | `lando artisan` and `lando composer` on `appserver`, `lando npm` on `node` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 
@@ -44,6 +45,9 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"artisan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"primary\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -57,9 +61,18 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
+  <Scenario id="worker-vendor-sharing" render={false} reason="Verify automatic dependency sharing for the queue worker">
+    <Step name="scaffold-worker">
+      <Run command="lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true" />
+    </Step>
+    <Step name="confirm-shared-vendor">
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+    </Step>
+  </Scenario>
 </Guide>
 
-## Run Artisan, Composer, and the clients
+## Run Artisan, Composer, npm, and the clients
 
 `create-project` wants an empty directory, and `.lando.yml` is already there:
 
@@ -67,14 +80,31 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
 ```
 
-Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
+Copy the application into the root, keeping `.lando.yml`, then check its
+dependencies and tools:
 
 ```sh
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando composer install --no-interaction
 lando artisan --version
 lando composer --version
 lando redis-cli ping
 lando mariadb
 ```
+
+## Build the frontend with npm
+
+`lando npm` runs in the `node` service, a `node:22` container that idles until you call it:
+
+```sh
+lando npm --version
+lando npm install
+lando npm run build
+```
+
+`public/build` lands in the shared `/app`, so Apache serves it right away. `node_modules` lives in a volume private to the `node` service.
+
+## Add a queue worker
 
 Add a queue worker at init with `--answer=worker=true`:
 
@@ -82,7 +112,15 @@ Add a queue worker at init with `--answer=worker=true`:
 lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
 ```
 
-That service runs `php artisan queue:work`.
+The recipe automatically shares host `vendor` between appserver and worker.
+You don't need manual `appMount.includes` overrides. The worker runs
+`php artisan queue:work` only after a Laravel application and its dependencies
+exist. If you started the services before installing Laravel, restart afterward:
+
+```sh
+lando restart
+lando logs --service=worker
+```
 
 ## Connect Eloquent and Redis
 

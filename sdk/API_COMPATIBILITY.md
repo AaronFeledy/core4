@@ -353,6 +353,8 @@
 
 ## Additive YAML exports
 
+- `@lando/sdk/landofile` additively exports `splitComposeCommand` and the type-only `SplitCommand` result. The pure splitter matches Compose/go-shellwords tokenization with environment and command substitution disabled, reports unquoted-operator truncation, accepts empty argv, and returns `undefined` for malformed input. Both native Compose services and Lando 3 translation share this implementation; no error channel or JSON Schema changes.
+
 `@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
 `yamlMappingKeyText`, `emitYamlDocument`, and `YamlEmitError`. This dependency-free
 subpath shares fail-closed scalar and mapping-key quoting without Effect, Bun, or

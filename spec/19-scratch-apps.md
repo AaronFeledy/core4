@@ -1,4 +1,4 @@
-# Lando v4 — Scratch Apps
+# Lando v4: Scratch Apps
 
 > **Part 19 of 19** · [Index](./README.md)
 > **Read next:** *(end of spec)*
@@ -44,7 +44,7 @@ The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. S
 
 ### 21.4 Scratch sources
 
-`ScratchSource` is a tagged contract with exactly two v4.0 variants:
+`ScratchSource` is a tagged contract with exactly two variants:
 
 - `fork` identifies the resolved source app root, source app id, and copied Landofile layers.
 - `from-recipe` identifies a standard `RecipeRef` and resolved answers (§8.8.4).
@@ -53,7 +53,7 @@ The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. S
 
 `apps:scratch:start --fork [--source <path>]` copies the resolved source app root; without `--source`, standard cwd discovery applies (§7.1).
 
-- Materialization is a content copy, not a hardlink or CoW overlay; CoW is deferred (§21.15).
+- Materialization is a content copy, not a hardlink or CoW overlay (§21.15).
 - `--exclude` and `scratch.fork.excludes:` add bounded ignore patterns. Generated and dependency-heavy paths are excluded by default.
 - All included Landofile layers and the lockfile are copied; merge and include resolution then run against the scratch root.
 - The resolved app name is rewritten to the scratch id.
@@ -118,7 +118,7 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 | `baked` | Suppressed. Default for recipe mode. | Pass through unchanged. |
 | `cwd` | Resolve against the cwd captured at start. | Pass through unchanged. |
 
-`--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported in v4.0, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
+`--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 
 ### 21.8 Storage shadowing
 
@@ -147,7 +147,7 @@ The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-
 
 #### 21.9.3 Exclusion from cross-app scopes
 
-Scratch `AppFeature` code may consume permitted `globalServices.<name>.*` expressions (§20.8.3). User apps MUST NOT reference `scratchApps.<id>.*`; scratch apps are not cross-app expression sources in v4.0.
+Scratch `AppFeature` code may consume permitted `globalServices.<name>.*` expressions (§20.8.3). User apps MUST NOT reference `scratchApps.<id>.*`; scratch apps are not cross-app expression sources.
 
 ### 21.10 CLI surface (`apps:scratch:*`)
 
@@ -178,7 +178,7 @@ The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2
 
 `apps:scratch:run` is a thin `ScratchAppService.acquire` surface, not a separate lifecycle. It defaults to the bundled `toolbox` recipe, cwd isolation, and the primary service. `--from`, `--service`, and `--no-mount` select another recipe, target, or baked isolation.
 
-Arguments after `--` pass verbatim to provider exec. TTY and agent-context forwarding follow §6.9.1; output streams through the renderer; the tool exit code becomes the command exit code and is not a tagged Lando failure. Scope close destroys the scratch on success, failure, or interruption. `--keep` converts it to a detached scratch. JSON mode uses the streaming contract in §8.11.3. Warm pooling is deferred (§21.15).
+Arguments after `--` pass verbatim to provider exec. TTY and agent-context forwarding follow §6.9.1; output streams through the renderer; the tool exit code becomes the command exit code and is not a tagged Lando failure. Scope close destroys the scratch on success, failure, or interruption. `--keep` converts it to a detached scratch. JSON mode uses the streaming contract in §8.11.3. There is no warm pool (§21.15).
 
 ### 21.11 Cleanup, registry, and orphan reaping
 
@@ -216,11 +216,11 @@ Every error is tagged and includes remediation:
 
 ### 21.15 Non-goals
 
-- CoW, overlay, and passthrough isolation are deferred pending a provider capability and cross-platform contract.
-- Scratch fleets are not a v4.0 primitive; callers may compose independent detached acquisitions.
+- CoW, overlay, and passthrough isolation are outside this contract; they require a provider capability and a cross-platform contract that do not exist here.
+- Scratch fleets are not a primitive; callers may compose independent detached acquisitions.
 - Fork mode has no hot reload from source changes.
 - Scratch apps are not cross-app expression sources.
-- `<userCacheRoot>/scratch/` is not independently relocatable in v4.0.
-- The persistent agent remains deferred and does not change scratch lifetime (§14.2).
+- `<userCacheRoot>/scratch/` is not independently relocatable; changing `<userCacheRoot>` relocates it (§7.5).
+- A persistent agent is a non-goal and does not change scratch lifetime (§14.2).
 - `apps:scratch:run` has no warm toolbox pool; `--keep` or a normal app provides persistence.
 - Plugins MUST NOT acquire scratches during install. They MAY contribute recipes or `globalServices:` that user-initiated scratches consume.
