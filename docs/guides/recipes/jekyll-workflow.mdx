@@ -12,9 +12,7 @@ lando init --recipe jekyll --name=jekyll-demo --yes
 cd jekyll-demo
 ```
 
-`--yes` skips prompts. Jekyll declares no recipe options, so the only prompt is the app name. Before the first start, park `builder` on `sleep infinity`. `lando bundle` and `lando jekyll` run inside the running `builder` container, so it has to stay up while you install gems. The recipe's `build.artifact` step installs the compiler and headers native gems need.
-
-The stock `builder` command is `bundle exec jekyll serve`. Until the app has a Gemfile and gems, that command exits and `builder` stops with it. Park `builder` first, then install.
+`--yes` skips prompts. Before the first start, park `builder` on `sleep infinity`: its default Jekyll server command exits until you install a Gemfile and gems. The recipe's artifact build installs the compiler and headers; `lando bundle` and `lando jekyll` then use the running builder.
 
 ## See what the recipe writes
 
@@ -98,14 +96,6 @@ Right after init, swap the `builder` command for `sleep infinity`. Change only t
 ```sh
 lando app:config:set services.builder.command 'sleep infinity'
 lando start
-```
-
-That is the same as editing one line in `.lando.yml`:
-
-```yaml
-services:
-  builder:
-    command: sleep infinity
 ```
 
 The first start runs that build step to prepare the `builder` image.
@@ -247,4 +237,3 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 
 - [Jekyll recipe](/recipes/jekyll/)
 - [Serve a static site](../services/static.mdx)
-- [Add Ruby](../services/ruby.mdx)
