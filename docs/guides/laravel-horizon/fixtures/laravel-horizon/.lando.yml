@@ -1,0 +1,52 @@
+name: laravel-horizon
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    framework: laravel
+    webroot: /app/public
+    composer: "2"
+    allowOverride: true
+    port: 80
+    build:
+      artifact:
+        - run: a2enmod rewrite
+          user: root
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      - database
+      - cache
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: "mariadb:11.4"
+  cache:
+    type: redis
+  worker:
+    type: "php:8.4"
+    via: cli
+    framework: laravel
+    command: "php artisan horizon"
+    restart: unless-stopped
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      - database
+      - cache
+tooling:
+  artisan:
+    cmds:
+      - "php artisan"
+    description: "Run a Laravel Artisan command inside the appserver service."
+    service: appserver
+  composer:
+    cmds:
+      - composer
+    description: "Run Composer inside the appserver service."
+    service: appserver
