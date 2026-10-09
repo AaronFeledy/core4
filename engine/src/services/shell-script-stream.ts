@@ -8,13 +8,13 @@ export const streamBunScript = Effect.fnUntraced(function* (
   path: string,
   options: ShellCommandOptions | undefined,
   output: {
-    readonly sink: StreamFrameSinkShape;
+    readonly sink: StreamFrameSinkShape | undefined;
     readonly redact: (text: string) => string;
   },
 ) {
   const pending = { stdout: "", stderr: "" };
   const emit = (kind: "stdout" | "stderr", chunk: string) =>
-    output.sink.emit({ _tag: kind, chunk: output.redact(chunk), raw: true });
+    output.sink?.emit({ _tag: kind, chunk: output.redact(chunk), raw: true }) ?? Effect.void;
   const lineSink: StreamFrameSinkShape = {
     emit: Effect.fnUntraced(function* (frame) {
       pending[frame._tag] += frame.chunk;
@@ -35,7 +35,7 @@ export const streamBunScript = Effect.fnUntraced(function* (
       ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
       env: { ...options?.env, BUN_BE_BUN: "1" },
     }),
-    Option.some(lineSink),
+    output.sink === undefined ? Option.none() : Option.some(lineSink),
   );
   for (const kind of ["stdout", "stderr"] as const) {
     if (pending[kind].length > 0) yield* emit(kind, pending[kind]);

@@ -68,6 +68,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "postgres:16" },
       { name: "cache", type: "redis" },
+      { name: "node", type: "node:22" },
       { name: "worker", type: "php:8.3" },
     ],
     expectedTooling: ["artisan", "composer", "npm"],

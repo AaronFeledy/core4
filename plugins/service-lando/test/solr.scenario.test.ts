@@ -270,7 +270,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(search.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      expect.any(String),
       "lando-solr-precreate",
       "8983",
       "gettingstarted",

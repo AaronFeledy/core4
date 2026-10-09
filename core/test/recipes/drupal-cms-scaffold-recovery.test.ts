@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import { DRUPAL_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
+import { fakeCmsComposer, fakeCmsGit } from "./drupal-cms-composer-fixture.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -26,19 +27,23 @@ const fixture = async (options: { command?: string; killDuringPromotion?: boolea
     mkdir(bin, { recursive: true }),
   ]);
   const composer = join(bin, "composer");
+  const git = join(bin, "git");
+  await writeFile(git, fakeCmsGit);
   await writeFile(
     composer,
-    [
-      "#!/bin/sh",
-      "set -eu",
-      'case "$1" in --working-dir=*) exit 0;; create-project) target=$3;; *) exit 2;; esac',
-      'mkdir -p "$target/vendor/bin" "$target/web/core/lib"',
-      'printf "#!/bin/sh\\n" > "$target/vendor/bin/drush"',
-      'chmod +x "$target/vendor/bin/drush"',
-      'printf "{}\\n" > "$target/composer.json"',
-      'printf "early\\n" > "$target/web/early.txt"',
-      'printf "late\\n" > "$target/web/core/lib/Drupal.php"',
-    ].join("\n"),
+    options.command === undefined
+      ? fakeCmsComposer
+      : [
+          "#!/bin/sh",
+          "set -eu",
+          'case "$1" in --working-dir=*) exit 0;; create-project) target=$3;; *) exit 2;; esac',
+          'mkdir -p "$target/vendor/bin" "$target/web/core/lib"',
+          'printf "#!/bin/sh\\n" > "$target/vendor/bin/drush"',
+          'chmod +x "$target/vendor/bin/drush"',
+          'printf "{}\\n" > "$target/composer.json"',
+          'printf "early\\n" > "$target/web/early.txt"',
+          'printf "late\\n" > "$target/web/core/lib/Drupal.php"',
+        ].join("\n"),
   );
   const copy = join(bin, "cp");
   await writeFile(
@@ -81,6 +86,7 @@ const fixture = async (options: { command?: string; killDuringPromotion?: boolea
   );
   await Promise.all([
     chmod(composer, 0o755),
+    chmod(git, 0o755),
     chmod(copy, 0o755),
     chmod(movePrimitive, 0o755),
     chmod(move, 0o755),
@@ -96,6 +102,7 @@ const fixture = async (options: { command?: string; killDuringPromotion?: boolea
     LANDO_TEST_COPY_FAILED: failOnce,
     LANDO_TEST_KILL_PROMOTION: killDuringPromotion,
     LANDO_TEST_MV: movePrimitive,
+    LANDO_TEST_COMPOSER_LOG: join(root, "composer.log"),
   };
   const run = () => Bun.spawnSync(["/bin/sh", "-c", options.command ?? DRUPAL_CMS_SCAFFOLD_COMMAND], { env });
   return { appRoot, failOnce, run };

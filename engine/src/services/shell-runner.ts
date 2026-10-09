@@ -8,7 +8,7 @@ import { $ } from "bun";
  * (dynamic `import("@opentui/core")` only). Do not add `@opentui/core` here
  * or use `Bun.Terminal` in compiled cold-start files.
  */
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
 import {
@@ -193,13 +193,12 @@ export const makeShellRunnerService = (
     runScript: Effect.fn("ShellRunner.runScript")(function* (path, options) {
       const command = `bun ${quoteShellPath(path)}`;
       const sink = yield* Effect.serviceOption(StreamFrameSink);
-      if (sink._tag === "None") return yield* service.exec(command, options);
       const redactor = yield* redactorForOptions(options);
       return yield* execWithEvents(
         command,
         options,
         streamBunScript(path, options, {
-          sink: sink.value,
+          sink: Option.getOrUndefined(sink),
           redact: (text) => redactor.redactString(text),
         }).pipe(
           Effect.mapError((cause) => shellError(command, options, cause)),

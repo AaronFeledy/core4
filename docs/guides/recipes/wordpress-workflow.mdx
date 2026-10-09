@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, Apache on port `80`, depends on `database` (and `cache` with Redis) |
+| `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, `memory_limit = 512M`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | `cache` (optional) | `type: redis` with `--answer=redis=true` |
 | Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
@@ -30,7 +30,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
 
 ## Confirm the tools
 
-`framework: wordpress` installs pinned WP-CLI on stock PHP services and sets `WP_CLI_ALLOW_ROOT=1`, so `lando wp` works with Lando's root tooling user. Custom images supply their own tools and extensions.
+`framework: wordpress` installs pinned WP-CLI on stock PHP services and sets `WP_CLI_ALLOW_ROOT=1`, so `lando wp` works with Lando's root tooling user. It also writes `/usr/local/etc/php/conf.d/50-lando-wordpress.ini` with `memory_limit = 512M` for WP-CLI and web requests. Custom images supply their own tools and settings. Want a different limit? [Mount a later drop-in](../services/php-customization.mdx#mount-a-custom-phpini) such as `zz-custom.ini`.
 
 ```sh
 lando wp --info

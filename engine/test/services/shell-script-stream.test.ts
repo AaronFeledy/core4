@@ -9,6 +9,67 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
 
+test.each(["collected", "live"] as const)(
+  "preserves script inputs and both output streams with restricted PATH in %s mode",
+  async (mode) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-shell-runtime-"));
+    const frames: StreamFrameSinkFrame[] = [];
+    const shellLayer = BunShellRunner.layer(() => {
+      throw new TypeError("unused interactive IO");
+    });
+    try {
+      const script = join(root, "probe.bun.sh");
+      await writeFile(
+        script,
+        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo diagnostic 1>&2; echo -n tail\n',
+      );
+      const run = Effect.flatMap(ShellRunner, (shell) =>
+        shell.runScript(script, {
+          cwd: root,
+          env: { PATH: root, FOO: "explicit-env" },
+          argv: ["two words", "", "$(echo injected)"],
+        }),
+      ).pipe(Effect.provide(shellLayer));
+      // When
+      const result = await Effect.runPromise(
+        mode === "collected"
+          ? run
+          : run.pipe(
+              Effect.provideService(StreamFrameSink, {
+                emit: (frame) =>
+                  Effect.sync(() => {
+                    frames.push(frame);
+                  }),
+              }),
+            ),
+      );
+      // Then
+      expect(result).toEqual({
+        exitCode: 0,
+        stdout: `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${root}\ntail`,
+        stderr: "diagnostic\n",
+      });
+      if (mode === "live") {
+        expect(
+          frames
+            .filter((frame) => frame._tag === "stdout")
+            .map((frame) => frame.chunk)
+            .join(""),
+        ).toBe(result.stdout);
+        expect(
+          frames
+            .filter((frame) => frame._tag === "stderr")
+            .map((frame) => frame.chunk)
+            .join(""),
+        ).toBe(result.stderr);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test("preserves shell events and redacts scoped tokens in live lines", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-shell-stream-"));

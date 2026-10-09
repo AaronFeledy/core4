@@ -24,9 +24,9 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 
 | Type       | Supported `framework:` values        | Notes                                                                                                                       |
 | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI and sets `WP_CLI_ALLOW_ROOT=1`. Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
+| `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI, sets `WP_CLI_ALLOW_ROOT=1`, and writes `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`, CLI and web). Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
-| `python`   | `django`, `fastapi`, `flask`, `none` | Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints.                         |
+| `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints. |
 | `ruby`     | `rails`, `none`                      | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
 | `go`       | `none`                               | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |

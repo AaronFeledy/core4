@@ -296,3 +296,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
 | — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
 | — | — | FrankenPHP via Compose passthrough | `docs/guides/services/frankenphp.mdx` | Shipped |
+| - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |

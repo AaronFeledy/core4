@@ -1,13 +1,13 @@
-# Lando v4 — Service Specification
+# Lando v4: Service Specification
 
-> **Part 6 of 18** · [Index](./README.md)
+> **Part 6 of 19** · [Index](./README.md)
 > **Read next:** [07 Landofile and Configuration](./07-landofile-and-config.md)
 
-This part defines the provider-neutral v4 service model, its composition contracts, canonical service types, build lifecycle, and log sources.
+This part defines the provider-neutral service model, its composition contracts, canonical service types, build lifecycle, and log sources.
 
 ---
 
-## 6. v4 Service Specification
+## 6. Service Specification
 
 ### 6.1 Model
 
@@ -20,7 +20,7 @@ A service is a planned runtime component composed from one base and an ordered s
 
 Composition is normative. A `ServiceType` resolves to `ServiceTypeResolution`; the core planner composes its `base`, `normalizedConfig`, and priority-ordered `features` into a `ServicePlan`. A type that builds a plan directly is non-conforming and bypasses inheritance, `AppFeature` injection, and feature conformance (§6.11).
 
-`api: 4` is the only service API. Core defaults it after confirming that the Landofile targets v4; no `api: 3` path exists.
+`api: 4` is the only service API. Core defaults it after confirming that the Landofile targets `runtime: 4`; no `api: 3` path exists.
 
 A service inherits the app provider. Per-service provider configuration is non-portable and belongs under `services.<name>.providers.<id>`. `ServicePlan.provider` records the resolved app provider.
 
@@ -100,6 +100,13 @@ Without `source`, names are `lando-<kebab(destination)>` for `global`, `<project
 
 Providers with volume labels MUST use `dev.lando.storage-volume: "TRUE"`, `dev.lando.storage-scope`, `dev.lando.storage-project`, and `dev.lando.storage-service`. The `dev.lando.*` namespace is reserved. Destroy removes matching project/service volumes but not global volumes.
 
+**Ownership proof and selection.** Two further labels carry volume ownership, and they are not interchangeable:
+
+- `dev.lando.volume-owner` records the canonical app root verbatim. It is the ownership **proof**: the planful volume-delete gate, create-race detection, adoption and witness checks, and SQL recovery adoption compare it against a root they already hold.
+- `dev.lando.volume-selector` packs provider id, app id, owner key, and volume class (optionally scope) into one `:`-joined value. It is the ownership-complete **selection** value: bring-down's local match and the daemon-side prune filter select on it alone, because a daemon ORs the values listed under one label key, so ownership split across keys would broaden a prune.
+
+The invariant: the selector's owner key is `appIdentityKey("owner", <canonical app root>)` from `@lando/sdk/schema`, the same derivation the planner stamps onto `AppPlan.identity`, so both labels are derived from one root. One owner in `@lando/container-runtime` emits the pair together and every reader resolves ownership through the same function; a label is never written without its partner, and no call site re-spells the key or falls back to a raw root. A plan that carries no `identity` is migrated at read time from `plan.root` through the same derivation (the planner assigns `root` from `identity.appRoot`, so the key is byte-identical), never written in a second selector format. Volumes created by earlier revisions carry selectors that match neither form and are neither adopted nor pruned by selection; recovery of such volumes goes through the proof label and the documented adoption paths, not through a looser selector.
+
 Global-app storage substitutes `global` for project identity and adds `dev.lando.storage-global-app: "TRUE"`; service and app names are `global-<service>-<destination>` and `global-<destination>`. Only global scope survives `meta:global:destroy --purge` (§20.9).
 
 Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<destination>` and `<scratch-id>-<destination>`, labels volumes with `dev.lando.scratch: "TRUE"` and `dev.lando.scratch-id`, and rewrites global scope to app scope unless `--share-global-storage` is present. Scratch destroy removes effective service/app storage unless `--keep-volumes` is used (§21).
@@ -117,6 +124,8 @@ Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewri
 Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
 Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
+
+**Cross-app route priority.** Every app's routes are merged into one router table, so `RoutePlan.priority` is one shared space, not a per-app ranking. The planner derives priority from the route alone: wildcard-hostname routes occupy the band `ROUTE_PRIORITY_WILDCARD_BASE` (2) through `ROUTE_PRIORITY_WILDCARD_BASE + ROUTE_PATH_WEIGHT_CAP`, exact-hostname routes occupy `ROUTE_PRIORITY_EXACT_BASE` through `ROUTE_PRIORITY_MAX`, and within a band the path-prefix length widens the priority up to `ROUTE_PATH_WEIGHT_CAP` so bands never overlap. `@lando/sdk/schema` owns these constants. For any two routes on concurrently applied apps that match the same request, an exact hostname MUST win over a wildcard and a longer path prefix MUST win over a shorter one, independently of how many routes each app declares and without relying on a router's own rule-length tie-break. The derivation MUST NOT include a plan-size or in-plan-index term: a plan ranked in isolation MUST compose correctly with plans it cannot see. The diagnostic fallback keeps `ROUTE_PRIORITY_DIAGNOSTIC` (1), below every app route, and a router that contributes its own routers MUST pin them above `ROUTE_PRIORITY_MAX` or an app claiming that hostname captures them. This does not introduce cross-app hostname ownership: two apps MAY still claim overlapping hostnames; only the more specific claim wins deterministically.
 
 ### 6.7 Healthchecks
 
@@ -187,13 +196,13 @@ A type MAY extend one parent, inheriting normalized config, features, tooling, a
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
-`artifacts:` maps exact versions to artifact tags and MAY reference a sibling file. Ranges are not supported in v4.0. The `ServiceType` version metadata is the single matrix for planning, docs, and tests. Unknown, absent, or unavailable versions fail before provider action with supported-version remediation and MUST NOT fall back to guessed tags. Resolved tags enter the app-plan cache key.
+`artifacts:` maps exact versions to artifact tags and MAY reference a sibling file. Version ranges are not supported. The `ServiceType` version metadata is the single matrix for planning, docs, and tests. Unknown, absent, or unavailable versions fail before provider action with supported-version remediation and MUST NOT fall back to guessed tags. Resolved tags enter the app-plan cache key.
 
 #### 6.11.3 Service-type-shipped tooling
 
 `ServiceTypeResolution.tooling` merges below resolved Landofile `tooling:`. Conflicts replace whole tasks by name. Between service contributions, the lexicographically first service name wins. A surviving contribution defaults its target to its contributor; `toolingDefaults` fills only unset fields.
 
-Reserved names `run`, `scratch`, and `scratch:*` fail with `CommandAliasConflictError`. Service types MUST NOT use `topLevelAlias` while `BETA_TOOLING_TASK_KEYS` rejects it.
+Reserved names `run`, `scratch`, and `scratch:*` fail with `CommandAliasConflictError`. Service types MUST NOT use `topLevelAlias` while the unsupported tooling-task key list (`UNSUPPORTED_TOOLING_TASK_KEYS` in `@lando/landofile`) rejects it (§8.5).
 
 #### 6.11.4 App-scoped features (`AppFeature`)
 
@@ -236,46 +245,50 @@ Activated `requires.globalServices` are ensured during `pre-start` before user-a
 
 #### 6.12.1 Catalog
 
-The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*` packages. Versions below are the one shipped `ServiceType` matrix; aliases resolve during planning.
+The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*` packages. Supported releases per type are not listed here: each `ServiceType` publishes its version matrix in its service-type metadata and pin manifests, which are the only source of truth, and aliases resolve during planning.
 
-| Type id | Base | Shipped versions | Notable options |
-|---|---|---|---|
-| `php` | `lando` | 8.1, 8.2, 8.3, 8.4, 8.5 | `via`, `composer`, `xdebug`, `db_client`, `webroot`, `allowOverride` |
-| `node` | `lando` | 18, 20, 22, 24, `lts` | `command`, `script`, `globals`, `port` |
-| `python` | `lando` | 3.10, 3.11, 3.12, 3.13 | `framework` |
-| `ruby` | `lando` | 3.1, 3.2, 3.3 | `framework` |
-| `go` | `lando` | 1.21, 1.22, 1.23 | `framework` |
-| `nginx` | `lando` | 1.24, 1.26, `latest` | `webroot`, framework presets |
-| `apache` | `lando` | 2.4 | `webroot`, `allowOverride`, framework presets |
-| `mariadb` | `lando` | 10.6, 10.11, 11.4 | `creds`, `config.server` |
-| `mysql` | `lando` | 8.0, 8.4 | `creds`, `config.server` |
-| `postgres` | `lando` | 14, 15, 16, 17 | `creds`, `config.server` |
-| `mongodb` | `lando` | 6, 7, 8 | `creds`, `config.server` |
-| `redis` | `lando` | 6, 7 | `password`, `persist` |
-| `memcached` | `lando` | 1.6 | none |
-| `valkey` | `lando` | 7, 8 | `persist` |
-| `solr` | `lando` | 8, 9 | `cores`, `config.dir` |
-| `elasticsearch` | `lando` | 7, 8 | index initialization |
-| `opensearch` | `lando` | 2 | index initialization |
-| `meilisearch` | `lando` | 1 | `masterKey` |
-| `mailpit` | `lando` | `latest` | `mailFrom` |
-| `mailhog` | `lando` | `latest` | deprecated since v4.2.0; remove in v5.0.0; replacement `mailpit`; emits `deprecation-used` |
-| `rabbitmq` | `lando` | 3, 4 | management route |
-| `minio` | `lando` | `latest` | bucket initialization |
-| `localstack` | `lando` | `latest` | none |
-| `tomcat` | `lando` | 9, 10, 11 | `webroot` |
-| `varnish` | `lando` | 6, 7 | backend, VCL |
-| `dotnet` | `lando` | 8.0, 9.0 | `command` |
-| `mssql` | `lando` | 2019, 2022 | `creds`; provider emulation required on arm64 |
-| `phpmyadmin` | `lando` | 5, `latest` | MySQL-family service selection |
-| `static` | `lando` | `nginx`, `caddy` | `webroot`, build hook |
-| `compose` | `l337` | n/a | raw supported Compose passthrough |
+| Type id | Base | Notable options |
+|---|---|---|
+| `php` | `lando` | `via`, `composer`, `xdebug`, `db_client`, `webroot`, `allowOverride` |
+| `node` | `lando` | `command`, `script`, `globals`, `port` |
+| `python` | `lando` | `framework` |
+| `ruby` | `lando` | `framework` |
+| `go` | `lando` | `framework` |
+| `nginx` | `lando` | `webroot`, framework presets |
+| `apache` | `lando` | `webroot`, `allowOverride`, framework presets |
+| `mariadb` | `lando` | `creds`, `config.server` |
+| `mysql` | `lando` | `creds`, `config.server` |
+| `postgres` | `lando` | `creds`, `config.server` |
+| `mongodb` | `lando` | `creds`, `config.server` |
+| `redis` | `lando` | `password`, `persist` |
+| `memcached` | `lando` | none |
+| `valkey` | `lando` | `persist` |
+| `solr` | `lando` | `cores`, `config.dir` |
+| `elasticsearch` | `lando` | index initialization |
+| `opensearch` | `lando` | index initialization |
+| `meilisearch` | `lando` | `masterKey` |
+| `mailpit` | `lando` | `mailFrom` |
+| `mailhog` | `lando` | deprecated; removal requires a major version (§18); replacement `mailpit`; emits `deprecation-used` |
+| `rabbitmq` | `lando` | management route |
+| `minio` | `lando` | bucket initialization |
+| `localstack` | `lando` | none |
+| `tomcat` | `lando` | `webroot` |
+| `varnish` | `lando` | backend, VCL |
+| `dotnet` | `lando` | `command` |
+| `mssql` | `lando` | `creds`; provider emulation required on arm64 |
+| `phpmyadmin` | `lando` | MySQL-family service selection |
+| `static` | `lando` | `nginx` or `caddy` backend; `webroot`, build hook |
+| `compose` | `l337` | raw supported Compose passthrough |
 
 Schemas publish at `@lando/sdk/schema/services/<type>` (§13.2). Unknown versions fail before provider action.
 
 File-backed options MUST be app-contained, symlink-safe, correct-kind sources, mounted read-only where applicable, and included deterministically in plan/build keys. `solr.config.dir`, database `config.server`, `node.globals`, `node.port`, Redis `password`/`persist`, Mailpit `mailFrom`, Apache `webroot`, commands, users, versions, and packages retain their authored effect and MUST NOT be replaced by hardcoded defaults. `mailFrom` defaults to all PHP services, `false` to none, and validated arrays to named PHP services.
 
 Every canonical or plugin type MUST declare its base, resolve through features, pass `runServiceCompositionContract`, use `runAppFeatureContract` when applicable, avoid direct env-helper access, and expose tooling, credentials, and presets through resolution.
+
+**Default launchers run as the planned user.** A type's default `command` (installed when the author declares neither `command` nor `entrypoint`) runs as `ServicePlan.user`. A type that accepts a non-root `user:` MUST start and keep serving with every user its catalog metadata advertises, without requiring an authored `command` or root-only setup in its launcher. Prefer daemon command-line configuration; when a file is required, use a path writable by the planned user and configure the daemon to read it. Volume-backed write targets require explicit ownership setup; if the provider cannot realize that ownership, planning MUST fail with a tagged error naming the service and option. Shared generated assets use one helper rather than per-launcher copies. The contract is verified by the running service serving its configured content, not merely by successful planning. Provider-specific Compose overrides MUST NOT substitute for a provider-neutral ownership contract. Any remaining privilege requirements, including restricted low ports on the target runtime, MUST be documented for the affected type.
+
+**Listen port follows `port:`.** `ServiceConfig.port` MUST move the daemon's listener, not only the endpoint, healthcheck, and route target. Every bundled launcher derives its listen address from the planned port. For Apache this means `Listen <port>` and, for `php` via `apache`, a `<VirtualHost *:<port>>` derived from the same value. An explicit non-default port replaces the image's default `Listen 80`; it MUST NOT leave an additional listener on port 80. Without an authored `port:`, the type retains its published default listener configuration. Fixed secondary ports, such as a console port, MUST be documented as limits in the type's guide.
 
 #### 6.12.2 Framework presets
 
@@ -285,7 +298,7 @@ Canonical PHP does not interpret framework ids. It uses absolute `webroot` and `
 
 #### 6.12.3 Catalog membership rules
 
-Catalog membership is frozen at v4.0; additions or removals require a spec amendment. Version additions MAY ship in v4.x only through the single metadata matrix with available artifacts and matching docs/tests. Canonical collisions fail with `ServiceTypeCollisionError`. Plugins MAY add types and composable features. Library consumers receive the catalog only through bundled discovery (§16.4).
+Catalog membership is frozen by this specification; additions or removals require a spec amendment. Version additions MAY ship in a minor release only through the single metadata matrix with available artifacts and matching docs/tests. Canonical collisions fail with `ServiceTypeCollisionError`. Plugins MAY add types and composable features. Library consumers receive the catalog only through bundled discovery (§16.4).
 
 #### 6.12.4 The `creds:` schema
 
@@ -358,7 +371,7 @@ Build failures are tagged `BuildPlanCycleError`, `BuildStepFailedError`, `BuildP
 
 #### 6.14.1 `LogSource`
 
-`LogSource` contains branded `LogSourceId`, optional label, absolute path, `stdout`/`stderr` classification, `redirect`/`follow` strategy, `required`, and timestamp capability. `console` is reserved for the implicit source. Each source names one file; globs are outside v4.0.
+`LogSource` contains branded `LogSourceId`, optional label, absolute path, `stdout`/`stderr` classification, `redirect`/`follow` strategy, `required`, and timestamp capability. `console` is reserved for the implicit source. Each source names one file; globs are not supported.
 
 Landofile `LogSourceInput` requires `path` and optionally accepts `id`, `label`, `stream`, and `timestamps`; it always resolves to `follow`. Service types may declare `redirect`.
 
@@ -374,7 +387,7 @@ Without that capability, required follow sources fail with `CapabilityError`; op
 
 #### 6.14.4 Follow semantics
 
-Providers declaring `serviceLogSources` MUST support finite snapshots and scoped follow mode, bounded pending diagnostics for missing files, rotation and truncation, complete UTF-8 line framing, bounded lines, per-source `tail`, timestamp-gated `since`, preserved per-source order, arrival-order merging, and interruption cleanup. No global chronological guarantee or global-total tail exists in v4.0.
+Providers declaring `serviceLogSources` MUST support finite snapshots and scoped follow mode, bounded pending diagnostics for missing files, rotation and truncation, complete UTF-8 line framing, bounded lines, per-source `tail`, timestamp-gated `since`, preserved per-source order, arrival-order merging, and interruption cleanup. No global chronological guarantee or global-total tail exists.
 
 #### 6.14.5 Redaction
 

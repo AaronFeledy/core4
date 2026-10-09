@@ -1,6 +1,6 @@
-# Lando v4 — Caches and Persistence
+# Lando v4: Caches and Persistence
 
-> **Part 12 of 18** · [Index](./README.md)
+> **Part 12 of 19** · [Index](./README.md)
 > **Read next:** [13 Testing and Distribution](./13-testing-and-distribution.md)
 
 This part defines Lando-owned caches, durable state, on-disk artifacts, atomicity, hot-path budgets, and offline behavior.
@@ -14,7 +14,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | Cache | Location | Encoding | Contract |
 |---|---|---|---|
 | `core-command` | embedded plus `<userCacheRoot>/command-cache.bin` | binary | Built-in command, alias, and docs metadata; invalidated by core version or clear. |
-| `plugin-command` | `<userCacheRoot>/plugin-command-cache.bin` | binary | Sole metadata owner for precedence-merged bundled/external plugin commands; invalidated by plugin graph changes or clear. Executable external dispatch remains deferred (§9.7). |
+| `plugin-command` | `<userCacheRoot>/plugin-command-cache.bin` | binary | Sole metadata owner for precedence-merged bundled/external plugin commands; invalidated by plugin graph changes or clear. External plugin commands contribute metadata only; executable dispatch of them is governed by §9.7. |
 | `app-command` | `<userCacheRoot>/apps/<app-id>/commands.bin` | binary | App tooling routing metadata and app-plan key; invalidated by relevant app inputs, rebuild, refresh, or clear. |
 | `cwd-app-map` | `<userCacheRoot>/cwd-app-map.bin` | binary | Bounded CWD-to-app-root index with Landofile freshness metadata; stale entries fall back to discovery. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
@@ -29,6 +29,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `service-info` | `<userCacheRoot>/apps/<app-id>/info.json` | JSON | Last known user-app `ServiceInfo[]`. |
 | `provider` | `<userCacheRoot>/provider-cache.json` | JSON | Provider availability and version metadata. |
 | `command-registry-manifest` | embedded generated module | generated object | Built-in `LandoCommandSpec` projection for native routing; build-derived only and MUST NOT duplicate plugin metadata (§17.2). |
+| `compiled-decoders` | embedded generated module | generated JavaScript plus declaration | Ahead-of-time compiled decoders for the fixed hot-path schema list (§2.5, §12.5); build-derived only, installed by the compiled CLI entry, never read from disk at runtime (§17.2). |
 | `template-compile` | `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` | binary | Cross-app compiled `CompiledTemplate` content (§7.3.2). |
 | `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered output keyed by template and canonical resolved variables. |
 | `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Canonical ids permitted through `HostProxyService.runLando` (§10.10). |
@@ -99,6 +100,16 @@ A crash before `prepared` MUST alter no target. Unjournaled stages MUST NOT be g
 ### 12.5 Hot-path read budgets
 
 Warm router reads of core, plugin, app-command, and CWD-map indexes MUST complete in under 30 ms. Warm tooling reads of `app-plan` and compiled `ToolingProgram` MUST independently complete in under 30 ms. No provider contact, include resolution, expression parsing, or graph construction occurs on these paths. The perf-budget suite enforces both (§13.1), alongside the user-visible budgets in §2.1.
+
+#### 12.5.1 Compiled hot-path decoders
+
+Schema decoding on the CLI hot path uses ahead-of-time compiled decoders under the §2.5 policy: the schema stays the canonical contract, the CLI installs the compiled set, and embedding hosts keep the interpreter. This section fixes what the policy leaves to the cache layer: which schemas, where the module comes from, and how caches meet it.
+
+- The compiled set is the fixed, ordered AST list in `core/src/cli/compiled-decoder-targets.ts`: `GlobalConfig`, `LandoRuntimeOptions`, `BunShellScriptFrontMatter`, the CLI command init and run events, the deliverable-event union, `LandofileShape`, and `AppPlan`. Install order and AST identity are the contract; the generated module MUST be regenerated after any change to a listed schema, to the list, or to the Effect version, and the target list MUST NOT import the generated module so generation works on a clean checkout.
+- The `compiled-decoders` derived codegen entry (§17.2) emits the gitignored generated module and its declaration. `runCompiledCli` installs them before any decode; `makeLandoRuntime` and other library entries never install them.
+- Compiled and interpreted decoding MUST agree on verdict, decoded value, and every issue path and message. The parity suite (§13.1) decodes the Landofile corpus in separate interpreted and compiled processes and fails on any difference.
+- Membership is earned and kept under §2.5: end-to-end measurement on compiled binaries against the §2.1 hot-path budgets, recorded with the change that adds the schema. Compiled decoders optimize the hot path; they are never a second source of truth for validity.
+- Binary hot-path caches (`core-command`, `plugin-command`, `app-command`, `cwd-app-map`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
 
 ### 12.6 Disconnectable local-dev state
 

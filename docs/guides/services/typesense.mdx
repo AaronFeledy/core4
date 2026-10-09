@@ -7,7 +7,7 @@ tags: [beta, docs, typesense, compose, service]
 
 # Add Typesense with Compose
 
-Put Typesense next to your app with `type: compose` on the official image, and wire the data dir plus API key through environment variables:
+Put Typesense next to your app with `type: compose` on the official image, and pass the data dir plus API key the same way the upstream Compose file does:
 
 ```yaml
 name: typesense-demo
@@ -21,10 +21,7 @@ services:
       - 8108:8108
     volumes:
       - ./typesense-data:/data
-    environment:
-      TYPESENSE_DATA_DIR: /data
-      TYPESENSE_API_KEY: xyz
-      TYPESENSE_ENABLE_CORS: "true"
+    command: '--data-dir /data --api-key=xyz --enable-cors'
 ```
 
 `appMount: false` keeps Typesense off your app tree. Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/). Create the host data directory, then start:
@@ -82,34 +79,29 @@ http://search:8108
 
 From a Node or PHP service, call that URL with the `X-TYPESENSE-API-KEY` header. Do not use `localhost` inside another container. That is the container itself, not Typesense.
 
-## Pass flags as a command list
+## Pass flags
 
-A YAML string `command:` is one argv, so the upstream Typesense Compose one-liner does not work. That file sets `command` to one quoted string:
+A string `command:` or `entrypoint:` on a `type: compose` service splits into argv the way Compose splits it: on whitespace, with quotes grouping words. No shell runs. The example above becomes exactly:
 
-```yaml
-command: '--data-dir /data --api-key=xyz --enable-cors'
+```
+["--data-dir", "/data", "--api-key=xyz", "--enable-cors"]
 ```
 
-The whole string is a single argument. Set the environment variables in the first example, or pass each flag and value as its own argv entry:
+That is the upstream Typesense Compose one-liner, unchanged. A list works the same and skips the split:
 
 ```yaml
-services:
-  search:
-    type: compose
-    image: typesense/typesense:30.2
-    appMount: false
-    home: false
-    ports:
-      - 8108:8108
-    volumes:
-      - ./typesense-data:/data
-    command:
-      - --data-dir
-      - /data
-      - --api-key
-      - xyz
-      - --enable-cors
+command:
+  - --data-dir
+  - /data
+  - --api-key=xyz
+  - --enable-cors
 ```
+
+Typesense also reads `TYPESENSE_DATA_DIR`, `TYPESENSE_API_KEY`, and `TYPESENSE_ENABLE_CORS` from `environment:` if you would rather not put the key on the command line.
+
+Splitting is not a shell. It does not expand `$VARS`, globs, or `~`, and an unquoted `;`, `&`, `|`, `<`, or `>` ends the argv there, so `a && b` only ever runs `a`. The Typesense image has a binary entrypoint, so every argv entry goes to that binary; a `sh -c` prefix would too. For the shell pattern on an image that has one, see [Add a Compose service](../compose-passthrough/).
+
+Malformed quotes fail planning with `LandofileValidationError`. This split applies only to `type: compose`. Other service types keep their string `command` as a shell script.
 
 ## Pin a version
 
@@ -139,8 +131,12 @@ Keep the data directory and API key the same across bumps unless that release's 
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"compose\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "typesense/typesense:30\\.2" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "TYPESENSE_DATA_DIR" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "TYPESENSE_API_KEY" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"--data-dir /data --api-key=xyz --enable-cors\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"typesense-demo\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
