@@ -7,7 +7,7 @@ tags: [beta, docs, recipes, laravel, php, reverb, websockets, node]
 
 # Run Laravel Reverb websockets behind the Lando proxy
 
-Give Reverb its own service and its own hostname. Lando's proxy carries the WebSocket upgrade with the same trusted certificate as the app, so the browser talks to `wss://ws.reverb-demo.lndo.site`, Laravel talks to `http://reverb:8080` on the app network, and you never open an nginx config.
+Run Reverb on its own service and route WebSockets through Lando's proxy. The browser uses `wss://ws.reverb-demo.lndo.site`; Laravel publishes to `http://reverb:8080` on the app network.
 
 This builds on [Run the Laravel recipe](../laravel-workflow/). The app name below is `reverb-demo`.
 
@@ -38,7 +38,7 @@ lando composer install --no-interaction
 chmod -R a+rwX storage bootstrap/cache
 ```
 
-`create-project` wants an empty directory and `.lando.yml` is already here, hence the detour through `tmp-app`. Apache serves PHP as `www-data` while the files belong to you, so `chmod` lets it write compiled views. Skip it and the first page render is a 500 that says `tempnam(): file created in the system's temporary directory`.
+`create-project` needs an empty directory, hence `tmp-app`. Apache runs as `www-data`; the permission change lets it write Laravel's cache and logs. Use these writable permissions only for local development.
 
 ## Point Laravel at MariaDB
 
@@ -55,7 +55,7 @@ DB_USERNAME=lando
 DB_PASSWORD=lando
 ```
 
-Use the service key `database`, not `127.0.0.1`. `LOG_CHANNEL=stderr` sends Laravel's log to `lando logs` instead of a file three services would fight over. Queue, cache, and sessions stay on Laravel's `database` driver. Then create the tables:
+Use `database`, not `127.0.0.1`. `LOG_CHANNEL=stderr` sends Laravel's log to `lando logs`. Keep `QUEUE_CONNECTION=database`, `CACHE_STORE=database`, and `SESSION_DRIVER=database` in `.env`, then create the tables:
 
 ```sh
 lando artisan migrate --no-interaction
@@ -129,15 +129,11 @@ tooling:
 lando start
 ```
 
-The worker stopped on the first start because Laravel wasn't installed yet. This start brings it back up with the new services.
+This starts the new services and brings the worker back up after installing Laravel. `queue:listen` reloads code for each job. Stock PHP includes the `pcntl` extension it needs.
 
-| Service | Why it looks like that |
-| --- | --- |
-| `reverb` | Runs `reverb:start` in the stock PHP image. `port: 8080` makes Reverb's port the HTTP endpoint, and the route gives it its own hostname on the app's certificate. Each service keeps `vendor/` in a volume of its own unless it names `vendor` under `includes`, so `reverb` does that to see the Composer install. Reverb answers `/` with a 404 and `/up` with a 200, so the start-up scanner probes `/up`. |
-| `worker` | Broadcast events go through the queue, so nothing reaches Reverb without a worker. `queue:listen` loads your code fresh for each job, so editing an event class needs no restart. |
-| `node` | Node 22 for npm and Vite. `endpoints: []` because it serves nothing. |
+`port: 8080` routes to Reverb, not Apache. The scanner probes `/up` because Reverb returns 404 at `/`. `includes: [vendor]` exposes the same Composer dependencies to all three PHP services; otherwise each has a separate vendor volume. Node serves nothing, so it has no endpoints.
 
-Both PHP services wait for `service_healthy` on `database`. They boot Laravel on start, and `reverb:start` reads its restart flag from the cache store, which lives in MariaDB here. Without the health gate a cold start can beat MariaDB, and both logs open with `SQLSTATE[HY000] [2002] Connection refused`.
+Both PHP processes wait for a healthy database because the queue and Reverb's restart cache use MariaDB here. The health gate prevents a cold-start connection race, but doesn't create the tables: run the migration before this start.
 
 ## Build Echo
 
@@ -213,12 +209,12 @@ const echo = new Echo({
   enabledTransports: ['ws'],
 });
 
-echo.connector.pusher.connection.bind('connected', () => console.log('connected'));
-
-echo.channel('pings').listen('PingSent', (event) => {
-  console.log(`received: ${event.message}`);
-  process.exit(0);
-});
+echo.channel('pings')
+  .subscribed(() => console.log('subscribed'))
+  .listen('PingSent', (event) => {
+    console.log(`received: ${event.message}`);
+    process.exit(0);
+  });
 
 setTimeout(() => {
   console.error('no PingSent within 60s');
@@ -232,13 +228,13 @@ Listen in one terminal. Node reads `.env` itself with `--env-file`:
 lando exec node -- node --env-file=.env echo-listen.mjs
 ```
 
-Fire the event from a second terminal:
+Wait for `subscribed`, then fire the event from a second terminal. A connected socket alone doesn't mean the channel subscription is ready:
 
 ```sh
 lando artisan tinker --execute "event(new App\Events\PingSent('hello from tinker'))"
 ```
 
-The listener prints `connected`, then `received: hello from tinker`, and exits 0. The worker log shows the job run:
+The listener prints `received: hello from tinker` and exits 0. Check the worker's job with:
 
 ```sh
 lando logs -s worker
@@ -256,11 +252,11 @@ If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s w
 
 ## Tear down
 
+This removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`; those flags delete data.
+
 ```sh
 lando destroy -y
 ```
-
-That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -293,7 +289,4 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 ## Next
 
 - [Run the Laravel recipe](../laravel-workflow/)
-- [Write routes as shorthand strings and add filters](../../proxy/route-shorthand/)
-- [Install an extra PHP extension](../../services/php-customization/)
-- [Exclude paths from file sync](../../setup/file-sync-excludes/)
 - [Turn the router off and tune the post-start URL scanner](../../services/router-and-scanner/)
