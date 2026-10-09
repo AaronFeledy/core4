@@ -134,9 +134,10 @@ const stringifyEnv = (
 const hostEventChildEnv = (
   source: "host" | "project" | undefined,
   env: Readonly<Record<string, string | number | boolean>> | undefined,
+  service: string | undefined,
 ): Readonly<Record<string, string>> | undefined => {
   const stringEnv = stringifyEnv(env);
-  if (source !== "host") return stringEnv;
+  if (source !== "host" || service !== ":host") return stringEnv;
   return { ...stringEnv, [LANDO_HOST_EVENT_ENV]: "1" };
 };
 
@@ -211,7 +212,7 @@ const runInvocation = Effect.fnUntraced(function* (
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
-  const env = hostEventChildEnv(leaf.source, leaf.env);
+  const env = hostEventChildEnv(leaf.source, leaf.env, leaf.service);
   const task: ToolingTaskShape = {
     cmd: leaf.command,
     ...(leaf.service === undefined ? {} : { service: leaf.service }),

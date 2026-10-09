@@ -1037,6 +1037,14 @@ describe("hostEvents runtime", () => {
     expect(seen).toEqual(["1", "1"]);
   });
 
+  test("does not set LANDO_HOST_EVENT on a hostEvents container step", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    await Effect.runPromise(runAppEvent(plan, "post-start").pipe(Effect.provide(eventRuntime(invocations))));
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]?.env?.[LANDO_HOST_EVENT_ENV]).toBeUndefined();
+  });
+
   test("skips when inspect reports the service is missing", async () => {
     const invocations: ToolingInvocation[] = [];
     const inspecting = {
