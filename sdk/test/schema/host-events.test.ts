@@ -103,9 +103,12 @@ test("prefixes load issues with config.yml hostEvents.<event>[i] and the bad key
   const forbiddenField = hostEventsConfigIssues({
     "post-start": [{ cmd: "echo host", service: ":host", env: { A: "1" } }],
   });
-  expect(forbiddenField[0]?.message).toContain("config.yml hostEvents.post-start[0]");
-  expect(forbiddenField[0]?.message).toContain('rejects "env"');
-  expect(formatHostEventsIssueMessage(forbiddenField[0]!)).toContain('rejects "env"');
+  const envIssue = forbiddenField.at(0);
+  expect(envIssue).toBeDefined();
+  if (envIssue === undefined) throw new Error("expected hostEvents env issue");
+  expect(envIssue.message).toContain("config.yml hostEvents.post-start[0]");
+  expect(envIssue.message).toContain('rejects "env"');
+  expect(formatHostEventsIssueMessage(envIssue)).toContain('rejects "env"');
 });
 
 test("treats omitted-service strings as container steps", () => {

@@ -124,12 +124,20 @@ const nonzeroFailure = (
   });
 };
 
+const stringifyEnv = (
+  env: Readonly<Record<string, string | number | boolean>> | undefined,
+): Readonly<Record<string, string>> | undefined => {
+  if (env === undefined) return undefined;
+  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)]));
+};
+
 const hostEventChildEnv = (
   source: "host" | "project" | undefined,
-  env: Readonly<Record<string, string>> | undefined,
+  env: Readonly<Record<string, string | number | boolean>> | undefined,
 ): Readonly<Record<string, string>> | undefined => {
-  if (source !== "host") return env;
-  return { ...env, [LANDO_HOST_EVENT_ENV]: "1" };
+  const stringEnv = stringifyEnv(env);
+  if (source !== "host") return stringEnv;
+  return { ...stringEnv, [LANDO_HOST_EVENT_ENV]: "1" };
 };
 
 const toolingRuntime = Effect.fnUntraced(function* (tool: string) {

@@ -412,16 +412,20 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
       ? (document.services as Readonly<Record<string, { readonly primary?: boolean }>>)
       : {};
   const recipeServices = Object.fromEntries(
-    (semantic?.services ?? []).map((mapping) => [
-      mapping.current,
-      authoredServices[mapping.current] ?? {},
-    ]),
+    (semantic?.services ?? []).map((mapping) => [mapping.current, authoredServices[mapping.current] ?? {}]),
   );
-  const hostEvents = hostEventStatusesForPlan({
-    name: typeof document.name === "string" ? document.name : "",
-    root: appRoot,
-    services: { ...recipeServices, ...authoredServices },
-    ...(document.events === undefined ? {} : { events: document.events as LandofileEvents }),
+  const hostEvents = yield* Effect.try({
+    try: () =>
+      hostEventStatusesForPlan({
+        name: typeof document.name === "string" ? document.name : "",
+        root: appRoot,
+        services: { ...recipeServices, ...authoredServices },
+        ...(document.events === undefined ? {} : { events: document.events as LandofileEvents }),
+      }),
+    catch: (cause) =>
+      cause instanceof ConfigError
+        ? cause
+        : new ConfigError({ message: "Failed to load hostEvents status.", cause }),
   });
   return {
     landofilePath,

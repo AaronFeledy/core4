@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { type EditorRunner, config } from "../../src/operations/config.ts";
 
 let dir = "";
@@ -28,6 +29,13 @@ const run = <A, E>(effect: Effect.Effect<A, E, ConfigService>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provideService(ConfigService, configService)));
 const exit = <A, E>(effect: Effect.Effect<A, E, ConfigService>) =>
   Effect.runPromiseExit(effect.pipe(Effect.provideService(ConfigService, configService)));
+
+const writeErrorIssues = (result: Exit.Exit<unknown, unknown>): string => {
+  if (!Exit.isFailure(result)) return "";
+  const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+  if (error instanceof LandofileWriteValidationError) return JSON.stringify(error.issues);
+  return result.cause.toString();
+};
 
 describe("meta config set (S4)", () => {
   test("writes a scalar to config.yml", async () => {
@@ -252,18 +260,14 @@ describe("meta config hostEvents hand-edit", () => {
     await seed("hostEvents:\n  pre-start:\n    - echo container\n");
     const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
     expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) {
-      expect(result.cause.toString()).toContain("config.yml hostEvents.pre-start[0]");
-    }
+    expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
   });
 
   test("validate rejects command: start", async () => {
-    await seed('hostEvents:\n  post-start:\n    - command: start\n');
+    await seed("hostEvents:\n  post-start:\n    - command: start\n");
     const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
     expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) {
-      expect(result.cause.toString()).toContain("app:start");
-    }
+    expect(writeErrorIssues(result)).toContain("app:start");
   });
 
   test("edit rejects a container step in pre-start and leaves the file untouched", async () => {
@@ -280,9 +284,7 @@ describe("meta config hostEvents hand-edit", () => {
       }),
     );
     expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) {
-      expect(result.cause.toString()).toContain("config.yml hostEvents.pre-start[0]");
-    }
+    expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
     expect(await readConfig()).toBe(before);
   });
 
@@ -300,7 +302,7 @@ describe("meta config hostEvents hand-edit", () => {
       }),
     );
     expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("app:start");
+    expect(writeErrorIssues(result)).toContain("app:start");
     expect(await readConfig()).toBe(before);
   });
 

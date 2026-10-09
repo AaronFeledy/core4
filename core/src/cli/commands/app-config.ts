@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Effect, Option, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type {
   AppIdReservedError,
@@ -28,13 +28,7 @@ import {
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  type AppPlannerError,
-  LandofileService,
-  RuntimeProviderRegistry,
-  type StateStore,
-} from "@lando/sdk/services";
+import { LandofileService, type StateStore } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
@@ -58,11 +52,7 @@ import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
 import { renderConfigWriteResult } from "./config-write-render";
-import {
-  HostEventAppStatus,
-  hostEventStatusesForPlan,
-  renderHostEventStatuses,
-} from "./host-event-status";
+import { HostEventAppStatus, hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
@@ -144,8 +134,7 @@ type AppConfigError =
   | ConfigError
   | NotImplementedError
   | ComposeKeyRejectedError
-  | LandofileLoadExpressionError
-  | AppPlannerError;
+  | LandofileLoadExpressionError;
 
 type AppConfigServices = LandofileService | StateStore;
 
@@ -472,17 +461,18 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
 
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofile(landofileService);
-  const planner = yield* Effect.serviceOption(AppPlanner);
-  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-  const planned =
-    Option.isSome(planner) && Option.isSome(registry)
-      ? yield* planner.value.plan(landofile, yield* registry.value.capabilities)
-      : undefined;
-  const hostEvents = hostEventStatusesForPlan({
-    name: planned?.name ?? landofile.name ?? "",
-    root: planned !== undefined ? String(planned.root) : (options.cwd ?? process.cwd()),
-    services: planned?.services ?? landofile.services ?? {},
-    ...(landofile.events === undefined ? {} : { events: landofile.events }),
+  const hostEvents = yield* Effect.try({
+    try: () =>
+      hostEventStatusesForPlan({
+        name: landofile.name ?? "",
+        root: options.cwd ?? process.cwd(),
+        services: landofile.services ?? {},
+        ...(landofile.events === undefined ? {} : { events: landofile.events }),
+      }),
+    catch: (cause) =>
+      cause instanceof ConfigError
+        ? cause
+        : new ConfigError({ message: "Failed to load hostEvents status.", cause }),
   });
   return {
     app: landofile.name ?? "",

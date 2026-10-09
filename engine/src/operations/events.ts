@@ -143,7 +143,14 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: 
     }
     const status = yield* inspectHostContainer(plan, service).pipe(
       Effect.mapError((error) =>
-        eventError(error, event, entry.step, { redactString: (value) => value }, entry.source, entry.sourceIndex),
+        eventError(
+          error,
+          event,
+          entry.step,
+          { redactString: (value) => value },
+          entry.source,
+          entry.sourceIndex,
+        ),
       ),
     );
     if (status === "missing" || isStoppedStatus(status)) {

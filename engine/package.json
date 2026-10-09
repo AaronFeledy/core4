@@ -95,6 +95,7 @@
     "./operations/unknown-service": "./src/operations/unknown-service.ts",
     "./operations/update": "./src/operations/update.ts",
     "./package.json": "./package.json",
+    "./planner/app-defaults": "./src/planner/app-defaults.ts",
     "./planner/effective-events": "./src/planner/effective-events.ts",
     "./planner/effective-tooling": "./src/planner/effective-tooling.ts",
     "./planner/naming": "./src/planner/naming.ts",

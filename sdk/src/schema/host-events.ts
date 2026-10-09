@@ -141,8 +141,8 @@ export const formatHostEventsIssueMessage = (issue: ValidationIssue): string => 
   const path = issue.path[0] === "hostEvents" ? issue.path.slice(1) : issue.path;
   const event = typeof path[0] === "string" ? path[0] : undefined;
   const index = typeof path[1] === "number" ? path[1] : undefined;
-  const key =
-    typeof path[1] === "string" ? path[1] : typeof path[2] === "string" ? path[2] : undefined;
+  const nestedKey = typeof path[1] === "string" ? path[1] : typeof path[2] === "string" ? path[2] : undefined;
+  const key = nestedKey ?? (index === undefined ? event : undefined);
   const location =
     event === undefined
       ? "config.yml hostEvents"

@@ -27,10 +27,7 @@ const planServices = (
   services: Readonly<Record<string, { readonly primary?: boolean | undefined } | undefined>>,
 ): Readonly<Record<string, { readonly primary?: boolean }>> =>
   Object.fromEntries(
-    Object.entries(services).map(([name, service]) => [
-      name,
-      { primary: service?.primary === true },
-    ]),
+    Object.entries(services).map(([name, service]) => [name, { primary: service?.primary === true }]),
   );
 
 export const hostEventStatusesForPlan = (plan: HostEventPlanInput): ReadonlyArray<HostEventAppStatus> => {
