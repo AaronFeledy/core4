@@ -5,14 +5,15 @@ static frontend.
 
 ## Generated services
 
-- `builder` — `ruby:3.3`, runs `bundle exec jekyll serve` on port 4000 for
-  iterative development.
-- `web` — `static:nginx`, serves the build output directory `/app/_site` as its document root.
+- `builder`: `ruby:3.3`, runs `bundle exec jekyll serve` on port 4000 for
+  iterative development. Its `build.artifact` step installs `build-essential`,
+  `libssl-dev`, and `zlib1g-dev` so native gems compile.
+- `web`: `static:nginx`, serves the build output directory `/app/_site` as its document root.
 
 ## Generated tooling
 
-- `lando jekyll …` — Jekyll CLI through `bundle exec jekyll`.
-- `lando bundle …` — Bundler inside the builder service.
+- `lando jekyll …`: Jekyll CLI through `bundle exec jekyll`.
+- `lando bundle …`: Bundler inside the builder service.
 
 ## Alpha limitations
 
