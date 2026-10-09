@@ -10,12 +10,14 @@ import {
 } from "@lando/sdk/recipes";
 import type {
   LandofileEvents,
+  LandofileRecipeField,
   LandofileRecipeProvenance,
+  LandofileShape,
   RecipeOptionValue,
   RecipeSnapshot,
 } from "@lando/sdk/schema";
 import { sameRecipeVersion } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { parseLandofile } from "@lando/landofile/parser";
@@ -32,7 +34,7 @@ import {
   provenanceWithoutServiceMap,
   renderCurrentValue,
 } from "./app-config-recipe-analysis.ts";
-import { hostEventStatusesForPlan } from "./host-event-status.ts";
+import { hostEventServicesFromLandofile, hostEventStatusesForPlan } from "./host-event-status.ts";
 
 export {
   AppConfigExplainResultSchema,
@@ -407,19 +409,21 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
   };
   const truncated = Object.values(omitted).some((count) => count > 0);
 
-  const authoredServices =
+  const landofileServices =
     document.services !== null && typeof document.services === "object" && !Array.isArray(document.services)
-      ? (document.services as Readonly<Record<string, { readonly primary?: boolean }>>)
-      : {};
-  const recipeServices = Object.fromEntries(
-    (semantic?.services ?? []).map((mapping) => [mapping.current, authoredServices[mapping.current] ?? {}]),
-  );
+      ? (document.services as LandofileShape["services"])
+      : undefined;
   const hostEvents = yield* Effect.try({
     try: () =>
       hostEventStatusesForPlan({
         name: typeof document.name === "string" ? document.name : "",
         root: appRoot,
-        services: { ...recipeServices, ...authoredServices },
+        services: hostEventServicesFromLandofile({
+          ...(typeof document.recipe === "string" || Predicate.isObject(document.recipe)
+            ? { recipe: document.recipe as LandofileRecipeField }
+            : {}),
+          ...(landofileServices === undefined ? {} : { services: landofileServices }),
+        }),
         ...(document.events === undefined ? {} : { events: document.events as LandofileEvents }),
       }),
     catch: (cause) =>

@@ -41,6 +41,20 @@ const sortedCompiled = (events: CompiledEvents): CompiledEvents =>
       .sort(([left], [right]) => compareOrdinal(left, right)),
   );
 
+/** Same stamp the planner writes onto each service: explicit primary, else `web`. */
+export const planServicePrimary = (name: string, primary: boolean | undefined): boolean =>
+  primary ?? name === "web";
+
+export const stampPlanServices = (
+  services: Readonly<Record<string, { readonly primary?: boolean | undefined } | undefined>>,
+): Readonly<Record<string, { readonly primary?: boolean }>> =>
+  Object.fromEntries(
+    Object.entries(services).map(([name, service]) => [
+      name,
+      { primary: planServicePrimary(name, service?.primary) },
+    ]),
+  );
+
 export const primaryServiceName = (
   services: Readonly<Record<string, { readonly primary?: boolean }>> | undefined,
 ): string | undefined => {
