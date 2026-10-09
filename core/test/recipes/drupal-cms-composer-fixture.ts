@@ -20,6 +20,18 @@ case 'create-project':
     $write($target . '/composer.json', ['require' => ['drupal/cms' => '^2.0', 'drupal/drupal_cms_starter' => '^2'], 'repositories' => ['drupal' => ['type' => 'composer', 'url' => 'https://packages.drupal.org/8']], 'scripts' => ['post-update-cmd' => 'rm -f vendor/bin/composer']]);
     file_put_contents($target . '/web/early.txt', "early\n");
     file_put_contents($target . '/web/core/lib/Drupal.php', "late\n");
+    if ($legacyLog = getenv('COMPOSER_LOG')) {
+        file_put_contents($legacyLog, $target . "\n", FILE_APPEND);
+        file_put_contents($target . '/existing.txt', "staged\n");
+        if (getenv('CLASSIFICATION_FIXTURES') === '1') {
+            file_put_contents($target . '/zero.txt', '');
+            file_put_contents($target . '/broken.txt', "staged\n");
+            foreach (['existing-dir', 'newline-dir'] as $directory) {
+                mkdir($target . '/' . $directory);
+                file_put_contents($target . '/' . $directory . '/staged.txt', "staged\n");
+            }
+        }
+    }
     exit(0);
 case 'config':
     if ($positional[0] !== 'repositories.lando-svg-image') exit(2);
