@@ -1,7 +1,7 @@
-# Lando v4 — Architecture Specification (Index)
+# Lando v4: Architecture Specification (Index)
 
-> **Status:** Living document — the compatibility contract for the v4 build (currently in Beta 1; see [`ROADMAP.md`](./ROADMAP.md)). When code and this spec disagree, the spec wins.
-> **Audience:** Lando Core maintainers, plugin authors, contributors building v4 from a clean slate, and embedding hosts integrating `@lando/core` as a library.
+> **Status:** Living architecture and compatibility contract. When code and this spec disagree, the spec wins. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md); this specification does not assert release readiness.
+> **Audience:** Lando Core maintainers, plugin authors, contributors, and embedding hosts integrating `@lando/core` as a library.
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
 
@@ -24,7 +24,7 @@ The split is almost one section per file, with these principled merges and addit
 
 | # | File | `§N` | Theme |
 |---|---|---|---|
-| 01 | [`01-mission-and-tenets.md`](./01-mission-and-tenets.md) | §1 + §14 | Defines the product mission, non-negotiable tenets, core ownership boundary, default distribution, non-goals, and decisions still open before GA. |
+| 01 | [`01-mission-and-tenets.md`](./01-mission-and-tenets.md) | §1 + §14 | Defines the product mission, non-negotiable tenets, core ownership boundary, default distribution, non-goals, and open decisions. |
 | 02 | [`02-toolchain.md`](./02-toolchain.md) | §2 | Sets Bun, TypeScript, Effect, schema, dependency, performance, dispatcher, documentation, and package-surface rules. |
 | 03 | [`03-architecture.md`](./03-architecture.md) | §3 + §11 | Defines runtime layers, bootstrap levels, core Effect services, imperative shells, redaction, the event taxonomy, subscriber model, and lifecycle ordering. |
 | 04 | [`04-pluggability.md`](./04-pluggability.md) | §4 | Catalogs every replaceable abstraction, its service tag and default, selection precedence, manifest registration, and mandatory plugin guarantees. |
@@ -60,7 +60,7 @@ If you are looking for a public surface or policy:
 | Bun policies and performance budgets | 02 | §2.1 |
 | TypeScript policy | 02 | §2.2 |
 | Native command dispatcher choice | 02 | §2.3 |
-| Effect runtime, schema validation, logging, and docs rules | 02 | §2.4 + §2.5 |
+| Effect runtime, schema validation, compiled decoders, logging, and docs rules | 02 | §2.4 + §2.5 |
 | Forbidden runtime dependencies | 02 | §2.6 |
 | `@lando/core` package exports | 02 | §2.7 |
 | Runtime layers, dependency direction, and source layout | 03 | §3.1 + §3.3 |
@@ -78,14 +78,15 @@ If you are looking for a public surface or policy:
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
 | `RuntimeProvider` service and capability schema | 05 | §5.3 + §5.4 |
+| Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
-| Storage scopes, labels, and cache volumes | 06 | §6.5 |
-| Endpoints, hostnames, routes, and filters | 06 | §6.6 |
+| Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
+| Endpoints, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
 | Healthchecks, certificates, and trust injection | 06 | §6.7 + §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo` schema | 06 | §6.10 |
@@ -109,12 +110,12 @@ If you are looking for a public surface or policy:
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
-| Tooling schemas, steps, expressions, events, and scripts | 08 | §8.5 |
+| Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
 | Renderer events, first paint, task trees, keymaps, and notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
-| Machine-readable command envelopes and streams | 08 | §8.11 |
+| Machine-readable command envelopes, advertised formats, streams, and closed pipes | 08 | §8.11 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
@@ -125,7 +126,7 @@ If you are looking for a public surface or policy:
 | `LandoPluginContext` capabilities | 10 | §9.8 |
 | Plugin authoring commands | 10 | §9.10 |
 | Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
-| Certificate authority, proxy trust, HTTP, and downloads | 11 | §10.3 |
+| Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | SSH identity, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
 | Probe, healthcheck, and scanner contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
@@ -139,7 +140,7 @@ If you are looking for a public surface or policy:
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
-| Hot-path and offline-state policies | 12 | §12.5 + §12.6 |
+| Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
 | `StateStore`, buckets, consumers, and plugin access | 12 | §12.7 |
 | Test and contract-suite layers | 13 | §13.1 |
 | Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
@@ -157,6 +158,7 @@ If you are looking for a public surface or policy:
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |
 | Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.4 |
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
+| Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Global proxy realization, error family, and non-goals | 18 | §20.10 + §20.14 |
 | Scratch identity, roots, sources, and service | 19 | §21.2 + §21.5 |
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |
