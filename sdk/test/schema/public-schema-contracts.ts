@@ -190,6 +190,12 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   NetworkConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   GlobalConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   GlobalConfigView: "sdk/test/schema/config-view.test.ts",
+  HostEventCmdStep: "sdk/test/schema/host-events.test.ts",
+  HostEventCommandStep: "sdk/test/schema/host-events.test.ts",
+  HostEventName: "sdk/test/schema/host-events.test.ts",
+  HostEventStep: "sdk/test/schema/host-events.test.ts",
+  HostEvents: "sdk/test/schema/host-events.test.ts",
+  LifecycleCommandId: "sdk/test/schema/host-events.test.ts",
   ConfigLintViolation: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigLintResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DownloadRequest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -424,12 +430,6 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   TomcatServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   VarnishServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  HostEventName: "sdk/test/schema/host-events.test.ts",
-  LifecycleCommandId: "sdk/test/schema/host-events.test.ts",
-  HostEventCmdStep: "sdk/test/schema/host-events.test.ts",
-  HostEventCommandStep: "sdk/test/schema/host-events.test.ts",
-  HostEventStep: "sdk/test/schema/host-events.test.ts",
-  HostEvents: "sdk/test/schema/host-events.test.ts",
 } as const satisfies Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>;
 
 type JsonObject = Record<string, unknown>;
