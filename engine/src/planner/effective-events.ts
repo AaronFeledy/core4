@@ -9,7 +9,7 @@ import {
 import { Predicate } from "effect";
 
 export type EventStepSource = "host" | "project";
-export type CompiledEventStepStatus = "ran" | "skipped" | "deduped";
+export type CompiledEventStepStatus = "active" | "skipped" | "deduped";
 
 export interface CompiledEventStep {
   readonly step: EventStep;
@@ -32,7 +32,7 @@ const isCompiledEventStep = (value: unknown): value is CompiledEventStep =>
   "step" in value &&
   (value.source === "host" || value.source === "project") &&
   typeof value.sourceIndex === "number" &&
-  (value.status === "ran" || value.status === "skipped" || value.status === "deduped");
+  (value.status === "active" || value.status === "skipped" || value.status === "deduped");
 
 const sortedCompiled = (events: CompiledEvents): CompiledEvents =>
   Object.fromEntries(
@@ -45,9 +45,7 @@ export const primaryServiceName = (
   services: Readonly<Record<string, { readonly primary?: boolean }>> | undefined,
 ): string | undefined => {
   if (services === undefined) return undefined;
-  const marked = Object.entries(services).find(([, service]) => service.primary === true)?.[0];
-  if (marked !== undefined) return marked;
-  return services.web !== undefined ? "web" : undefined;
+  return Object.entries(services).find(([, service]) => service.primary === true)?.[0];
 };
 
 const commandKind = (step: EventStep): "cmd" | "task" | "command" => {
@@ -103,20 +101,20 @@ const compileHostStep = (input: {
   }
   const service = stepService(step, input.primary);
   if (service === ":host" || commandKind(step) === "command") {
-    return { step, source: "host", sourceIndex: input.sourceIndex, status: "ran" };
+    return { step, source: "host", sourceIndex: input.sourceIndex, status: "active" };
   }
   if (service === undefined || !input.serviceNames.has(service)) {
     const reason = service === undefined ? "no primary service" : `service ${service} is not in the plan`;
     return { step, source: "host", sourceIndex: input.sourceIndex, status: "skipped", skipReason: reason };
   }
-  return { step, source: "host", sourceIndex: input.sourceIndex, status: "ran" };
+  return { step, source: "host", sourceIndex: input.sourceIndex, status: "active" };
 };
 
 const compileProjectStep = (step: EventStep, sourceIndex: number): CompiledEventStep => ({
   step,
   source: "project",
   sourceIndex,
-  status: "ran",
+  status: "active",
 });
 
 const landofileToCompiled = (events: LandofileEvents): CompiledEvents =>
@@ -167,7 +165,7 @@ export const compileEffectiveEvents = (input: {
 
 export const runnableCompiledSteps = (
   steps: ReadonlyArray<CompiledEventStep> | undefined,
-): ReadonlyArray<CompiledEventStep> => (steps ?? []).filter((step) => step.status === "ran");
+): ReadonlyArray<CompiledEventStep> => (steps ?? []).filter((step) => step.status === "active");
 
 export const eventStepsFromCompiled = (events: CompiledEvents): LandofileEvents =>
   Object.fromEntries(

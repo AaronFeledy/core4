@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import type {
   AppIdReservedError,
@@ -28,7 +28,13 @@ import {
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
-import { LandofileService, type StateStore } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  type AppPlannerError,
+  LandofileService,
+  RuntimeProviderRegistry,
+  type StateStore,
+} from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
@@ -54,7 +60,7 @@ import { loadUserLandofile } from "../app-resolution";
 import { renderConfigWriteResult } from "./config-write-render";
 import {
   HostEventAppStatus,
-  hostEventStatusesForLandofile,
+  hostEventStatusesForPlan,
   renderHostEventStatuses,
 } from "./host-event-status";
 
@@ -138,7 +144,8 @@ type AppConfigError =
   | ConfigError
   | NotImplementedError
   | ComposeKeyRejectedError
-  | LandofileLoadExpressionError;
+  | LandofileLoadExpressionError
+  | AppPlannerError;
 
 type AppConfigServices = LandofileService | StateStore;
 
@@ -465,7 +472,18 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
 
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofile(landofileService);
-  const hostEvents = hostEventStatusesForLandofile(landofile);
+  const planner = yield* Effect.serviceOption(AppPlanner);
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  const planned =
+    Option.isSome(planner) && Option.isSome(registry)
+      ? yield* planner.value.plan(landofile, yield* registry.value.capabilities)
+      : undefined;
+  const hostEvents = hostEventStatusesForPlan({
+    name: planned?.name ?? landofile.name ?? "",
+    root: planned !== undefined ? String(planned.root) : (options.cwd ?? process.cwd()),
+    services: planned?.services ?? landofile.services ?? {},
+    ...(landofile.events === undefined ? {} : { events: landofile.events }),
+  });
   return {
     app: landofile.name ?? "",
     source: "resolved",

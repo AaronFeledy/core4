@@ -97,7 +97,7 @@ describe("lando app:config", () => {
     });
   });
 
-  test("shows hostEvents steps as ran, skipped, or deduped", async () => {
+  test("shows hostEvents steps as active, skipped, or deduped", async () => {
     await withTempCwd(async (dir) => {
       const previous = new Map<string, string>();
       for (const [key, value] of Object.entries(process.env)) {
@@ -146,12 +146,12 @@ describe("lando app:config", () => {
             status: "skipped",
             reason: "service db is not in the plan",
           },
-          { event: "post-start", index: 2, step: { cmd: "echo host", service: ":host" }, status: "ran" },
+          { event: "post-start", index: 2, step: { cmd: "echo host", service: ":host" }, status: "active" },
         ]);
         const table = renderAppConfigResult(result, "table");
         expect(table).toContain("hostEvents.post-start[0]\tdeduped");
         expect(table).toContain("hostEvents.post-start[1]\tskipped (service db is not in the plan)");
-        expect(table).toContain("hostEvents.post-start[2]\tran");
+        expect(table).toContain("hostEvents.post-start[2]\tactive");
       } finally {
         for (const key of Object.keys(process.env)) if (key.startsWith("LANDO_")) delete process.env[key];
         for (const [key, value] of previous) process.env[key] = value;

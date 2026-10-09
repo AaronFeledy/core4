@@ -38,8 +38,8 @@ describe("compileEffectiveEvents host steps", () => {
     const steps = compiled["post-start"] ?? [];
     expect(steps.map((step) => [step.source, step.status, canonicalEventStepKey(step.step, "web")])).toEqual([
       ["host", "deduped", "cmd:echo hi:service:web"],
-      ["host", "ran", "cmd:echo host:service::host"],
-      ["project", "ran", "cmd:echo hi:service:web"],
+      ["host", "active", "cmd:echo host:service::host"],
+      ["project", "active", "cmd:echo hi:service:web"],
     ]);
     expect(effectiveEventsForPlan(attachEffectiveEvents(plan(), compiled))?.["post-start"]).toEqual([
       { cmd: "echo host", service: ":host" },
@@ -55,7 +55,7 @@ describe("compileEffectiveEvents host steps", () => {
       },
       services: { web: { primary: true } },
     });
-    expect((compiled["pre-stop"] ?? []).map((step) => step.status)).toEqual(["deduped", "ran", "ran"]);
+    expect((compiled["pre-stop"] ?? []).map((step) => step.status)).toEqual(["deduped", "active", "active"]);
   });
 
   test("skips a host step whose service is missing from the plan", () => {
@@ -73,8 +73,20 @@ describe("compileEffectiveEvents host steps", () => {
         status: "skipped",
         reason: "service db is not in the plan",
       },
-      { event: "post-start", index: 1, step: { cmd: "echo web" }, status: "ran" },
+      { event: "post-start", index: 1, step: { cmd: "echo web" }, status: "active" },
     ]);
+  });
+
+  test("does not treat an unmarked web service as the primary", () => {
+    const compiled = compileEffectiveEvents({
+      landofile: { events: {} },
+      hostEvents: { "post-start": [{ cmd: "echo web" }] },
+      services: { web: {} },
+    });
+    expect(compiled["post-start"]?.[0]).toMatchObject({
+      status: "skipped",
+      skipReason: "no primary service",
+    });
   });
 
   test("never skips a :host step and marks LANDO_HOST_EVENT skips", () => {
@@ -105,12 +117,12 @@ describe("compileEffectiveEvents host steps", () => {
     expect(compiledEventsForPlan(fresh)?.["pre-stop"]?.[0]).toMatchObject({
       source: "host",
       sourceIndex: 0,
-      status: "ran",
+      status: "active",
     });
     expect(compiledEventsForPlan(cached)?.["pre-stop"]?.[0]).toMatchObject({
       source: "host",
       sourceIndex: 0,
-      status: "ran",
+      status: "active",
     });
   });
 });

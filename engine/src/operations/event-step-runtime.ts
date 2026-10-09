@@ -124,21 +124,12 @@ const nonzeroFailure = (
   });
 };
 
-const withHostEventEnv = <A, E, R>(
+const hostEventChildEnv = (
   source: "host" | "project" | undefined,
-  work: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> => {
-  if (source !== "host") return work;
-  const previous = process.env[LANDO_HOST_EVENT_ENV];
-  process.env[LANDO_HOST_EVENT_ENV] = "1";
-  return work.pipe(
-    Effect.ensuring(
-      Effect.sync(() => {
-        if (previous === undefined) delete process.env[LANDO_HOST_EVENT_ENV];
-        else process.env[LANDO_HOST_EVENT_ENV] = previous;
-      }),
-    ),
-  );
+  env: Readonly<Record<string, string>> | undefined,
+): Readonly<Record<string, string>> | undefined => {
+  if (source !== "host") return env;
+  return { ...env, [LANDO_HOST_EVENT_ENV]: "1" };
 };
 
 const toolingRuntime = Effect.fnUntraced(function* (tool: string) {
@@ -167,6 +158,7 @@ const runInvocation = Effect.fnUntraced(function* (
   invocationOptions: {
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
+    readonly env?: Readonly<Record<string, string>>;
   } = {},
 ) {
   const runtime = yield* toolingRuntime(tool);
@@ -176,6 +168,7 @@ const runInvocation = Effect.fnUntraced(function* (
     task,
     source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
     ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
+    ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
   });
   if (
     options.hostRunner === undefined &&
@@ -210,19 +203,17 @@ const runInvocation = Effect.fnUntraced(function* (
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
+  const env = hostEventChildEnv(leaf.source, leaf.env);
   const task: ToolingTaskShape = {
     cmd: leaf.command,
     ...(leaf.service === undefined ? {} : { service: leaf.service }),
-    ...(leaf.env === undefined ? {} : { env: leaf.env }),
     ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
   };
-  const result = yield* withHostEventEnv(
-    leaf.source,
-    runInvocation(options, `${options.event}`, task, {
-      ...(leaf.user === undefined ? {} : { user: leaf.user }),
-      redactionTokens,
-    }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error))),
-  );
+  const result = yield* runInvocation(options, `${options.event}`, task, {
+    ...(leaf.user === undefined ? {} : { user: leaf.user }),
+    redactionTokens,
+    ...(env === undefined ? {} : { env }),
+  }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
   return { leaf, result, startedAt, redactor };
 });
 
@@ -305,21 +296,18 @@ export const makeEventStepRunners = (
     runCommand: (leaf) =>
       checked(
         leaf,
-        withHostEventEnv(
-          leaf.source,
-          Clock.currentTimeMillis.pipe(
-            Effect.flatMap((startedAt) => {
-              return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
-                Effect.flatMap(({ redactor, redactionTokens }) =>
-                  options.runCanonical(leaf, redactionTokens).pipe(
-                    Effect.mapError((error) =>
-                      isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
-                    ),
-                    Effect.map((result) => ({ leaf, result, startedAt, redactor })),
+        Clock.currentTimeMillis.pipe(
+          Effect.flatMap((startedAt) =>
+            options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
+              Effect.flatMap(({ redactor, redactionTokens }) =>
+                options.runCanonical(leaf, redactionTokens).pipe(
+                  Effect.mapError((error) =>
+                    isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
                   ),
+                  Effect.map((result) => ({ leaf, result, startedAt, redactor })),
                 ),
-              );
-            }),
+              ),
+            ),
           ),
         ),
       ),

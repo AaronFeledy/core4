@@ -1,14 +1,19 @@
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { ConfigError, LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import {
   isBareRecipeReference,
   renderRecipeSnapshot,
   validateLandofileRecipeProvenance,
 } from "@lando/sdk/recipes";
-import type { LandofileRecipeProvenance, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
+import type {
+  LandofileEvents,
+  LandofileRecipeProvenance,
+  RecipeOptionValue,
+  RecipeSnapshot,
+} from "@lando/sdk/schema";
 import { sameRecipeVersion } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 
@@ -27,7 +32,7 @@ import {
   provenanceWithoutServiceMap,
   renderCurrentValue,
 } from "./app-config-recipe-analysis.ts";
-import { hostEventStatusesForLandofile } from "./host-event-status.ts";
+import { hostEventStatusesForPlan } from "./host-event-status.ts";
 
 export {
   AppConfigExplainResultSchema,
@@ -45,7 +50,7 @@ export interface AppConfigExplainOptions {
   readonly cwd?: string;
 }
 
-export type AppConfigExplainError = LandofileNotFoundError | LandofileParseError;
+export type AppConfigExplainError = LandofileNotFoundError | LandofileParseError | ConfigError;
 
 type ExplainComparison = AppConfigExplainResult["comparison"];
 type ExplainReference = AppConfigExplainResult["options"][number]["references"][number];
@@ -402,9 +407,21 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
   };
   const truncated = Object.values(omitted).some((count) => count > 0);
 
-  const hostEvents = hostEventStatusesForLandofile({
-    events: document.events,
-    services: document.services,
+  const authoredServices =
+    document.services !== null && typeof document.services === "object" && !Array.isArray(document.services)
+      ? (document.services as Readonly<Record<string, { readonly primary?: boolean }>>)
+      : {};
+  const recipeServices = Object.fromEntries(
+    (semantic?.services ?? []).map((mapping) => [
+      mapping.current,
+      authoredServices[mapping.current] ?? {},
+    ]),
+  );
+  const hostEvents = hostEventStatusesForPlan({
+    name: typeof document.name === "string" ? document.name : "",
+    root: appRoot,
+    services: { ...recipeServices, ...authoredServices },
+    ...(document.events === undefined ? {} : { events: document.events as LandofileEvents }),
   });
   return {
     landofilePath,

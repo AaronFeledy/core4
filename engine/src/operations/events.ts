@@ -16,7 +16,6 @@ import {
 } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
-import { takeGlobalConfigTypoWarnings } from "../services/config.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
@@ -61,6 +60,7 @@ const eventError = (
   step: EventStep,
   redactor: EventRedactor,
   source?: "host" | "project",
+  sourceIndex = 0,
 ): EventRuntimeError => {
   if (isEventRuntimeError(error)) {
     return error;
@@ -68,7 +68,7 @@ const eventError = (
   const identity =
     error instanceof EventStepCompileError
       ? { index: error.authoredIndex, kind: error.kind }
-      : { index: 0, kind: authoredStepKind(step) };
+      : { index: sourceIndex, kind: authoredStepKind(step) };
   const failure = error instanceof EventStepCompileError ? error.cause : error;
   const label = eventStepLabel(event, source, identity.index);
   return new LandofileEventStepFailedError({
@@ -90,14 +90,6 @@ const publishInfo = Effect.fnUntraced(function* (body: string) {
     .pipe(Effect.ignore);
 });
 
-const publishWarn = Effect.fnUntraced(function* (body: string) {
-  const events = yield* Effect.serviceOption(EventService);
-  if (Option.isNone(events)) return;
-  yield* events.value
-    .publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
-    .pipe(Effect.ignore);
-});
-
 const hostStepService = (step: EventStep, primary: string | undefined): string | undefined => {
   if (typeof step === "string") return primary;
   if ("command" in step && step.command !== undefined) return undefined;
@@ -105,19 +97,23 @@ const hostStepService = (step: EventStep, primary: string | undefined): string |
   return primary;
 };
 
+const STOPPED_CONTAINER_STATUSES = new Set(["exited", "stopped", "created", "dead", "paused"]);
+
 const isStoppedStatus = (status: string | undefined): boolean =>
-  status !== undefined && /^(exited|stopped)$/iu.test(status);
+  status !== undefined && STOPPED_CONTAINER_STATUSES.has(status.toLowerCase());
 
 const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service: string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry)) return undefined;
-  const provider = yield* registry.value.select(plan).pipe(Effect.option);
-  if (Option.isNone(provider)) return undefined;
-  const info = yield* provider.value
-    .inspect({ app: plan.id, service: ServiceName.make(service), plan })
-    .pipe(Effect.option);
-  if (Option.isNone(info)) return "missing";
-  return info.value.status ?? info.value.state;
+  const provider = yield* registry.value.select(plan);
+  return yield* provider.inspect({ app: plan.id, service: ServiceName.make(service), plan }).pipe(
+    Effect.map((info) => info.status ?? info.state),
+    Effect.catch((error) =>
+      typeof error === "object" && error !== null && "_tag" in error && error._tag === "ServiceNotFoundError"
+        ? Effect.succeed("missing" as const)
+        : Effect.fail(error),
+    ),
+  );
 });
 
 const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: LandofileEventName) {
@@ -129,14 +125,14 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: 
         step,
         source: "project",
         sourceIndex,
-        status: "ran",
+        status: "active",
       }),
     );
   }
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
   const resolved: CompiledEventStep[] = [];
   for (const entry of compiled) {
-    if (entry.status !== "ran" || entry.source !== "host") {
+    if (entry.status !== "active" || entry.source !== "host") {
       resolved.push(entry);
       continue;
     }
@@ -145,7 +141,11 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: 
       resolved.push(entry);
       continue;
     }
-    const status = yield* inspectHostContainer(plan, service);
+    const status = yield* inspectHostContainer(plan, service).pipe(
+      Effect.mapError((error) =>
+        eventError(error, event, entry.step, { redactString: (value) => value }, entry.source, entry.sourceIndex),
+      ),
+    );
     if (status === "missing" || isStoppedStatus(status)) {
       const reason =
         status === "missing" ? `service ${service} is not running` : `service ${service} is ${status}`;
@@ -162,18 +162,21 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   event: LandofileEventName,
   payload?: ExpressionContext["event"],
 ): Effect.fn.Return<void, EventRuntimeError> {
-  for (const warning of takeGlobalConfigTypoWarnings()) yield* publishWarn(warning);
   const compiled = yield* resolveCompiledSteps(plan, event);
-  for (const entry of compiled) {
-    if (entry.status !== "skipped" || entry.source !== "host") continue;
-    yield* publishInfo(
-      `Skipped ${eventStepLabel(event, "host", entry.sourceIndex)}: ${entry.skipReason ?? "skipped"}.`,
-    );
-  }
-  if (compiled.some((entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`)) {
+  const skippedByHostGuard = compiled.some(
+    (entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`,
+  );
+  if (skippedByHostGuard) {
     yield* publishInfo(`Skipping hostEvents because ${LANDO_HOST_EVENT_ENV}=1.`);
+  } else {
+    for (const entry of compiled) {
+      if (entry.status !== "skipped" || entry.source !== "host") continue;
+      yield* publishInfo(
+        `Skipped ${eventStepLabel(event, "host", entry.sourceIndex)}: ${entry.skipReason ?? "skipped"}.`,
+      );
+    }
   }
-  const runnable = compiled.filter((entry) => entry.status === "ran");
+  const runnable = compiled.filter((entry) => entry.status === "active");
   const first = runnable[0];
   if (first === undefined) return;
   return yield* withinEventInvocation(

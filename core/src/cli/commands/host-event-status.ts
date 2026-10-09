@@ -1,7 +1,9 @@
-import { Predicate, Schema } from "effect";
+import { Schema } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
 
+import { isExcludedFromUserAppDefaults } from "@lando/engine/planner/app-defaults";
 import { compileEffectiveEvents, hostEventStatusesForApp } from "@lando/engine/planner/effective-events";
 import { loadGlobalConfigSync } from "@lando/engine/services/config";
 
@@ -9,48 +11,48 @@ export const HostEventAppStatus = Schema.Struct({
   event: Schema.String,
   index: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
   step: Schema.Unknown,
-  status: Schema.Literals(["ran", "skipped", "deduped"]),
+  status: Schema.Literals(["active", "skipped", "deduped"]),
   reason: Schema.optionalKey(Schema.String),
 });
 export type HostEventAppStatus = typeof HostEventAppStatus.Type;
 
-const servicesFromUnknown = (
-  value: unknown,
-): Readonly<Record<string, { readonly primary?: boolean }>> | undefined => {
-  if (!Predicate.isObject(value)) return undefined;
-  return Object.fromEntries(
-    Object.entries(value).map(([name, service]) => [
+export interface HostEventPlanInput {
+  readonly name: string;
+  readonly root: string;
+  readonly services: Readonly<Record<string, { readonly primary?: boolean }>>;
+  readonly events?: LandofileEvents;
+}
+
+const planServices = (
+  services: Readonly<Record<string, { readonly primary?: boolean | undefined } | undefined>>,
+): Readonly<Record<string, { readonly primary?: boolean }>> =>
+  Object.fromEntries(
+    Object.entries(services).map(([name, service]) => [
       name,
-      { primary: Predicate.isObject(service) && service.primary === true },
+      { primary: service?.primary === true },
     ]),
   );
-};
 
-export const hostEventStatusesForLandofile = (landofile: {
-  readonly events?: unknown;
-  readonly services?: unknown;
-}): ReadonlyArray<HostEventAppStatus> => {
-  let hostEvents: ReturnType<typeof loadGlobalConfigSync>["hostEvents"];
-  try {
-    hostEvents = loadGlobalConfigSync().hostEvents;
-  } catch {
+export const hostEventStatusesForPlan = (plan: HostEventPlanInput): ReadonlyArray<HostEventAppStatus> => {
+  const paths = makeLandoPaths();
+  if (
+    isExcludedFromUserAppDefaults(plan.name, plan.root, {
+      globalAppRoot: paths.globalAppRoot,
+      scratchDir: paths.scratchDir,
+    })
+  ) {
     return [];
   }
+  const hostEvents = loadGlobalConfigSync().hostEvents;
   if (hostEvents === undefined) return [];
-  const services = servicesFromUnknown(landofile.services);
-  const events = landofile.events as LandofileEvents | undefined;
-  try {
-    return hostEventStatusesForApp(
-      compileEffectiveEvents({
-        landofile: events === undefined ? {} : { events },
-        hostEvents,
-        ...(services === undefined ? {} : { services }),
-        skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
-      }),
-    );
-  } catch {
-    return [];
-  }
+  return hostEventStatusesForApp(
+    compileEffectiveEvents({
+      landofile: plan.events === undefined ? {} : { events: plan.events },
+      hostEvents,
+      services: planServices(plan.services),
+      skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
+    }),
+  );
 };
 
 export const renderHostEventStatuses = (statuses: ReadonlyArray<HostEventAppStatus>): ReadonlyArray<string> =>
