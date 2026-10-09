@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { ServiceNotFoundError, ServiceRestartWouldRecreateError } from "@lando/sdk/errors";
 import {
@@ -79,6 +79,7 @@ const runSelected = (
   plannedApp: AppPlan,
   options: Parameters<typeof makeHarness>[0] & {
     readonly services?: ReadonlyArray<ServiceName>;
+    readonly signal?: AbortSignal;
   } = {},
 ) => {
   const applyCalls: Array<{ readonly plan: AppPlan; readonly options: ApplyOptions }> = [];
@@ -117,11 +118,17 @@ const runSelected = (
       Effect.succeed(runtimes.get(String(target.service)) ?? runtimeFor(plannedApp, target.service)),
     ...options,
   });
-  const operation = restartApp(options.services === undefined ? {} : { services: options.services }, {
-    plan: plannedApp,
-    root: plannedApp.root,
-    app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
-  }).pipe(
+  const operation = restartApp(
+    {
+      ...(options.services === undefined ? {} : { services: options.services }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    },
+    {
+      plan: plannedApp,
+      root: plannedApp.root,
+      app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
+    },
+  ).pipe(
     Effect.provideService(RouterService, {
       ...TestRouterService,
       applyRoutes: (routes, app) =>
@@ -136,6 +143,51 @@ const runSelected = (
 };
 
 describe("selected service restart", () => {
+  test("does not stop services when the restart signal is already aborted", async () => {
+    const selected = runSelected(twoServicePlan(), { services: [redis.name], signal: AbortSignal.abort() });
+
+    const exit = await Effect.runPromiseExit(selected.operation);
+
+    expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+    expect(selected.stopCalls).toEqual([]);
+    expect(selected.applyCalls).toEqual([]);
+  });
+
+  test("does not stop the next selected service after cancellation during stop", async () => {
+    const controller = new AbortController();
+    const stopped: ServiceName[] = [];
+    const selected = runSelected(threeServicePlan(), {
+      services: [web.name, worker.name],
+      signal: controller.signal,
+      onStop: (target) => {
+        stopped.push(target.service);
+        controller.abort();
+      },
+    });
+
+    const exit = await Effect.runPromiseExit(selected.operation);
+
+    expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+    expect(stopped).toEqual([worker.name]);
+    expect(selected.applyCalls).toEqual([]);
+    expect(byTag(selected.harness.events, "post-restart")).toEqual([]);
+  });
+
+  test("interrupts an in-flight apply when the restart signal aborts", async () => {
+    const controller = new AbortController();
+    const selected = runSelected(twoServicePlan(), {
+      services: [redis.name],
+      signal: controller.signal,
+      onApply: () => controller.abort(),
+      applyEffect: Effect.never,
+    });
+
+    const exit = await Effect.runPromiseExit(selected.operation);
+
+    expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+    expect(byTag(selected.harness.events, "post-restart")).toEqual([]);
+  });
+
   test("restarts one service and leaves the others' container IDs and host ports in place", async () => {
     const plannedApp = twoServicePlan();
     const selected = runSelected(plannedApp, { services: [redis.name] });
