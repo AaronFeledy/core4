@@ -93,12 +93,13 @@ If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8
 
 ## Install deps with pip or uv
 
-Declare tooling in the Landofile (see the FastAPI example above), then install into a project venv on `/app` so packages survive rebuilds:
+Lando installs `uv` in the stock Python service image, so it stays available after a restart or rebuild. Declare tooling in the Landofile (see the FastAPI example above), then install your project dependencies into a venv on `/app` so they survive rebuilds too:
 
 ```sh
-lando pip install uv
-lando exec app -- uv venv /app/.venv
-lando exec app -- uv pip install --python /app/.venv/bin/python -r requirements.txt
+lando uv --version
+lando uv venv /app/.venv
+lando uv pip install --python /app/.venv/bin/python -r requirements.txt
+lando exec app -- /app/.venv/bin/python --version
 ```
 
 `lando pip install` into the image works for a quick try, but a rebuild drops those packages. A venv under `/app` stays with the app mount.
@@ -142,17 +143,6 @@ lando info
 
 Open the URL `lando info` prints. A tiny `main.py` that returns JSON is enough to prove the route.
 
-Point tooling at the venv binaries when you want `lando uv` after a rebuild:
-
-```yaml
-tooling:
-  uv:
-    service: app
-    cmd: /app/.venv/bin/uv
-```
-
-Install `uv` into that venv first (`uv pip install --python /app/.venv/bin/python uv`), or bootstrap with `lando pip install uv` on each fresh container.
-
 ## Django and Flask
 
 Same service type. Swap the framework and bind the server you actually run:
@@ -180,7 +170,7 @@ lando exec app -- /app/.venv/bin/gunicorn --bind 0.0.0.0:5000 app:app
 
 ## Pin an image
 
-Slim is the default. Use the full image when wheels need build tools:
+Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain, including `uv`; Lando only installs `uv` for the stock `python:3.12-slim` image:
 
 ```yaml
 services:
