@@ -16,6 +16,7 @@ import { join } from "node:path";
 
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import { DRUPAL_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
+import { fakeCmsComposer, fakeCmsGit } from "../recipes/drupal-cms-composer-fixture.ts";
 
 interface RunResult {
   readonly exitCode: number;
@@ -52,37 +53,44 @@ const withTempDir = async <T>(use: (dir: string) => Promise<T>): Promise<T> => {
   }
 };
 
-const writeFakeComposer = async (binDir: string): Promise<void> => {
+const writeFakeComposer = async (binDir: string, command = DRUPAL_SCAFFOLD_COMMAND): Promise<void> => {
   const composer = join(binDir, "composer");
   await writeFile(
     composer,
-    [
-      "#!/bin/sh",
-      "set -eu",
-      'if test "$1" = create-project; then',
-      "  destination=$3",
-      '  printf "%s\\n" "$destination" >> "$COMPOSER_LOG"',
-      '  mkdir -p "$destination/web" "$destination/vendor/bin"',
-      '  printf "#!/bin/sh\\nexit 0\\n" > "$destination/vendor/bin/drush"',
-      '  chmod +x "$destination/vendor/bin/drush"',
-      '  printf "%s\\n" fresh > "$destination/composer.json"',
-      '  printf "%s\\n" staged > "$destination/existing.txt"',
-      '  if test "${CLASSIFICATION_FIXTURES:-0}" = 1; then',
-      '    : > "$destination/zero.txt"',
-      '    printf "%s\\n" staged > "$destination/broken.txt"',
-      '    mkdir -p "$destination/existing-dir"',
-      '    printf "%s\\n" staged > "$destination/existing-dir/staged.txt"',
-      '    mkdir -p "$destination/newline-dir"',
-      '    printf "%s\\n" staged > "$destination/newline-dir/staged.txt"',
-      "  fi",
-      "else",
-      "  destination=${1#--working-dir=}",
-      '  mkdir -p "$destination/vendor/bin"',
-      '  printf "#!/bin/sh\\nexit 0\\n" > "$destination/vendor/bin/drush"',
-      '  chmod +x "$destination/vendor/bin/drush"',
-      "fi",
-    ].join("\n"),
+    command === DRUPAL_CMS_SCAFFOLD_COMMAND
+      ? fakeCmsComposer
+      : [
+          "#!/bin/sh",
+          "set -eu",
+          'if test "$1" = create-project; then',
+          "  destination=$3",
+          '  printf "%s\\n" "$destination" >> "$COMPOSER_LOG"',
+          '  mkdir -p "$destination/web" "$destination/vendor/bin"',
+          '  printf "#!/bin/sh\\nexit 0\\n" > "$destination/vendor/bin/drush"',
+          '  chmod +x "$destination/vendor/bin/drush"',
+          '  printf "%s\\n" fresh > "$destination/composer.json"',
+          '  printf "%s\\n" staged > "$destination/existing.txt"',
+          '  if test "${CLASSIFICATION_FIXTURES:-0}" = 1; then',
+          '    : > "$destination/zero.txt"',
+          '    printf "%s\\n" staged > "$destination/broken.txt"',
+          '    mkdir -p "$destination/existing-dir"',
+          '    printf "%s\\n" staged > "$destination/existing-dir/staged.txt"',
+          '    mkdir -p "$destination/newline-dir"',
+          '    printf "%s\\n" staged > "$destination/newline-dir/staged.txt"',
+          "  fi",
+          "else",
+          "  destination=${1#--working-dir=}",
+          '  mkdir -p "$destination/vendor/bin"',
+          '  printf "#!/bin/sh\\nexit 0\\n" > "$destination/vendor/bin/drush"',
+          '  chmod +x "$destination/vendor/bin/drush"',
+          "fi",
+        ].join("\n"),
   );
+  if (command === DRUPAL_CMS_SCAFFOLD_COMMAND) {
+    const git = join(binDir, "git");
+    await writeFile(git, fakeCmsGit);
+    await chmod(git, 0o755);
+  }
   const mvPrimitive = join(binDir, "mv-real");
   await writeFile(
     mvPrimitive,
@@ -109,6 +117,7 @@ const baseEnv = (
   composerLog: string,
 ): Readonly<Record<string, string>> => ({
   COMPOSER_LOG: composerLog,
+  LANDO_TEST_COMPOSER_LOG: join(binDir, "composer-commands.log"),
   LANDO_DRUPAL_APP_ROOT: appRoot,
   LANDO_DRUPAL_CMS_APP_ROOT: appRoot,
   LANDO_DRUPAL_STAGING_ROOT: stagingParent,
@@ -186,7 +195,7 @@ describe("Drupal scaffold copy protocol", () => {
           await mkdir(join(appRoot, "newline-dir"));
           await writeFile(join(appRoot, "newline-dir", "\n"), "user-owned\n");
         }
-        await writeFakeComposer(binDir);
+        await writeFakeComposer(binDir, command);
         const cp = join(binDir, "cp");
         await writeFile(cp, "#!/bin/sh\nexit 74\n");
         await chmod(cp, 0o755);
@@ -227,7 +236,7 @@ describe("Drupal scaffold copy protocol", () => {
       const injectedTarget = join(appRoot, "existing.txt");
       await mkdir(appRoot, { recursive: true });
       await mkdir(binDir, { recursive: true });
-      await writeFakeComposer(binDir);
+      await writeFakeComposer(binDir, command);
       const cp = join(binDir, "cp");
       await writeFile(
         cp,
@@ -278,7 +287,7 @@ describe("Drupal scaffold copy protocol", () => {
         const injectedTarget = join(appRoot, "composer.json");
         await mkdir(appRoot, { recursive: true });
         await mkdir(binDir, { recursive: true });
-        await writeFakeComposer(binDir);
+        await writeFakeComposer(binDir, command);
         const cp = join(binDir, "cp");
         await writeFile(
           cp,
