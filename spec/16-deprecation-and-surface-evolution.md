@@ -1,9 +1,9 @@
-# Lando v4 — Deprecation and Surface Evolution
+# Lando v4: Deprecation and Surface Evolution
 
-> **Part 16 of 18** · [Index](./README.md)
+> **Part 16 of 19** · [Index](./README.md)
 > **Read next:** [17 Executable Guides and Scenarios](./17-executable-tutorials.md)
 
-This part defines the single machine-readable deprecation contract for every public v4 surface.
+This part defines the single machine-readable deprecation contract for every public surface.
 
 ---
 

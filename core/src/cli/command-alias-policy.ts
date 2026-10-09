@@ -1,4 +1,4 @@
-import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
+import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
@@ -21,6 +21,7 @@ const RESERVED_NAMESPACE_HEADS = new Set(
 
 interface CommandAliasPolicyInput {
   readonly enabled?: boolean | undefined;
+  readonly disabled?: ReadonlyArray<string> | undefined;
   readonly custom?: Readonly<Record<string, string>> | undefined;
 }
 
@@ -45,7 +46,32 @@ const editDistance = (left: string, right: string): number => {
 export const commandAliasRegistrationError = (
   policy: CommandAliasPolicyInput | undefined,
   appCommandIds: ReadonlyArray<string>,
+  entries: ReadonlyArray<CommandIndexEntry> = [],
 ): CommandAliasConflictError | CommandAliasTargetError | undefined => {
+  for (const entry of entries) {
+    if (entry.source !== "bun-script") continue;
+    const name = entry.id.slice("app:".length);
+    const canonicalOwner = BUILT_IN_COMMANDS.find((command) => command.spec.id === entry.id);
+    const aliasOwner =
+      name.includes(":") ||
+      policy?.enabled === false ||
+      policy?.disabled?.includes(name) ||
+      policy?.custom?.[name] !== undefined
+        ? undefined
+        : BUILT_IN_COMMANDS.find((command) => command.aliases.includes(name));
+    const reservedFor =
+      canonicalOwner?.spec.id ?? aliasOwner?.spec.id ?? (RESERVED_ALIAS_TOKENS.has(name) ? name : undefined);
+    if (reservedFor === undefined) continue;
+    const alias = canonicalOwner === undefined ? name : entry.id;
+    const safeId = escapeDiagnosticText(entry.id);
+    return new CommandAliasConflictError({
+      message: `Script command ${safeId} conflicts with built-in command ${escapeDiagnosticText(reservedFor)}.`,
+      alias,
+      claimedBy: `script ${entry.id}`,
+      reservedFor,
+      remediation: `Rename the .bun.sh script that registers ${safeId}, then run \`lando app:cache:refresh\`.`,
+    });
+  }
   if (policy?.enabled === false) return undefined;
   const canonicalIds = [...BUILT_IN_COMMAND_IDS, ...appCommandIds];
   for (const [alias, target] of Object.entries(policy?.custom ?? {})) {
@@ -101,6 +127,7 @@ export const commandAliasPolicyError = (
   commandAliasRegistrationError(
     cache.aliasPolicy,
     cache.entries.map((entry) => entry.id),
+    cache.entries,
   );
 
 export const activeCommandAliases = (

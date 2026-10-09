@@ -11,10 +11,10 @@ Start from `type: php:8.3` (or another supported minor). That image ships a fixe
 
 ## See built-in extensions
 
-The default `-apache` build compiles and enables exactly these extensions. No more, no less:
+Stock PHP services using Apache, FPM, or CLI include these extensions alongside PHP's standard modules:
 
 ```text
-gd, intl, mbstring, mysqli, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
+gd, intl, mbstring, mysqli, opcache, pcntl, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 ```
 
 | Extension | Purpose |
@@ -24,12 +24,22 @@ gd, intl, mbstring, mysqli, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 | `mbstring` | Multibyte string handling |
 | `mysqli` | MySQL/MariaDB driver for WordPress and Joomla |
 | `opcache` | Zend OPcache |
+| `pcntl` | Process control and signal handling for CLI workers, including Laravel Reverb and Horizon |
 | `pdo_mysql` | PDO driver for MySQL/MariaDB |
 | `pdo_pgsql` | PDO driver for PostgreSQL |
 | `pdo_sqlite` | PDO driver for SQLite |
 | `zip` | ZIP archive support |
 
 Stock PHP services with `framework: wordpress` also install pinned, checksum-verified WP-CLI at `/usr/local/bin/wp` and set `WP_CLI_ALLOW_ROOT=1` for Lando tooling. Custom images supply their own WP-CLI and extensions.
+
+Rebuild an existing service to pick up the current extension set, then check it. Replace `app` with your PHP service name:
+
+```sh
+lando rebuild -y
+lando exec app -- php --ri pcntl
+```
+
+Reverb and Horizon don't need a separate `build.artifact` step to install `pcntl` on a stock PHP service.
 
 ## Turn on Xdebug
 

@@ -109,6 +109,31 @@ const cases = [
 ] as const;
 
 describe("PHP site snapshot builders", () => {
+  test.each(["apacheAppserver", "fpmAppserver"] as const)(
+    "%s includes the supplied artifact build expression",
+    (variant) => {
+      // Given an authored artifact build factory.
+      const build: ExpressionNode = {
+        kind: "ObjectLiteral",
+        entries: [
+          {
+            key: "artifact",
+            value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "printf build-test" }] },
+          },
+        ],
+      };
+      const builders = phpSiteSnapshotBuilders({
+        framework: "drupal",
+        appserverBuild: () => structuredClone(build),
+      });
+      // When the selected PHP variant is generated.
+      const actual = builders[variant]();
+      // Then its build value is the caller's expression, not an omitted or substituted default.
+      if (actual.kind !== "ObjectLiteral") throw new TypeError("Expected appserver object expression");
+      expect(actual.entries.find(({ key }) => key === "build")?.value).toEqual(build);
+    },
+  );
+
   for (const fixture of cases) {
     const builders = phpSiteSnapshotBuilders(fixture.options);
     for (const [name, build] of Object.entries(builders)) {

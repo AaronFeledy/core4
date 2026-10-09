@@ -18,11 +18,15 @@ describe("PHP base image definitions", () => {
     }
   });
 
-  test("carry exact Composer identity and every promised extension", () => {
-    const dockerfile = renderPhpBaseDockerfile("8.2");
+  test.each([...SUPPORTED_PHP_VERSIONS])(
+    "PHP %s carries Composer and installs process control",
+    (version) => {
+      const dockerfile = renderPhpBaseDockerfile(version);
 
-    expect(dockerfile).toContain(PHP_COMPOSER.version);
-    expect(dockerfile).toContain(PHP_COMPOSER.sha256);
-    for (const extension of PHP_COMMON_EXTENSIONS) expect(dockerfile).toContain(extension);
-  });
+      expect(dockerfile).toContain(PHP_COMPOSER.version);
+      expect(dockerfile).toContain(PHP_COMPOSER.sha256);
+      for (const extension of PHP_COMMON_EXTENSIONS) expect(dockerfile).toContain(extension);
+      expect(dockerfile).toMatch(/RUN .*docker-php-ext-install[^&]*\bpcntl\b/);
+    },
+  );
 });
