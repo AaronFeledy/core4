@@ -5,10 +5,12 @@ export const phpSiteSnapshotBuilders = ({
   framework,
   databaseFields = [],
   appserverMounts,
+  appserverBuild,
 }: {
   readonly framework: string;
   readonly databaseFields?: ReadonlyArray<readonly [string, ExpressionNode]>;
   readonly appserverMounts?: () => ExpressionNode;
+  readonly appserverBuild?: () => ExpressionNode;
 }) => {
   const usesNginx = (): ExpressionNode =>
     call(
@@ -33,6 +35,7 @@ export const phpSiteSnapshotBuilders = ({
       ["port", lit(80)],
       ["dependsOn", arr(lit("database"))],
       ...(appserverMounts === undefined ? [] : [["mounts", appserverMounts()] as const]),
+      ...(appserverBuild === undefined ? [] : [["build", appserverBuild()] as const]),
       ["routes", primaryRoutes()],
     ]);
   const fpmAppserver = (): ExpressionNode =>
@@ -45,6 +48,7 @@ export const phpSiteSnapshotBuilders = ({
       ["composer", lit("{{ recipe.composer }}")],
       ["dependsOn", arr(lit("database"))],
       ...(appserverMounts === undefined ? [] : [["mounts", appserverMounts()] as const]),
+      ...(appserverBuild === undefined ? [] : [["build", appserverBuild()] as const]),
     ]);
   const edgeService = (): ExpressionNode =>
     obj([

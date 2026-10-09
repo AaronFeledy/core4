@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando falls back to the next free port, starti
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M |
+| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M, Git installed at build for the pinned SVG Image source |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -38,7 +38,9 @@ lando drupal-cms-scaffold
 lando drupal-cms-install
 ```
 
-Scaffold runs `composer create-project 'drupal/cms'` into a staging dir, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, `vendor/bin/drush`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
+Scaffold creates Drupal CMS in a private staging directory. Git is installed automatically in `appserver`. A first-priority package repository pins the upstream SVG Image security patch from [merge request 65](https://git.drupalcode.org/project/svg_image/-/merge_requests/65) at commit `c788b1e2f2be29f62c9812b2b0558472afa61d6d`. The declared `3.x-dev` build uses the fixed `enshrined/svg-sanitize` 1.0 release; it does not claim to be a tagged SVG Image release or disable security checks.
+
+The scaffold verifies the package metadata and actual checkout, audits before and after installation, and runs Drupal's native hooks, including recipe unpacking. It keeps the pin in `composer.json` and `composer.lock` and checks again after the hooks. Any mismatch, audit failure, or install failure stops before anything reaches your app. Successful files are promoted without overwriting user content. Interrupted copies resume when you rerun the command; a completed scaffold refuses to run again.
 
 `lando drupal-cms-install` runs project-local Drush with the recipe's database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a generated password when install finishes.
 
