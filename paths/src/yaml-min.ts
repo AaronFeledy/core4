@@ -42,14 +42,24 @@ export const parseScalar = (value: string): unknown => {
       throw new MinimalYamlError(`Unsupported YAML value: ${trimmed}`);
     }
   }
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return unescapeDoubleQuoted(trimmed.slice(1, -1));
+  }
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return unescapeSingleQuoted(trimmed.slice(1, -1));
   }
   return trimmed;
 };
+
+const unescapeDoubleQuoted = (value: string): string => {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return value.replace(/\\(["\\])/g, "$1");
+  }
+};
+
+const unescapeSingleQuoted = (value: string): string => value.replace(/''/g, "'");
 
 interface ParsedLine {
   readonly indent: number;
@@ -57,11 +67,24 @@ interface ParsedLine {
   readonly text: string;
 }
 
-/** Strip a `#` comment only when it is outside single or double quotes. */
+const VALUE_PREFIX = /^( *)(?:- )?(?:[A-Za-z0-9_.-]+:(?:[ \t]+)?)?/;
+
+/** Strip a `#` comment. Quote tracking starts only when the value itself is quoted. */
 const stripInlineComment = (line: string): string => {
+  const valueStart = VALUE_PREFIX.exec(line)?.[0].length ?? 0;
+  const value = line.slice(valueStart);
+  const quoted = value.startsWith('"') || value.startsWith("'");
+  if (!quoted) {
+    for (let index = valueStart; index < line.length; index += 1) {
+      if (line[index] === "#" && (index === 0 || /\s/.test(line[index - 1] ?? ""))) {
+        return line.slice(0, index);
+      }
+    }
+    return line;
+  }
   let inSingle = false;
   let inDouble = false;
-  for (let index = 0; index < line.length; index += 1) {
+  for (let index = valueStart; index < line.length; index += 1) {
     const char = line[index];
     if (inDouble && char === "\\") {
       index += 1;
