@@ -14,29 +14,27 @@ This builds on [Run the Laravel recipe](../laravel-workflow/). The app name belo
 ## Scaffold Laravel
 
 ```sh
-lando init --recipe laravel --name=reverb-demo --yes
+lando init --recipe laravel --name=reverb-demo --yes --answer=worker=true
 cd reverb-demo
 ```
 
-Before the first start, open `.lando.yml` and add an `appMount` block to `appserver`:
+`--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml` and change the `command` and `dependsOn` of `worker`:
 
 ```yaml
-services:
-  appserver:
-    appMount:
-      target: /app
-      includes:
-        - vendor
+  worker:
+    command: php artisan queue:listen
+    dependsOn:
+      database:
+        condition: service_healthy
 ```
-
-Each service keeps `vendor`, `node_modules`, `.git`, and `tmp` in a volume of its own by default. Reverb and the queue worker are separate PHP services that need the same Composer install `appserver` writes, so every PHP service in this app names `vendor` under `includes`. That keeps `vendor/` in the shared app mount.
 
 Start the app and install Laravel:
 
 ```sh
 lando start
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
-cp -a tmp-app/. . && rm -rf tmp-app
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando composer install --no-interaction
 chmod -R a+rwX storage bootstrap/cache
 ```
 
@@ -91,29 +89,15 @@ VITE_REVERB_SCHEME=https
 
 `install:broadcasting` writes `REVERB_HOST="localhost"`. Replace it. Inside a container `localhost` is the container itself, not Reverb. If `lando info` prints `:8443` on your URLs because something else owns 443, set `VITE_REVERB_PORT=8443`.
 
-## Add Reverb, a queue worker, and Node
+## Add Reverb and Node
 
-Add three services under `services:` in `.lando.yml`:
+Add two services under `services:` in `.lando.yml`:
 
 ```yaml
-  worker:
-    type: "php:{{ recipe.php }}"
-    via: cli
-    command: php artisan queue:listen
-    appMount:
-      target: /app
-      includes:
-        - vendor
-    dependsOn:
-      database:
-        condition: service_healthy
   reverb:
     type: "php:{{ recipe.php }}"
     port: 8080
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
-    build:
-      artifact:
-        - docker-php-ext-install pcntl
     appMount:
       target: /app
       includes:
@@ -145,9 +129,11 @@ tooling:
 lando start
 ```
 
+The worker stopped on the first start because Laravel wasn't installed yet. This start brings it back up with the new services.
+
 | Service | Why it looks like that |
 | --- | --- |
-| `reverb` | Runs `reverb:start` in the stock PHP image. `port: 8080` makes Reverb's port the HTTP endpoint, and the route gives it its own hostname on the app's certificate. Reverb traps signals, which needs `pcntl`, so the `build.artifact` step compiles it in. Reverb answers `/` with a 404 and `/up` with a 200, so the start-up scanner probes `/up`. |
+| `reverb` | Runs `reverb:start` in the stock PHP image. `port: 8080` makes Reverb's port the HTTP endpoint, and the route gives it its own hostname on the app's certificate. Each service keeps `vendor/` in a volume of its own unless it names `vendor` under `includes`, so `reverb` does that to see the Composer install. Reverb answers `/` with a 404 and `/up` with a 200, so the start-up scanner probes `/up`. |
 | `worker` | Broadcast events go through the queue, so nothing reaches Reverb without a worker. `queue:listen` loads your code fresh for each job, so editing an event class needs no restart. |
 | `node` | Node 22 for npm and Vite. `endpoints: []` because it serves nothing. |
 
@@ -264,7 +250,6 @@ If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s w
 
 | You see | Fix |
 | --- | --- |
-| `Undefined constant "Laravel\Reverb\Servers\Reverb\Console\Commands\SIGINT"` in `lando logs -s reverb` | `pcntl` is missing. Keep the `build.artifact` step and run `lando rebuild -y`. |
 | `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando rebuild -y`. |
 | `tempnam(): file created in the system's temporary directory` on the app URL | Run `chmod -R a+rwX storage bootstrap/cache`. |
 | A changed `command:` doesn't take effect after `lando start` | Run `lando restart`. |
@@ -286,7 +271,6 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
       <Run command="lando app:config:lint" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan reverb:start --host=0\\.0\\.0\\.0 --port=8080\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"docker-php-ext-install pcntl\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"ws\\." } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"/up\"" } }} />
