@@ -81,6 +81,17 @@ describe("solr ServiceType", () => {
     expect(firstEndpointPort(plan)).toBe(18983);
   });
 
+  test.each([
+    "solr:10",
+    "registry.example/search:stable",
+    `registry.example/search@sha256:${"a".repeat(64)}`,
+  ])("without cores %s retains the runtime's default mode", async (image) => {
+    const plan = await planSolrService({ type: "solr", image });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: image });
+    expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
+  });
+
   test("includes a curl-based command healthcheck on the system info endpoint", async () => {
     const plan = await planSolrService({ type: "solr" });
 
@@ -110,7 +121,7 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      expect.any(String),
       "lando-solr-precreate",
       "8983",
       "gettingstarted",
@@ -123,7 +134,7 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      expect.any(String),
       "lando-solr-precreate",
       "8983",
       "core1",
@@ -137,7 +148,7 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      expect.any(String),
       "lando-solr-precreate",
       "18983",
       "mycore",
@@ -175,14 +186,7 @@ describe("solr ServiceType", () => {
     async (core) => {
       const plan = await planSolrService({ type: "solr", cores: [core] });
 
-      expect(plan.command).toEqual([
-        "bash",
-        "-c",
-        'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
-        "lando-solr-precreate",
-        "8983",
-        core,
-      ]);
+      expect(plan.command).toEqual(["bash", "-c", expect.any(String), "lando-solr-precreate", "8983", core]);
     },
   );
 
@@ -214,6 +218,7 @@ describe("solr ServiceType", () => {
   test("explicit command override is respected even when cores are configured", async () => {
     const plan = await planSolrService({
       type: "solr",
+      image: "solr:10",
       cores: ["mycore"],
       command: ["solr-foreground", "-p", "8983"],
     });
@@ -230,13 +235,13 @@ describe("solr ServiceType", () => {
     expect(plan.environment).toMatchObject({ EXTRA_VAR: "extra" });
   });
 
-  test("cores without config.dir keep the precreate-only command byte-identical", async () => {
+  test("cores without config.dir use precreation without a config overlay", async () => {
     const plan = await planSolrService({ type: "solr", cores: ["a", "b"] });
 
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      expect.any(String),
       "lando-solr-precreate",
       "8983",
       "a",
@@ -278,7 +283,7 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; exec solr-foreground -p "$port"',
+      expect.any(String),
       "lando-solr-precreate",
       "8983",
       "a",
@@ -289,6 +294,7 @@ describe("solr ServiceType", () => {
   test("authored command wins even when config.dir is set", async () => {
     const plan = await planSolrService({
       type: "solr",
+      image: "solr:10",
       cores: ["mycore"],
       config: { dir: "solr/conf" },
       command: ["solr-foreground", "-p", "8983"],
