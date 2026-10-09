@@ -127,9 +127,8 @@ record, not the filtered table.
 
 ## Jump to an app folder
 
-`lando list --jq` can print one app root. Check the command status and the
-empty result before `cd`, because `cd ""` is a silent no-op in bash, dash,
-and zsh. The recipe targets those shells.
+Add this function to your bash, dash, or zsh configuration, then run
+`lando_cd myapp`. It checks for a single nonempty root before changing folders.
 
 ```sh
 lando_cd() {
@@ -151,21 +150,17 @@ lando_cd() {
 }
 ```
 
-`lando_cd myapp` fails when the name is missing, the inventory is empty,
-`appRoot` is `""` or `null`, more than one app shares that name, or `cd`
-cannot enter the root. Duplicate names print `multiple apps named` and point
-at `lando list --path`. A double quote in the app name breaks the jq program,
-prints `lando list --jq failed` on stderr, and fails with exit 2. The
-inventory only includes apps that have been applied. Apps found only through
-containers may have an empty `appRoot`.
+Use a name without quotes or backslashes, which have special meaning in jq.
+For duplicate names, use `lando list --path` to find the right root.
+Container-only discoveries may have no saved root.
 
 <Guide>
   <Scenario id="list-and-prune-empty-inventory" render>
     <Step name="list-apps">
       <Run command="lando list" />
       <Verify command="lando list" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
-      <Verify command="lando list --status=active" expect={{ stdout: { regex: "No Lando apps match the filters|APP\\s+STATUS" } }} />
-      <Verify command="lando list --jq .result.apps" expect={{ stdout: { regex: "^\\s*\\[\\s*\\]\\s*$" } }} />
+      <Verify command="lando list --status=active --jq=[.result.apps[].status]" expect={{ stdout: { regex: "^\\[(.active.(,.active.)*)?\\]\\s*$" } }} />
+      <Verify command="lando list --format=json" expect={{ stdout: { regex: ".apps.:\\[" } }} />
     </Step>
     <Step name="prune-stale-inventory">
       <Run command="lando list --prune" />

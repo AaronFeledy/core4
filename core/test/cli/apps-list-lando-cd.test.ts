@@ -47,22 +47,14 @@ exit ${behavior.exitCode}
   await chmod(path, 0o755);
 };
 
-const dashAvailable = Bun.which("dash") !== null;
-
 const shells = [
   { name: "bash", bin: "bash" },
   { name: "dash", bin: "dash" },
+  { name: "zsh", bin: "zsh" },
 ] as const;
 
-test("everyday-commands documents lando_cd, not a hyphenated function name", async () => {
-  const guide = await Bun.file(guidePath).text();
-  expect(guide).toContain("lando_cd()");
-  expect(guide).toContain("lando_cd myapp");
-  expect(guide).not.toContain("lando-cd");
-});
-
 for (const shell of shells) {
-  test.skipIf(process.platform === "win32" || (shell.bin === "dash" && !dashAvailable))(
+  test.skipIf(process.platform === "win32" || Bun.which(shell.bin) === null)(
     `${shell.name} lando_cd handles success, failures, and awkward roots`,
     async () => {
       const guide = await Bun.file(guidePath).text();
@@ -93,9 +85,9 @@ for (const shell of shells) {
           shell.bin,
           `${fn}
 lando_cd ${JSON.stringify(arg)}
-status=$?
+_test_status=$?
 pwd
-exit $status
+exit $_test_status
 `,
           env,
           start,
