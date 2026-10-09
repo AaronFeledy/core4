@@ -1,6 +1,6 @@
-# Lando v4 — CLI, Tasks, and Tooling
+# Lando v4: CLI, Tasks, and Tooling
 
-> **Part 8 of 18** · [Index](./README.md)
+> **Part 8 of 19** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
 This part defines the CLI, tooling, recipe, renderer, interaction, and machine-output contracts. One native command registry and dispatcher own source and compiled operation; command execution crosses into Effect at `run()` and does not return to an imperative command body.
@@ -100,8 +100,8 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
 | `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
 | `meta:global:logs` | `global:logs` | `global` | Stream global logs |
-| `meta:global:rebuild` | `global:rebuild` | `global` | Stop, rebuild, restart global services |
-| `meta:global:restart` | `global:restart` | `global` | Global stop then start |
+| `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then revalidate the router (§20.6.5) |
+| `meta:global:restart` | `global:restart` | `global` | Global stop, then start, then router startup revalidation (§20.6.5) |
 | `meta:global:start` | `global:start` | `global` | Start all or repeated `--service` subset |
 | `meta:global:status` | `global:status` | `global` | Report global app status |
 | `meta:global:stop` | `global:stop` | `global` | Stop global services |
@@ -122,7 +122,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:recipes:validate` | none | `minimal` | Validate `recipe.yml` |
 | `meta:setup` | `setup` | `provider` | Configure provider, CA, router, shell integration |
 | `meta:shellenv` | `shellenv` | `none` | Print embedded shell snippets |
-| `meta:uninstall` | `uninstall` | `minimal` | Remove recorded v4-owned files; `--yes`, `--dry-run` |
+| `meta:uninstall` | `uninstall` | `minimal` | Remove recorded Lando-owned files; `--yes`, `--dry-run` |
 | `meta:update` | `update` | `plugins` | Update core and plugins |
 | `meta:version` | `version` | `none` | Print embedded version |
 | `meta:x` | `x` | `minimal` | One-shot package execution through `BunSelfRunner.x` |
@@ -135,7 +135,7 @@ Command-wide rules:
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
-- `meta:uninstall` MUST remove only recorded v4-owned entries. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched.
+- `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched.
 - `--clear` is universal and purges relevant caches.
 - `app:start` and `app:rebuild` materialize declared dependencies. Repeating a successful start MUST NOT require network unless a source is absent, the lock changed, or app commands require it.
 - `apps:poweroff` includes user, global, and scratch apps by default. `--keep-global` and `--keep-scratch` compose and MUST be reported.
@@ -191,7 +191,7 @@ The command publishes `cli-app:shell-init`, `cli-app:shell-run`, and `cli-app:sh
 
 #### 8.2.6 The `meta:mcp` command
 
-`meta:mcp` serves stdio MCP in v4.0; streamable HTTP is deferred post-v4.0 (§10.14). Tools derive solely from `LandoCommandSpec` and return §8.11 envelopes. Effective allowance is default `mcpAllowed` plus global `mcp.allow` and `--allow`, minus config or CLI denies. Destructive commands are never default-allowed. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
+`meta:mcp` serves stdio MCP; streamable HTTP transport is not specified and is sequenced in the ROADMAP (§10.14). Tools derive solely from `LandoCommandSpec` and return §8.11 envelopes. Effective allowance is default `mcpAllowed` plus global `mcp.allow` and `--allow`, minus config or CLI denies. Destructive commands are never default-allowed. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
 
 The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-call events to `pre-mcp-call`/`post-mcp-call`. It MUST NOT be host-proxy or recipe-post-init allowed.
 
@@ -253,7 +253,7 @@ The retired OCLIF design used manifest-first routing, Effect lifecycle hooks, na
 
 Source mode and the compiled `$bunfs` binary share one registry and `runCli` dispatcher in `core/src/cli/run.ts`. Shipping code MUST NOT call OCLIF `execute()` or maintain a parity engine.
 
-- Each `LandoCommandSpec` is registered once. Deferred ids live in `DEFERRED_COMMAND_PLANS` or its successor and return phase-tagged `NotImplementedError`.
+- Each `LandoCommandSpec` is registered once. Deferred ids live in the deferred-command plan table (`core/src/cli/deferred-commands.ts`) and return phase-tagged `NotImplementedError`.
 - Cross-cutting CLI helpers live under `core/src/cli/` and MUST NOT be duplicated by entry mode.
 - Source and relocated binary MUST have identical exit codes, tagged-error fields, and §8.11 output.
 - Help, version, unknown-command, topics, and aliases derive from the registry.
@@ -293,6 +293,10 @@ Metadata MUST normalize once after layers/includes and drive CLI, help, machine 
 - Documentation and evolution: `desc`, `summary`, `description`, `usage`, `examples`, `deprecated: DeprecationNotice`.
 - Presentation: `prompt`, `silent`, `output: interleaved|group|prefixed`, and `failFast`.
 
+Declared task keys that are not yet executable are listed once, in `@lando/landofile`'s unsupported tooling-task key list, and fail closed with `NotImplementedError` and remediation before execution; the list shrinks as keys become supported and MUST NOT be re-spelled per surface.
+
+**Positional argument round-trip.** `ArgSpec` positionals are read by declaration index on every surface: the CLI parses argv into named inputs, and MCP and library callers serialize structured input back to argv for the same parser. Serialization and parsing MUST round-trip for every declared shape. A caller that supplies a value for a later positional while an earlier declared positional resolves to nothing describes an interior hole that argv cannot express; both the serializer and the parser MUST fail with `ToolingInputError` naming the task and argument rather than binding the value to the wrong name. Trailing omitted positionals remain valid. The CLI and MCP paths MUST agree on every accepted and rejected shape.
+
 A string task means one `cmd`. `cmd` normalizes to one ordered `cmds` step. `disabled` and `false` disable inherited tasks. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
@@ -305,7 +309,7 @@ Steps are string commands or objects containing `cmd`, `task`, `command`, `defer
 
 Direct and indirect cycles return `ToolingCommandCycleError`. Effective bootstrap is the transitive maximum of declared and nested command requirements. Nested invocations publish the target's `cli-<id>-init|run|error` events with fresh `invocationId` and parent correlation, but MUST NOT independently trigger foreground completion presentation. Output shares the parent `Renderer`; `silent` suppresses renderer events, not logs. Interruption propagates. The step calls the canonical Effect program directly and does not reparse argv.
 
-**Beta 1:** this is a frozen producer contract, not a US-459 deliverable. US-459 proves nested correlation and notification suppression through MCP but does not implement tooling `command:` execution.
+This is a frozen producer contract; the nested-correlation and notification-suppression rules are proven through MCP dispatch, and tooling `command:` step execution is sequenced in the ROADMAP.
 
 #### 8.5.3 Variables and environment
 
@@ -333,7 +337,7 @@ Nested event/command invocation MUST reject cycles with a visited stack and boun
 
 Tooling imports use `includes:` with `kind: tooling`; `toolingIncludes:` is equivalent sugar. Fragments allow only `tooling:` and nested `toolingIncludes:`. Other Landofile keys and bare nested `includes:` fail with `LandofileIncludeError`. Paths resolve from the declaring file. Included tasks default to `<include-namespace>:<task>`; `flatten` removes that prefix; namespace `aliases` require a non-flattened include. `optional`, `internal`, `excludes`, and `vars` apply at include scope. Local task ids win. Cycles return `ToolingIncludeCycleError`.
 
-Beta 1 tooling fragments are local-file only; include-level `checksum`, `dir`, and bulk `topLevelAlias` are unsupported and fail closed. Per-task aliases remain valid.
+Tooling fragments are local-file only; include-level `checksum`, `dir`, and bulk `topLevelAlias` are unsupported and fail closed. Per-task aliases remain valid.
 
 `toolingIncludes.<namespace>` supports `file`, `optional`, `flatten`, `internal`, `aliases`, `excludes`, and `vars`. A fragment's own `tooling:` entry wins over nested include contributions with the same id.
 
@@ -392,7 +396,7 @@ Tooling failures preserve these `_tag` values:
 | `BunShellScriptEmptyError` | Empty script task |
 | `ShellScriptOutsideRootError` | Script realpath escapes authorized root |
 
-### 8.8 `lando apps:init` and the v4 recipe model
+### 8.8 `lando apps:init` and the recipe model
 
 `apps:init` scaffolds a visible, user-owned Landofile from a versioned `RecipeDecomposer` producing `LandofileAuthoringFragment`.
 
@@ -457,7 +461,7 @@ Migration snapshot helper names remain the closed pure §7.3.1 set, including sc
 | relative or absolute path | Local directory |
 | `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/` |
 | `npm:` | `<userCacheRoot>/recipes/npm/` |
-| `registry:` | Reserved for post-v4.0 `recipes.lando.dev` |
+| `registry:` | Reserved for `recipes.lando.dev`; implementation sequenced in the ROADMAP |
 
 Resolution is content-addressed and cached for offline reuse.
 
@@ -524,9 +528,9 @@ All Bun actions are destination-bounded, redacted, recursion-guarded, lifecycle-
 | `toolbox` | Disposable version-pinned CLI service with non-interactive defaults |
 | `rails` | Rails, PostgreSQL, Redis |
 
-Bundled recipes live under `recipes/<id>/`, ship manifest/program, templates, `README.mdx`, and declarative snapshot, and are embedded by the bundled recipe registry. The set MAY grow in v4.x; removal requires a major version and `DeprecationNotice` (§18). Generated Landofiles MUST be YAML.
+Bundled recipes live under `recipes/<id>/`, ship manifest/program, templates, `README.mdx`, and declarative snapshot, and are embedded by the bundled recipe registry. The set MAY grow in a minor release; removal requires a major version and `DeprecationNotice` (§18). Generated Landofiles MUST be YAML.
 
-Planned 4.x additions are `node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`. Hoster recipes are deferred to 4.1 `RemoteSource` work (§10.12); v3 compatibility shims remain out of scope. Alpha 1 `rails` source is `recipes/rails/`, includes `rails` and `bundle` tooling, gives every prompt a non-interactive default, and requires an executable README.
+Candidate additions (`node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`) and hoster recipes that depend on `RemoteSource` (§10.12) are sequenced in the ROADMAP; Lando 3 compatibility shims remain out of scope. The bundled `rails` recipe's source is `recipes/rails/`, includes `rails` and `bundle` tooling, gives every prompt a non-interactive default, and requires an executable README.
 
 #### 8.8.11 Recipe authoring surface
 
@@ -620,7 +624,7 @@ Non-TTY mode emits stable-prefixed detail lines and tree summaries with no input
 
 #### 8.9.3 Default renderer implementation contract
 
-`@lando/renderer-lando` uses `@opentui/core` version 0.4.3 or later for TTY rendering.
+`@lando/renderer-lando` uses `@opentui/core` for TTY rendering; the selected release is pinned in the package manifest and lockfile (§2).
 
 - Production code MUST use the literal dynamic import `import("@opentui/core")` inside the renderer plugin.
 - Core, level-`none`, pre-renderer, non-TTY, `plain`, and `json` paths MUST NOT load it.
@@ -630,13 +634,13 @@ Initialization failure MUST degrade to non-TTY line mode with a debug notice and
 
 #### 8.9.4 Rich render events
 
-`CodeSnippetEvent` (`code.snippet`) carries code plus optional language, path, start line, and highlighted lines. `DiffRenderEvent` (`diff.render`) carries unified diff plus optional path/language. `MarkdownBlockEvent` (`markdown.block`) carries Markdown. These schemas are frozen at 4.0 as contract-only; rich TTY presentation and core emitters are deferred to 4.1.
+`CodeSnippetEvent` (`code.snippet`) carries code plus optional language, path, start line, and highlighted lines. `DiffRenderEvent` (`diff.render`) carries unified diff plus optional path/language. `MarkdownBlockEvent` (`markdown.block`) carries Markdown. These schemas are frozen contract-only surface; rich TTY presentation and core emitters are sequenced in the ROADMAP.
 
-4.0/degraded/plain modes emit safe verbatim forms; JSON passes structured events. Publishers MUST redact content. Plain unified diffs MUST remain patch-applicable. Unknown languages fall back to plain text.
+Until then, and in degraded/plain modes, renderers emit safe verbatim forms; JSON passes structured events. Publishers MUST redact content. Plain unified diffs MUST remain patch-applicable. Unknown languages fall back to plain text.
 
 #### 8.9.5 Renderer panel slots
 
-Renderer panels are frozen 4.0 contract-only surface; default-renderer runtime support and the first bundled consumer are deferred to 4.1. Published schema contracts are:
+Renderer panels are frozen contract-only surface; default-renderer runtime support and the first bundled consumer are sequenced in the ROADMAP. Published schema contracts are:
 
 - `RendererPanelSlot`: closed ids `status-bar`, `task-tree:footer`, `doctor:summary`.
 - `RendererPanelId`: validated plugin-scoped id.
@@ -650,11 +654,11 @@ Renderer panels are frozen 4.0 contract-only surface; default-renderer runtime s
 
 Plugins contribute `rendererPanels:` (§9.5). Manifest shape, ids, slots, watch events, and module containment validate before import; failures are `PluginManifestError`. Panels import only in isolated workers when their slot becomes visible. Export failures, identity mismatch, or load failure are `PluginLoadError`. Runtime/decode/bound failures isolate and permanently drop only that panel with a debug notice; malformed output MUST NOT be clipped into validity. Panels are output-only, have no terminal/input control, and consume already-redacted events. Untrusted panels use standard plugin trust.
 
-The 4.1 runtime MUST enforce bounded worker startup, binary messages, render deadlines, one in-flight render, coalescing, and last-good view retention without blocking the render loop. The 4.0 `@lando/sdk/test` Renderer panel contract suite proves timeout, throw, invalid output, purity, determinism, and bounds in a terminable worker. It is a §13.1 shared suite, not one of the §4.2 six plugin-abstraction kit suites.
+The panel runtime, when it ships, MUST enforce bounded worker startup, binary messages, render deadlines, one in-flight render, coalescing, and last-good view retention without blocking the render loop. The `@lando/sdk/test` Renderer panel contract suite proves timeout, throw, invalid output, purity, determinism, and bounds in a terminable worker. It is a §13.1 shared suite, not one of the §4.2 six plugin-abstraction kit suites.
 
 #### 8.9.6 Keymap: renderer actions and bindings
 
-The closed action vocabulary and defaults are frozen at 4.0; global `keymap:` overrides and help overlay land in 4.1.
+The closed action vocabulary and defaults are frozen; global `keymap:` overrides and the help overlay are sequenced in the ROADMAP.
 
 | Action | Surface | Default |
 |---|---|---|
@@ -673,7 +677,7 @@ The closed action vocabulary and defaults are frozen at 4.0; global `keymap:` ov
 
 Published schemas are `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, and `KeymapConfig`. Chords use canonical lowercase modifier order `ctrl+`, `alt+`, `shift+` and a closed key vocabulary. Each action has a bounded unique chord list. Malformed bindings fail ordinary `ConfigError`. `ctrl+c` is permanently reserved for `Effect.interrupt` and cannot be bound, disabled, or shadowed.
 
-Same-surface chord collisions fail after schema decode with `KeymapConflictError`, carrying `_tag: "KeymapConflictError"`, `surface`, `chord`, sorted `actions`, `message`, and `remediation`. Cross-surface reuse is valid. Plugins cannot add actions in 4.0. Non-TTY binds nothing.
+Same-surface chord collisions fail after schema decode with `KeymapConflictError`, carrying `_tag: "KeymapConflictError"`, `surface`, `chord`, sorted `actions`, `message`, and `remediation`. Cross-surface reuse is valid. Plugins cannot add actions. Non-TTY binds nothing.
 
 #### 8.9.7 Desktop notifications
 
@@ -681,11 +685,11 @@ Same-surface chord collisions fail after schema decode with `KeymapConflictError
 
 Bundled plugin `@lando/notify-lando` owns policy through `NotifyConfig` at global `notify:` with `enabled` default true, `thresholdMs` default 15000, and bounded additional canonical `commands`. The default eligible family is ordered: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. Config ids validate against the cwd-independent global registry, then deduplicate in first-occurrence order. Unknown ids return `ConfigError`.
 
-Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per run, on success or failure. Nested canonical calls never notify independently. Lower-tier eligible commands promote to bootstrap `commands` except contract-sensitive `meta:doctor`, which remains `none` and cannot notify. The subscriber priority is **900**. `notify.enabled: false`, plugin disablement, non-TTY, or missing capability silences presentation. Container-initiated notification or clipboard relay is a v4.0 non-goal (§10.10).
+Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per run, on success or failure. Nested canonical calls never notify independently. Lower-tier eligible commands promote to bootstrap `commands` except contract-sensitive `meta:doctor`, which remains `none` and cannot notify. The subscriber priority is **900**. `notify.enabled: false`, plugin disablement, non-TTY, or missing capability silences presentation. Container-initiated notification or clipboard relay is a non-goal (§10.10).
 
 #### 8.9.8 Interactive log viewer
 
-The `app:logs --follow` TTY viewer is spec-frozen for 4.1. It consumes the same redacted labeled `LogChunk` stream and selectors as line mode, adds bounded scrollback and source filtering, starts following, unsticks on scroll, and uses `viewer.*` actions. Exit leaves visible logs in normal scrollback. `--no-viewer`, non-TTY, `plain`, and `json` force byte-identical line mode. At 4.0 `--no-viewer` is accepted as a no-op; no new schema is introduced.
+The `app:logs --follow` TTY viewer is a frozen contract whose implementation is sequenced in the ROADMAP. It consumes the same redacted labeled `LogChunk` stream and selectors as line mode, adds bounded scrollback and source filtering, starts following, unsticks on scroll, and uses `viewer.*` actions. Exit leaves visible logs in normal scrollback. `--no-viewer`, non-TTY, `plain`, and `json` force byte-identical line mode. Until the viewer ships, `--no-viewer` is accepted as a no-op; no new schema is introduced.
 
 Renderer lifecycle and presentation names are stable:
 
@@ -745,7 +749,7 @@ One shared parser owns repeated `--answer`, `--answers`, `--yes`, `--no-interact
 
 #### 8.10.4 Required behaviors
 
-`InteractionServiceLive` requirements:
+The core `InteractionService` implementation layer requirements:
 
 - Construct lazily through `Layer.suspend`.
 - Touch no input for commands that never prompt.
@@ -754,7 +758,7 @@ One shared parser owns repeated `--answer`, `--answers`, `--yes`, `--no-interact
 - Fail fast for missing non-interactive answers.
 - Route prompt chrome through `Renderer` when present and use only the declared no-renderer fallback carve-out.
 
-Interruption returns `InteractionCancelledError` after restoring terminal state. Dynamic choices use the allowed canonical runner; failures return `ChoicesUnavailableError` with interactive fallback. Mid-build prompting and an `Interaction` lifecycle scope are v4.0 non-goals.
+Interruption returns `InteractionCancelledError` after restoring terminal state. Dynamic choices use the allowed canonical runner; failures return `ChoicesUnavailableError` with interactive fallback. Mid-build prompting and an `Interaction` lifecycle scope are non-goals.
 
 Tagged errors are `InteractionRequiredError` (`RecipeMissingAnswerError` alias), `PromptValidationError` (`RecipePromptValidationError` alias), `InteractionCancelledError`, `ChoicesUnavailableError` (`RecipeChoicesError` alias), and `InteractionUnavailableError`.
 
@@ -778,6 +782,8 @@ Every command is agent-consumable without prose parsing. `--renderer` selects pr
 
 Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `CommandWarning`, and `CommandResultEnvelope`.
 
+**Advertised formats.** `text`, `json`, and `yaml` are universal and are attached to every command's `--format` flag. `table` and `ndjson` are opt-in render-path values declared through the command's `resultFormats`. Help, the generated command-registry manifest, and the MCP catalog projection MUST show exactly the supported set. A command that does not advertise a value MUST reject it with `RendererSelectionError` rather than silently emit text. Advertisement and implementation MUST agree on every surface. `text` is the default.
+
 | Envelope field | Contract |
 |---|---|
 | `apiVersion` | Literal `v4`; changes only for a breaking envelope revision |
@@ -798,9 +804,13 @@ Validation failures carry structured `issues` (`ValidationIssue`: `path` as an a
 
 `encodeCommandResult` is the only JSON result serializer. It schema-encodes success or tagged failure, preserves exit status, wraps the envelope, and passes it through `RedactionService` before output. Per-command render helpers produce only human formats. §13.4 MUST reject any other command-result `JSON.stringify` path.
 
+`yaml` is boundary-owned: `--format=yaml` MUST emit the same envelope `--format=json` emits for that command, serialized through the `@lando/sdk/yaml` scalar and mapping-key policy, and parsing that YAML MUST yield the same model the JSON parses to. Redaction, `--json` projection, `--jq`, warning capture, and the closed-pipe policy apply to `yaml` exactly as to `json`; they share the command-result boundary. Every YAML projection MUST round-trip its input model, including strings YAML could reinterpret: the `[redacted]` sentinel, `yes`/`no`/`on`/`off`, numeric-looking strings, `null`/`~`, values containing `: `, and leading `*`, `&`, `%`, `@`. `@lando/sdk/yaml` is the one quoting policy; the CLI emitter and the shared Compose serializer owned by `@lando/container-runtime` consume it rather than re-implementing it.
+
+**Closed pipe.** A downstream consumer that closes stdout or stderr early (`head`, `jq -e`, a terminated agent) ends output cleanly: Lando MUST NOT report an internal error or print a stack trace, MUST stop writing to the closed stream, and MUST exit with the conventional terminated-pipeline status `141`. stdout and stderr follow this rule independently, since they can be redirected separately. `@lando/renderer` owns the guard, so every renderer and machine format inherits it.
+
 #### 8.11.3 Streaming commands
 
-Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. This is not a second event tap.
+Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. This is not a second event tap. `--format=ndjson` is that frame sequence, one JSON document per line, and is advertised only by streaming commands: a command with no frame sequence does not advertise `ndjson` rather than inventing one.
 
 `CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are published from `@lando/sdk`, re-exported by `@lando/core/schema`, and snapshot-governed by §13.2.
 
