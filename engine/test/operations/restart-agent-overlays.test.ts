@@ -14,7 +14,7 @@ import {
 } from "@lando/sdk/schema";
 import { PathsService, SshService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { withGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
 import { stripGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
@@ -134,19 +134,20 @@ for (const kind of ["ssh", "gpg"] as const) {
       );
 
       // Then unchanged forwarding passes both preflights; a changed source refuses before stop.
-      if (drift) {
-        expect(exit).toMatchObject({
-          _tag: "Failure",
-          failure: expect.any(ServiceRestartWouldRecreateError),
-        });
-        expect(exit).toMatchObject({ failure: { reason: "bind-source" } });
-        expect(stops).toBe(0);
-        expect(appliedCalls).toBe(0);
-      } else {
-        expect(exit._tag).toBe("Success");
-        expect(stops).toBe(1);
-        expect(appliedCalls).toBe(1);
-      }
+      Result.match(exit, {
+        onFailure: (failure) => {
+          expect(drift).toBe(true);
+          expect(failure).toBeInstanceOf(ServiceRestartWouldRecreateError);
+          expect(failure).toMatchObject({ reason: "bind-source" });
+          expect(stops).toBe(0);
+          expect(appliedCalls).toBe(0);
+        },
+        onSuccess: () => {
+          expect(drift).toBe(false);
+          expect(stops).toBe(1);
+          expect(appliedCalls).toBe(1);
+        },
+      });
       expect(await Effect.runPromise(readAgentRelayWorkerRecord(app, workerOptions))).toEqual(record);
     });
   }
