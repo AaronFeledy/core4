@@ -5,7 +5,11 @@ import type {
   RestartAppResult,
   RestartAppError as SdkRestartAppError,
 } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import {
+  type ComposeKeyRejectedError,
+  type LandofileLoadExpressionError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
 import {
   PostRestartEvent,
   PostServiceStopEvent,
@@ -87,6 +91,22 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const registry = yield* RuntimeProviderRegistry;
   const proxy = yield* RouterService;
   const provider = yield* registry.select(target.plan);
+  const appliedPlan = yield* registry.resolveAppliedPlan?.(target.plan.root) ?? Effect.succeed(undefined);
+  if (
+    appliedPlan === undefined ||
+    appliedPlan.root !== target.plan.root ||
+    appliedPlan.id !== target.plan.id ||
+    appliedPlan.provider !== target.plan.provider
+  ) {
+    return yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: String(target.plan.provider),
+        operation: "restart",
+        message: "Selected restart requires an ownership-matched applied plan.",
+        remediation: "Start this app before restarting selected services.",
+      }),
+    );
+  }
   const services = Object.values(selectedPlan.services);
 
   for (const service of services) {
@@ -153,7 +173,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   yield* Effect.scoped(
     provider.apply(selectedPlan, {
       reconcile: false,
-      recordedPlan: target.plan,
+      recordedPlan: appliedPlan,
       forbidRecreate: true,
       ...(signal === undefined ? {} : { signal }),
     }),
