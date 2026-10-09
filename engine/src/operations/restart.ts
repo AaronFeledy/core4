@@ -49,6 +49,7 @@ import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { startedServiceRow } from "./authority-url.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { startFileSyncSessions } from "./start-file-sync.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
@@ -107,7 +108,8 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       }),
     );
   }
-  const services = Object.values(selectedPlan.services);
+  const runtimePlan = yield* withRetainedAgentOverlays(selectedPlan, target.app);
+  const services = Object.values(runtimePlan.services);
 
   for (const service of services) {
     const runtime = yield* provider.inspect({
@@ -171,7 +173,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
 
   if (signal?.aborted === true) return yield* Effect.interrupt;
   yield* Effect.scoped(
-    provider.apply(selectedPlan, {
+    provider.apply(runtimePlan, {
       reconcile: false,
       recordedPlan: appliedPlan,
       forbidRecreate: true,
