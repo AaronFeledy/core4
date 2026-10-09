@@ -45,6 +45,7 @@ const expected = {
     },
     database: { type: "{{ recipe.database }}" },
     cache: { type: "redis" },
+    node: { type: "node:22", primary: false, endpoints: [] },
   },
   tooling: {
     artisan: {
@@ -57,7 +58,7 @@ const expected = {
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
     },
-    npm: { service: "appserver", description: "Run npm inside the appserver service.", cmds: ["npm"] },
+    npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"] },
   },
 };
 

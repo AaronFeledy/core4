@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:750e678ddc8312cc450d9b3e93a5ded61382dca7253a1f3b415c1d1b20636cff";
+  "sha256:9d0a43bc508ef91bf00d51e85bb554b3349761fc2929ac2d4f9b34f77d8dc652";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -57,6 +57,14 @@ const expression: ExpressionNode = obj([
         ],
         ["database", obj([["type", lit("{{ recipe.database }}")]])],
         ["cache", obj([["type", lit("redis")]])],
+        [
+          "node",
+          obj([
+            ["type", lit("node:22")],
+            ["primary", lit(false)],
+            ["endpoints", arr()],
+          ]),
+        ],
       ]),
       cond(
         call(
@@ -95,7 +103,7 @@ const expression: ExpressionNode = obj([
         toolNode("appserver", "Run a Laravel Artisan command inside the appserver service.", "php artisan"),
       ],
       ["composer", toolNode("appserver", "Run Composer inside the appserver service.", "composer")],
-      ["npm", toolNode("appserver", "Run npm inside the appserver service.", "npm")],
+      ["npm", toolNode("node", "Run npm inside the node service.", "npm")],
     ]),
   ],
 ]);
