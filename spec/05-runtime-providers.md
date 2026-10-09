@@ -1,6 +1,6 @@
-# Lando v4 — Runtime Provider API
+# Lando v4: Runtime Provider API
 
-> **Part 5 of 18** · [Index](./README.md)
+> **Part 5 of 19** · [Index](./README.md)
 > **Read next:** [06 Services](./06-services.md)
 
 A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service instances. The Lando-managed runtime is the default; system Docker and system Podman are bundled opt-in providers.
@@ -48,7 +48,8 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `removeArtifact` | Removes an artifact owned or selected by the request. |
 | `apply` | Reconciles an `AppPlan` and returns materialized runtime results. |
 | `start`, `stop`, `restart` | Changes lifecycle state for selected services. |
-| `destroy` | Removes the selected app realization according to `DestroyOptions`. |
+| `destroy` | Removes the selected app realization according to `DestroyOptions` and returns a `DestroyOutcome`: `destroyed`, or `no-op` with reason `no-applied-plan` when the target carried no plan and the provider found no applied record. A planless destroy that removes nothing MUST report the no-op rather than succeed silently. |
+| `removeObservedService` | Stops and removes the container behind one observed `ServiceRuntimeInfo`, by observed identity, without resolving an applied plan; returns `removed` or `absent`. |
 | `exec` | Executes a short command and returns a collected `ExecResult`. |
 | `execStream` | Streams stdout/stderr and a terminal exit result for a command. |
 | `run` | Runs a scoped ephemeral workload, including declared mounts and input. |
@@ -63,6 +64,18 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `openAgentSocketBridge` | Scoped; makes a host-side agent relay reachable to one app's services as a directory containing the named socket (§10.4). |
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
+
+#### 5.3.1 Teardown resolution and orphaned resources
+
+`stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
+
+1. No applied plan and no owned runtime resources: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says.
+2. An applied plan exists: tear down from the applied plan.
+3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
+
+`stop` reports `stopped` or `unchanged`; `destroy` reports `destroyed` or `unchanged`. Every renderer and machine format MUST preserve that distinction. The operation result vocabulary is distinct from the provider's `DestroyOutcome` (`destroyed`, or `no-op` with reason `no-applied-plan`, §5.3): rule 1 returns `unchanged` without any provider call, an applied-plan teardown (rule 2) reports `destroyed`, and an orphan teardown (rule 3) derives its result from what it removed, `unchanged` when nothing was removed. A direct provider `no-op` MUST NOT be rendered as `destroyed`; it corresponds to `unchanged` unless the same operation removed other resources. Both operations stop and remove the selected containers, but `stop` retains the applied plan and volumes, while `destroy` clears applied state and follows its volume policy. An orphan teardown MUST report what it removed; a result that lists a service MUST mean that service was stopped and removed. Orphan volume removal under `destroy --volumes` MUST classify cache and data volumes exactly as planful bring-down does. A plain `destroy` leaves data stores, so rule 3 lets a later `destroy --volumes` remove them.
+
+The relaxation is scoped to teardown callers. `start` and every other non-teardown caller keep the fail-closed refusal of orphaned runtime resources (`AppResolveError`) and MUST NOT be served by widening the shared evidence resolver's default.
 
 The §10.11 `DataMover` uses native data-plane methods only when declared. Otherwise it MAY use the mount-aware ephemeral-run fallback; if `ephemeralMounts` is false and no native capability exists, planning or transfer fails with `CapabilityError`.
 
@@ -191,7 +204,7 @@ Intel macOS is unsupported by the managed provider. Setup, bundle resolution, ru
 
 On Windows, the Lando-owned machine exposes HTTP over the named pipe `\\.\pipe\podman-lando`. The provider MUST use named-pipe transport, MUST NOT invoke Unix-socket tooling, and MUST NOT probe the Linux managed-service socket.
 
-Podman’s published machine-OS update command spelling is unresolved; v4.0.0 does not normatively require one spelling.
+Podman’s published machine-OS update command spelling is unresolved; this specification does not normatively require one spelling.
 
 `bindMountPerformance` is `native` on Linux and `slow` on supported macOS and Windows hosts. The provider is bundled and active by default, but distributions MAY omit it.
 
@@ -205,6 +218,6 @@ The Podman provider targets system Podman 6 or newer and is selected by app or g
 
 ### 5.9 Multi-provider apps (deferred)
 
-v4.0.0 uses one provider per app. Per-service provider data remains a non-portable extension hint. Cross-provider networking, route ownership, lifecycle ordering, failure handling, and capability negotiation are deferred until after v4.0.0.
+One provider is selected per app. Per-service provider data remains a non-portable extension hint. Cross-provider networking, route ownership, lifecycle ordering, failure handling, and capability negotiation are not specified; the ROADMAP sequences any future work.
 
 ---

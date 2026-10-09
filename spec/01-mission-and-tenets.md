@@ -1,9 +1,9 @@
-# Lando v4 — Mission, Tenets, and Non-Goals
+# Lando v4: Mission, Tenets, and Non-Goals
 
-> **Part 1 of 18** · [Index](./README.md)
+> **Part 1 of 19** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
-This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and decisions remaining before GA.
+This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Release stages and sequencing live only in the [ROADMAP](./ROADMAP.md).
 
 §1 and §14 are paired because they define what Lando v4 is and is not.
 
@@ -75,7 +75,7 @@ Bundled plugins remain separate packages governed by the public plugin contract.
 |---|---|---|
 | Managed runtime | `@lando/provider-lando` | Bundled default, optional |
 | System Docker / Podman | `@lando/provider-docker`, `@lando/provider-podman` | Optional |
-| Canonical v4 translation | `@lando/lando4` | Bundled, two-way, explicit-only; MUST depend only on `@lando/sdk` and MUST NOT participate in normal bootstrap |
+| Canonical `lando4` translation | `@lando/lando4` | Bundled, two-way, explicit-only; MUST depend only on `@lando/sdk` and MUST NOT participate in normal bootstrap |
 | Lando 3 conversion | `@lando/lando3` | Bundled, decode-only, explicit-only; also contributes the read-only `lando3-leftovers` / `lando3-shadow` doctor checks (§10.9); MUST depend only on `@lando/sdk` and `@lando/paths` and MUST NOT participate in normal bootstrap |
 | Proxy / CA | `@lando/proxy-traefik`, `@lando/ca-mkcert` | Optional |
 | Service base | `@lando/service-lando` | Required for `type: lando` |
@@ -93,7 +93,7 @@ The default managed provider MUST work without pre-existing Docker or Podman. Af
 | Form | Audience | Contract |
 |---|---|---|
 | **Single-binary CLI** | End users | Bytecode-enabled compiled `bin/lando.ts` through the mandatory §17.3 wrapper. |
-| **Library package** | Bun embedding hosts and package-manager users | Version-matched ESM entry points; Alpha/Beta `package.json#bin` exposes `lando4` beside untouched Lando 3. |
+| **Library package** | Bun embedding hosts and package-manager users | Version-matched ESM entry points; `package.json#bin` exposes `lando4` so the package can coexist with an untouched Lando 3 install on the same host. |
 
 The forms ship from the same source at the same version and MUST NOT drift.
 
@@ -106,24 +106,23 @@ The forms ship from the same source at the same version and MUST NOT drift.
 - v3 execution/emulation, automatic conversion, resource adoption, legacy state import, retired image manufacture, hoster synchronization, or Lando 3 binary management.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
-- Built-in Kubernetes in v4.0.0, plugin sandboxing, registry push workflows, or core SQL helpers.
-- File-sync engines beyond passthrough and bundled Mutagen in v4.0, or file-sync-owned TCP/UDP forwarding (§10.6).
+- Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
+- File-sync engines beyond passthrough and bundled Mutagen, or file-sync-owned TCP/UDP forwarding (§10.6).
 - Copy-on-write scratch isolation, scratch fleets, fork-source hot reload, or scratch apps as expression sources (§21.15).
 
 ### 14.2 Open decisions
 
-| Decision | Required resolution before GA |
+| Decision | Required resolution |
 |---|---|
-| Bun version floor | Select the latest stable GA floor supporting bytecode for every §2.1 target. |
 | Telemetry inventory and privacy | Finalize events, redaction, retention, and disablement controls. |
-| Renderer wiring at the CLI boundary | Route command output through `Renderer`, add renderer config, and enforce the output boundary; GA-blocking. |
+| Renderer wiring at the CLI boundary | Route command output through `Renderer`, add renderer config, and enforce the output boundary. |
 
 Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher.
 
-Deferred post-v4.0 capabilities MUST remain architecturally possible:
+The following extension constraints apply without committing to an implementation schedule:
 
 | Capability | Constraint |
 |---|---|
-| Persistent local agent | v4.0 remains transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
+| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
 | Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
-| Service-type `topLevelAlias` enforcement | Enforce when the 4.1 tooling schema lifts the current beta-wide rejection. |
+| Service-type `topLevelAlias` enforcement | Enforce once the tooling schema lifts the current catalog-wide rejection of `topLevelAlias` (§6.11, §8.5). |

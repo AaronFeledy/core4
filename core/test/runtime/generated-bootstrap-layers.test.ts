@@ -40,7 +40,7 @@ describe("generated bootstrap layers", () => {
     // When: command-registry and subscriber-runtime composition is inspected.
     const subscriberInstall =
       "SubscriberRuntimeLayer.layerWithPrivateFileAccess(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
-    const commandRegistryInstall = "CommandRegistryLayer.layer.pipe(";
+    const commandRegistryInstall = "CommandRegistryLayer.layer";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
     for (const source of [minimal, plugins]) {

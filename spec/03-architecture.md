@@ -1,6 +1,6 @@
-# Lando v4 — Architecture, Lifecycle, and Events
+# Lando v4: Architecture, Lifecycle, and Events
 
-> **Part 3 of 18** · [Index](./README.md)
+> **Part 3 of 19** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part defines the runtime structure, bootstrap levels, core services, lifecycle taxonomy, event bus, and imperative shells.
@@ -106,8 +106,8 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `DeprecationService` | Record, deduplicate, publish, and query deprecated-surface use (§18) |
 | `DoctorService` | Isolated host, app, provider, plugin, and deprecation diagnostics (§10.9) |
 | `HostProxyService` | Authenticated per-app container-to-host RPC (§10.10) |
-| `TunnelService` | Public sharing sessions; no always-on v4.0 default (§10.2.2) |
-| `McpService` | Retained-runtime MCP projection and dispatch (§10.14); not plugin-replaceable in v4.0 |
+| `TunnelService` | Public sharing sessions; core ships no always-on default (§10.2.2) |
+| `McpService` | Retained-runtime MCP projection and dispatch (§10.14); not plugin-replaceable |
 | `GlobalAppService` | Global app regeneration, planning, lifecycle, and auto-start (§20) |
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
@@ -115,7 +115,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 
 The replaceability and default Layers for all pluggable tags remain canonical in §4.2. Hosts enumerating runtime services SHOULD combine §3.4 and §4.2.
 
-Use `ProcessRunner` for an exact binary and argv. Use `ShellRunner` for pipes, redirection, globs, substitutions, and portable shell built-ins. Core MUST NOT use either to imitate the other. Both MUST propagate interruption, reap children through `Scope`, publish their pre/post events, and expose only canonically redacted command data. `ShellRunner` MUST use `Bun.$`, escape interpolation by default, require explicit raw interpolation, contain script realpaths to permitted roots, and remain safe at `tooling` bootstrap without network, provider, or plugin initialization. Its failures are `ShellExecError` (non-zero exit unless the caller opts into no-throw semantics), `ShellInterpolationError` (raw interpolation where it is forbidden, with position and remediation), and `ShellRunnerUnavailableError` (the active Live Layer refuses the request).
+Use `ProcessRunner` for an exact binary and argv. Use `ShellRunner` for pipes, redirection, globs, substitutions, and portable shell built-ins. Core MUST NOT use either to imitate the other. Both MUST propagate interruption, reap children through `Scope`, publish their pre/post events, and expose only canonically redacted command data. `ShellRunner` MUST use `Bun.$`, escape interpolation by default, require explicit raw interpolation, contain script realpaths to permitted roots, and remain safe at `tooling` bootstrap without network, provider, or plugin initialization. Its failures are `ShellExecError` (non-zero exit unless the caller opts into no-throw semantics), `ShellInterpolationError` (raw interpolation where it is forbidden, with position and remediation), and `ShellRunnerUnavailableError` (the active implementation Layer refuses the request).
 
 `BunSelfRunner` MUST self-spawn `process.execPath` with `BUN_BE_BUN=1` and MUST NOT use `PATH` for embedded mode; library mode MAY use host Bun and MUST identify that mode, failing with `BunSelfHostFallbackUnavailableError` (carrying the resolved `process.execPath` and remediation) when neither host nor embedded Bun is available. It MUST prevent recursive self-spawn with `LANDO_DISALLOW_BUN_BE_BUN_REENTRY`, publish pre/post events with redacted data, pass credentials only through environment, propagate interruption, validate verb-specific argv, respect offline mode for uncached external `x` packages, and remain safe at `minimal` without eager network, provider, or plugin work. Executable-guide transcripts MUST observe the same redaction contract.
 

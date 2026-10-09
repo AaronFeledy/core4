@@ -1,6 +1,7 @@
-# Lando v4 — Executable Guides and Scenarios
+# Lando v4: Executable Guides and Scenarios
 
-> **Part 17 of 18** · [Index](./README.md)
+> **Part 17 of 19** · [Index](./README.md)
+> **Read next:** [18 The Global App](./18-global-app.md)
 
 This part defines how MDX-authored user guides generate runnable scenarios without turning reader prose into test syntax.
 
@@ -134,9 +135,9 @@ Schema round-trip, generated-test typecheck, source-mapper fixtures, public-tran
 
 ### 19.11 Test layer position
 
-Per-PR CI runs all scenario-layer variants on every supported platform and the e2e smoke subset on Linux x64. Nightly CI runs all e2e variants on Linux x64/arm64 and macOS x64/arm64. The weekly matrix runs e2e variants against every applicable provider (§13.6).
+Per-PR CI runs all scenario-layer variants on every §13.5 compile target, including `windows-arm64`, and the e2e smoke subset on Linux x64. Nightly CI runs all e2e variants on the §13.6 nightly platforms. The weekly matrix runs e2e variants against every applicable provider (§13.6). A guide-scenario job MUST emit enough per-step output to distinguish a hang from slow progress before its timeout is tuned; a cap reached with no attributable step output is a defect in the job, not evidence for a longer cap.
 
-Scenario variants SHOULD remain below 30 seconds p95 and e2e smoke below 5 minutes p95, excluding separately measured provider setup. These budgets are advisory at v4.0 GA and become merge gates when §13 perf coverage includes guide scenarios. Authors MUST constrain axis fan-out with platform and cell overrides rather than silently dropping cells.
+Scenario variants SHOULD remain below 30 seconds p95 and e2e smoke below 5 minutes p95, excluding separately measured provider setup. These budgets are advisory until §13 perf coverage includes guide scenarios, at which point they become merge gates. Authors MUST constrain axis fan-out with platform and cell overrides rather than silently dropping cells.
 
 ### 19.12 Author commands
 
@@ -154,7 +155,7 @@ Embedding guides (§16) MAY target runtime operations and `App` handles instead 
 
 ### 19.15 Acceptance criteria
 
-The following augment §15.C and are release-blocking for v4.0 GA:
+The following augment §15.C and define executable-guide acceptance:
 
 - Every executable guide and recipe README generates passing tests for every applicable variant or carries an explicit skip reason.
 - Test-only scenarios remain absent from rendered docs and public transcripts while failures map to authored source.

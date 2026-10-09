@@ -19,9 +19,11 @@ export const laravelDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
           port: 80,
           dependsOn: ["database", "cache"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
+          ...(input.options.worker === true ? { appMount: { target: "/app", includes: ["vendor"] } } : {}),
         },
         database: { type: "{{ recipe.database }}" },
         cache: { type: "redis" },
+        node: { type: "node:22", primary: false, endpoints: [] },
         ...(input.options.worker === true
           ? {
               worker: {
@@ -30,6 +32,7 @@ export const laravelDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
                 via: "cli",
                 command: "php artisan queue:work",
                 dependsOn: ["database", "cache"],
+                appMount: { target: "/app", includes: ["vendor"] },
               },
             }
           : {}),
@@ -46,8 +49,8 @@ export const laravelDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
           cmds: ["composer"],
         },
         npm: {
-          service: "appserver",
-          description: "Run npm inside the appserver service.",
+          service: "node",
+          description: "Run npm inside the node service.",
           cmds: ["npm"],
         },
       },
