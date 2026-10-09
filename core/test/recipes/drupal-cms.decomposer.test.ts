@@ -88,6 +88,11 @@ describe("drupal-cms decomposition", () => {
           mounts: [
             { source: `./${DRUPAL_CMS_PHP_INI_PATH}`, target: DRUPAL_CMS_PHP_INI_TARGET, readOnly: true },
           ],
+          build: {
+            artifact: [
+              { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
+            ],
+          },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "{{ recipe.database }}", database: "{{ app.name }}" },
@@ -125,7 +130,13 @@ describe("drupal-cms decomposition", () => {
       tooling: { "drupal-cms-install": { cmd: string } };
     };
     expect(Object.keys(authoring.services)).toEqual(["appserver", "edge", "database"]);
-    expect(authoring.services.appserver).toMatchObject({ primary: true, via: "fpm" });
+    expect(authoring.services.appserver).toMatchObject({
+      primary: true,
+      via: "fpm",
+      build: {
+        artifact: [{ run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" }],
+      },
+    });
     expect(authoring.services.edge).not.toHaveProperty("primary");
     expect(authoring.services.edge).toHaveProperty("routes");
     expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_PGSQL_INSTALL_COMMAND);

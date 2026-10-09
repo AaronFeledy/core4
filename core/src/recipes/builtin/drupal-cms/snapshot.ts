@@ -6,12 +6,12 @@ import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { recipeAssetDigest } from "../snapshot-asset.ts";
 import { arr, call, cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
-import { DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
+import { DRUPAL_CMS_GIT_ARTIFACT, DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config";
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:a879da095dbc92b8486d0149241c6ba49c07e05f8242c6112448cae05e0b8206";
+  "sha256:f70eda0fba125313bf013202bb05b7a3b0fe1fe28d72194c52139371960d4511";
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal-cms",
@@ -48,6 +48,18 @@ const { usesNginx, databaseService, apacheAppserver, fpmAppserver, edgeService }
         ["readOnly", lit(true)],
       ]),
     ),
+  appserverBuild: () =>
+    obj([
+      [
+        "artifact",
+        arr(
+          obj([
+            ["run", lit(DRUPAL_CMS_GIT_ARTIFACT.run)],
+            ["user", lit(DRUPAL_CMS_GIT_ARTIFACT.user)],
+          ]),
+        ),
+      ],
+    ]),
 });
 export const drupalCmsSnapshot: RecipeSnapshot = {
   identity: drupalCmsProducer,
