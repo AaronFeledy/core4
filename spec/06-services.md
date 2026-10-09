@@ -159,9 +159,9 @@ Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`,
 
 `agentEnv` forwards exact-name host markers per invocation to `app:exec`, `app:ssh`, `app:shell --service`, and `providerExec` tooling without entering service plans or caches.
 
-The default allowlist is `CLAUDECODE`, `CLAUDE_CODE`, `CLAUDE_CODE_IS_COWORK`, `CURSOR_AGENT`, `OPENCODE`, `OPENCODE_CLIENT`, `COPILOT_CLI`, `GEMINI_CLI`, `CODEX_SANDBOX`, `CODEX_CI`, `AUGMENT_AGENT`, `ANTIGRAVITY_AGENT`, `PI_CODING_AGENT`, `AI_AGENT`, `AGENT`, and `CI`. Patterns fail with `AgentEnvPatternError`. Only present values are forwarded. Precedence is exec request, then task/service declaration, then agent context. Values pass through `RedactionService` for `pre-provider-exec` and other events and transcripts. This is not general host-environment passthrough.
+The default allowlist is `CLAUDECODE`, `CLAUDE_CODE`, `CLAUDE_CODE_IS_COWORK`, `CURSOR_AGENT`, `OPENCODE`, `OPENCODE_CLIENT`, `COPILOT_CLI`, `GEMINI_CLI`, `CODEX_SANDBOX`, `CODEX_CI`, `AUGMENT_AGENT`, `ANTIGRAVITY_AGENT`, `PI_CODING_AGENT`, `CLINE_ACTIVE`, `GOOSE_TERMINAL`, `OPENCLAW_SHELL`, `GROK_AGENT`, `AI_AGENT`, `AGENT`, and `CI`. `GROK_AGENT` is forwarded only when its host value is exactly `1`. Patterns fail with `AgentEnvPatternError`. Only present values are forwarded. Precedence is exec request, then task/service declaration, then agent context. Values pass through `RedactionService` for `pre-provider-exec` and other events and transcripts. This is not general host-environment passthrough.
 
-Global `agentEnv.enabled`, `agentEnv.allow`, and `agentEnv.deny` control the resolved list. Top-level `agentEnv: false` disables it per app; host `LANDO_AGENT_ENV=0` disables one invocation. `lando info --deep` reports the resolved names. Host-proxy re-entry preserves the same allowlist.
+Global `agentEnv.enabled`, `agentEnv.allow`, and `agentEnv.deny` control the resolved list. Top-level `agentEnv: false` disables it per app; host `LANDO_AGENT_ENV=0` disables one invocation. `lando info --deep` reports the names actually present on the host and so forwarded. Host-proxy re-entry forwards only the built-in allowlist.
 
 ### 6.10 Service info
 
