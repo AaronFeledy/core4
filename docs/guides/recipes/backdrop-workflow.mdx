@@ -72,7 +72,6 @@ Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the dat
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"a2enmod rewrite\",\\s*\"user\":\\s*\"root\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "releases/download/1\\.x-1\\.2\\.0/bee\\.phar" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"xdebug\":\\s*true" } }} />
@@ -87,17 +86,15 @@ Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the dat
   </Scenario>
 </Guide>
 
-## Add Bee and mod_rewrite to appserver
+## Add Bee and its database client names
 
-Backdrop wants three things the stock PHP image doesn't give you: Apache's `mod_rewrite` for clean URLs (installed but off), Bee, and the `mysql` and `mysqldump` names Bee's `db-*` commands call. The MariaDB 11.4 client Lando installs on `appserver` (`db_client: auto`) names those `mariadb` and `mariadb-dump`. Add a root `build.artifact` step for each:
+Lando enables Apache's `mod_rewrite` for clean URLs when it builds the stock PHP service. Add Bee and the `mysql` and `mysqldump` names Bee's `db-*` commands call. The MariaDB 11.4 client Lando installs on `appserver` (`db_client: auto`) names those `mariadb` and `mariadb-dump`. Add these root `build.artifact` steps:
 
 ```yaml
 services:
   appserver:
     build:
       artifact:
-        - run: a2enmod rewrite
-          user: root
         - run: ln -sf /usr/bin/mariadb /usr/local/bin/mysql && ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump
           user: root
         - run: curl -fsSL -o /usr/local/bin/bee https://github.com/backdrop-contrib/bee/releases/download/1.x-1.2.0/bee.phar && echo "9c7aaced21b0fe1e78bb34d8476e328b04da81beae4c422a065b483c1430937e  /usr/local/bin/bee" | sha256sum -c - && chmod 0755 /usr/local/bin/bee
@@ -106,11 +103,10 @@ services:
 
 The last step pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod`, so a bad download fails the rebuild instead of landing on `PATH`. On the MySQL answer, drop the `ln` step: `mysql-community-client` already ships `mysql` and `mysqldump`.
 
-Rebuild, then check all three:
+Rebuild, then check both additions:
 
 ```sh
 lando rebuild
-lando exec appserver -- a2query -m rewrite
 lando exec appserver -- mysqldump --version
 lando bee version
 ```
