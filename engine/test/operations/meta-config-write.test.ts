@@ -249,9 +249,11 @@ describe("meta config hostEvents hand-edit", () => {
   });
 
   test("rejects unset of hostEvents", async () => {
-    await seed("hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: \":host\"\n");
+    await seed('hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n');
     const before = await readConfig();
-    const result = await exit(config({ subcommand: "unset", key: "hostEvents.pre-start", configPath: configPath() }));
+    const result = await exit(
+      config({ subcommand: "unset", key: "hostEvents.pre-start", configPath: configPath() }),
+    );
     expect(Exit.isFailure(result)).toBe(true);
     if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("config edit");
     expect(await readConfig()).toBe(before);

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { HOST_EVENT_NAMES } from "@lando/sdk/schema";
+import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "../../src/planner/event-names.ts";
 
 const staticNames = [

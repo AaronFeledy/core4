@@ -38,11 +38,7 @@ const deferNode = (leaf: ToolingStepLeaf): ToolingStepDeferNode => ({
   leaf,
 });
 
-const shared = (
-  step: Exclude<EventStep, string>,
-  authoredIndex: number,
-  source?: "host" | "project",
-) => ({
+const shared = (step: Exclude<EventStep, string>, authoredIndex: number, source?: "host" | "project") => ({
   authoredIndex,
   ...(source === undefined ? {} : { source }),
   ...(step.if === undefined ? {} : { condition: step.if }),

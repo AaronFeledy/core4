@@ -8,7 +8,6 @@ import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
-import { eventStepLabel } from "./event-step-identity.ts";
 import {
   type EventService,
   RuntimeProviderRegistry,
@@ -17,6 +16,7 @@ import {
   type ToolingEngineResult,
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { eventStepLabel } from "./event-step-identity.ts";
 
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
@@ -210,12 +210,10 @@ const runInvocation = Effect.fnUntraced(function* (
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
-  const hostEnv = leaf.source === "host" ? { [LANDO_HOST_EVENT_ENV]: "1" } : undefined;
-  const env = leaf.env === undefined && hostEnv === undefined ? undefined : { ...(leaf.env ?? {}), ...hostEnv };
   const task: ToolingTaskShape = {
     cmd: leaf.command,
     ...(leaf.service === undefined ? {} : { service: leaf.service }),
-    ...(env === undefined ? {} : { env }),
+    ...(leaf.env === undefined ? {} : { env: leaf.env }),
     ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
   };
   const result = yield* withHostEventEnv(

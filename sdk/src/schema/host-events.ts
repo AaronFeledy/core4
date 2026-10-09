@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 
-import { validationIssue, type ValidationIssue } from "./validation-issue.ts";
+import { type ValidationIssue, validationIssue } from "./validation-issue.ts";
 
-const Forbidden = Schema.optionalKey(Schema.Never);
+const forbidden = (description: string) => Schema.optionalKey(Schema.Never).annotate({ description });
 
 export const LANDO_HOST_EVENT_ENV = "LANDO_HOST_EVENT";
 
@@ -63,15 +63,15 @@ export const HostEventCmdStep = Schema.Struct({
   service: Schema.optionalKey(Schema.String).annotate({
     description: "Target service, or :host to run on the host. Omitted uses the app primary.",
   }),
-  command: Forbidden,
-  task: Forbidden,
-  defer: Forbidden,
-  for: Forbidden,
-  env: Forbidden,
-  flags: Forbidden,
-  args: Forbidden,
-  dir: Forbidden,
-  user: Forbidden,
+  command: forbidden("Rejected. Use command: only on a command step."),
+  task: forbidden("Rejected. Host events do not run named tooling tasks."),
+  defer: forbidden("Rejected. Host events do not support deferred steps."),
+  for: forbidden("Rejected. Host events do not support for-loops."),
+  env: forbidden("Rejected. Host events do not accept env."),
+  flags: forbidden("Rejected. Host events do not accept flags."),
+  args: forbidden("Rejected. Host events do not accept args."),
+  dir: forbidden("Rejected. Host events do not accept dir."),
+  user: forbidden("Rejected. Host events do not accept user."),
 }).annotate({
   identifier: "HostEventCmdStep",
   title: "Host Event Cmd Step",
@@ -81,16 +81,16 @@ export type HostEventCmdStep = typeof HostEventCmdStep.Type;
 
 export const HostEventCommandStep = Schema.Struct({
   command: Schema.String.annotate({ description: "Canonical Lando command id or alias." }),
-  cmd: Forbidden,
-  task: Forbidden,
-  defer: Forbidden,
-  for: Forbidden,
-  env: Forbidden,
-  flags: Forbidden,
-  args: Forbidden,
-  dir: Forbidden,
-  user: Forbidden,
-  service: Forbidden,
+  cmd: forbidden("Rejected. Use cmd: only on a cmd step."),
+  task: forbidden("Rejected. Host events do not run named tooling tasks."),
+  defer: forbidden("Rejected. Host events do not support deferred steps."),
+  for: forbidden("Rejected. Host events do not support for-loops."),
+  env: forbidden("Rejected. Host events do not accept env."),
+  flags: forbidden("Rejected. Host events do not accept flags."),
+  args: forbidden("Rejected. Host events do not accept args."),
+  dir: forbidden("Rejected. Host events do not accept dir."),
+  user: forbidden("Rejected. Host events do not accept user."),
+  service: forbidden("Rejected. command: steps do not target a service."),
 }).annotate({
   identifier: "HostEventCommandStep",
   title: "Host Event Command Step",

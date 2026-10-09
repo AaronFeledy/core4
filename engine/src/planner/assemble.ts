@@ -16,6 +16,7 @@ import {
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import {
   type AppPlannerError,
   CacheService,
@@ -24,7 +25,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Result } from "effect";
+import { type Context, DateTime, Effect, Predicate, Result } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -63,7 +64,6 @@ import {
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
@@ -315,15 +315,25 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     });
   }
   const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
+  const hostEvents =
+    AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService) ||
+    globalConfig?.hostEvents === undefined
+      ? undefined
+      : globalConfig.hostEvents;
   const hostEventCompileBase = {
     landofile,
-    ...(AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService)
-      ? {}
-      : { hostEvents: globalConfig?.hostEvents }),
+    ...(hostEvents === undefined ? {} : { hostEvents }),
     skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
   };
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services });
+  const planServices = (services: Readonly<Record<string, unknown>>) =>
+    Object.fromEntries(
+      Object.entries(services).map(([name, service]) => [
+        name,
+        { primary: Predicate.isObject(service) && service.primary === true },
+      ]),
+    );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const cacheKey = deriveAppPlanCacheKey({
     appRoot,
@@ -368,7 +378,10 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
       return attachServiceCredsScope(
-        attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEventsFor(cached.services)),
+        attachEffectiveEvents(
+          attachEffectiveTooling(cached, effectiveTooling),
+          effectiveEventsFor(planServices(cached.services)),
+        ),
         serviceCredsScope,
       );
     }
@@ -477,7 +490,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
       effectiveTooling,
     ),
-    effectiveEventsFor(finalized.services),
+    effectiveEventsFor(planServices(finalized.services)),
   );
   attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);

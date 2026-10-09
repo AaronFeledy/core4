@@ -52,7 +52,11 @@ import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
 import { renderConfigWriteResult } from "./config-write-render";
-import { HostEventAppStatus, hostEventStatusesForLandofile, renderHostEventStatuses } from "./host-event-status";
+import {
+  HostEventAppStatus,
+  hostEventStatusesForLandofile,
+  renderHostEventStatuses,
+} from "./host-event-status";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 

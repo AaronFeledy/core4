@@ -3,13 +3,13 @@ import { Result, Schema } from "effect";
 
 import {
   HOST_EVENT_NAMES,
-  HostEvents,
   HostEventStep,
+  HostEvents,
   JSON_SCHEMA_NAMES,
   LANDO_HOST_EVENT_ENV,
   LIFECYCLE_COMMAND_IDS,
-  hostEventsSemanticIssues,
   hostEventStepLocation,
+  hostEventsSemanticIssues,
   isHostEventContainerStep,
   isLifecycleCommandId,
   resolveLifecycleCommandId,
@@ -28,11 +28,15 @@ test("accepts the v1 scalar step shapes and rejects extra fields", () => {
     service: ":host",
   });
   expect(Schema.decodeUnknownSync(HostEventStep)({ command: "info" })).toEqual({ command: "info" });
-  expect(Result.isFailure(Schema.decodeUnknownResult(HostEventStep)({ cmd: "echo", env: { A: "1" } }))).toBe(true);
-  expect(Result.isFailure(Schema.decodeUnknownResult(HostEventStep)({ cmd: "echo", task: "nope" }))).toBe(true);
-  expect(Result.isFailure(Schema.decodeUnknownResult(HostEventStep)({ command: "info", flags: { json: true } }))).toBe(
+  expect(Result.isFailure(Schema.decodeUnknownResult(HostEventStep)({ cmd: "echo", env: { A: "1" } }))).toBe(
     true,
   );
+  expect(Result.isFailure(Schema.decodeUnknownResult(HostEventStep)({ cmd: "echo", task: "nope" }))).toBe(
+    true,
+  );
+  expect(
+    Result.isFailure(Schema.decodeUnknownResult(HostEventStep)({ command: "info", flags: { json: true } })),
+  ).toBe(true);
 });
 
 test("rejects unknown hostEvents keys and forbidden container steps at load", () => {
@@ -71,7 +75,13 @@ test("resolves lifecycle command aliases onto the sdk id list", () => {
   expect(isLifecycleCommandId("destroy")).toBe(true);
   expect(isLifecycleCommandId("app:start")).toBe(true);
   expect(isLifecycleCommandId("info")).toBe(false);
-  expect(LIFECYCLE_COMMAND_IDS).toEqual(["app:start", "app:stop", "app:restart", "app:rebuild", "app:destroy"]);
+  expect(LIFECYCLE_COMMAND_IDS).toEqual([
+    "app:start",
+    "app:stop",
+    "app:restart",
+    "app:rebuild",
+    "app:destroy",
+  ]);
 });
 
 test("treats omitted-service strings as container steps", () => {

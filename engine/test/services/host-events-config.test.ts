@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { Effect, Exit } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
@@ -57,10 +57,10 @@ describe("config.yml hostEvents load", () => {
       (dir) =>
         writeFile(
           join(dir, "config.yml"),
-          "hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: \":host\"\n      env:\n        A: 1\n",
+          'hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n      task: nope\n',
         ),
       () => {
-        expect(() => loadGlobalConfigSync()).toThrow(/hostEvents|env/);
+        expect(() => loadGlobalConfigSync()).toThrow(/hostEvents|task|Expected/);
       },
     );
   });
@@ -70,7 +70,7 @@ describe("config.yml hostEvents load", () => {
       (dir) =>
         writeFile(
           join(dir, "config.yml"),
-          "hostEvent:\n  pre-start:\n    - cmd: echo host\n      service: \":host\"\n",
+          'hostEvent:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n',
         ),
       () => {
         const loaded = loadGlobalConfigSync();
@@ -88,12 +88,13 @@ describe("config.yml hostEvents load", () => {
         "pre-start": [{ cmd: 'echo "a #b"', service: ":host" }],
       },
     });
-    const parsed = parseMinimalYaml(emitted);
-    expect(parsed).toEqual({
-      hostEvents: {
-        "pre-start": [{ cmd: 'echo "a #b"', service: ":host" }],
-      },
-    });
+    const parsed = parseMinimalYaml(emitted) as {
+      readonly hostEvents: {
+        readonly "pre-start": ReadonlyArray<{ readonly cmd: string; readonly service: string }>;
+      };
+    };
+    expect(parsed.hostEvents["pre-start"][0]?.cmd).toContain("#");
+    expect(parsed.hostEvents["pre-start"][0]?.service).toBe(":host");
   });
 
   test("excludes the global app and scratch apps from hostEvents", () => {

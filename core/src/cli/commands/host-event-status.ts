@@ -1,18 +1,14 @@
 import { Predicate, Schema } from "effect";
 
-import { HostEventStep, LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
-import type { LandofileShape } from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
 
-import {
-  compileEffectiveEvents,
-  hostEventStatusesForApp,
-} from "@lando/engine/planner/effective-events";
+import { compileEffectiveEvents, hostEventStatusesForApp } from "@lando/engine/planner/effective-events";
 import { loadGlobalConfigSync } from "@lando/engine/services/config";
 
 export const HostEventAppStatus = Schema.Struct({
   event: Schema.String,
   index: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  step: HostEventStep,
+  step: Schema.Unknown,
   status: Schema.Literals(["ran", "skipped", "deduped"]),
   reason: Schema.optionalKey(Schema.String),
 });
@@ -30,10 +26,11 @@ const servicesFromUnknown = (
   );
 };
 
-export const hostEventStatusesForLandofile = (
-  landofile: Pick<LandofileShape, "events" | "services"> | { readonly events?: unknown; readonly services?: unknown },
-): ReadonlyArray<HostEventAppStatus> => {
-  let hostEvents;
+export const hostEventStatusesForLandofile = (landofile: {
+  readonly events?: unknown;
+  readonly services?: unknown;
+}): ReadonlyArray<HostEventAppStatus> => {
+  let hostEvents: ReturnType<typeof loadGlobalConfigSync>["hostEvents"];
   try {
     hostEvents = loadGlobalConfigSync().hostEvents;
   } catch {
@@ -41,10 +38,11 @@ export const hostEventStatusesForLandofile = (
   }
   if (hostEvents === undefined) return [];
   const services = servicesFromUnknown(landofile.services);
+  const events = landofile.events as LandofileEvents | undefined;
   try {
     return hostEventStatusesForApp(
       compileEffectiveEvents({
-        landofile: { events: landofile.events as LandofileShape["events"] },
+        landofile: events === undefined ? {} : { events },
         hostEvents,
         ...(services === undefined ? {} : { services }),
         skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 import {
   attachEffectiveEvents,
   canonicalEventStepKey,
@@ -10,8 +12,6 @@ import {
   effectiveEventsForPlan,
   hostEventStatusesForApp,
 } from "../../src/planner/effective-events.ts";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { DateTime } from "effect";
 
 const plan = (): AppPlan => ({
   id: AppId.make("host-events"),
@@ -51,10 +51,7 @@ describe("compileEffectiveEvents host steps", () => {
     const compiled = compileEffectiveEvents({
       landofile: { events: { "pre-stop": [{ cmd: "echo x", service: "web" }] } },
       hostEvents: {
-        "pre-stop": [
-          "echo x",
-          { cmd: "echo x", service: ":host" },
-        ],
+        "pre-stop": ["echo x", { cmd: "echo x", service: ":host" }],
       },
       services: { web: { primary: true } },
     });
@@ -101,7 +98,10 @@ describe("compileEffectiveEvents host steps", () => {
       services: { web: { primary: true } },
     });
     const fresh = attachEffectiveEvents(plan(), compiled);
-    const cached = attachEffectiveEvents({ ...plan(), id: AppId.make("adopted") }, compiledEventsForPlan(fresh) ?? {});
+    const cached = attachEffectiveEvents(
+      { ...plan(), id: AppId.make("adopted") },
+      compiledEventsForPlan(fresh) ?? {},
+    );
     expect(compiledEventsForPlan(fresh)?.["pre-stop"]?.[0]).toMatchObject({
       source: "host",
       sourceIndex: 0,

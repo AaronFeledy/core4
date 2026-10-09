@@ -118,7 +118,7 @@ describe("lando app:config", () => {
           "    - cmd: echo missing",
           "      service: db",
           "    - cmd: echo host",
-          "      service: \":host\"",
+          '      service: ":host"',
           "",
         ].join("\n"),
       );

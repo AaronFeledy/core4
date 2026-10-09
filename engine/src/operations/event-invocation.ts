@@ -4,10 +4,10 @@ import {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 import type { AppPlan, LandofileEventName } from "@lando/sdk/schema";
-import { eventStepFile } from "./event-step-identity.ts";
 import { Context, Effect, Option } from "effect";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
+import { eventStepFile } from "./event-step-identity.ts";
 
 export const MAX_EVENT_INVOCATION_DEPTH = 16;
 

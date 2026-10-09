@@ -13,6 +13,7 @@ import {
   AppId,
   type AppLifecycleEventName,
   type AppPlan,
+  type HostEvents,
   PortablePath,
   ProviderId,
 } from "@lando/sdk/schema";
@@ -30,17 +31,14 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
   publishAndRunAppEvent,
   publishAndRunPostAppEvent,
   runAppEvent,
 } from "../../src/operations/events.ts";
-import {
-  attachEffectiveEvents,
-  compileEffectiveEvents,
-} from "../../src/planner/effective-events.ts";
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
+import { attachEffectiveEvents, compileEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import {
   EventCommandExecutor,
@@ -898,7 +896,7 @@ describe("runAppEvent tooling-step kernel", () => {
 });
 
 describe("hostEvents runtime", () => {
-  const hostPlan = (events: Parameters<typeof compileEffectiveEvents>[0]["hostEvents"], extras = {}) =>
+  const hostPlan = (events: HostEvents, extras: { readonly skipHostEvents?: boolean } = {}) =>
     attachEffectiveEvents(
       {
         ...eventPlan(),
@@ -918,7 +916,7 @@ describe("hostEvents runtime", () => {
         landofile: { events: {} },
         hostEvents: events,
         services: { web: { primary: true } },
-        ...extras,
+        ...(extras.skipHostEvents === true ? { skipHostEvents: true } : {}),
       }),
     );
 
@@ -926,7 +924,10 @@ describe("hostEvents runtime", () => {
     const invocations: ToolingInvocation[] = [];
     const inspecting = {
       ...TestRuntimeProvider,
-      inspect: () => Effect.succeed({ app: eventPlan().id, service: "web", providerId: "test", status: "exited" }),
+      inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
+        TestRuntimeProvider.inspect(target).pipe(
+          Effect.map((info) => ({ ...info, status: "exited" as const })),
+        ),
     };
     const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
     const notices = await Effect.runPromise(
@@ -974,7 +975,10 @@ describe("hostEvents runtime", () => {
 
   test("skips hostEvents when LANDO_HOST_EVENT=1 and still warns on post-start failure policy", async () => {
     const invocations: ToolingInvocation[] = [];
-    const plan = hostPlan({ "post-start": [{ cmd: "echo host", service: ":host" }] }, { skipHostEvents: true });
+    const plan = hostPlan(
+      { "post-start": [{ cmd: "echo host", service: ":host" }] },
+      { skipHostEvents: true },
+    );
     const observed = await Effect.runPromise(
       Effect.gen(function* () {
         const events = yield* EventService;
@@ -985,7 +989,9 @@ describe("hostEvents runtime", () => {
         };
       }).pipe(Effect.provide(eventRuntime(invocations))),
     );
-    expect(observed.info.map((item) => item.body)).toContain(`Skipping hostEvents because ${LANDO_HOST_EVENT_ENV}=1.`);
+    expect(observed.info.map((item) => item.body)).toContain(
+      `Skipping hostEvents because ${LANDO_HOST_EVENT_ENV}=1.`,
+    );
     expect(invocations).toEqual([]);
     expect(observed.warnings).toEqual([]);
   });
@@ -994,27 +1000,23 @@ describe("hostEvents runtime", () => {
     const invocations: ToolingInvocation[] = [];
     const seen: Array<string | undefined> = [];
     const plan = hostPlan({ "pre-stop": [{ cmd: "echo host", service: ":host" }] });
+    const shell = {
+      exec: (command: string) =>
+        Effect.sync(() => {
+          seen.push(process.env[LANDO_HOST_EVENT_ENV]);
+          return { exitCode: 0, stdout: command, stderr: "" };
+        }),
+      run: (command: string) => Effect.succeed({ exitCode: 0, stdout: command, stderr: "" }),
+      runScript: (path: string) => Effect.succeed({ exitCode: 0, stdout: path, stderr: "" }),
+      interactive: () => Effect.die("unused"),
+    } satisfies Context.Service.Shape<typeof ShellRunner>;
     await Effect.runPromise(
       runAppEvent(plan, "pre-stop").pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            eventRuntime(invocations),
-            Layer.succeed(
-              ToolingEngine,
-              ToolingEngine.of({
-                id: "test",
-                run: (invocation) =>
-                  Effect.sync(() => {
-                    seen.push(process.env[LANDO_HOST_EVENT_ENV]);
-                    invocations.push(invocation);
-                    return { tool: invocation.tool, service: ":host", exitCode: 0, stdout: "", stderr: "" };
-                  }),
-              }),
-            ),
-          ),
-        ),
+        Effect.provide(eventRuntime(invocations)),
+        Effect.provideService(ShellRunner, shell),
       ),
     );
     expect(seen).toEqual(["1"]);
+    expect(invocations).toEqual([]);
   });
 });

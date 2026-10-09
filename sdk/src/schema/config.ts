@@ -3,9 +3,9 @@ import { Schema } from "effect";
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
+import { HostEvents } from "./host-events.ts";
 import { ScannerConfig } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
-import { HostEvents } from "./host-events.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 

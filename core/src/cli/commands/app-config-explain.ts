@@ -17,7 +17,6 @@ import { parseLandofile } from "@lando/landofile/parser";
 
 import { lookupRecipeSnapshot } from "../../recipes/builtin/snapshots.ts";
 import type { AppConfigExplainResult, ExplainBlockedReason } from "./app-config-explain-output.ts";
-import { hostEventStatusesForLandofile } from "./host-event-status.ts";
 import {
   CANONICAL_LANDOFILE,
   PROGRAMMATIC_LANDOFILE,
@@ -28,6 +27,7 @@ import {
   provenanceWithoutServiceMap,
   renderCurrentValue,
 } from "./app-config-recipe-analysis.ts";
+import { hostEventStatusesForLandofile } from "./host-event-status.ts";
 
 export {
   AppConfigExplainResultSchema,

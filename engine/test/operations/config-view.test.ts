@@ -70,7 +70,7 @@ test("view excludes persisted internal bookkeeping when loading effective config
 test("view includes hostEvents written in config.yml", async () => {
   await writeFile(
     join(root, "config.yml"),
-    "hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: \":host\"\n",
+    'hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n',
   );
   const result = await run({});
   expect(result.config?.hostEvents).toEqual({

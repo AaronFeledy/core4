@@ -1,9 +1,9 @@
 import type { AppPlan, EventStep, HostEvents, LandofileEvents, LandofileShape } from "@lando/sdk/schema";
 import {
   HOST_EVENT_NAMES,
-  LANDO_HOST_EVENT_ENV,
   type HostEventName,
   type HostEventStep,
+  LANDO_HOST_EVENT_ENV,
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
 import { Predicate } from "effect";
@@ -106,10 +106,7 @@ const compileHostStep = (input: {
     return { step, source: "host", sourceIndex: input.sourceIndex, status: "ran" };
   }
   if (service === undefined || !input.serviceNames.has(service)) {
-    const reason =
-      service === undefined
-        ? "no primary service"
-        : `service ${service} is not in the plan`;
+    const reason = service === undefined ? "no primary service" : `service ${service} is not in the plan`;
     return { step, source: "host", sourceIndex: input.sourceIndex, status: "skipped", skipReason: reason };
   }
   return { step, source: "host", sourceIndex: input.sourceIndex, status: "ran" };
@@ -160,7 +157,10 @@ export const compileEffectiveEvents = (input: {
           }),
         )
       : [];
-    compiled[name] = [...hostSteps, ...projectSteps.map((step, sourceIndex) => compileProjectStep(step, sourceIndex))];
+    compiled[name] = [
+      ...hostSteps,
+      ...projectSteps.map((step, sourceIndex) => compileProjectStep(step, sourceIndex)),
+    ];
   }
   return sortedCompiled(compiled);
 };
@@ -189,7 +189,8 @@ export const attachEffectiveEvents = (plan: AppPlan, events: LandofileEvents | C
   return plan;
 };
 
-export const compiledEventsForPlan = (plan: AppPlan): CompiledEvents | undefined => compiledEventsByPlan.get(plan);
+export const compiledEventsForPlan = (plan: AppPlan): CompiledEvents | undefined =>
+  compiledEventsByPlan.get(plan);
 
 export const effectiveEventsForPlan = (plan: AppPlan): LandofileEvents | undefined => {
   const compiled = compiledEventsByPlan.get(plan);

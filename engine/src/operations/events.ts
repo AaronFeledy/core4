@@ -14,9 +14,9 @@ import {
   compiledEventsForPlan,
   effectiveEventsForPlan,
 } from "../planner/effective-events.ts";
-import { takeGlobalConfigTypoWarnings } from "../services/config.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { takeGlobalConfigTypoWarnings } from "../services/config.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
@@ -85,13 +85,17 @@ const eventError = (
 const publishInfo = Effect.fnUntraced(function* (body: string) {
   const events = yield* Effect.serviceOption(EventService);
   if (Option.isNone(events)) return;
-  yield* events.value.publish(MessageInfoEvent.make({ body, timestamp: DateTime.nowUnsafe() }));
+  yield* events.value
+    .publish(MessageInfoEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+    .pipe(Effect.ignore);
 });
 
 const publishWarn = Effect.fnUntraced(function* (body: string) {
   const events = yield* Effect.serviceOption(EventService);
   if (Option.isNone(events)) return;
-  yield* events.value.publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }));
+  yield* events.value
+    .publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+    .pipe(Effect.ignore);
 });
 
 const hostStepService = (step: EventStep, primary: string | undefined): string | undefined => {
@@ -143,7 +147,8 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: 
     }
     const status = yield* inspectHostContainer(plan, service);
     if (status === "missing" || isStoppedStatus(status)) {
-      const reason = status === "missing" ? `service ${service} is not running` : `service ${service} is ${status}`;
+      const reason =
+        status === "missing" ? `service ${service} is not running` : `service ${service} is ${status}`;
       resolved.push({ ...entry, status: "skipped", skipReason: reason });
       continue;
     }
@@ -161,11 +166,11 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   const compiled = yield* resolveCompiledSteps(plan, event);
   for (const entry of compiled) {
     if (entry.status !== "skipped" || entry.source !== "host") continue;
-    yield* publishInfo(`Skipped ${eventStepLabel(event, "host", entry.sourceIndex)}: ${entry.skipReason ?? "skipped"}.`);
+    yield* publishInfo(
+      `Skipped ${eventStepLabel(event, "host", entry.sourceIndex)}: ${entry.skipReason ?? "skipped"}.`,
+    );
   }
-  if (
-    compiled.some((entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`)
-  ) {
+  if (compiled.some((entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`)) {
     yield* publishInfo(`Skipping hostEvents because ${LANDO_HOST_EVENT_ENV}=1.`);
   }
   const runnable = compiled.filter((entry) => entry.status === "ran");

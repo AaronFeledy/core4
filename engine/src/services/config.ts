@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { type Context, Effect, Layer, Result, Schema } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
-import { DateTime, Option } from "effect";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   GlobalConfig,
@@ -13,8 +12,9 @@ import {
   hostEventsSemanticIssues,
   suggestionForUnknownKey,
 } from "@lando/sdk/schema";
-import { ConfigService, EventService } from "@lando/sdk/services";
 import { validationIssuesFromCause } from "@lando/sdk/schema";
+import { ConfigService, EventService } from "@lando/sdk/services";
+import { DateTime, Option } from "effect";
 
 import { resolveLandoRoots } from "@lando/paths";
 import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "@lando/paths/overlay";
@@ -48,10 +48,13 @@ const HostEventsFile = Schema.Struct({ hostEvents: HostEvents });
 
 const validateFileHostEvents = (fileConfig: Record<string, unknown>, path: string): void => {
   if (!Object.hasOwn(fileConfig, "hostEvents")) return;
-  const decoded = Schema.decodeUnknownResult(HostEventsFile)({ hostEvents: fileConfig.hostEvents }, {
-    onExcessProperty: "error",
-    errors: "all",
-  });
+  const decoded = Schema.decodeUnknownResult(HostEventsFile)(
+    { hostEvents: fileConfig.hostEvents },
+    {
+      onExcessProperty: "error",
+      errors: "all",
+    },
+  );
   if (Result.isFailure(decoded)) {
     const issues = validationIssuesFromCause(decoded.failure, { fallback: "Invalid hostEvents." });
     throw configError(path, issues[0]?.message ?? "Invalid hostEvents.", decoded.failure);
@@ -139,7 +142,9 @@ const configService: Context.Service.Shape<typeof ConfigService> = ConfigService
     const events = yield* Effect.serviceOption(EventService);
     if (Option.isSome(events)) {
       for (const body of takeGlobalConfigTypoWarnings()) {
-        yield* events.value.publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }));
+        yield* events.value
+          .publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+          .pipe(Effect.ignore);
       }
     }
     return loaded;

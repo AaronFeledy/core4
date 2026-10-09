@@ -161,14 +161,6 @@ import {
   TracingConfig,
 } from "./config.ts";
 import {
-  HostEventCmdStep,
-  HostEventCommandStep,
-  HostEventName,
-  HostEventStep,
-  HostEvents,
-  LifecycleCommandId,
-} from "./host-events.ts";
-import {
   ArchiveFormat,
   DataEndpoint,
   DataTransferProgress,
@@ -209,6 +201,14 @@ import {
   FileSyncSessionSpec,
   PreparedFileSyncTarget,
 } from "./file-sync-engine.ts";
+import {
+  HostEventCmdStep,
+  HostEventCommandStep,
+  HostEventName,
+  HostEventStep,
+  HostEvents,
+  LifecycleCommandId,
+} from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
