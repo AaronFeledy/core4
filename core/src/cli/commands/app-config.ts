@@ -52,12 +52,7 @@ import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
 import { renderConfigWriteResult } from "./config-write-render";
-import {
-  HostEventAppStatus,
-  hostEventServicesFromLandofile,
-  hostEventStatusesForPlan,
-  renderHostEventStatuses,
-} from "./host-event-status";
+import { HostEventAppStatus, hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
@@ -479,7 +474,7 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
       hostEventStatusesForPlan({
         name: landofile.name ?? "",
         root: appRoot,
-        services: hostEventServicesFromLandofile(landofile),
+        services: landofile.services ?? {},
         ...(landofile.events === undefined ? {} : { events: landofile.events }),
       }),
     catch: (cause) =>

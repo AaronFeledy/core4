@@ -412,7 +412,7 @@ describe("appConfigExplain", () => {
     });
   });
 
-  it("keeps the recipe primary and recipe-added services in hostEvents status", async () => {
+  it("builds hostEvents status from landofile services only", async () => {
     await withApp(landofile(), async (cwd) => {
       const previous = new Map<string, string>();
       for (const [key, value] of Object.entries(process.env)) {
@@ -431,7 +431,13 @@ describe("appConfigExplain", () => {
       try {
         const result = await explain(cwd);
         expect(result.hostEvents).toEqual([
-          { event: "post-start", index: 0, step: "echo primary", status: "active" },
+          {
+            event: "post-start",
+            index: 0,
+            step: "echo primary",
+            status: "skipped",
+            reason: "no primary service",
+          },
           { event: "post-start", index: 1, step: { cmd: "echo db", service: "database" }, status: "active" },
         ]);
       } finally {
