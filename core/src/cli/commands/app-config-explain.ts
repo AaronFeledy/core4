@@ -12,7 +12,6 @@ import type {
   LandofileEvents,
   LandofileRecipeField,
   LandofileRecipeProvenance,
-  LandofileShape,
   RecipeOptionValue,
   RecipeSnapshot,
 } from "@lando/sdk/schema";
@@ -411,7 +410,7 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
 
   const landofileServices =
     document.services !== null && typeof document.services === "object" && !Array.isArray(document.services)
-      ? (document.services as LandofileShape["services"])
+      ? (document.services as Readonly<Record<string, unknown>>)
       : undefined;
   const hostEvents = yield* Effect.try({
     try: () =>

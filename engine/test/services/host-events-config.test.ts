@@ -105,11 +105,12 @@ describe("config.yml hostEvents load", () => {
     await withConfRoot(
       (dir) => writeFile(join(dir, "config.yml"), 'userDataRoot: "C:\\temp\\new"\n'),
       () => {
+        const parsed = parseMinimalYaml('userDataRoot: "C:\\temp\\new"\n');
+        expect(String(parsed.userDataRoot)).toMatch(/\t|\n/);
         const loaded = loadGlobalConfigSync();
         const warnings = typoWarningsForConfig(loaded);
         expect(warnings.some((warning) => warning.includes("userDataRoot"))).toBe(true);
         expect(warnings.some((warning) => warning.includes("control characters"))).toBe(true);
-        expect(String(loaded.userDataRoot)).toMatch(/\t|\n/);
       },
     );
   });

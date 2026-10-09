@@ -2,12 +2,7 @@ import { Predicate, Result, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { isBareRecipeReference, renderRecipeSnapshot } from "@lando/sdk/recipes";
-import {
-  LANDO_HOST_EVENT_ENV,
-  type LandofileEvents,
-  type LandofileRecipeField,
-  type LandofileShape,
-} from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV, type LandofileEvents, type LandofileRecipeField } from "@lando/sdk/schema";
 
 import { isExcludedFromUserAppDefaults } from "@lando/engine/planner/app-defaults";
 import {
@@ -63,7 +58,7 @@ const recipeServicesFromField = (
 };
 
 const authoredServices = (
-  services: LandofileShape["services"] | undefined,
+  services: Readonly<Record<string, unknown>> | undefined,
 ): Readonly<Record<string, { readonly primary?: boolean }>> => {
   if (services === undefined) return {};
   return Object.fromEntries(
@@ -75,9 +70,10 @@ const authoredServices = (
 };
 
 /** Authored services plus recipe-generated names, keeping each recipe primary unless authored set one. */
-export const hostEventServicesFromLandofile = (
-  landofile: Pick<LandofileShape, "recipe" | "services">,
-): Readonly<Record<string, { readonly primary?: boolean }>> => {
+export const hostEventServicesFromLandofile = (landofile: {
+  readonly recipe?: LandofileRecipeField;
+  readonly services?: Readonly<Record<string, unknown>>;
+}): Readonly<Record<string, { readonly primary?: boolean }>> => {
   const recipe = recipeServicesFromField(landofile.recipe);
   const authored = authoredServices(landofile.services);
   const names = new Set([...Object.keys(recipe), ...Object.keys(authored)]);
