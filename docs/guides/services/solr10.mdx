@@ -44,13 +44,13 @@ Solr 10 starts in SolrCloud mode with an embedded ZooKeeper. Create a collection
 lando solr create -c gettingstarted
 ```
 
-On the 2026-10-05 live check that printed `Created collection 'gettingstarted' with 1 shard(s), 1 replica(s) with config-set 'gettingstarted'`. Confirm with the Collections API:
+Confirm with the Collections API:
 
 ```sh
 lando solr-cli 'http://localhost:8983/solr/admin/collections?action=LIST&wt=json'
 ```
 
-That body includes `"collections":["gettingstarted"]`. The `solr-cli` tooling alias is `curl -sf` on `search`, so the URL is reached inside the container on `localhost:8983`.
+Check that `collections` contains `gettingstarted`. The `solr-cli` alias runs `curl -sf` inside `search`, so `localhost:8983` reaches Solr.
 
 ## Index documents and search
 
@@ -61,13 +61,13 @@ lando solr post -c gettingstarted example/exampledocs/books.json
 lando solr-cli 'http://localhost:8983/solr/gettingstarted/select?q=cat:hardcover&wt=json&rows=1'
 ```
 
-On the 2026-10-05 live check, `solr post` indexed one file and committed, and the select response reported `numFound: 1` for `The Lightning Thief`. Confirm the running major when you care:
+Check the query response for indexed books. Confirm the running major:
 
 ```sh
 lando exec search -- solr version
 ```
 
-That prints `Solr version is: 10.0.0` for `image: solr:10`.
+The reported version should be 10.x; `solr:10` follows that major's image updates.
 
 ## Reach Solr from another service
 
@@ -81,7 +81,7 @@ From a PHP or Node service, call that URL for admin and collection endpoints. Do
 
 ## Run Solr 10 in user-managed mode
 
-When you want standalone cores instead of SolrCloud collections, override `command:` so Solr starts with `--user-managed`, and precreate the core before the foreground server:
+For standalone cores instead of SolrCloud collections, set `cores:`. Lando precreates them and selects user-managed mode on Solr 10:
 
 ```yaml
 services:
@@ -89,13 +89,17 @@ services:
     type: solr
     image: solr:10
     home: false
-    command:
-      - bash
-      - -c
-      - precreate-core gettingstarted && exec solr-foreground --user-managed -p 8983
+    cores: [gettingstarted]
 ```
 
-On the 2026-10-05 live check, `/solr/admin/info/system` reported `mode: std`, and `/solr/admin/cores?action=STATUS` listed `gettingstarted` with empty `initFailures`. Skip the Landofile `cores:` list when you pass your own `command:`; your command owns precreate.
+After changing an existing app, rebuild and check the core:
+
+```sh
+lando rebuild -y
+lando solr-cli 'http://localhost:8983/solr/admin/cores?action=STATUS&wt=json'
+```
+
+Check that `status` contains `gettingstarted` and `initFailures` is empty. If you set a custom `command:`, it replaces Lando's startup command and must handle core creation and startup mode itself.
 
 ## Start, inspect, destroy
 
@@ -126,7 +130,4 @@ On the 2026-10-05 live check, `/solr/admin/info/system` reported `mode: std`, an
 ## Next
 
 - [Add Solr](../solr/)
-- [Add Typesense with Compose](../typesense/)
-- [Add Meilisearch](../meilisearch/)
 - [How services find each other](../../subsystems/service-dns/)
-- [Keep a service home across rebuilds and reach your host](../home-and-host/)
