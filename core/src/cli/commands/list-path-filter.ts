@@ -1,6 +1,6 @@
-import { access, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, resolve, win32 } from "node:path";
 
 import { isPathWithin } from "@lando/paths";
 
@@ -13,12 +13,29 @@ const expandHome = (value: string): string => {
   return value;
 };
 
-/** Realpath of an existing filter after home expansion and cwd resolve; otherwise undefined. */
-export const resolveExistingAppsListPath = async (filter: string): Promise<string | undefined> => {
-  const resolved = resolve(expandHome(filter));
+/** Absolute, `~`, `.` / `..`, `./` / `../`, or any value with a path separator. */
+export const isPathLikeFilter = (filter: string): boolean => {
+  if (filter === "." || filter === "..") return true;
+  if (filter.startsWith("~")) return true;
+  if (
+    filter.startsWith("./") ||
+    filter.startsWith("../") ||
+    filter.startsWith(".\\") ||
+    filter.startsWith("..\\")
+  ) {
+    return true;
+  }
+  if (isAbsolute(filter) || win32.isAbsolute(filter)) return true;
+  return filter.includes("/") || filter.includes("\\");
+};
+
+/** Realpath of an existing path-like filter after home expansion and cwd resolve. */
+export const resolveExistingAppsListPath = async (
+  filter: string,
+  cwd: string = process.cwd(),
+): Promise<string | undefined> => {
   try {
-    await access(resolved);
-    return await realpath(resolved);
+    return await realpath(resolve(cwd, expandHome(filter)));
   } catch {
     return undefined;
   }
@@ -29,8 +46,9 @@ export const appRootMatchesPathFilter = (
   filter: string,
   resolvedFilter: string | undefined,
 ): boolean => {
-  if (resolvedFilter !== undefined && (appRoot === resolvedFilter || isPathWithin(resolvedFilter, appRoot))) {
-    return true;
+  if (isPathLikeFilter(filter) && resolvedFilter !== undefined) {
+    if (appRoot === "") return false;
+    return isPathWithin(resolvedFilter, appRoot);
   }
   return appRoot.includes(filter);
 };

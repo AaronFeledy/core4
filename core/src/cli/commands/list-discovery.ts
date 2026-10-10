@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir, realpath } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
 import { APP_LABEL, PROVIDER_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
@@ -404,7 +404,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
       ]);
       const volumes = Predicate.isObject(volumesBody) ? volumesBody.Volumes : undefined;
       const apps = appsFromContainerList(containers, {
-        globalAppRoot: paths.globalAppRoot,
+        globalAppRoot: await realpath(paths.globalAppRoot).catch(() => paths.globalAppRoot),
         ...(options.includeScratch === true ? { includeScratch: true } : {}),
       });
       const containerEvidence = labeledResourceEvidence(containers, options.includeScratch === true);
