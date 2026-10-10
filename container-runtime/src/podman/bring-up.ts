@@ -1,4 +1,4 @@
-import { type Context, DateTime, Duration, Effect, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
 import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
 
 import {
@@ -888,15 +888,26 @@ const capRedactedLogLines = (
   const redacted = lines.map((line) => redactString(line));
   const kept: string[] = [];
   let used = 0;
-  for (const line of redacted) {
-    const extra = kept.length === 0 ? line.length : line.length + 1;
-    if (used + extra > SERVICE_START_LOG_TAIL_MAX_CHARS) {
-      return { lines: kept, truncated: true };
+  let truncated = false;
+  for (let index = redacted.length - 1; index >= 0; index -= 1) {
+    const line = redacted[index];
+    if (line === undefined) continue;
+    const separator = kept.length === 0 ? 0 : 1;
+    const remaining = SERVICE_START_LOG_TAIL_MAX_CHARS - used - separator;
+    if (remaining <= 0) {
+      truncated = true;
+      break;
     }
-    kept.push(line);
-    used += extra;
+    if (line.length <= remaining) {
+      kept.unshift(line);
+      used += line.length + separator;
+      continue;
+    }
+    kept.unshift(line.slice(line.length - remaining));
+    truncated = true;
+    break;
   }
-  return { lines: kept, truncated: false };
+  return { lines: kept, truncated };
 };
 
 const captureServiceLogTail = Effect.fnUntraced(function* (
@@ -914,7 +925,9 @@ const captureServiceLogTail = Effect.fnUntraced(function* (
     ),
   ).pipe(
     Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
-    Effect.orElseSucceed(() => undefined),
+    Effect.catchCause((cause) =>
+      Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(undefined),
+    ),
   );
   if (collected === undefined) return undefined;
   const raw = [...collected].map((chunk) => chunk.line);
@@ -947,25 +960,29 @@ const withServiceStartLogTail = (
         logTail,
       });
 
-const rollbackAfterStartFailure = Effect.fnUntraced(function* (
+const rollbackAfterStartFailure = (
   deps: BringUpDeps,
   plan: AppPlan,
   touched: ReadonlyArray<TouchedContainer>,
   createdNetworks: ReadonlySet<string>,
   error: BringUpError,
-): Effect.fn.Return<never, BringUpError> {
-  if (deps.options.signal?.aborted === true) {
-    return yield* Effect.interrupt;
-  }
-  if (error instanceof ServiceStartError) {
-    const named = plan.services[ServiceName.make(error.service)];
-    const logTail = named === undefined ? undefined : yield* captureServiceLogTail(deps, plan, named);
-    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
-    return yield* Effect.fail(withServiceStartLogTail(error, logTail));
-  }
-  yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
-  return yield* Effect.fail(error);
-});
+): Effect.Effect<never, BringUpError> => {
+  const aborted = deps.options.signal?.aborted === true;
+  const named =
+    !aborted && error instanceof ServiceStartError
+      ? plan.services[ServiceName.make(error.service)]
+      : undefined;
+  const capture =
+    named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
+  return capture.pipe(
+    Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
+    Effect.flatMap((logTail) =>
+      deps.options.signal?.aborted === true
+        ? Effect.interrupt
+        : Effect.fail(error instanceof ServiceStartError ? withServiceStartLogTail(error, logTail) : error),
+    ),
+  );
+};
 
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   plan: AppPlan,
@@ -1058,37 +1075,39 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   }
   const [blocked] = result.blocked;
   if (blocked !== undefined) {
-    if (options.signal?.aborted === true) {
-      yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
-      return yield* Effect.interrupt;
-    }
+    const aborted = options.signal?.aborted === true;
     const service = plan.services[ServiceName.make(blocked.service)];
     const dependency = plan.services[ServiceName.make(blocked.dependency)];
-    const logTail =
-      dependency === undefined
-        ? undefined
-        : yield* captureServiceLogTail(deps, plan, dependency, {
+    const capture =
+      aborted || dependency === undefined
+        ? Effect.succeed(undefined)
+        : captureServiceLogTail(deps, plan, dependency, {
             ...(blocked.lastExitCode === undefined ? {} : { exitCode: blocked.lastExitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
-    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
-    if (service === undefined) {
-      return yield* Effect.fail(
-        new ProviderInternalError({
-          providerId: options.ctx.providerId,
-          operation: "bringUp.schedule",
-          message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
-          remediation: APPLY_REMEDIATION,
-          details: redactDetails(blocked),
-        }),
-      );
-    }
-    return yield* Effect.fail(
-      podmanFailure(deps, {
-        service,
-        operation: "bringUp.schedule",
-        message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-        ...(logTail === undefined ? {} : { logTail }),
+    return yield* capture.pipe(
+      Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
+      Effect.flatMap((logTail) => {
+        if (options.signal?.aborted === true) return Effect.interrupt;
+        if (service === undefined) {
+          return Effect.fail(
+            new ProviderInternalError({
+              providerId: options.ctx.providerId,
+              operation: "bringUp.schedule",
+              message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
+              remediation: APPLY_REMEDIATION,
+              details: redactDetails(blocked),
+            }),
+          );
+        }
+        return Effect.fail(
+          podmanFailure(deps, {
+            service,
+            operation: "bringUp.schedule",
+            message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+            ...(logTail === undefined ? {} : { logTail }),
+          }),
+        );
       }),
     );
   }
