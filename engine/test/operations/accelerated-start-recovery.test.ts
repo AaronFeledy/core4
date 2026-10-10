@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { ProviderId } from "@lando/sdk/schema";
+import { rm, symlink } from "node:fs/promises";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
@@ -205,4 +206,25 @@ test("adoption replaces the durable attempt before target mutation", async () =>
   expect(adopted.attemptId).not.toBe(before.pending?.attemptId);
   expect(adopted.retained ?? null).toEqual(before.pending);
   expect(harness.calls).toEqual([]);
+});
+
+test("recovers when a retained session still uses a realpath-equivalent legacy root", async () => {
+  const harness = await Effect.runPromise(recoveryHarness());
+  const previous = harness.sessions[0];
+  if (previous === undefined) throw new Error("Expected a retained file-sync session");
+  const legacyRoot = AbsolutePath.make(`${app.root}-short`);
+  await symlink(app.root, legacyRoot);
+  const legacySpec = {
+    ...previous.spec,
+    app: { ...previous.spec.app, root: legacyRoot },
+    source: legacyRoot,
+  };
+  harness.sessions.splice(0, 1, { ...previous, app: legacySpec.app, spec: legacySpec });
+  try {
+    const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
+    expect(Exit.isSuccess(result)).toBe(true);
+    expect(harness.calls[0]).toBe("terminate:old");
+  } finally {
+    await rm(legacyRoot, { force: true });
+  }
 });

@@ -2,6 +2,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { type Context, DateTime, Effect, Schema, Stream } from "effect";
 
+import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { FileSyncSessionSpec, type FileSyncSessionStatus } from "@lando/sdk/schema";
@@ -19,6 +20,19 @@ const REMEDIATION =
   "Stop the app and retry; if the session changed outside Lando, inspect Mutagen's isolated session data before removing it.";
 
 type Runner = Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
+
+const sameAppRef = (left: FileSyncSessionSpec["app"], right: FileSyncSessionSpec["app"]): boolean =>
+  left.kind === right.kind && left.id === right.id && sameRealpath(left.root, right.root);
+
+const sameOwnedSessionSpec = (owned: FileSyncSessionSpec, planned: FileSyncSessionSpec): boolean => {
+  const { app: ownedApp, source: ownedSource, ...ownedRest } = owned;
+  const { app: plannedApp, source: plannedSource, ...plannedRest } = planned;
+  return (
+    sameAppRef(ownedApp, plannedApp) &&
+    sameRealpath(ownedSource, plannedSource) &&
+    isDeepStrictEqual(ownedRest, plannedRest)
+  );
+};
 
 interface Endpoint {
   readonly protocol: string;
@@ -96,7 +110,7 @@ export const hasDurableMutagenOwnership = (
       openLedger(stateStore).pipe(
         Effect.flatMap(readKnownLedger),
         Effect.map((ledger) =>
-          ledger.sessions.some((entry) => app === undefined || isDeepStrictEqual(entry.spec.app, app)),
+          ledger.sessions.some((entry) => app === undefined || sameAppRef(entry.spec.app, app)),
         ),
       ),
     )
@@ -516,7 +530,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
     );
 
   const sameApp = (left: FileSyncSessionSpec["app"], right: FileSyncSessionSpec["app"]) =>
-    isDeepStrictEqual(left, right);
+    sameAppRef(left, right);
 
   const appReceipts = (current: SessionLedger, app: FileSyncSessionSpec["app"]) =>
     current.sessions.filter((entry) => sameApp(entry.spec.app, app));
@@ -877,7 +891,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         }
         if (previous[0] !== undefined) {
           const owned = yield* receiptOwned(previous[0]);
-          if (!isDeepStrictEqual(owned.spec, spec) || !isDeepStrictEqual(owned.target, target)) {
+          if (!sameOwnedSessionSpec(owned.spec, spec) || !isDeepStrictEqual(owned.target, target)) {
             return yield* Effect.fail(
               startError(`Mutagen session "${name}" differs from its ownership receipt.`, spec),
             );
