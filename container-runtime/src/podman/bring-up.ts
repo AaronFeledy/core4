@@ -311,12 +311,6 @@ const createContainerRequest = (
       });
     }
   }
-  const baseExtraHosts = baseHostConfig.ExtraHosts;
-  const knobExtraHosts = knobs.hostConfig.ExtraHosts;
-  const mergedExtraHosts =
-    Array.isArray(baseExtraHosts) && Array.isArray(knobExtraHosts)
-      ? { ExtraHosts: [...baseExtraHosts, ...knobExtraHosts] }
-      : {};
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
@@ -324,7 +318,6 @@ const createContainerRequest = (
       hostConfig: {
         ...baseHostConfig,
         ...knobs.hostConfig,
-        ...mergedExtraHosts,
       },
       networkingConfig: {
         EndpointsConfig:

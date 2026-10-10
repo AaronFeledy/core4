@@ -130,22 +130,6 @@ export const nonNegativeInteger = (
     : fail(`Compose runtime knob \`${knob}\` requires a non-negative integer.`, { knob, value });
 };
 
-// One "host:address" entry per address — a hostname mapped to several addresses
-// fans out instead of collapsing into a single comma-joined entry.
-export const extraHostEntries = (
-  hosts: Readonly<Record<string, string | ReadonlyArray<string>>> | undefined,
-): ReadonlyArray<string> | undefined => {
-  if (hosts === undefined) return undefined;
-
-  const entries: string[] = [];
-  for (const [host, addresses] of Object.entries(hosts)) {
-    for (const address of typeof addresses === "string" ? [addresses] : addresses) {
-      entries.push(`${host}:${address}`);
-    }
-  }
-  return entries;
-};
-
 // Podman refuses these drivers over a remote connection, which is the only way
 // the bundled providers ever talk to it. Every other driver name is an operand
 // Podman validates itself, so this is a rejection list, not an allowlist.
