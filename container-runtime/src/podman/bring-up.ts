@@ -1058,6 +1058,10 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   }
   const [blocked] = result.blocked;
   if (blocked !== undefined) {
+    if (options.signal?.aborted === true) {
+      yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
+      return yield* Effect.interrupt;
+    }
     const service = plan.services[ServiceName.make(blocked.service)];
     const dependency = plan.services[ServiceName.make(blocked.dependency)];
     const logTail =
