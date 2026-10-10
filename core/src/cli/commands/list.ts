@@ -17,6 +17,7 @@ import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -28,6 +29,7 @@ import {
   mergeAppsListEntries,
   readAppliedPlansFromUserData,
 } from "./list-discovery";
+import { appRootMatchesPathFilter, isPathLikeFilter, resolveExistingAppsListPath } from "./list-path-filter";
 import { pruneAppliedPlanState } from "./list-prune-state";
 
 export type { AppsListEntry } from "./list-discovery";
@@ -227,9 +229,17 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
 
   const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
   const pathFilter = options.path;
+  const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
+  const cwd = runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd();
+  const resolvedPathFilter =
+    pathFilter !== undefined && isPathLikeFilter(pathFilter)
+      ? yield* Effect.promise(() => resolveExistingAppsListPath(pathFilter, cwd))
+      : undefined;
   const statusFilter = options.status;
   const filtered = listed.filter((app) => {
-    if (pathFilter !== undefined && !app.appRoot.includes(pathFilter)) return false;
+    if (pathFilter !== undefined && !appRootMatchesPathFilter(app.appRoot, pathFilter, resolvedPathFilter)) {
+      return false;
+    }
     if (statusFilter !== undefined && !statusFilter.includes(app.status)) return false;
     return true;
   });

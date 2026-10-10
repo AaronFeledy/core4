@@ -109,9 +109,15 @@ from runtime discovery, not the saved plan:
 Use `lando list --format=json` for the same `status` on each entry in `result.apps`.
 `--status` keeps only matching rows after that one discovery pass. Repeat it to
 keep more than one value: `lando list --status=active --status=stopped`.
-The same filter applies to the table, JSON, and MCP results. `running` is not a
-status; the command rejects it. A `--status` or `--path` filter that matches
-nothing prints `No Lando apps match the filters.`
+`--path` uses that same pass. A path-like value (absolute, `~`, `./`, `../`,
+or one with a separator) that exists after home expansion and resolve matches
+the stored root and any app under that directory. Relative paths, `~/...`,
+and symlinks work. Type `./drupal` for the folder in your cwd; a bare word
+like `drupal` stays a substring even if that folder exists. A path-like
+value that does not exist still matches as a substring of the stored root.
+The same `--status` and `--path` filters apply to the table, JSON, and MCP
+results. `running` is not a status; the command rejects it. A `--status` or
+`--path` filter that matches nothing prints `No Lando apps match the filters.`
 
 The service list includes saved service names; it is not a list of running services.
 The table adds `(stale)` when the recorded root no longer exists; JSON reports
@@ -155,7 +161,7 @@ lando_cd() {
 ```
 
 Use a name without quotes or backslashes, which have special meaning in jq.
-For duplicate names, use `lando list --path` to find the right root.
+For duplicate names, pass the folder you already know to `lando list --path`.
 Container-only discoveries may have no saved root.
 
 <Guide>
