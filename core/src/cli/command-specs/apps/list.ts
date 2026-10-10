@@ -66,7 +66,7 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
     format: Flags.string({ description: "Output format.", default: "table" }),
     path: Flags.string({
       description:
-        "Filter apps whose stored root matches the resolved path, sits under it, or contains the substring.",
+        "Path-like values (absolute, ~, ./, ../, or with a separator) that exist match the stored root and apps under it. A bare word, or a path that does not exist, matches as a substring.",
     }),
     status: Flags.string({
       description: "Filter apps by runtime status (repeatable).",

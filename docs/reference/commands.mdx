@@ -571,7 +571,7 @@ Flags:
 | --- | --- |
 | `--all` | Include scratch apps along with every discovered user app. |
 | `--include-scratch` | Include running scratch apps in the inventory. |
-| `--path` | Filter apps whose stored root matches the resolved path, sits under it, or contains the substring. |
+| `--path` | Path-like values (absolute, ~, ./, ../, or with a separator) that exist match the stored root and apps under it. A bare word, or a path that does not exist, matches as a substring. |
 | `--prune` | Remove stale inventory only after provider absence is confirmed. |
 | `--status` | Filter apps by runtime status (repeatable). (one of `active`, `stopped`, `unknown`) |
 
