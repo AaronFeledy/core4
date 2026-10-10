@@ -13,7 +13,7 @@ const normalizeLexical = (value: string, pathApi: path.PlatformPath, win32: bool
 
 const realpathOrUndefined = (value: string): string | undefined => {
   try {
-    return realpathSync(value);
+    return realpathSync.native(value);
   } catch {
     return undefined;
   }
@@ -21,8 +21,11 @@ const realpathOrUndefined = (value: string): string | undefined => {
 
 /**
  * True when two filesystem spellings name the same path. Lexical aliases
- * (separators, `.`, `..`) match without IO. Windows 8.3 names, junctions,
- * and drive-letter case match when `realpath` can resolve both sides.
+ * (separators, `.`, `..`) match without IO: `path.normalize` collapses `..`
+ * before any realpath call, so `foo/../bar` equals `bar` even when `foo` is
+ * a symlink that would change the resolved parent. Windows 8.3 names,
+ * junctions, and drive-letter case match when native `realpath` can resolve
+ * both sides (`realpathSync.native`, the same resolution identity uses).
  * Comparison is case-insensitive on win32 paths.
  */
 export const sameRealpath = (left: string, right: string): boolean => {

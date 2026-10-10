@@ -9,6 +9,10 @@ test("treats identical strings as the same path", () => {
   expect(sameRealpath("/srv/apps/myapp", "/srv/apps/myapp")).toBe(true);
 });
 
+test("treats lexically normalized parent segments as the same path without realpath", () => {
+  expect(sameRealpath("/srv/apps/foo/../myapp", "/srv/apps/myapp")).toBe(true);
+});
+
 test("treats win32 drive-letter case as the same path", () => {
   expect(
     sameRealpath(
