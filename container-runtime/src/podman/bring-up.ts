@@ -926,7 +926,7 @@ const captureServiceLogTail = Effect.fnUntraced(function* (
   ).pipe(
     Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
     Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(undefined),
+      Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
     ),
   );
   if (collected === undefined) return undefined;
@@ -972,8 +972,7 @@ const rollbackAfterStartFailure = (
     !aborted && error instanceof ServiceStartError
       ? plan.services[ServiceName.make(error.service)]
       : undefined;
-  const capture =
-    named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
+  const capture = named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
   return capture.pipe(
     Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
     Effect.flatMap((logTail) =>
@@ -1087,7 +1086,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           });
     return yield* capture.pipe(
       Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
-      Effect.flatMap((logTail) => {
+      Effect.flatMap((logTail): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {
           return Effect.fail(

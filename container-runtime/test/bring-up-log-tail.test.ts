@@ -307,7 +307,10 @@ describe("bringUp start-failure log tail", () => {
   test("keeps the end of a capped tail, including a huge last line", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");
-    const bodies = Array.from({ length: 50 }, (_, index) => `line-${String(index).padStart(2, "0")} ${"x".repeat(152)}`);
+    const bodies = Array.from(
+      { length: 50 },
+      (_, index) => `line-${String(index).padStart(2, "0")} ${"x".repeat(152)}`,
+    );
     const { api } = makeApi({
       failedStarts: [web],
       logsFor: { [web]: bodies.map((body) => rawConsole(body)) },
@@ -337,7 +340,7 @@ describe("bringUp start-failure log tail", () => {
   test("keeps the end of a single line over the cap", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");
-    const line = `z`.repeat(5000);
+    const line = "z".repeat(5000);
     const { api } = makeApi({
       failedStarts: [web],
       logsFor: { [web]: [rawConsole(line)] },

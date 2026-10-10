@@ -199,7 +199,10 @@ describe("buildBugReport: envelope extraction", () => {
     expect(env.extra).toEqual(
       expect.arrayContaining([
         ["service", "web"],
-        ["logTail (db, exit 1, truncated)", "database not accepting connections\nDATABASE_PASSWORD=[redacted]"],
+        [
+          "logTail (db, exit 1, truncated)",
+          "database not accepting connections\nDATABASE_PASSWORD=[redacted]",
+        ],
       ]),
     );
     expect(env.extra.map(([key]) => key)).not.toContain("health");
