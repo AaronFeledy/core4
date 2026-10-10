@@ -174,6 +174,7 @@ const resolveCmd = Effect.fnUntraced(function* (leaf: ToolingCmdStepLeaf, contex
   return {
     kind: "cmd" as const,
     authoredIndex: leaf.authoredIndex,
+    ...(leaf.source === undefined ? {} : { source: leaf.source }),
     command,
     silent: leaf.silent,
     ignoreError: leaf.ignoreError,
@@ -192,6 +193,7 @@ const resolveTask = Effect.fnUntraced(function* (leaf: ToolingTaskStepLeaf, cont
     leaf: {
       kind: "task" as const,
       authoredIndex: leaf.authoredIndex,
+      ...(leaf.source === undefined ? {} : { source: leaf.source }),
       task,
       vars,
       silent: leaf.silent,
@@ -212,6 +214,7 @@ const resolveCommand = Effect.fnUntraced(function* (
   return {
     kind: "command" as const,
     authoredIndex: leaf.authoredIndex,
+    ...(leaf.source === undefined ? {} : { source: leaf.source }),
     command,
     flags,
     args,

@@ -1,16 +1,21 @@
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { ConfigError, LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import {
   isBareRecipeReference,
   renderRecipeSnapshot,
   validateLandofileRecipeProvenance,
 } from "@lando/sdk/recipes";
-import type { LandofileRecipeProvenance, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
+import type {
+  LandofileEvents,
+  LandofileRecipeProvenance,
+  RecipeOptionValue,
+  RecipeSnapshot,
+} from "@lando/sdk/schema";
 import { sameRecipeVersion } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { parseLandofile } from "@lando/landofile/parser";
@@ -27,6 +32,7 @@ import {
   provenanceWithoutServiceMap,
   renderCurrentValue,
 } from "./app-config-recipe-analysis.ts";
+import { hostEventStatusesForPlan } from "./host-event-status.ts";
 
 export {
   AppConfigExplainResultSchema,
@@ -44,7 +50,7 @@ export interface AppConfigExplainOptions {
   readonly cwd?: string;
 }
 
-export type AppConfigExplainError = LandofileNotFoundError | LandofileParseError;
+export type AppConfigExplainError = LandofileNotFoundError | LandofileParseError | ConfigError;
 
 type ExplainComparison = AppConfigExplainResult["comparison"];
 type ExplainReference = AppConfigExplainResult["options"][number]["references"][number];
@@ -401,6 +407,34 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
   };
   const truncated = Object.values(omitted).some((count) => count > 0);
 
+  const landofileServices = Object.fromEntries(
+    Object.entries(
+      document.services !== null && typeof document.services === "object" && !Array.isArray(document.services)
+        ? (document.services as Readonly<Record<string, unknown>>)
+        : {},
+    ).map(([name, value]) => {
+      const primary =
+        Predicate.isObject(value) && value.primary === true
+          ? true
+          : Predicate.isObject(value) && value.primary === false
+            ? false
+            : undefined;
+      return [name, primary === undefined ? {} : { primary }];
+    }),
+  );
+  const hostEvents = yield* Effect.try({
+    try: () =>
+      hostEventStatusesForPlan({
+        name: typeof document.name === "string" ? document.name : "",
+        root: appRoot,
+        services: landofileServices,
+        ...(document.events === undefined ? {} : { events: document.events as LandofileEvents }),
+      }),
+    catch: (cause) =>
+      cause instanceof ConfigError
+        ? cause
+        : new ConfigError({ message: "Failed to load hostEvents status.", cause }),
+  });
   return {
     landofilePath,
     form: read.form,
@@ -409,5 +443,6 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
     bounds: truncated ? { _tag: "truncated", omitted } : { _tag: "complete" },
     services: services.slice(0, EXPLAIN_MAX_SERVICES),
     options: reported.slice(0, EXPLAIN_MAX_OPTIONS),
+    ...(hostEvents.length === 0 ? {} : { hostEvents }),
   } satisfies AppConfigExplainResult;
 });

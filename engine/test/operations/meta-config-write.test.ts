@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { type EditorRunner, config } from "../../src/operations/config.ts";
 
 let dir = "";
@@ -28,6 +29,13 @@ const run = <A, E>(effect: Effect.Effect<A, E, ConfigService>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provideService(ConfigService, configService)));
 const exit = <A, E>(effect: Effect.Effect<A, E, ConfigService>) =>
   Effect.runPromiseExit(effect.pipe(Effect.provideService(ConfigService, configService)));
+
+const writeErrorIssues = (result: Exit.Exit<unknown, unknown>): string => {
+  if (!Exit.isFailure(result)) return "";
+  const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+  if (error instanceof LandofileWriteValidationError) return JSON.stringify(error.issues);
+  return result.cause.toString();
+};
 
 describe("meta config set (S4)", () => {
   test("writes a scalar to config.yml", async () => {
@@ -221,6 +229,91 @@ describe("meta config edit via injected editor seam", () => {
       }),
     );
     expect(Exit.isFailure(result)).toBe(true);
+    expect(await readConfig()).toBe(before);
+  });
+});
+
+describe("meta config hostEvents hand-edit", () => {
+  test("rejects set of hostEvents and any nested path", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    for (const key of ["hostEvents", "hostEvents.pre-start", "hostEvents.pre-start[0]"]) {
+      const result = await exit(
+        config({
+          subcommand: "set",
+          key,
+          value: "echo host",
+          configPath: configPath(),
+        }),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      if (Exit.isFailure(result)) {
+        const text = result.cause.toString();
+        expect(text).toContain("LandofileWriteValidationError");
+        expect(text).toContain("config edit");
+      }
+    }
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("validate rejects a container step in pre-start", async () => {
+    await seed("hostEvents:\n  pre-start:\n    - echo container\n");
+    const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
+  });
+
+  test("validate rejects command: start", async () => {
+    await seed("hostEvents:\n  post-start:\n    - command: start\n");
+    const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(writeErrorIssues(result)).toContain("app:start");
+  });
+
+  test("edit rejects a container step in pre-start and leaves the file untouched", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    const result = await exit(
+      config({
+        subcommand: "edit",
+        configPath: configPath(),
+        editorRunner: async () => ({
+          kind: "edited",
+          content: "hostEvents:\n  pre-start:\n    - echo container\n",
+        }),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("edit rejects command: start and leaves the file untouched", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    const result = await exit(
+      config({
+        subcommand: "edit",
+        configPath: configPath(),
+        editorRunner: async () => ({
+          kind: "edited",
+          content: "hostEvents:\n  post-start:\n    - command: start\n",
+        }),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(writeErrorIssues(result)).toContain("app:start");
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("rejects unset of hostEvents", async () => {
+    await seed('hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n');
+    const before = await readConfig();
+    const result = await exit(
+      config({ subcommand: "unset", key: "hostEvents.pre-start", configPath: configPath() }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("config edit");
     expect(await readConfig()).toBe(before);
   });
 });

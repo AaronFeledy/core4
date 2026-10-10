@@ -1,14 +1,19 @@
 import { DateTime, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
-import { MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
+import { MessageInfoEvent, MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
-import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
+import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
+import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { effectiveEventsForPlan } from "../planner/effective-events.ts";
+import {
+  type CompiledEventStep,
+  compiledEventsForPlan,
+  effectiveEventsForPlan,
+} from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
@@ -17,6 +22,7 @@ import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-
 import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
+import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
 import { makeEventStepRunners } from "./event-step-runtime.ts";
 
 interface EventRedactor {
@@ -53,6 +59,8 @@ const eventError = (
   event: LandofileEventName,
   step: EventStep,
   redactor: EventRedactor,
+  source?: "host" | "project",
+  sourceIndex = 0,
 ): EventRuntimeError => {
   if (isEventRuntimeError(error)) {
     return error;
@@ -60,29 +68,126 @@ const eventError = (
   const identity =
     error instanceof EventStepCompileError
       ? { index: error.authoredIndex, kind: error.kind }
-      : { index: 0, kind: authoredStepKind(step) };
+      : { index: sourceIndex, kind: authoredStepKind(step) };
   const failure = error instanceof EventStepCompileError ? error.cause : error;
+  const label = eventStepLabel(event, source, identity.index);
   return new LandofileEventStepFailedError({
-    message: `Event ${event} step ${identity.index + 1} failed.`,
+    message: `Event ${label} failed.`,
     event,
     index: identity.index,
     kind: identity.kind,
     exitCode: 1,
     outputTail: redactor.redactString(failure instanceof Error ? failure.message : String(failure)),
-    remediation: `Fix ${event} step ${identity.index + 1}, then rerun the lifecycle command.`,
+    remediation: `Fix ${label}, then rerun the lifecycle command.`,
   });
 };
+
+const publishInfo = Effect.fnUntraced(function* (body: string) {
+  const events = yield* Effect.serviceOption(EventService);
+  if (Option.isNone(events)) return;
+  yield* events.value
+    .publish(MessageInfoEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+    .pipe(Effect.ignore);
+});
+
+const hostStepService = (step: EventStep, primary: string | undefined): string | undefined => {
+  if (typeof step === "string") return primary;
+  if ("command" in step && step.command !== undefined) return undefined;
+  if ("service" in step && step.service !== undefined) return step.service;
+  return primary;
+};
+
+const STOPPED_CONTAINER_STATUSES = new Set(["exited", "stopped", "created", "dead", "paused"]);
+
+const isStoppedStatus = (status: string | undefined): boolean =>
+  status !== undefined && STOPPED_CONTAINER_STATUSES.has(status.toLowerCase());
+
+const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service: string) {
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  if (Option.isNone(registry)) return undefined;
+  const provider = yield* registry.value.select(plan);
+  return yield* provider.inspect({ app: plan.id, service: ServiceName.make(service), plan }).pipe(
+    Effect.map((info) => info.status ?? info.state),
+    Effect.catch((error) =>
+      typeof error === "object" && error !== null && "_tag" in error && error._tag === "ServiceNotFoundError"
+        ? Effect.succeed("missing" as const)
+        : Effect.fail(error),
+    ),
+  );
+});
+
+const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: LandofileEventName) {
+  const compiled = [...(compiledEventsForPlan(plan)?.[event] ?? [])];
+  const fallback = effectiveEventsForPlan(plan)?.[event] ?? [];
+  if (compiled.length === 0 && fallback.length > 0) {
+    return fallback.map(
+      (step, sourceIndex): CompiledEventStep => ({
+        step,
+        source: "project",
+        sourceIndex,
+        status: "active",
+      }),
+    );
+  }
+  const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
+  const resolved: CompiledEventStep[] = [];
+  for (const entry of compiled) {
+    if (entry.status !== "active" || entry.source !== "host") {
+      resolved.push(entry);
+      continue;
+    }
+    const service = hostStepService(entry.step, primary);
+    if (service === undefined || service === ":host") {
+      resolved.push(entry);
+      continue;
+    }
+    const status = yield* inspectHostContainer(plan, service).pipe(
+      Effect.mapError((error) =>
+        eventError(
+          error,
+          event,
+          entry.step,
+          { redactString: (value) => value },
+          entry.source,
+          entry.sourceIndex,
+        ),
+      ),
+    );
+    if (status === "missing" || isStoppedStatus(status)) {
+      const reason =
+        status === "missing" ? `service ${service} is not running` : `service ${service} is ${status}`;
+      resolved.push({ ...entry, status: "skipped", skipReason: reason });
+      continue;
+    }
+    resolved.push(entry);
+  }
+  return resolved;
+});
 
 export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   plan: AppPlan,
   event: LandofileEventName,
   payload?: ExpressionContext["event"],
 ): Effect.fn.Return<void, EventRuntimeError> {
-  const steps = effectiveEventsForPlan(plan)?.[event] ?? [];
-  const first = steps[0];
+  const compiled = yield* resolveCompiledSteps(plan, event);
+  const skippedByHostGuard = compiled.some(
+    (entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`,
+  );
+  if (skippedByHostGuard) {
+    yield* publishInfo(`Skipping hostEvents because ${LANDO_HOST_EVENT_ENV}=1.`);
+  } else {
+    for (const entry of compiled) {
+      if (entry.status !== "skipped" || entry.source !== "host") continue;
+      yield* publishInfo(
+        `Skipped ${eventStepLabel(event, "host", entry.sourceIndex)}: ${entry.skipReason ?? "skipped"}.`,
+      );
+    }
+  }
+  const runnable = compiled.filter((entry) => entry.status === "active");
+  const first = runnable[0];
   if (first === undefined) return;
   return yield* withinEventInvocation(
-    { app: plan.id, event, file: plan.metadata.source },
+    { app: plan.id, event, file: eventStepFile(first.source, plan.metadata.source) },
     Effect.gen(function* () {
       const eventsOption = yield* Effect.serviceOption(EventService);
       const redactionOption = yield* Effect.serviceOption(RedactionService);
@@ -91,10 +196,10 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       if (Option.isNone(eventsOption) || Option.isNone(redactionOption) || Option.isNone(privateFileAccess)) {
         return yield* Effect.fail(
           new LandofileEventStepFailedError({
-            message: `Event ${event} requires the app event runtime.`,
+            message: `Event ${eventStepLabel(event, first.source, first.sourceIndex)} requires the app event runtime.`,
             event,
-            index: 0,
-            kind: authoredStepKind(first),
+            index: first.sourceIndex,
+            kind: authoredStepKind(first.step),
             exitCode: 1,
             outputTail: "",
             remediation: "Run the lifecycle command with the app bootstrap layer.",
@@ -107,7 +212,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
         sourceEnv: process.env,
         redactionTokens: [
           ...appPlanRedactionTokens,
-          ...steps.flatMap((step) => redactionValuesForStep(step, tooling)),
+          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling)),
         ],
       });
       const redactorFor = (
@@ -161,9 +266,11 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
                 }),
               )
           : undefined;
-      const program = yield* compileEventStepProgram(steps, validateCommand).pipe(
-        Effect.mapError((error) => eventError(error, event, first, redactor)),
-      );
+      const program = yield* compileEventStepProgram(
+        runnable.map((entry) => entry.step),
+        validateCommand,
+        runnable.map((entry) => ({ authoredIndex: entry.sourceIndex, source: entry.source })),
+      ).pipe(Effect.mapError((error) => eventError(error, event, first.step, redactor, first.source)));
       const context: ExpressionContext = payload === undefined ? {} : { event: payload };
       yield* runToolingStepProgram(
         program,
@@ -178,7 +285,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           redactorFor,
           runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
         }),
-      ).pipe(Effect.mapError((error) => eventError(error, event, first, redactor)));
+      ).pipe(Effect.mapError((error) => eventError(error, event, first.step, redactor, first.source)));
     }),
   );
 });

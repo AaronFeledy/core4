@@ -67,6 +67,17 @@ test("view excludes persisted internal bookkeeping when loading effective config
   expect(result.config).toMatchObject({ telemetry: { enabled: false }, appEnv: { TEAM: "platform" } });
 });
 
+test("view includes hostEvents written in config.yml", async () => {
+  await writeFile(
+    join(root, "config.yml"),
+    'hostEvents:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n',
+  );
+  const result = await run({});
+  expect(result.config?.hostEvents).toEqual({
+    "pre-start": [{ cmd: "echo host", service: ":host" }],
+  });
+});
+
 test("get preserves roots and telemetry when an adjacent scalar write is applied", async () => {
   // Given
   await run({ subcommand: "set", key: "telemetry.enabled", value: "false", type: "boolean" });

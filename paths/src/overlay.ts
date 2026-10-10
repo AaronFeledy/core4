@@ -94,6 +94,9 @@ export const envOverlay = (
     const segments = rawPath.split("__").filter((segment) => segment.length > 0);
     if (segments.length === 0) continue;
     const path = segments.map(segmentToKey);
+    // hostEvents is file-only. Drop LANDO_CONFIG__HOST_EVENTS, nested paths,
+    // and whole-value JSON at any path length.
+    if (path[0] === "hostEvents") continue;
     if ((path[0] === "appEnv" || path[0] === "appLabels") && path.length !== 1) continue;
     assignDeep(overlay, path, parseOverlayValue(value, path));
   }

@@ -52,6 +52,7 @@ import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
 import { renderConfigWriteResult } from "./config-write-render";
+import { HostEventAppStatus, hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
@@ -83,6 +84,7 @@ export interface AppConfigResult {
   readonly issues?: ReadonlyArray<string>;
   readonly filePath?: string;
   readonly redactionTokens?: ReadonlyArray<string>;
+  readonly hostEvents?: ReadonlyArray<HostEventAppStatus>;
 }
 
 export const appConfigRedactionTokens = (result: unknown): ReadonlyArray<string> => {
@@ -109,6 +111,7 @@ export const AppConfigResultSchema = Schema.Struct({
     ),
   ),
   ...ConfigWriteResultFields,
+  hostEvents: Schema.optionalKey(Schema.Array(HostEventAppStatus)),
 });
 
 type AppConfigError =
@@ -404,6 +407,7 @@ const tableRender = (result: AppConfigResult): string => {
     const recipeLabel = typeof recipe === "string" ? recipe : recipe.id;
     lines.push(`recipe\t${recipeLabel}`);
   }
+  lines.push(...renderHostEventStatuses(result.hostEvents ?? []));
   return lines.join("\n");
 };
 
@@ -457,11 +461,33 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
 
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofile(landofileService);
+  const cwd = options.cwd ?? process.cwd();
+  const appRoot = yield* Effect.promise(async () => {
+    try {
+      return (await findDiscoveredLandofilePath(cwd)).appRoot;
+    } catch {
+      return cwd;
+    }
+  });
+  const hostEvents = yield* Effect.try({
+    try: () =>
+      hostEventStatusesForPlan({
+        name: landofile.name ?? "",
+        root: appRoot,
+        services: landofile.services ?? {},
+        ...(landofile.events === undefined ? {} : { events: landofile.events }),
+      }),
+    catch: (cause) =>
+      cause instanceof ConfigError
+        ? cause
+        : new ConfigError({ message: "Failed to load hostEvents status.", cause }),
+  });
   return {
     app: landofile.name ?? "",
     source: "resolved",
     landofile,
     sources: getLandofileIncludeSources(landofile),
     redactionTokens: collectLandofileRedactionTokens(landofile),
+    ...(hostEvents.length === 0 ? {} : { hostEvents }),
   };
 });

@@ -11,14 +11,14 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { GlobalConfig, GlobalConfigView } from "@lando/sdk/schema";
+import { GlobalConfig, GlobalConfigView, hostEventsConfigIssues } from "@lando/sdk/schema";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
-import { getAtPath } from "../config-write/dot-path";
+import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
 import { findAgentEnvPatternNames } from "../config/agent-env";
@@ -221,11 +221,34 @@ const configValidationError = (
 ): LandofileWriteValidationError =>
   writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
 
+const hostEventsTreeIssues = (tree: Record<string, unknown>): readonly ValidationIssue[] =>
+  Object.hasOwn(tree, "hostEvents") ? hostEventsConfigIssues(tree.hostEvents) : [];
+
+const HOST_EVENTS_HAND_EDIT =
+  "hostEvents can only be changed by editing config.yml. Use `lando config edit` or edit the file itself.";
+
+const isHostEventsConfigPath = (key: string): boolean => {
+  const segments = parsePathSegments(key);
+  return segments?.[0]?.kind === "key" && segments[0].key === "hostEvents";
+};
+
+const hostEventsWriteError = (key: string, file: string): LandofileWriteValidationError =>
+  new LandofileWriteValidationError({
+    message: `Cannot change ${key} through \`meta config\`. ${HOST_EVENTS_HAND_EDIT}`,
+    file,
+    path: key,
+    issues: [validationIssue(["hostEvents"], HOST_EVENTS_HAND_EDIT)],
+    remediation: HOST_EVENTS_HAND_EDIT,
+  });
+
 const metaConfigSet = Effect.fnUntraced(function* (
   options: ConfigOptions,
 ): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
   const key = options.key ?? options.path;
   const raw = options.value;
+  if (key !== undefined && isHostEventsConfigPath(key)) {
+    return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
+  }
   if (key === undefined || raw === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
@@ -263,6 +286,9 @@ const metaConfigUnset = Effect.fnUntraced(function* (
   options: ConfigOptions,
 ): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
   const key = options.key ?? options.path;
+  if (key !== undefined && isHostEventsConfigPath(key)) {
+    return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
+  }
   if (key === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
@@ -299,7 +325,7 @@ const metaConfigValidate = Effect.fnUntraced(function* (
   const path = resolveConfigWritePath(options);
   const tree = yield* readConfigTree(path);
   const decoded = decodeGlobalConfig(tree);
-  const issues = decodeIssues(decoded);
+  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(tree)];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);
@@ -345,7 +371,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       }),
   });
   const decoded = decodeGlobalConfig(parsed);
-  const issues = decodeIssues(decoded);
+  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(parsed)];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);

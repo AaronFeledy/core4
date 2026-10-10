@@ -4,8 +4,15 @@ import { join } from "node:path";
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
-import { GlobalConfig, GlobalConfigView } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import {
+  GlobalConfig,
+  GlobalConfigView,
+  hostEventsConfigIssues,
+  suggestionForUnknownKey,
+} from "@lando/sdk/schema";
+import { ConfigService, EventService } from "@lando/sdk/services";
+import { DateTime, Option } from "effect";
 
 import { resolveLandoRoots } from "@lando/paths";
 import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "@lando/paths/overlay";
@@ -16,6 +23,45 @@ const NETWORK_BOOLEAN_ENV_ALIASES = [
   "LANDO_NETWORK_CA_INJECT_INTO_SERVICES",
   "LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES",
 ] as const;
+
+const KNOWN_GLOBAL_CONFIG_KEYS = Object.keys(GlobalConfig.fields);
+const PATH_LIKE_ROOT_KEYS = new Set(["userDataRoot", "userConfRoot", "userCacheRoot", "systemPluginRoot"]);
+
+export const typoWarningsFromFileConfig = (fileConfig: Record<string, unknown>): ReadonlyArray<string> =>
+  Object.keys(fileConfig).flatMap((key) => {
+    if (KNOWN_GLOBAL_CONFIG_KEYS.includes(key)) return [];
+    const suggestion = suggestionForUnknownKey(key, KNOWN_GLOBAL_CONFIG_KEYS);
+    return suggestion === undefined ? [] : [`Unknown config.yml key "${key}". ${suggestion}`];
+  });
+
+const hasControlCharacters = (value: string): boolean => {
+  for (const char of value) {
+    if (char.charCodeAt(0) < 32) return true;
+  }
+  return false;
+};
+
+const pathEscapeWarningsFromFileConfig = (fileConfig: Record<string, unknown>): ReadonlyArray<string> =>
+  Object.entries(fileConfig).flatMap(([key, value]) => {
+    if (typeof value !== "string" || !hasControlCharacters(value)) return [];
+    const pathLike = PATH_LIKE_ROOT_KEYS.has(key) || /^[A-Za-z]:/.test(value);
+    if (!pathLike) return [];
+    return [
+      `config.yml ${key} decoded with control characters. Double-quoted YAML treats \\t and \\n as escapes. Use single quotes or \\\\.`,
+    ];
+  });
+
+const typoWarningsByConfig = new WeakMap<GlobalConfig, ReadonlyArray<string>>();
+
+export const typoWarningsForConfig = (config: GlobalConfig): ReadonlyArray<string> =>
+  typoWarningsByConfig.get(config) ?? [];
+
+export const validateFileHostEvents = (fileConfig: Record<string, unknown>, path: string): void => {
+  if (!Object.hasOwn(fileConfig, "hostEvents")) return;
+  const issues = hostEventsConfigIssues(fileConfig.hostEvents);
+  if (issues[0] === undefined) return;
+  throw configError(path, issues[0].message, { issues });
+};
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
@@ -62,9 +108,17 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
     }
   }
 
+  validateFileHostEvents(fileConfig, path);
+  const warnings = [
+    ...typoWarningsFromFileConfig(fileConfig),
+    ...pathEscapeWarningsFromFileConfig(fileConfig),
+  ];
+
   const merged = mergeConfig(fileConfig, overlay);
   try {
-    return Schema.decodeUnknownSync(GlobalConfig)(merged, { errors: "all" });
+    const decoded = Schema.decodeUnknownSync(GlobalConfig)(merged, { errors: "all" });
+    typoWarningsByConfig.set(decoded, warnings);
+    return decoded;
   } catch (cause) {
     const malformedAlias = NETWORK_BOOLEAN_ENV_ALIASES.find((name) => {
       const value = process.env[name];
@@ -82,12 +136,23 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
 };
 
 const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
-  load: Effect.tryPromise({
-    try: async (): Promise<GlobalConfig> => loadGlobalConfigSync(),
-    catch: (cause) =>
-      cause instanceof ConfigError
-        ? cause
-        : new ConfigError({ message: "Failed to load global config.", cause }),
+  load: Effect.gen(function* () {
+    const loaded = yield* Effect.try({
+      try: () => loadGlobalConfigSync(),
+      catch: (cause) =>
+        cause instanceof ConfigError
+          ? cause
+          : new ConfigError({ message: "Failed to load global config.", cause }),
+    });
+    const events = yield* Effect.serviceOption(EventService);
+    if (Option.isSome(events)) {
+      for (const body of typoWarningsForConfig(loaded)) {
+        yield* events.value
+          .publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+          .pipe(Effect.ignore);
+      }
+    }
+    return loaded;
   }),
   get: (key) => Effect.map(configService.load, (config) => config[key]),
 });

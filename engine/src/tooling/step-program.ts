@@ -5,6 +5,7 @@ export type ToolingStepCondition = boolean | string;
 
 interface ToolingStepLeafBase {
   readonly authoredIndex: number;
+  readonly source?: "host" | "project";
   readonly condition?: ToolingStepCondition;
   readonly silent: boolean;
   readonly ignoreError: boolean;

@@ -71,6 +71,8 @@ The view exposes public settings, not internal bookkeeping. Secret-bearing envir
 
 The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.local/share/lando/config.yml` on Linux.
 
+Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a tab and a newline. Use single quotes (`'C:\temp\new'`) or doubled backslashes (`"C:\\temp\\new"`) for Windows paths. Lando warns at load when a path-like root value decodes with control characters.
+
 `LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
 
 ## Get, set, unset, validate, or edit a key
@@ -91,6 +93,30 @@ lando config validate
 # Open config.yml in $VISUAL or $EDITOR, or pass --editor
 lando config edit
 ```
+
+## Add host-wide lifecycle steps
+
+`hostEvents` in `config.yml` runs the same lifecycle steps for every user app. Only the file can set it: `LANDO_CONFIG__*` overlays drop the key, and `lando config set` / `lando config unset` refuse every `hostEvents` path.
+
+```yaml
+hostEvents:
+  pre-start:
+    - cmd: echo host-wide
+      service: ":host"
+```
+
+Use `lando config edit` or edit the file itself. `lando config --format=json` includes `hostEvents` in the public view. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step shapes, order, dedupe, skip rules, and the `LANDO_HOST_EVENT` guard.
+
+  <Scenario id="host-events-hand-edit" render={false} reason="Reject config set/unset of hostEvents">
+    <Step name="reject-set">
+      <Run command="lando config set hostEvents.pre-start echo --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "config edit" }} />
+    </Step>
+    <Step name="reject-unset">
+      <Run command="lando config unset hostEvents --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "config edit" }} />
+    </Step>
+  </Scenario>
 
 ## Configure the shared global app
 

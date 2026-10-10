@@ -3,9 +3,9 @@ import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
-import { validationIssue } from "@lando/sdk/schema";
+import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect } from "effect";
+import { type Context, DateTime, Effect, Predicate } from "effect";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -48,19 +48,24 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
     configService === undefined
       ? undefined
       : yield* configService.load.pipe(
-          Effect.mapError(
-            (cause) =>
-              new LandofileValidationError({
-                message: `Global configuration could not be loaded for service network injection: ${cause.message}`,
-                file: landofilePath,
-                issues: [
-                  validationIssue(
-                    ["network"],
-                    `Global configuration could not be loaded for service network injection: ${cause.message}`,
-                  ),
-                ],
-              }),
-          ),
+          Effect.mapError((cause) => {
+            const detail = `Global configuration could not be loaded: ${cause.message}`;
+            const nested = "cause" in cause ? cause.cause : cause;
+            const recorded = Predicate.isObject(nested) && Array.isArray(nested.issues) ? nested.issues : [];
+            const recordedIssues = recorded.filter(
+              (issue): issue is ValidationIssue =>
+                Predicate.isObject(issue) && Array.isArray(issue.path) && typeof issue.message === "string",
+            );
+            const issues =
+              recordedIssues.length > 0
+                ? recordedIssues
+                : validationIssuesFromCause(nested, { fallback: detail });
+            return new LandofileValidationError({
+              message: detail,
+              file: landofilePath,
+              issues: issues.length > 0 ? issues : [validationIssue([], detail)],
+            });
+          }),
         );
   const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
   const { appSlug, defaultDomain, deferredSites } = materialized;

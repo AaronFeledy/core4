@@ -18,6 +18,7 @@ import {
   attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
+  eventStepsFromCompiled,
 } from "../../src/planner/effective-events.ts";
 import * as toolingForPlan from "../../src/planner/effective-tooling.ts";
 import {
@@ -214,7 +215,7 @@ describe("compileEffectiveEvents", () => {
     });
 
     // Then
-    expect(events).toEqual({
+    expect(eventStepsFromCompiled(events)).toEqual({
       "post-start": ["echo after"],
       "pre-start": ["echo first", "echo second"],
     });
