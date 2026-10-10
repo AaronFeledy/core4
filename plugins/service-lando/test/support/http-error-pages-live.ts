@@ -86,7 +86,7 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
         {
           name: "appserver",
           serviceType: php83ServiceType,
-          config: { type: "php:8.3", via: "apache", xdebug: false, ports },
+          config: { type: "php:8.3", via: "apache", xdebug: false, allowOverride: true, ports },
         },
       ];
     default: {
