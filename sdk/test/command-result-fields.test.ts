@@ -5,7 +5,7 @@ import {
   encodeStreamResultFrame,
   identityRedactor,
 } from "@lando/sdk/command-result";
-import { ConfigError, ConfigExpressionError } from "@lando/sdk/errors";
+import { ConfigError, ConfigExpressionError, ServiceStartError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Option, Redacted, Schema } from "effect";
@@ -221,6 +221,35 @@ test("omits malformed typed fields instead of falling back when extras are valid
   const line = Effect.runSync(encodeCommandResult(options(error)));
   const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
   expect(envelope.error).toEqual({ _tag: "WrongShapesError", message: "failure", path: "config.path" });
+});
+
+test("includes service and logTail on a ServiceStartError envelope", () => {
+  const error = new ServiceStartError({
+    providerId: "lando",
+    operation: "bringUp.start",
+    service: "db",
+    message: "Service db failed to start.",
+    logTail: {
+      service: "db",
+      lines: ["ready for connections"],
+      truncated: false,
+      exitCode: 1,
+    },
+  });
+  const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
+  expect(envelope.error).toEqual({
+    _tag: "ServiceStartError",
+    message: "Service db failed to start.",
+    service: "db",
+    providerId: "lando",
+    operation: "bringUp.start",
+    logTail: {
+      service: "db",
+      lines: ["ready for connections"],
+      truncated: false,
+      exitCode: 1,
+    },
+  });
 });
 
 test("redacts secrets when they appear in a passthrough expression field", () => {

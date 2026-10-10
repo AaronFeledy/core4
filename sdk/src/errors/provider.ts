@@ -41,9 +41,19 @@ export class ArtifactBuildError extends Schema.TaggedError<ArtifactBuildError>()
   ProviderErrorBase,
 ) {}
 
+export const ServiceStartLogTail = Schema.Struct({
+  service: Schema.String,
+  lines: Schema.Array(Schema.String),
+  truncated: Schema.Boolean,
+  exitCode: Schema.optional(Schema.Number),
+  timedOut: Schema.optional(Schema.Boolean),
+});
+export type ServiceStartLogTail = typeof ServiceStartLogTail.Type;
+
 export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("ServiceStartError", {
   ...ProviderErrorBase,
   service: Schema.String,
+  logTail: Schema.optional(ServiceStartLogTail),
 }) {}
 
 export class ServiceExecError extends Schema.TaggedError<ServiceExecError>()("ServiceExecError", {
