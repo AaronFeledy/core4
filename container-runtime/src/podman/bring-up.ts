@@ -912,7 +912,10 @@ const captureServiceLogTail = Effect.fnUntraced(function* (
       { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
       { api: deps.api, ctx: deps.options.ctx },
     ),
-  ).pipe(Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT), Effect.orElseSucceed(undefined));
+  ).pipe(
+    Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
+    Effect.orElseSucceed(() => undefined),
+  );
   if (collected === undefined) return undefined;
   const raw = [...collected].map((chunk) => chunk.line);
   if (raw.length === 0) return undefined;

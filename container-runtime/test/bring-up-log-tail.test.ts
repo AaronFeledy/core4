@@ -157,6 +157,8 @@ const makeApi = (options: {
       }),
     stream: (request) => {
       record(request);
+      const isLogs = /\/logs(?:\?|$)/u.test(request.path);
+      if (!isLogs) return Stream.empty;
       if (options.failLogs === true) {
         return Stream.fail(
           new ServiceStartError({
