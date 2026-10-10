@@ -133,7 +133,7 @@ const extractExtraTagFields = (
   }
   if (tag === "ServiceStartError") {
     const logTail = formatServiceStartLogTail(record.logTail);
-    if (logTail !== undefined) out.push(["logTail", logTail]);
+    if (logTail !== undefined) out.push([logTail.label, logTail.text]);
   }
   if (tag === "CapabilityError") {
     for (const field of ["service", "key", "capability"] as const) {
@@ -220,12 +220,22 @@ const extractExtraTagFields = (
   return out;
 };
 
-const formatServiceStartLogTail = (value: unknown): string | undefined => {
+const formatServiceStartLogTail = (
+  value: unknown,
+): { readonly label: string; readonly text: string } | undefined => {
   if (value === null || typeof value !== "object") return undefined;
   const lines = Reflect.get(value, "lines");
   if (!Array.isArray(lines) || lines.length === 0) return undefined;
   const text = lines.filter((line): line is string => typeof line === "string").join("\n");
-  return text.length === 0 ? undefined : text;
+  if (text.length === 0) return undefined;
+  const parts: string[] = [];
+  const service = Reflect.get(value, "service");
+  if (typeof service === "string" && service.length > 0) parts.push(service);
+  const exitCode = Reflect.get(value, "exitCode");
+  if (typeof exitCode === "number" && Number.isFinite(exitCode)) parts.push(`exit ${exitCode}`);
+  if (Reflect.get(value, "timedOut") === true) parts.push("timed out");
+  if (Reflect.get(value, "truncated") === true) parts.push("truncated");
+  return { label: parts.length === 0 ? "logTail" : `logTail (${parts.join(", ")})`, text };
 };
 
 const formatIssuePath = (path: readonly (string | number)[]): string => {
