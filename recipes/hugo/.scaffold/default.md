@@ -5,55 +5,30 @@
 ```sh
 lando init --recipe hugo --name=my-hugo --yes
 cd my-hugo
-```
-
-The scaffold writes `.lando.yml` and no site files. Hugo has no recipe options, so `--yes` accepts the app name from `--name`. Park `builder` before the first start so the recipe's `npx hugo server` command does not download an unintended package while the app is empty:
-
-```yaml
-services:
-  builder:
-    command: sleep infinity
-    port: 1313
-    type: node:lts
-```
-
-Start the parked services and install the intended Hugo dependency:
-
-```sh
 lando start
-lando npm init -y
-lando npm install hugo-extended --save-dev
-lando npm install-scripts approve hugo-extended
-lando npm rebuild hugo-extended
+```
+
+Hugo has no recipe options, so `--yes` accepts the app name from `--name`. Init writes `.lando.yml` plus a small starter site: a Hugo config, an archetype, and enough layouts to render the home page and new content. The `builder` image bakes in a pinned official Hugo extended binary, so there's nothing to install before the first start.
+
+Check the toolchain and find your URLs:
+
+```sh
 lando hugo version
-```
-
-Create the site while `builder` is still parked:
-
-```sh
-lando hugo new site . --force
-```
-
-Restore the recipe server command in `.lando.yml`:
-
-```yaml
-services:
-  builder:
-    command: "npx hugo server --bind 0.0.0.0 --port 1313"
-    port: 1313
-    type: node:lts
-```
-
-Restart and inspect the running app:
-
-```sh
-lando restart
 lando info
 ```
 
-Open the `builder` URL from `lando info`. It points at the Hugo `server` process, which rebuilds and reloads as you work. The app hostname URL (`web`) serves `public/` through nginx once `lando hugo build` has written it.
+Open the `builder` URL from `lando info`. It points at the Hugo `server` process, which rebuilds and reloads as you work. Hugo 0.167.0 writes that output to `public/` on disk, so the app hostname URL (`web`) answers through nginx from the first start and picks up changes as the server rewrites them.
 
-For install, scaffold, build, browse, and cleanup steps, see [Run the Hugo recipe](/guides/recipes/hugo-workflow/).
+Add a post, then run an explicit build when you want one:
+
+```sh
+lando hugo new content posts/hello.md
+lando hugo build
+```
+
+The starter archetype sets `draft = false`, so the post publishes right away. Set `draft = true` in its front matter to keep a page out of the build while you work on it. `lando hugo build` writes the same `public/` the running server does, so the two don't produce separate outputs.
+
+For the full day-to-day path, see [Run the Hugo recipe](/guides/recipes/hugo-workflow/).
 
 When you are finished:
 
