@@ -5,8 +5,10 @@ on the appserver. There is no network scaffold.
 
 ## Generated services
 
-- `appserver` - `php:<8.3>` with the Apache-based PHP image,
-  `framework: backdrop`, and `BACKDROP_SETTINGS` for the database.
+- `appserver` - `php:<8.4>` with the Apache-based PHP image,
+  `framework: backdrop`, and `BACKDROP_SETTINGS` for the database. The blob
+  names `{{ app.name }}` as the database, resolved at start and visible to
+  both Bee and Apache.
 - `database` - `mariadb`.
 
 ## Generated tooling

@@ -26,7 +26,7 @@ const serviceType: ServiceType = {
       base: "l337" as const,
       normalizedConfig: {
         ...input.service,
-        environment: { DATABASE: String(input.service.database) },
+        environment: { ...input.service.environment, DATABASE: String(input.service.database) },
       },
       features: [],
     }),
@@ -78,6 +78,48 @@ test("materializes app and proxy expressions before service resolution and tooli
     expect(getInternalToolingTasks(tooling)).toEqual(["install"]);
     expect(app.extensions.compose).toMatchObject({ "x-expression": "dcms-demo.lndo.site" });
     expect(landofile.services[ServiceName.make("database")]?.database).toBe("{{ app.name }}");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("expands app.name inside Backdrop settings JSON without changing the authored value", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-backdrop-expression-"));
+  try {
+    const settings = (database: string) =>
+      JSON.stringify({
+        databases: {
+          default: {
+            default: {
+              driver: "mysql",
+              database,
+              username: "lando",
+              password: "lando",
+              host: "database",
+              port: 3306,
+            },
+          },
+        },
+      });
+    const deferred = settings("{{ app.name }}");
+    const landofile = rememberLandofileAppRoot(
+      {
+        name: "Issue1077 Before",
+        services: {
+          [ServiceName.make("appserver")]: {
+            type: serviceType.id,
+            home: false as const,
+            environment: { BACKDROP_SETTINGS: deferred },
+          },
+        },
+      },
+      root,
+    );
+    const app = await Effect.runPromise(plan(landofile));
+    expect(app.services[ServiceName.make("appserver")]?.environment.BACKDROP_SETTINGS).toBe(
+      settings("issue1077-before"),
+    );
+    expect(landofile.services[ServiceName.make("appserver")]?.environment?.BACKDROP_SETTINGS).toBe(deferred);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
