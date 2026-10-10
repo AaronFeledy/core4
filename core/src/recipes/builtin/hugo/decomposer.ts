@@ -1,4 +1,5 @@
 import { makeZeroOptionDecomposer } from "../zero-option-decomposer.ts";
+import { HUGO_BUILD_ARTIFACT } from "./install.ts";
 import { hugoProducer } from "./snapshot.ts";
 
 export const hugoDecomposer = makeZeroOptionDecomposer({
@@ -9,7 +10,8 @@ export const hugoDecomposer = makeZeroOptionDecomposer({
       builder: {
         type: "node:lts",
         primary: true,
-        command: "npx hugo server --bind 0.0.0.0 --port 1313",
+        build: { artifact: [...HUGO_BUILD_ARTIFACT] },
+        command: "hugo server --bind 0.0.0.0 --port 1313",
         port: 1313,
       },
       web: {
@@ -24,7 +26,7 @@ export const hugoDecomposer = makeZeroOptionDecomposer({
       hugo: {
         service: "builder",
         description: "Run the Hugo CLI inside the builder service.",
-        cmds: ["npx hugo"],
+        cmds: ["hugo"],
       },
       npm: { service: "builder", description: "Run npm inside the builder service.", cmds: ["npm"] },
     },

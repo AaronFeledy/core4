@@ -1,3 +1,4 @@
+import { HUGO_SCAFFOLD } from "./scaffold.ts";
 import { hugoSnapshotYaml } from "./snapshot.ts";
 
 export const HUGO_RECIPE_ID = "hugo";
@@ -24,6 +25,9 @@ files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml
     template: true
+${Object.keys(HUGO_SCAFFOLD)
+  .map((dest) => `  - src: assets/${dest}\n    dest: ${dest}\n    template: ${dest === "hugo.toml"}`)
+  .join("\n")}
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to serve the Hugo site.
