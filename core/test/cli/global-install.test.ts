@@ -196,10 +196,9 @@ describe("global:install command operation", () => {
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed(dockerProvider.capabilities),
             select: (plan) => {
-              selected.push(plan === undefined ? undefined : String(plan.provider));
-              return Effect.succeed(
-                plan !== undefined && String(plan.provider) === "lando" ? landoProvider : dockerProvider,
-              );
+              const id = typeof plan === "string" ? plan : plan?.provider;
+              selected.push(id);
+              return Effect.succeed(id === "lando" ? landoProvider : dockerProvider);
             },
           }),
         ),
