@@ -140,6 +140,7 @@ export const makeHarness = (
     readonly providerCanPrepareFileSync?: boolean;
     readonly providerCanInspectFileSync?: boolean;
     readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
+    readonly appliedFileSyncSessions?: ReadonlyArray<import("@lando/sdk/schema").FileSyncSessionSpec>;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
     readonly onApply?: (plan: AppPlan, options?: ApplyOptions) => void;
@@ -177,7 +178,8 @@ export const makeHarness = (
                 ? {
                     status: "accelerated" as const,
                     engineId: plannedApp.fileSync[0]?.engineId ?? "mutagen",
-                    sessions: plannedApp.fileSync.map(({ session }) => session),
+                    sessions:
+                      options.appliedFileSyncSessions ?? plannedApp.fileSync.map(({ session }) => session),
                   }
                 : { status: appliedFileSyncState },
             ),
@@ -211,6 +213,7 @@ export const makeHarness = (
               };
             }),
         }),
+    quiesceForFileSync: () => Effect.void,
     apply: (appliedPlan, applyOptions) =>
       Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
         Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),

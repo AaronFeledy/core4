@@ -171,9 +171,6 @@
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
       },
-      "devDependencies": {
-        "@lando/engine": "workspace:*",
-      },
     },
     "plugins/lando3": {
       "name": "@lando/lando3",
