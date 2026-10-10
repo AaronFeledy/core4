@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { rm, symlink } from "node:fs/promises";
 import { DateTime, Effect, Exit } from "effect";
 
-import { type FileSyncSessionInfo, FileSyncSessionRef, PortablePath, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type FileSyncSessionInfo,
+  FileSyncSessionRef,
+  PortablePath,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import { stopAppForTarget } from "../../src/operations/stop.ts";
@@ -167,6 +174,52 @@ describe("stop file sync safety", () => {
     expect(harness.events.some((event) => event._tag === "pre-init" || event._tag === "post-init")).toBe(
       false,
     );
+  });
+
+  test("stops when the live session still uses a realpath-equivalent legacy root", async () => {
+    const legacyRoot = AbsolutePath.make(`${plan.root}-short`);
+    await symlink(plan.root, legacyRoot);
+    const calls: string[] = [];
+    const legacySpec = {
+      ...session.spec,
+      app: { ...session.spec.app, root: legacyRoot },
+      source: legacyRoot,
+    };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [session.spec],
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        listSessions: () =>
+          Effect.succeed([
+            {
+              ...session,
+              app: legacySpec.app,
+              spec: legacySpec,
+            },
+          ]),
+        flushSession: () =>
+          Effect.sync(() => {
+            calls.push("flush");
+          }),
+        terminateSession: () =>
+          Effect.sync(() => {
+            calls.push("terminate");
+          }),
+      },
+      destroyEffect: Effect.sync(() => {
+        calls.push("provider");
+      }),
+    });
+    try {
+      const exit = await runStop(harness);
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(calls).toEqual(["provider", "flush", "terminate"]);
+    } finally {
+      await rm(legacyRoot, { force: true });
+    }
   });
 
   test("a mount removed from the current Landofile blocks stop when its prior session is missing", async () => {

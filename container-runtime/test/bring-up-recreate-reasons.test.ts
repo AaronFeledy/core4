@@ -79,4 +79,31 @@ describe("bringUpRecreateReasons", () => {
       ),
     ).toEqual(["publish-port", "bind-source", "network"]);
   });
+
+  test("does not recreate when only an app-mount bind source spelling changes", () => {
+    const withAppMount = {
+      ...service,
+      mounts: [
+        {
+          type: "bind" as const,
+          source: "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\embedded-app",
+          target: "/app",
+          readOnly: false,
+          realization: "passthrough" as const,
+        },
+      ],
+    };
+    expect(
+      bringUpRecreateReasons(
+        { ...plan, services: { [service.name]: withAppMount } },
+        withAppMount,
+        {
+          bindSources: {
+            "/app": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\embedded-app",
+          },
+        },
+        { skipAbsentFields: true },
+      ),
+    ).toEqual([]);
+  });
 });

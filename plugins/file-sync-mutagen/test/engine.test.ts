@@ -413,6 +413,36 @@ describe("@lando/file-sync-mutagen engine listSessions status polling", () => {
       }),
     );
   });
+
+  test("matches a session recorded under a realpath-equivalent app root", async () => {
+    const { mkdtemp, realpath, rm, symlink } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-mutagen-root-"))));
+    const legacy = AbsolutePath.make(`${canonical}-short`);
+    await symlink(canonical, legacy);
+    const spec = {
+      ...buildSpec(),
+      app: { kind: "user" as const, id: AppId.make("myapp"), root: legacy },
+      source: legacy,
+    };
+    const { engine } = fakeEngine({ initialSessions: [] });
+    try {
+      await runScoped(
+        Effect.gen(function* () {
+          yield* engine.createSession(spec);
+          const listed = yield* engine.listSessions({
+            app: { kind: "user", id: AppId.make("myapp"), root: canonical },
+          });
+          expect(listed).toHaveLength(1);
+          expect(listed[0]?.app.root).toBe(legacy);
+        }),
+      );
+    } finally {
+      await rm(legacy, { force: true });
+      await rm(canonical, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("@lando/file-sync-mutagen engine streamEvents", () => {
