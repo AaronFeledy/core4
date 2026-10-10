@@ -167,8 +167,12 @@
       "name": "@lando/file-sync-mutagen",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@lando/engine": "workspace:*",
       },
     },
     "plugins/lando3": {

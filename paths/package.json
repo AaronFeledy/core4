@@ -20,6 +20,7 @@
   "exports": {
     ".": "./src/paths.ts",
     "./overlay": "./src/overlay.ts",
+    "./realpath-equivalence": "./src/realpath-equivalence.ts",
     "./yaml-min": "./src/yaml-min.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

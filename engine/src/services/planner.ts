@@ -1,6 +1,6 @@
 import { type Context, Effect, Layer, Option } from "effect";
 
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
   AppPlanner,
   CacheService,
@@ -54,6 +54,7 @@ export const layer = Layer.effect(
           getLandofileAppRoot(landofile) ?? process.cwd(),
           Option.getOrUndefined(processRunner),
         );
+        rememberLandofileAppRoot(landofile, identity.appRoot);
         const plan = yield* planApp(
           pluginRegistry,
           Option.getOrUndefined(cacheService),
