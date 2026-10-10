@@ -143,8 +143,7 @@ describe("destroy progress topology", () => {
     const harness = makeHarness({
       fileSync: {
         ...availableFileSync(),
-        listSessions: () =>
-          Effect.succeed([{ ...syncSession, app: legacySpec.app, spec: legacySpec }]),
+        listSessions: () => Effect.succeed([{ ...syncSession, app: legacySpec.app, spec: legacySpec }]),
       },
       appliedFileSyncState: "accelerated",
       appliedFileSyncSessions: [syncSession.spec],

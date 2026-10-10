@@ -6,20 +6,15 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { destroyAppForTarget } from "@lando/engine/operations/destroy";
 import { startApp } from "@lando/engine/operations/start";
 import { stopAppForTarget } from "@lando/engine/operations/stop";
-import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
   AbsoluteContainerPath,
@@ -209,14 +204,6 @@ const makeHarness = (plannedApp: AppPlan, fileSync: typeof FileSyncEngine.Servic
       }),
     ),
     Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        forProfile: (profile, redactionOptions) =>
-          Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
-      }),
-    ),
-    Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
         list: Effect.succeed([]),
@@ -255,7 +242,9 @@ const targetFor = (plannedApp: AppPlan) => ({
 
 describe("canonical-root file-sync lifecycle", () => {
   test("start, stop, then start again with a fake Mutagen client", async () => {
-    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))));
+    const canonical = AbsolutePath.make(
+      await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))),
+    );
     const plannedApp = acceleratedPlanFor(canonical);
     const client = makeFakeMutagenClient();
     const engine = makeFileSyncEngine({ client });
@@ -278,7 +267,9 @@ describe("canonical-root file-sync lifecycle", () => {
   });
 
   test("start, stop, then start again keeps a legacy short-path session from drifting", async () => {
-    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))));
+    const canonical = AbsolutePath.make(
+      await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))),
+    );
     const legacy = AbsolutePath.make(`${canonical}-short`);
     await symlink(canonical, legacy);
     const plannedApp = acceleratedPlanFor(canonical);
@@ -318,7 +309,9 @@ describe("canonical-root file-sync lifecycle", () => {
   });
 
   test("destroy succeeds for a legacy short-path session", async () => {
-    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))));
+    const canonical = AbsolutePath.make(
+      await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))),
+    );
     const legacy = AbsolutePath.make(`${canonical}-short`);
     await symlink(canonical, legacy);
     const plannedApp = acceleratedPlanFor(canonical);

@@ -5,6 +5,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -81,21 +82,21 @@ describe("bringUpRecreateReasons", () => {
   });
 
   test("does not recreate when only an app-mount bind source spelling changes", () => {
-    const withAppMount = {
+    const withAppMount: ServicePlan = {
       ...service,
       mounts: [
         {
-          type: "bind" as const,
+          type: "bind",
           source: "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\embedded-app",
-          target: "/app",
+          target: PortablePath.make("/app"),
           readOnly: false,
-          realization: "passthrough" as const,
+          realization: "passthrough",
         },
       ],
     };
     expect(
       bringUpRecreateReasons(
-        { ...plan, services: { [service.name]: withAppMount } },
+        plan,
         withAppMount,
         {
           bindSources: {

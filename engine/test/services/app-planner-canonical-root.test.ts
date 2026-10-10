@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Effect, Layer } from "effect";
 
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -60,21 +60,23 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
     await realpathNative(await mkdtemp(join(tmpdir(), "lando-canonical-root-"))),
   );
   const discoveredRoot = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\embedded-app";
-  const original = fs.realpath.bind(fs);
-  const realpath = spyOn(fs, "realpath").mockImplementation(async (input) => {
+  const originalRealpath = fs.realpath;
+  const realpath = spyOn(fs, "realpath").mockImplementation((async (
+    input: Parameters<typeof fs.realpath>[0],
+  ) => {
     const value = String(input);
     if (value.includes("RUNNER~1") || value === discoveredRoot) return canonicalRoot;
-    return original(input);
-  });
+    return originalRealpath(input);
+  }) as typeof fs.realpath);
   const landofile = rememberLandofileAppRoot(
     {
       name: "embedded-app",
-      runtime: 4 as const,
+      runtime: 4,
       provider: ProviderId.make("test"),
       services: {
         [ServiceName.make("web")]: { image: "nginx:1.27", home: false },
       },
-    },
+    } satisfies LandofileShape,
     discoveredRoot,
   );
   try {
@@ -96,9 +98,7 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
     expect(
       web?.mounts.some(
         (mount) =>
-          mount.type === "bind" &&
-          mount.source === plan.root &&
-          mount.target === PortablePath.make("/app"),
+          mount.type === "bind" && mount.source === plan.root && mount.target === PortablePath.make("/app"),
       ),
     ).toBe(true);
   } finally {
