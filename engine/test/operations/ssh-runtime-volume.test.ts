@@ -54,8 +54,8 @@ const ssh = {
 const registry = (state: string, selected: string[]) => ({
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: (selectedPlan?: AppPlan) => {
-    selected.push(String(selectedPlan?.provider));
+  select: (selectedPlan?: AppPlan | ProviderId) => {
+    selected.push(String(typeof selectedPlan === "string" ? selectedPlan : selectedPlan?.provider));
     return Effect.succeed({
       ...TestRuntimeProvider,
       id: ProviderId.make("lando"),
