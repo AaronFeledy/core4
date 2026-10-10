@@ -285,6 +285,8 @@ export type StopAppError =
 export interface RestartAppOptions {
   readonly reconcile?: boolean;
   readonly signal?: AbortSignal;
+  /** Restart only these planned services. Unknown names fail with `ServiceNotFoundError`. */
+  readonly services?: ReadonlyArray<ServiceName>;
 }
 
 export interface RestartAppResult {
@@ -292,7 +294,7 @@ export interface RestartAppResult {
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
 
-export type RestartAppError = StartAppError | AppResolveError;
+export type RestartAppError = StartAppError | AppResolveError | ProviderError;
 
 export interface RebuildAppOptions {
   readonly services?: ReadonlyArray<ServiceName>;

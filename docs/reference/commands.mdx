@@ -231,7 +231,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--deep` | Include the resolved host agent-context env forwarding allowlist. |
+| `--deep` | Include the host agent-context env names actually forwarded. |
 | `--service, -s` | Inspect a specific planned service (repeatable). |
 
 ## `lando app:logs`
@@ -424,6 +424,12 @@ Restart the current app (stop + start).
 
 Aliases: `lando restart`
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Restart a specific planned service without pulling in dependencies (repeatable). |
+
 ## `lando app:share`
 
 Start a public tunnel for the current app.
@@ -567,6 +573,7 @@ Flags:
 | `--include-scratch` | Include running scratch apps in the inventory. |
 | `--path` | Filter apps whose root contains the given substring. |
 | `--prune` | Remove stale inventory only after provider absence is confirmed. |
+| `--status` | Filter apps by runtime status (repeatable). (one of `active`, `stopped`, `unknown`) |
 
 ## `lando apps:poweroff`
 

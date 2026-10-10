@@ -243,6 +243,7 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
+    composeKnobs: { supported: ["extra_hosts"] },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -616,6 +617,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               ? {}
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
+            ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
         }),

@@ -3,12 +3,12 @@ import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import { extraHostEntries, realizeHostAliases } from "../host-aliases.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 
 import {
   type InvalidKnob,
   deviceMappings,
-  extraHostEntries,
   groupEntries,
   knobBoolean,
   logConfig,
@@ -61,21 +61,21 @@ interface KnobFragment {
 }
 
 interface KnobRealizer {
-  readonly realize: (knobs: PodmanComposeKnobValues, fail: InvalidKnob) => KnobFragment;
+  readonly realize: (knobs: PodmanComposeKnobValues, fail: InvalidKnob, service: ServicePlan) => KnobFragment;
 }
 
-type KnobReader = (knobs: PodmanComposeKnobValues, fail: InvalidKnob) => unknown;
+type KnobReader = (knobs: PodmanComposeKnobValues, fail: InvalidKnob, service: ServicePlan) => unknown;
 
 const hostConfigKnob = (field: string, read: KnobReader): KnobRealizer => ({
-  realize: (knobs, fail) => {
-    const value = read(knobs, fail);
+  realize: (knobs, fail, service) => {
+    const value = read(knobs, fail, service);
     return value === undefined ? {} : { hostConfig: { [field]: value } };
   },
 });
 
 const topLevelKnob = (field: string, read: KnobReader): KnobRealizer => ({
-  realize: (knobs, fail) => {
-    const value = read(knobs, fail);
+  realize: (knobs, fail, service) => {
+    const value = read(knobs, fail, service);
     return value === undefined ? {} : { topLevel: { [field]: value } };
   },
 });
@@ -123,7 +123,9 @@ const PODMAN_COMPOSE_KNOB_REGISTRY = {
   dns: hostConfigKnob("Dns", ({ dns }) => dns),
   dns_search: hostConfigKnob("DnsSearch", ({ dns_search }) => dns_search),
   dns_opt: hostConfigKnob("DnsOptions", ({ dns_opt }) => dns_opt),
-  extra_hosts: hostConfigKnob("ExtraHosts", ({ extra_hosts }) => extraHostEntries(extra_hosts)),
+  extra_hosts: hostConfigKnob("ExtraHosts", ({ extra_hosts }, _fail, service) =>
+    extraHostEntries(realizeHostAliases(service.hostAliases, extra_hosts)),
+  ),
   init: hostConfigKnob("Init", ({ init }, fail) => knobBoolean("init", init, fail)),
   stop_signal: topLevelKnob("StopSignal", ({ stop_signal }) => stop_signal),
   stop_grace_period: topLevelKnob("StopTimeout", ({ stop_grace_period }, fail) =>
@@ -246,7 +248,7 @@ export const realizePodmanComposeKnobs = (
   const query: Record<string, string> = {};
 
   for (const key of PODMAN_KNOB_KEYS) {
-    const fragment = PODMAN_COMPOSE_KNOB_REGISTRY[key].realize(knobs, fail);
+    const fragment = PODMAN_COMPOSE_KNOB_REGISTRY[key].realize(knobs, fail, service);
     Object.assign(hostConfig, fragment.hostConfig);
     Object.assign(topLevel, fragment.topLevel);
     Object.assign(query, fragment.query);

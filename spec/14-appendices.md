@@ -1,6 +1,6 @@
-# Lando v4 — Appendices
+# Lando v4: Appendices
 
-> **Part 14 of 18** · [Index](./README.md)
+> **Part 14 of 19** · [Index](./README.md)
 > **Read next:** [15 Binary Build and Release Engineering](./15-binary-build-and-release.md)
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
@@ -39,7 +39,7 @@ Core MUST NOT contain, in source or `package.json` dependencies:
 
 ### C. Source-derived acceptance checklist
 
-The v4 implementation must satisfy every item below; binary-shipping criteria remain in §17.9.
+The implementation must satisfy every item below; binary-shipping criteria remain in §17.9. Which items are met at a given point in time is tracked in `ROADMAP.md`, not here.
 
 - Landofile discovery works from subdirectories; configured names and pre/post merge files work; `load()` and `import()` decode YAML, JSON, TOML, text, and binary; expressions resolve across Landofiles, includes, global config, events, and tooling without implicit shell execution (§7.3, §7.7).
 - Canonical namespaced commands and configured top-level aliases both resolve. Global `commandAliases.disabled`/`custom` require no rebuild; app-local custom aliases override built-in, plugin, or global aliases only in that app while canonical ids remain callable.
@@ -70,7 +70,7 @@ The v4 implementation must satisfy every item below; binary-shipping criteria re
 - `cwd-app-map` provides warm constant-time resolution. Hot-path caches are versioned binary data; incompatible headers regenerate. The command-registry manifest is build-embedded, not a runtime cache.
 - Renderer first paint, spinner, and table-header budgets hold. Telemetry never blocks, changes exit status, or hangs shutdown. Zero-subscriber event publication is a no-op. Bootstrap levels are sequential while independent in-level IO is concurrent.
 - `lando events --follow --format json` streams traces. `lando uninstall --dry-run` reports ownership; `--yes` removes only Lando-owned binary/data/cache paths, not provider resources.
-- Hot tooling uses only command and plan caches. Routine post-build local development works offline unless user work or absent remote artifacts require network. All Lando egress honors corporate proxies and custom CAs.
+- Hot tooling uses only command and plan caches. Routine post-build local development works offline unless user work or absent remote artifacts require network. All Lando egress honors corporate proxies and custom CAs through the one Effect `HttpClient` implementation in `@lando/http-client`; compiled and interpreted decoders agree on the shared Landofile corpus (§12.5.1).
 - `makeLandoRuntime` imports without OCLIF; `EmbeddedAssetService` is host-overridable but not plugin-contributed. `openLandoRuntime(...).app(...)` and `resolveApp(...)` provide typed start/info/exec/stop operations with tagged remediation.
 - Retained embedding runtimes meet hot-path budgets after first use; `@lando/core/testing` tears down deterministically; discovery sources are independently opt-in and default to none; multiple runtimes do not share caches/events; library and binary versions match.
 - Every §18.5 public surface supports canonical deprecation. `DeprecationService`, doctor, config, docs, JSON Schema, events, telemetry, and warnings derive from one registry; stale or overdue notices fail release with `DeprecationStaleError` or `DeprecationOverdueError`.
@@ -79,7 +79,7 @@ The v4 implementation must satisfy every item below; binary-shipping criteria re
 - Guide component, frontmatter, matcher, and transcript schemas round-trip and publish JSON Schema. Published redactions are byte-identical. E2E cleanup is idempotent. Recipe README flattening leaves no JSX/imports/unresolved expressions. Library-mode guides execute actual runtime calls.
 - Tabbed guides generate each Cartesian variant and transcript with prefixed failure context; non-uniform tab steps produce visible `test.skip` coverage entries.
 - User slug `global` raises `AppIdReservedError`. `<userDataRoot>/global/` is excluded from cwd discovery. `globalServices:` regenerates the global `.lando.dist.yml`, starts through `meta:global:*`, and supports `<service>.global.internal` only with shared networking.
-- `AppFeature.requires.globalServices` auto-starts requirements or raises `GlobalServiceMissingError`. `apps:poweroff` includes global services unless `--keep-global`. `RouterServiceTraefikGlobalAppLive` requires paired router/global contributions or raises `ProxyContributionPairError`.
+- `AppFeature.requires.globalServices` auto-starts requirements or raises `GlobalServiceMissingError`. `apps:poweroff` includes global services unless `--keep-global`. `meta:global:restart` and `meta:global:rebuild` revalidate router startup so a cleared watcher condition clears its persisted record (§20.6.5). The `@lando/proxy-traefik` router layer requires paired router/global contributions or raises `ProxyContributionPairError`.
 - `@lando/service-mailpit` contributes its service type, global service, and framework-aware mail env feature. `global:` alias prefix is reserved. Global volumes carry `dev.lando.storage-global-app: "TRUE"`.
 - Fork scratch apps copy into `<userCacheRoot>/scratch/<scratch-id>/root/` with exclusions and distinct labels; recipe scratches skip `postInit` by default and honor `baked`/`cwd` isolation and `--mount-cwd`.
 - Scratch global storage rewrites to app scope unless `--share-global-storage`; routes use `ScratchHostnameSuffix` unless overridden. Foreground scope interruption destroys all scratch state; detached state persists in `<userCacheRoot>/scratch/registry.bin` and GC reconciles provider labels.

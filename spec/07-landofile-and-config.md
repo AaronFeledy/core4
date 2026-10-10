@@ -1,6 +1,6 @@
-# Lando v4 — Landofile and Configuration
+# Lando v4: Landofile and Configuration
 
-> **Part 7 of 18** · [Index](./README.md)
+> **Part 7 of 19** · [Index](./README.md)
 > **Read next:** [08 CLI and Tooling](./08-cli-and-tooling.md)
 
 This part defines the user-facing Landofile, global configuration, composition, expression, translation, and schema-publication contracts.
@@ -15,7 +15,7 @@ A Landofile-bearing directory contains any §7.2 merge file. Discovery walks upw
 
 `LandofileService` owns discovery, loading, decoding, and source provenance; consumers MUST NOT reproduce those rules.
 
-After ordinary v4 parse or schema validation fails, the loader MAY perform a bounded raw-key legacy check. An unambiguous legacy canonical file raises `Lando3LandofileDetected` with remediation `lando4 app:config:translate --from lando3 --write`; an unambiguous legacy secondary layer beside a valid canonical v4 file raises `LandofileDialectMixError` with remediation `lando4 app:config:translate --from lando3 --file <layer> --write`. Both are `Schema.TaggedError` values carrying app root, file, and applicable conflicting-layer context. Detection MUST NOT parse legacy YAML, load plugins, call `ConfigTranslator.detect`, plan, contact a provider, or read legacy state. Valid or ambiguous v4-shaped content never triggers automatic detection (§7.4.1, §8.2.1).
+After ordinary canonical parse or schema validation fails, the loader MAY perform a bounded raw-key legacy check. An unambiguous legacy canonical file raises `Lando3LandofileDetected` with remediation `lando4 app:config:translate --from lando3 --write`; an unambiguous legacy secondary layer beside a valid canonical file raises `LandofileDialectMixError` with remediation `lando4 app:config:translate --from lando3 --file <layer> --write`. Both are `Schema.TaggedError` values carrying app root, file, and applicable conflicting-layer context. Detection MUST NOT parse legacy YAML, load plugins, call `ConfigTranslator.detect`, plan, contact a provider, or read legacy state. Valid or ambiguous canonical-shaped content never triggers automatic detection (§7.4.1, §8.2.1).
 
 #### 7.1.1 Landofile file forms
 
@@ -30,7 +30,7 @@ Both forms at one layer fail with `LandofileFormConflictError`. Layers MAY mix f
 
 `defineLandofile` is an identity typing helper exported by `@lando/core/schema` and `@lando/sdk`; runtime decoding still uses the canonical schema. A TypeScript default export MUST be a `Landofile` or a function from `LandofileContext` to `Landofile`, `Promise<Landofile>`, or `Effect.Effect<Landofile, LandofileError>`. `LandofileContext` exposes `cwd`, `env`, host facts, layer, merge accumulator, and deferred `secrets`; `secrets.read` accepts the §7.3.1 reference grammar, resolves through the routed `SecretStore`, and preserves §3.7 redaction.
 
-TypeScript modules MUST be pure at top level. Top-level I/O, await, or terminal output fails with `LandofileTopLevelSideEffectError`; function evaluation is bounded. YAML `${VAR}` substitution is not applied to TypeScript output, but emitted `{{ … }}` expressions resolve normally. `includes:` works in either direction. `lando app config edit` MUST refuse TypeScript Landofiles in v4.0, while resolved views work for both forms. Recipes MUST emit YAML.
+TypeScript modules MUST be pure at top level. Top-level I/O, await, or terminal output fails with `LandofileTopLevelSideEffectError`; function evaluation is bounded. YAML `${VAR}` substitution is not applied to TypeScript output, but emitted `{{ … }}` expressions resolve normally. `includes:` works in either direction. `lando app config edit` MUST refuse TypeScript Landofiles, while resolved views work for both forms. Recipes MUST emit YAML.
 
 Decoded dynamic forms use the `app-plan` cache (§12.1). File inputs trigger re-decode; environment, host, secret, and render inputs do not. Full planning commands re-decode them, while cache-only routing exposes the last full decode. Deterministic provenance and cache-only freshness for non-file inputs and transitive imports are deferred.
 
@@ -49,13 +49,13 @@ Layers load at low-to-high precedence:
 
 Later layers override earlier layers; maps deep-merge; scalar arrays replace; object arrays merge by `name`, `id`, `hostname`, `service`, or a schema-specific identity key. Tooling arrays `cmds`, `deps`, `status`, `preconditions`, and `prompt` replace unless entries opt into schema-specific merge with stable `name` or `id`. The highest-precedence `name` wins. Custom basenames and pre/post lists belong to global config.
 
-`.lando.recipe.yml` is not a v4 layer; recipes are init-time scaffolds (§8.8). Explicit Lando 3 translation supplies all seven legacy layers as one ordered set, folds recipe between dist and upstream, preserves source layers where v4 merge algebra permits, and MUST preserve final effective configuration over the representable subset. Structural removals hoist the smallest merge-identity unit to its last-transition output layer and produce a `needs-review` diagnostic naming sources and changed prefix behavior. Prefix equivalence is required where representable. There is no compatibility delete value.
+`.lando.recipe.yml` is not a canonical layer; recipes are init-time scaffolds (§8.8). Explicit Lando 3 translation supplies all seven legacy layers as one ordered set, folds recipe between dist and upstream, preserves source layers where the canonical merge algebra permits, and MUST preserve final effective configuration over the representable subset. Structural removals hoist the smallest merge-identity unit to its last-transition output layer and produce a `needs-review` diagnostic naming sources and changed prefix behavior. Prefix equivalence is required where representable. There is no compatibility delete value.
 
 Each file resolves and merges its `includes:` before the six-layer merge, using the same map and array rules (§7.7).
 
 ### 7.3 Loading external file content
 
-The pure expression helpers `load(path)` and `import(path)` accept local paths only in v4.0. `load` returns a `FileRef`; `import` returns an `ImportRef<T>` preserving provenance. Remote value retrieval is a non-goal; remote fragments use §7.7.
+The pure expression helpers `load(path)` and `import(path)` accept local paths only. `load` returns a `FileRef`; `import` returns an `ImportRef<T>` preserving provenance. Remote value retrieval is a non-goal; remote fragments use §7.7.
 
 `FileRef` exposes resolved `path`, `size`, `mime`, `checksum`, and `encoding`. Decoders are `text`, `json`, `yaml`, `fromToml`, and `bytes`; extension inference applies to JSON, YAML, and TOML, otherwise text. The optional decoder argument and pipe form are equivalent. Unknown decoders fail with `ConfigExpressionError`.
 
@@ -63,7 +63,7 @@ Structured values support `get(value, path, default?)`, which returns the defaul
 
 Paths resolve from the containing Landofile or fragment, recipe, or mount-template directory. They MUST remain under the app root after traversal and symlink resolution. Absolute or escaping paths fail with `LandofileLoadOutsideRootError`; explicit global relaxation is logged on every use. Reads are eager, bounded, and included by content identity in the `app-plan` cache key; limit violations fail with `LandofileLoadLimitError`.
 
-The canonical loader and emitter are tag-free. Source-preserving legacy parsing exists only for explicit translation, is bounded, rejects duplicate keys, and MUST NOT weaken or become reachable from normal v4 loading.
+The canonical loader and emitter are tag-free. Source-preserving legacy parsing exists only for explicit translation, is bounded, rejects duplicate keys, and MUST NOT weaken or become reachable from normal canonical loading.
 
 ### 7.3.1 Configuration expressions
 
@@ -82,7 +82,7 @@ Built-in helpers are:
 | Process facts | `which`, `glob` |
 | Namespaced | `path.join`, `path.dirname`, `path.basename`, `path.extname`, `path.relative`, `path.resolve`; `fs.exists`, `fs.isFile`, `fs.isDir`, `fs.size`; `url.build`, `url.parse`; `semver.satisfies`, `semver.compare` |
 
-Known namespaces MUST be called; other dotted forms are value access. `path.*` is distinct from the `paths.*` scope. Plugins MAY add non-colliding namespaces and pure helpers through §9.5. `pathJoin`, `pathDirname`, and `pathBasename` remain deprecated aliases through v4.x and emit `DeprecationNotice` (§18).
+Known namespaces MUST be called; other dotted forms are value access. `path.*` is distinct from the `paths.*` scope. Plugins MAY add non-colliding namespaces and pure helpers through §9.5. `pathJoin`, `pathDirname`, and `pathBasename` are deprecated aliases and emit `DeprecationNotice`; removal follows the metadata and compatibility policy in §18.
 
 Helpers are synchronous, pure, deterministic, redaction-safe, non-networked, and non-mutating, except captured `load`/`import` reads. They use flat names unless a domain has multiple operations, fixed format values for polymorphic conversion, and a trailing options object for multiple optional controls. Standard return shapes are preserved. Converters return `null` for uninterpretable input, parsers throw `ConfigExpressionError`, predicates return `false`, and misconfiguration throws. Contributed helpers MUST satisfy the SDK contract suite (§13.1).
 
@@ -124,17 +124,17 @@ Every engine receives schema-defined `TemplateRenderContext`, limited to scopes 
 | Composition/defaults | `includes`, `defaultTemplateEngine`, `templateVars`, `env_file` |
 | Runtime/provider | `provider`, `toolingEngine`, `providers` |
 | App behavior | `services`, `tooling`, `toolingDefaults`, `toolingIncludes`, `commandAliases`, `events`, `proxy`, `router`, `keys`, `sshAgent`, `gpgAgent` |
-| Deferred data movement | `remotes`, `sync` (§10.12; implementation deferred to 4.1) |
+| Deferred data movement | `remotes`, `sync` (§10.12; contract-only, implementation sequenced in the ROADMAP) |
 | Plugins | `plugins`, `pluginDirs` |
 | Compose subset | `volumes`, `networks`, `configs`, `secrets`, `include`, `x-*` |
 
-`name` defaults to the app-root basename. `slug` deterministically normalizes it for paths, URLs, and provider labels; an empty normalized value uses a stable root hash. `<app-id>` is the v4.0 slug. Collisions fail with `AppIdCollisionError` and MUST NOT auto-suffix. `global` is reserved and fails with `AppIdReservedError`; scratch apps occupy a separate `AppRef.kind` namespace (§20.2, §21.2). Identity rules are published as schema metadata.
+`name` defaults to the app-root basename. `slug` deterministically normalizes it for paths, URLs, and provider labels; an empty normalized value uses a stable root hash. `<app-id>` is the slug. Collisions fail with `AppIdCollisionError` and MUST NOT auto-suffix. `global` is reserved and fails with `AppIdReservedError`; scratch apps occupy a separate `AppRef.kind` namespace (§20.2, §21.2). Identity rules are published as schema metadata.
 
 Compose compatibility is a service-key vocabulary, not a whole-project format promise. Supported top-level and service keys have exactly one committed disposition: `normalized`, `preserved`, or `rejected`. Preserved non-`x-*` fields require provider capability and MUST NOT be silently dropped; `x-*` is inert. The vendored tagged Compose schema and coverage gate require every upstream key path to be classified.
 
 `extends`, `container_name`, `network_mode`, `links`, Swarm deployment machinery, and `!reset`/`!override` are rejected with remediation. Native anchors, aliases, and merge keys resolve within each file before schema decode and layer merge; invalid reference graphs fail with source-located `LandofileParseError`. Obsolete top-level `version` is accepted, ignored, and emits `DeprecationNotice` (§18). Lando-specific keys win over equivalent Compose shorthand. Compose `include` normalizes to appended `includes` entries with `kind: compose`; the fragment remains subject to the same disposition matrix.
 
-The optional `lando` semver range is validated after merge and before planning. Constraints from every layer accumulate and include prereleases. Failure raises `LandofileVersionConstraintError` with ranges, layers, running version, and remediation. `LANDO_SKIP_VERSION_CONSTRAINT=1` MAY downgrade it to a warning for one invocation; doctor reports unsatisfied or skipped constraints. `lando` constrains core, `runtime` constrains the Landofile format, and service `api` constrains each service. In v4, `runtime: 4` requires `api: 4`; mismatch fails with `LandofileVersionMismatchError`. Future mixed versions are out of scope.
+The optional `lando` semver range is validated after merge and before planning. Constraints from every layer accumulate and include prereleases. Failure raises `LandofileVersionConstraintError` with ranges, layers, running version, and remediation. `LANDO_SKIP_VERSION_CONSTRAINT=1` MAY downgrade it to a warning for one invocation; doctor reports unsatisfied or skipped constraints. `lando` constrains core, `runtime` constrains the Landofile format, and service `api` constrains each service. `runtime: 4` requires `api: 4`; mismatch fails with `LandofileVersionMismatchError`. Future mixed versions are out of scope.
 
 The top-level wrappers `compose:` and `recipes:` are forbidden and fail with `LandofileForbiddenWrapperError`; Compose keys are direct, and recipe provenance uses singular `recipe`. Bare `recipe: <id>` remains valid and inert. The object form carries `id`, `version`, `producer`, `options`, and optional injective service-name mapping; producer identity and canonical content digest MUST agree with the declaration. Local and bundled source identities MUST NOT collide. The declaration MUST NOT trigger expansion, plugin loading, or runtime lookup. `init` and decomposing frontends MUST emit the object form.
 
@@ -144,7 +144,7 @@ Translation is explicit conversion through `LandofileAuthoringShape` and recursi
 
 Only `app:config:translate`, `app:config:explain`, `app:config:migrate`, and `apps:init` invoke translators (§8.2.1, §8.8). Translators MUST NOT run during discovery, normal loading, start, or tooling. Core owns bounded reads, ordering, containment, cumulative-prefix and final validation, encoding, and mutation. Frontends own foreign parsing and merge semantics, folding, diagnostics, and output ownership, but MUST NOT read or write files, follow references, plan, contact providers, install plugins, or mutate the app.
 
-`ConfigTranslateInput` is tagged `landofile-document-set` or `recipe-request`. The former carries the ordered bounded source snapshots, source/layer identities, digests, media types, selection mode, lower-v4 context, and writable layers; the latter carries recipe identity, synthetic source id, and decoded nonsecret answers or approved secret references. Raw secrets and deletion intents are forbidden in recipe requests.
+`ConfigTranslateInput` is tagged `landofile-document-set` or `recipe-request`. The former carries the ordered bounded source snapshots, source/layer identities, digests, media types, selection mode, lower-layer canonical context, and writable layers; the latter carries recipe identity, synthetic source id, and decoded nonsecret answers or approved secret references. Raw secrets and deletion intents are forbidden in recipe requests.
 
 `ConfigTranslateResult` contains ordered unique-target authoring fragments, source ids, diagnostics, and deletion intents. Core MUST validate all targets and deletions. `ConfigTranslateDetectInput` contains snapshots and metadata only. `ConfigTranslateEncodeInput` carries an authoring wire tree and validated complete context; encoders emit only the selected fragment. `ConfigTranslateDiagnostic` carries source id, key path, optional source span, kind, message, and remediation.
 
@@ -154,7 +154,7 @@ Encoder round-trip law: `decodeAuthoring_T(T.encode(v).text)` MUST equal `canoni
 
 The six diagnostic kinds are `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. Every omitted input path MUST produce `dropped`; diagnostics are deterministic and ordered, and preview and write report the same array. `unsupported` blocks encoding and writing. `non-portable` blocks target writes unless the target preserves semantics. There is no residual runtime interpretation bag.
 
-Preview is default. `--to lando4 --write` writes only declared v4 YAML targets through the managed-file transaction (§12.4) and invalidates affected caches. Other encoders MAY preview but MUST fail closed on write until a safe target mapping exists. Core MUST NOT guess filenames or overwrite foreign text. TypeScript and includes remain opaque and MUST NOT execute. Dynamic or remote references produce `needs-review`; translators MUST NOT fetch or inspect them.
+Preview is default. `--to lando4 --write` writes only declared canonical YAML targets through the managed-file transaction (§12.4) and invalidates affected caches. Other encoders MAY preview but MUST fail closed on write until a safe target mapping exists. Core MUST NOT guess filenames or overwrite foreign text. TypeScript and includes remain opaque and MUST NOT execute. Dynamic or remote references produce `needs-review`; translators MUST NOT fetch or inspect them.
 
 ### 7.5 Global config
 
@@ -182,7 +182,7 @@ Per-root precedence is explicit runtime option, root-specific environment variab
 
 Published nested keys include `router.{enabled,bindAddress,httpPort,httpsPort,httpFallbacks,httpsFallbacks}`, `network.proxy.{http,https,noProxy,injectIntoServices}`, `network.ca.{trustHost,certs,injectIntoServices}`, `notify.{enabled,thresholdMs,commands}`, `commandAliases.{enabled,disabled,custom}`, `agentEnv.{enabled,allow,deny}`, `sshAgent.{sidecar,socket}`, `gpgAgent.{forward,socket}`, `mcp.{allow,deny,tooling,maxConcurrent}`, `scanner.{path,okCodes,retries,timeout}`, `healthcheck.{retry,delay}`, `build.{concurrency,failFast,transcripts}`, and `stats.report`. Evaluation-policy keys are `discovery.maxDepth`, `landofile.tsTimeoutMs`, `loadMaxFileBytes`, `loadMaxFilesPerExpression`, `loadMaxRecursionDepth`, `includeMaxDepth`, `allowLoadOutsideRoot`, `allowIncludeOutsideRoot`, and the unsafe-template-engine opt-in. Values are bounded and schema-validated; tuning defaults are not architecture contracts.
 
-`notify` is the only Beta 1 key published through `PublishedGlobalConfigKey`/`configKey`; it decodes as `NotifyConfig` (§8.9.7). Its canonical-command allowlist is validated against the cwd-independent global registry, so global validity MUST NOT depend on app discovery.
+`notify` is currently the only key published through `PublishedGlobalConfigKey`/`configKey`; it decodes as `NotifyConfig` (§8.9.7). Its canonical-command allowlist is validated against the cwd-independent global registry, so global validity MUST NOT depend on app discovery.
 
 `appEnv` and `appLabels` are bounded whole maps applying only to user apps. Service-authored values win per key. Core-owned `LANDO`/`LANDO_*` environment keys and `dev.lando.*` labels MUST be rejected from these maps, and values MUST be redacted (§3.7). `router.enabled: false` MUST prevent router startup and route publication. `scanner` is `false` or bounded `{ path?, okCodes?, retries?, timeout? }`; failures warn after redaction and MUST NOT fail start (§10.5). Build concurrency, failure policy, and transcript retention live under `build` (§6.13).
 
@@ -211,7 +211,7 @@ Any §7.4–§7.6 key MAY carry the §18.5 `deprecated` annotation, propagated t
 | Local | Relative or absolute path resolved from the including source; MUST remain under app root unless explicitly relaxed. |
 | Git | Hosted shorthand or `git+https`; resolved ref is locked and content-addressed. |
 | npm | Package and optional path/version; resolved package is locked and cached. |
-| Registry | `registry:<id>` syntax is reserved; implementation is deferred until after v4.0 and MUST require signature verification. |
+| Registry | `registry:<id>` syntax is reserved; implementation is sequenced in the ROADMAP and MUST require signature verification. |
 
 `kind` is `landofile` (default), `tooling`, or `compose`. Landofile and Compose fragments resolve per file before §7.2; tooling resolves during app-plan compilation and shares the §8.5.8 `toolingIncludes` contract. Compose `include` normalizes to `kind: compose`. A `when` expression uses the including context and skips on false.
 

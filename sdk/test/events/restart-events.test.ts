@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import * as events from "@lando/sdk/events";
+import { ServiceName } from "@lando/sdk/schema";
 
 const start = Schema.decodeUnknownSync(events.PreStartEvent)({
   _tag: "pre-start",
@@ -34,8 +35,20 @@ test("pre-restart mirrors the pre-start payload and round-trips through LandoEve
   const wire = Schema.encodeSync(events.PreRestartEvent)(event);
   // Then
   expect(event._tag).toBe("pre-restart");
-  expect(Object.keys(events.PreRestartEvent.fields)).toEqual(Object.keys(events.PreStartEvent.fields));
+  expect(Object.keys(events.PreStartEvent.fields).every((key) => key in events.PreRestartEvent.fields)).toBe(
+    true,
+  );
+  expect(events.PreRestartEvent.fields).toHaveProperty("services");
   expect(Schema.decodeUnknownSync(events.LandoEvent)(wire)).toEqual(event);
+  expect(wire).not.toHaveProperty("services");
+});
+
+test("pre-restart carries selected services when present", () => {
+  const { _tag, ...payload } = start;
+  const event = events.PreRestartEvent.make({ ...payload, services: [ServiceName.make("redis")] });
+  const wire = Schema.encodeSync(events.PreRestartEvent)(event);
+  expect(Schema.decodeUnknownSync(events.LandoEvent)(wire)).toEqual(event);
+  expect(wire).toMatchObject({ services: ["redis"] });
 });
 
 test("post-restart mirrors the post-start payload and round-trips through LandoEvent", () => {
@@ -47,6 +60,10 @@ test("post-restart mirrors the post-start payload and round-trips through LandoE
   const wire = Schema.encodeSync(events.PostRestartEvent)(event);
   // Then
   expect(event._tag).toBe("post-restart");
-  expect(Object.keys(events.PostRestartEvent.fields)).toEqual(Object.keys(events.PostStartEvent.fields));
+  expect(
+    Object.keys(events.PostStartEvent.fields).every((key) => key in events.PostRestartEvent.fields),
+  ).toBe(true);
+  expect(events.PostRestartEvent.fields).toHaveProperty("services");
   expect(Schema.decodeUnknownSync(events.LandoEvent)(wire)).toEqual(event);
+  expect(wire).not.toHaveProperty("services");
 });

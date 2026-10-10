@@ -50,6 +50,7 @@
     "./docker/api-client": "./src/docker/api-client.ts",
     "./podman/api-client": "./src/podman/api-client.ts",
     "./podman/bring-up": "./src/podman/bring-up.ts",
+    "./podman/bring-up-recreate": "./src/podman/bring-up-recreate.ts",
     "./podman/bring-down": "./src/podman/bring-down.ts",
     "./podman/compose": "./src/podman/compose.ts",
     "./podman/compose-knobs": "./src/podman/compose-knobs.ts",

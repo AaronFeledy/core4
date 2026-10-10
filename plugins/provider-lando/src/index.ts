@@ -908,7 +908,24 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               ? Stream.fail(missingWindowsStdinRunner(target))
               : windowsStdinExecStream(plan, target, command, windowsStdinOptions)
             : runtimeExecStream(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
-        inspect: (plan, target) => runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX }),
+        inspect: Effect.fnUntraced(function* (plan, target) {
+          const physical = yield* physicalNetworkPlan(plan);
+          const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
+          if (physical === plan || runtime.networkNames === undefined) return runtime;
+          const logicalNames = new Map<string, string>();
+          if (physical.networking !== undefined && plan.networking !== undefined) {
+            logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            const shared = physical.networking.sharedNetworkMembership;
+            const logicalShared = plan.networking.sharedNetworkMembership;
+            if (shared !== undefined && logicalShared !== undefined) {
+              logicalNames.set(shared.name, logicalShared.name);
+            }
+          }
+          return {
+            ...runtime,
+            networkNames: runtime.networkNames.map((name) => logicalNames.get(name) ?? name),
+          };
+        }),
       },
     });
 
@@ -1310,6 +1327,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               ? {}
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
+            ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           });
           yield* rememberAppliedPlan(appliedPlans, plan, applyOptions);
           yield* reconcilePublishedServices(physicalPlan);

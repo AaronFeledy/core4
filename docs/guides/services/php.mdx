@@ -46,6 +46,13 @@ services:
 | `fpm` | `php:<version>-fpm-bookworm` | PHP-FPM on port `9000`. Front it with `nginx` and `backend:`. `allowOverride:` is rejected. |
 | `cli` | `php:<version>-cli-bookworm` | Idle worker for tooling and `command:`. No web server, no HTTP route. |
 
+Lando enables `mod_rewrite` while building stock Apache services. Set
+`allowOverride: true` if your app uses `.htaccess` rewrite rules; it defaults to
+`false`. PHP framework recipes such as Laravel and Backdrop already set it.
+Custom images and authored `command:` or `entrypoint:` values own their Apache
+configuration, including module setup. Rebuild existing apps after upgrading
+Lando to apply the new default.
+
 Pair FPM with nginx by naming the PHP service on `backend:`. The nginx service
 generates a FastCGI upstream pointing at that service on port `9000`:
 

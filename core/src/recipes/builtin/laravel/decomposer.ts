@@ -23,6 +23,7 @@ export const laravelDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
         },
         database: { type: "{{ recipe.database }}" },
         cache: { type: "redis" },
+        node: { type: "node:22", primary: false, endpoints: [] },
         ...(input.options.worker === true
           ? {
               worker: {
@@ -48,8 +49,8 @@ export const laravelDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
           cmds: ["composer"],
         },
         npm: {
-          service: "appserver",
-          description: "Run npm inside the appserver service.",
+          service: "node",
+          description: "Run npm inside the node service.",
           cmds: ["npm"],
         },
       },

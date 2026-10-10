@@ -1,9 +1,9 @@
-# Lando v4 — Plugin Specification
+# Lando v4: Plugin Specification
 
-> **Part 10 of 18** · [Index](./README.md)
+> **Part 10 of 19** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
-A v4 plugin is a Bun-loadable package whose manifest declares its public contribution surface. The pluggable abstractions themselves are cataloged in §4.
+A plugin is a Bun-loadable package whose manifest declares its public contribution surface. The pluggable abstractions themselves are cataloged in §4.
 
 ---
 
@@ -18,7 +18,7 @@ A plugin has a `package.json` with `name` and `version`, a manifest with `api: 4
 ### 9.2 Plugin runtime rules
 
 - Plugin entries SHOULD use ESM; Bun-loadable TypeScript and build outputs are accepted, and CommonJS is supported only through loader interop.
-- Plugins run with host permissions; v4.0.0 provides no sandbox.
+- Plugins run with host permissions; there is no sandbox.
 - Plugins receive `LandoPluginContext`, never internal core objects.
 - Contributions MAY return Effect Layers, plain values, or factories; the loader normalizes them to Layers.
 - Public contributions MUST be declared under `provides:`. Manifest validation, compatibility checks, and module containment occur before import.
@@ -40,7 +40,7 @@ The manifest is an Effect Schema validated before module import.
 |---|---|
 | `name` | Package identity and collision key. |
 | `version` | Plugin version. |
-| `api` | Plugin API version; v4 uses `4`. |
+| `api` | Plugin API version; the current value is `4`. |
 | `description` | Human-readable summary. |
 | `enabled` | Default enablement. |
 | `updateable` | Whether update management may update the plugin. |
@@ -98,7 +98,7 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 | `commands` | Command registry | Obeys namespace and alias rules (§8.1). |
 | `initSources` | Init command | Supplies app initialization sources. |
 | `routerServices`, `tunnelServices` | Networking subsystems | Implements routing or sharing contracts. |
-| `remoteSources`, `datasets` | Remote-sync subsystem | Contract-only for Beta 1; implementation is deferred to 4.1 (§10.12). |
+| `remoteSources`, `datasets` | Remote-sync subsystem | Contract-only; implementation is sequenced in the ROADMAP (§10.12). |
 | `certificateAuthorities` | Certs subsystem | Implements certificate authority contracts. |
 | `loggers`, `renderers`, `rendererPanels` | Output services | Implements logging, rendering, or frozen panel contracts. |
 | `toolingEngines` | Tooling service | Executes compiled tooling graphs. |
@@ -126,7 +126,7 @@ Contribution invariants:
 - Doctor checks MUST use bounded `DoctorCheckContext`, MUST NOT import container-runtime internals, MUST provide remediation or sufficient explanation, MUST redact secrets, and MUST fail in isolation rather than taking down the doctor run. Automatic fixes run only with explicit `--fix` (§10.9).
 - Interaction services MUST truthfully declare prompt capabilities, preserve answer precedence and secret redaction, fail unsupported prompts with `InteractionUnavailableError`, never block on stdin in non-interactive mode, and pass the §13.1 interaction contract suite. `stdio` is reserved by core.
 - Secret stores MUST declare `id`, `module`, and `schemes`, MUST NOT log, persist, or embed secret values, MUST fail with the §9.5.1 error trio and nothing broader, and MUST pass the §13.1 secret-store contract suite. Reference validation runs in the store before any backend call.
-- Tunnel services MUST truthfully declare capabilities, accept app-local targets, keep arbitrary host-port forwarding behind an advanced option, route egress through `HttpClient`, provision connectors through `Downloader`, bind foreground processes to `Scope`, persist detached sessions in `StateStore`, use §10.5.1 probing, redact URLs, tokens, codes, and paths, and pass the §13.1 tunnel contract suite. v4.0 has no core default tunnel service.
+- Tunnel services MUST truthfully declare capabilities, accept app-local targets, keep arbitrary host-port forwarding behind an advanced option, route egress through `HttpClient`, provision connectors through `Downloader`, bind foreground processes to `Scope`, persist detached sessions in `StateStore`, use §10.5.1 probing, redact URLs, tokens, codes, and paths, and pass the §13.1 tunnel contract suite. Core ships no default tunnel service.
 
 #### 9.5.1 SecretStore contribution
 
@@ -182,14 +182,15 @@ App-declared plugins install only into their app-scoped store, use the same trus
 | `cwd`, `userConfRoot`, `userCacheRoot`, `userDataRoot`, `platform` | Validated host context and roots. |
 | `logger` | Host logger. |
 | `stateStore` | Durable store pre-rooted to `plugins/<id>` (§12.7). |
+| `httpClient` | The host-owned standard Effect `HttpClient` with Lando trust wiring (§10.3.2); per-request `RequestPolicy` is fiber-scoped and supplied by the calling fiber, not pre-wired. |
 | `managedFiles` | Managed-file view pre-namespaced to `owner:<id>` (§10.13). |
 | `events.publishRender` | Publish-only access to the closed `RenderEvent` union (§8.9). |
 
-`stateStore` MUST prevent access to core or other-plugin state, and plugins MUST NOT hand-roll atomic writes or lockfiles outside it. `managedFiles` MUST prevent cross-owner remove, adopt, or release operations. `events.publishRender` schema-validates and redacts events and does not expose arbitrary publish, subscribe, wait, or query access. Plugins never receive `LandoRuntimeLive`; they receive only declared services.
+`stateStore` MUST prevent access to core or other-plugin state, and plugins MUST NOT hand-roll atomic writes or lockfiles outside it. `managedFiles` MUST prevent cross-owner remove, adopt, or release operations. `events.publishRender` schema-validates and redacts events and does not expose arbitrary publish, subscribe, wait, or query access. Plugins never receive the runtime Layer; they receive only declared services.
 
 ### 9.10 Plugin authoring toolkit
 
-Core provides `meta:plugin:new`, `meta:plugin:test`, `meta:plugin:build`, `meta:plugin:link`, `meta:plugin:unlink`, and `meta:plugin:publish`. These are not contribution surfaces and have no default top-level aliases. Templates cover service types, providers, tooling engines, template engines, route filters, config translators, recipes, and bare plugins, and MUST emit a buildable, testable, linkable v4 package.
+Core provides `meta:plugin:new`, `meta:plugin:test`, `meta:plugin:build`, `meta:plugin:link`, `meta:plugin:unlink`, and `meta:plugin:publish`. These are not contribution surfaces and have no default top-level aliases. Templates cover service types, providers, tooling engines, template engines, route filters, config translators, recipes, and bare plugins, and MUST emit a buildable, testable, linkable plugin package.
 
 Authoring commands MUST route Bun work through the embedded Bun contract, MUST keep changes within the plugin store or selected source tree, MUST NOT mutate global config or app lifecycle, and MUST keep generated plugin top-level imports within cold-start policy. Link trust applies only to explicitly permitted authoring roots and MUST NOT trust registry extraction paths. Publishing MUST rebuild stale artifacts, test unless explicitly skipped, revalidate manifest and contained module paths, keep tokens out of argv, and support a non-publishing dry run.
 

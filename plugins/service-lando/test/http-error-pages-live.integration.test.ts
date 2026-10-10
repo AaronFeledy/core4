@@ -6,6 +6,7 @@ import {
   type ErrorPageCase,
   PATHINFO_OK,
   PHAR_EXECUTED,
+  PHP_INDEX,
   apacheCases,
   nginxFpmCases,
   phpFixtureFiles,
@@ -28,7 +29,31 @@ const suites: ReadonlyArray<{
 }> = [
   { server: "static", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx-fpm", files: phpFixtureFiles, cases: nginxFpmCases },
-  { server: "apache", files: phpFixtureFiles, cases: apacheCases },
+  {
+    server: "apache",
+    files: {
+      ...phpFixtureFiles,
+      ".htaccess":
+        "<IfModule mod_rewrite.c>\nRewriteEngine On\nRewriteRule ^up$ index.php [L]\n</IfModule>\n",
+    },
+    cases: [
+      ...apacheCases,
+      {
+        name: "rewrites /up to the PHP front controller",
+        method: "GET",
+        path: "/up",
+        status: 200,
+        body: { exact: PHP_INDEX },
+      },
+      {
+        name: "serves the direct /index.php/up control",
+        method: "GET",
+        path: "/index.php/up",
+        status: 200,
+        body: { exact: PHP_INDEX },
+      },
+    ],
+  },
 ];
 
 // Given: each Lando-owned web server generator running its planned start

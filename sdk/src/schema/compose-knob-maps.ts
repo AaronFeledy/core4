@@ -95,7 +95,7 @@ export const ComposeExtraHostsField = Schema.Union([ComposeExtraHostsMapInput, S
       SchemaTransformation.transformEffect({
         decode: (input, _options) => {
           if (!isStringList(input)) return Effect.succeed(input);
-          const entries: Array<readonly [string, string]> = [];
+          const entries = new Map<string, string | Array<string>>();
           for (const entry of input) {
             const pair = splitMappingEntry(entry, "host");
             if (pair === undefined) {
@@ -106,7 +106,15 @@ export const ComposeExtraHostsField = Schema.Union([ComposeExtraHostsMapInput, S
                 ),
               );
             }
-            entries.push(pair);
+            const [host, address] = pair;
+            const existing = entries.get(host);
+            if (existing === undefined) {
+              entries.set(host, address);
+            } else if (typeof existing === "string") {
+              entries.set(host, [existing, address]);
+            } else {
+              existing.push(address);
+            }
           }
           const record = Object.fromEntries(entries);
           if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);

@@ -12,9 +12,7 @@ lando init --recipe jekyll --name=jekyll-demo --yes
 cd jekyll-demo
 ```
 
-`--yes` skips prompts. Jekyll declares no recipe options, so the only prompt is the app name. Before the first start, park `builder` on `sleep infinity` and add a build step that installs compile tooling. `lando bundle` and `lando jekyll` run inside the running `builder` container, so it has to stay up while you install gems. The build step gives Bundler the headers native gems need.
-
-The stock `builder` command is `bundle exec jekyll serve`. Until the app has a Gemfile and gems, that command exits and `builder` stops with it. Park `builder` first, then install.
+`--yes` skips prompts. Before the first start, park `builder` on `sleep infinity`: its default Jekyll server command exits until you install a Gemfile and gems. The recipe's artifact build installs the compiler and headers; `lando bundle` and `lando jekyll` then use the running builder.
 
 ## See what the recipe writes
 
@@ -22,7 +20,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
 
 | Piece | What you get |
 | --- | --- |
-| `builder` | `ruby:3.3`, port `4000`, command `bundle exec jekyll serve --host 0.0.0.0 --port 4000` |
+| `builder` | `ruby:3.3`, port `4000`, command `bundle exec jekyll serve --host 0.0.0.0 --port 4000`, build step installing `build-essential`, `libssl-dev`, and `zlib1g-dev` |
 | `web` | `static:nginx` serving `_site/` from the app mounted at `/app`, one route on both schemes |
 | Tooling | `lando jekyll` (`bundle exec jekyll`) and `lando bundle` on `builder` |
 
@@ -43,12 +41,13 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/_site\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"jekyll\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bundle\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev" } }} />
     </Step>
     <Step name="park-builder">
       <UseFixture name="park-builder" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "sleep infinity" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "build-essential" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "build-essential libssl-dev zlib1g-dev" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -90,27 +89,16 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
   </Scenario>
 </Guide>
 
-## Park builder and install compile tooling
+## Park builder
 
-Before the first install (or right after init), park `builder` on `sleep infinity` and add a build step so native gems can compile. Edit `.lando.yml`:
-
-```yaml
-services:
-  builder:
-    build:
-      artifact:
-        - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
-    command: sleep infinity
-    framework: none
-    port: 4000
-    type: ruby:3.3
-```
-
-Then start. The first start builds that apt step into the `builder` image.
+Right after init, swap the `builder` command for `sleep infinity`. Change only the command; leave the generated `build.artifact` step alone.
 
 ```sh
+lando app:config:set services.builder.command 'sleep infinity'
 lando start
 ```
+
+The first start runs that build step to prepare the `builder` image.
 
 ## Install Jekyll into the app
 
@@ -143,25 +131,14 @@ Confirm a one-off build:
 lando jekyll build
 ```
 
-That writes `_site/`. Keep the build step on `builder` for later gem installs.
+That writes `_site/`.
 
 ## Restore the server command
 
-Restore the recipe server command after the gems and site are in place. Keep the build step:
-
-```yaml
-services:
-  builder:
-    build:
-      artifact:
-        - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
-    command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000"
-    framework: none
-    port: 4000
-    type: ruby:3.3
-```
+Restore the recipe server command after the gems and site are in place:
 
 ```sh
+lando app:config:set services.builder.command 'bundle exec jekyll serve --host 0.0.0.0 --port 4000'
 lando restart
 lando info
 ```
@@ -242,11 +219,9 @@ lando bundle update
 lando restart
 ```
 
-Gems with native extensions compile against the `build-essential` step from the park section, so keep that step in `.lando.yml`.
-
 ## Restart or rebuild
 
-`lando restart` stops the app and starts it again from the current `.lando.yml`, so `command:`, `webroot:`, and other config edits land. It also covers the apt line: change a `build.artifact` step and the next start builds a fresh `builder` image before it starts the container.
+`lando restart` stops the app and starts it again from the current `.lando.yml`, so `command:`, `webroot:`, and other config edits land. It also covers `build.artifact`: change a step there and the next start builds a fresh `builder` image before it starts the container.
 
 `lando rebuild` recreates the containers and reruns every `build.app` step, even unchanged ones. The Jekyll recipe has no `build.app` steps, so `lando restart` covers every edit on this page. `lando rebuild` asks for confirmation; pass `-y` to skip the prompt in scripts.
 
@@ -262,4 +237,3 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 
 - [Jekyll recipe](/recipes/jekyll/)
 - [Serve a static site](../services/static.mdx)
-- [Add Ruby](../services/ruby.mdx)

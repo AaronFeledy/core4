@@ -3,6 +3,7 @@ runtime: 4
 recipe: jekyll
 services:
   builder:
+    # Init writes this build step; keep it so native gems compile.
     build:
       artifact:
         - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
