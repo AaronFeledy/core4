@@ -1,0 +1,292 @@
+---
+id: laravel-reverb
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, laravel, php, reverb, websockets, node]
+---
+
+# Run Laravel Reverb websockets behind the Lando proxy
+
+Run Reverb on its own service and route WebSockets through Lando's proxy. The browser uses `wss://ws.reverb-demo.lndo.site`; Laravel publishes to `http://reverb:8080` on the app network.
+
+This builds on [Run the Laravel recipe](../laravel-workflow/). The app name below is `reverb-demo`.
+
+## Scaffold Laravel
+
+```sh
+lando init --recipe laravel --name=reverb-demo --yes --answer=worker=true
+cd reverb-demo
+```
+
+`--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml` and change the `command` and `dependsOn` of `worker`:
+
+```yaml
+  worker:
+    command: php artisan queue:listen
+    dependsOn:
+      database:
+        condition: service_healthy
+```
+
+Start the app and install Laravel:
+
+```sh
+lando start
+lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando composer install --no-interaction
+chmod -R a+rwX storage bootstrap/cache
+```
+
+`create-project` needs an empty directory, hence `tmp-app`. Apache runs as `www-data`; the permission change lets it write Laravel's cache and logs. Use these writable permissions only for local development.
+
+## Point Laravel at MariaDB
+
+Set these in `.env`:
+
+```dotenv
+APP_URL=https://reverb-demo.lndo.site
+LOG_CHANNEL=stderr
+DB_CONNECTION=mariadb
+DB_HOST=database
+DB_PORT=3306
+DB_DATABASE=reverb-demo
+DB_USERNAME=lando
+DB_PASSWORD=lando
+```
+
+Use `database`, not `127.0.0.1`. `LOG_CHANNEL=stderr` sends Laravel's log to `lando logs`. Keep `QUEUE_CONNECTION=database`, `CACHE_STORE=database`, and `SESSION_DRIVER=database` in `.env`, then create the tables:
+
+```sh
+lando artisan migrate --no-interaction
+```
+
+## Install Reverb
+
+```sh
+lando artisan install:broadcasting --reverb --without-node --no-interaction
+```
+
+That requires `laravel/reverb`, sets `BROADCAST_CONNECTION=reverb`, writes `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` into `.env`, and adds `resources/js/echo.js`. `--without-node` skips the npm step. `appserver` has no Node, so Node gets its own service below.
+
+Now set the hosts. Reverb has two audiences, and they reach it by different names:
+
+```dotenv
+REVERB_HOST=reverb
+REVERB_PORT=8080
+REVERB_SCHEME=http
+
+VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
+VITE_REVERB_HOST=ws.reverb-demo.lndo.site
+VITE_REVERB_PORT=443
+VITE_REVERB_SCHEME=https
+```
+
+| Variables | Read by | Reaches Reverb at |
+| --- | --- | --- |
+| `REVERB_*` | Laravel publishing events from `appserver` and `worker` | `http://reverb:8080`, the service key on the app network |
+| `VITE_REVERB_*` | Echo in the browser | `wss://ws.reverb-demo.lndo.site`, through the proxy |
+
+`install:broadcasting` writes `REVERB_HOST="localhost"`. Replace it. Inside a container `localhost` is the container itself, not Reverb. If `lando info` prints `:8443` on your URLs because something else owns 443, set `VITE_REVERB_PORT=8443`.
+
+## Add Reverb and Node
+
+Add two services under `services:` in `.lando.yml`:
+
+```yaml
+  reverb:
+    type: "php:{{ recipe.php }}"
+    port: 8080
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      database:
+        condition: service_healthy
+    routes:
+      - hostname: "ws.{{ app.name }}.{{ proxy.defaultDomain }}"
+    scanner:
+      path: /up
+  node:
+    type: "node:22"
+    endpoints: []
+```
+
+Then point the recipe's `npm` tooling at `node`:
+
+```yaml
+tooling:
+  npm:
+    cmds:
+      - npm
+    description: "Run npm inside the node service."
+    service: node
+```
+
+```sh
+lando start
+```
+
+This starts the new services and brings the worker back up after installing Laravel. `queue:listen` reloads code for each job. Stock PHP includes the `pcntl` extension it needs.
+
+`port: 8080` routes to Reverb, not Apache. The scanner probes `/up` because Reverb returns 404 at `/`. `includes: [vendor]` exposes the same Composer dependencies to all three PHP services; otherwise each has a separate vendor volume. Node serves nothing, so it has no endpoints.
+
+Both PHP processes wait for a healthy database because the queue and Reverb's restart cache use MariaDB here. The health gate prevents a cold-start connection race, but doesn't create the tables: run the migration before this start.
+
+## Build Echo
+
+```sh
+lando npm install --save-dev laravel-echo pusher-js
+lando npm run build
+```
+
+Vite bakes the `VITE_REVERB_*` values into the bundle at build time. Change one, run `lando npm run build` again.
+
+## Check the websocket path
+
+```sh
+lando info
+curl https://ws.reverb-demo.lndo.site/up
+```
+
+`lando info` lists `https://ws.reverb-demo.lndo.site` for `reverb`, and `/up` answers `{"health":"OK"}`. Now do the upgrade a browser does, through the proxy:
+
+```sh
+KEY=$(grep '^REVERB_APP_KEY=' .env | cut -d= -f2)
+curl -i -N --http1.1 --max-time 3 \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  "https://ws.reverb-demo.lndo.site/app/$KEY?protocol=7"
+```
+
+You want `HTTP/1.1 101 Switching Protocols`, an `X-Powered-By: Laravel Reverb` header, and a text frame whose `event` is `pusher:connection_established`. curl then sits on the open socket until `--max-time` hangs up with exit code 28. A websocket that refuses to close is the feature, not the bug.
+
+## Broadcast an event and catch it
+
+```sh
+lando artisan make:event PingSent
+```
+
+Replace `app/Events/PingSent.php`:
+
+```php
+<?php
+
+namespace App\Events;
+
+use Illuminate\Broadcasting\Channel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Foundation\Events\Dispatchable;
+
+class PingSent implements ShouldBroadcast
+{
+    use Dispatchable;
+
+    public function __construct(public string $message) {}
+
+    public function broadcastOn(): array
+    {
+        return [new Channel('pings')];
+    }
+}
+```
+
+Save `echo-listen.mjs` in the app root. It uses the same Echo and pusher-js packages as the browser bundle, but connects from the `node` service straight to `reverb:8080`:
+
+```js
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+const echo = new Echo({
+  broadcaster: 'reverb',
+  Pusher,
+  key: process.env.REVERB_APP_KEY,
+  wsHost: process.env.REVERB_HOST,
+  wsPort: Number(process.env.REVERB_PORT),
+  forceTLS: false,
+  enabledTransports: ['ws'],
+});
+
+echo.channel('pings')
+  .subscribed(() => console.log('subscribed'))
+  .listen('PingSent', (event) => {
+    console.log(`received: ${event.message}`);
+    process.exit(0);
+  });
+
+setTimeout(() => {
+  console.error('no PingSent within 60s');
+  process.exit(1);
+}, 60_000);
+```
+
+Listen in one terminal. Node reads `.env` itself with `--env-file`:
+
+```sh
+lando exec node -- node --env-file=.env echo-listen.mjs
+```
+
+Wait for `subscribed`, then fire the event from a second terminal. A connected socket alone doesn't mean the channel subscription is ready:
+
+```sh
+lando artisan tinker --execute "event(new App\Events\PingSent('hello from tinker'))"
+```
+
+The listener prints `received: hello from tinker` and exits 0. Check the worker's job with:
+
+```sh
+lando logs -s worker
+```
+
+If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s worker` and `lando logs -s reverb` first.
+
+## Fix the usual failures
+
+| You see | Fix |
+| --- | --- |
+| `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando rebuild -y`. |
+| `tempnam(): file created in the system's temporary directory` on the app URL | Run `chmod -R a+rwX storage bootstrap/cache`. |
+| A changed `command:` doesn't take effect after `lando start` | Run `lando restart`. |
+
+## Tear down
+
+This removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`; those flags delete data.
+
+```sh
+lando destroy -y
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="laravel-reverb" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan reverb:start --host=0\\.0\\.0\\.0 --port=8080\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"ws\\." } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"/up\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan queue:listen\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"includes\":\\s*\\[\\s*\"vendor\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the Laravel recipe](../laravel-workflow/)
+- [Turn the router off and tune the post-start URL scanner](../../services/router-and-scanner/)
