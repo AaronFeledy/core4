@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Schema } from "effect";
@@ -391,6 +391,103 @@ describe("Mutagen process client", () => {
       ),
     ).toBe(false);
     expect(calls).toHaveLength(before);
+  });
+
+  test("ownership query matches a receipt recorded under a realpath-equivalent root", async () => {
+    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-mutagen-eq-"))));
+    const legacy = AbsolutePath.make(`${canonical}-short`);
+    await symlink(canonical, legacy);
+    const stateStore = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/mutagen-ownership-legacy"),
+      privateFileAccess,
+    );
+    const legacySpec = { ...spec, app: { ...spec.app, root: legacy }, source: legacy };
+    const ledger = await Effect.runPromise(
+      stateStore.open({
+        namespace: "sessions",
+        key: "mutagen.json",
+        schema: Schema.Struct({ sessions: Schema.Array(Schema.Unknown) }),
+        version: 1,
+        codec: "json",
+      }),
+    );
+    await Effect.runPromise(
+      ledger.set({
+        sessions: [
+          {
+            phase: "committed",
+            identifier: id,
+            name,
+            spec: legacySpec,
+            target: { containerId: helper, path: "/lando-data" },
+            dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+            dockerHost: "npipe:////./pipe/podman-lando",
+          },
+        ],
+      }),
+    );
+    try {
+      expect(
+        await Effect.runPromise(hasDurableMutagenOwnership(stateStore, { ...spec.app, root: canonical })),
+      ).toBe(true);
+    } finally {
+      await rm(legacy, { force: true });
+      await rm(canonical, { recursive: true, force: true });
+    }
+  });
+
+  test("create reuses a receipt whose root is realpath-equivalent to the planned source", async () => {
+    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-mutagen-eq-"))));
+    const legacy = AbsolutePath.make(`${canonical}-short`);
+    await symlink(canonical, legacy);
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-mutagen-eq-ledger-"));
+    const stateStore = makePluginStateStore(
+      makeStateStore({ privateFileAccess }),
+      AbsolutePath.make(stateDir),
+      privateFileAccess,
+    );
+    const { client, calls, setCurrent } = fake({ stateStore });
+    const legacySpec = { ...spec, app: { ...spec.app, root: legacy }, source: legacy };
+    const plannedSpec = { ...spec, app: { ...spec.app, root: canonical }, source: canonical };
+    const ledger = await Effect.runPromise(
+      stateStore.open({
+        namespace: "sessions",
+        key: "mutagen.json",
+        schema: Schema.Struct({ sessions: Schema.Array(Schema.Unknown) }),
+        version: 1,
+        codec: "json",
+      }),
+    );
+    await Effect.runPromise(
+      ledger.set({
+        sessions: [
+          {
+            phase: "committed",
+            identifier: id,
+            name,
+            spec: legacySpec,
+            target: { containerId: helper, path: "/lando-data" },
+            dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+            dockerHost: "npipe:////./pipe/podman-lando",
+          },
+        ],
+      }),
+    );
+    setCurrent([
+      session({
+        alpha: { protocol: "local", path: String(legacy), connected: true },
+      }),
+    ]);
+    try {
+      await Effect.runPromise(client.create({ name, spec: plannedSpec }));
+      expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(0);
+      expect(calls.some((call) => call.args[1] === "flush")).toBe(true);
+    } finally {
+      await rm(legacy, { force: true });
+      await rm(canonical, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   test("a daemon session without a receipt makes list fail closed", async () => {
