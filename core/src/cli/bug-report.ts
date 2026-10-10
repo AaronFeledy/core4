@@ -131,6 +131,10 @@ const extractExtraTagFields = (
     const service = asString(record.service);
     if (service !== undefined) out.push(["service", service]);
   }
+  if (tag === "ServiceStartError") {
+    const logTail = formatServiceStartLogTail(record.logTail);
+    if (logTail !== undefined) out.push(["logTail", logTail]);
+  }
   if (tag === "CapabilityError") {
     for (const field of ["service", "key", "capability"] as const) {
       const value = asString(record[field]);
@@ -201,6 +205,7 @@ const extractExtraTagFields = (
     "timestamp",
     ...out.map(([key]) => key),
     ...(tag === "LandofileEventStepFailedError" ? ["index", "outputTail", "service"] : []),
+    ...(tag === "ServiceStartError" ? ["logTail"] : []),
   ]);
   const scalar = (value: unknown): value is string | number | boolean =>
     typeof value === "string" ||
@@ -213,6 +218,14 @@ const extractExtraTagFields = (
       out.push([key, escapeDiagnosticText(value.join(", "))]);
   }
   return out;
+};
+
+const formatServiceStartLogTail = (value: unknown): string | undefined => {
+  if (value === null || typeof value !== "object") return undefined;
+  const lines = Reflect.get(value, "lines");
+  if (!Array.isArray(lines) || lines.length === 0) return undefined;
+  const text = lines.filter((line): line is string => typeof line === "string").join("\n");
+  return text.length === 0 ? undefined : text;
 };
 
 const formatIssuePath = (path: readonly (string | number)[]): string => {
