@@ -223,7 +223,7 @@ describe("runServiceStartSchedule", () => {
     expect(result).toEqual({
       _tag: "Settled",
       changed: true,
-      blocked: [{ service: "web", unmetGate: "db:healthy" }],
+      blocked: [{ service: "web", unmetGate: "db:healthy", dependency: "db", lastExitCode: 1 }],
     });
   });
 
@@ -266,7 +266,57 @@ describe("runServiceStartSchedule", () => {
     expect(result).toEqual({
       _tag: "Settled",
       changed: true,
-      blocked: [{ service: "web", unmetGate: "db:healthy" }],
+      blocked: [{ service: "web", unmetGate: "db:healthy", dependency: "db" }],
+    });
+  });
+
+  test("records a healthcheck timeout on the blocked dependency instead of parsing unmetGate", async () => {
+    // Given
+    const plan = planOf([
+      service("db", { healthcheck: { ...commandHealthcheck, timeoutSeconds: 0, retries: 1 } }),
+      service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+    ]);
+
+    // When
+    const result = await Effect.runPromise(
+      runServiceStartSchedule(
+        plan,
+        recordingHandlers([], {
+          execHealthcheck: () => Effect.never,
+        }),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({
+      _tag: "Settled",
+      changed: true,
+      blocked: [{ service: "web", unmetGate: "db:healthy", dependency: "db", timedOut: true }],
+    });
+  });
+
+  test("records a failed completion exit code on the blocked dependency", async () => {
+    // Given
+    const plan = planOf([
+      service("seed"),
+      service("web", { dependsOn: [dependency("seed", "service_completed_successfully")] }),
+    ]);
+
+    // When
+    const result = await Effect.runPromise(
+      runServiceStartSchedule(
+        plan,
+        recordingHandlers([], {
+          waitForExit: () => Effect.succeed({ exitCode: 3 }),
+        }),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({
+      _tag: "Settled",
+      changed: true,
+      blocked: [{ service: "web", unmetGate: "seed:completed", dependency: "seed", lastExitCode: 3 }],
     });
   });
 

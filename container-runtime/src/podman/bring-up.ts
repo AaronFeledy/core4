@@ -1,4 +1,4 @@
-import { type Context, DateTime, Effect } from "effect";
+import { type Context, DateTime, Duration, Effect, Stream } from "effect";
 import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
 
 import {
@@ -6,6 +6,7 @@ import {
   ProviderUnavailableError,
   type ServiceRestartWouldRecreateError,
   ServiceStartError,
+  type ServiceStartLogTail,
 } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
@@ -39,7 +40,7 @@ import {
   fingerprintPlannedPublishPorts,
   serviceContainerName,
 } from "../plan.ts";
-import { redactDetails, withApiReason } from "../redact.ts";
+import { redactDetails, redactString, withApiReason } from "../redact.ts";
 import {
   type ServicePublishProbe,
   classifyServicePublishHost,
@@ -60,6 +61,7 @@ import {
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
+import { logs } from "./logs.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
 const appNetworkName = landoAppNetworkName;
@@ -147,6 +149,7 @@ interface StartFailureInput {
   readonly message: string;
   readonly details?: unknown;
   readonly cause?: unknown;
+  readonly logTail?: ServiceStartLogTail;
 }
 
 const appRef = (plan: AppPlan): AppRef => ({
@@ -180,6 +183,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
     remediation,
     ...(input.details === undefined ? {} : { details: redactDetails(input.details) }),
     ...(input.cause === undefined ? {} : { cause: input.cause }),
+    ...(input.logTail === undefined ? {} : { logTail: input.logTail }),
   });
 };
 
@@ -874,6 +878,92 @@ const rollbackPartialApply = Effect.fnUntraced(function* (
   yield* removeCreatedNetworksSilent(deps, createdNetworks);
 });
 
+const SERVICE_START_LOG_TAIL_LINES = 50;
+const SERVICE_START_LOG_TAIL_MAX_CHARS = 4000;
+const SERVICE_START_LOG_TAIL_TIMEOUT = Duration.seconds(4);
+
+const capRedactedLogLines = (
+  lines: ReadonlyArray<string>,
+): { readonly lines: string[]; readonly truncated: boolean } => {
+  const redacted = lines.map((line) => redactString(line));
+  const kept: string[] = [];
+  let used = 0;
+  for (const line of redacted) {
+    const extra = kept.length === 0 ? line.length : line.length + 1;
+    if (used + extra > SERVICE_START_LOG_TAIL_MAX_CHARS) {
+      return { lines: kept, truncated: true };
+    }
+    kept.push(line);
+    used += extra;
+  }
+  return { lines: kept, truncated: false };
+};
+
+const captureServiceLogTail = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+  extras?: { readonly exitCode?: number; readonly timedOut?: boolean },
+): Effect.fn.Return<ServiceStartLogTail | undefined> {
+  const collected = yield* Stream.runCollect(
+    logs(
+      plan,
+      { app: plan.id, service: service.name },
+      { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
+      { api: deps.api, ctx: deps.options.ctx },
+    ),
+  ).pipe(Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT), Effect.orElseSucceed(undefined));
+  if (collected === undefined) return undefined;
+  const raw = [...collected].map((chunk) => chunk.line);
+  if (raw.length === 0) return undefined;
+  const { lines, truncated } = capRedactedLogLines(raw);
+  if (lines.length === 0) return undefined;
+  return {
+    service: String(service.name),
+    lines,
+    truncated,
+    ...(extras?.exitCode === undefined ? {} : { exitCode: extras.exitCode }),
+    ...(extras?.timedOut === true ? { timedOut: true } : {}),
+  };
+});
+
+const withServiceStartLogTail = (
+  error: ServiceStartError,
+  logTail: ServiceStartLogTail | undefined,
+): ServiceStartError =>
+  logTail === undefined
+    ? error
+    : new ServiceStartError({
+        providerId: error.providerId,
+        operation: error.operation,
+        message: error.message,
+        service: error.service,
+        ...(error.details === undefined ? {} : { details: error.details }),
+        ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
+        ...(error.cause === undefined ? {} : { cause: error.cause }),
+        logTail,
+      });
+
+const rollbackAfterStartFailure = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  touched: ReadonlyArray<TouchedContainer>,
+  createdNetworks: ReadonlySet<string>,
+  error: BringUpError,
+): Effect.fn.Return<never, BringUpError> {
+  if (deps.options.signal?.aborted === true) {
+    return yield* Effect.interrupt;
+  }
+  if (error instanceof ServiceStartError) {
+    const named = plan.services[ServiceName.make(error.service)];
+    const logTail = named === undefined ? undefined : yield* captureServiceLogTail(deps, plan, named);
+    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
+    return yield* Effect.fail(withServiceStartLogTail(error, logTail));
+  }
+  yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
+  return yield* Effect.fail(error);
+});
+
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   plan: AppPlan,
   options: BringUpOptions,
@@ -947,7 +1037,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         },
       ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
   }).pipe(
-    Effect.tapError(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
+    Effect.catch((error) => rollbackAfterStartFailure(deps, plan, touched, createdNetworks, error)),
     Effect.onInterrupt(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
   );
 
@@ -965,8 +1055,16 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   }
   const [blocked] = result.blocked;
   if (blocked !== undefined) {
-    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
     const service = plan.services[ServiceName.make(blocked.service)];
+    const dependency = plan.services[ServiceName.make(blocked.dependency)];
+    const logTail =
+      dependency === undefined
+        ? undefined
+        : yield* captureServiceLogTail(deps, plan, dependency, {
+            ...(blocked.lastExitCode === undefined ? {} : { exitCode: blocked.lastExitCode }),
+            ...(blocked.timedOut === true ? { timedOut: true } : {}),
+          });
+    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
     if (service === undefined) {
       return yield* Effect.fail(
         new ProviderInternalError({
@@ -983,6 +1081,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         service,
         operation: "bringUp.schedule",
         message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+        ...(logTail === undefined ? {} : { logTail }),
       }),
     );
   }
