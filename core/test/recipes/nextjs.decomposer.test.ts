@@ -11,6 +11,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { nextjsDecomposer } from "../../src/recipes/builtin/nextjs/decomposer.ts";
 import { nextjsRecipeSource, nextjsRecipeYaml } from "../../src/recipes/builtin/nextjs/manifest.ts";
+import { NEXTJS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/nextjs/scaffold-command.ts";
 import {
   NEXTJS_CONTENT_DIGEST,
   nextjsDefaults,
@@ -80,6 +81,12 @@ describe("nextjs decomposition", () => {
           cmds: ["npx next"],
         },
         npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"] },
+        "nextjs-scaffold": {
+          service: "web",
+          description: "Scaffold a Next.js app and install dependencies in the mounted app root.",
+          arguments: false,
+          cmd: NEXTJS_SCAFFOLD_COMMAND,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({
@@ -140,7 +147,7 @@ describe("nextjs decomposition", () => {
     expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NEXTJS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nextjsSnapshot);
     expect(nextjsSnapshot.identity.contentDigest).toBe(
-      "sha256:58a8c095d77b22d51563d16f4ea9828b22e6fece178bec6434c0f56594fd23bb",
+      "sha256:7c5f2ae9767abdb59d083f3fd4f89270bc615442f969c10279c363ae72d730f9",
     );
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

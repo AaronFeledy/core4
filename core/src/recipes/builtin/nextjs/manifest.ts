@@ -50,7 +50,7 @@ files:
     template: true
 postInit:
   - type: message
-    text: Run 'lando start' inside the new app directory to bring Next.js up.
+    text: This recipe creates Lando configuration only. Inside the new app directory, run 'lando start', then 'lando nextjs-scaffold' to create Next.js sources and install dependencies, then 'lando next dev' to run the dev server.
 
 ${nextjsSnapshotYaml}
 `;
