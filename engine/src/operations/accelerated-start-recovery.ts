@@ -1,3 +1,4 @@
+import { sameRealpath } from "@lando/paths/realpath-equivalence";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, PreparedFileSyncTarget } from "@lando/sdk/schema";
 import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";
@@ -26,12 +27,12 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (app: AppRef
       ({ spec, app: observedApp, service, mountKey }) =>
         observedApp.kind !== app.kind ||
         observedApp.id !== app.id ||
-        observedApp.root !== app.root ||
+        !sameRealpath(observedApp.root, app.root) ||
         service !== spec.service ||
         mountKey !== spec.mountKey ||
         spec.app.kind !== app.kind ||
         spec.app.id !== app.id ||
-        spec.app.root !== app.root ||
+        !sameRealpath(spec.app.root, app.root) ||
         !record.sessions.some(({ name }) => name === `${spec.service}/${spec.mountKey}`),
     )
   ) {
