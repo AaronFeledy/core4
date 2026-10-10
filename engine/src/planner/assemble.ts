@@ -91,6 +91,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   certificateAuthorityResolver: Context.Service.Shape<typeof CertificateAuthorityResolver> | undefined,
   authoredLandofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
+  knownAppRoot?: string,
 ): Effect.fn.Return<AppPlan, AppPlannerError> {
   const {
     landofile,
@@ -116,6 +117,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     pathsService,
     landofile: authoredLandofile,
     capabilities: providerCapabilities,
+    ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
   });
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
