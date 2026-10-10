@@ -170,9 +170,9 @@ describe("apps:list --path resolved matching", () => {
 
   test("falls back to substring matching when the path does not exist", async () => {
     await withListRoots(async (dataRoot, cacheRoot) => {
-      await writeAppliedPlan(dataRoot, "alpha", "/srv/filter-alpha");
-      await writeAppliedPlan(dataRoot, "bravo", "/srv/filter-bravo");
-      expect(await listNames(dataRoot, cacheRoot, "/no/such/filter-alpha/path")).toEqual(["alpha"]);
+      await writeAppliedPlan(dataRoot, "alpha", "/srv/projects/filter-alpha");
+      await writeAppliedPlan(dataRoot, "bravo", "/srv/projects/filter-bravo");
+      expect(await listNames(dataRoot, cacheRoot, "/projects/filter-alpha")).toEqual(["alpha"]);
     });
   });
 
