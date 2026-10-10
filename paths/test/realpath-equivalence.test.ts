@@ -1,9 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { realpathSync } from "node:fs";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sameRealpath } from "../src/realpath-equivalence.ts";
+import { sameRealpath } from "../src/paths.ts";
 
 test("treats identical strings as the same path", () => {
   expect(sameRealpath("/srv/apps/myapp", "/srv/apps/myapp")).toBe(true);
@@ -39,6 +40,21 @@ test("treats a symlink and its realpath as the same path", async () => {
     expect(sameRealpath(alias, canonical)).toBe(true);
     expect(sameRealpath(canonical, alias)).toBe(true);
   } finally {
+    await rm(alias, { force: true });
+    await rm(canonical, { recursive: true, force: true });
+  }
+});
+
+test("resolves non-lexical aliases through realpathSync.native", async () => {
+  const canonical = await realpath(await mkdtemp(join(tmpdir(), "lando-realpath-eq-")));
+  const alias = `${canonical}-alias`;
+  await symlink(canonical, alias);
+  const native = spyOn(realpathSync, "native");
+  try {
+    expect(sameRealpath(alias, canonical)).toBe(true);
+    expect(native).toHaveBeenCalled();
+  } finally {
+    native.mockRestore();
     await rm(alias, { force: true });
     await rm(canonical, { recursive: true, force: true });
   }

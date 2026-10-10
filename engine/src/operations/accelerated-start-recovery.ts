@@ -1,4 +1,4 @@
-import { sameRealpath } from "@lando/paths/realpath-equivalence";
+import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, PreparedFileSyncTarget } from "@lando/sdk/schema";
 import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";

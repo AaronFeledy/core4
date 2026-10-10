@@ -1,4 +1,4 @@
-import { sameRealpath } from "@lando/paths/realpath-equivalence";
+import { sameRealpath } from "@lando/paths";
 import type { FileSyncSessionSpec } from "@lando/sdk/schema";
 
 /** Compare every setting that can change which bytes a session reads or writes. */

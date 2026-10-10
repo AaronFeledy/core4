@@ -15,7 +15,7 @@
 import path from "node:path";
 import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
-import { sameRealpath } from "@lando/paths/realpath-equivalence";
+import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import {
   type PluginDoctorCheckContribution,

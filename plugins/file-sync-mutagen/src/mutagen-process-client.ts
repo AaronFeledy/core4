@@ -2,7 +2,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { type Context, DateTime, Effect, Schema, Stream } from "effect";
 
-import { sameRealpath } from "@lando/paths/realpath-equivalence";
+import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { FileSyncSessionSpec, type FileSyncSessionStatus } from "@lando/sdk/schema";

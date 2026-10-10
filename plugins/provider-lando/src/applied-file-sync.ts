@@ -1,5 +1,5 @@
 import { APP_LABEL } from "@lando/container-runtime/labels";
-import { sameRealpath } from "@lando/paths/realpath-equivalence";
+import { sameRealpath } from "@lando/paths";
 import { Effect } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";

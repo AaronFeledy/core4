@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { sameRealpath } from "@lando/paths";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type FileSyncSessionFilter,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   type FileSyncSessionSpec,
@@ -115,7 +117,18 @@ const makeTrackingEngine = (initial: ReadonlyArray<FileSyncSessionInfo> = []) =>
     id: "mutagen",
     isAvailable: Effect.succeed(true),
     sessionsPersistAcrossProcesses: true,
-    listSessions: () => Effect.sync(() => [...sessions]),
+    listSessions: (filter: FileSyncSessionFilter) =>
+      Effect.sync(() =>
+        sessions.filter(
+          (info) =>
+            (filter.app === undefined ||
+              (info.app.kind === filter.app.kind &&
+                info.app.id === filter.app.id &&
+                sameRealpath(info.app.root, filter.app.root))) &&
+            (filter.service === undefined || info.service === filter.service) &&
+            (filter.mountKey === undefined || info.mountKey === filter.mountKey),
+        ),
+      ),
     createSession: (spec: FileSyncSessionSpec) =>
       Effect.sync(() => {
         calls.push("create");
