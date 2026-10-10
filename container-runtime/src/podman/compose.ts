@@ -23,6 +23,7 @@ import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
 import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
+import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
@@ -74,6 +75,7 @@ interface ComposeService {
   readonly ports?: ReadonlyArray<string>;
   readonly expose?: ReadonlyArray<string>;
   readonly environment?: Readonly<Record<string, string>>;
+  readonly extra_hosts?: HostAliasMap;
   readonly volumes?: ReadonlyArray<ComposeVolumeEntry>;
   readonly tmpfs?: ReadonlyArray<string>;
   readonly depends_on?: Readonly<Record<string, DependsOnEntry>>;
@@ -231,6 +233,9 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
   ...(service.environment === undefined || Object.keys(service.environment).length === 0
     ? {}
     : { environment: service.environment }),
+  ...(service.extra_hosts === undefined || Object.keys(service.extra_hosts).length === 0
+    ? {}
+    : { extra_hosts: service.extra_hosts }),
   ...(service.volumes === undefined || service.volumes.length === 0 ? {} : { volumes: service.volumes }),
   ...(service.tmpfs === undefined || service.tmpfs.length === 0 ? {} : { tmpfs: service.tmpfs }),
   ...(service.depends_on === undefined || Object.keys(service.depends_on).length === 0
@@ -255,6 +260,9 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
         ports: servicePorts(service),
         expose: serviceExpose(service),
         environment: service.environment,
+        extra_hosts: serviceHostAliases(service, (message, details) => {
+          throw composeError(ctx, message, details);
+        }),
         volumes: serviceVolumes(ctx, plan, service),
         tmpfs: serviceTmpfs(service),
         depends_on: serviceDependsOn(service),
@@ -379,6 +387,11 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
     if (service.environment !== undefined) {
       lines.push("    environment:");
       writeScalarMap(lines, "      ", service.environment);
+    }
+
+    if (service.extra_hosts !== undefined) {
+      lines.push("    extra_hosts:");
+      writeHostAliases(lines, service.extra_hosts);
     }
 
     if (service.volumes !== undefined) {
