@@ -13,6 +13,7 @@ import { stopAppForTarget } from "@lando/engine/operations/stop";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
+import { testRedactionLayer } from "@lando/engine/testing/redaction";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
@@ -203,6 +204,7 @@ const makeHarness = (plannedApp: AppPlan, fileSync: typeof FileSyncEngine.Servic
         query: () => Effect.succeed([]),
       }),
     ),
+    testRedactionLayer,
     Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
