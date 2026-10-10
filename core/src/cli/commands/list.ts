@@ -28,6 +28,7 @@ import {
   mergeAppsListEntries,
   readAppliedPlansFromUserData,
 } from "./list-discovery";
+import { appRootMatchesPathFilter, resolveExistingAppsListPath } from "./list-path-filter";
 import { pruneAppliedPlanState } from "./list-prune-state";
 
 export type { AppsListEntry } from "./list-discovery";
@@ -227,9 +228,15 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
 
   const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
   const pathFilter = options.path;
+  const resolvedPathFilter =
+    pathFilter === undefined
+      ? undefined
+      : yield* Effect.promise(() => resolveExistingAppsListPath(pathFilter));
   const statusFilter = options.status;
   const filtered = listed.filter((app) => {
-    if (pathFilter !== undefined && !app.appRoot.includes(pathFilter)) return false;
+    if (pathFilter !== undefined && !appRootMatchesPathFilter(app.appRoot, pathFilter, resolvedPathFilter)) {
+      return false;
+    }
     if (statusFilter !== undefined && !statusFilter.includes(app.status)) return false;
     return true;
   });

@@ -1,13 +1,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+
+import { Effect, Layer } from "effect";
+
+import { ConfigService } from "@lando/sdk/services";
 
 import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
-import { appliedPlansDirectory } from "../../src/cli/commands/list.ts";
+import { appliedPlansDirectory, listServices } from "../../src/cli/commands/list.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
+import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
@@ -34,6 +39,170 @@ describe("apps:list --path extraction seam", () => {
     expect(appsListPathFromInput({ flags: { path: "demo" } })).toBe("demo");
     expect(appsListPathFromInput({ flags: {} })).toBeUndefined();
     expect(appsListPathFromInput(undefined)).toBeUndefined();
+  });
+});
+
+const noDiscover = async () => [];
+
+const fakeConfigService = (dataRoot: string) =>
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      get: <K extends string>(key: K) =>
+        Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+      getEffective: () => Effect.succeed({} as never),
+    } as never),
+  );
+
+const writeAppliedPlan = async (dataRoot: string, id: string, root: string): Promise<void> => {
+  const dir = appliedPlansDirectory(dataRoot);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, `${id}.json`),
+    `${JSON.stringify(
+      {
+        version: 1,
+        data: {
+          id,
+          name: id,
+          slug: id,
+          root,
+          provider: "lando",
+          services: { appserver: { name: "appserver", type: "lando.app", primary: false, env: {} } },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+};
+
+const listNames = async (
+  dataRoot: string,
+  cacheRoot: string,
+  path: string,
+  discoverContainers: (
+    userDataRoot: string,
+  ) => Promise<ReadonlyArray<{ readonly appId: string }>> = noDiscover,
+): Promise<ReadonlyArray<string>> => {
+  const result = await Effect.runPromise(
+    listServices({
+      userDataRoot: dataRoot,
+      userCacheRoot: cacheRoot,
+      path,
+      discoverContainers,
+    }).pipe(Effect.provide(fakeConfigService(dataRoot))),
+  );
+  return result.apps.map((app) => app.appName);
+};
+
+const withListRoots = async (run: (dataRoot: string, cacheRoot: string) => Promise<void>): Promise<void> => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "lando-apps-list-path-data-"));
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-apps-list-path-cache-"));
+  try {
+    await run(dataRoot, cacheRoot);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
+};
+
+describe("apps:list --path resolved matching", () => {
+  test("matches a stored root through a symlink to that directory", async () => {
+    await withListRoots(async (dataRoot, cacheRoot) => {
+      const workspace = await mkdtemp(join(tmpdir(), "lando-apps-list-path-link-"));
+      try {
+        const appDir = join(workspace, "real-app");
+        const linkDir = join(workspace, "link-app");
+        await mkdir(appDir);
+        await symlink(appDir, linkDir);
+        const storedRoot = await realpath(appDir);
+        await writeAppliedPlan(dataRoot, "linked", storedRoot);
+        await writeAppliedPlan(dataRoot, "other", join(workspace, "other-app"));
+        expect(await listNames(dataRoot, cacheRoot, linkDir)).toEqual(["linked"]);
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("matches a stored root from a relative path against cwd", async () => {
+    await withListRoots(async (dataRoot, cacheRoot) => {
+      const workspace = await mkdtemp(join(tmpdir(), "lando-apps-list-path-rel-"));
+      try {
+        const appDir = join(workspace, "projects", "relative-app");
+        await mkdir(appDir, { recursive: true });
+        const storedRoot = await realpath(appDir);
+        await writeAppliedPlan(dataRoot, "relative", storedRoot);
+        await writeAppliedPlan(dataRoot, "other", join(workspace, "other-app"));
+        await withCwd(
+          workspace,
+          async () => {
+            expect(await listNames(dataRoot, cacheRoot, relative(workspace, appDir))).toEqual(["relative"]);
+            expect(await listNames(dataRoot, cacheRoot, "projects")).toEqual(["relative"]);
+          },
+          [workspace, dataRoot, cacheRoot],
+        );
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("matches a stored root from a ~/ path after home expansion", async () => {
+    await withListRoots(async (dataRoot, cacheRoot) => {
+      const home = await mkdtemp(join(tmpdir(), "lando-apps-list-path-home-"));
+      try {
+        const appDir = join(home, "projects", "home-app");
+        await mkdir(appDir, { recursive: true });
+        const storedRoot = await realpath(appDir);
+        await writeAppliedPlan(dataRoot, "homeapp", storedRoot);
+        await writeAppliedPlan(dataRoot, "other", join(home, "other-app"));
+        await withEnvVar("HOME", home, async () => {
+          expect(await listNames(dataRoot, cacheRoot, "~/projects/home-app")).toEqual(["homeapp"]);
+          expect(await listNames(dataRoot, cacheRoot, "~/projects")).toEqual(["homeapp"]);
+        });
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("falls back to substring matching when the path does not exist", async () => {
+    await withListRoots(async (dataRoot, cacheRoot) => {
+      await writeAppliedPlan(dataRoot, "alpha", "/srv/filter-alpha");
+      await writeAppliedPlan(dataRoot, "bravo", "/srv/filter-bravo");
+      expect(await listNames(dataRoot, cacheRoot, "/no/such/filter-alpha/path")).toEqual(["alpha"]);
+    });
+  });
+
+  test("keeps plain substring matching on the stored root", async () => {
+    await withListRoots(async (dataRoot, cacheRoot) => {
+      await writeAppliedPlan(dataRoot, "alpha", "/srv/filter-alpha");
+      await writeAppliedPlan(dataRoot, "bravo", "/srv/filter-bravo");
+      expect(await listNames(dataRoot, cacheRoot, "filter-alpha")).toEqual(["alpha"]);
+    });
+  });
+
+  test("resolves the path filter once after a single discovery pass", async () => {
+    await withListRoots(async (dataRoot, cacheRoot) => {
+      const workspace = await mkdtemp(join(tmpdir(), "lando-apps-list-path-once-"));
+      try {
+        const appDir = join(workspace, "once-app");
+        await mkdir(appDir);
+        const storedRoot = await realpath(appDir);
+        await writeAppliedPlan(dataRoot, "once", storedRoot);
+        let discoveries = 0;
+        const names = await listNames(dataRoot, cacheRoot, appDir, async () => {
+          discoveries += 1;
+          return [];
+        });
+        expect(names).toEqual(["once"]);
+        expect(discoveries).toBe(1);
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    });
   });
 });
 
