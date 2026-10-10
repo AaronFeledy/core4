@@ -13,6 +13,7 @@ import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
+import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
@@ -23,7 +24,10 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const planWithCompose = (compose: Record<string, unknown>): AppPlan => {
+const planWithCompose = (
+  compose: Record<string, unknown>,
+  hostAliases: ServicePlan["hostAliases"] = [],
+): AppPlan => {
   const service: ServicePlan = {
     name: serviceName,
     type: "web",
@@ -36,7 +40,7 @@ const planWithCompose = (compose: Record<string, unknown>): AppPlan => {
     endpoints: [],
     routes: [],
     dependsOn: [],
-    hostAliases: [],
+    hostAliases,
     metadata,
     extensions: { compose },
   };
@@ -58,7 +62,10 @@ const planWithCompose = (compose: Record<string, unknown>): AppPlan => {
   };
 };
 
-const captureCreateRequest = async (compose: Record<string, unknown>): Promise<EngineHttpRequest> => {
+const captureCreateRequest = async (
+  compose: Record<string, unknown>,
+  hostAliases: ServicePlan["hostAliases"] = [],
+): Promise<EngineHttpRequest> => {
   let createRequest: EngineHttpRequest | undefined;
   let running = false;
   const api: PodmanApiClient = {
@@ -86,7 +93,7 @@ const captureCreateRequest = async (compose: Record<string, unknown>): Promise<E
       }),
   };
 
-  await Effect.runPromise(bringUp(planWithCompose(compose), { api, ctx }));
+  await Effect.runPromise(bringUp(planWithCompose(compose, hostAliases), { api, ctx }));
   if (createRequest === undefined) throw new Error("bringUp did not issue a container create request");
   return createRequest;
 };
@@ -95,6 +102,18 @@ const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
 describe("Podman Compose knob create request", () => {
+  test.each([...HOST_ALIAS_FIXTURES])(
+    "realizes host aliases in the create request when $name",
+    async (fixture) => {
+      // Given / When
+      const request = await captureCreateRequest({ extra_hosts: fixture.authored }, fixture.planned);
+      // Then
+      expect(field(field(request.body, "HostConfig"), "ExtraHosts")).toEqual(
+        fixture.api.length === 0 ? undefined : fixture.api,
+      );
+    },
+  );
+
   for (const [knob, fixture] of Object.entries(KNOB_FIXTURES)) {
     test(`Given the ${knob} knob, when bringUp creates the container, then the final request contains its mapping`, async () => {
       const request = await captureCreateRequest(fixture.input);
