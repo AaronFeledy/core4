@@ -5,7 +5,7 @@ import {
   encodeStreamResultFrame,
   identityRedactor,
 } from "@lando/sdk/command-result";
-import { ConfigError, ConfigExpressionError, ServiceStartError } from "@lando/sdk/errors";
+import { ConfigError, ConfigExpressionError, ServiceExecError, ServiceStartError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Option, Redacted, Schema } from "effect";
@@ -221,6 +221,23 @@ test("omits malformed typed fields instead of falling back when extras are valid
   const line = Effect.runSync(encodeCommandResult(options(error)));
   const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
   expect(envelope.error).toEqual({ _tag: "WrongShapesError", message: "failure", path: "config.path" });
+});
+
+test("drops service from a non-start error that still has a service field", () => {
+  const error = new ServiceExecError({
+    providerId: "lando",
+    operation: "exec",
+    service: "web",
+    message: "exec failed",
+  });
+  const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
+  expect(envelope.error).toEqual({
+    _tag: "ServiceExecError",
+    message: "exec failed",
+    providerId: "lando",
+    operation: "exec",
+  });
+  expect(envelope.error).not.toHaveProperty("service");
 });
 
 test("includes service and logTail on a ServiceStartError envelope", () => {

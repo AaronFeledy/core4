@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Duration, Effect, Fiber, Stream } from "effect";
+import { Cause, DateTime, Deferred, Duration, Effect, Exit, Fiber, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
 import { ProviderInternalError, ServiceStartError } from "@lando/sdk/errors";
@@ -106,6 +106,9 @@ const makeApi = (options: {
   readonly hangLogsUnlessFollowFalse?: boolean;
   readonly hangLogs?: boolean;
   readonly failLogs?: boolean;
+  readonly dieLogs?: boolean;
+  readonly onLogs?: () => void;
+  readonly abortOnHealthcheck?: AbortController;
 }) => {
   const requests: string[] = [];
   const containers = new Set<string>();
@@ -147,6 +150,7 @@ const makeApi = (options: {
           return { status: 201, body: '{"Id":"health-exec"}' };
         }
         if (request.method === "GET" && request.path === "/exec/health-exec/json") {
+          options.abortOnHealthcheck?.abort();
           return { status: 200, body: JSON.stringify({ ExitCode: options.healthExitCode ?? 1 }) };
         }
         if (request.method === "DELETE" && name !== undefined) {
@@ -159,6 +163,8 @@ const makeApi = (options: {
       record(request);
       const isLogs = /\/logs(?:\?|$)/u.test(request.path);
       if (!isLogs) return Stream.empty;
+      options.onLogs?.();
+      if (options.dieLogs === true) return Stream.die("boom");
       if (options.failLogs === true) {
         return Stream.fail(
           new ProviderInternalError({
@@ -193,7 +199,7 @@ const expectServiceStartError = (error: unknown): ServiceStartError => {
 };
 
 describe("bringUp start-failure log tail", () => {
-  test("attaches a redacted tail and still rolls back when a service dies after start", async () => {
+  test("attaches a redacted tail and still rolls back when container start returns HTTP 500", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");
     const { api, requests } = makeApi({
@@ -297,4 +303,111 @@ describe("bringUp start-failure log tail", () => {
     expect(requests.some((request) => request.includes("/web/logs?"))).toBe(false);
     expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
   }, 2000);
+
+  test("keeps the end of a capped tail, including a huge last line", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const bodies = Array.from({ length: 50 }, (_, index) => `line-${String(index).padStart(2, "0")} ${"x".repeat(152)}`);
+    const { api } = makeApi({
+      failedStarts: [web],
+      logsFor: { [web]: bodies.map((body) => rawConsole(body)) },
+    });
+
+    const many = expectServiceStartError(await flipBringUp(plan, api)).logTail;
+    const manyJoined = many?.lines.join("\n") ?? "";
+    expect(many?.truncated).toBe(true);
+    expect(manyJoined.endsWith(bodies[49] ?? "")).toBe(true);
+    expect(manyJoined.includes(bodies[0] ?? "")).toBe(false);
+    expect(bodies.join("\n").endsWith(manyJoined)).toBe(true);
+    expect(manyJoined.length).toBeLessThanOrEqual(4000);
+
+    const fatal = `FATAL ${"y".repeat(5000)}`;
+    const { api: fatalApi } = makeApi({
+      failedStarts: [web],
+      logsFor: { [web]: [rawConsole("line-00 ready"), rawConsole(fatal)] },
+    });
+    const hugeLast = expectServiceStartError(await flipBringUp(plan, fatalApi)).logTail;
+    expect(hugeLast?.truncated).toBe(true);
+    expect(hugeLast?.lines).toHaveLength(1);
+    expect(fatal.endsWith(hugeLast?.lines[0] ?? "")).toBe(true);
+    expect(hugeLast?.lines[0]?.startsWith("FATAL")).toBe(false);
+    expect(hugeLast?.lines[0]?.length).toBe(4000);
+  });
+
+  test("keeps the end of a single line over the cap", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const line = `z`.repeat(5000);
+    const { api } = makeApi({
+      failedStarts: [web],
+      logsFor: { [web]: [rawConsole(line)] },
+    });
+
+    const tail = expectServiceStartError(await flipBringUp(plan, api)).logTail;
+    expect(tail?.truncated).toBe(true);
+    expect(tail?.lines).toHaveLength(1);
+    expect(tail?.lines[0]?.length).toBe(4000);
+    expect(line.endsWith(tail?.lines[0] ?? "")).toBe(true);
+  });
+
+  test("keeps the original error and rolls back when log capture defects", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const { api, requests } = makeApi({ failedStarts: [web], dieLogs: true });
+
+    const error = await flipBringUp(plan, api);
+
+    expect(error).toBeInstanceOf(ServiceStartError);
+    expect(error).toMatchObject({
+      _tag: "ServiceStartError",
+      service: "web",
+      operation: "bringUp.start",
+    });
+    expect(error.message).toContain("container start failed");
+    expect(expectServiceStartError(error).logTail).toBeUndefined();
+    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+  });
+
+  test("skips capture when start is aborted before the blocked-gate tail", async () => {
+    const plan = dependentPlan();
+    const controller = new AbortController();
+    const { api, requests } = makeApi({
+      healthExitCode: 1,
+      abortOnHealthcheck: controller,
+      logsFor: { [serviceContainerName(plan, "db")]: [rawConsole("should not capture")] },
+    });
+
+    const exit = await Effect.runPromise(
+      bringUp(plan, { api, ctx, signal: controller.signal }).pipe(Effect.exit),
+    );
+
+    expect(Exit.hasInterrupts(exit)).toBe(true);
+    expect(requests.some((request) => request.includes("/logs?"))).toBe(false);
+    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+  });
+
+  test("rolls back when interrupted during a blocked-gate log capture", async () => {
+    const plan = dependentPlan();
+    const started = await Effect.runPromise(Deferred.make<void>());
+    const { api, requests } = makeApi({
+      healthExitCode: 1,
+      hangLogs: true,
+      onLogs: () => {
+        Effect.runSync(Deferred.succeed(started, undefined));
+      },
+    });
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(bringUp(plan, { api, ctx }));
+        yield* Deferred.await(started);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
+      }),
+    );
+
+    expect(Exit.match(exit, { onFailure: Cause.hasInterruptsOnly, onSuccess: () => false })).toBe(true);
+    expect(requests.some((request) => request.includes("/logs?"))).toBe(true);
+    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+  });
 });

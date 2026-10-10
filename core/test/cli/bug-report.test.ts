@@ -185,12 +185,12 @@ describe("buildBugReport: envelope extraction", () => {
       error: new ServiceStartError({
         providerId: "lando",
         operation: "bringUp.start",
-        service: "db",
-        message: "Service db failed to start.",
+        service: "web",
+        message: "Service web could not start because a dependency gate was not satisfied.",
         logTail: {
           service: "db",
           lines: ["database not accepting connections", "DATABASE_PASSWORD=hunter2"],
-          truncated: false,
+          truncated: true,
           exitCode: 1,
         },
       }),
@@ -198,11 +198,12 @@ describe("buildBugReport: envelope extraction", () => {
     });
     expect(env.extra).toEqual(
       expect.arrayContaining([
-        ["service", "db"],
-        ["logTail", "database not accepting connections\nDATABASE_PASSWORD=[redacted]"],
+        ["service", "web"],
+        ["logTail (db, exit 1, truncated)", "database not accepting connections\nDATABASE_PASSWORD=[redacted]"],
       ]),
     );
     expect(env.extra.map(([key]) => key)).not.toContain("health");
+    expect(env.extra.map(([key]) => key)).not.toContain("logTail");
   });
 
   test("omits an empty ServiceStartError log tail", () => {
