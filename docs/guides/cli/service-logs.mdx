@@ -64,3 +64,11 @@ Selecting a redirected source selects that console stream. Other stdout and stde
 A required follow source fails up front when the provider cannot follow service files. A non-required unavailable follow source is marked unavailable and skipped. An undeclared `--source` fails and lists the known source ids, including `console`.
 
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
+
+## Read a start-failure log tail
+
+If a service container dies during `lando start`, the failure prints a redacted tail of that container's logs. Rollback then removes the container, so `lando logs` afterwards has nothing to show. The tail is always printed. There is no CI or TTY switch.
+
+A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`).
+
+Pattern redaction cannot catch everything. Database images that print a generated root password, or entrypoints that dump env, can end up in public CI logs.
