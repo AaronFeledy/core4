@@ -10,13 +10,16 @@ import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } fro
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { hugoDecomposer } from "../../src/recipes/builtin/hugo/decomposer.ts";
+import { HUGO_BUILD_ARTIFACT } from "../../src/recipes/builtin/hugo/install.ts";
 import { hugoRecipeSource, hugoRecipeYaml } from "../../src/recipes/builtin/hugo/manifest.ts";
+import { HUGO_SCAFFOLD } from "../../src/recipes/builtin/hugo/scaffold.ts";
 import {
   HUGO_CONTENT_DIGEST,
   hugoDefaults,
   hugoProducer,
   hugoSnapshot,
 } from "../../src/recipes/builtin/hugo/snapshot.ts";
+import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 const defaults = { ...hugoDefaults };
@@ -65,7 +68,8 @@ describe("hugo decomposition", () => {
         builder: {
           type: "node:lts",
           primary: true,
-          command: "npx hugo server --bind 0.0.0.0 --port 1313",
+          build: { artifact: [...HUGO_BUILD_ARTIFACT] },
+          command: "hugo server --bind 0.0.0.0 --port 1313",
           port: 1313,
         },
         web: {
@@ -80,7 +84,7 @@ describe("hugo decomposition", () => {
         hugo: {
           service: "builder",
           description: "Run the Hugo CLI inside the builder service.",
-          cmds: ["npx hugo"],
+          cmds: ["hugo"],
         },
         npm: { service: "builder", description: "Run npm inside the builder service.", cmds: ["npm"] },
       },
@@ -113,12 +117,23 @@ describe("hugo decomposition", () => {
     },
   );
 
-  test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
+  test("publishes the site scaffold inventory with declared files and postInit", () => {
     expect(manifest.files).toEqual([
       { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
+      ...Object.keys(HUGO_SCAFFOLD).map((dest) => ({
+        src: `assets/${dest}`,
+        dest,
+        template: dest === "hugo.toml",
+      })),
     ]);
     expect(manifest.postInit).toHaveLength(1);
-    expect(manifest.snapshot?.assets).toEqual([]);
+    expect(manifest.snapshot?.assets).toEqual(
+      Object.entries(HUGO_SCAFFOLD).map(([dest, content]) => ({
+        dest,
+        digest: recipeAssetDigest(content),
+        template: dest === "hugo.toml",
+      })),
+    );
   });
 
   test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
