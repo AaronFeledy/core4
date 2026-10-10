@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 import { ConfigService } from "@lando/sdk/services";
 
 import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
-import { appliedPlansDirectory, listServices } from "../../src/cli/commands/list.ts";
+import { type AppsListEntry, appliedPlansDirectory, listServices } from "../../src/cli/commands/list.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
@@ -81,9 +81,7 @@ const listNames = async (
   dataRoot: string,
   cacheRoot: string,
   path: string,
-  discoverContainers: (
-    userDataRoot: string,
-  ) => Promise<ReadonlyArray<{ readonly appId: string }>> = noDiscover,
+  discoverContainers: (userDataRoot: string) => Promise<ReadonlyArray<AppsListEntry>> = noDiscover,
 ): Promise<ReadonlyArray<string>> => {
   const result = await Effect.runPromise(
     listServices({
