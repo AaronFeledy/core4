@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Duration, Effect, Fiber, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
-import { ServiceStartError } from "@lando/sdk/errors";
+import { ProviderInternalError, ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -161,10 +161,9 @@ const makeApi = (options: {
       if (!isLogs) return Stream.empty;
       if (options.failLogs === true) {
         return Stream.fail(
-          new ServiceStartError({
+          new ProviderInternalError({
             providerId: "podman",
             operation: "logs",
-            service: "web",
             message: "logs unavailable",
           }),
         );
@@ -185,6 +184,14 @@ const makeApi = (options: {
 const flipBringUp = (plan: AppPlan, api: PodmanApiClient) =>
   Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
 
+const expectServiceStartError = (error: unknown): ServiceStartError => {
+  expect(error).toBeInstanceOf(ServiceStartError);
+  if (!(error instanceof ServiceStartError)) {
+    throw new Error("expected ServiceStartError");
+  }
+  return error;
+};
+
 describe("bringUp start-failure log tail", () => {
   test("attaches a redacted tail and still rolls back when a service dies after start", async () => {
     const plan = standalonePlan();
@@ -197,8 +204,7 @@ describe("bringUp start-failure log tail", () => {
     const error = await flipBringUp(plan, api);
 
     expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
-    expect(error).toBeInstanceOf(ServiceStartError);
-    expect(error.logTail).toEqual({
+    expect(expectServiceStartError(error).logTail).toEqual({
       service: "web",
       lines: ["DATABASE_PASSWORD=[redacted] ready"],
       truncated: false,
@@ -225,7 +231,7 @@ describe("bringUp start-failure log tail", () => {
     const error = await flipBringUp(plan, api);
 
     expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
-    expect(error.logTail).toBeUndefined();
+    expect(expectServiceStartError(error).logTail).toBeUndefined();
   });
 
   test("keeps the original error when log capture fails", async () => {
@@ -241,7 +247,7 @@ describe("bringUp start-failure log tail", () => {
       operation: "bringUp.start",
     });
     expect(error.message).toContain("container start failed");
-    expect(error.logTail).toBeUndefined();
+    expect(expectServiceStartError(error).logTail).toBeUndefined();
     expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
   });
 
@@ -263,7 +269,7 @@ describe("bringUp start-failure log tail", () => {
       service: "web",
       operation: "bringUp.start",
     });
-    expect(error.logTail).toBeUndefined();
+    expect(expectServiceStartError(error).logTail).toBeUndefined();
     expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
   });
 
@@ -279,7 +285,7 @@ describe("bringUp start-failure log tail", () => {
     const error = await flipBringUp(plan, api);
 
     expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
-    expect(error.logTail).toEqual({
+    expect(expectServiceStartError(error).logTail).toEqual({
       service: "db",
       lines: ["database not accepting connections"],
       truncated: false,

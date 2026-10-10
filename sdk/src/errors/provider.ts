@@ -41,7 +41,7 @@ export class ArtifactBuildError extends Schema.TaggedError<ArtifactBuildError>()
   ProviderErrorBase,
 ) {}
 
-export const ServiceStartLogTail = Schema.Struct({
+const ServiceStartLogTail = Schema.Struct({
   service: Schema.String,
   lines: Schema.Array(Schema.String),
   truncated: Schema.Boolean,
