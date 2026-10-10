@@ -50,6 +50,7 @@ import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from ".
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { registerAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -357,6 +358,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   yield* verifyActiveVolumeCoordination(provider);
                   if (pendingStart !== undefined) yield* pendingStart.phase("apply-intent");
                   yield* Ref.set(applyStarted, true);
+                  yield* registerAppPlanRedactionTokens(builtPlan);
                   yield* Effect.scoped(
                     provider
                       .apply(builtPlan, {
