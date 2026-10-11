@@ -87,10 +87,14 @@ const stepService = (step: EventStep, primary: string | undefined): string | und
 export const canonicalEventStepKey = (step: EventStep, primary: string | undefined): string => {
   const kind = commandKind(step);
   const service = stepService(step, primary) ?? "";
-  return `${kind}:${stepCommandText(step)}:service:${service}`;
+  const modifiers =
+    typeof step === "string"
+      ? []
+      : Object.entries(step)
+          .filter(([key]) => key !== "cmd" && key !== "command" && key !== "service")
+          .sort(([left], [right]) => compareOrdinal(left, right));
+  return JSON.stringify([kind, stepCommandText(step), service, modifiers]);
 };
-
-const asEventStep = (step: HostEventStep): EventStep => step;
 
 const compileHostStep = (input: {
   readonly step: HostEventStep;
@@ -100,7 +104,7 @@ const compileHostStep = (input: {
   readonly projectKeys: ReadonlySet<string>;
   readonly skipHostEvents: boolean;
 }): CompiledEventStep => {
-  const step = asEventStep(input.step);
+  const step = input.step;
   if (input.skipHostEvents) {
     return {
       step,

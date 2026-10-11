@@ -6,7 +6,6 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema
 import { DateTime } from "effect";
 import {
   attachEffectiveEvents,
-  canonicalEventStepKey,
   compileEffectiveEvents,
   compiledEventsForPlan,
   effectiveEventsForPlan,
@@ -36,10 +35,10 @@ describe("compileEffectiveEvents host steps", () => {
       services: { web: { primary: true } },
     });
     const steps = compiled["post-start"] ?? [];
-    expect(steps.map((step) => [step.source, step.status, canonicalEventStepKey(step.step, "web")])).toEqual([
-      ["host", "deduped", "cmd:echo hi:service:web"],
-      ["host", "active", "cmd:echo host:service::host"],
-      ["project", "active", "cmd:echo hi:service:web"],
+    expect(steps.map((step) => [step.source, step.status])).toEqual([
+      ["host", "deduped"],
+      ["host", "active"],
+      ["project", "active"],
     ]);
     expect(effectiveEventsForPlan(attachEffectiveEvents(plan(), compiled))?.["post-start"]).toEqual([
       { cmd: "echo host", service: ":host" },
@@ -56,6 +55,19 @@ describe("compileEffectiveEvents host steps", () => {
       services: { web: { primary: true } },
     });
     expect((compiled["pre-stop"] ?? []).map((step) => step.status)).toEqual(["deduped", "active", "active"]);
+  });
+
+  test("keeps host steps when matching project commands have execution modifiers", () => {
+    // Given
+    const input = {
+      landofile: { events: { "post-start": [{ cmd: "echo hi", if: false }] } },
+      hostEvents: { "post-start": ["echo hi"] },
+      services: { web: { primary: true } },
+    };
+    // When
+    const compiled = compileEffectiveEvents(input);
+    // Then
+    expect(compiled["post-start"]?.[0]?.status).toBe("active");
   });
 
   test("skips a host step whose service is missing from the plan", () => {
