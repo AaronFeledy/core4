@@ -3,7 +3,10 @@ import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, PreparedFileSyncTarget } from "@lando/sdk/schema";
 import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
-import type { PendingStart } from "./accelerated-start-record.ts";
+import { openJournal } from "./accelerated-start-journal.ts";
+import { type PendingStart, digest } from "./accelerated-start-record.ts";
+import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
+import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 
 const recoveryError = (record: PendingStart, message: string) =>
   new FileSyncStartError({
@@ -46,8 +49,52 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (app: AppRef
   return { engine, sessions };
 });
 
-export const terminateRetainedSessions = Effect.fnUntraced(function* (app: AppRef, record: PendingStart) {
+export const terminateRetainedSessions = Effect.fnUntraced(function* (
+  app: AppRef,
+  record: PendingStart,
+  plan?: AppPlan,
+) {
   const { engine, sessions } = yield* recordedSessionInventory(app, record);
+  if (
+    plan !== undefined &&
+    record.mountPlanDigest !== digest(plan.fileSync) &&
+    hasExactFileSyncSessionCoverage(
+      plan.fileSync.map(({ session }) => session),
+      sessions,
+    )
+  ) {
+    const legacy = plan.fileSync.flatMap((entry) =>
+      sessions
+        .filter(({ spec }) => sameFileSyncSessionSpec(entry.session, spec))
+        .map(({ spec }) => ({ ...entry, session: spec })),
+    );
+    const legacySessions = legacy.map(({ session }) => ({
+      name: `${session.service}/${session.mountKey}`,
+      specDigest: digest(session),
+    }));
+    // The journal stores hashes, not path spellings. Surviving owned sessions
+    // must prove both old digests before their equivalent canonical forms replace them.
+    if (record.mountPlanDigest === digest(legacy) && digest(record.sessions) === digest(legacySessions)) {
+      const canonical = {
+        ...record,
+        mountPlanDigest: digest(plan.fileSync),
+        sessions: plan.fileSync.map(({ session }) => ({
+          name: `${session.service}/${session.mountKey}`,
+          specDigest: digest(session),
+        })),
+      };
+      const bucket = yield* openJournal(app);
+      yield* bucket
+        .modify((current) => {
+          if (current === null || digest(current) !== digest(record))
+            throw recoveryError(record, "The retained journal changed before recovery.");
+          return [undefined, canonical] as const;
+        })
+        .pipe(
+          Effect.mapError(() => recoveryError(record, "The retained journal could not be canonicalized.")),
+        );
+    }
+  }
   yield* Effect.forEach(sessions, ({ ref }) => engine.terminateSession(ref), { discard: true });
 });
 

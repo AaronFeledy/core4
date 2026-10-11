@@ -126,7 +126,7 @@ export const preflightStartAppDrain = Effect.fnUntraced(function* (
   allowRetained = false,
 ) {
   const retained = yield* requireNoPendingAcceleratedStart(target.app, target.plan, allowRetained);
-  if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained);
+  if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained, target.plan);
   const prior =
     stopPreflight?.appliedFileSync ??
     (yield* Effect.gen(function* () {
