@@ -30,12 +30,13 @@ export interface KnownEventSetInput {
   readonly pathsService: Context.Service.Shape<typeof PathsService> | undefined;
   readonly capabilities?: ProviderCapabilities;
   readonly file?: string;
+  readonly appRoot?: string;
 }
 
 export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
   const { pluginRegistry, configService, fileSystem, pathsService } = input;
   let landofile = input.landofile;
-  const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
+  const appRoot = input.appRoot ?? getLandofileAppRoot(landofile) ?? process.cwd();
   const landofilePath = input.file ?? `${appRoot}/.lando.yml`;
   const appName = landofile.name ?? "app";
   const host = resolveHostFacts();

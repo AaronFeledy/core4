@@ -23,6 +23,7 @@
     "manifest": "./plugin.yaml"
   },
   "dependencies": {
+    "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },

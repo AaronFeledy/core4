@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { rm, symlink } from "node:fs/promises";
 import { FileSyncStopError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type FileSyncSessionInfo, FileSyncSessionRef, PortablePath, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type FileSyncSessionInfo,
+  FileSyncSessionRef,
+  PortablePath,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
@@ -123,6 +130,31 @@ describe("destroy progress topology", () => {
     const fileSyncId = startChildTaskId(parentId, "file-sync");
     expect(byTag(harness.events, "task.tree.start")[0]?.children[0]).toBe(fileSyncId);
     expect(byTag(harness.events, "task.complete").map((event) => event.taskId)).toContain(fileSyncId);
+  });
+
+  test("destroys when the live session still uses a realpath-equivalent legacy root", async () => {
+    const legacyRoot = AbsolutePath.make(`${plan.root}-short`);
+    await symlink(plan.root, legacyRoot);
+    const legacySpec = {
+      ...syncSession.spec,
+      app: { ...syncSession.spec.app, root: legacyRoot },
+      source: legacyRoot,
+    };
+    const harness = makeHarness({
+      fileSync: {
+        ...availableFileSync(),
+        listSessions: () => Effect.succeed([{ ...syncSession, app: legacySpec.app, spec: legacySpec }]),
+      },
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      quiesceEffect: Effect.void,
+    });
+    try {
+      const result = await runDestroyTarget(harness);
+      expect(result.app).toBe("test-destroy");
+    } finally {
+      await rm(legacyRoot, { force: true });
+    }
   });
 
   test("rejects unknown applied state before init hooks run", async () => {

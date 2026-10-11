@@ -63,6 +63,7 @@ export const layer = Layer.effect(
           Option.getOrUndefined(certificateAuthorityResolver),
           landofile,
           providerCapabilities,
+          identity.appRoot,
         );
         const identified = { ...plan, root: identity.appRoot, identity };
         const tooling = effectiveToolingForPlan(plan);

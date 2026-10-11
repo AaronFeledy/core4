@@ -5,6 +5,8 @@ import { FileSyncStopError } from "@lando/sdk/errors";
 import type { AppRef, FileSyncSessionInfo, FileSyncSessionSpec } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
 
+import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
+
 /** Prove every saved accelerated mount has exactly one live session before stopping writers. */
 export const hasExactFileSyncSessionCoverage = (
   specs: ReadonlyArray<FileSyncSessionSpec>,
@@ -13,7 +15,7 @@ export const hasExactFileSyncSessionCoverage = (
   if (specs.length === 0 || specs.length !== sessions.length) return false;
   const unmatched = [...sessions];
   for (const spec of specs) {
-    const index = unmatched.findIndex((session) => isDeepStrictEqual(session.spec, spec));
+    const index = unmatched.findIndex((session) => sameFileSyncSessionSpec(spec, session.spec));
     if (index < 0) return false;
     unmatched.splice(index, 1);
   }

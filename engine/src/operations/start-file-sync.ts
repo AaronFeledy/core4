@@ -1,7 +1,7 @@
 import { Cause, type Context, Effect, Exit, Option, Ref, Scope } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
-import type { AppPlan, FileSyncSessionRef, FileSyncSessionSpec } from "@lando/sdk/schema";
+import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
 import { FileSyncEngine, type FileSyncEngineShape, type FileSyncError } from "@lando/sdk/services";
 
 import {
@@ -14,6 +14,7 @@ import {
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 
+import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { startFileSyncTreeId } from "./start-progress.ts";
 
 export interface StartManagedScope {
@@ -45,31 +46,6 @@ const hasManagedFileSyncRef = (managed: StartManagedScope, ref: FileSyncSessionR
 
 const markManagedFileSyncRef = (managed: StartManagedScope, ref: FileSyncSessionRef): void => {
   managedRefsFor(managed.scope).add(ref);
-};
-
-/** Compare every setting that can change which bytes a session reads or writes. */
-const sameSessionSpec = (planned: FileSyncSessionSpec, actual: FileSyncSessionSpec): boolean => {
-  if (actual === undefined) return false;
-  if (
-    planned.app.kind !== actual.app.kind ||
-    planned.app.id !== actual.app.id ||
-    planned.app.root !== actual.app.root ||
-    planned.service !== actual.service ||
-    planned.mountKey !== actual.mountKey ||
-    planned.source !== actual.source ||
-    planned.mode !== actual.mode ||
-    planned.target._tag !== actual.target._tag ||
-    planned.target.path !== actual.target.path ||
-    planned.excludes.length !== actual.excludes.length ||
-    planned.excludes.some((exclude, index) => exclude !== actual.excludes[index]) ||
-    (planned.permissions === undefined) !== (actual.permissions === undefined) ||
-    planned.permissions?.owner !== actual.permissions?.owner ||
-    planned.permissions?.mode !== actual.permissions?.mode
-  )
-    return false;
-  return planned.target._tag === "volume"
-    ? actual.target._tag === "volume" && planned.target.name === actual.target.name
-    : actual.target._tag === "service" && planned.target.service === actual.target.service;
 };
 
 const setupFailureDetail = (error: FileSyncError, redact: (value: string) => string): string => {
@@ -212,7 +188,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               if (existingSession !== undefined) {
                 hadExistingSession = true;
                 if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
-                if (!sameSessionSpec(entry.session, existingSession.spec)) {
+                if (!sameFileSyncSessionSpec(entry.session, existingSession.spec)) {
                   return yield* Effect.fail(
                     new FileSyncDriftError({
                       engineId: engine.id,
