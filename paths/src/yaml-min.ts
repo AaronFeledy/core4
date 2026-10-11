@@ -42,13 +42,23 @@ export const parseScalar = (value: string): unknown => {
       throw new MinimalYamlError(`Unsupported YAML value: ${trimmed}`);
     }
   }
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return unescapeDoubleQuoted(trimmed.slice(1, -1));
+  }
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
   }
   return trimmed;
+};
+
+const unescapeDoubleQuoted = (value: string): string => {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    // Preserve unknown escapes in existing path values while decoding quotes and backslashes.
+    return value.replace(/\\(["\\])/g, "$1");
+  }
 };
 
 interface ParsedLine {
@@ -57,10 +67,52 @@ interface ParsedLine {
   readonly text: string;
 }
 
+const VALUE_PREFIX = /^( *)(?:- )?(?:[A-Za-z0-9_.-]+:(?:[ \t]+)?)?/;
+
+/** Track quotes in quoted scalars and JSON flow values, not apostrophes in plain text. */
+const stripInlineComment = (line: string): string => {
+  const valueStart = VALUE_PREFIX.exec(line)?.[0].length ?? 0;
+  const value = line.slice(valueStart);
+  const quoted = /^["'[{]/.test(value);
+  if (!quoted) {
+    for (let index = valueStart; index < line.length; index += 1) {
+      if (line[index] === "#" && (index === 0 || /\s/.test(line[index - 1] ?? ""))) {
+        return line.slice(0, index);
+      }
+    }
+    return line;
+  }
+  let inSingle = false;
+  let inDouble = false;
+  for (let index = valueStart; index < line.length; index += 1) {
+    const char = line[index];
+    if (inDouble && char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === "'" && !inDouble) {
+      if (inSingle && line[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "#" && !inSingle && !inDouble && (index === 0 || /\s/.test(line[index - 1] ?? ""))) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+};
+
 const toLines = (text: string): ReadonlyArray<ParsedLine> => {
   const lines: ParsedLine[] = [];
   for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
-    const withoutComment = rawLine.replace(/\s+#.*$/, "");
+    const withoutComment = stripInlineComment(rawLine);
     const trimmedLine = withoutComment.trim();
     if (trimmedLine === "" || trimmedLine.startsWith("#")) continue;
     lines.push({ indent: withoutComment.match(/^ */)?.[0].length ?? 0, line: index + 1, text: trimmedLine });

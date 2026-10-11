@@ -32,6 +32,7 @@ export const GlobalConfigView = Schema.toType(
       "agentEnv",
       "notify",
       "events",
+      "hostEvents",
       "tracing",
     ]),
   ),

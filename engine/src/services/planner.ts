@@ -19,7 +19,7 @@ import {
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
 } from "../planner/authored.ts";
-import { attachEffectiveEvents, effectiveEventsForPlan } from "../planner/effective-events.ts";
+import { attachEffectiveEvents, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
 import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../planner/landofile-scopes.ts";
@@ -66,7 +66,7 @@ export const layer = Layer.effect(
         );
         const identified = { ...plan, root: identity.appRoot, identity };
         const tooling = effectiveToolingForPlan(plan);
-        const events = effectiveEventsForPlan(plan);
+        const events = compiledEventsForPlan(plan);
         const credsScope = serviceCredsScopeForPlan(plan);
         const adopted = yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
         if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);

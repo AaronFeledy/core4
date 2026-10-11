@@ -4,6 +4,8 @@ import { Cause, type Context, DateTime, Effect, Layer } from "effect";
 import {
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
+  ProviderInternalError,
+  ServiceNotFoundError,
   ToolingCommandLookupError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
@@ -13,8 +15,10 @@ import {
   AppId,
   type AppLifecycleEventName,
   type AppPlan,
+  type HostEvents,
   PortablePath,
   ProviderId,
+  ServiceName,
 } from "@lando/sdk/schema";
 import {
   EventService,
@@ -30,13 +34,14 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
   publishAndRunAppEvent,
   publishAndRunPostAppEvent,
   runAppEvent,
 } from "../../src/operations/events.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { attachEffectiveEvents, compileEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import {
   EventCommandExecutor,
@@ -890,5 +895,294 @@ describe("runAppEvent tooling-step kernel", () => {
 
     // Then
     expect(details).toEqual([]);
+  });
+});
+
+describe("hostEvents runtime", () => {
+  const hostPlan = (events: HostEvents, extras: { readonly skipHostEvents?: boolean } = {}) =>
+    attachEffectiveEvents(
+      {
+        ...eventPlan(),
+        services: {
+          web: {
+            name: "web",
+            primary: true,
+            image: "alpine:3",
+            mounts: [],
+            env: {},
+            labels: {},
+            networks: [],
+          },
+        } as AppPlan["services"],
+      },
+      compileEffectiveEvents({
+        landofile: { events: {} },
+        hostEvents: events,
+        services: { web: { primary: true } },
+        ...(extras.skipHostEvents === true ? { skipHostEvents: true } : {}),
+      }),
+    );
+
+  test("skips a missing or stopped container step with an info notice", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const inspecting = {
+      ...TestRuntimeProvider,
+      inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
+        TestRuntimeProvider.inspect(target).pipe(
+          Effect.map((info) => ({ ...info, status: "exited" as const })),
+        ),
+    };
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    const notices = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* runAppEvent(plan, "post-start");
+        return yield* events.query("message.info");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            eventRuntime(invocations),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              RuntimeProviderRegistry.of({
+                list: Effect.succeed([ProviderId.make("test")]),
+                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                select: () => Effect.succeed(inspecting),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(notices.map((notice) => notice.body)).toContain(
+      "Skipped config.yml hostEvents.post-start[0]: service web is exited.",
+    );
+    expect(invocations).toHaveLength(0);
+  });
+
+  test("points a host-step failure at config.yml hostEvents.<event>[i]", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const plan = hostPlan({ "pre-stop": [{ cmd: "fatal", service: ":host" }] });
+    const error = await Effect.runPromise(
+      Effect.flip(
+        runAppEvent(plan, "pre-stop").pipe(
+          Effect.provide(eventRuntime(invocations, [], new Set(['fatal "$@"']))),
+        ),
+      ),
+    );
+    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
+    if (error._tag !== "LandofileEventStepFailedError") throw error;
+    expect(error.message).toContain("config.yml hostEvents.pre-stop[0]");
+    expect(error.index).toBe(0);
+  });
+
+  test("skips hostEvents when LANDO_HOST_EVENT=1 and still warns on post-start failure policy", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const plan = hostPlan(
+      { "post-start": [{ cmd: "echo host", service: ":host" }] },
+      { skipHostEvents: true },
+    );
+    const observed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* runAppEvent(plan, "post-start");
+        return {
+          info: yield* events.query("message.info"),
+          warnings: yield* events.query("message.warn"),
+        };
+      }).pipe(Effect.provide(eventRuntime(invocations))),
+    );
+    expect(observed.info.map((item) => item.body)).toEqual([
+      `Skipping hostEvents because ${LANDO_HOST_EVENT_ENV}=1.`,
+    ]);
+    expect(invocations).toEqual([]);
+    expect(observed.warnings).toEqual([]);
+  });
+
+  test("sets LANDO_HOST_EVENT=1 on host-step children without mutating process.env", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const seen: Array<string | undefined> = [];
+    const before = process.env[LANDO_HOST_EVENT_ENV];
+    const plan = hostPlan({ "pre-stop": [{ cmd: "echo host", service: ":host" }] });
+    const shell = {
+      exec: (_command: string, options) =>
+        Effect.sync(() => {
+          seen.push(options?.env?.[LANDO_HOST_EVENT_ENV]);
+          return { exitCode: 0, stdout: "ok", stderr: "" };
+        }),
+      run: (command: string) => Effect.succeed({ exitCode: 0, stdout: command, stderr: "" }),
+      runScript: (path: string) => Effect.succeed({ exitCode: 0, stdout: path, stderr: "" }),
+      interactive: (spec) =>
+        Effect.sync(() => {
+          seen.push(spec.env?.[LANDO_HOST_EVENT_ENV]);
+          return { exitCode: 0 };
+        }),
+    } satisfies Context.Service.Shape<typeof ShellRunner>;
+    await Effect.runPromise(
+      runAppEvent(plan, "pre-stop").pipe(
+        Effect.provide(eventRuntime(invocations)),
+        Effect.provideService(ShellRunner, shell),
+      ),
+    );
+    expect(seen).toEqual(["1"]);
+    expect(process.env[LANDO_HOST_EVENT_ENV]).toBe(before);
+    expect(invocations).toEqual([]);
+  });
+
+  test("does not set LANDO_HOST_EVENT on a hostEvents container step", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    await Effect.runPromise(runAppEvent(plan, "post-start").pipe(Effect.provide(eventRuntime(invocations))));
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]?.env?.[LANDO_HOST_EVENT_ENV]).toBeUndefined();
+  });
+
+  test("skips when inspect reports the service is missing", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const inspecting = {
+      ...TestRuntimeProvider,
+      inspect: () =>
+        Effect.fail(
+          new ServiceNotFoundError({
+            providerId: "test",
+            operation: "inspect",
+            message: "no container",
+            service: "web",
+          }),
+        ),
+    };
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    const notices = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* runAppEvent(plan, "post-start");
+        return yield* events.query("message.info");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            eventRuntime(invocations),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              RuntimeProviderRegistry.of({
+                list: Effect.succeed([ProviderId.make("test")]),
+                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                select: () => Effect.succeed(inspecting),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(notices.map((notice) => notice.body)).toContain(
+      "Skipped config.yml hostEvents.post-start[0]: service web is not running.",
+    );
+    expect(invocations).toHaveLength(0);
+  });
+
+  test("redacts registered secrets when inspect fails instead of skipping", async () => {
+    // Given
+    const secret = "host-inspect-secret-1237";
+    const invocations: ToolingInvocation[] = [];
+    const inspecting = {
+      ...TestRuntimeProvider,
+      inspect: () =>
+        Effect.fail(
+          new ProviderInternalError({
+            providerId: "test",
+            operation: "inspect",
+            message: `inspect exploded: ${secret}`,
+          }),
+        ),
+    };
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        Effect.andThen(registerRedactionValues([secret]), runAppEvent(plan, "post-start")).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              eventRuntime(invocations),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                RuntimeProviderRegistry.of({
+                  list: Effect.succeed([ProviderId.make("test")]),
+                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  select: () => Effect.succeed(inspecting),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    // Then
+    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
+    if (error._tag !== "LandofileEventStepFailedError") throw error;
+    expect(error.message).toContain("config.yml hostEvents.post-start[0]");
+    expect(error.outputTail).toContain("inspect exploded");
+    expect(error.outputTail).toContain("[redacted]");
+    expect(error.outputTail).not.toContain(secret);
+    expect(invocations).toHaveLength(0);
+  });
+
+  test("reports project compile failures separately from preceding host steps", async () => {
+    // Given
+    const invocations: ToolingInvocation[] = [];
+    const plan = attachEffectiveEvents(
+      eventPlan(),
+      compileEffectiveEvents({
+        hostEvents: { "pre-start": [{ cmd: "echo host", service: ":host" }] },
+        landofile: { events: { "pre-start": [{ for: { sources: true }, task: "scan" }] } },
+      }),
+    );
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(runAppEvent(plan, "pre-start").pipe(Effect.provide(eventRuntime(invocations)))),
+    );
+    // Then
+    if (error._tag !== "LandofileEventStepFailedError") throw error;
+    expect(error.message).toBe("Event pre-start step 1 failed.");
+    expect(error.remediation).not.toContain("config.yml");
+    expect(invocations).toEqual([]);
+  });
+
+  test.each(["created", "dead", "paused"] as const)("skips a %s container", async (status) => {
+    const invocations: ToolingInvocation[] = [];
+    const inspecting = {
+      ...TestRuntimeProvider,
+      inspect: () =>
+        Effect.succeed({
+          app: AppId.make("event-reentry"),
+          service: ServiceName.make("web"),
+          providerId: ProviderId.make("test"),
+          status,
+        }),
+    };
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    const notices = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* runAppEvent(plan, "post-start");
+        return yield* events.query("message.info");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            eventRuntime(invocations),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              RuntimeProviderRegistry.of({
+                list: Effect.succeed([ProviderId.make("test")]),
+                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                select: () => Effect.succeed(inspecting),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(notices.map((notice) => notice.body)).toContain(
+      `Skipped config.yml hostEvents.post-start[0]: service web is ${status}.`,
+    );
+    expect(invocations).toHaveLength(0);
   });
 });

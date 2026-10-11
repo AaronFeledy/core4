@@ -8,6 +8,7 @@ import type { ToolingStepLeaf } from "./step-program.ts";
 
 interface ResolvedLeafBase {
   readonly authoredIndex: number;
+  readonly source?: "host" | "project";
   readonly silent: boolean;
   readonly ignoreError: boolean;
 }
