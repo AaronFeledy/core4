@@ -7,7 +7,6 @@ import {
   type CompiledBinaryBuildRunner,
   CompiledBinaryVersionError,
   buildCompiledBinary,
-  compiledBinaryBytecode,
   createOpenTuiPruningPlugin,
   parseCompiledBinaryArgs,
   resolveOpenTuiNativeImport,
@@ -19,27 +18,6 @@ const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
   "/fixture/lando-host-proxy-linux-x64.bin.gz",
   "/fixture/lando-host-proxy-linux-arm64.bin.gz",
 ];
-
-describe("compiled bytecode target policy", () => {
-  test.each(releaseTargets)("preserves native bytecode for %s", (target) => {
-    expect(compiledBinaryBytecode(target, target)).toBe(true);
-  });
-
-  test.each([
-    ["windows-x64", "linux-x64", false],
-    ["windows-arm64", "linux-arm64", false],
-    ["windows-x64", "darwin-arm64", false],
-    ["windows-arm64", "darwin-x64", false],
-    ["windows-arm64", "windows-x64", false],
-    ["windows-x64", "windows-arm64", false],
-    ["linux-x64", "windows-x64", true],
-    ["linux-arm64", "linux-x64", true],
-    ["darwin-x64", "linux-x64", true],
-    ["darwin-arm64", "windows-arm64", true],
-  ] as const)("sets bytecode for %s from %s to %s", (target, host, expected) => {
-    expect(compiledBinaryBytecode(target, host)).toBe(expected);
-  });
-});
 
 describe("compiled binary OpenTUI native pruning", () => {
   test.each(releaseTargets)("keeps only the selected native root for %s", (target, selectedRoot) => {
@@ -89,7 +67,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(pluginName).toBe("opentui-native-pruning");
   });
 
-  test("build uses the release target and one pruning plugin", async () => {
+  test.each(releaseTargets)("build enables bytecode for %s", async (target, nativeRoot) => {
     // Given: a build runner that records the programmatic Bun build configuration.
     let received: Bun.BuildConfig | undefined;
     const runner: CompiledBinaryBuildRunner = async (config) => {
@@ -97,9 +75,9 @@ describe("compiled binary OpenTUI native pruning", () => {
       return { success: true, logs: [], outputs: [] };
     };
 
-    // When: a versioned Linux binary is built.
+    // When: a versioned binary is built for a release target.
     await buildCompiledBinary(
-      { target: "linux-x64", outfile: "./dist/lando-linux-x64", version: "4.0.0-beta.1" },
+      { target, outfile: `./dist/lando-${target}`, version: "4.0.0-beta.1" },
       runner,
       fixtureShimAssets,
     );
@@ -108,16 +86,20 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(received).toMatchObject({
       target: "bun",
       format: "esm",
-      compile: { target: "bun-linux-x64", outfile: "./dist/lando-linux-x64" },
+      compile: { target: `bun-${target}`, outfile: `./dist/lando-${target}` },
       bytecode: true,
+      splitting: true,
       minify: true,
       sourcemap: "external",
       define: {
         __LANDO_CORE_VERSION__: '"4.0.0-beta.1"',
-        __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(opentuiNativeCatalog.targetToNativeRoot["linux-x64"]),
+        __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(nativeRoot),
       },
     });
-    expect(received?.compile).toEqual({ target: "bun-linux-x64", outfile: "./dist/lando-linux-x64" });
+    expect<unknown>(received?.compile).toEqual({
+      target: `bun-${target}`,
+      outfile: `./dist/lando-${target}`,
+    });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.plugins?.[0]?.name).toBe("opentui-native-pruning");
   });
@@ -151,7 +133,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     });
   });
 
-  test("Windows cross-compilation omits bytecode without changing production bundling", async () => {
+  test("Windows cross-compilation enables bytecode without changing production bundling", async () => {
     // Given: a Windows target distinct from this compiler host.
     const target = process.platform === "win32" && process.arch === "x64" ? "windows-arm64" : "windows-x64";
     let received: Bun.BuildConfig | undefined;
@@ -164,9 +146,9 @@ describe("compiled binary OpenTUI native pruning", () => {
       },
       fixtureShimAssets,
     );
-    // Then: only bytecode is disabled; ESM splitting and native pruning remain.
+    // Then: bytecode, ESM splitting, and native pruning remain enabled on a different host.
     expect(received).toMatchObject({
-      bytecode: false,
+      bytecode: true,
       format: "esm",
       splitting: true,
       minify: true,

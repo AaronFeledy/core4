@@ -30,6 +30,17 @@ Lando caches the planned app so later commands can skip a full plan. That cache 
 
 A missing tooling command after one of those edits is the usual tell. The router says to run `lando app:cache:refresh`, `lando start`, or `lando rebuild`.
 
+## When your home directory changes
+
+Bind sources that start with `~` or `~/`, in an app Landofile or the global Landofile, expand to your host home directory when Lando plans. The plan cache is keyed on that home. When your home changes, the next command that plans the app or the global app plans it again, even if your `LANDO_USER_*` roots stay the same. You don't need to delete any cache files.
+
+A new plan does not touch containers that are already running. They keep the old mount until you recreate them:
+
+```sh
+lando rebuild          # app services
+lando global:rebuild   # global services, including the SSH sidecar
+```
+
 `lando app:config` prints the authored Landofile. It does not rebuild the plan. Use `app:cache:refresh` when you need planner or command-index output, not just the YAML you wrote.
 
 ## Inspect, then refresh
@@ -59,8 +70,9 @@ tooling:
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hello\"" } }} />
     </Step>
     <Step name="refresh">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: cache-refresh-demo" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"cache-refresh-demo\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\":\\s*[1-9]" } }} />
     </Step>
     <Step name="inspect-after">
       <Run command="lando app:cache:refresh --format=json" />

@@ -177,12 +177,12 @@ describe("ci runbook", () => {
       readText(bunVersionPath),
     ]);
 
-    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.4.0");
-    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.0");
-    expect(bunVersion.trim()).toBe("1.4.0");
+    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.4.2");
+    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.2");
+    expect(bunVersion.trim()).toBe("1.4.2");
 
     for (const surface of [runbook, readme, betaDecisions]) {
-      expect(surface).toContain(">=1.4.0");
+      expect(surface).toContain(">=1.4.2");
       expect(surface).toContain("--bytecode");
     }
 

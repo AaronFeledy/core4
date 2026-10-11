@@ -244,7 +244,7 @@ test("misses plan.bin when the planning runtime fingerprint changes", async () =
   expect((await readFile(cachePath)).length).toBeGreaterThan(0);
 });
 
-test("does not change the app-plan cache key for env, host, or template inputs", () => {
+test("does not change the app-plan cache key for unrelated environment variables", () => {
   // Given
   const probe = "LANDO_PLAN_CACHE_ENV_PROBE";
   const previous = process.env[probe];

@@ -27,6 +27,7 @@ import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
@@ -312,10 +313,20 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
+  const filesystemWatch = yield* isolateDoctorSection({
+    section: "filesystem-watch",
+    effect: filesystemWatchDoctor(redact, options.platform),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
   const report: DoctorReport = {
     version: CORE_VERSION,
     provider: { checks: provider.checks },
-    subsystems: { checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value] },
+    subsystems: {
+      checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value, ...filesystemWatch.value],
+    },
     globalApp,
     mcp,
     ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),

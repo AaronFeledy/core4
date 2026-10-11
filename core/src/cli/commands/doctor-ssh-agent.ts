@@ -17,6 +17,7 @@ import {
 } from "@lando/sdk/services";
 import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
+import { redactString } from "../redact";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
 
@@ -132,7 +133,11 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         fixContext.fixOutcome = recovered ? "recovered" : "failed";
         fixContext.fixCommand = "ssh.setup";
         fixContext.fixExitCode = recovered ? "0" : "1";
-        if (!recovered) fixContext.fixError = "SSH agent forwarding remains degraded after setup.";
+        if (!recovered) {
+          fixContext.fixError = Result.isFailure(setup)
+            ? redactString(setup.failure.message)
+            : "SSH agent forwarding remains degraded after setup.";
+        }
         break;
       }
       default:

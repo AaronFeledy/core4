@@ -35,9 +35,9 @@ describe("startFailureRemediation", () => {
     expect(remediation).toMatch(/do not set network_backend=pasta/u);
   });
 
-  test("generic start failures keep the destroy remediation", () => {
+  test("generic start failures decline provider-specific remediation", () => {
     expect(isManagedNftMissingMessage("forced start failure")).toBe(false);
-    expect(startFailureRemediation("forced start failure")).toMatch(/lando destroy/u);
+    expect(startFailureRemediation("forced start failure")).toBeUndefined();
   });
 
   test("address already in use on proxy port 38080 remediates leftover proxy, not destroy", () => {
@@ -82,15 +82,14 @@ describe("startFailureRemediation", () => {
     expect(remediation).not.toMatch(/lando destroy/u);
   });
 
-  test("address already in use on app port 8080 keeps destroy remediation", () => {
+  test("address already in use on app port 8080 declines provider-specific remediation", () => {
     // Given
     const message = "address already in use 8080";
     // When
     const remediation = startFailureRemediation(message);
     // Then
     expect(isLeftoverProxyPortBindMessage(message)).toBe(false);
-    expect(remediation).toMatch(/lando destroy/u);
-    expect(remediation).not.toMatch(/lando global:stop/u);
+    expect(remediation).toBeUndefined();
   });
 
   test("nft-missing body that also mentions 38080 stays NFT remediation", () => {
@@ -204,7 +203,6 @@ describe("startFailureRemediation", () => {
     // Then
     expect(traefik).toContain("127.0.0.1:8080");
     expect(traefik).not.toMatch(/lando destroy/u);
-    expect(apps).toMatch(/lando destroy/u);
-    expect(apps).not.toMatch(/lando global:stop/u);
+    expect(apps).toBeUndefined();
   });
 });

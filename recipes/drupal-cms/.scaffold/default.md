@@ -37,6 +37,22 @@ lando drush user:login --no-browser
 
 The scaffold installs Git in `appserver` and pins the upstream SVG Image security patch from [merge request 65](https://git.drupalcode.org/project/svg_image/-/merge_requests/65) at commit `c788b1e2f2be29f62c9812b2b0558472afa61d6d`. This is a `3.x-dev` development build, not a tagged release. It lets Drupal CMS use the fixed `enshrined/svg-sanitize` 1.0 release without ignoring security advisories. The source pin and its package metadata stay in your `composer.json` and `composer.lock`; a mismatch or failed audit stops scaffolding before it touches your app.
 
+`lando drupal-cms-install` prints the admin username and a generated password when it finishes. Then open the site:
+
+```sh
+lando open
+lando open --print
+```
+
+`lando open` launches the current app URL in your browser; `--print` just prints it. The front page and `/user/login` should both render with HTTP 200. On the default Apache stack, check both pages from inside `appserver`, without a browser or the proxy:
+
+```sh
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/user/login
+```
+
+Each prints `200`. Anything else means Drupal didn't render the page, so check `lando logs -s appserver`.
+
 The generated Drush task uses the current app URL, including its proxy port, for login links. Set `DRUSH_OPTIONS_URI` or pass Drush `--uri` to choose another URL.
 
 For a Drush flag that also names a Lando flag, put `--` before the Drush arguments. For example, `lando drush -- status --format=json` passes `--format=json` to Drush.
@@ -75,19 +91,25 @@ lando start
 lando drupal-cms-scaffold
 ```
 
-## 4. check-drush
+## 4. install-cms
+
+```bash
+lando drupal-cms-install
+```
+
+## 5. check-drush
 
 ```bash
 lando drush --version
 ```
 
-## 5. init
+## 6. init
 
 ```bash
 lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=/app/web
 ```
 
-## 6. inspect
+## 7. inspect
 
 ```bash
 lando app:config --format=json

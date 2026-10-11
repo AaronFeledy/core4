@@ -19,9 +19,11 @@ The default provider is `lando` (managed Podman). Setup extracts a private runti
 
 ## When setup fails
 
-Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime, and the committed runtime-bundle manifest may still be placeholders.
+Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime.
 
 If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
+
+A broken SSH agent sidecar does not fail setup. Setup prints a warning with the cause and finishes everything else, and apps start without SSH agent forwarding until the sidecar runs. Fix the cause, then rerun `lando setup`.
 
 On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Docker is the live path. Install Docker Desktop, then:
 

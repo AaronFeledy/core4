@@ -3,10 +3,14 @@ import { DateTime, Effect, Schema } from "effect";
 import { startedServiceRow } from "@lando/engine/operations/authority-url";
 import { applyGlobalRoutesForSelectedServices } from "@lando/engine/operations/global-routes";
 
+import {
+  applyGlobalServiceGroups,
+  globalServiceGroupError,
+} from "@lando/engine/operations/global-service-groups";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
-import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
+  GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
@@ -77,6 +81,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 });
 
 export type GlobalStartError =
+  | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
   | GlobalDistConflictError
@@ -135,20 +140,6 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
 
-  // With `--service`, start only the selected subset rather than the whole plan.
-  const selectedNames = new Set(services.map((service) => String(service.name)));
-  const planToApply =
-    services.length === Object.keys(loaded.plan.services).length
-      ? loaded.plan
-      : {
-          ...loaded.plan,
-          services: Object.fromEntries(
-            Object.entries(loaded.plan.services).filter(([, service]) =>
-              selectedNames.has(String(service.name)),
-            ),
-          ),
-        };
-
   return yield* withGlobalLifecycleEvents(
     {
       pre: () =>
@@ -176,28 +167,42 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
     },
     Effect.gen(function* () {
       const builds = yield* BuildOrchestrator;
-      const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
-      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-
-      yield* Effect.scoped(
-        provider.apply(builtPlan, {
-          reconcile: false,
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-          serviceEnvironment,
-        }),
+      const outcome = yield* applyGlobalServiceGroups(
+        loaded.plan,
+        {
+          provider,
+          services,
+          options: {
+            reconcile: false,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+          },
+        },
+        (plan) => withBuildProvider(builds.build(plan), provider),
       );
-
+      const partialError = globalServiceGroupError("start", outcome);
+      const selectedNames = new Set(outcome.services.map((service) => service.name));
+      const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
       const router = yield* RouterService;
-      const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
-      const servicesStarted = yield* Effect.forEach(services, (service) =>
-        provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
-          Effect.map((runtime) => {
-            const row = startedServiceRow(service, runtime);
-            return { ...row, endpoints: [...row.endpoints, ...(routeUrls.get(service.name) ?? [])] };
-          }),
-        ),
+      const applyRoutes = applyGlobalRoutesForSelectedServices(
+        router,
+        { ...loaded.plan, routes: loaded.plan.routes.filter((route) => !failedNames.has(route.service)) },
+        selectedNames,
       );
-
+      if (partialError !== undefined) {
+        yield* Effect.result(applyRoutes);
+        return yield* Effect.fail(partialError);
+      }
+      const routeUrls = yield* applyRoutes;
+      const servicesStarted = yield* Effect.forEach(
+        services.filter((service) => selectedNames.has(service.name)),
+        (service) =>
+          provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
+            Effect.map((runtime) => {
+              const row = startedServiceRow(service, runtime);
+              return { ...row, endpoints: [...row.endpoints, ...(routeUrls.get(service.name) ?? [])] };
+            }),
+          ),
+      );
       return { app: loaded.plan.name, servicesStarted };
     }),
   );

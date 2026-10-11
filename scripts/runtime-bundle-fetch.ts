@@ -47,7 +47,10 @@ export const fetchOverHttps = async (
       if (cause instanceof RuntimeBundleDownloadError && !isRetryableStatus(cause.status)) throw cause;
       if (!(cause instanceof Error)) throw cause;
       lastError = cause;
-      if (attempt === attempts) throw cause;
+      if (attempt === attempts) {
+        if (cause instanceof RuntimeBundleDownloadError) throw cause;
+        throw new Error(`assemble-runtime-bundle: download failed for ${url}: ${cause.message}`, { cause });
+      }
     }
     if (attempt < attempts) await sleep(RUNTIME_BUNDLE_FETCH_RETRY_BASE_MS * 2 ** (attempt - 1));
   }
