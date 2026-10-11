@@ -29,6 +29,15 @@ describe("parseMinimalYaml", () => {
     expect(parseMinimalYaml('cmd: "echo a #b"')).toEqual({ cmd: "echo a #b" });
   });
 
+  test("preserves quoted hashes in flow values before a trailing comment", () => {
+    // Given
+    const yaml = 'appEnv: {"MESSAGE":"ready # now"} # comment\nplugins: ["a # b"] # comment';
+    // When
+    const config = parseMinimalYaml(yaml);
+    // Then
+    expect(config).toEqual({ appEnv: { MESSAGE: "ready # now" }, plugins: ["a # b"] });
+  });
+
   test("keeps a hash that sits inside a single-quoted command", () => {
     expect(parseMinimalYaml("cmd: 'echo a #b'")).toEqual({ cmd: "echo a #b" });
   });

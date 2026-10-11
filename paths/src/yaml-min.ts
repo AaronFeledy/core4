@@ -46,7 +46,7 @@ export const parseScalar = (value: string): unknown => {
     return unescapeDoubleQuoted(trimmed.slice(1, -1));
   }
   if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return unescapeSingleQuoted(trimmed.slice(1, -1));
+    return trimmed.slice(1, -1).replace(/''/g, "'");
   }
   return trimmed;
 };
@@ -54,12 +54,12 @@ export const parseScalar = (value: string): unknown => {
 const unescapeDoubleQuoted = (value: string): string => {
   try {
     return JSON.parse(`"${value}"`) as string;
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    // Preserve unknown escapes in existing path values while decoding quotes and backslashes.
     return value.replace(/\\(["\\])/g, "$1");
   }
 };
-
-const unescapeSingleQuoted = (value: string): string => value.replace(/''/g, "'");
 
 interface ParsedLine {
   readonly indent: number;
@@ -69,11 +69,11 @@ interface ParsedLine {
 
 const VALUE_PREFIX = /^( *)(?:- )?(?:[A-Za-z0-9_.-]+:(?:[ \t]+)?)?/;
 
-/** Strip a `#` comment. Quote tracking starts only when the value itself is quoted. */
+/** Track quotes in quoted scalars and JSON flow values, not apostrophes in plain text. */
 const stripInlineComment = (line: string): string => {
   const valueStart = VALUE_PREFIX.exec(line)?.[0].length ?? 0;
   const value = line.slice(valueStart);
-  const quoted = value.startsWith('"') || value.startsWith("'");
+  const quoted = /^["'[{]/.test(value);
   if (!quoted) {
     for (let index = valueStart; index < line.length; index += 1) {
       if (line[index] === "#" && (index === 0 || /\s/.test(line[index - 1] ?? ""))) {
