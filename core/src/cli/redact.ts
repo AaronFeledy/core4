@@ -1,16 +1,7 @@
-/**
- * Redaction helpers used by the CLI failure formatter.
- *
- * These are thin shims over the canonical `@lando/sdk/secrets` `secrets`
- * profile. Existing callers (`bug-report`, `doctor-subsystems`,
- * `setup-readiness`, `scenario-context`) keep importing `redactString` /
- * `redactDetails` from here so call sites stay unchanged; the actual masking
- * lives in one place.
- */
+import { createStandaloneRedactor } from "@lando/redaction/service";
 
-import { createRedactor } from "@lando/sdk/secrets";
-
-const secretsRedactor = createRedactor("secrets");
+// CLI diagnostics must observe secret values registered after this shim is imported.
+const secretsRedactor = createStandaloneRedactor("secrets");
 
 export const redactString = (value: string): string => secretsRedactor.redactString(value);
 

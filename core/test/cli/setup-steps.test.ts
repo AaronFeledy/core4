@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { FileSyncEngine } from "@lando/core/services";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import {
@@ -15,7 +16,7 @@ import {
   setupDeferredFileSyncPath,
 } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import type { ResolvedSetupNetworkTrust } from "../../src/cli/commands/setup-network-trust.ts";
-import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";
+import { type SetupReadinessStep, setupReadinessPath } from "../../src/cli/commands/setup-readiness.ts";
 
 const network = {
   proxy: { noProxy: [], injectIntoServices: false },
@@ -133,6 +134,43 @@ describe("file-sync setup step", () => {
 });
 
 describe("setup readiness recorder", () => {
+  beforeEach(() => {
+    resetRegisteredRedactionValuesForTesting();
+  });
+
+  afterEach(() => {
+    resetRegisteredRedactionValuesForTesting();
+  });
+
+  test("masks registered exact values in persisted failure evidence and remediation", async () => {
+    // Given
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-registered-redaction-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(userDataRoot, "podman");
+      Effect.runSync(registerRedactionValues(["readiness-canary-1252"]));
+      // When
+      await Effect.runPromise(
+        recorder.recordFailure("provider", new Error("connection rejected readiness-canary-1252")),
+      );
+      // Then: inspect the persisted bytes, not the redacting read helper.
+      const persisted: unknown = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8"));
+      expect(persisted).toMatchObject({
+        status: "failed",
+        providerId: "podman",
+        steps: [
+          {
+            id: "provider",
+            status: "failed",
+            evidence: "provider setup failed: connection rejected [redacted]",
+            remediation: expect.stringContaining("Last failure: connection rejected [redacted]"),
+          },
+        ],
+      });
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("firstFailedStep returns the first failed record and ignores later failures", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-first-failed-"));
     try {

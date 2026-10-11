@@ -143,8 +143,10 @@ Explicit global start, restart, and rebuild MUST attempt selected services and t
 | `meta:global:restart` | `global:restart` | `global` | Stop, then start, then router startup revalidation (§20.6.5). |
 | `meta:global:start` | `global:start` | `global` | Start all enabled services or repeated `--service` selections. |
 | `meta:global:status` | `global:status` | `global` | Report live runtime status. |
-| `meta:global:stop` | `global:stop` | `global` | Stop all running services or selected services. |
+| `meta:global:stop` | `global:stop` | `global` | Stop all running services or repeated `--service` selections. |
 | `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's contributions, regenerate, and stop affected services. |
+
+`meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
 
 `meta:global:start` and auto-start refuse an absent generated layer when no contribution can materialize it. Install and uninstall accept a plugin package name or contribution id; ambiguity is rejected. `meta:global:config` MUST reject generated-layer writes with `GlobalDistReadOnlyError`. `apps:poweroff` stops the global app by default; `--keep-global` leaves it running.
 

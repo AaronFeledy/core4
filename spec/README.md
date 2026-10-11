@@ -159,6 +159,7 @@ If you are looking for a public surface or policy:
 | Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.4 |
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
+| Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
 | Global proxy realization, error family, and non-goals | 18 | §20.10 + §20.14 |
 | Scratch identity, roots, sources, and service | 19 | §21.2 + §21.5 |
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |

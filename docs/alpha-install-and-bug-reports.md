@@ -173,4 +173,4 @@ Include these artifacts when available:
 - The install path you used: six-target unsigned binary or built from source.
 - Host details: operating system, architecture, Bun version, and provider runtime details when the bug involves setup/start/stop/destroy.
 
-Do not paste secrets or credentials. Lando redacts known secret-shaped values in its own diagnostics, but shell transcripts and copied logs can still contain project-specific sensitive data.
+Do not paste secrets or credentials. Lando's own diagnostics redact secret-shaped values plus any secret value Lando resolved during that command, but shell transcripts and logs you copy from other tools or your project can still contain sensitive data.

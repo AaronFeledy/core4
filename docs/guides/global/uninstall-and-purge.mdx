@@ -10,6 +10,23 @@ tags: [beta, docs, global, lifecycle]
 
 This is the host-level global app. It is not `lando uninstall` for the CLI.
 
+## Stop one global service
+
+```sh
+lando global:stop --service mailpit
+lando global:status --service mailpit --format=json
+```
+
+That stops Mailpit and removes its container. Status reports it as `stopped` in `result.services[].status`. `--service` (or `-s`) is repeatable: `lando global:stop -s mailpit -s ssh-agent` stops both.
+
+Dependencies aren't stopped for you. Lando leaves volumes, the shared network, and every service you didn't name alone, so Traefik keeps serving its routes. An unknown name fails before anything stops. A selected stop needs the global app's applied state; if containers outlived it, the command fails and changes nothing.
+
+This isn't a permanent off switch. Starting an app that needs a global service can bring it back. To start it yourself:
+
+```sh
+lando global:start --service mailpit
+```
+
 ## Clear generated services
 
 ```sh
@@ -53,7 +70,7 @@ lando global:status
 lando global:config
 ```
 
-`global:stop` tears down running provider resources and keeps volumes. `global:config` prints the effective global Landofile, merged from the generated file and your canonical `.lando.yml` overrides, plus the paths behind it.
+With no `--service`, `global:stop` tears down the whole global app's running provider resources and keeps volumes. `global:restart` and `global:rebuild` always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your canonical `.lando.yml` overrides, plus the paths behind it.
 
 Each `meta:global:*` command publishes a `global:*` alias.
 
