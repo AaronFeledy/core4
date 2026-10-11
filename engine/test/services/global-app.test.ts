@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
@@ -228,6 +228,38 @@ describe("GlobalAppServiceLayer.layer", () => {
       expect(result.serviceIds).toEqual(["traefik"]);
       const sourceDir = join(dataRoot, "global", "proxy-traefik", "dynamic");
       expect((await stat(sourceDir)).isDirectory()).toBe(true);
+    });
+  });
+
+  test("regenerateDist skips home-relative bind sources while creating relative and absolute sources", async () => {
+    await withTempRoots(async (dataRoot) => {
+      // Given user-owned home mounts alongside Lando-owned bind sources.
+      const absoluteSource = join(dataRoot, "absolute-bind");
+      // When the global dist materializes bind sources.
+      await Effect.runPromise(
+        Effect.flatMap(GlobalAppService, (service) =>
+          service.regenerateDist({
+            services: {
+              "ssh-agent": {
+                image: "alpine:3.20",
+                mounts: [
+                  { type: "bind", source: "~/.ssh", target: "/root/.ssh", readOnly: true },
+                  "~:/home/user:ro",
+                  { type: "bind", source: "./relative-bind", target: "/relative", readOnly: false },
+                  { type: "bind", source: absoluteSource, target: "/absolute", readOnly: false },
+                  "~foo:/other:ro",
+                ],
+              },
+            },
+          }),
+        ).pipe(Effect.provide(globalAppLayer)),
+      );
+      // Then no literal home directory appears and other source forms retain their behavior.
+      const root = join(dataRoot, "global");
+      expect(await readdir(root)).not.toContain("~");
+      expect((await stat(join(root, "relative-bind"))).isDirectory()).toBe(true);
+      expect((await stat(absoluteSource)).isDirectory()).toBe(true);
+      expect((await stat(join(root, "~foo"))).isDirectory()).toBe(true);
     });
   });
 

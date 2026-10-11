@@ -5,12 +5,13 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Exit, Layer, Schema } from "effect";
+import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import {
   CertificateAuthority,
   ConfigService,
   Downloader,
+  EventService,
   FileSyncEngine,
   HostProxyService,
   InteractionService,
@@ -33,6 +34,7 @@ import {
   InteractionCancelledError,
   InteractionUnavailableError,
   ProxySetupError,
+  SshError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -62,6 +64,7 @@ import {
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
+import { readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
@@ -595,6 +598,104 @@ describe("meta:setup command", () => {
       await rm(userDataRoot, { recursive: true, force: true });
     }
   });
+
+  test.each(["lando", "docker", "podman"])(
+    "continues setup with unavailable SSH readiness when the %s sidecar fails",
+    async (providerId) => {
+      // Given a sidecar setup failure on an otherwise available provider.
+      const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-ssh-unavailable-"));
+      const calls: string[] = [];
+      const warnings: string[] = [];
+      const rootMessage = "statfs /home/test/.ssh: no such file or directory";
+      const message = `SSH agent sidecar could not start: ${rootMessage}`;
+      const provider = {
+        ...TestRuntimeProvider,
+        id: providerId,
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make(providerId)]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+      const events = EventService.of({
+        publish: (event) =>
+          Effect.sync(() => {
+            if (event._tag === "message.warn" && typeof event.body === "string") warnings.push(event.body);
+          }),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Effect.die("unused subscription queue"),
+        waitFor: () => Effect.die("unused event wait"),
+        waitForAny: () => Effect.die("unused event wait"),
+        query: () => Effect.succeed([]),
+      });
+      try {
+        // When setup runs through its command surface.
+        const exit = await Effect.runPromiseExit(
+          setupSpec.run({ installDir: "/opt/lando", flags: { provider: providerId } }).pipe(
+            Effect.provide(
+              buildSetupLayersWithHostIntegrations(
+                registry,
+                {
+                  ca: makeTestCertificateAuthority(),
+                  proxy: makeTestRouterService(),
+                  ssh: {
+                    ...makeTestSshService(),
+                    setup: () =>
+                      Effect.fail(
+                        new SshError({
+                          sshId: "sidecar",
+                          message: `${message} HTTP_PROXY_PASSWORD=super-secret`,
+                        }),
+                      ),
+                  },
+                  fileSync: {
+                    ...TestFileSyncEngine,
+                    setup: () =>
+                      Effect.sync(() => {
+                        calls.push("file-sync");
+                      }),
+                  },
+                },
+                { userDataRoot },
+              ),
+            ),
+            Effect.provideService(EventService, events),
+            Effect.provideService(PrivilegeService, {
+              elevate: () =>
+                Effect.sync(() => {
+                  calls.push("shell-profile");
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            }),
+          ),
+        );
+        const readiness = await Effect.runPromise(readSetupReadiness(userDataRoot));
+        // Then setup succeeds, retains actionable redacted evidence, and runs later steps.
+        expect(Exit.isSuccess(exit)).toBe(true);
+        expect(calls).toEqual(process.platform === "win32" ? ["file-sync"] : ["shell-profile", "file-sync"]);
+        expect(readiness?.status).toBe("failed");
+        const shell = readiness?.steps.find((step) => step.id === "shell");
+        expect(shell?.status).toBe("unavailable");
+        expect(shell?.evidence).toContain(message);
+        expect(shell?.evidence).toContain("[redacted]");
+        expect(shell?.evidence).not.toContain("super-secret");
+        expect(await readFile(setupReadinessPath(userDataRoot), "utf-8")).not.toContain("super-secret");
+        const setupCommand = providerId === "lando" ? "lando setup" : `lando setup --provider=${providerId}`;
+        expect(shell?.remediation).toBe(
+          `Apps still start without SSH agent forwarding. Fix the cause, then rerun \`${setupCommand}\`.`,
+        );
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain(rootMessage);
+        expect(warnings[0]).toContain(shell?.remediation ?? "missing remediation");
+        expect(warnings[0]).not.toContain("super-secret");
+      } finally {
+        await rm(userDataRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("records runtime-service state in setup readiness after provider setup", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-runtime-service-"));

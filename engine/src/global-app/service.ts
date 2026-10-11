@@ -253,6 +253,7 @@ const makeGlobalAppService = (
     yield* ensureRoot;
     const services = input?.services ?? {};
     for (const source of bindMountSources(services)) {
+      if (source === "~" || source.startsWith("~/")) continue;
       const mountPath = isAbsolute(source) ? source : join(resolved.root, source);
       yield* fileSystem
         .mkdir(mountPath)

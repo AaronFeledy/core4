@@ -31,7 +31,17 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(function* (
   options: GlobalRestartOptions = {},
 ): Effect.fn.Return<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> {
   yield* globalStop();
-  const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal });
+  const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal }).pipe(
+    Effect.catchTag("GlobalAppError", (error) =>
+      Effect.gen(function* () {
+        if (error.operation === "start") {
+          const router = yield* RouterService;
+          yield* Effect.result(router.revalidateStartup);
+        }
+        return yield* Effect.fail(error);
+      }),
+    ),
+  );
   // The router is the reason this command is prescribed as a recovery step,
   // so re-observe its startup here: without it a restart cannot affect the
   // persisted observation doctor keeps reporting.

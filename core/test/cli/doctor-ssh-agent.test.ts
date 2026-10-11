@@ -238,6 +238,39 @@ describe("SSH agent doctor posture", () => {
     // Then
     expect(check.status).toBe("warn");
     expect(check.context.fixOutcome).toBe("failed");
+    expect(check.context.fixError).toBe("SSH agent forwarding remains degraded after setup.");
+  });
+
+  test("sidecar fix reports the redacted setup failure cause", async () => {
+    // Given an unreachable sidecar whose setup fails with a specific cause and secret.
+    const input = inputs();
+    const message = "SSH agent sidecar could not start: statfs /home/test/.ssh: no such file or directory";
+    // When doctor attempts automatic repair.
+    const check = await Effect.runPromise(
+      sshAgentPostureCheck({
+        ...input,
+        fix: true,
+        probe: async () => {
+          throw new Error("offline");
+        },
+        sshService: {
+          ...input.sshService,
+          setup: () =>
+            Effect.fail(
+              new SshError({
+                sshId: "sidecar",
+                message: `${message} HTTP_PROXY_PASSWORD=super-secret`,
+              }),
+            ),
+        },
+      }),
+    );
+    // Then repair remains failed and exposes the actionable cause without credentials.
+    expect(check.status).toBe("warn");
+    expect(check.context).toMatchObject({ fixOutcome: "failed", fixCommand: "ssh.setup", fixExitCode: "1" });
+    expect(check.context.fixError).toContain(message);
+    expect(check.context.fixError).toContain("[redacted]");
+    expect(check.context.fixError).not.toContain("super-secret");
   });
 
   test("subsystem doctor reads global SSH config without requiring an app", async () => {
