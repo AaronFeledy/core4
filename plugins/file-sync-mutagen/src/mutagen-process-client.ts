@@ -215,16 +215,11 @@ const pathMatches = (expected: string, observed: string, platform: string): bool
 const sameStrings = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
-const exactSession = (
-  owned: OwnedSession,
-  observed: InspectedSession,
-  platform: string,
-  dockerHost: string,
-): boolean =>
+const exactSession = (owned: OwnedSession, observed: InspectedSession, dockerHost: string): boolean =>
   observed.name === owned.name &&
   observed.identifier === owned.identifier &&
   observed.alpha.protocol === "local" &&
-  pathMatches(owned.spec.source, observed.alpha.path, platform) &&
+  sameRealpath(owned.spec.source, observed.alpha.path) &&
   observed.beta.protocol === "docker" &&
   observed.beta.host === owned.target.containerId &&
   observed.beta.path === owned.target.path &&
@@ -432,7 +427,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         if (
           matching.length !== 1 ||
           observed === undefined ||
-          !exactSession(owned, observed, platform, options.dockerHost)
+          !exactSession(owned, observed, options.dockerHost)
         ) {
           return Effect.fail(
             startError(
@@ -504,7 +499,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         return (
           matching.length !== 1 ||
           matching[0] === undefined ||
-          !exactSession(entry, matching[0], platform, options.dockerHost)
+          !exactSession(entry, matching[0], options.dockerHost)
         );
       })
     ) {
@@ -529,20 +524,17 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       }),
     );
 
-  const sameApp = (left: FileSyncSessionSpec["app"], right: FileSyncSessionSpec["app"]) =>
-    sameAppRef(left, right);
-
   const appReceipts = (current: SessionLedger, app: FileSyncSessionSpec["app"]) =>
-    current.sessions.filter((entry) => sameApp(entry.spec.app, app));
+    current.sessions.filter((entry) => sameAppRef(entry.spec.app, app));
 
   const appDrain = (current: SessionLedger, app: FileSyncSessionSpec["app"]) =>
-    current.appDrains?.find((entry) => sameApp(entry.app, app));
+    current.appDrains?.find((entry) => sameAppRef(entry.app, app));
 
   const directMutationAllowed = (
     current: SessionLedger,
     app: FileSyncSessionSpec["app"],
   ): Effect.Effect<void, FileSyncStartError> => {
-    const drains = (current.appDrains ?? []).filter((entry) => sameApp(entry.app, app));
+    const drains = (current.appDrains ?? []).filter((entry) => sameAppRef(entry.app, app));
     return drains.length <= 1 && (drains.length === 0 || drains[0]?.phase === "invalidated")
       ? Effect.void
       : Effect.fail(startError("App Mutagen drain state blocks direct session mutation."));
@@ -566,7 +558,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
     bucket.set({
       ...current,
       appDrains: [
-        ...(current.appDrains ?? []).filter((entry) => !sameApp(entry.app, app)),
+        ...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)),
         ...(drain === undefined ? [] : [drain]),
       ],
     });
@@ -622,7 +614,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           return;
         }
         if (
-          (current.appDrains ?? []).filter((entry) => sameApp(entry.app, app)).length > 1 ||
+          (current.appDrains ?? []).filter((entry) => sameAppRef(entry.app, app)).length > 1 ||
           prior?.phase === "disposing" ||
           prior?.phase === "preparing" ||
           (prior !== undefined && !sameStrings(prior.identifiers, identifiers as string[]))
@@ -662,7 +654,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         yield* writeAppDrain(bucket, current, preparing, app);
         current = {
           ...current,
-          appDrains: [...(current.appDrains ?? []).filter((entry) => !sameApp(entry.app, app)), preparing],
+          appDrains: [...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)), preparing],
         };
         for (const entry of owned) {
           const observed = yield* inspectOwned(entry);
@@ -726,7 +718,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               matching.length !== 1 ||
               exact === undefined ||
               expected === undefined ||
-              !exactSession(expected, exact, platform, options.dockerHost)
+              !exactSession(expected, exact, options.dockerHost)
             ) {
               return yield* Effect.fail(
                 startError(
@@ -749,7 +741,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             );
           }
         }
-        const other = current.sessions.filter((entry) => !sameApp(entry.spec.app, app));
+        const other = current.sessions.filter((entry) => !sameAppRef(entry.spec.app, app));
         if (other.some((entry) => entry.phase !== "committed")) {
           return yield* Effect.fail(startError("Another app has incomplete Mutagen session ownership."));
         }
@@ -759,7 +751,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           if (
             matching.length !== 1 ||
             matching[0] === undefined ||
-            !exactSession(exact, matching[0], platform, options.dockerHost)
+            !exactSession(exact, matching[0], options.dockerHost)
           ) {
             return yield* Effect.fail(
               startError("Another app Mutagen session no longer matches its ownership receipt."),
@@ -780,7 +772,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         yield* writeAppDrain(bucket, current, disposing, app);
         current = {
           ...current,
-          appDrains: [...(current.appDrains ?? []).filter((entry) => !sameApp(entry.app, app)), disposing],
+          appDrains: [...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)), disposing],
         };
         for (const entry of receipts) {
           if (entry.phase === "disposed") continue;
@@ -840,7 +832,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         if (listed.some((entry) => drain.identifiers.includes(entry.identifier))) {
           return yield* Effect.fail(startError("A disposed Mutagen session reappeared."));
         }
-        const other = current.sessions.filter((entry) => !sameApp(entry.spec.app, app));
+        const other = current.sessions.filter((entry) => !sameAppRef(entry.spec.app, app));
         if (listed.length !== other.length) {
           return yield* Effect.fail(startError("Mutagen daemon contains an unowned session."));
         }
@@ -850,7 +842,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           if (
             matches.length !== 1 ||
             matches[0] === undefined ||
-            !exactSession(owned, matches[0], platform, options.dockerHost)
+            !exactSession(owned, matches[0], options.dockerHost)
           ) {
             return yield* Effect.fail(startError("Another app Mutagen session changed during disposal."));
           }
@@ -858,7 +850,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         yield* bucket.set({
           ...current,
           sessions: other,
-          appDrains: (current.appDrains ?? []).filter((entry) => !sameApp(entry.app, app)),
+          appDrains: (current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)),
         });
       }),
     ).pipe(Effect.mapError((error) => stopError(error.message, String(app.id))));
@@ -907,7 +899,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               (session.beta.protocol === "docker" &&
                 session.beta.host === target.containerId &&
                 session.beta.path === target.path) ||
-              (session.alpha.protocol === "local" && pathMatches(spec.source, session.alpha.path, platform)),
+              (session.alpha.protocol === "local" && sameRealpath(spec.source, session.alpha.path)),
           )
         ) {
           return yield* Effect.fail(

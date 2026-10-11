@@ -234,11 +234,12 @@ describe("Mutagen process client", () => {
     expect(calls.map((call) => call.args[1]).slice(-2)).toEqual(["list", "terminate"]);
   });
   test("rejects a persisted Docker host or context that points away from the selected runtime", async () => {
-    for (const betaEnvironment of [
+    const environments: ReadonlyArray<Readonly<Record<string, string>>> = [
       { DOCKER_HOST: "npipe:////./pipe/another-engine", DOCKER_CONTEXT: "" },
       { DOCKER_HOST: "npipe:////./pipe/podman-lando", DOCKER_CONTEXT: "remote" },
       { DOCKER_HOST: "npipe:////./pipe/podman-lando" },
-    ]) {
+    ];
+    for (const betaEnvironment of environments) {
       const { client, calls } = fake({ betaEnvironment });
       const exit = await Effect.runPromiseExit(client.create({ name, spec }));
       expect(Exit.isFailure(exit)).toBe(true);
@@ -476,7 +477,7 @@ describe("Mutagen process client", () => {
     );
     setCurrent([
       session({
-        alpha: { protocol: "local", path: String(legacy), connected: true },
+        alpha: { protocol: "local", path: String(canonical), connected: true },
       }),
     ]);
     try {
