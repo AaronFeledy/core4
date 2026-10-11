@@ -53,7 +53,14 @@ lando composer --version
 lando mariadb -e 'SELECT 1 AS ok;'
 ```
 
-Open the site with `lando open`, or print its URL with `lando open --print`.
+Open the site with `lando open`, or print its URL with `lando open --print`. The front page and `/user/login` should both render with HTTP 200. On the default Apache stack, confirm that from inside `appserver`, independent of the proxy:
+
+```sh
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/user/login
+```
+
+Each prints `200`. Anything else means Drupal didn't render the page, so check `lando logs -s appserver`.
 
 ## Connect Drupal to the database
 
