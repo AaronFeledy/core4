@@ -11,10 +11,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { serviceContainerName } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
+import { StartFailureLogRedactor } from "../src/redact.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
@@ -367,6 +369,62 @@ describe("bringUp start-failure log tail", () => {
       operation: "bringUp.start",
     });
     expect(error.message).toContain("container start failed");
+    expect(expectServiceStartError(error).logTail).toBeUndefined();
+    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+  });
+
+  test("redacts exact secrets before truncating the oldest retained line", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const secret = "opaque-log-tail-canary";
+    const { api } = makeApi({
+      failedStarts: [web],
+      logsFor: { [web]: [rawConsole(`${secret}${"x".repeat(3995)}`)] },
+    });
+
+    const error = await Effect.runPromise(
+      bringUp(plan, { api, ctx }).pipe(
+        Effect.provideService(StartFailureLogRedactor, createRedactor("secrets", { values: [secret] })),
+        Effect.flip,
+      ),
+    );
+
+    const tail = expectServiceStartError(error).logTail;
+    expect(tail?.truncated).toBe(true);
+    expect(tail?.lines.join("\n")).toBe(`cted]${"x".repeat(3995)}`);
+  });
+
+  test("keeps at most 50 lines even when both console streams return a tail", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const bodies = Array.from({ length: 100 }, (_, index) => `line-${index}`);
+    const { api } = makeApi({ failedStarts: [web], logsFor: { [web]: bodies.map(rawConsole) } });
+
+    const tail = expectServiceStartError(await flipBringUp(plan, api)).logTail;
+
+    expect(tail?.lines).toEqual(bodies.slice(-50));
+    expect(tail?.truncated).toBe(true);
+  });
+
+  test("preserves the start error and rolls back when redaction defects", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const { api, requests } = makeApi({
+      failedStarts: [web],
+      logsFor: { [web]: [rawConsole("unredacted output")] },
+    });
+    const redactor = {
+      ...createRedactor("secrets"),
+      redactString: (): string => {
+        throw new Error("synthetic redactor defect");
+      },
+    };
+
+    const error = await Effect.runPromise(
+      bringUp(plan, { api, ctx }).pipe(Effect.provideService(StartFailureLogRedactor, redactor), Effect.flip),
+    );
+
+    expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web", operation: "bringUp.start" });
     expect(expectServiceStartError(error).logTail).toBeUndefined();
     expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
   });

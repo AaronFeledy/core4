@@ -21,7 +21,7 @@ import {
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
-import type { ApplyOptions, ApplyResult, EventService } from "@lando/sdk/services";
+import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
@@ -40,7 +40,7 @@ import {
   fingerprintPlannedPublishPorts,
   serviceContainerName,
 } from "../plan.ts";
-import { redactDetails, redactString, withApiReason } from "../redact.ts";
+import { StartFailureLogRedactor, redactDetails, withApiReason } from "../redact.ts";
 import {
   type ServicePublishProbe,
   classifyServicePublishHost,
@@ -889,12 +889,11 @@ const SERVICE_START_LOG_TAIL_TIMEOUT = Duration.seconds(4);
 const capRedactedLogLines = (
   lines: ReadonlyArray<string>,
 ): { readonly lines: string[]; readonly truncated: boolean } => {
-  const redacted = lines.map((line) => redactString(line));
   const kept: string[] = [];
   let used = 0;
-  let truncated = false;
-  for (let index = redacted.length - 1; index >= 0; index -= 1) {
-    const line = redacted[index];
+  let truncated = lines.length > SERVICE_START_LOG_TAIL_LINES;
+  for (let index = lines.length - 1; index >= 0 && kept.length < SERVICE_START_LOG_TAIL_LINES; index -= 1) {
+    const line = lines[index];
     if (line === undefined) continue;
     const separator = kept.length === 0 ? 0 : 1;
     const remaining = SERVICE_START_LOG_TAIL_MAX_CHARS - used - separator;
@@ -914,38 +913,38 @@ const capRedactedLogLines = (
   return { lines: kept, truncated };
 };
 
-const captureServiceLogTail = Effect.fnUntraced(function* (
-  deps: BringUpDeps,
-  plan: AppPlan,
-  service: ServicePlan,
-  extras?: { readonly exitCode?: number; readonly timedOut?: boolean },
-): Effect.fn.Return<ServiceStartLogTail | undefined> {
-  const collected = yield* Stream.runCollect(
-    logs(
-      plan,
-      { app: plan.id, service: service.name },
-      { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
-      { api: deps.api, ctx: deps.options.ctx },
-    ),
-  ).pipe(
-    Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
-    Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
-    ),
-  );
-  if (collected === undefined) return undefined;
-  const raw = [...collected].map((chunk) => chunk.line);
-  if (raw.length === 0) return undefined;
-  const { lines, truncated } = capRedactedLogLines(raw);
-  if (lines.length === 0) return undefined;
-  return {
-    service: String(service.name),
-    lines,
-    truncated,
-    ...(extras?.exitCode === undefined ? {} : { exitCode: extras.exitCode }),
-    ...(extras?.timedOut === true ? { timedOut: true } : {}),
-  };
-});
+const captureServiceLogTail = Effect.fnUntraced(
+  function* (
+    deps: BringUpDeps,
+    plan: AppPlan,
+    service: ServicePlan,
+    extras?: { readonly exitCode?: number; readonly timedOut?: boolean },
+  ): Effect.fn.Return<ServiceStartLogTail | undefined, ProviderError> {
+    const collected = yield* Stream.runCollect(
+      logs(
+        plan,
+        { app: plan.id, service: service.name },
+        { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
+        { api: deps.api, ctx: deps.options.ctx },
+      ),
+    );
+    if (collected.length === 0) return undefined;
+    const redactor = yield* StartFailureLogRedactor;
+    const redacted = redactor.redactString(collected.map((chunk) => chunk.line).join("\n"));
+    const { lines, truncated } = capRedactedLogLines(redacted.split("\n"));
+    return {
+      service: String(service.name),
+      lines,
+      truncated,
+      ...(extras?.exitCode === undefined ? {} : { exitCode: extras.exitCode }),
+      ...(extras?.timedOut === true ? { timedOut: true } : {}),
+    };
+  },
+  Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
+  Effect.catchCause((cause) =>
+    Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
+  ),
+);
 
 const withServiceStartLogTail = (
   error: ServiceStartError,
