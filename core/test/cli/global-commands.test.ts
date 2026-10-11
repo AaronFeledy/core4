@@ -10,6 +10,7 @@ import {
   GlobalDestroyConfirmationError,
   NoProviderInstalledError,
   ProviderUnavailableError,
+  ProxyApplyError,
   ProxySetupError,
   RouterWatcherError,
   ServiceStartError,
@@ -120,8 +121,10 @@ interface HarnessOptions {
   readonly failDestroy?: boolean;
   readonly failInspect?: boolean;
   readonly failRouterSetup?: boolean;
+  readonly failRoutes?: boolean;
   readonly failApply?: ReadonlyArray<string>;
   readonly serviceNames?: ReadonlyArray<string>;
+  readonly routerId?: string;
   readonly revalidateStartup?: Effect.Effect<void, RouterWatcherError>;
   readonly timeline?: Array<string>;
 }
@@ -234,12 +237,29 @@ const makeHarness = async (
   };
   const events: Array<LandoEvent> = [];
   let appliedPlan: AppPlan | undefined;
+  const runningServices = new Set<ServiceName>();
   const providerId = ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
+    list: () =>
+      Effect.sync(() => {
+        const plan = appliedPlan;
+        return plan === undefined
+          ? []
+          : [...runningServices].map((service) => ({
+              app: plan.id,
+              appRoot: plan.root,
+              providerId,
+              service,
+              containerId: `test-${service}`,
+              status: "running" as const,
+              state: "running",
+              endpoints: [],
+            }));
+      }),
     apply: (plan, applyOptions) =>
       Effect.sync(() => {
         calls.actions.push("apply");
@@ -252,6 +272,7 @@ const makeHarness = async (
           );
           return failed === undefined
             ? Effect.sync(() => {
+                for (const service of Object.values(plan.services)) runningServices.add(service.name);
                 appliedPlan = applyOptions.recordedPlan ?? {
                   ...plan,
                   services: { ...appliedPlan?.services, ...plan.services },
@@ -280,6 +301,7 @@ const makeHarness = async (
           )
         : Effect.sync(() => {
             calls.destroy.push({ target, options: destroyOptions });
+            runningServices.clear();
             if (destroyOptions.removeState) appliedPlan = undefined;
             return { kind: "destroyed" as const };
           }),
@@ -363,6 +385,8 @@ const makeHarness = async (
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
+        id: options.routerId ?? "test",
+        prepare: () => Effect.die("Global lifecycle must not prepare the router"),
         revalidateStartup: options.revalidateStartup ?? Effect.void,
         setup: () =>
           Effect.sync(() => {
@@ -392,7 +416,20 @@ const makeHarness = async (
                 port: 444,
               })),
             };
-          }),
+          }).pipe(
+            Effect.andThen((result) =>
+              options.failRoutes
+                ? Effect.fail(
+                    new ProxyApplyError({
+                      proxyId: "test",
+                      app: String(app),
+                      message: "route publication failed",
+                      remediation: "Retry route publication.",
+                    }),
+                  )
+                : Effect.succeed(result),
+            ),
+          ),
         removeRoutes: (app) =>
           Effect.sync(() => {
             calls.routesRemoved.push(String(app));
@@ -661,11 +698,11 @@ describe("meta:global command effects", () => {
     );
   });
 
-  test("start keeps the partial error when the failed router is retried for routed mailpit", async () => {
+  test("start keeps the partial error without retrying setup when the router group fails", async () => {
     // Given a routed mailpit and a router group that fails to start.
     await withHarness(
       async (harness) => {
-        // When route setup also fails after group attempts.
+        // When publication follows the group attempts without router setup.
         const exit = await Effect.runPromiseExit(globalStart({}).pipe(Effect.provide(harness.layer)));
         // Then the partial-start error remains primary and inspect is skipped.
         expect(failureOf(exit)).toMatchObject({
@@ -673,7 +710,10 @@ describe("meta:global command effects", () => {
           operation: "start",
           cause: { _tag: "ServiceStartError", service: "traefik" },
         });
-        expect(harness.calls.routerSetups).toEqual([1]);
+        expect(harness.calls.routerSetups).toEqual([]);
+        expect(harness.calls.routes).toEqual([
+          { app: "global", hostnames: ["mailpit.global.lndo.site", "ssh-agent.global.lndo.site"] },
+        ]);
         expect(harness.calls.inspect).toEqual([]);
         expect(harness.calls.apply.map(({ plan }) => Object.keys(plan.services))).toEqual(
           expectedGlobalGroups,
@@ -699,12 +739,91 @@ describe("meta:global command effects", () => {
           expectedGlobalGroups,
         );
         expect(harness.calls.inspect).toEqual([]);
-        expect(harness.calls.routes).toEqual([]);
+        expect(harness.calls.routes).toEqual([{ app: "global", hostnames: [] }]);
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-start");
       },
       { serviceNames: independentGlobalServices, failApply: independentGlobalServices },
     );
   });
+
+  test("all-failed selected start withdraws its route and preserves the original error", async () => {
+    // Given previously running services and a selected service that now fails to start.
+    const failed: string[] = [];
+    await withHarness(
+      async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        failed.push("mail");
+        harness.calls.routes.length = 0;
+        // When the selected service fails while its owned sibling remains active.
+        const exit = await Effect.runPromiseExit(
+          globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        // Then its stale route is withdrawn without replacing the original failure.
+        expect(failureOf(exit)).toMatchObject({ _tag: "ServiceStartError", service: "mail" });
+        expect(harness.calls.routes).toEqual([{ app: "global", hostnames: ["proxy.global.lndo.site"] }]);
+      },
+      { failApply: failed },
+    );
+  });
+
+  test("all-failed rebuild withdraws all routes and preserves the original error without revalidation", async () => {
+    // Given a running global app whose replacement groups will all fail.
+    const failed: string[] = [];
+    const revalidated: string[] = [];
+    await withHarness(
+      async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        failed.push("mail", "proxy");
+        harness.calls.routes.length = 0;
+        // When rebuild destroys the old containers and cannot start replacements.
+        const exit = await Effect.runPromiseExit(globalRebuild().pipe(Effect.provide(harness.layer)));
+        // Then all stale routes are withdrawn and the first failure remains primary.
+        expect(failureOf(exit)).toMatchObject({ _tag: "ServiceStartError", service: "mail" });
+        expect(harness.calls.routes).toEqual([{ app: "global", hostnames: [] }]);
+        expect(revalidated).toEqual([]);
+        expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
+      },
+      {
+        failApply: failed,
+        revalidateStartup: Effect.sync(() => {
+          revalidated.push("router-revalidated");
+        }),
+      },
+    );
+  });
+
+  for (const [command, run] of [
+    ["rebuild", () => Effect.asVoid(globalRebuild())],
+    ["restart", () => Effect.asVoid(globalRestart())],
+  ] as const) {
+    test(`${command} revalidates after publication failure and preserves ProxyApplyError`, async () => {
+      // Given successful service groups but failing publication and router revalidation.
+      const revalidated: string[] = [];
+      await withHarness(
+        async (harness) => {
+          // When the global lifecycle command attempts publication.
+          const exit = await Effect.runPromiseExit(run().pipe(Effect.provide(harness.layer)));
+          // Then revalidation still runs and cannot replace the publication error.
+          expect(revalidated).toEqual(["router-revalidated"]);
+          expect(failureOf(exit)).toMatchObject({
+            _tag: "ProxyApplyError",
+            message: "route publication failed",
+          });
+          expect(harness.calls.routes).toHaveLength(1);
+          expect(harness.calls.routerSetups).toEqual([]);
+          const eventTags = harness.events.map((event) => event._tag);
+          expect(eventTags).not.toContain("post-global-start");
+          expect(eventTags).not.toContain("post-global-rebuild");
+        },
+        {
+          failRoutes: true,
+          revalidateStartup: Effect.sync(() => {
+            revalidated.push("router-revalidated");
+          }).pipe(Effect.andThen(failingWatcherObservation("2026-09-19T10:00:00.000Z"))),
+        },
+      );
+    });
+  }
 
   test("restart clears a stale router watcher record despite partial start failure", async () => {
     await withHarness(
@@ -745,6 +864,17 @@ describe("meta:global command effects", () => {
         expect(harness.calls.apply.every(({ options }) => options.reconcile)).toBe(true);
         expect(harness.calls.inspect).toEqual([]);
         expect(timeline).toContain("router-revalidated");
+        expect(harness.calls.routerSetups).toEqual([]);
+        expect(harness.calls.routes).toEqual([
+          {
+            app: "global",
+            hostnames: [
+              "mailpit.global.lndo.site",
+              "traefik.global.lndo.site",
+              "traefik-diagnostics.global.lndo.site",
+            ],
+          },
+        ]);
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
         const recorded = harness.calls.apply[2]?.options.recordedPlan;
         if (recorded === undefined) throw new Error("expected full recorded plan");
@@ -832,12 +962,11 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("starting one routed global service preserves all global routes and reports its advertised URL", async () => {
+  test("starting one routed global service excludes stopped siblings and reports its advertised URL", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness, {
         mail: {
           type: "lando",
-          routes: [{ hostname: "mailpit.lndo.site", endpoint: 8080 }],
         },
         proxy: { type: "lando" },
       });
@@ -846,12 +975,64 @@ describe("meta:global command effects", () => {
       );
 
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
-      expect(harness.calls.routerSetups).toHaveLength(1);
+      expect(harness.calls.routerSetups).toEqual([]);
+      expect(harness.calls.routes).toEqual([{ app: "global", hostnames: ["mail.global.lndo.site"] }]);
+      expect(result.servicesStarted[0]?.endpoints).toContain("https://mail.global.lndo.site:444");
+    });
+  });
+
+  test("stop-all then start-one publishes only the selected service routes", async () => {
+    await withHarness(async (harness) => {
+      // Given both global services were running before stop-all.
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+      harness.calls.routes.length = 0;
+      // When only mail is started again.
+      await Effect.runPromise(globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      // Then stopped sibling routes stay withdrawn and setup never runs.
+      expect(harness.calls.routes).toEqual([{ app: "global", hostnames: ["mail.global.lndo.site"] }]);
+      expect(harness.calls.routerSetups).toEqual([]);
+    });
+  });
+
+  test("start-one preserves routes of running owned siblings", async () => {
+    await withHarness(async (harness) => {
+      // Given proxy is already running.
+      await Effect.runPromise(globalStart({ services: ["proxy"] }).pipe(Effect.provide(harness.layer)));
+      harness.calls.routes.length = 0;
+      // When mail starts independently.
+      await Effect.runPromise(globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      // Then both running services remain routed without setup.
       expect(harness.calls.routes).toEqual([
         { app: "global", hostnames: ["mail.global.lndo.site", "proxy.global.lndo.site"] },
       ]);
-      expect(result.servicesStarted[0]?.endpoints).toContain("https://mail.global.lndo.site:444");
+      expect(harness.calls.routerSetups).toEqual([]);
     });
+  });
+
+  test("selected routed start reports the router global service and its dependencies", async () => {
+    await withHarness(
+      async (harness) => {
+        // Given the selected router implementation names a declared global service with a dependency.
+        // When mail is explicitly selected.
+        const result = await Effect.runPromise(
+          globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        // Then the router dependency closure is started and reported in plan order.
+        expect(result.servicesStarted.map((service) => service.name)).toEqual([
+          "mail",
+          "traefik",
+          "traefik-diagnostics",
+        ]);
+        expect(harness.calls.apply.flatMap(({ plan }) => Object.keys(plan.services))).toEqual([
+          "mail",
+          "traefik",
+          "traefik-diagnostics",
+        ]);
+        expect(harness.calls.routerSetups).toEqual([]);
+      },
+      { routerId: "traefik", serviceNames: ["traefik", "mail", "traefik-diagnostics"] },
+    );
   });
 
   test("start with unknown --service fails before applying a plan", async () => {
@@ -1334,6 +1515,7 @@ describe("meta:global command effects", () => {
         "pre-global-start",
         "post-global-start",
       ]);
+      expect(harness.calls.routerSetups).toEqual([]);
     });
   });
 
@@ -1419,7 +1601,7 @@ describe("meta:global command effects", () => {
     );
   });
 
-  test("rebuild materializes, destroys, builds, applies the built plan with reconcile=true, and inspects services", async () => {
+  test("rebuild publishes rebuilt routes and reports route URLs without router setup", async () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
 
@@ -1454,6 +1636,73 @@ describe("meta:global command effects", () => {
       ]);
       expect(result.materialized).toBe(true);
       expect(result.servicesRebuilt.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.routerSetups).toEqual([]);
+      expect(harness.calls.routes).toEqual([
+        { app: "global", hostnames: ["mail.global.lndo.site", "proxy.global.lndo.site"] },
+      ]);
+      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.endpoints).toEqual([
+        "https://localhost:8443",
+        "https://mail.global.lndo.site:444",
+      ]);
+    });
+  });
+
+  test("rebuild replaces changed hostnames after global config set", async () => {
+    await withHarness(async (harness) => {
+      // Given the default global routes were previously published.
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(
+        globalConfig({
+          subcommand: "set",
+          key: "services.mail.routes",
+          type: "json",
+          value: '[{"hostname":"changed.lndo.site","endpoint":8080}]',
+        }).pipe(Effect.provide(harness.layer)),
+      );
+      harness.calls.routes.length = 0;
+      // When rebuild uses the updated global configuration.
+      const result = await Effect.runPromise(globalRebuild().pipe(Effect.provide(harness.layer)));
+      // Then the replacement route set omits the stale hostname and reports the new URL.
+      expect(harness.calls.routes).toEqual([
+        { app: "global", hostnames: ["changed.lndo.site", "proxy.global.lndo.site"] },
+      ]);
+      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.endpoints).toContain(
+        "https://changed.lndo.site:444",
+      );
+      expect(harness.calls.routerSetups).toEqual([]);
+    });
+  });
+
+  test("rebuild withdraws a route removed from global configuration", async () => {
+    await withHarness(async (harness) => {
+      // Given a running mail service advertises two authored hostnames.
+      await materializeDist(harness);
+      await Effect.runPromise(
+        globalConfig({
+          subcommand: "set",
+          key: "services.mail.routes",
+          type: "json",
+          value:
+            '[{"hostname":"kept.lndo.site","endpoint":8080},{"hostname":"removed.lndo.site","endpoint":8080}]',
+        }).pipe(Effect.provide(harness.layer)),
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(
+        globalConfig({
+          subcommand: "set",
+          key: "services.mail.routes",
+          type: "json",
+          value: '[{"hostname":"kept.lndo.site","endpoint":8080}]',
+        }).pipe(Effect.provide(harness.layer)),
+      );
+      harness.calls.routes.length = 0;
+      // When rebuild publishes the reduced configuration.
+      await Effect.runPromise(globalRebuild().pipe(Effect.provide(harness.layer)));
+      // Then the replacement file no longer contains the removed hostname.
+      expect(harness.calls.routes).toEqual([
+        { app: "global", hostnames: ["kept.lndo.site", "proxy.global.lndo.site"] },
+      ]);
+      expect(harness.calls.routerSetups).toEqual([]);
     });
   });
 

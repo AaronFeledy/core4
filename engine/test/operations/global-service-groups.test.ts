@@ -137,7 +137,7 @@ describe("global service groups", () => {
     expect(outcome.services.map((service) => String(service.name))).toEqual(["working"]);
   });
 
-  test("every group failing returns the first original error unchanged", async () => {
+  test("every group failing returns an outcome with the first original error unchanged", async () => {
     // Given two groups that fail with different original errors.
     const plan = planWith([service("first"), service("second")]);
     const first = failure("first");
@@ -155,7 +155,7 @@ describe("global service groups", () => {
         ),
     };
     // When both applies fail.
-    const error = await Effect.runPromise(
+    const outcome = await Effect.runPromise(
       applyGlobalServiceGroups(
         plan,
         {
@@ -164,10 +164,15 @@ describe("global service groups", () => {
           options: { reconcile: false },
         },
         build,
-      ).pipe(Effect.flip),
+      ),
     );
-    // Then no aggregate replaces the first error.
-    expect(error).toBe(first);
+    // Then reconciliation receives every failure and no aggregate replaces the first error.
+    expect(outcome.services).toEqual([]);
+    expect(outcome.failures).toEqual([
+      { names: [ServiceName.make("first")], error: first },
+      { names: [ServiceName.make("second")], error: second },
+    ]);
+    expect(globalServiceGroupError("start", outcome)).toBe(first);
     expect(attempts).toEqual([["first"], ["second"]]);
   });
 

@@ -78,8 +78,6 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     outcomes.flatMap(({ names, result }) => (Result.isSuccess(result) ? [...names] : [])),
   );
   const services = Object.values(recordedPlan.services).filter((service) => startedNames.has(service.name));
-  const firstFailure = failures[0];
-  if (services.length === 0 && firstFailure !== undefined) return yield* Effect.fail(firstFailure.error);
   return { builtPlan: recordedPlan, services, failures };
 });
 
@@ -89,9 +87,10 @@ export const globalServiceGroupError = <E>(
     readonly services: ReadonlyArray<ServicePlan>;
     readonly failures: ReadonlyArray<{ readonly names: ReadonlyArray<string>; readonly error: E }>;
   },
-): GlobalAppError | undefined => {
+): GlobalAppError | E | undefined => {
   const firstFailure = outcome.failures[0];
   if (firstFailure === undefined) return undefined;
+  if (outcome.services.length === 0) return firstFailure.error;
   const failed = outcome.failures.flatMap((failure) => failure.names);
   const running = outcome.services.map((service) => service.name);
   return new GlobalAppError({
