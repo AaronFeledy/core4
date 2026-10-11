@@ -27,7 +27,7 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation before it starts. A `post-*` failure is fatal too: the operation fails with a tagged `LandofileEventStepFailedError` that carries the redacted tail of the step's output. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
+`pre-*` failures stop the lifecycle operation before it starts. `post-start` and `post-stop` failures warn; other `post-*` failures fail the operation with a tagged `LandofileEventStepFailedError` and a redacted output tail. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
 
 A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"`. Use `pre-stop` for work inside a running service. `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
 
@@ -39,8 +39,8 @@ A bare or plain-string step defaults to provider exec, which needs a running ser
       <Verify event="post-start" />
     </Step>
     <Step name="stop">
-      <Run command="lando stop" />
-      <Verify command="lando stop" expect={{ stdout: { regex: "stopped: events-demo" } }} />
+      <Run command="lando stop --format=json" />
+      <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -67,7 +67,7 @@ Every non-internal tooling task also gets `pre-<task>` and `post-<task>`. See [R
 
 ## Run the same steps on every app
 
-Add `hostEvents` to `<userConfRoot>/config.yml` when a step should run for every user app on the host. It is not `events:` on the shared global app, and it is not `events:` delivery policy in the same file.
+Edit `<userConfRoot>/config.yml` to run steps for every user app. The shared global app and scratch apps are excluded. `hostEvents` is separate from the file's `events` delivery policy.
 
 ```yaml
 hostEvents:
@@ -79,12 +79,14 @@ hostEvents:
       service: web
 ```
 
-v1 steps are a string, `{cmd, service?}`, or `{command}`. `service: ":host"` runs on the host. Omit `service` to use the app's primary. There is no `env`, `flags`, `args`, `dir`, `user`, `task`, `defer`, or `for` on this key; unknown fields fail when config loads. `pre-start`, `post-stop`, and `post-destroy` may only use `:host` (or `{command}`). A `{command}` that names a lifecycle command (`start`, `app:start`, and the rest) also fails at load. If a command contains `#` or quotes, quote the whole YAML value (`cmd: "echo a #b"`). An unquoted `echo "a #b"` is cut at the `#` and fails load as unbalanced quotes.
+Steps accept a string, `{cmd, service?}`, or `{command}`. A string or omitted `service` uses the app's primary; `service: ":host"` runs on the host. Other fields are rejected. Host events support pre/post `start`, `stop`, `restart`, `rebuild`, and `destroy`, not init or tooling events.
 
-Host steps run first. If a host step is the same command as a project step for that event, Lando drops the host copy: `"x"` matches `{cmd: x}`, an omitted service is the primary, and `:host` is part of the match. A project Landofile cannot turn host steps off.
+Container steps are allowed except in `pre-start`, `post-stop`, and `post-destroy`. Use `:host` or `{command}` there. A `command` step names a Lando command without flags or args; lifecycle commands such as `start`, `app:start`, and `poweroff` are rejected to prevent re-entry. Quote the whole YAML value when a shell command contains quotes or `#`, for example `cmd: 'echo "ready # now"'`.
 
-If the target service is missing from the plan, or its container is exited, stopped, created, dead, or paused, that host step is skipped with an info notice. `:host` steps are never skipped. Other failures behave like project event steps. `post-start` and `post-stop` still warn instead of failing the operation.
+Host steps run before project steps, each in declaration order. Lando drops a host copy when the project has the same step for that event: `"x"` matches `{cmd: x}`, an omitted service is the primary, and `:host` remains distinct. Project steps with conditions or other execution modifiers do not suppress an unconditional host step. There is no per-app opt-out.
 
-`:host` step children get `LANDO_HOST_EVENT=1`. Container steps from `hostEvents` do not. A nested `lando` that sees that variable skips `hostEvents` and prints a notice, so a host step cannot start another lifecycle that would run the same host steps again.
+Missing or stopped services skip the host step with an info notice, including created, dead, or paused containers. `:host` steps do not need a running service. Other failures follow the project-event rules above.
 
-`lando config set` and `lando config unset` refuse every `hostEvents` path. Edit `config.yml` by hand, or run `lando config edit`. `lando config` shows the key. `lando app config` and `lando app config explain` list each host step for that app as `active`, `skipped` (with the reason), or `deduped`.
+Only `:host` children of host events receive `LANDO_HOST_EVENT=1`. A nested `lando` that sees it skips host events with a notice; project events still run.
+
+Run `lando config validate` after editing. `lando config --format=json` shows the key; `lando app config --format=json` reports each host step as `active`, `skipped` (with a reason), or `deduped` from the resolved Landofile. This status does not inspect running containers. `lando app config explain` stays a canonical-file recipe report, not an effective event view.

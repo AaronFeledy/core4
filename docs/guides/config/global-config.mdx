@@ -96,7 +96,7 @@ lando config edit
 
 ## Add host-wide lifecycle steps
 
-`hostEvents` in `config.yml` runs the same lifecycle steps for every user app. Only the file can set it: `LANDO_CONFIG__*` overlays drop the key, and `lando config set` / `lando config unset` refuse every `hostEvents` path.
+Edit `<userConfRoot>/config.yml` to add `hostEvents` for every user app. The shared global app and scratch apps are excluded. Environment overrides cannot set this key, and `lando config set` / `lando config unset` refuse every `hostEvents` path.
 
 ```yaml
 hostEvents:
@@ -105,7 +105,7 @@ hostEvents:
       service: ":host"
 ```
 
-Use `lando config edit` or edit the file itself. `lando config --format=json` includes `hostEvents` in the public view. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step shapes, order, dedupe, skip rules, and the `LANDO_HOST_EVENT` guard.
+Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
 
   <Scenario id="host-events-hand-edit" render={false} reason="Reject config set/unset of hostEvents">
     <Step name="reject-set">
