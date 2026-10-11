@@ -292,6 +292,10 @@ On pull request, `platform-readiness` runs linux-x64 on `ubuntu-24.04` and linux
 
 Linux current-commit assemble uses the same Go, Rust, and Ubuntu snapshot source-build prerequisites as `runtime-bundle`.
 
+Current-commit assembly (`scripts/assemble-runtime-bundle.ts`) downloads each pinned component through `fetchOverHttps` in `scripts/runtime-bundle-fetch.ts`. A network failure, a body-read failure, or an HTTP 429/5xx gets four attempts with 250, 500, and 1000 ms delays between them. Any other HTTP failure (404, 403, and so on) fails on the first attempt. After the final transport or body-read failure, the error includes the pinned URL and underlying error message. A SHA-256 mismatch fails closed and is not retried.
+
+This is separate from the product setup downloader that `lando setup` uses against the published manifest; that has its own cache, offline, and retry behavior. When assembly fails after exhausting retries, inspect the named component artifact upstream and the runner's connectivity. Do not change a pin just to make the job pass.
+
 On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
 
 darwin-x64 already has Docker installed on the runner. The job must not install Docker Desktop. Use `--provider=docker` on that cell.
