@@ -40,6 +40,10 @@ Volumes stay unless you also pass `--purge`:
 lando global:destroy --yes --purge
 ```
 
+Stop and destroy use the global app's applied state, so an invalid edit to a global Landofile doesn't block cleanup. Fix the config before starting the app again.
+
+If nothing needs removing, both commands report `unchanged`. With `--format=json`, check `result.outcome` for `stopped`, `destroyed`, or `unchanged`; `materialized` only says whether the generated Landofile exists. An unchanged destroy reports `volumesRemoved: false`, even with `--purge`.
+
 ## Related commands
 
 ```sh
@@ -49,7 +53,7 @@ lando global:status
 lando global:config
 ```
 
-`global:stop` tears down running provider resources and keeps volumes. `global:config` prints the generated Landofile and the hand-editable overlay.
+`global:stop` tears down running provider resources and keeps volumes. `global:config` prints the effective global Landofile, merged from the generated file and your canonical `.lando.yml` overrides, plus the paths behind it.
 
 Each `meta:global:*` command publishes a `global:*` alias.
 
