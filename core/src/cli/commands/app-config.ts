@@ -462,13 +462,13 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofile(landofileService);
   const cwd = options.cwd ?? process.cwd();
-  const appRoot = yield* Effect.promise(async () => {
-    try {
-      return (await findDiscoveredLandofilePath(cwd)).appRoot;
-    } catch {
-      return cwd;
-    }
-  });
+  const appRoot = yield* Effect.tryPromise({
+    try: async () => (await findDiscoveredLandofilePath(cwd)).appRoot,
+    catch: (cause) =>
+      cause instanceof LandofileNotFoundError
+        ? cause
+        : new ConfigError({ message: "Failed to discover the app root.", cause }),
+  }).pipe(Effect.catchTag("LandofileNotFoundError", () => Effect.succeed(cwd)));
   const hostEvents = yield* Effect.try({
     try: () =>
       hostEventStatusesForPlan({
