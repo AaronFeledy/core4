@@ -44,7 +44,7 @@ The watcher runs on the provider runtime host, which is not always the operating
 | WSL | the WSL distribution |
 | macOS or Windows with the default `lando` provider | the Lando-managed Podman machine |
 
-The check sorts failures into `inotify-limit`, `permission`, `disk`, and `other`. One of those is misleading, courtesy of the kernel: an inotify watch that fails with "no space left on device" means the per-user watch limit was reached, not that the disk is full. Doctor reports that as `inotify-limit`. To read the current limit on a Linux runtime host:
+The check sorts failures into `inotify-limit`, `permission`, `disk`, and `other`. One of those is misleading, courtesy of the kernel: an inotify watch that fails with "no space left on device" usually means the watch budget ran out, not that the disk is full. Doctor reports that as `inotify-limit`. It is a kernel resource, though, and the same error can come from a related limit, so treat it as "watches or a kernel resource", not a verdict on one number. To read the current watch limit on a Linux runtime host:
 
 ```sh
 cat /proc/sys/fs/inotify/max_user_watches
@@ -53,6 +53,8 @@ cat /proc/sys/fs/inotify/max_user_watches
 The first remediation is always something you can do without privileges, such as closing other watch-heavy tools and restarting the app. Lando never runs `sysctl` and never restarts system services for you. Raising a kernel limit is listed last and stays the administrator's call.
 
 A watcher that starts but never delivers events, which some virtual filesystems cause, is not detected by this check.
+
+To see whether the machine you are typing on can allocate a watch right now, read the `filesystem-watch` check in the same report. On Linux and WSL it is a live, one-watch allocation on your host. It does not look inside the provider VM and does not refresh this router record. See [Check filesystem watches on this host](../subsystems/doctor-walkthrough.mdx#check-filesystem-watches-on-this-host).
 
 ## Verify
 
