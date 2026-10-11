@@ -2371,8 +2371,8 @@ describe("meta:setup command", () => {
     const registry = {
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
-      select: (plan?: AppPlan) => {
-        selectedProvider = plan?.provider === undefined ? undefined : String(plan.provider);
+      select: (plan?: AppPlan | ProviderId) => {
+        selectedProvider = typeof plan === "string" ? plan : plan?.provider;
         return Effect.succeed(provider);
       },
     };
@@ -2690,8 +2690,8 @@ describe("meta:setup command", () => {
           ProviderId.make("podman"),
         ]),
         capabilities: Effect.succeed(provider.capabilities),
-        select: (plan?: AppPlan) => {
-          observed.providerId = plan?.provider === undefined ? undefined : String(plan.provider);
+        select: (plan?: AppPlan | ProviderId) => {
+          observed.providerId = typeof plan === "string" ? plan : plan?.provider;
           return Effect.succeed(provider);
         },
       };

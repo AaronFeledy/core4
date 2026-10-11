@@ -67,7 +67,7 @@ describe("loadGlobalPlan managed provider", () => {
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed({} as never),
             select: (plan) => {
-              selected.push(plan === undefined ? undefined : String(plan.provider));
+              selected.push(typeof plan === "string" ? plan : plan?.provider);
               return Effect.succeed({
                 id: "lando",
                 capabilities: { sharedCrossAppNetwork: true },

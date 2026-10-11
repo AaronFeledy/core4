@@ -255,8 +255,10 @@ export const makeRuntimeProviderRegistry = (
       return RuntimeProviderRegistry.of({
         list: providerIds,
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
-        select: Effect.fn("RuntimeProviderRegistry.select")(function* (plan?: AppPlan) {
-          return yield* plan === undefined ? activeProvider : providerFor(plan.provider);
+        select: Effect.fn("RuntimeProviderRegistry.select")(function* (target?: AppPlan | ProviderId) {
+          return yield* target === undefined
+            ? activeProvider
+            : providerFor(typeof target === "string" ? target : target.provider);
         }),
         resolveAppliedPlan,
         resolveTeardownEvidence: resolveTeardown,
