@@ -166,8 +166,38 @@ const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan) 
 const runStop = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan) =>
   Effect.runPromise(stopAppForTarget({}, targetFor(plannedApp)).pipe(Effect.provide(harness.layer)));
 
-const runDestroy = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan) =>
-  Effect.runPromise(destroyAppForTarget({}, targetFor(plannedApp)).pipe(Effect.provide(harness.layer)));
+const legacyHarness = async () => {
+  const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))));
+  const legacy = AbsolutePath.make(`${canonical}-short`);
+  await symlink(canonical, legacy);
+  const plannedApp = acceleratedPlanFor(canonical);
+  const plannedSession = plannedApp.fileSync[0]?.session;
+  if (plannedSession === undefined) throw new Error("Expected a planned file-sync session");
+  const legacySession = {
+    ...plannedSession,
+    app: { ...plannedSession.app, root: legacy },
+    source: legacy,
+  };
+  const { engine, sessions, calls } = makeTrackingEngine([listed(legacySession)]);
+  const harness = makeHarness({
+    plannedApp,
+    fileSync: engine,
+    appliedFileSyncState: "accelerated",
+    appliedFileSyncSessions: [legacySession],
+  });
+  return {
+    canonical,
+    plannedApp,
+    harness,
+    sessions,
+    calls,
+    cleanup: async () => {
+      await rm(legacy, { force: true });
+      await rm(canonical, { recursive: true, force: true });
+      await rm(harness.userDataRoot, { recursive: true, force: true });
+    },
+  };
+};
 
 describe("canonical-root file-sync lifecycle", () => {
   test("start, stop, then start again records sessions on the canonical root", async () => {
@@ -197,26 +227,7 @@ describe("canonical-root file-sync lifecycle", () => {
   });
 
   test("start, stop, then start again heals a legacy short-path session and applied record", async () => {
-    const canonical = AbsolutePath.make(
-      await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))),
-    );
-    const legacy = AbsolutePath.make(`${canonical}-short`);
-    await symlink(canonical, legacy);
-    const plannedApp = acceleratedPlanFor(canonical);
-    const plannedSession = plannedApp.fileSync[0]?.session;
-    if (plannedSession === undefined) throw new Error("Expected a planned file-sync session");
-    const legacySession = {
-      ...plannedSession,
-      app: { ...plannedSession.app, root: legacy },
-      source: legacy,
-    };
-    const { engine, sessions, calls } = makeTrackingEngine([listed(legacySession)]);
-    const harness = makeHarness({
-      plannedApp,
-      fileSync: engine,
-      appliedFileSyncState: "accelerated",
-      appliedFileSyncSessions: [legacySession],
-    });
+    const { canonical, plannedApp, harness, sessions, calls, cleanup } = await legacyHarness();
     try {
       await runStart(harness, plannedApp);
       expect(calls.includes("create")).toBe(false);
@@ -228,41 +239,20 @@ describe("canonical-root file-sync lifecycle", () => {
       expect(sessions[0]?.spec.app.root).toBe(canonical);
       expect(sessions[0]?.spec.source).toBe(canonical);
     } finally {
-      await rm(legacy, { force: true });
-      await rm(canonical, { recursive: true, force: true });
-      await rm(harness.userDataRoot, { recursive: true, force: true });
+      await cleanup();
     }
   });
 
   test("destroy succeeds for a legacy short-path session and applied record", async () => {
-    const canonical = AbsolutePath.make(
-      await realpath(await mkdtemp(join(tmpdir(), "lando-canonical-life-"))),
-    );
-    const legacy = AbsolutePath.make(`${canonical}-short`);
-    await symlink(canonical, legacy);
-    const plannedApp = acceleratedPlanFor(canonical);
-    const plannedSession = plannedApp.fileSync[0]?.session;
-    if (plannedSession === undefined) throw new Error("Expected a planned file-sync session");
-    const legacySession = {
-      ...plannedSession,
-      app: { ...plannedSession.app, root: legacy },
-      source: legacy,
-    };
-    const { engine, sessions } = makeTrackingEngine([listed(legacySession)]);
-    const harness = makeHarness({
-      plannedApp,
-      fileSync: engine,
-      appliedFileSyncState: "accelerated",
-      appliedFileSyncSessions: [legacySession],
-    });
+    const { plannedApp, harness, sessions, cleanup } = await legacyHarness();
     try {
-      const destroyResult = await runDestroy(harness, plannedApp);
+      const destroyResult = await Effect.runPromise(
+        destroyAppForTarget({}, targetFor(plannedApp)).pipe(Effect.provide(harness.layer)),
+      );
       expect(destroyResult.app).toBe("canonical-sync");
       expect(sessions).toHaveLength(0);
     } finally {
-      await rm(legacy, { force: true });
-      await rm(canonical, { recursive: true, force: true });
-      await rm(harness.userDataRoot, { recursive: true, force: true });
+      await cleanup();
     }
   });
 });
