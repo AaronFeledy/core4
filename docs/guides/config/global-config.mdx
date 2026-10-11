@@ -177,4 +177,4 @@ lando global:config validate
 lando global:config edit
 ```
 
-Writes don't touch running containers. Check `lando global:config --format=json`, then run `lando global:rebuild` to apply the change.
+Writes don't touch running containers. Check `lando global:config --format=json`, then run `lando global:rebuild` to apply the change. Rebuild also publishes route changes, so a renamed hostname answers right away.

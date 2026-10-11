@@ -27,6 +27,8 @@ This isn't a permanent off switch. Starting an app that needs a global service c
 lando global:start --service mailpit
 ```
 
+Mailpit's route needs Traefik, so that also starts Traefik when it's stopped and lists it in `servicesStarted`. Routes follow what runs: services you didn't name keep theirs while they're up, and a stopped service's hostname gets the proxy's 404 page.
+
 ## Clear generated services
 
 ```sh

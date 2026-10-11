@@ -361,7 +361,8 @@ export const pinMismatch = (
     runningHttps: previous.httpsPort,
     ...(pin.httpPort === undefined ? {} : { requestedHttp: pin.httpPort }),
     ...(pin.httpsPort === undefined ? {} : { requestedHttps: pin.httpsPort }),
-    remediation: "Align router.httpPort/httpsPort with the running pair or run lando global:restart.",
+    remediation:
+      "Align router.httpPort/httpsPort with the running pair, or set those ports in config.yml and run lando global:stop, then lando setup.",
   });
 
 export const pinDiffers = (
