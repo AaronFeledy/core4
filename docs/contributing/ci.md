@@ -9,7 +9,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.4.0`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -120,7 +120,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.2 includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
 
 ## Local Bun profiling
 
