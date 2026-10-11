@@ -412,7 +412,8 @@ describe("appConfigExplain", () => {
     });
   });
 
-  it("builds hostEvents status from landofile services only", async () => {
+  it("explains recipe provenance even when host configuration is invalid", async () => {
+    // Given
     await withApp(landofile(), async (cwd) => {
       const previous = new Map<string, string>();
       for (const [key, value] of Object.entries(process.env)) {
@@ -426,20 +427,14 @@ describe("appConfigExplain", () => {
       process.env.LANDO_USER_CACHE_ROOT = join(cwd, "cache");
       writeFileSync(
         join(cwd, "config.yml"),
-        "hostEvents:\n  post-start:\n    - echo primary\n    - cmd: echo db\n      service: database\n",
+        "hostEvents:\n  pre-start:\n    - echo invalid-container-step\n",
       );
       try {
+        // When
         const result = await explain(cwd);
-        expect(result.hostEvents).toEqual([
-          {
-            event: "post-start",
-            index: 0,
-            step: "echo primary",
-            status: "skipped",
-            reason: "no primary service",
-          },
-          { event: "post-start", index: 1, step: { cmd: "echo db", service: "database" }, status: "active" },
-        ]);
+        // Then
+        expect(result.comparison.status).toBe("matched");
+        expect(optionNamed(result, "php").value).toBe("8.4");
       } finally {
         for (const key of Object.keys(process.env)) if (key.startsWith("LANDO_")) delete process.env[key];
         for (const [key, value] of previous) process.env[key] = value;
