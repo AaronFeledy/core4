@@ -4,7 +4,7 @@
 import { chmod, mkdir, stat } from "node:fs/promises";
 import { Effect, Layer } from "effect";
 
-import { SshError, isErrnoCode } from "@lando/sdk/errors";
+import { SshError, causeMessage, isErrnoCode } from "@lando/sdk/errors";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { SSH_AGENT_VOLUME } from "./socket.ts";
 
@@ -12,9 +12,23 @@ const SSH_SIDECAR_ID = "sidecar" as const;
 const SSH_GLOBAL_SERVICE_NAME = "ssh-agent" as const;
 const SSH_DIRECTORY_MODE = 0o700;
 
+const deepestCauseMessage = (cause: unknown): string => {
+  let current = cause;
+  let message = causeMessage(cause);
+  const seen = new Set<object>();
+  while (typeof current === "object" && current !== null && !seen.has(current)) {
+    seen.add(current);
+    if ("message" in current && typeof current.message === "string" && current.message.trim().length > 0) {
+      message = current.message;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return message;
+};
+
 const setupError = (cause: unknown): SshError =>
   new SshError({
-    message: "SSH agent sidecar setup failed.",
+    message: `SSH agent sidecar could not start: ${deepestCauseMessage(cause)}`,
     sshId: SSH_SIDECAR_ID,
     cause,
   });

@@ -90,6 +90,9 @@ type BringUpError =
 export const APPLY_REMEDIATION =
   "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
 
+export const GLOBAL_APPLY_REMEDIATION =
+  "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists.";
+
 interface InspectResult {
   readonly exists: boolean;
   readonly running: boolean;
@@ -139,6 +142,7 @@ export interface BringUpOptions {
 interface BringUpDeps {
   readonly api: EngineHttpApi;
   readonly options: BringUpOptions;
+  readonly remediation: string;
 }
 
 interface StartFailureInput {
@@ -171,7 +175,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
       operation: input.operation,
       message,
       ...(input.details === undefined ? {} : { details: input.details }),
-    }) ?? APPLY_REMEDIATION;
+    }) ?? deps.remediation;
   return new ServiceStartError({
     providerId: input.service.provider,
     operation: input.operation,
@@ -221,13 +225,13 @@ const inspectContainer = Effect.fnUntraced(function* (
           },
         ),
         details: redactDetails({ name, status: response.status, body: response.body }),
-        remediation: APPLY_REMEDIATION,
+        remediation: deps.remediation,
       }),
     );
   }
   const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
     details: redactDetails({ status: response.status, body: response.body }),
-    remediation: APPLY_REMEDIATION,
+    remediation: deps.remediation,
   });
   if (typeof body !== "object" || body === null || !("State" in body)) {
     return {
@@ -388,7 +392,7 @@ const ensureNetwork = (
                   operation: "bringUp.network",
                   message,
                   details,
-                }) ?? APPLY_REMEDIATION,
+                }) ?? deps.remediation,
             }),
           );
         }),
@@ -435,7 +439,7 @@ const ensureVolume = (
             },
           ),
           details: redactDetails({ name: store.name, status: response.status, body: response.body }),
-          remediation: APPLY_REMEDIATION,
+          remediation: deps.remediation,
         }),
       );
     }),
@@ -644,7 +648,7 @@ const publish = (
               providerId: deps.options.ctx.providerId,
               operation: "bringUp.event",
               message: `Failed to publish lifecycle event: ${event._tag}`,
-              remediation: APPLY_REMEDIATION,
+              remediation: deps.remediation,
               cause,
             }),
         ),
@@ -892,7 +896,11 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
-  const deps: BringUpDeps = { api, options };
+  const deps: BringUpDeps = {
+    api,
+    options,
+    remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
+  };
 
   const createdNetworks = new Set<string>();
   for (const name of networkNames(plan)) {
@@ -958,7 +966,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         providerId: options.ctx.providerId,
         operation: "bringUp.schedule",
         message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
-        remediation: APPLY_REMEDIATION,
+        remediation: deps.remediation,
         details: redactDetails({ edges: result.edges }),
       }),
     );
@@ -973,7 +981,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           providerId: options.ctx.providerId,
           operation: "bringUp.schedule",
           message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
-          remediation: APPLY_REMEDIATION,
+          remediation: deps.remediation,
           details: redactDetails(blocked),
         }),
       );

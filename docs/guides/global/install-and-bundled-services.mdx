@@ -26,6 +26,14 @@ Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `global
 
 Edit overrides in `<userDataRoot>/global/.lando.yml`. Do not edit `.lando.dist.yml`.
 
+## When one global service fails
+
+`lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately. If one fails, the others still start. The command then exits non-zero, naming the service that failed and the ones that are running. Fix the cause, then start that service:
+
+```sh
+lando global:start --service ssh-agent
+```
+
 ## Verify
 
 ```sh

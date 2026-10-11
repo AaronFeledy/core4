@@ -80,6 +80,7 @@ Required behavior:
 - The service belongs to the `global` bootstrap level and is lazy when included by higher levels.
 - `start` and `ensureRunning` are idempotent and reconcile drift. `ensureRunning` limits work to requested service ids.
 - `regenerateDist` is the single writer for `.lando.dist.yml` and performs contribution validation, conflicts, capability checks, service-schema validation, and atomic replacement.
+- Bind sources written as `~` or `~/...` MUST resolve against the user's home, not the global root, and MUST NOT be created by generated-layer reconciliation.
 - Failures are tagged as listed in §20.13.
 
 ### 20.6 Lifecycle
@@ -124,7 +125,9 @@ The global start event pair is nested inside user-app `pre-start`; any required 
 
 #### 20.6.5 Restart, rebuild, and router revalidation
 
-`meta:global:restart` is `stop` then `start`; `meta:global:rebuild` is regenerate, destroy, build, then apply. Neither reaches `RouterService.setup`, which is reached only from app start, `lando setup`, and doctor's proxy fix. Because the router is the reason these commands are prescribed as recovery steps, both MUST call `RouterService.revalidateStartup` (§10.2) after the global app is running again, on the same terms as `setup`: the persisted router startup observation is refreshed or cleared, and a classified watcher failure fails the command with `RouterWatcherError`. A remediation that names `lando global:restart` or `lando global:rebuild` therefore clears the diagnostic it names once the condition is gone; the `router-file-watcher` doctor check keeps reporting the record as an unrevalidated observation and never probes live. The restart result schema is the start result schema, and the error channel adds `ProxyError` and `RouterWatcherError`.
+`meta:global:restart` is `stop` then `start`; `meta:global:rebuild` is regenerate, destroy, build, then apply. Neither reaches `RouterService.setup`, which is reached only from app start, `lando setup`, and doctor's proxy fix. Because the router is the reason these commands are prescribed as recovery steps, both MUST call `RouterService.revalidateStartup` (§10.2) after global services have started, including partial startup. The persisted router startup observation is refreshed or cleared. Without an existing global-service failure, a classified watcher failure MUST fail the command with `RouterWatcherError`; otherwise the global-service failure remains primary and the persisted watcher diagnostic MUST remain doctor-visible. A remediation that names `lando global:restart` or `lando global:rebuild` therefore clears the diagnostic it names once the condition is gone; the `router-file-watcher` doctor check keeps reporting the record as an unrevalidated observation and never probes live. The restart result schema is the start result schema, and the error channel adds `ProxyError` and `RouterWatcherError`.
+
+Explicit global start, restart, and rebuild MUST attempt selected services and their dependencies in dependency-connected groups. A typed build or apply failure in one group MUST NOT prevent independent groups from being attempted or cause successful groups to be rolled back. Partial failure MUST remain a command failure and MUST NOT publish `post-global-start` or `post-global-rebuild`. Routes of services in a failed group MUST NOT be applied.
 
 ### 20.7 CLI surface (`meta:global:*`)
 
@@ -219,7 +222,7 @@ All errors are tagged and include remediation where applicable:
 - `ProxyContributionPairError`
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
-- `GlobalAppError`, the umbrella for global state-transition failures
+- `GlobalAppError`, the umbrella for global state-transition failures. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
 - `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)
 
 This surface also uses the shared `CommandAliasConflictError` and `ConfigExpressionScopeNotPermittedError` tags defined by their owning contracts (§7.3.1, §8.1.2).

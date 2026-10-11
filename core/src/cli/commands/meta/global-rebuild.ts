@@ -1,8 +1,12 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { startedServiceRow } from "@lando/engine/operations/authority-url";
-import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
+import {
+  applyGlobalServiceGroups,
+  globalServiceGroupError,
+} from "@lando/engine/operations/global-service-groups";
 import type {
+  GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
@@ -63,6 +67,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 });
 
 export type GlobalRebuildError =
+  | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
   | GlobalDistConflictError
@@ -128,17 +133,26 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         { volumes: false, removeState: false },
       );
 
-      const builtPlan = yield* builder.build(loaded.plan);
-      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-      yield* Effect.scoped(
-        provider.apply(builtPlan, {
-          reconcile: true,
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-          serviceEnvironment,
-        }),
+      const outcome = yield* applyGlobalServiceGroups(
+        loaded.plan,
+        {
+          provider,
+          services,
+          options: {
+            reconcile: true,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+          },
+        },
+        (plan) => builder.build(plan),
       );
-
-      const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
+      const partialError = globalServiceGroupError("rebuild", outcome);
+      const router = yield* RouterService;
+      if (partialError !== undefined) {
+        yield* Effect.result(router.revalidateStartup);
+        return yield* Effect.fail(partialError);
+      }
+      const { builtPlan } = outcome;
+      const servicesRebuilt = yield* Effect.forEach(outcome.services, (service) =>
         provider
           .inspect({ app: builtPlan.id, service: service.name, plan: builtPlan })
           .pipe(Effect.map((runtime) => startedServiceRow(service, runtime))),
@@ -146,7 +160,6 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
 
       // Re-observe the router before the post event: a rebuild that leaves the
       // router's startup observation broken has not finished rebuilding.
-      const router = yield* RouterService;
       yield* router.revalidateStartup;
 
       return { builtPlan, servicesRebuilt };

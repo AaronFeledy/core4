@@ -75,6 +75,7 @@
     "./operations/global-install": "./src/operations/global-install.ts",
     "./operations/global-plan": "./src/operations/global-plan.ts",
     "./operations/global-routes": "./src/operations/global-routes.ts",
+    "./operations/global-service-groups": "./src/operations/global-service-groups.ts",
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
     "./operations/missing-app-roots": "./src/operations/missing-app-roots.ts",
