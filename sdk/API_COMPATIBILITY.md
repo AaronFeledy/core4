@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `ServiceStartError` additively accepts optional `logTail` (`service`, `lines`, `truncated`, optional `exitCode` / `timedOut`) so a start failure can carry a bounded container log snapshot after rollback. Omission preserves existing start failures that have no captured output. `CommandResultEnvelope.error` includes `service` for `ServiceStartError` and passes `logTail` through as a JSON-safe extra field.
+- `ServiceStartError` adds optional `logTail` (`service`, `lines`, `truncated`, optional `exitCode` / `timedOut`) for a redacted console snapshot retained through rollback. For blocked dependency gates, `logTail.service` identifies the dependency, while `ServiceStartError.service` identifies the waiting service. `CommandResultEnvelope.error` includes both `service` and the optional `logTail`.
 
 - `RuntimeProviderRegistry.select(target?: AppPlan | ProviderId)` accepts an explicit provider ID for planless resource observation and cleanup. Real plans still select their provider; omitting the target still selects the configured default.
 

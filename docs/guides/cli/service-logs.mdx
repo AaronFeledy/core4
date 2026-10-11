@@ -67,8 +67,8 @@ Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Foll
 
 ## Read a start-failure log tail
 
-If a service container dies during `lando start`, the failure prints a redacted tail of that container's logs. Rollback then removes the container, so `lando logs` afterwards has nothing to show. The tail is always printed. There is no CI or TTY switch.
+When `lando start` fails to start a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 lines within 4,000 characters; an oversized line keeps its end.
 
-A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`).
+A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
 
-Pattern redaction cannot catch everything. Database images that print a generated root password, or entrypoints that dump env, can end up in public CI logs.
+Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
