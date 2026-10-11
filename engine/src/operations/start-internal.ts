@@ -35,8 +35,7 @@ import {
   UrlScanner,
 } from "@lando/sdk/services";
 
-import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
-import { RedactionService } from "@lando/redaction/service";
+import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
@@ -51,7 +50,6 @@ import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from ".
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
-import { registerAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -359,8 +357,6 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   yield* verifyActiveVolumeCoordination(provider);
                   if (pendingStart !== undefined) yield* pendingStart.phase("apply-intent");
                   yield* Ref.set(applyStarted, true);
-                  yield* registerAppPlanRedactionTokens(builtPlan);
-                  const redactor = yield* (yield* RedactionService).forProfile("secrets");
                   yield* Effect.scoped(
                     provider
                       .apply(builtPlan, {
@@ -368,10 +364,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                         serviceEnvironment,
                         ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                       })
-                      .pipe(
-                        Effect.provideService(StartFailureLogRedactor, redactor),
-                        Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
-                      ),
+                      .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
                   );
                   yield* prepareGpgHome;
                   return yield* Effect.forEach(serviceList, (service) =>
