@@ -31,7 +31,7 @@ export const mapSetupError = (
     remediation:
       cause instanceof GlobalAppError && cause.remediation !== undefined
         ? cause.remediation
-        : "Run `lando meta:global:start --service=traefik` and resolve the reported global-app failure.",
+        : "Resolve the reported failure, then run `lando setup`.",
     cause,
   });
 };
