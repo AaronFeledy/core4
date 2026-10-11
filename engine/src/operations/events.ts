@@ -9,11 +9,7 @@ import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } f
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import {
-  type CompiledEventStep,
-  compiledEventsForPlan,
-  effectiveEventsForPlan,
-} from "../planner/effective-events.ts";
+import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
@@ -70,7 +66,11 @@ const eventError = (
       ? { index: error.authoredIndex, kind: error.kind }
       : { index: sourceIndex, kind: authoredStepKind(step) };
   const failure = error instanceof EventStepCompileError ? error.cause : error;
-  const label = eventStepLabel(event, source, identity.index);
+  const label = eventStepLabel(
+    event,
+    error instanceof EventStepCompileError ? error.source : source,
+    identity.index,
+  );
   return new LandofileEventStepFailedError({
     message: `Event ${label} failed.`,
     event,
@@ -116,19 +116,12 @@ const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service
   );
 });
 
-const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: LandofileEventName) {
-  const compiled = [...(compiledEventsForPlan(plan)?.[event] ?? [])];
-  const fallback = effectiveEventsForPlan(plan)?.[event] ?? [];
-  if (compiled.length === 0 && fallback.length > 0) {
-    return fallback.map(
-      (step, sourceIndex): CompiledEventStep => ({
-        step,
-        source: "project",
-        sourceIndex,
-        status: "active",
-      }),
-    );
-  }
+const resolveCompiledSteps = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  event: LandofileEventName,
+  redactor: EventRedactor,
+) {
+  const compiled = compiledEventsForPlan(plan)?.[event] ?? [];
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
   const resolved: CompiledEventStep[] = [];
   for (const entry of compiled) {
@@ -143,14 +136,7 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (plan: AppPlan, event: 
     }
     const status = yield* inspectHostContainer(plan, service).pipe(
       Effect.mapError((error) =>
-        eventError(
-          error,
-          event,
-          entry.step,
-          { redactString: (value) => value },
-          entry.source,
-          entry.sourceIndex,
-        ),
+        eventError(error, event, entry.step, redactor, entry.source, entry.sourceIndex),
       ),
     );
     if (status === "missing" || isStoppedStatus(status)) {
@@ -169,7 +155,14 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   event: LandofileEventName,
   payload?: ExpressionContext["event"],
 ): Effect.fn.Return<void, EventRuntimeError> {
-  const compiled = yield* resolveCompiledSteps(plan, event);
+  const redactionOption = yield* Effect.serviceOption(RedactionService);
+  const inspectRedactor = Option.isSome(redactionOption)
+    ? yield* redactionOption.value.forProfile("secrets", {
+        sourceEnv: process.env,
+        redactionTokens: collectAppPlanRedactionTokens(plan),
+      })
+    : { redactString: () => "Provider inspection failed." };
+  const compiled = yield* resolveCompiledSteps(plan, event, inspectRedactor);
   const skippedByHostGuard = compiled.some(
     (entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`,
   );
@@ -190,7 +183,6 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
     { app: plan.id, event, file: eventStepFile(first.source, plan.metadata.source) },
     Effect.gen(function* () {
       const eventsOption = yield* Effect.serviceOption(EventService);
-      const redactionOption = yield* Effect.serviceOption(RedactionService);
       const privateFileAccess = yield* Effect.serviceOption(PrivateFileAccessService);
       const shellRunner = yield* Effect.serviceOption(ShellRunner);
       if (Option.isNone(eventsOption) || Option.isNone(redactionOption) || Option.isNone(privateFileAccess)) {

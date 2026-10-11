@@ -21,6 +21,7 @@ export class EventStepCompileError extends Schema.TaggedError<EventStepCompileEr
   {
     message: Schema.String,
     authoredIndex: Schema.Number,
+    source: Schema.optionalKey(Schema.Literals(["host", "project"])),
     kind: Schema.Literals(["cmd", "task", "command"]),
     cause: Schema.Union([ToolingStepSelectorUnavailableError, ToolingCompileError]),
   },
@@ -218,6 +219,7 @@ export const compileEventStepProgram = (
           new EventStepCompileError({
             message: cause.message,
             authoredIndex: identity.authoredIndex,
+            ...(identity.source === undefined ? {} : { source: identity.source }),
             kind: compileLeaf(step, identity.authoredIndex, identity.source).kind,
             cause,
           }),
