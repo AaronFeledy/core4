@@ -7,6 +7,7 @@ import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
+import { listSpec } from "../../src/cli/command-specs/apps/list.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { Flags } from "../../src/cli/spec/metadata.ts";
@@ -67,6 +68,21 @@ describe("deriveToolInputSchema", () => {
         args: {
           type: "object",
           properties: { name: { type: "string" } },
+        },
+      },
+    });
+  });
+
+  test("projects enum values for apps:list --status inside items", () => {
+    expect(deriveToolInputSchema(listSpec)).toMatchObject({
+      properties: {
+        flags: {
+          properties: {
+            status: {
+              type: "array",
+              items: { type: "string", enum: ["active", "stopped", "unknown"] },
+            },
+          },
         },
       },
     });
@@ -139,6 +155,17 @@ describe("validateToolInput", () => {
       flags: { format: "json", tail: 10 },
       args: {},
     });
+  });
+
+  test("rejects unknown apps:list --status values with the flag path", () => {
+    try {
+      validateToolInput(listSpec, { flags: { status: ["running"] } });
+      throw new Error("expected McpToolInputError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(McpToolInputError);
+      expect((error as McpToolInputError).path).toBe("flags.status");
+      expect((error as McpToolInputError).message).toContain("active, stopped, unknown");
+    }
   });
 
   test("rejects unknown top-level input properties", () => {

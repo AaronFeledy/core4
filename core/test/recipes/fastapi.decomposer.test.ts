@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import {
   computeRecipeContentDigest,
@@ -37,6 +40,97 @@ const manifest = Schema.decodeUnknownSync(RecipeManifest)(
   Effect.runSync(parseRecipeYaml({ source: fastapiRecipeSource, content: fastapiRecipeYaml })),
 );
 
+const startupOf = () =>
+  Schema.decodeUnknownSync(
+    Schema.Struct({
+      services: Schema.Struct({
+        web: Schema.Struct({
+          entrypoint: Schema.Array(Schema.String),
+        }),
+      }),
+    }),
+  )(decompose(defaults).fragment).services.web;
+
+test.skipIf(process.platform === "win32")(
+  "initializes an empty venv directory and preserves argv and installed files on repeat startup",
+  async () => {
+    // Given: relocate only the container paths; use the real shell with a stock-interpreter stand-in.
+    const root = await mkdtemp(join(tmpdir(), "lando-fastapi-startup-"));
+    try {
+      const python = join(root, "python");
+      const venv = join(root, ".venv");
+      await mkdir(venv);
+      await Bun.write(
+        python,
+        '#!/bin/sh\n[ "$1" = -m ] && [ "$2" = venv ] || exit 91\nmkdir -p "$3/bin"\nprintf created >> "$3/creations"\ntouch "$3/bin/pip"\nchmod +x "$3/bin/pip"\n',
+      );
+      await chmod(python, 0o755);
+      const startup = startupOf().entrypoint.map((arg) =>
+        arg.replaceAll("/usr/local/bin/python", python).replaceAll("/app/.venv", venv),
+      );
+      const args = ["a b", "", "$(exit 99)", "quote'\"", "--reload"];
+      const command = ["sh", "-c", 'printf "%s\\n" "$@"', "--", ...args];
+      // When
+      const first = Bun.spawnSync([...startup, ...command]);
+      await Bun.write(join(venv, "installed-package"), "keep me");
+      const second = Bun.spawnSync([...startup, ...command]);
+      // Then
+      expect(first.exitCode).toBe(0);
+      expect(second.exitCode).toBe(0);
+      expect(first.stdout.toString()).toBe(`${args.join("\n")}\n`);
+      expect(second.stdout.toString()).toBe(`${args.join("\n")}\n`);
+      expect(await Bun.file(join(venv, "installed-package")).text()).toBe("keep me");
+      expect(await Bun.file(join(venv, "creations")).text()).toBe("created");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "propagates bootstrap failure without executing the original command",
+  async () => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-fastapi-failure-"));
+    try {
+      const python = join(root, "python");
+      await Bun.write(python, "#!/bin/sh\nexit 37\n");
+      await chmod(python, 0o755);
+      const startup = startupOf().entrypoint.map((arg) =>
+        arg.replaceAll("/usr/local/bin/python", python).replaceAll("/app/.venv", join(root, ".venv")),
+      );
+      // When
+      const result = Bun.spawnSync([...startup, "sh", "-c", "printf should-not-run"]);
+      // Then
+      expect(result.exitCode).toBe(37);
+      expect(result.stdout.toString()).toBe("");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "propagates the original command failure when the venv exists",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-fastapi-command-"));
+    try {
+      await mkdir(join(root, ".venv", "bin"), { recursive: true });
+      await Bun.write(join(root, ".venv", "bin", "pip"), "#!/bin/sh\nexit 0\n");
+      await chmod(join(root, ".venv", "bin", "pip"), 0o755);
+      const startup = startupOf().entrypoint.map((arg) =>
+        arg
+          .replaceAll("/usr/local/bin/python", join(root, "missing-python"))
+          .replaceAll("/app/.venv", join(root, ".venv")),
+      );
+      const result = Bun.spawnSync([...startup, "sh", "-c", "exit 42"]);
+      expect(result.exitCode).toBe(42);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 describe("fastapi decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
     await Effect.runPromise(
@@ -66,6 +160,16 @@ describe("fastapi decomposition", () => {
           type: "python:3.12",
           framework: "fastapi",
           port: 8000,
+          entrypoint: [
+            "sh",
+            "-c",
+            '([ -x /app/.venv/bin/pip ] || /usr/local/bin/python -m venv /app/.venv) && exec "$@"',
+            "--",
+          ],
+          environment: {
+            VIRTUAL_ENV: "/app/.venv",
+            PATH: "/app/.venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin",
+          },
           dependsOn: ["database", "cache"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },

@@ -9,6 +9,7 @@ import {
   isExactAgentEnvName,
   resolveAgentContextEnv,
   resolveAgentEnvAllowlist,
+  resolveForwardedAgentEnvNames,
   withAgentContextEnv,
 } from "../../src/config/agent-env.ts";
 
@@ -28,6 +29,10 @@ describe("agent-context env allowlist", () => {
       "AUGMENT_AGENT",
       "ANTIGRAVITY_AGENT",
       "PI_CODING_AGENT",
+      "CLINE_ACTIVE",
+      "GOOSE_TERMINAL",
+      "OPENCLAW_SHELL",
+      "GROK_AGENT",
       "AI_AGENT",
       "AGENT",
       "CI",
@@ -44,6 +49,9 @@ describe("resolveAgentContextEnv — presence-gated selection", () => {
     "AUGMENT_AGENT",
     "ANTIGRAVITY_AGENT",
     "PI_CODING_AGENT",
+    "CLINE_ACTIVE",
+    "GOOSE_TERMINAL",
+    "OPENCLAW_SHELL",
     "AI_AGENT",
   ])("forwards %s without forwarding adjacent secret or session names", (name) => {
     const host = { [name]: "present", [`${name}_TOKEN`]: "secret", [`${name}_SESSION`]: "/private/path" };
@@ -76,6 +84,18 @@ describe("resolveAgentContextEnv — presence-gated selection", () => {
   test("never forwards a host name outside the allowlist", () => {
     const resolved = resolveAgentContextEnv({ CLAUDE_SECRET: "x", ANTHROPIC_API_KEY: "y" });
     expect(resolved).toEqual({});
+  });
+
+  test("forwards GROK_AGENT only when the host value is exactly 1", () => {
+    expect(resolveAgentContextEnv({ GROK_AGENT: "1" })).toEqual({ GROK_AGENT: "1" });
+    expect(filterHostProxyEnv({ GROK_AGENT: "1" })).toEqual({ GROK_AGENT: "1" });
+  });
+
+  test("drops GROK_AGENT when the host value is a definition name or path", () => {
+    expect(resolveAgentContextEnv({ GROK_AGENT: "my-agent" })).toEqual({});
+    expect(resolveAgentContextEnv({ GROK_AGENT: "/home/aaron/.grok/agents/dev" })).toEqual({});
+    expect(filterHostProxyEnv({ GROK_AGENT: "my-agent" })).toEqual({});
+    expect(filterHostProxyEnv({ GROK_AGENT: "/home/aaron/.grok/agents/dev" })).toEqual({});
   });
 
   test("reads fresh from the passed host env each call (never cached)", () => {
@@ -197,6 +217,36 @@ describe("resolveAgentEnvAllowlist — built-ins + allow − deny with disable s
   test("never contains duplicates when an allow name repeats a built-in", () => {
     const resolved = resolveAgentEnvAllowlist({ allow: ["CI"] }, {});
     expect(resolved.filter((name) => name === "CI")).toHaveLength(1);
+  });
+});
+
+describe("resolveForwardedAgentEnvNames — names present on the host and so forwarded", () => {
+  test("returns only allowlisted names that are set on the host", () => {
+    expect(resolveForwardedAgentEnvNames({}, { CLAUDECODE: "1", CI: "true", HOME: "/home/aaron" })).toEqual([
+      "CLAUDECODE",
+      "CI",
+    ]);
+  });
+
+  test("includes allow extras that are present and omits deny names even when set", () => {
+    expect(
+      resolveForwardedAgentEnvNames({ allow: ["FOO_TOKEN"], deny: ["CI"] }, { CI: "true", FOO_TOKEN: "tok" }),
+    ).toEqual(["FOO_TOKEN"]);
+  });
+
+  test("omits GROK_AGENT when the host value is not exactly 1", () => {
+    expect(resolveForwardedAgentEnvNames({}, { GROK_AGENT: "1", CLAUDECODE: "1" })).toEqual([
+      "CLAUDECODE",
+      "GROK_AGENT",
+    ]);
+    expect(resolveForwardedAgentEnvNames({}, { GROK_AGENT: "/tmp/agent.json", CLAUDECODE: "1" })).toEqual([
+      "CLAUDECODE",
+    ]);
+  });
+
+  test("returns empty when forwarding is disabled", () => {
+    expect(resolveForwardedAgentEnvNames({ enabled: false }, { CI: "true" })).toEqual([]);
+    expect(resolveForwardedAgentEnvNames({}, { LANDO_AGENT_ENV: "0", CI: "true" })).toEqual([]);
   });
 });
 

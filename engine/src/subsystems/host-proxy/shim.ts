@@ -13,8 +13,8 @@ import { filterHostProxyEnv as filterAllowedHostProxyEnv } from "../../config/ag
 /**
  * Env keys the shim forwards to the host. Everything else is dropped so
  * container-leaked env (PATH, secrets, HOME, …) never poisons the host program.
- * The shared primitive also appends the agent-context allowlist so `runLando`
- * re-entry preserves agent markers.
+ * The shared primitive appends the built-in agent-context allowlist so
+ * `runLando` re-entry preserves those markers only.
  */
 export const filterHostProxyEnv = (env: Readonly<Record<string, string>>): Record<string, string> =>
   filterAllowedHostProxyEnv(env);

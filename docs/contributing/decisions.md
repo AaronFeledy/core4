@@ -7,11 +7,11 @@ description: Records architectural and release decisions for Lando v4.
 
 ## Bun floor decision
 
-Beta 1 keeps the Bun minimum at `>=1.4.0`. The pinned CI/runtime version is `1.4.0` in `.bun-version`, and the package metadata mirrors that floor in root `package.json` and `core/package.json`.
+Beta 1 requires Bun `>=1.4.2`. The pinned CI/runtime version is `1.4.2` in `.bun-version`, and workspace package metadata mirrors that shared toolchain floor in `engines.bun`.
 
-Rationale: Bun's executable and bytecode documentation supports `bun build --compile --bytecode` for the required release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. The release validation surface compiles those targets with `--bytecode` instead of special-casing a target; any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
+Rationale: Bun 1.4.1 fixed cross-platform bytecode compilation, including the Linux-to-Windows startup crash; the 1.4.2 toolchain includes that fix. The central builder enables the programmatic equivalent of `bun build --compile --bytecode` for all six release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`, whether built natively or cross-compiled. Any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
 
-Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. Neither constraint requires raising the Beta 1 floor today.
+Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. The compiler floor does not change container-runtime image pins or the `@types/bun ^1.4.0` dependency range.
 
 ## OCLIF major lock decision (superseded by architecture-simplicity)
 

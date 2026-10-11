@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { HUGO_SCAFFOLD } from "../../src/recipes/builtin/hugo/scaffold.ts";
 
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "../../src/recipes/builtin/mean/scaffold.ts";
 import {
@@ -11,6 +12,7 @@ import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.t
 
 const APP_NAME = "parity-app";
 const ASSETS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  hugo: HUGO_SCAFFOLD,
   mean: { "package.json": MEAN_PACKAGE_JSON_TEMPLATE, "server.js": MEAN_SERVER_JS },
   "node-postgres": {
     "package.json": NODE_POSTGRES_PACKAGE_JSON_TEMPLATE,
@@ -19,7 +21,7 @@ const ASSETS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   rails: { Gemfile: RAILS_GEMFILE },
 };
 
-test.each(["mean", "node-postgres", "rails"])(
+test.each(["hugo", "mean", "node-postgres", "rails"])(
   "bundled content source reproduces the %s neutral scaffold bytes",
   async (recipeId) => {
     // Given

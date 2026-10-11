@@ -116,7 +116,7 @@ If you also set `command:` on the service, yours wins. Your command owns core cr
 
 ## Pin a version
 
-Set `image:` when `solr:9` isn't the version you want:
+Set `image:` when the default `solr:9` line is not the tag you want. Landofile-supplied images need `home: false` or `home.path`, or start refuses with `HomePathCapabilityError`:
 
 ```yaml
 services:
@@ -126,7 +126,7 @@ services:
     home: false
 ```
 
-An explicit image needs `home: false` or an explicit `home.path`, because Lando can't assume that a custom image has the stock home directory. See [home and host mounts](../home-and-host/).
+See [home and host mounts](../home-and-host/) for persistent home configuration.
 
 For Solr 10 with standalone cores, declare the cores directly:
 
@@ -148,6 +148,6 @@ lando exec search -- curl -sf 'http://localhost:8983/solr/admin/cores?action=STA
 
 The response's `status` object should contain `default` and `products`, with an empty `initFailures` object. No custom startup command is needed. `config.dir` works with this configuration too.
 
-Without a `cores:` list, Lando keeps the image's default startup mode. Solr 10 starts in SolrCloud mode; use collections rather than standalone cores in that mode.
+Without a `cores:` list, Lando keeps the image's default startup mode. Solr 10 starts in SolrCloud mode; use collections rather than standalone cores in that mode. See [Add Solr 10](../solr10/).
 
 </Guide>

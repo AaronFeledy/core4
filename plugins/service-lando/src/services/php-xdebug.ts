@@ -10,7 +10,7 @@ export const PHP_XDEBUG_RELEASE = {
 } as const;
 
 export const PHP_XDEBUG_PORT = 9003;
-export const PHP_XDEBUG_CLIENT_HOST = "host.docker.internal";
+export const PHP_XDEBUG_CLIENT_HOST = "host.lando.internal";
 export const PHP_XDEBUG_INI = "/usr/local/etc/php/conf.d/zz-lando-xdebug.ini";
 export const PHP_XDEBUG_SOURCE_DIR = `xdebug-${PHP_XDEBUG_RELEASE.version}`;
 

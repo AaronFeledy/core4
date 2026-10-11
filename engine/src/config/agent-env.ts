@@ -3,7 +3,18 @@ import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
 
+// Must stay import-light (no Effect): the compiled host-proxy shim bundle imports this module.
+
 // Presence markers for agent detectors; no tokens, no session/path dumps.
+// Deliberate exclusions (not a parity chase): path-valued names
+// (GROK_PLUGIN_ROOT, GROK_PLUGIN_DATA, KIMI_PLUGIN_ROOT, JUNIE_DATA,
+// JUNIE_SHIM_PATH, KIRO_AGENT_PATH) leak host paths; ids
+// (AMP_CURRENT_THREAD_ID, CODEX_THREAD_ID, MATTERHORN_SESSION_ID, REPL_ID)
+// leak session ids; CODEX_SANDBOX_NETWORK_DISABLED changes software
+// behavior; ANTIGRAVITY_CLI_ALIAS is an alias and ANTIGRAVITY_AGENT already
+// covers detection; COPILOT_ALLOW_ALL would grant every tool permission;
+// COPILOT_GITHUB_TOKEN is a credential; COPILOT_MODEL is a setting.
+// Never forge AI_AGENT.
 export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "CLAUDECODE",
   "CLAUDE_CODE",
@@ -18,12 +29,18 @@ export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "AUGMENT_AGENT",
   "ANTIGRAVITY_AGENT",
   "PI_CODING_AGENT",
+  "CLINE_ACTIVE",
+  "GOOSE_TERMINAL",
+  "OPENCLAW_SHELL",
+  "GROK_AGENT",
   "AI_AGENT",
   "AGENT",
   "CI",
 ];
 
 export const AGENT_ENV_DISABLE_ENV_VAR = "LANDO_AGENT_ENV";
+
+const AGENT_ENV_VALUE_MUST_BE_ONE: ReadonlySet<string> = new Set(["GROK_AGENT"]);
 
 const EXACT_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -38,6 +55,17 @@ export const isExactAgentEnvName = (name: string): boolean => EXACT_ENV_NAME_PAT
 
 export const findAgentEnvPatternNames = (names: ReadonlyArray<string>): ReadonlyArray<string> =>
   names.filter((name) => !isExactAgentEnvName(name));
+
+export const isForwardableAgentEnvValue = (name: string, value: string): boolean =>
+  !AGENT_ENV_VALUE_MUST_BE_ONE.has(name) || value === "1";
+
+const applyAgentEnvValueGuards = (env: Record<string, string>): Record<string, string> => {
+  const guarded: Record<string, string> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (isForwardableAgentEnvValue(name, value)) guarded[name] = value;
+  }
+  return guarded;
+};
 
 export const isAgentEnvForwardingDisabled = (policy: AgentEnvPolicy, hostEnv: HostEnv): boolean =>
   policy.enabled === false || policy.appOptOut === true || hostEnv[AGENT_ENV_DISABLE_ENV_VAR] === "0";
@@ -58,7 +86,13 @@ interface AgentContextEnvMergeOptions {
 export const resolveAgentContextEnv = (
   hostEnv: HostEnv,
   allowlist: ReadonlyArray<string> = AGENT_CONTEXT_ENV_ALLOWLIST,
-): Record<string, string> => copyPresentHostEnv(hostEnv, allowlist);
+): Record<string, string> => applyAgentEnvValueGuards(copyPresentHostEnv(hostEnv, allowlist));
+
+export const resolveForwardedAgentEnvNames = (
+  policy: AgentEnvPolicy,
+  hostEnv: HostEnv,
+): ReadonlyArray<string> =>
+  Object.keys(resolveAgentContextEnv(hostEnv, resolveAgentEnvAllowlist(policy, hostEnv)));
 
 export const withAgentContextEnv = (
   explicitEnv: Readonly<Record<string, string>> | undefined,
@@ -89,7 +123,11 @@ export const filterHostProxyEnv = (
 ): Record<string, string> => {
   const filtered: Record<string, string> = {};
   for (const [name, value] of Object.entries(env)) {
-    if (value !== undefined && isHostProxyForwardedEnvName(name, allowlist)) {
+    if (
+      value !== undefined &&
+      isHostProxyForwardedEnvName(name, allowlist) &&
+      isForwardableAgentEnvValue(name, value)
+    ) {
       filtered[name] = value;
     }
   }

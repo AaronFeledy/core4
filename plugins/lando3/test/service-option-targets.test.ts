@@ -109,7 +109,7 @@ test.each([true, false, "trigger"])("drops Xdebug request setting %j and maps th
     xdebug: "debug",
     environment: {
       KEEP: "yes",
-      XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9005",
+      XDEBUG_CONFIG: "client_host=host.lando.internal client_port=9005",
     },
   });
   expect(locations(result)).toEqual([
@@ -119,23 +119,29 @@ test.each([true, false, "trigger"])("drops Xdebug request setting %j and maps th
     diagnostic("rewritten", "xdebug", "client_port"),
   ]);
 });
-test.each([{ environment: { XDEBUG_CONFIG: "custom" } }, { environment: ["XDEBUG_CONFIG=custom"] }])(
-  "preserves authored Xdebug config %j",
-  ({ environment }) => {
-    // Given
-    const service = { type: "php:8.3", environment, xdebug: { start_with_request: true, client_port: 9010 } };
-    // When
-    const result = mergePatches(lowerCatalogCommon(service, ctx), lowerPhpOptions(service, ctx));
-    // Then
-    expect(result.patch).toEqual({ type: "php:8.3", xdebug: true, environment: { XDEBUG_CONFIG: "custom" } });
-    expect(locations(result)).toEqual([
-      diagnostic("needs-review", "type"),
-      diagnostic("rewritten", "xdebug"),
-      diagnostic("dropped", "xdebug", "start_with_request"),
-      diagnostic("dropped", "xdebug", "client_port"),
-    ]);
-  },
-);
+test.each(
+  [
+    "custom",
+    "client_host=host.docker.internal client_port=9007",
+    "client_host=ide.example client_port=9008",
+  ].flatMap((config) => [
+    { config, environment: { XDEBUG_CONFIG: config } },
+    { config, environment: [`XDEBUG_CONFIG=${config}`] },
+  ]),
+)("preserves authored Xdebug config %j", ({ config, environment }) => {
+  // Given
+  const service = { type: "php:8.3", environment, xdebug: { start_with_request: true, client_port: 9010 } };
+  // When
+  const result = mergePatches(lowerCatalogCommon(service, ctx), lowerPhpOptions(service, ctx));
+  // Then
+  expect(result.patch).toEqual({ type: "php:8.3", xdebug: true, environment: { XDEBUG_CONFIG: config } });
+  expect(locations(result)).toEqual([
+    diagnostic("needs-review", "type"),
+    diagnostic("rewritten", "xdebug"),
+    diagnostic("dropped", "xdebug", "start_with_request"),
+    diagnostic("dropped", "xdebug", "client_port"),
+  ]);
+});
 test("drops invalid Xdebug values and each ini key without retaining an object", () => {
   // Given / When
   const result = lowerPhpOptions(
@@ -208,7 +214,7 @@ test("translates memory and Xdebug targets into a decodable authoring fragment",
       php: {
         type: "php:8.3",
         xdebug: true,
-        environment: { XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9005" },
+        environment: { XDEBUG_CONFIG: "client_host=host.lando.internal client_port=9005" },
       },
     },
   });

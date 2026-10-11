@@ -10,6 +10,11 @@ export const jekyllDecomposer = makeZeroOptionDecomposer({
         type: "ruby:3.3",
         primary: true,
         framework: "none",
+        build: {
+          artifact: [
+            "apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev",
+          ],
+        },
         command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000",
         port: 4000,
       },

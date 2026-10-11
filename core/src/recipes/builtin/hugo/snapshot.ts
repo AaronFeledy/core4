@@ -1,9 +1,12 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { arr, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { recipeAssetDigest } from "../snapshot-asset.ts";
+import { arr, defaultRoute, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
+import { HUGO_BUILD_ARTIFACT } from "./install.ts";
+import { HUGO_SCAFFOLD } from "./scaffold.ts";
 
 export const HUGO_RECIPE_VERSION = "0.1.0";
-export const HUGO_CONTENT_DIGEST = "sha256:297c9145943a2e7d49d15ea186ee704d3d95d2d269256391311d53bf3f857c81";
+export const HUGO_CONTENT_DIGEST = "sha256:65aa531b997b15eb2bc24861fa71525abfe1491049841c2872c681d8775de0e4";
 export const hugoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-hugo",
@@ -27,7 +30,8 @@ export const hugoSnapshot: RecipeSnapshot = {
             obj([
               ["type", lit("node:lts")],
               ["primary", lit(true)],
-              ["command", lit("npx hugo server --bind 0.0.0.0 --port 1313")],
+              ["build", obj([["artifact", arr(...HUGO_BUILD_ARTIFACT.map(encodedStringNode))]])],
+              ["command", lit("hugo server --bind 0.0.0.0 --port 1313")],
               ["port", lit(1313)],
             ]),
           ],
@@ -46,12 +50,16 @@ export const hugoSnapshot: RecipeSnapshot = {
       [
         "tooling",
         obj([
-          ["hugo", toolNode("builder", "Run the Hugo CLI inside the builder service.", "npx hugo")],
+          ["hugo", toolNode("builder", "Run the Hugo CLI inside the builder service.", "hugo")],
           ["npm", toolNode("builder", "Run npm inside the builder service.", "npm")],
         ]),
       ],
     ]),
   },
-  assets: [],
+  assets: Object.entries(HUGO_SCAFFOLD).map(([dest, content]) => ({
+    dest,
+    digest: recipeAssetDigest(content),
+    template: dest === "hugo.toml",
+  })),
 };
 export const hugoSnapshotYaml = recipeSnapshotYaml(hugoSnapshot);

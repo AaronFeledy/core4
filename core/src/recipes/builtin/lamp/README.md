@@ -17,7 +17,8 @@ Generic LAMP (Linux + Apache + MariaDB + PHP) starter.
 
 - The PHP service ships the framework-agnostic `apache` image only; running a
   dedicated `apache` service in front of `php-fpm` is deferred to Beta.
-- mod_rewrite / vhost templates beyond the bundled defaults are deferred.
+- Lando enables `mod_rewrite` during the stock Apache service build. Vhost
+  templates beyond the bundled defaults are deferred.
 
 ## Host prerequisites
 

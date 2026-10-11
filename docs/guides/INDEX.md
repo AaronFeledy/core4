@@ -259,6 +259,8 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | MEAN recipe day-to-day workflow | `docs/guides/recipes/mean-workflow.mdx` | Shipped |
 | — | — | Symfony recipe day-to-day workflow | `docs/guides/recipes/symfony-workflow.mdx` | Shipped |
 | — | — | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |
+| - | - | Laravel Reverb websockets behind the proxy | `docs/guides/recipes/laravel-reverb.mdx` | Shipped |
+| - | - | Laravel Horizon queues on Redis | `docs/guides/recipes/laravel-horizon.mdx` | Shipped |
 | — | — | SvelteKit recipe day-to-day workflow | `docs/guides/recipes/sveltekit-workflow.mdx` | Shipped |
 | — | — | Next.js recipe day-to-day workflow | `docs/guides/recipes/nextjs-workflow.mdx` | Shipped |
 | — | — | Node API recipe day-to-day workflow | `docs/guides/recipes/node-api-workflow.mdx` | Shipped |
@@ -289,6 +291,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
+| - | - | service locale via build step and `LANG` | `docs/guides/services/locale.mdx` | Shipped |
 | — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | — | — | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
@@ -296,4 +299,5 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
 | — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
 | — | — | FrankenPHP via Compose passthrough | `docs/guides/services/frankenphp.mdx` | Shipped |
+| - | - | Solr 10 on the typed solr service | `docs/guides/services/solr10.mdx` | Shipped |
 | - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |

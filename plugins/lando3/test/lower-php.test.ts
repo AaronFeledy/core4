@@ -38,7 +38,7 @@ describe("lowerPhpOptions", () => {
       composer: { version: "2.3.10", packages: { "phpunit/phpunit": "*" } },
       xdebug: "debug",
       environment: {
-        XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9003",
+        XDEBUG_CONFIG: "client_host=host.lando.internal client_port=9003",
       },
       db_client: "mysql:8.4",
     });

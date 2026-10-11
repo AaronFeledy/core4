@@ -92,6 +92,19 @@ lando redis-cli ping
 lando mariadb
 ```
 
+## Check a Laravel route
+
+Lando enables Apache's `mod_rewrite` during the stock PHP service build, and the
+recipe enables `.htaccess` processing. Laravel's `/up` health route reaches the
+front controller without a custom build step:
+
+```sh
+lando exec appserver -- curl -fsS http://localhost/up
+```
+
+If the app was built with an older Lando version, run `lando rebuild` after
+upgrading to apply the new Apache defaults.
+
 ## Build the frontend with npm
 
 `lando npm` runs in the `node` service, a `node:22` container that idles until you call it:
@@ -145,6 +158,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 ## Next
 
 - [Laravel recipe](/recipes/laravel/)
+- [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx)
 - [Add PHP](../services/php.mdx)
 - [Add MariaDB](../services/mariadb.mdx)
 - [Add Redis](../services/redis.mdx)

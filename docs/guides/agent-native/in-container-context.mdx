@@ -51,11 +51,10 @@ parsing prose: `unknown | stopped | starting | running | healthy | unhealthy | e
 `endpoints` lists the URLs this service answers on; an empty array means no
 endpoints, not a missing field.
 
-An optional `agentEnv` block reports whether agent-context env forwarding is
-active for this app. `agentEnv.enabled` is `true` when Lando forwards
-agent-context markers into service exec/shell sessions for this app, and
-`agentEnv.forwarded` lists the names actually forwarded, e.g.
-`["CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "OPENCODE", "COPILOT_CLI", "GEMINI_CLI", "AGENT", "CI"]`. That is a subset of the fixed allowlist documented on the lando-shell guide.
+The optional `agentEnv` block matches `lando info --deep`: `enabled` reports
+the app's forwarding policy, and `forwarded` lists host-present names that
+pass the allowlist and value guards, never their values. Service and explicit
+command env still take precedence. See [the built-in markers](../tooling/lando-shell.mdx).
 
 ## How context reaches a container
 

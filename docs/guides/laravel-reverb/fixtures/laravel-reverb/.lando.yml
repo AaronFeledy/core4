@@ -1,0 +1,63 @@
+name: laravel-reverb
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    framework: laravel
+    webroot: /app/public
+    composer: "2"
+    allowOverride: true
+    port: 80
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      - database
+      - cache
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: mariadb:11.4
+  cache:
+    type: redis
+  worker:
+    type: "php:8.4"
+    via: cli
+    command: php artisan queue:listen
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      database:
+        condition: service_healthy
+  reverb:
+    type: "php:8.4"
+    port: 8080
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      database:
+        condition: service_healthy
+    routes:
+      - hostname: "ws.{{ app.name }}.{{ proxy.defaultDomain }}"
+    scanner:
+      path: /up
+  node:
+    type: "node:22"
+    endpoints: []
+tooling:
+  artisan:
+    service: appserver
+    cmd: php artisan
+  composer:
+    service: appserver
+    cmd: composer
+  npm:
+    service: node
+    cmd: npm

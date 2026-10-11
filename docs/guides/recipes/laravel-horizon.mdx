@@ -1,0 +1,233 @@
+---
+id: laravel-horizon
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, laravel, php, redis, horizon, queues]
+---
+
+# Run Laravel Horizon queues on Redis
+
+Run Horizon in the Laravel recipe's worker, with Redis queues and a dashboard at `/horizon`. A container restart policy reloads Horizon after you terminate it.
+
+This builds on [Run the Laravel recipe](../laravel-workflow/). The app name below is `horizon-demo`.
+
+## Scaffold Laravel with a worker
+
+```sh
+lando init --recipe laravel --name=horizon-demo --yes --answer=worker=true
+cd horizon-demo
+```
+
+`--answer=worker=true` shares `vendor` between `appserver` and `worker`. Before the first start, merge these changes into their existing blocks in `.lando.yml`:
+
+```yaml
+services:
+  worker:
+    command: "php artisan horizon"
+    restart: unless-stopped
+    dependsOn:
+      database:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+  appserver:
+    build:
+      artifact:
+        - run: a2enmod rewrite
+          user: root
+```
+
+Horizon supervises its own queue workers; don't run a second `queue:work` process. `unless-stopped` restarts it after `horizon:terminate`, and the health gates wait for Redis and MariaDB on cold starts. Apache needs `mod_rewrite` for Laravel's front controller, including `/horizon`.
+
+Check the config and start the app:
+
+```sh
+lando app:config:lint
+lando start
+```
+
+The worker can't run yet: Laravel and Horizon aren't installed. It may exit and retry until installation is complete.
+
+## Install Laravel, Horizon, and Predis
+
+```sh
+lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+chmod -R a+rwX storage bootstrap/cache
+lando composer require laravel/horizon predis/predis --no-interaction
+lando artisan horizon:install
+```
+
+`horizon:install` writes `config/horizon.php` and registers its service provider. Stock PHP includes Horizon's required `pcntl` and `posix` extensions, but not `phpredis`; use the Composer-installed Predis client. The writable cache/log permissions above are for local development only.
+
+## Point Laravel at MariaDB and Redis
+
+Set these in `.env`:
+
+```dotenv
+APP_URL=https://horizon-demo.lndo.site
+APP_ENV=local
+LOG_CHANNEL=stderr
+DB_CONNECTION=mariadb
+DB_HOST=database
+DB_PORT=3306
+DB_DATABASE=horizon-demo
+DB_USERNAME=lando
+DB_PASSWORD=lando
+QUEUE_CONNECTION=redis
+REDIS_CLIENT=predis
+REDIS_HOST=cache
+REDIS_PORT=6379
+```
+
+Use the service keys `database` and `cache`, not `127.0.0.1`. Horizon only drives the `redis` queue connection, so `QUEUE_CONNECTION=redis` is the switch that matters. `LOG_CHANNEL=stderr` puts job logs in `lando logs`. Create the tables and restart so the worker boots Horizon:
+
+```sh
+lando artisan migrate --no-interaction
+lando restart
+lando artisan horizon:status
+```
+
+Horizon starts asynchronously. If `horizon:status` reports inactive, check `lando logs -s worker` and repeat the status command once the new Horizon process starts. Don't dispatch until it reports running.
+
+## Open the dashboard
+
+```sh
+lando info
+curl https://horizon-demo.lndo.site/horizon/api/stats
+```
+
+Open `/horizon` on the appserver URL from `lando info`. Use that URL's port in the curl command too if Lando falls back to `:8443`. The stats endpoint returns JSON; check that `status` is `running`, rather than relying on a fixed worker count.
+
+`APP_ENV=local` permits dashboard access without a login. Keep this app local; configure Horizon's authorization gate before exposing it to others. Both PHP services read the shared `.env`; service-level environment overrides take precedence.
+
+## Dispatch a job and watch it run
+
+```sh
+lando artisan make:job SendPing
+```
+
+Replace `app/Jobs/SendPing.php`:
+
+```php
+<?php
+
+namespace App\Jobs;
+
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
+
+class SendPing implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(public string $message) {}
+
+    public function handle(): void
+    {
+        Log::info("ping handled: {$this->message}");
+    }
+}
+```
+
+Horizon workers are long-lived. After changing job code, terminate Horizon inside `worker`, where it runs:
+
+```sh
+lando exec worker -- php artisan horizon:terminate
+lando logs -s worker --follow
+```
+
+Wait for a new `Horizon started successfully.` log entry, then press Ctrl-C to stop following logs. `horizon:terminate` signals masters on its own hostname, so running it on `appserver` won't terminate the worker's master.
+
+Now dispatch:
+
+```sh
+lando artisan tinker --execute "App\Jobs\SendPing::dispatch('hello from tinker')"
+lando logs -s worker --follow
+```
+
+Wait for `ping handled: hello from tinker` and the job's `DONE` entry, then press Ctrl-C. Dispatch returns before the queued job finishes.
+
+## Read and clear failed jobs
+
+Make the job throw on purpose. Add this at the top of `handle()`:
+
+```php
+if ($this->message === 'boom') {
+    throw new \RuntimeException('ping exploded');
+}
+```
+
+```sh
+lando exec worker -- php artisan horizon:terminate
+lando logs -s worker --follow
+```
+
+Wait for the new Horizon startup entry, then press Ctrl-C and dispatch:
+
+```sh
+lando artisan tinker --execute "App\Jobs\SendPing::dispatch('boom')"
+lando logs -s worker --follow
+```
+
+Wait for the job's `FAIL` entry, then press Ctrl-C and list it:
+
+```sh
+lando artisan queue:failed
+```
+
+`queue:failed` lists the job on `redis@default` with its UUID. To delete that failure from both Laravel's failed-job store and Horizon's dashboard, replace `JOB_UUID` below with that UUID. This deletes the failure record, not just its display:
+
+```sh
+lando artisan horizon:forget JOB_UUID
+```
+
+## Fix the usual failures
+
+| You see | Fix |
+| --- | --- |
+| `/horizon` and every route but `/` return 404 | `mod_rewrite` is off. Add the `a2enmod rewrite` build step and run `lando rebuild -y`. |
+| `worker` stays `stopped` after `horizon:terminate` | The service has no `restart: unless-stopped`. Add it and run `lando rebuild -y`. |
+| `No processes to terminate.` | You ran it on `appserver`. Use `lando exec worker -- php artisan horizon:terminate`. |
+| `horizon:status` says `Horizon is inactive.` | Check `lando logs -s worker`. A worker started before `artisan` existed needs `lando restart`. |
+
+## Tear down
+
+This removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`; those flags delete data.
+
+```sh
+lando destroy -y
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="laravel-horizon" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan horizon\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"restart\":\\s*\"unless-stopped\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"a2enmod rewrite\",\\s*\"user\":\\s*\"root\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"dependsOn\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"\\s*\\},\\s*\"cache\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the Laravel recipe](../laravel-workflow/)
+- [Add Redis](../../services/redis/)

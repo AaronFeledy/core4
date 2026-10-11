@@ -1,0 +1,133 @@
+---
+id: solr10
+provider: test
+timeout: 90000
+tags: [beta, docs, solr, solr10, service]
+---
+
+# Add Solr 10
+
+Pin Solr 10 on the typed `solr` service with `image: solr:10`. Landofile-supplied images need `home: false` or `home.path`:
+
+```yaml
+name: solr10-demo
+services:
+  search:
+    type: solr
+    image: solr:10
+    home: false
+tooling:
+  solr:
+    service: search
+    cmd: solr
+  solr-cli:
+    service: search
+    cmd: curl -sf
+```
+
+Omitting both `home` keys refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/).
+
+The catalog type is still `solr` (default image `solr:9`). Pinning `solr:10` keeps the typed healthcheck and endpoints while you run the newer major. Start, then check info:
+
+```sh
+lando start
+lando info
+```
+
+`lando info` lists an HTTPS URL for `search` under the app domain. Day-to-day admin and query traffic goes to port `8983` inside the app network (and through the tooling aliases below).
+
+## Create a collection
+
+Solr 10 starts in SolrCloud mode with an embedded ZooKeeper. Create a collection after start (that is the Solr 10 default path, not a standalone core):
+
+```sh
+lando solr create -c gettingstarted
+```
+
+Confirm with the Collections API:
+
+```sh
+lando solr-cli 'http://localhost:8983/solr/admin/collections?action=LIST&wt=json'
+```
+
+Check that `collections` contains `gettingstarted`. The `solr-cli` alias runs `curl -sf` inside `search`, so `localhost:8983` reaches Solr.
+
+## Index documents and search
+
+The official image ships sample docs under `example/exampledocs/`. Post them with the Solr control script, then query:
+
+```sh
+lando solr post -c gettingstarted example/exampledocs/books.json
+lando solr-cli 'http://localhost:8983/solr/gettingstarted/select?q=cat:hardcover&wt=json&rows=1'
+```
+
+Check the query response for indexed books. Confirm the running major:
+
+```sh
+lando exec search -- solr version
+```
+
+The reported version should be 10.x; `solr:10` follows that major's image updates.
+
+## Reach Solr from another service
+
+Other services on the app join the same network. The hostname is the service key `search`, and the port is `8983`:
+
+```
+http://search:8983
+```
+
+From a PHP or Node service, call that URL for admin and collection endpoints. Do not use `localhost` inside another container. That is the container itself, not Solr.
+
+## Run Solr 10 in user-managed mode
+
+For standalone cores instead of SolrCloud collections, set `cores:`. Lando precreates them and selects user-managed mode on Solr 10:
+
+```yaml
+services:
+  search:
+    type: solr
+    image: solr:10
+    home: false
+    cores: [gettingstarted]
+```
+
+After changing an existing app, rebuild and check the core:
+
+```sh
+lando rebuild -y
+lando solr-cli 'http://localhost:8983/solr/admin/cores?action=STATUS&wt=json'
+```
+
+Check that `status` contains `gettingstarted` and `initFailures` is empty. If you set a custom `command:`, it replaces Lando's startup command and must handle core creation and startup mode itself.
+
+## Start, inspect, destroy
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="solr10-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"solr\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "solr:10" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"home\":\\s*false" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+`lando destroy -y` removes containers and networks. Named Solr data volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Add Solr](../solr/)
+- [How services find each other](../../subsystems/service-dns/)

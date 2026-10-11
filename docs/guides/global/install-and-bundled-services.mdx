@@ -24,7 +24,27 @@ lando global:install
 
 Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik. You do not start Traefik by hand.
 
-Edit overrides in `<userDataRoot>/global/.lando.yml`. Do not edit `.lando.dist.yml`.
+## Override a bundled service
+
+Plugin defaults land in the generated `<userDataRoot>/global/.lando.dist.yml`. Your overrides go in the canonical `<userDataRoot>/global/.lando.yml`, which merges on top of the generated file, so your value wins:
+
+```sh
+lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
+lando global:config --format=json
+lando global:rebuild
+```
+
+Run this after `lando global:install`. `lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your value there before you rebuild. Don't edit `.lando.dist.yml`, because Lando regenerates it. See [Read and write global config](../config/global-config.mdx) for the full layer order.
+
+## When one global service fails
+
+`lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately. If one fails, the others still start. The command then exits non-zero, naming the service that failed and the ones that are running. Fix the cause, then start that service:
+
+```sh
+lando global:start --service ssh-agent
+```
+
+To stop one global service without touching the rest, use `lando global:stop --service <name>`. See [Stop one global service](./uninstall-and-purge.mdx#stop-one-global-service).
 
 ## Verify
 

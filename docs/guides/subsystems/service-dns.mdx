@@ -78,11 +78,13 @@ These names are not service DNS:
 
 | Name | What it is |
 | --- | --- |
-| `host.lando.internal` | Traefik `extra_hosts` mapping to the host gateway |
-| `host.containers.internal` | Win32 Podman host-gateway hostname |
-| `host.docker.internal` | Xdebug `client_host` |
+| `host.lando.internal` | Planner-managed host-gateway alias when the provider supports host reachability; default Xdebug `client_host` |
+| `host.containers.internal` | Podman-native host-gateway hostname; availability depends on the runtime and platform |
+| `host.docker.internal` | Docker-native host-gateway hostname, unrelated to Lando's default Xdebug transport |
 
-Do not swap them. Do not use them as database hosts.
+Use `host.lando.internal` to reach the host from a Lando service. The planner adds it and sets `LANDO_HOST_IP` to that name only when the provider supports host reachability. Neither is supplied when the provider cannot reach the host.
+
+Engine-native hostnames are not portable across every provider and platform. Keep an explicitly authored Xdebug host if your setup needs it. Use service DNS, not a host-gateway name, for databases running as Lando services.
 
 <Guide>
   <Scenario id="happy-path" render>

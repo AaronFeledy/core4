@@ -14,7 +14,9 @@ Every service skips `node_modules`, `vendor`, `.git`, and `tmp` by default. Thos
 
 Add per-service patterns under `services.<name>.appMount.excludes` in your Landofile. Your patterns are appended after the defaults. Duplicates are removed.
 
-If a path must stay synced even when it matches an exclude, add it to `services.<name>.appMount.includes`.
+If a path must stay synced even when it matches an exclude, add the same pattern to `services.<name>.appMount.includes`. Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
+
+An authored `appMount` block needs `target`, the container path of the app mount. Use `/app` unless the service type mounts the app somewhere else.
 
 ```yaml
 services:
@@ -22,18 +24,19 @@ services:
     type: "node:22"
     primary: true
     appMount:
+      target: /app
       excludes:
         - dist
         - coverage
       includes:
-        - vendor/my-local-package
+        - vendor
 ```
 
 ## Framework presets
 
 Some service types add their own excludes on top of the defaults. Python adds `__pycache__`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes.
 
-Excluded paths get an empty volume overlay so host files for that path are never read.
+Excluded paths get an empty volume overlay so host files for that path are never read. Each service gets its own overlay, so two services never share an excluded directory. When a second service needs the same `vendor/` or `node_modules/`, include it on both.
 
 ## Verify
 

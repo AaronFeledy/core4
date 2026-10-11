@@ -15,11 +15,15 @@ services:
     dependsOn:
       - database
       - cache
-    command:
+    entrypoint:
       - sh
       - -c
-      - "[ -x /app/.venv/bin/uvicorn ] || { python -m venv /app/.venv && /app/.venv/bin/pip install -r requirements.txt; }; exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      - '([ -x /app/.venv/bin/pip ] || /usr/local/bin/python -m venv /app/.venv) && exec "$@"'
+      - --
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --reload]
     environment:
+      VIRTUAL_ENV: /app/.venv
+      PATH: /app/.venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
       REDIS_URL: redis://cache:6379/0
 tooling:
@@ -27,9 +31,9 @@ tooling:
     service: web
     description: Run pip inside the web service.
     cmds:
-      - /app/.venv/bin/pip
+      - pip
   uvicorn:
     service: web
     description: Run uvicorn inside the web service.
     cmds:
-      - /app/.venv/bin/uvicorn
+      - uvicorn

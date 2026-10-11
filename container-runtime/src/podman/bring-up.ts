@@ -1,10 +1,14 @@
 import { type Context, DateTime, Effect } from "effect";
 import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
 
-import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
+import {
+  ProviderInternalError,
+  ProviderUnavailableError,
+  type ServiceRestartWouldRecreateError,
+  ServiceStartError,
+} from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
-  AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
   type AppRef,
   type EndpointPlan,
@@ -48,6 +52,12 @@ import {
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
+import {
+  bringUpRecreateReasons,
+  inspectBindSources,
+  inspectNetworkNames,
+  makeServiceRestartWouldRecreateError,
+} from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
 import { podmanNetworkNames } from "./networks.ts";
@@ -66,7 +76,11 @@ export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
 };
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
-type BringUpError = ServiceStartError | ProviderUnavailableError | ProviderInternalError;
+type BringUpError =
+  | ServiceStartError
+  | ServiceRestartWouldRecreateError
+  | ProviderUnavailableError
+  | ProviderInternalError;
 
 /**
  * Neutral fallback used whenever a host has not installed a provider-specific
@@ -76,67 +90,17 @@ type BringUpError = ServiceStartError | ProviderUnavailableError | ProviderInter
 export const APPLY_REMEDIATION =
   "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
 
+export const GLOBAL_APPLY_REMEDIATION =
+  "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists.";
+
 interface InspectResult {
   readonly exists: boolean;
   readonly running: boolean;
   readonly publishFingerprint: string;
-  readonly bindSources: ReadonlyMap<string, string> | undefined;
-  readonly networkNames: ReadonlySet<string> | undefined;
+  readonly bindSources: Readonly<Record<string, string>> | undefined;
+  readonly networkNames: ReadonlyArray<string> | undefined;
   readonly body?: unknown;
 }
-
-const inspectBindSources = (body: unknown): ReadonlyMap<string, string> | undefined => {
-  const sources = new Map<string, string>();
-  if (typeof body !== "object" || body === null) return undefined;
-  const mounts = Reflect.get(body, "Mounts");
-  if (!Array.isArray(mounts)) return undefined;
-  for (const mount of mounts) {
-    if (typeof mount !== "object" || mount === null) continue;
-    const target = Reflect.get(mount, "Destination");
-    const type = Reflect.get(mount, "Type");
-    if (
-      (target === AGENT_SOCKET_CONTAINER_DIR.ssh || target === AGENT_SOCKET_CONTAINER_DIR.gpg) &&
-      typeof type === "string"
-    ) {
-      const source = Reflect.get(mount, type === "volume" ? "Name" : "Source");
-      if (typeof source === "string") sources.set(target, `${type}:${source}`);
-      continue;
-    }
-    if (type !== "bind") continue;
-    const source = Reflect.get(mount, "Source");
-    if (typeof target === "string" && typeof source === "string") sources.set(target, source);
-  }
-  return sources;
-};
-
-const inspectNetworkNames = (body: unknown): ReadonlySet<string> | undefined => {
-  if (typeof body !== "object" || body === null) return undefined;
-  const settings = Reflect.get(body, "NetworkSettings");
-  if (typeof settings !== "object" || settings === null) return undefined;
-  const networks = Reflect.get(settings, "Networks");
-  if (typeof networks !== "object" || networks === null || Array.isArray(networks)) return undefined;
-  return new Set(Object.keys(networks));
-};
-
-const plannedNetworkMissing = (plan: AppPlan, inspected: InspectResult): boolean =>
-  inspected.networkNames !== undefined &&
-  networkNames(plan).some((name) => !inspected.networkNames?.has(name));
-
-const bindSourceChanged = (service: ServicePlan, inspected: InspectResult): boolean => {
-  for (const target of Object.values(AGENT_SOCKET_CONTAINER_DIR)) {
-    const agentMount = service.mounts.find((mount) => mount.target === target);
-    const agentSource = agentMount === undefined ? undefined : `${agentMount.type}:${agentMount.source}`;
-    if (agentSource !== inspected.bindSources?.get(target)) return true;
-  }
-  const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
-  if (socketTarget === undefined) return false;
-  const plannedSocket = service.mounts.find(
-    (mount) => mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
-  );
-  return (
-    plannedSocket?.source !== undefined && inspected.bindSources?.get(socketTarget) !== plannedSocket.source
-  );
-};
 
 interface StartResult {
   readonly changed: boolean;
@@ -172,11 +136,13 @@ export interface BringUpOptions {
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
+  readonly forbidRecreate?: boolean;
 }
 
 interface BringUpDeps {
   readonly api: EngineHttpApi;
   readonly options: BringUpOptions;
+  readonly remediation: string;
 }
 
 interface StartFailureInput {
@@ -209,7 +175,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
       operation: input.operation,
       message,
       ...(input.details === undefined ? {} : { details: input.details }),
-    }) ?? APPLY_REMEDIATION;
+    }) ?? deps.remediation;
   return new ServiceStartError({
     providerId: input.service.provider,
     operation: input.operation,
@@ -259,13 +225,13 @@ const inspectContainer = Effect.fnUntraced(function* (
           },
         ),
         details: redactDetails({ name, status: response.status, body: response.body }),
-        remediation: APPLY_REMEDIATION,
+        remediation: deps.remediation,
       }),
     );
   }
   const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
     details: redactDetails({ status: response.status, body: response.body }),
-    remediation: APPLY_REMEDIATION,
+    remediation: deps.remediation,
   });
   if (typeof body !== "object" || body === null || !("State" in body)) {
     return {
@@ -349,12 +315,6 @@ const createContainerRequest = (
       });
     }
   }
-  const baseExtraHosts = baseHostConfig.ExtraHosts;
-  const knobExtraHosts = knobs.hostConfig.ExtraHosts;
-  const mergedExtraHosts =
-    Array.isArray(baseExtraHosts) && Array.isArray(knobExtraHosts)
-      ? { ExtraHosts: [...baseExtraHosts, ...knobExtraHosts] }
-      : {};
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
@@ -362,7 +322,6 @@ const createContainerRequest = (
       hostConfig: {
         ...baseHostConfig,
         ...knobs.hostConfig,
-        ...mergedExtraHosts,
       },
       networkingConfig: {
         EndpointsConfig:
@@ -433,7 +392,7 @@ const ensureNetwork = (
                   operation: "bringUp.network",
                   message,
                   details,
-                }) ?? APPLY_REMEDIATION,
+                }) ?? deps.remediation,
             }),
           );
         }),
@@ -480,7 +439,7 @@ const ensureVolume = (
             },
           ),
           details: redactDetails({ name: store.name, status: response.status, body: response.body }),
-          remediation: APPLY_REMEDIATION,
+          remediation: deps.remediation,
         }),
       );
     }),
@@ -555,6 +514,16 @@ const createContainer = Effect.fnUntraced(function* (
         operation: "bringUp.create",
         message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${response.status}.`,
         details: { status: response.status, body: response.body },
+      }),
+    );
+  }
+  if (deps.options.forbidRecreate === true) {
+    return yield* Effect.fail(
+      makeServiceRestartWouldRecreateError({
+        providerId: String(service.provider),
+        service: String(service.name),
+        reason: "host-port",
+        operation: "bringUp.create",
       }),
     );
   }
@@ -679,7 +648,7 @@ const publish = (
               providerId: deps.options.ctx.providerId,
               operation: "bringUp.event",
               message: `Failed to publish lifecycle event: ${event._tag}`,
-              remediation: APPLY_REMEDIATION,
+              remediation: deps.remediation,
               cause,
             }),
         ),
@@ -716,6 +685,17 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = yield* inspectContainer(deps, name);
+  if (!inspected.exists && deps.options.forbidRecreate === true) {
+    return yield* Effect.fail(
+      new ServiceStartError({
+        providerId: deps.options.ctx.providerId,
+        operation: "bringUp",
+        service: service.name,
+        message: `Cannot restart ${service.name} in place because its container is missing.`,
+        remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
+      }),
+    );
+  }
   const published = service.endpoints.flatMap((endpoint) =>
     endpoint._tag === "published" ? [endpoint] : [],
   );
@@ -724,14 +704,19 @@ const startService = Effect.fnUntraced(function* (
     plannedFingerprint.length > 0 &&
     inspected.publishFingerprint.length > 0 &&
     inspected.publishFingerprint !== plannedFingerprint;
+  const recreateReasons = bringUpRecreateReasons(plan, service, inspected);
   let before = inspected;
-  if (
-    before.exists &&
-    (deps.options.reconcile === true ||
-      portMismatch ||
-      bindSourceChanged(service, before) ||
-      plannedNetworkMissing(plan, before))
-  ) {
+  if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
+    if (deps.options.forbidRecreate === true && recreateReasons.length > 0) {
+      return yield* Effect.fail(
+        makeServiceRestartWouldRecreateError({
+          providerId: String(service.provider),
+          service: String(service.name),
+          reason: recreateReasons[0] ?? "publish-port",
+          operation: "bringUp",
+        }),
+      );
+    }
     yield* stopContainerSilent(deps, name);
     yield* removeContainer(deps, service, name);
     before = {
@@ -792,6 +777,16 @@ const startService = Effect.fnUntraced(function* (
       );
       let retry: EngineHttpResponse | undefined;
       if (isHostPortBindRejection(response) && assigned.size > 0) {
+        if (deps.options.forbidRecreate === true) {
+          return yield* Effect.fail(
+            makeServiceRestartWouldRecreateError({
+              providerId: String(service.provider),
+              service: String(service.name),
+              reason: "host-port",
+              operation: "bringUp.start",
+            }),
+          );
+        }
         yield* stopContainerSilent(deps, name);
         yield* removeContainer(deps, service, name);
         recordTouched({ name, created: true, startedExisting: false });
@@ -879,7 +874,7 @@ const rollbackPartialApply = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void> {
   // Volumes are preserved so rollback does not discard persistent data.
   yield* cleanupTouchedContainers(deps, touched);
-  yield* removeNetworkSilent(deps, plan);
+  if (deps.options.forbidRecreate !== true) yield* removeNetworkSilent(deps, plan);
   yield* removeCreatedNetworksSilent(deps, createdNetworks);
 });
 
@@ -891,7 +886,21 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
   }
-  const deps: BringUpDeps = { api, options };
+  if (options.forbidRecreate === true && options.reconcile === true) {
+    return yield* Effect.fail(
+      new ProviderInternalError({
+        providerId: options.ctx.providerId,
+        operation: "bringUp",
+        message: "forbidRecreate cannot be combined with reconcile.",
+        remediation: "Omit reconcile when forbidding recreate, or omit forbidRecreate when reconciling.",
+      }),
+    );
+  }
+  const deps: BringUpDeps = {
+    api,
+    options,
+    remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
+  };
 
   const createdNetworks = new Set<string>();
   for (const name of networkNames(plan)) {
@@ -957,7 +966,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         providerId: options.ctx.providerId,
         operation: "bringUp.schedule",
         message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
-        remediation: APPLY_REMEDIATION,
+        remediation: deps.remediation,
         details: redactDetails({ edges: result.edges }),
       }),
     );
@@ -972,7 +981,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           providerId: options.ctx.providerId,
           operation: "bringUp.schedule",
           message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
-          remediation: APPLY_REMEDIATION,
+          remediation: deps.remediation,
           details: redactDetails(blocked),
         }),
       );

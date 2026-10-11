@@ -11,6 +11,7 @@ import {
 } from "@lando/sdk/schema";
 
 import { renderCompose } from "../src/podman/compose.ts";
+import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
@@ -55,6 +56,55 @@ const planWith = (extensions: Record<string, unknown>, appExtensions: Record<str
 };
 
 describe("Podman Compose service field realization", () => {
+  test.each([...HOST_ALIAS_FIXTURES])("round-trips the realized host aliases when $name", (fixture) => {
+    // Given
+    const plan = planWith({ compose: { extra_hosts: fixture.authored } }, {});
+    const service = plan.services[serviceName];
+    if (service === undefined) throw new Error("web service missing");
+    // When
+    const parsed = Bun.YAML.parse(
+      renderCompose(
+        { ...plan, services: { [serviceName]: { ...service, hostAliases: fixture.planned } } },
+        ctx,
+      ),
+    );
+    // Then
+    if (fixture.api.length === 0) expect(parsed).not.toHaveProperty("services.web.extra_hosts");
+    else expect(parsed).toHaveProperty("services.web.extra_hosts", fixture.compose);
+  });
+
+  test("round-trips host gateway, custom and IPv6 aliases when the plan supplies them", () => {
+    // Given
+    const plan = planWith({}, {});
+    const service = plan.services[serviceName];
+    if (service === undefined) throw new Error("web service missing");
+    const hostAliases = [
+      { hostname: "host.lando.internal", ip: "host-gateway" },
+      { hostname: "custom.internal", ip: "192.0.2.10" },
+      { hostname: "ipv6.internal", ip: "2001:db8::1" },
+      { hostname: "true", ip: "::1" },
+      { hostname: 'alias: with #quotes"', ip: "192.0.2.11" },
+    ];
+    // When
+    const parsed = Bun.YAML.parse(
+      renderCompose({ ...plan, services: { [serviceName]: { ...service, hostAliases } } }, ctx),
+    );
+    // Then
+    expect(parsed).toHaveProperty(
+      "services.web.extra_hosts",
+      Object.fromEntries(hostAliases.map(({ hostname, ip }) => [hostname, ip])),
+    );
+  });
+
+  test("omits extra_hosts when the plan has no host aliases", () => {
+    // Given
+    const plan = planWith({}, {});
+    // When
+    const parsed = Bun.YAML.parse(renderCompose(plan, ctx));
+    // Then
+    expect(parsed).not.toHaveProperty("services.web.extra_hosts");
+  });
+
   test("Given user labels, When rendering, Then they merge with the reserved Lando labels", () => {
     // Given
     const plan = planWith({ compose: { labels: { "example.com/role": "web" } } }, {});

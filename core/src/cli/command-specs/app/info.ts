@@ -29,7 +29,7 @@ export const infoSpec: LandoCommandSpec<InfoAppResult> = {
   bootstrap: "app",
   flags: {
     deep: Flags.boolean({
-      description: "Include the resolved host agent-context env forwarding allowlist.",
+      description: "Include the host agent-context env names actually forwarded.",
       default: false,
     }),
     service: Flags.string({

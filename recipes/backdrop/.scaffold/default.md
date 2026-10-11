@@ -4,11 +4,14 @@
 
 ```sh
 lando init --recipe backdrop --name=my-backdrop-app --yes
+cd my-backdrop-app
 lando start
 lando info
 ```
 
 `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `/app`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+
+The Landofile sets `BACKDROP_SETTINGS` on `appserver` with the database credentials: database is the app name, user and password `lando`, host `database`. Backdrop reads it under Apache and in `lando bee`, so you don't edit `settings.php`. It overrides `settings.php`, so custom credentials go in the blob.
 
 ```sh
 lando init --recipe backdrop --name=my-backdrop-app --yes \

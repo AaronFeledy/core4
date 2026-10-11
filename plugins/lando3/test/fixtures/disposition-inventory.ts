@@ -317,7 +317,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         service("type: php:8.3, xdebug: {client_port: 9005}"),
         ["services", "s", "environment", "XDEBUG_CONFIG"],
-        "client_host=host.docker.internal client_port=9005",
+        "client_host=host.lando.internal client_port=9005",
       ),
     ],
   },

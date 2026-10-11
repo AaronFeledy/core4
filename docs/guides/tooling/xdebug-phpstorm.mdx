@@ -7,7 +7,7 @@ tags: [beta, docs, php, tooling, debugging, xdebug, phpstorm]
 
 # Debug PHP with Xdebug in PhpStorm
 
-Turn Xdebug on with `xdebug: true` (or a mode string). Lando installs the extension as a checksum-pinned build step, points `client_host` at `host.docker.internal`, and connects to an IDE listening on port `9003`. Then toggle it without a rebuild:
+Turn Xdebug on with `xdebug: true` (or a mode string). Lando installs the extension as a checksum-pinned build step, points `client_host` at `host.lando.internal`, and connects to an IDE listening on port `9003`. Then toggle it without a rebuild:
 
 ```yaml
 services:
@@ -92,4 +92,4 @@ A browser extension or `XDEBUG_SESSION=PHPSTORM` cookie/query param triggers the
 
 Add a server in `Settings > PHP > Servers` whose name matches the value your app sends (or use the "absolute path on server" mapping without a name), and map `/app` to your project's local root so breakpoints land on the file you edit. On the first accepted debug connection, PhpStorm offers to auto-create the server entry and path mapping.
 
-On Docker Desktop (macOS, Windows), `host.docker.internal` resolves automatically. On Linux without Docker Desktop, add `host.docker.internal` via `extra_hosts` or set `client_host` to the bridge gateway IP. If PhpStorm never receives a connection, confirm `lando xdebug status` shows the extension, then check the listener, port 9003, mode `debug`, and `client_host`. If a breakpoint hits but the wrong file opens, the server's path mapping does not match the container path. Fix it under `Settings > PHP > Servers`.
+Lando maps `host.lando.internal` to the provider's host gateway, including on Linux. You don't need a manual `extra_hosts` entry. Allow connections to port `9003` through your host firewall and listen on an interface reachable from containers, not only loopback. If PhpStorm never receives a connection, confirm `lando xdebug status` shows the extension, then check the listener, port 9003, mode `debug`, and `client_host`. An authored `environment.XDEBUG_CONFIG` overrides the default client host and port. If a breakpoint hits but the wrong file opens, the server's path mapping does not match the container path. Fix it under `Settings > PHP > Servers`.

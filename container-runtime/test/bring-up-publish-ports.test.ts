@@ -396,6 +396,40 @@ describe("create-body service publish ports", () => {
     expect(ports).toContain(SERVICE_PUBLISH_PORT_MIN + 1);
   });
 
+  test("forbidRecreate fails a start bind rejection instead of recreating", async () => {
+    const fake = makeFakeApi({
+      exists: true,
+      running: false,
+      inspectHostPort: "30000",
+      inspectBindingHostPort: "30000",
+      startStatuses: [500],
+      startBodies: ["address already in use"],
+    });
+    const result = await Effect.runPromise(
+      bringUp(planWithPublication({}), {
+        api: fake.api,
+        ctx,
+        platform: "linux",
+        forbidRecreate: true,
+        probeBind: () => Effect.succeed({ kind: "success" }),
+      }).pipe(Effect.result),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new TypeError("expected host-port restart to fail");
+    expect(result.failure).toMatchObject({
+      _tag: "ServiceRestartWouldRecreateError",
+      reason: "host-port",
+      service: "web",
+    });
+    expect(result.failure.message).toContain("was stopped and is still down");
+    expect(result.failure.message).toContain("lando rebuild -s web");
+    expect(result.failure.message).not.toContain("would recreate");
+    expect(createCalls(fake.calls)).toEqual([]);
+    expect(
+      fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),
+    ).toHaveLength(0);
+  });
+
   test("a start bind rejection recreates once and excludes the failed port", async () => {
     const ports: number[] = [];
     const probeBind: ServicePublishProbe = (_host, port) => {

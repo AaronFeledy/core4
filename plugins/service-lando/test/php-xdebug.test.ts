@@ -19,7 +19,7 @@ const PHP_XDEBUG_RELEASE = {
   sha256: "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d",
   url: "https://pecl.php.net/get/xdebug-3.5.3.tgz",
 } as const;
-const PHP_XDEBUG_CLIENT_HOST = "host.docker.internal";
+const PHP_XDEBUG_CLIENT_HOST = "host.lando.internal";
 const PHP_XDEBUG_PORT = 9003;
 
 const BuildSteps = Schema.Struct({
@@ -185,6 +185,7 @@ describe("PHP xdebug option", () => {
     expect(command).toContain("Xdebug enabled (");
     expect(command).toContain("Xdebug disabled");
     expect(command).toMatch(/on\) write_ini "\$mode"; reload; status/);
+    expect(command).toContain(`"${PHP_XDEBUG_CLIENT_HOST}" "${PHP_XDEBUG_PORT}"`);
     expect(command).toMatch(/off\) write_ini off; reload; status/);
     expect(command).toMatch(/status\) status/);
     expect(command).not.toContain("php -m");

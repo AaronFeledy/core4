@@ -8,6 +8,7 @@ import {
   type HostEnv,
   isAgentEnvForwardingDisabled,
   resolveAgentEnvAllowlist,
+  resolveForwardedAgentEnvNames,
 } from "./agent-env.ts";
 
 const readPolicy = Effect.fnUntraced(function* (
@@ -41,6 +42,6 @@ export const resolveAgentEnvAudit = (
   readPolicy(landofileAgentEnv).pipe(
     Effect.map((policy) => ({
       enabled: !isAgentEnvForwardingDisabled(policy, hostEnv),
-      forwarded: resolveAgentEnvAllowlist(policy, hostEnv),
+      forwarded: resolveForwardedAgentEnvNames(policy, hostEnv),
     })),
   );

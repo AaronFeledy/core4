@@ -13,7 +13,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.2"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -75,6 +75,8 @@
     "./operations/global-install": "./src/operations/global-install.ts",
     "./operations/global-plan": "./src/operations/global-plan.ts",
     "./operations/global-routes": "./src/operations/global-routes.ts",
+    "./operations/global-service-groups": "./src/operations/global-service-groups.ts",
+    "./operations/global-teardown": "./src/operations/global-teardown.ts",
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
     "./operations/missing-app-roots": "./src/operations/missing-app-roots.ts",

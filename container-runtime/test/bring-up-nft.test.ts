@@ -11,7 +11,12 @@ import {
 } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
-import { APPLY_REMEDIATION, type BringUpOptions, bringUp } from "../src/podman/bring-up.ts";
+import {
+  APPLY_REMEDIATION,
+  type BringUpOptions,
+  GLOBAL_APPLY_REMEDIATION,
+  bringUp,
+} from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
@@ -84,6 +89,25 @@ const startFailure = async (
   );
 
 describe("bringUp start-failure remediation hook", () => {
+  test.each([false, true])(
+    "global start uses global remediation when hook declines: %s",
+    async (declines) => {
+      // Given a global plan, with either no hook or a hook that declines.
+      const globalPlan = { ...plan, id: AppId.make("global") };
+      // When container start fails through bringUp.
+      const error = await Effect.runPromise(
+        bringUp(globalPlan, {
+          api: failingStartApi('{"message":"synthetic start failure"}'),
+          ctx,
+          ...(declines ? { startFailureRemediation: () => undefined } : {}),
+        }).pipe(Effect.flip),
+      );
+      // Then the global recovery command replaces user-app cleanup advice.
+      expect(error.remediation).toBe(GLOBAL_APPLY_REMEDIATION);
+      expect(error.remediation).not.toContain("lando destroy");
+      expect(error.remediation).not.toContain("`lando start");
+    },
+  );
   test("Given no hook, When a service fails to start, Then the neutral APPLY remediation is used", async () => {
     // Given / When
     const error = await startFailure({});

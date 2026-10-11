@@ -79,11 +79,14 @@ const makePodmanApi = (
   healthExitCode: number,
   existing: ReadonlyArray<string> = [],
   failedStarts: ReadonlyArray<string> = [],
+  alreadyRunning: ReadonlyArray<string> = [],
 ) => {
   const requests: string[] = [];
   const containers = new Set(existing);
-  const running = new Set<string>();
+  const running = new Set(alreadyRunning);
   const failedStartNames = new Set(failedStarts);
+  const ids = new Map<string, string>(existing.map((name) => [name, `id-${name}-original`]));
+  let createdSeq = 0;
   const record = (request: EngineHttpRequest) => requests.push(`${request.method} ${request.path}`);
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
@@ -98,11 +101,17 @@ const makePodmanApi = (
         }
         if (request.method === "GET" && request.path.endsWith("/json") && name !== undefined) {
           return containers.has(name)
-            ? { status: 200, body: JSON.stringify({ State: { Running: running.has(name) } }) }
+            ? {
+                status: 200,
+                body: JSON.stringify({ Id: ids.get(name), State: { Running: running.has(name) } }),
+              }
             : { status: 404, body: "{}" };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create?name=")) {
-          containers.add(request.path.slice("/containers/create?name=".length));
+          const created = request.path.slice("/containers/create?name=".length);
+          containers.add(created);
+          createdSeq += 1;
+          ids.set(created, `id-${created}-created-${createdSeq}`);
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && request.path.endsWith("/start") && name !== undefined) {
@@ -121,6 +130,7 @@ const makePodmanApi = (
         if (request.method === "DELETE" && name !== undefined) {
           containers.delete(name);
           running.delete(name);
+          ids.delete(name);
         }
         return { status: 204, body: "" };
       }),
@@ -129,7 +139,7 @@ const makePodmanApi = (
       return Stream.empty;
     },
   };
-  return { api, requests };
+  return { api, requests, ids };
 };
 
 test("starts a service_healthy dependency and probes it before starting the dependent", async () => {
@@ -231,4 +241,45 @@ test("interrupts an aborted optional dependency instead of starting its dependen
   if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   else throw new TypeError("aborted Podman bringUp unexpectedly succeeded");
   expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
+});
+
+test("a filtered apply leaves an unselected container's real ID untouched", async () => {
+  const web = servicePlan(dependentNames.web, true);
+  const db = servicePlan(dbName, false);
+  const fullPlan: AppPlan = {
+    id: appId,
+    name: "Bring Up Order App",
+    slug: "bring-up-order-app",
+    root: AbsolutePath.make("/tmp/bring-up-order-app"),
+    provider: providerId,
+    services: { [web.name]: web, [db.name]: db },
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+  const dbContainer = "lando-bring-up-order-app-db";
+  const webContainer = "lando-bring-up-order-app-web";
+  const { api, requests, ids } = makePodmanApi(
+    0,
+    [dbContainer, webContainer],
+    [],
+    [dbContainer, webContainer],
+  );
+  const dbId = ids.get(dbContainer);
+
+  await Effect.runPromise(
+    bringUp({ ...fullPlan, services: { [web.name]: web } }, { api, ctx, reconcile: false }),
+  );
+
+  expect(dbId).toBe(`id-${dbContainer}-original`);
+  expect(ids.get(dbContainer)).toBe(dbId);
+  expect(ids.get(webContainer)).toBe(`id-${webContainer}-original`);
+  expect(requests.filter((request) => request.includes(dbContainer))).toEqual([]);
+  expect(requests.some((request) => request.startsWith(`DELETE /containers/${dbContainer}`))).toBe(false);
+  expect(
+    requests.some((request) => request.includes("/containers/create") && request.includes(dbContainer)),
+  ).toBe(false);
 });

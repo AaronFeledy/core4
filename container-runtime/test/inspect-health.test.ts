@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
 import { waitForServiceHealth } from "../src/podman/health.ts";
 import { inspect } from "../src/podman/inspect.ts";
 
@@ -123,6 +124,23 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test.each([
+    { fields: {}, reasons: [] },
+    { fields: { Mounts: null, NetworkSettings: { Networks: null } }, reasons: [] },
+    { fields: { Mounts: [], NetworkSettings: { Networks: {} } }, reasons: ["network"] },
+  ])(
+    "distinguishes unavailable inspect fields from known-empty attachments: $fields",
+    async ({ fields, reasons }) => {
+      const fake = apiFromResponses([
+        { status: 200, body: JSON.stringify({ State: { Running: true }, ...fields }) },
+      ]);
+
+      const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+
+      expect(bringUpRecreateReasons(plan, service, info, { skipAbsentFields: true })).toEqual(reasons);
+    },
+  );
+
   test("materializes published endpoints from inspect and includes the app root", async () => {
     // Given
     const fake = apiFromResponses([

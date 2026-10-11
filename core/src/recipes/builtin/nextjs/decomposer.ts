@@ -1,4 +1,5 @@
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
+import { NEXTJS_SCAFFOLD_COMMAND } from "./scaffold-command.ts";
 import { nextjsProducer, nextjsSnapshot } from "./snapshot.ts";
 
 export const nextjsDecomposer = makeOptionBearingDecomposer({
@@ -25,6 +26,12 @@ export const nextjsDecomposer = makeOptionBearingDecomposer({
           cmds: ["npx next"],
         },
         npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"] },
+        "nextjs-scaffold": {
+          service: "web",
+          description: "Scaffold a Next.js app and install dependencies in the mounted app root.",
+          arguments: false,
+          cmd: NEXTJS_SCAFFOLD_COMMAND,
+        },
       },
     };
   },

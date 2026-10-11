@@ -64,6 +64,7 @@ describe("CLI flag-value validation", () => {
       _tag: "MalformedCliFlagValueError",
       flag: "shell",
       issue: "invalid_option",
+      remediation: "Supply --shell with one of: posix, powershell, pwsh.",
     });
     expect(JSON.stringify(error)).not.toContain("private-shell");
   });

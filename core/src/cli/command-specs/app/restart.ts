@@ -4,6 +4,17 @@ import { type RestartAppResult, RestartAppResultSchema, restartApp } from "@land
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRestartAppResult } from "../../commands/restart";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
+import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
+
+export const restartOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof restartApp>[0]> => {
+  const signal = extractSpecAbortSignal(input);
+  const services = serviceNamesFlag(specFlagsOf(input));
+  return {
+    ...(services.length === 0 ? {} : { services }),
+    ...(signal === undefined ? {} : { signal }),
+  };
+};
 
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   resultSchema: RestartAppResultSchema,
@@ -14,9 +25,14 @@ export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: (input) => {
-    const signal = extractSpecAbortSignal(input);
-    return Effect.andThen(refreshAppCache(), restartApp(signal === undefined ? {} : { signal }));
+  usage: "[--service SERVICE]",
+  flags: {
+    service: Flags.string({
+      char: "s",
+      description: "Restart a specific planned service without pulling in dependencies (repeatable).",
+      multiple: true,
+    }),
   },
+  run: (input) => Effect.andThen(refreshAppCache(), restartApp(restartOptionsFromInput(input))),
   render: (result) => renderRestartAppResult(result as RestartAppResult),
 };

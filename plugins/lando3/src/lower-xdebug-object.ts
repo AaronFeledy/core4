@@ -1,4 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { HOST_ALIAS } from "./host-reachability.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -6,9 +7,6 @@ import {
 } from "./lowering-contract.ts";
 import { droppedServiceKey, rewrittenServiceKey } from "./service-diagnostics.ts";
 import { hasAuthoredEnvironment } from "./service-option-environment.ts";
-
-// Match service-lando's PHP_XDEBUG_CLIENT_HOST / PHP_XDEBUG_PORT without a cross-plugin dependency.
-const CLIENT_HOST = "host.docker.internal";
 
 export const lowerXdebugObject = (
   service: Record<string, unknown>,
@@ -97,7 +95,7 @@ export const lowerXdebugObject = (
   const clientPort = settings.get("client_port");
   if (clientPort !== undefined) {
     patch.environment = {
-      XDEBUG_CONFIG: `client_host=${CLIENT_HOST} client_port=${clientPort}`,
+      XDEBUG_CONFIG: `client_host=${HOST_ALIAS} client_port=${clientPort}`,
     };
   }
   return { patch, diagnostics };

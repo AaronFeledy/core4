@@ -28,6 +28,7 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 
+import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -509,49 +510,61 @@ describe("lando info --deep — agent-context env audit", () => {
     expect(result.agentEnv).toBeUndefined();
   });
 
-  test("reports the resolved built-in allowlist as enabled", async () => {
-    const result = await withAgentEnvOff(undefined, () =>
-      Effect.runPromise(infoApp({ deep: true }).pipe(Effect.provide(makeInfoLayer("running")))),
-    );
-    expect(result.agentEnv?.enabled).toBe(true);
-    expect([...(result.agentEnv?.forwarded ?? [])]).toEqual([
-      "CLAUDECODE",
-      "CLAUDE_CODE",
-      "CLAUDE_CODE_IS_COWORK",
-      "CURSOR_AGENT",
-      "OPENCODE",
-      "OPENCODE_CLIENT",
-      "COPILOT_CLI",
-      "GEMINI_CLI",
-      "CODEX_SANDBOX",
-      "CODEX_CI",
-      "AUGMENT_AGENT",
-      "ANTIGRAVITY_AGENT",
-      "PI_CODING_AGENT",
-      "AI_AGENT",
-      "AGENT",
-      "CI",
-    ]);
-    const rendered = renderInfoAppResult(result);
-    expect(rendered).toContain("agent-env\tenabled");
-    expect(rendered).toContain("CLAUDECODE");
+  test("reports only host-present allowlisted names as forwarded", async () => {
+    const saved = new Map<string, string | undefined>();
+    const overlay: Record<string, string> = { CLAUDECODE: "1", CI: "true" };
+    for (const name of [...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"]) {
+      saved.set(name, process.env[name]);
+      if (name in overlay) process.env[name] = overlay[name];
+      else delete process.env[name];
+    }
+    try {
+      const result = await withAgentEnvOff(undefined, () =>
+        Effect.runPromise(infoApp({ deep: true }).pipe(Effect.provide(makeInfoLayer("running")))),
+      );
+      expect(result.agentEnv?.enabled).toBe(true);
+      expect([...(result.agentEnv?.forwarded ?? [])]).toEqual(["CLAUDECODE", "CI"]);
+      const rendered = renderInfoAppResult(result);
+      expect(rendered).toContain("agent-env\tenabled");
+      expect(rendered).toContain("CLAUDECODE");
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 
-  test("reports built-ins plus allow minus deny", async () => {
-    const result = await withAgentEnvOff(undefined, () =>
-      Effect.runPromise(
-        infoApp({ deep: true }).pipe(
-          Effect.provide(
-            makeInfoLayer("running", {
-              config: agentEnvConfigServiceLayer({ allow: ["FOO_TOKEN"], deny: ["CI"] }),
-            }),
+  test("reports present built-ins plus allow minus deny", async () => {
+    const saved = new Map<string, string | undefined>();
+    const overlay: Record<string, string> = { CLAUDECODE: "1", CI: "true", FOO_TOKEN: "tok" };
+    for (const name of [...AGENT_CONTEXT_ENV_ALLOWLIST, "FOO_TOKEN"]) {
+      saved.set(name, process.env[name]);
+      if (name in overlay) process.env[name] = overlay[name];
+      else delete process.env[name];
+    }
+    try {
+      const result = await withAgentEnvOff(undefined, () =>
+        Effect.runPromise(
+          infoApp({ deep: true }).pipe(
+            Effect.provide(
+              makeInfoLayer("running", {
+                config: agentEnvConfigServiceLayer({ allow: ["FOO_TOKEN"], deny: ["CI"] }),
+              }),
+            ),
           ),
         ),
-      ),
-    );
-    expect(result.agentEnv?.enabled).toBe(true);
-    expect(result.agentEnv?.forwarded).toContain("FOO_TOKEN");
-    expect(result.agentEnv?.forwarded).not.toContain("CI");
+      );
+      expect(result.agentEnv?.enabled).toBe(true);
+      expect(result.agentEnv?.forwarded).toContain("FOO_TOKEN");
+      expect(result.agentEnv?.forwarded).toContain("CLAUDECODE");
+      expect(result.agentEnv?.forwarded).not.toContain("CI");
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 
   test("reports disabled + empty when the app opts out via agentEnv:false", async () => {
