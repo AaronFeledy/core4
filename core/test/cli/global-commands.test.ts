@@ -38,6 +38,7 @@ import {
   type FileSystem,
   GlobalAppService,
   type LandoEvent,
+  PathsService,
   PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
@@ -48,11 +49,13 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { PreAppStartEvent } from "@lando/sdk/events";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -61,7 +64,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
-import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
+import { globalDestroy, renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
 import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { globalList } from "../../src/cli/commands/meta/global-list.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
@@ -69,7 +72,7 @@ import { globalRebuild } from "../../src/cli/commands/meta/global-rebuild.ts";
 import { globalRestart } from "../../src/cli/commands/meta/global-restart.ts";
 import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
+import { globalStop, renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
 
 interface ApplyCall {
@@ -106,12 +109,15 @@ type HarnessLayer = Layer.Layer<
   | FileSystem
   | GlobalAppService
   | PluginRegistry
+  | PathsService
+  | PrivateFileAccessService
   | RouterService
   | RuntimeProviderRegistry
   | SecretStore
 >;
 
 interface HarnessOptions {
+  readonly failDestroy?: boolean;
   readonly failInspect?: boolean;
   readonly failRouterSetup?: boolean;
   readonly failApply?: ReadonlyArray<string>;
@@ -227,11 +233,13 @@ const makeHarness = async (
     routesRemoved: [],
   };
   const events: Array<LandoEvent> = [];
+  let appliedPlan: AppPlan | undefined;
   const providerId = ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+    appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     apply: (plan, applyOptions) =>
       Effect.sync(() => {
         calls.actions.push("apply");
@@ -243,7 +251,13 @@ const makeHarness = async (
             options.failApply?.includes(service.name),
           );
           return failed === undefined
-            ? Effect.succeed(result)
+            ? Effect.sync(() => {
+                appliedPlan = applyOptions.recordedPlan ?? {
+                  ...plan,
+                  services: { ...appliedPlan?.services, ...plan.services },
+                };
+                return result;
+              })
             : Effect.fail(
                 new ServiceStartError({
                   service: failed.name,
@@ -255,11 +269,20 @@ const makeHarness = async (
               );
         }),
       ),
-    destroy: (target, options) =>
-      Effect.sync(() => {
-        calls.destroy.push({ target, options });
-        return { kind: "destroyed" as const };
-      }),
+    destroy: (target, destroyOptions) =>
+      options.failDestroy
+        ? Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "lando",
+              operation: "destroy",
+              message: "provider unavailable",
+            }),
+          )
+        : Effect.sync(() => {
+            calls.destroy.push({ target, options: destroyOptions });
+            if (destroyOptions.removeState) appliedPlan = undefined;
+            return { kind: "destroyed" as const };
+          }),
     inspect: (target) => {
       calls.inspect.push({ target });
       if (options.failInspect) {
@@ -312,6 +335,8 @@ const makeHarness = async (
     buildApp: () => Effect.void,
   });
   const layer = Layer.mergeAll(
+    PrivateFileAccessService.layer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     LandoConfigService.layer,
     AppCacheService.layer,
     BunFileSystem.layer,
@@ -431,6 +456,26 @@ const materializeDist = (
 
 const distPath = (dataRoot: string): string => join(dataRoot, "global", ".lando.dist.yml");
 
+const applyGlobalDist = async (
+  harness: Harness,
+  services: Record<string, ServiceConfig> = { proxy: { type: "lando", home: false } },
+) => {
+  await materializeDist(harness, services);
+  const plan = await Effect.runPromise(
+    Effect.gen(function* () {
+      const loaded = yield* loadGlobalPlan();
+      if (!loaded.materialized) throw new Error("expected global plan");
+      const registry = yield* RuntimeProviderRegistry;
+      const provider = yield* registry.select(loaded.plan);
+      yield* provider.apply(loaded.plan, { reconcile: false });
+      return loaded.plan;
+    }).pipe(Effect.scoped, Effect.provide(harness.layer)),
+  );
+  harness.calls.apply.length = 0;
+  harness.calls.actions.length = 0;
+  return plan;
+};
+
 const watcherRecordPath = (): string =>
   join(makeLandoPaths().globalAppRoot, "proxy-traefik", "watcher-diagnostic.json");
 
@@ -496,6 +541,95 @@ const expectPartialFailure = (exit: Exit.Exit<unknown, unknown>, operation: "sta
 };
 
 describe("meta:global command effects", () => {
+  for (const command of ["stop", "destroy"] as const) {
+    for (const overlay of [".lando.yml", ".lando.local.yml"] as const) {
+      for (const invalid of [
+        { kind: "schema", content: "services:\n  ssh-agent:\n    home: wrong\n" },
+        { kind: "parse", content: "services:\n  broken line\n" },
+      ]) {
+        test(`${command} uses applied services despite malformed ${overlay} ${invalid.kind}`, async () => {
+          await withHarness(async (harness) => {
+            // Given applied state and an invalid authored overlay.
+            const applied = await applyGlobalDist(harness);
+            await writeFile(join(harness.dataRoot, "global", overlay), invalid.content);
+            // When teardown runs without loading desired YAML.
+            const result =
+              command === "stop"
+                ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
+                : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+            // Then the applied plan, policies, and route cleanup survive the invalid config.
+            expect(result.materialized).toBe(true);
+            expect(harness.calls.destroy).toHaveLength(1);
+            expect(harness.calls.destroy[0]?.target.plan).toEqual(applied);
+            expect(harness.calls.destroy[0]?.options).toEqual({
+              volumes: false,
+              removeState: command === "destroy",
+            });
+            expect(harness.calls.routesRemoved).toEqual(["global"]);
+            expect(harness.events.map((event) => event._tag)).toEqual(
+              command === "stop" ? ["pre-global-stop", "post-global-stop"] : [],
+            );
+          });
+        });
+      }
+    }
+    test(`${command} does not mutate unstarted global services with invalid YAML`, async () => {
+      await withHarness(async (harness) => {
+        // Given authored materialization but no applied state or owned runtime resources.
+        await materializeDist(harness);
+        await writeFile(join(harness.dataRoot, "global", ".lando.yml"), "services: [\n");
+        // When teardown resolves evidence.
+        const result =
+          command === "stop"
+            ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
+            : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+        // Then materialization is reported without mutation or lifecycle events.
+        expect(result.materialized).toBe(true);
+        expect(harness.calls.destroy).toEqual([]);
+        expect(harness.calls.routesRemoved).toEqual([]);
+        expect(harness.events).toEqual([]);
+      });
+    });
+    test(`${command} removes applied services after authored services change`, async () => {
+      await withHarness(async (harness) => {
+        const applied = await applyGlobalDist(harness);
+        await materializeDist(harness, { replacement: { type: "lando", home: false } });
+        if (command === "stop") await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+        else await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+        expect(harness.calls.destroy[0]?.target.plan).toEqual(applied);
+        expect(Object.keys(harness.calls.destroy[0]?.target.plan?.services ?? {})).toEqual(["proxy"]);
+      });
+    });
+    test(`${command} tears down applied resources when the dist file is gone`, async () => {
+      await withHarness(async (harness) => {
+        const applied = await applyGlobalDist(harness);
+        await rm(distPath(harness.dataRoot));
+        const result =
+          command === "stop"
+            ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
+            : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+        expect(harness.calls.destroy[0]?.target.plan).toEqual(applied);
+        expect(result.materialized).toBe(false);
+        expect(harness.calls.routesRemoved).toEqual(["global"]);
+        const rendered =
+          "servicesStopped" in result ? renderGlobalStopResult(result) : renderGlobalDestroyResult(result);
+        expect(rendered).toContain("proxy");
+      });
+    });
+  }
+  test("stop suppresses post-global-stop and route cleanup when applied teardown fails", async () => {
+    await withHarness(
+      async (harness) => {
+        await applyGlobalDist(harness);
+        await writeFile(join(harness.dataRoot, "global", ".lando.yml"), "services:\n  broken line\n");
+        const exit = await Effect.runPromiseExit(globalStop().pipe(Effect.provide(harness.layer)));
+        expect(failureOf(exit)).toMatchObject({ _tag: "ProviderUnavailableError", operation: "destroy" });
+        expect(harness.events.map((event) => event._tag)).toEqual(["pre-global-stop"]);
+        expect(harness.calls.routesRemoved).toEqual([]);
+      },
+      { failDestroy: true },
+    );
+  });
   test("start isolates ssh-agent failure and applies routes only for started services", async () => {
     // Given three independent groups, one with an uncreatable ssh-agent.
     await withHarness(
@@ -774,7 +908,7 @@ describe("meta:global command effects", () => {
 
   test("stop publishes scope:global pre/post-global-stop in order", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness);
+      await applyGlobalDist(harness);
 
       await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
 
@@ -841,7 +975,7 @@ describe("meta:global command effects", () => {
 
   test("stop destroys provider resources without volumes or state removal", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness);
+      await applyGlobalDist(harness);
 
       const result = await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
 
@@ -942,7 +1076,8 @@ describe("meta:global command effects", () => {
 
   test("destroy requires --yes before any provider call", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness);
+      await applyGlobalDist(harness);
+      await writeFile(join(harness.dataRoot, "global", ".lando.yml"), "services:\n  broken line\n");
 
       const exit = await Effect.runPromiseExit(globalDestroy({}).pipe(Effect.provide(harness.layer)));
       const failure = failureOf(exit);
@@ -954,7 +1089,7 @@ describe("meta:global command effects", () => {
 
   test("destroy with --yes removes provider state while preserving volumes by default", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness);
+      await applyGlobalDist(harness);
 
       const result = await Effect.runPromise(
         globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)),
@@ -969,7 +1104,7 @@ describe("meta:global command effects", () => {
 
   test("destroy --purge removes provider state and volumes", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness);
+      await applyGlobalDist(harness);
 
       const result = await Effect.runPromise(
         globalDestroy({ yes: true, purge: true }).pipe(Effect.provide(harness.layer)),
@@ -1035,6 +1170,32 @@ describe("meta:global command effects", () => {
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
       if (result.landofile === undefined) throw new Error("expected landofile");
       expect(result.landofile.services).toHaveProperty("proxy");
+    });
+  });
+
+  test("config displays authored overrides consistently with global planning", async () => {
+    // Given generated services and a canonical override written through the config command.
+    await withHarness(async (harness) => {
+      await materializeDist(harness, {
+        proxy: { type: "lando", home: false, environment: { KEEP: "generated" } },
+      });
+      await Effect.runPromise(
+        globalConfig({
+          subcommand: "set",
+          key: "services.proxy.environment.ISSUE1250",
+          value: "authored",
+        }).pipe(Effect.provide(harness.layer)),
+      );
+      // When the config view and global plan read the effective configuration.
+      const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
+      const loaded = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(harness.layer)));
+      // Then display and planning both preserve the generated map and authored marker.
+      expect(result.landofile?.services?.[ServiceName.make("proxy")]?.environment).toEqual({
+        KEEP: "generated",
+        ISSUE1250: "authored",
+      });
+      if (!loaded.materialized) throw new Error("expected global plan");
+      expect(result.landofile).toEqual(loaded.landofile);
     });
   });
 
@@ -1153,7 +1314,7 @@ describe("meta:global command effects", () => {
 
   test("restart stops then starts the global app (stop destroy precedes start apply)", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, {
+      await applyGlobalDist(harness, {
         proxy: { type: "lando", home: false },
         mail: { type: "lando", home: false },
       });
