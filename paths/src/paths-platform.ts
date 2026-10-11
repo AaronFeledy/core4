@@ -58,7 +58,7 @@ export const joinFor =
 
 // --- platform default matrix -------------------------------------------------
 
-const homeOf = (overrides: RootOverrides): string => {
+export const resolveHostHome = (overrides: RootOverrides = {}): string => {
   if (overrides.home !== undefined) return overrides.home;
   const env = overrides.env ?? process.env;
   return env.HOME ?? env.USERPROFILE ?? ".";
@@ -76,7 +76,7 @@ interface DefaultMatrix {
 
 export const platformDefaults = (platform: HostPlatform, overrides: RootOverrides): DefaultMatrix => {
   const env = overrides.env ?? process.env;
-  const home = homeOf(overrides);
+  const home = resolveHostHome(overrides);
   const j = joinFor(platform);
 
   if (platform === "darwin") {
