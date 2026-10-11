@@ -85,13 +85,18 @@ export const terminateRetainedSessions = Effect.fnUntraced(function* (
       };
       const bucket = yield* openJournal(app);
       yield* bucket
-        .modify((current) => {
-          if (current === null || digest(current) !== digest(record))
-            throw recoveryError(record, "The retained journal changed before recovery.");
-          return [undefined, canonical] as const;
-        })
+        .modify((current) =>
+          current !== null && digest(current) === digest(record)
+            ? ([true, canonical] as const)
+            : ([false, current ?? record] as const),
+        )
         .pipe(
           Effect.mapError(() => recoveryError(record, "The retained journal could not be canonicalized.")),
+          Effect.flatMap((migrated) =>
+            migrated
+              ? Effect.void
+              : Effect.fail(recoveryError(record, "The retained journal changed before recovery.")),
+          ),
         );
     }
   }
