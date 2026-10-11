@@ -35,7 +35,8 @@ import {
   UrlScanner,
 } from "@lando/sdk/services";
 
-import type { RedactionService } from "@lando/redaction/service";
+import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
+import { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
@@ -359,6 +360,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   if (pendingStart !== undefined) yield* pendingStart.phase("apply-intent");
                   yield* Ref.set(applyStarted, true);
                   yield* registerAppPlanRedactionTokens(builtPlan);
+                  const redactor = yield* (yield* RedactionService).forProfile("secrets");
                   yield* Effect.scoped(
                     provider
                       .apply(builtPlan, {
@@ -366,7 +368,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                         serviceEnvironment,
                         ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                       })
-                      .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
+                      .pipe(
+                        Effect.provideService(StartFailureLogRedactor, redactor),
+                        Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
+                      ),
                   );
                   yield* prepareGpgHome;
                   return yield* Effect.forEach(serviceList, (service) =>
