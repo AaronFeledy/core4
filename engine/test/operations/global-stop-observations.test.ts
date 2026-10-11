@@ -9,6 +9,34 @@ import {
 } from "../../src/operations/global-teardown.ts";
 import { type Resolved, harness, plan } from "./global-stop-selection-fixture.ts";
 
+test("selected teardown preserves a foreign-labeled planned container and its siblings", async () => {
+  // Given normal listing synthesizes the planned root, while discovery exposes the actual labels.
+  const observations = harness()
+    .observed()
+    .map((service) =>
+      String(service.service) === "mail"
+        ? { ...service, appRoot: AbsolutePath.make("/tmp/foreign-global") }
+        : service,
+    );
+  const h = harness({ observations });
+  h.resolved.provider = {
+    ...h.resolved.provider,
+    list: (filter) =>
+      Effect.sync(() =>
+        h
+          .observed()
+          .map((service) =>
+            filter.includeUnplanned === true ? service : { ...service, appRoot: plan.root },
+          ),
+      ),
+  };
+  // When the foreign-labeled service is selected for teardown.
+  await h.run(["mail"]);
+  // Then no container is removed, including the selected foreign ID and unselected siblings.
+  expect(h.removed).toEqual([]);
+  expect(h.observed()).toEqual(observations);
+});
+
 for (const mismatch of ["root", "provider"] as const) {
   test(`selected teardown excludes same-app observations with mismatched ${mismatch}`, async () => {
     // Given both an owned selected container and a same-name foreign observation.

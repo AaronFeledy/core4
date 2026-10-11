@@ -99,7 +99,9 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
     }
   }
   const online = yield* runtimeOnline(resolved.provider);
-  const observed = online ? yield* resolved.provider.list({ app: evidence.plan.id }) : [];
+  const observed = online
+    ? yield* resolved.provider.list({ app: evidence.plan.id, includeUnplanned: true })
+    : [];
   const owned = observed.filter(
     (service) =>
       service.app === evidence.plan.id &&
