@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ServiceStartError` adds optional `logTail` (`service`, `lines`, `truncated`, optional `exitCode` / `timedOut`) for a redacted console snapshot retained through rollback. For blocked dependency gates, `logTail.service` identifies the dependency, while `ServiceStartError.service` identifies the waiting service. `CommandResultEnvelope.error` includes both `service` and the optional `logTail`.
+
 - `RuntimeProviderRegistry.select(target?: AppPlan | ProviderId)` accepts an explicit provider ID for planless resource observation and cleanup. Real plans still select their provider; omitting the target still selects the configured default.
 
 - `RestartAppOptions` additively accepts optional `services` for a scoped restart of named planned services with no dependency pull-in. Unknown names fail with the existing `ServiceNotFoundError`. Bare restart (no `services`) is unchanged. `RestartAppError` additively includes `ProviderError` so scoped restart can surface inspect, stop, apply, and `ServiceRestartWouldRecreateError`. `PreRestartEvent` and `PostRestartEvent` additively accept optional `services`; a full-app restart omits the field. `ApplyOptions.forbidRecreate` asks bring-up to fail instead of recreating on publish-port, bind-source, or network drift, or on host-port bind-rejection recovery. Combining it with `reconcile: true` fails. `ServiceRuntimeInfo` additively reports optional `publishFingerprint`, `bindSources`, and `networkNames` when inspect can read them.

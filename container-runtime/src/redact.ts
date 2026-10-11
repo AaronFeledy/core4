@@ -1,6 +1,13 @@
-import { createRedactor } from "@lando/sdk/secrets";
+import { type Redactor, createRedactor } from "@lando/sdk/secrets";
+import { Context } from "effect";
 
 const secretsRedactor = createRedactor("secrets");
+
+// The engine supplies its canonical redactor without coupling container helpers to the secret store.
+export const StartFailureLogRedactor = Context.Reference<Redactor>(
+  "@lando/container-runtime/StartFailureLogRedactor",
+  { defaultValue: () => secretsRedactor },
+);
 
 export const redactString = (value: string): string => secretsRedactor.redactString(value);
 

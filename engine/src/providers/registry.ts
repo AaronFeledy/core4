@@ -23,12 +23,14 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/redaction/service";
+import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
+import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import {
   type AppliedStateProvider,
   observeProviderRuntime,
@@ -189,15 +191,34 @@ export const makeRuntimeProviderRegistry = (
 
       const makeProvider = (descriptor: Effect.Success<ReturnType<typeof contributionFor>>) => {
         const { contribution, context } = descriptor;
-        const provider = contribution
-          .make(context)
-          .pipe(
-            Effect.provideService(PathsService, paths),
-            Effect.provideService(Downloader, downloader),
-            Effect.provideService(LogFileHelperAssets, logFileHelperAssets),
-            Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
-            Effect.mapError(toProviderUnavailableFromCapability),
-          );
+        const provider = contribution.make(context).pipe(
+          Effect.provideService(PathsService, paths),
+          Effect.provideService(Downloader, downloader),
+          Effect.provideService(LogFileHelperAssets, logFileHelperAssets),
+          Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
+          Effect.map(
+            (runtime) =>
+              ({
+                ...runtime,
+                apply: Effect.fnUntraced(function* (plan, options) {
+                  const tokens = [
+                    ...collectAppPlanRedactionTokens(plan),
+                    ...Object.values(options?.serviceEnvironment ?? {}).flatMap(collectSecretEnvValues),
+                  ];
+                  const redactor =
+                    redaction._tag === "Some"
+                      ? yield* redaction.value
+                          .registerValues(tokens)
+                          .pipe(Effect.andThen(redaction.value.forProfile("secrets")))
+                      : createStandaloneRedactor("secrets", { redactionTokens: tokens });
+                  return yield* runtime
+                    .apply(plan, options)
+                    .pipe(Effect.provideService(StartFailureLogRedactor, redactor));
+                }),
+              }) satisfies typeof runtime,
+          ),
+          Effect.mapError(toProviderUnavailableFromCapability),
+        );
         return eventService._tag === "Some"
           ? provider.pipe(Effect.provideService(EventService, eventService.value))
           : provider;

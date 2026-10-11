@@ -180,6 +180,49 @@ describe("buildBugReport: envelope extraction", () => {
     expect(serviceEntry).toEqual(["service", "web"]);
   });
 
+  test("prints a ServiceStartError log tail next to the service extra", () => {
+    const env = buildBugReport({
+      error: new ServiceStartError({
+        providerId: "lando",
+        operation: "bringUp.start",
+        service: "web",
+        message: "Service web could not start because a dependency gate was not satisfied.",
+        logTail: {
+          service: "db",
+          lines: ["database not accepting connections", "DATABASE_PASSWORD=hunter2"],
+          truncated: true,
+          exitCode: 1,
+        },
+      }),
+      context: ctx({ commandId: "app:start" }),
+    });
+    expect(env.extra).toEqual(
+      expect.arrayContaining([
+        ["service", "web"],
+        [
+          "logTail (db, exit 1, truncated)",
+          "database not accepting connections\nDATABASE_PASSWORD=[redacted]",
+        ],
+      ]),
+    );
+    expect(env.extra.map(([key]) => key)).not.toContain("health");
+    expect(env.extra.map(([key]) => key)).not.toContain("logTail");
+  });
+
+  test("omits an empty ServiceStartError log tail", () => {
+    const env = buildBugReport({
+      error: new ServiceStartError({
+        providerId: "lando",
+        operation: "bringUp.create",
+        service: "web",
+        message: "failed to create container",
+        logTail: { service: "web", lines: [], truncated: false },
+      }),
+      context: ctx({ commandId: "app:start" }),
+    });
+    expect(env.extra.map(([key]) => key)).not.toContain("logTail");
+  });
+
   test("extracts CapabilityError service, key, and capability as extra fields", () => {
     const env = buildBugReport({
       error: new CapabilityError({

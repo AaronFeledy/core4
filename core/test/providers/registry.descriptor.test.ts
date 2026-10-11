@@ -178,10 +178,11 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
     // When: the contributed provider is selected through the registry.
     const result = await selectEither([module], [manifest]);
 
-    // Then: the descriptor factory's provider shape is returned unchanged.
+    // Then: the descriptor factory's provider shape is returned; only apply is decorated for redaction.
     expect(result._tag).toBe("Success");
     if (result._tag === "Success") {
-      expect(result.success).toEqual(fakeProvider);
+      expect(result.success.apply).not.toBe(fakeProvider.apply);
+      expect({ ...result.success, apply: fakeProvider.apply }).toEqual(fakeProvider);
     }
   });
 });
