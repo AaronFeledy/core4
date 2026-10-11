@@ -29,7 +29,7 @@ import {
   mergeAppsListEntries,
   readAppliedPlansFromUserData,
 } from "./list-discovery";
-import { appRootMatchesPathFilter, isPathLikeFilter, resolveExistingAppsListPath } from "./list-path-filter";
+import { AppsListPathResolver, filterAppsByPath } from "./list-path-filter";
 import { pruneAppliedPlanState } from "./list-prune-state";
 
 export type { AppsListEntry } from "./list-discovery";
@@ -231,15 +231,12 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const pathFilter = options.path;
   const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
   const cwd = runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd();
-  const resolvedPathFilter =
-    pathFilter !== undefined && isPathLikeFilter(pathFilter)
-      ? yield* Effect.promise(() => resolveExistingAppsListPath(pathFilter, cwd))
-      : undefined;
+  const pathMatched =
+    pathFilter === undefined
+      ? listed
+      : yield* filterAppsByPath(listed, pathFilter, cwd).pipe(Effect.provide(AppsListPathResolver.layer));
   const statusFilter = options.status;
-  const filtered = listed.filter((app) => {
-    if (pathFilter !== undefined && !appRootMatchesPathFilter(app.appRoot, pathFilter, resolvedPathFilter)) {
-      return false;
-    }
+  const filtered = pathMatched.filter((app) => {
     if (statusFilter !== undefined && !statusFilter.includes(app.status)) return false;
     return true;
   });

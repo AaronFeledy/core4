@@ -1,54 +1,46 @@
 import { realpath } from "node:fs/promises";
-import { homedir } from "node:os";
-import { isAbsolute, resolve, win32 } from "node:path";
+import { resolve } from "node:path";
+import { isPathWithin, resolveHostHome } from "@lando/paths";
+import { Context, Effect, Layer } from "effect";
 
-import { isPathWithin } from "@lando/paths";
+export const isPathLikeFilter = (filter: string): boolean =>
+  filter === "." || filter === ".." || filter.startsWith("~") || /[/\\]/u.test(filter);
 
-const homeRoot = (): string => process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-
-/** Expand `~` / `~/...` the same way other host path inputs do. */
-const expandHome = (value: string): string => {
-  if (value === "~") return homeRoot();
-  if (value.startsWith("~/") || value.startsWith("~\\")) return resolve(homeRoot(), value.slice(2));
-  return value;
-};
-
-/** Absolute, `~`, `.` / `..`, `./` / `../`, or any value with a path separator. */
-export const isPathLikeFilter = (filter: string): boolean => {
-  if (filter === "." || filter === "..") return true;
-  if (filter.startsWith("~")) return true;
-  if (
-    filter.startsWith("./") ||
-    filter.startsWith("../") ||
-    filter.startsWith(".\\") ||
-    filter.startsWith("..\\")
-  ) {
-    return true;
+export class AppsListPathResolver extends Context.Service<
+  AppsListPathResolver,
+  {
+    readonly canonicalize: (path: string) => Effect.Effect<string | undefined>;
   }
-  if (isAbsolute(filter) || win32.isAbsolute(filter)) return true;
-  return filter.includes("/") || filter.includes("\\");
-};
+>()("@lando/core/AppsListPathResolver") {
+  static readonly layer = Layer.succeed(this, {
+    canonicalize: Effect.fn("AppsListPathResolver.canonicalize")((path: string) =>
+      Effect.tryPromise(() => realpath(path)).pipe(Effect.catch(() => Effect.succeed(undefined))),
+    ),
+  });
+}
 
-/** Realpath of an existing path-like filter after home expansion and cwd resolve. */
-export const resolveExistingAppsListPath = async (
+export const filterAppsByPath = Effect.fnUntraced(function* <A extends { readonly appRoot: string }>(
+  apps: ReadonlyArray<A>,
   filter: string,
-  cwd: string = process.cwd(),
-): Promise<string | undefined> => {
-  try {
-    return await realpath(resolve(cwd, expandHome(filter)));
-  } catch {
-    return undefined;
-  }
-};
-
-export const appRootMatchesPathFilter = (
-  appRoot: string,
-  filter: string,
-  resolvedFilter: string | undefined,
-): boolean => {
-  if (isPathLikeFilter(filter) && resolvedFilter !== undefined) {
-    if (appRoot === "") return false;
-    return isPathWithin(resolvedFilter, appRoot);
-  }
-  return appRoot.includes(filter);
-};
+  cwd: string,
+) {
+  if (!isPathLikeFilter(filter)) return apps.filter((app) => app.appRoot.includes(filter));
+  const resolver = yield* AppsListPathResolver;
+  const expanded =
+    filter === "~"
+      ? resolveHostHome()
+      : /^~[/\\]/u.test(filter)
+        ? resolve(resolveHostHome(), filter.slice(2))
+        : filter;
+  const target = yield* resolver.canonicalize(resolve(cwd, expanded));
+  if (target === undefined) return apps.filter((app) => app.appRoot.includes(filter));
+  const matches = yield* Effect.forEach(apps, (app) =>
+    Effect.gen(function* () {
+      if (app.appRoot === "") return false;
+      // Saved roots can predate canonicalization or retain a symlink spelling.
+      const root = (yield* resolver.canonicalize(app.appRoot)) ?? resolve(app.appRoot);
+      return isPathWithin(target, root);
+    }),
+  );
+  return apps.filter((_app, index) => matches[index]);
+});
