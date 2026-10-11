@@ -135,7 +135,7 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
   phase: "build",
   user: "root",
   // `rm -f` rather than `a2dissite`, which fails when the site is already gone.
-  command: ["sh", "-c", "a2enmod rewrite && rm -f /etc/apache2/sites-enabled/000-default.conf"],
+  command: ["sh", "-c", "a2enmod rewrite env && rm -f /etc/apache2/sites-enabled/000-default.conf"],
 });
 
 /**

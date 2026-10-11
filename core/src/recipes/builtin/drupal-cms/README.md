@@ -16,13 +16,18 @@ Drupal CMS 2 scaffold with PHP, a database (MariaDB or PostgreSQL), and Drush.
 
 ## Bootstrapping the codebase
 
-The recipe writes a Landofile only; it does not download Drupal CMS 2. After
-`lando start`, scaffold and install the project through the generated tooling:
+The recipe writes a Landofile and `.lando/php/drupal-cms.ini` (a 512M PHP
+memory limit for Drush and web requests); it does not download Drupal CMS 2.
+After `lando start`, scaffold and install the project through the generated
+tooling, then browse the installed site with `lando open`:
 
 ```bash
 lando drupal-cms-scaffold
 lando drupal-cms-install
+lando open
 ```
+
+The front page and `/user/login` both answer HTTP 200 once install finishes.
 
 The scaffold command handles the empty `vendor` and `node_modules` volumes by
 staging the `composer create-project` output and atomically moving files into

@@ -122,9 +122,12 @@ const applyApacheShape = (
     ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
     ctx.addBuildStep(landoErrorPagesBuildStep());
     if (listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(DEBIAN_APACHE_PORTS_CONF_PATH));
-    ctx.setCommand(
-      apacheStartCommand(webroot, allowOverride, listenPort, ctx.normalizedConfig.user === undefined),
-    );
+    ctx.setCommand([
+      ...apacheStartCommand(webroot, allowOverride, listenPort, ctx.normalizedConfig.user === undefined),
+      ...(ctx.normalizedConfig.environment?.BACKDROP_SETTINGS === undefined
+        ? []
+        : ["-c", "PassEnv BACKDROP_SETTINGS"]),
+    ]);
   }
 };
 

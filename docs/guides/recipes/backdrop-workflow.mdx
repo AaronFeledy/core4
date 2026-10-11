@@ -31,7 +31,9 @@ For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for data
 
 `lando bee` runs the `bee` binary on `appserver`. That binary is not in the stock PHP image, so add it (below) before day-to-day Bee commands.
 
-Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the database credentials. Backdrop reads it from `$_SERVER`. PHP fills that from the container environment on the command line but not under Apache, so Bee sees the blob and the site doesn't. Put the credentials in `settings.local.php` (below) so both read the same file. On the command line the blob wins, so if you change the credentials, change or delete it too.
+Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON blob with the database credentials. Its `database` field is `{{ app.name }}`, resolved to the app name at start. Backdrop reads it from `$_SERVER` both in the PHP CLI and under Apache, so Bee and the site share it and you don't write credentials into `settings.php` or `settings.local.php`.
+
+The blob overrides `$database` in `settings.php`. If you change the database name, user, or password, change `BACKDROP_SETTINGS` in `.lando.yml` to match; Lando doesn't pick up other credentials on its own.
 
 ## Init, start, and tear down
 
@@ -46,6 +48,8 @@ Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the dat
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"BACKDROP_SETTINGS\":\\s*\"\\{" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ app\\.name \\}\\}" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bee\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
@@ -72,6 +76,9 @@ Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the dat
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"BACKDROP_SETTINGS\":\\s*\"\\{" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ app\\.name \\}\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS.{0,200}host\\W{1,6}database" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "releases/download/1\\.x-1\\.2\\.0/bee\\.phar" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"xdebug\":\\s*true" } }} />
@@ -124,19 +131,7 @@ lando exec appserver -- sh -c 'set -eu; cd /tmp; rm -rf backdrop
   unzip -q backdrop.zip && cp -a backdrop/. /app/ && rm -rf backdrop backdrop.zip'
 ```
 
-Put the Lando database credentials in `settings.local.php`, next to `settings.php` in the app root. Stock `settings.php` includes it, and Backdrop's `.gitignore` already skips it:
-
-```php
-<?php
-$database = array(
-  'database' => 'backdrop-demo',
-  'username' => 'lando',
-  'password' => 'lando',
-  'host' => 'database',
-);
-```
-
-Match `'database'` to the app name (here `backdrop-demo`). Then generate an admin password locally and install:
+Leave `settings.php` as shipped; `BACKDROP_SETTINGS` carries the credentials. Generate an admin password locally and install:
 
 ```sh
 BACKDROP_ADMIN_PASSWORD="$(openssl rand -base64 24)"
@@ -153,7 +148,7 @@ lando bee install --auto \
 unset BACKDROP_ADMIN_PASSWORD
 ```
 
-`--auto` skips Bee's prompts and takes the defaults for anything you leave out. Bee still wants the `--db-*` flags, even though Backdrop connects through `settings.local.php`. The snippet assumes a POSIX shell with `openssl`. On Windows, generate the password however you like and pass it the same way.
+`--auto` skips Bee's prompts and takes the defaults for anything you leave out. Bee's `install` still wants the `--db-*` flags; pass the values from `BACKDROP_SETTINGS`, with `--db-name` set to the app name (here `backdrop-demo`). The snippet assumes a POSIX shell with `openssl`. On Windows, generate the password however you like and pass it the same way.
 
 Check the install:
 
@@ -180,7 +175,7 @@ Bee runs as root, so if the site later can't write to `files/`, run that `chown`
 | Password | `lando` |
 | Port | `3306` |
 
-Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you don't need it for the site.
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you don't need it for the site. These are the values in `BACKDROP_SETTINGS`.
 
 ## Work on an existing site
 
@@ -192,7 +187,7 @@ lando init --recipe backdrop --name=my-backdrop-site --yes .
 lando start
 ```
 
-Add the build steps above and the same `settings.local.php`, with `'database'` set to this app's name. Stock `settings.php` ends by including that file; add the include if yours doesn't. Keep it out of Git.
+Add the build steps above. `BACKDROP_SETTINGS` overrides whatever `$database` your `settings.php` carries, so the site connects with the values in the table above and your settings file stays untouched.
 
 Copy the site's `files/` into the app root on your host, plus its active config directory if that lives outside `files/`. The app root is mounted at `/app`, so it shows up in `appserver` right away. Then load the database and hand `files/` to Apache:
 
@@ -221,7 +216,7 @@ lando db:snapshots
 lando db:restore <snapshot-id> --yes
 ```
 
-Backdrop keeps active config as files, not in the database. Stock `settings.php` puts it under `files/config_<hash>/active`, where the hash comes from the `$database` array in `settings.php` itself. Credentials in `settings.local.php` don't move it. Dumps and snapshots don't carry it, so when you import another site's database, bring that site's active config directory to the path `$config_directories['active']` names. More flags: [Import and export app databases](../tooling/db-import-export.mdx).
+Backdrop keeps active config as files, not in the database. Stock `settings.php` puts it under `files/config_<hash>/active`, where the hash comes from the `$database` value written in `settings.php` itself. `BACKDROP_SETTINGS` is merged in later, so it doesn't move that directory. Dumps and snapshots don't carry it, so when you import another site's database, bring that site's active config directory to the path `$config_directories['active']` names. More flags: [Import and export app databases](../tooling/db-import-export.mdx).
 
 ## Log in with a one-time link
 

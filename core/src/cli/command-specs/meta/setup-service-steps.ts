@@ -6,9 +6,9 @@
  * matching `--skip-*` flag. They are pulled out of the command orchestration so
  * each service concern reads as one unit.
  */
-import { type Context, DateTime, Effect } from "effect";
+import { type Context, DateTime, Effect, Result } from "effect";
 
-import { MessageInfoEvent } from "@lando/sdk/events";
+import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
   CertificateAuthority,
   EventService,
@@ -21,6 +21,7 @@ import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-do
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { redactString } from "../../redact";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
 import type { SetupReadinessRecorder } from "./setup-steps";
@@ -168,9 +169,28 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
   }
   const ssh = yield* Effect.serviceOption(SshService);
   if (ssh._tag === "Some") {
-    yield* ssh.value
-      .setup({ force: false })
-      .pipe(Effect.tapError((cause) => recorder.recordFailure("shell", cause)));
+    const setup = yield* Effect.result(ssh.value.setup({ force: false }));
+    if (Result.isFailure(setup)) {
+      const evidence = redactString(setup.failure.message);
+      const setupCommand =
+        selectedProviderId in SYSTEM_RUNTIME_PROVIDERS
+          ? `lando setup --provider=${selectedProviderId}`
+          : "lando setup";
+      const remediation = `Apps still start without SSH agent forwarding. Fix the cause, then rerun \`${setupCommand}\`.`;
+      yield* recorder.record({ id: "shell", status: "unavailable", evidence, remediation });
+      const events = yield* Effect.serviceOption(EventService);
+      if (events._tag === "Some") {
+        yield* events.value
+          .publish(
+            MessageWarnEvent.make({
+              body: `${evidence}${/[.!?]$/.test(evidence) ? "" : "."} ${remediation}`,
+              timestamp: yield* DateTime.now,
+            }),
+          )
+          .pipe(Effect.ignore);
+      }
+      return;
+    }
     yield* recorder.record({
       id: "shell",
       status: "satisfied",

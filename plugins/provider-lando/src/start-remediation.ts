@@ -1,4 +1,4 @@
-import { APPLY_REMEDIATION, type StartFailureRemediation } from "@lando/container-runtime/podman/bring-up";
+import type { StartFailureRemediation } from "@lando/container-runtime/podman/bring-up";
 import { normalizeHostPlatform } from "@lando/paths";
 import type { HostPlatform } from "@lando/sdk/schema";
 
@@ -28,7 +28,7 @@ export const startFailureRemediation = (
   ports?: LeftoverProxyPortPair,
   serviceName?: string,
   platform: HostPlatform = "linux",
-): string => {
+): string | undefined => {
   const haystack = `${message}\n${detailBody(details)}`;
   if (isManagedNftMissingMessage(haystack)) return NFT_REMEDIATION;
   const leftoverForService = serviceName === undefined || serviceName === "traefik";
@@ -39,7 +39,7 @@ export const startFailureRemediation = (
     }
     return ports === undefined ? LEFTOVER_PROXY_PORT_REMEDIATION : leftoverProxyPortRemediation(ports);
   }
-  return APPLY_REMEDIATION;
+  return undefined;
 };
 
 export const makeLandoStartFailureRemediation =

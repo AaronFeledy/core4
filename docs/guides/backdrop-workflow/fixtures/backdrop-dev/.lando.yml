@@ -8,6 +8,8 @@ services:
     composer: "2"
     allowOverride: true
     port: 80
+    environment:
+      BACKDROP_SETTINGS: '{"databases":{"default":{"default":{"driver":"mysql","database":"{{ app.name }}","username":"lando","password":"lando","host":"database","port":3306}}}}'
     dependsOn:
       - database
     routes:
