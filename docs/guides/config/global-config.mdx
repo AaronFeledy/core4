@@ -94,7 +94,18 @@ lando config edit
 
 ## Configure the shared global app
 
-`lando global:config` reads or writes the shared global Lando app's Landofile stack. That always-on app hosts host-wide services such as the proxy. It is not the installation config from `lando config`. Lando starts Traefik for you as part of that global app.
+`lando global:config` reads and writes the shared global app, the always-on app that runs host-wide services such as the proxy, Mailpit, and the SSH agent. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `appEnv` or `router`, and `lando global:config` owns the global app's services.
+
+Install the global app first, then override a bundled service, check the effective result, and apply it:
+
+```sh
+lando global:install
+lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
+lando global:config --format=json
+lando global:rebuild
+```
+
+`set`, `unset`, and `edit` write only the canonical Landofile at `<userDataRoot>/global/.lando.yml`, for example `/home/user/.local/share/lando/global/.lando.yml` on Linux. `validate` checks that same file. Leave the generated `.lando.dist.yml` alone; Lando regenerates it.
 
   <Scenario id="shared-global-app-config" render>
     <Step name="json-shape">
@@ -107,20 +118,37 @@ lando config edit
   </Scenario>
 </Guide>
 
-The result envelope reports `app` (the global app id), `source` (the fixed literal `global`), `materialized` (whether the dist Landofile has been materialized), both file paths (`distLandofile`, `userLandofile`), a `paths` object, and the decoded `landofile` shape.
+## Read the effective global config
 
-The hand-editable overlay Landofile for the shared global app lives at `<userDataRoot>/global/.lando.yml`, for example `/home/user/.local/share/lando/global/.lando.yml` on Linux. The generated dist Landofile that merges plugin-contributed global services on top of the user overlay lives at `<userDataRoot>/global/.lando.dist.yml`.
+`lando global:config --format=json` prints the effective global Landofile, not the raw files. `result.landofile` is every present layer merged in order, and `result.paths` names the files behind it. The envelope also reports `app` (always `global`), `source` (the fixed literal `global`), and `materialized` (whether the generated file exists yet). Until `lando global:install` generates `.lando.dist.yml`, the view reports `materialized: false` with an empty Landofile, even if your `.lando.yml` already has overrides. Run `lando global:install` to see the merged result.
+
+Lando merges the six standard Landofile layers from `<userDataRoot>/global/`. A later layer wins:
+
+| Order | File | Who writes it |
+| --- | --- | --- |
+| 1 | `.lando.base.yml` | You, optional |
+| 2 | `.lando.dist.yml` | Lando, from plugin `globalServices:` |
+| 3 | `.lando.upstream.yml` | You, optional |
+| 4 | `.lando.yml` | `lando global:config set`, `unset`, and `edit` |
+| 5 | `.lando.local.yml` | You, optional |
+| 6 | `.lando.user.yml` | You, optional |
+
+The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and always runs on the `lando` provider, whatever the layers say.
+
+## Change the global app
 
 ```sh
-# Write a dot-path key into the global user Landofile
-lando global:config set services.mailpit.type mailpit
+# Write a dot-path key into the canonical global Landofile
+lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
 
-# Remove a dot-path key from the global user Landofile
-lando global:config unset services.mailpit
+# Remove a dot-path key from the canonical global Landofile
+lando global:config unset services.mailpit.environment.MP_MAX_MESSAGES
 
-# Decode the global user Landofile against the Landofile schema without changing anything
+# Decode the canonical global Landofile against the Landofile schema without changing anything
 lando global:config validate
 
-# Open the global user Landofile in $VISUAL or $EDITOR, or pass --editor
+# Open the canonical global Landofile in $VISUAL or $EDITOR, or pass --editor
 lando global:config edit
 ```
+
+Writes don't touch running containers. Check `lando global:config --format=json`, then run `lando global:rebuild` to apply the change.
