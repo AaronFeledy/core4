@@ -3,6 +3,7 @@ import type { ProcessResult } from "@lando/sdk/services";
 const EVALUATOR = [
   'import { $ } from "bun";',
   "delete process.env.BUN_BE_BUN;",
+  "delete process.env.BUN_FEATURE_FLAG_NO_ORPHANS;",
   'process.on("message", async (message) => {',
   '  if (typeof message === "object" && message !== null && message.type === "abort") process.exit(130);',
   '  if (typeof message !== "object" || message === null || message.type !== "run" || !Array.isArray(message.fragments) || !message.fragments.every((fragment) => typeof fragment === "string") || !Array.isArray(message.values) || !message.values.every((value) => typeof value === "string")) process.exit(2);',
