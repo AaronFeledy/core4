@@ -285,7 +285,9 @@ export class RuntimeProviderRegistry extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
     readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
-    readonly select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
+    readonly select: (
+      target?: AppPlan | ProviderId,
+    ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
     readonly resolveAppliedPlan?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;

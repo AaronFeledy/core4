@@ -5,7 +5,12 @@ import { Effect, Schema } from "effect";
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
-import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
+import {
+  type FileSystem,
+  type FileSystemError,
+  type GlobalAppPaths,
+  GlobalAppService,
+} from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
@@ -14,7 +19,7 @@ import {
   decodeIssues,
   writeValidationErrorFromIssues,
 } from "@lando/engine/config-write/write-core";
-import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
+import { readGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { parseLandofile } from "@lando/landofile/parser";
 import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
@@ -254,24 +259,14 @@ const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
   GlobalConfigReadError,
   GlobalConfigServices
 > {
-  const globalApp = yield* GlobalAppService;
-  const fileSystem = yield* FileSystem;
-  const paths = yield* globalApp.paths;
-  const exists = yield* fileSystem.exists(paths.distLandofile);
-  const landofile = exists
-    ? yield* fileSystem
-        .readText(paths.distLandofile)
-        .pipe(
-          Effect.flatMap((content) =>
-            decodeGlobalLandofile({ file: paths.distLandofile, content, cwd: paths.root }),
-          ),
-        )
-    : emptyGlobalLandofile;
+  const loaded = yield* readGlobalLandofile();
+  const { paths } = loaded;
+  const landofile = loaded.materialized ? loaded.landofile : emptyGlobalLandofile;
 
   return {
     app: landofile.name ?? "global",
     source: "global",
-    materialized: exists,
+    materialized: loaded.materialized,
     distLandofile: paths.distLandofile,
     userLandofile: paths.userLandofile,
     paths,

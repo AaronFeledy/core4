@@ -344,7 +344,7 @@ describe("ci workflow codegen", () => {
       }
 
       const originalPackageJson = await readFile(packageJsonPath, "utf8");
-      const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.4.0"', '"bun": ">=9.8.7"');
+      const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.4.2"', '"bun": ">=9.8.7"');
       expect(mutatedPackageJson).not.toBe(originalPackageJson);
 
       try {

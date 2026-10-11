@@ -47,7 +47,7 @@ test.each([
 );
 
 test.each([false, true])(
-  "destroys the direct socket on response release with body consumed=%s",
+  "destroys the direct socket on scope release with body consumed=%s",
   async (consume) => {
     // Given a real endpoint that sends headers and one chunk, but never completes.
     const closed = Promise.withResolvers<void>();
@@ -60,20 +60,23 @@ test.each([false, true])(
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("expected TCP listener");
     try {
-      // When a caller takes only headers or a single chunk.
-      const status = await Effect.runPromise(
-        Effect.gen(function* () {
-          const client = yield* HttpClient.HttpClient;
-          const response = yield* client
-            .get(`http://127.0.0.1:${address.port}/`)
-            .pipe(Effect.timeout(Duration.millis(1000)));
-          if (consume) yield* Stream.runDrain(response.stream.pipe(Stream.take(1)));
-          return response.status;
-        }).pipe(Effect.provide(layerWith())),
+      // When a caller takes only headers or a single chunk, then releases the scope.
+      const response = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const client = yield* HttpClient.HttpClient;
+            const scoped = HttpClient.withScope(client);
+            const response = yield* scoped
+              .get(`http://127.0.0.1:${address.port}/`)
+              .pipe(Effect.timeout(Duration.millis(1000)));
+            if (consume) yield* Stream.runDrain(response.stream.pipe(Stream.take(1)));
+            return response;
+          }).pipe(Effect.provide(layerWith())),
+        ),
       );
       await closed.promise;
-      // Then completion does not wait for EOF and destroys the live socket.
-      expect(status).toBe(200);
+      // Then scope release closes the socket before EOF, with the response still retained (not GC).
+      expect(response.status).toBe(200);
     } finally {
       server.closeAllConnections();
       server.close();

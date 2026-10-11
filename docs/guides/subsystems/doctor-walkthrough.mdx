@@ -32,6 +32,7 @@ lando doctor --all
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports, then run `lando global:restart`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
+| filesystem-watch | Read the reported stage and errno to distinguish an allocation failure from an unavailable probe or failed cleanup. For watch-resource failures, close unnecessary watchers first. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |
 | accelerated-start | In the reported app root, run `lando start` to recover a retained attempt or interrupted recovery, or `lando destroy` to discard it. |
 | missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
@@ -105,6 +106,33 @@ cleanup:
 ```sh
 lando doctor --format=json
 ```
+
+## Check filesystem watches on this host
+
+```sh
+lando doctor --format=json
+```
+
+On Linux and WSL, the `filesystem-watch` check tries the thing file sync and editors need most: it creates one temporary directory, allocates one non-recursive watch on it, then closes the watch and deletes the directory. It also reads the configured inotify limits for watches, instances, and queued events where the host lets it; limits it cannot read show as unavailable. On other hosts the check reports that it does not apply.
+
+It is a point-in-time allocation on the machine you typed the command on. It does not inspect the provider VM, does not treat local limits as runtime-host limits, and does not test whether events are delivered. Success means one watch was available at that moment, not that you have headroom. Doctor does not total up which processes hold watches: shared file descriptors, user namespaces, and process visibility make an exact count unreliable, and rootless containers can draw from the same per-user budget as your host tooling.
+
+Use the failure stage and errno to decide what to inspect:
+
+| Where it failed | What it means |
+| --- | --- |
+| `ENOSPC` allocating the watch | The inotify watch budget, or a related kernel resource, is exhausted. This is not evidence of a full disk. |
+| `ENOSPC` creating the temporary directory | Storage ran out: blocks or inodes on the temp filesystem. |
+| `EMFILE` allocating the watch | Either the per-process file-descriptor limit or the inotify instance limit. Doctor cannot tell which. |
+| `EMFILE` creating the temporary directory | The per-process file-descriptor limit, not the inotify instance limit. |
+| `ENFILE` | The system-wide file-descriptor limit. |
+| `EACCES` or `EPERM` | Doctor was not allowed to create the directory or the watch. |
+| Unsupported | The host or filesystem does not support inotify watches here. |
+| Anything else | Reported as unknown, with the error attached. |
+
+For watch-resource failures, close unnecessary watchers first: extra editors, file-sync daemons, test runners in watch mode. Then rerun doctor. Address storage or permission failures on the reported filesystem instead. If a limit itself is the problem, raising it is an administrator change on the affected host or VM. `lando doctor --fix` never writes sysctl config, raises limits, or kills processes.
+
+The router has its own, separate watcher record. That one reports what the Traefik container observed on the provider runtime host, and a clean `filesystem-watch` result does not clear it. See [Read the router file-watcher check](../global/doctor-walkthrough.mdx#read-the-router-file-watcher-check).
 
 ## Check the current app
 

@@ -106,7 +106,7 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
 
 ## Toolchain
 
-- **Runtime:** Bun (>=1.4.0, see `engines` and `.bun-version`). Node is not supported.
+- **Runtime:** Bun (>=1.4.2, see `engines` and `.bun-version`). Node is not supported.
 - **Package manager:** `bun install`. `package-lock.json` and `yarn.lock` are forbidden.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
@@ -199,7 +199,9 @@ All command output flows through the `Renderer` service; pick a mode with
 The compiled binary is produced with `bun build --compile --bytecode` targeting
 `core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for six
 platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
-`windows-x64`, and `windows-arm64`. Source and compiled entries now share the native dispatcher in
+`windows-x64`, and `windows-arm64`, with bytecode enabled for native and cross-platform builds alike.
+Bun 1.4.2 includes the cross-platform bytecode fix released in 1.4.1, so Windows
+cross-compilation no longer needs a bytecode exception. Source and compiled entries now share the native dispatcher in
 `core/src/cli/run.ts`. The retired split existed because `@oclif/core`'s
 `execute()` cannot dispatch inside a compiled Bun binary:
 a probe importing only `@oclif/core` and calling `execute()` was compiled with

@@ -83,6 +83,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
       "scanner",
       "host-proxy",
       "network-trust",
+      "filesystem-watch",
     ]);
     expect(report.subsystems.checks[1]).toMatchObject({
       name: "certs",
@@ -143,7 +144,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // Then
-    const networkTrust = report.subsystems.checks.at(-1);
+    const networkTrust = report.subsystems.checks.find((check) => check.name === "network-trust");
     expect(networkTrust).toMatchObject({
       name: "network-trust",
       status: "warn",
@@ -163,13 +164,12 @@ describe("combined doctor certificate and network-trust wiring", () => {
       render: () => undefined,
       formatError: String,
     });
-    expect(
-      (
-        Bun.YAML.parse(io.stdout()) as {
-          readonly result: { readonly subsystems: { readonly checks: ReadonlyArray<unknown> } };
-        }
-      ).result.subsystems.checks.at(-1),
-    ).toEqual(networkTrust);
+    const parsed = Schema.decodeUnknownSync(Schema.Struct({ result: DoctorReportSchema }))(
+      Bun.YAML.parse(io.stdout()),
+    );
+    expect(parsed.result.subsystems.checks.find((check) => check.name === "network-trust")).toEqual(
+      networkTrust,
+    );
     for (const output of [renderDoctorReport(report), io.stdout(), renderDoctorReportAsNdjson(report)]) {
       expect(output).toContain(redactedPath);
       expect(output).not.toContain(secret);
@@ -202,6 +202,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
       "healthcheck",
       "scanner",
       "host-proxy",
+      "filesystem-watch",
     ]);
     expect(report.self?.checks).toContainEqual(
       expect.objectContaining({ section: "network-trust", reason: "failure" }),
