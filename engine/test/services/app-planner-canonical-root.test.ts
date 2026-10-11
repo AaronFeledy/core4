@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -29,6 +29,7 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     { name: "embedded-app", runtime: 4 as const, provider: ProviderId.make("test") },
     discoveredRoot,
   );
+  const authored = structuredClone(landofile);
   try {
     // When: the real planner produces the root-bound plan consumed by teardown.
     const plan = await Effect.runPromise(
@@ -40,6 +41,8 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     // Then: both ownership fields use the canonical root and pass the unchanged safety checks.
     expect(plan.root).toBe(canonicalRoot);
     expect(plan.identity?.appRoot).toBe(canonicalRoot);
+    expect(landofile).toEqual(authored);
+    expect(getLandofileAppRoot(landofile)).toBe(discoveredRoot);
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     await Effect.runPromise(
       validateResolvedAppTarget(target).pipe(
