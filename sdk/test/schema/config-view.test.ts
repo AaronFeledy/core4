@@ -23,6 +23,13 @@ test("public view rejects an invalid map when encoding", () => {
   expect(Result.isFailure(encoded)).toBe(true);
 });
 
+test("public view keeps hostEvents when encoding loaded config", () => {
+  const hostEvents = { "pre-start": [{ cmd: "echo host", service: ":host" }] };
+  const loaded = Schema.decodeUnknownSync(GlobalConfig)({ hostEvents });
+  const encoded = Schema.encodeSync(GlobalConfigView)(loaded);
+  expect(encoded.hostEvents).toEqual(hostEvents);
+});
+
 test("public view participates in snapshot generation", () => {
   // Given / When
   const names = JSON_SCHEMA_NAMES;

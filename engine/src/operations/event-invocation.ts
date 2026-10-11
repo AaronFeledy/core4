@@ -7,6 +7,7 @@ import type { AppPlan, LandofileEventName } from "@lando/sdk/schema";
 import { Context, Effect, Option } from "effect";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
+import { eventStepFile } from "./event-step-identity.ts";
 
 export const MAX_EVENT_INVOCATION_DEPTH = 16;
 
@@ -81,7 +82,14 @@ export const runCanonicalCommand = Effect.fnUntraced(function* (
   }
   const active = yield* ActiveEventFrames;
   const invokingFrames = active.map((frame, index) =>
-    index === active.length - 1 ? { ...frame, command: leaf.command, index: leaf.authoredIndex } : frame,
+    index === active.length - 1
+      ? {
+          ...frame,
+          command: leaf.command,
+          index: leaf.authoredIndex,
+          file: eventStepFile(leaf.source, plan.metadata.source),
+        }
+      : frame,
   );
   const result = yield* executor.value
     .run({

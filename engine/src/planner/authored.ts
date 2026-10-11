@@ -14,6 +14,7 @@ import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
 import { type ComposeServiceFeature, composeService } from "../services/feature.ts";
+import { planServicePrimary } from "./effective-events.ts";
 import {
   SERVICE_FEATURES_EXTENSION_KEY,
   mergeComposeExtension,
@@ -173,7 +174,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
           name: ServiceName.make(name),
           type: resolution.normalizedConfig.type ?? serviceType.id,
           provider: input.provider,
-          primary: resolution.normalizedConfig.primary ?? name === "web",
+          primary: planServicePrimary(name, resolution.normalizedConfig.primary),
           ...(resolution.normalizedConfig.environment === undefined
             ? {}
             : { environment: resolution.normalizedConfig.environment }),

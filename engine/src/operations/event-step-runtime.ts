@@ -6,6 +6,7 @@ import { Clock, type Context, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import {
   type EventService,
@@ -15,6 +16,7 @@ import {
   type ToolingEngineResult,
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { eventStepLabel } from "./event-step-identity.ts";
 
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
@@ -87,25 +89,28 @@ const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
   error: unknown,
-): LandofileEventStepFailedError =>
-  new LandofileEventStepFailedError({
-    message: `Event ${options.event} step ${leaf.authoredIndex + 1} failed.`,
+): LandofileEventStepFailedError => {
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  return new LandofileEventStepFailedError({
+    message: `Event ${label} failed.`,
     event: options.event,
     index: leaf.authoredIndex,
     kind: leaf.kind,
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
+    remediation: `Fix ${label}, then rerun the lifecycle command.`,
   });
+};
 
 const nonzeroFailure = (
   options: EventRuntimeOptions,
   leaf: ResolvedToolingStepLeaf,
   result: ToolingEngineResult,
-): LandofileEventStepFailedError =>
-  new LandofileEventStepFailedError({
-    message: `Event ${options.event} step ${leaf.authoredIndex + 1} failed with exit code ${result.exitCode}.`,
+): LandofileEventStepFailedError => {
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  return new LandofileEventStepFailedError({
+    message: `Event ${label} failed with exit code ${result.exitCode}.`,
     event: options.event,
     index: leaf.authoredIndex,
     kind: leaf.kind,
@@ -115,8 +120,26 @@ const nonzeroFailure = (
       options.redactor.redactString(result.stdout),
       options.redactor.redactString(result.stderr),
     ),
-    remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
+    remediation: `Fix ${label}, then rerun the lifecycle command.`,
   });
+};
+
+const stringifyEnv = (
+  env: Readonly<Record<string, string | number | boolean>> | undefined,
+): Readonly<Record<string, string>> | undefined => {
+  if (env === undefined) return undefined;
+  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)]));
+};
+
+const hostEventChildEnv = (
+  source: "host" | "project" | undefined,
+  env: Readonly<Record<string, string | number | boolean>> | undefined,
+  service: string | undefined,
+): Readonly<Record<string, string>> | undefined => {
+  const stringEnv = stringifyEnv(env);
+  if (source !== "host" || service !== ":host") return stringEnv;
+  return { ...stringEnv, [LANDO_HOST_EVENT_ENV]: "1" };
+};
 
 const toolingRuntime = Effect.fnUntraced(function* (tool: string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -144,6 +167,7 @@ const runInvocation = Effect.fnUntraced(function* (
   invocationOptions: {
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
+    readonly env?: Readonly<Record<string, string>>;
   } = {},
 ) {
   const runtime = yield* toolingRuntime(tool);
@@ -153,6 +177,7 @@ const runInvocation = Effect.fnUntraced(function* (
     task,
     source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
     ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
+    ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
   });
   if (
     options.hostRunner === undefined &&
@@ -187,15 +212,16 @@ const runInvocation = Effect.fnUntraced(function* (
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
+  const env = hostEventChildEnv(leaf.source, leaf.env, leaf.service);
   const task: ToolingTaskShape = {
     cmd: leaf.command,
     ...(leaf.service === undefined ? {} : { service: leaf.service }),
-    ...(leaf.env === undefined ? {} : { env: leaf.env }),
     ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
   };
   const result = yield* runInvocation(options, `${options.event}`, task, {
     ...(leaf.user === undefined ? {} : { user: leaf.user }),
     redactionTokens,
+    ...(env === undefined ? {} : { env }),
   }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
   return { leaf, result, startedAt, redactor };
 });
@@ -280,8 +306,8 @@ export const makeEventStepRunners = (
       checked(
         leaf,
         Clock.currentTimeMillis.pipe(
-          Effect.flatMap((startedAt) => {
-            return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
+          Effect.flatMap((startedAt) =>
+            options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
               Effect.flatMap(({ redactor, redactionTokens }) =>
                 options.runCanonical(leaf, redactionTokens).pipe(
                   Effect.mapError((error) =>
@@ -290,8 +316,8 @@ export const makeEventStepRunners = (
                   Effect.map((result) => ({ leaf, result, startedAt, redactor })),
                 ),
               ),
-            );
-          }),
+            ),
+          ),
         ),
       ),
     present: (execution) => publish(options, execution.result),
