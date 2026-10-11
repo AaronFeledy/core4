@@ -1,7 +1,7 @@
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/core/paths";
-import type { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -20,6 +20,7 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -74,12 +75,15 @@ export const globalTeardownHarness = async (
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly status?: Effect.Effect<{ readonly running: boolean }, ProviderUnavailableError>;
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError>;
+    readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
+    readonly stopFailure?: boolean;
   } = {},
 ) => {
   const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" });
   const root = AbsolutePath.make(paths.globalAppRoot);
   const calls: string[] = [];
   const destroyed: AppPlan[] = [];
+  const removed: ServiceRuntimeInfo[] = [];
   const eventRoots: string[] = [];
   const selectedRoots: string[] = [];
   const provider = {
@@ -94,18 +98,21 @@ export const globalTeardownHarness = async (
     list: () =>
       Effect.sync(() => {
         calls.push("list");
-        return input.orphanRoot === undefined
-          ? []
-          : [
-              {
-                app: AppId.make("global"),
-                appRoot: input.orphanRoot,
-                service: ServiceName.make("ssh-agent"),
-                providerId: ProviderId.make("lando"),
-                status: "running" as const,
-                containerId: "owned-container",
-              },
-            ];
+        return (
+          input.services ??
+          (input.orphanRoot === undefined
+            ? []
+            : [
+                {
+                  app: AppId.make("global"),
+                  appRoot: input.orphanRoot,
+                  service: ServiceName.make("ssh-agent"),
+                  providerId: ProviderId.make("lando"),
+                  status: "running" as const,
+                  containerId: "owned-container",
+                },
+              ])
+        );
       }),
     listVolumes: () =>
       Effect.sync(() => {
@@ -118,15 +125,25 @@ export const globalTeardownHarness = async (
         if (target.plan !== undefined) destroyed.push(target.plan);
         return input.destroyOutcome ?? { kind: "destroyed" as const };
       }),
-    removeObservedService: () =>
-      Effect.sync(() => {
+    removeObservedService: (service: ServiceRuntimeInfo) =>
+      Effect.gen(function* () {
         calls.push("removeObservedService");
+        if (input.stopFailure)
+          return yield* Effect.fail(
+            new ProviderUnavailableError({
+              message: "remove failed",
+              providerId: "lando",
+              operation: "removeObservedService",
+            }),
+          );
+        removed.push(service);
         return { kind: "removed" as const };
       }),
     removeVolume: () =>
       Effect.sync(() => {
         calls.push("removeVolume");
       }),
+    stop: () => Effect.die("selected teardown must remove the observed container"),
   };
   const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
   const layer = Layer.mergeAll(
@@ -187,5 +204,5 @@ export const globalTeardownHarness = async (
       }),
     ),
   );
-  return { layer, calls, destroyed, eventRoots, selectedRoots };
+  return { layer, calls, destroyed, removed, eventRoots, selectedRoots };
 };
