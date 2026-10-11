@@ -17,13 +17,13 @@ lando start
 
 ## See what the recipe writes
 
-Init writes `.lando.yml` only. Put a Next.js app in after start.
+Init writes `.lando.yml` only and downloads nothing. The Next.js app itself comes from `lando nextjs-scaffold` after start, or from the project you already have.
 
 | Piece | What you get |
 | --- | --- |
 | `web` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, `NEXTAUTH_PROVIDER` set from the auth answer |
 | `database` | `type: postgres` by default; `mariadb` with `--answer=database=mariadb`; omitted with `--answer=database=none` |
-| Tooling | `lando next` (`npx next`) and `lando npm` on `web` |
+| Tooling | `lando next` (`npx next`), `lando npm`, and `lando nextjs-scaffold` on `web` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Auth answers (`none`, `nextauth`, `clerk`) only set the `NEXTAUTH_PROVIDER` env hint. Install and configure the helper yourself.
 
@@ -41,6 +41,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Auth an
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"next\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"nextjs-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "NEXTAUTH_PROVIDER" } }} />
     </Step>
     <Step name="start">
@@ -72,17 +73,20 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Auth an
 
 ## Scaffold Next.js, then run it
 
-`create-next-app` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`:
+With the app running, generate a fresh Next.js project into the app root:
 
 ```sh
-lando exec web -- npx --yes create-next-app@15.5.2 webapp
+lando nextjs-scaffold
 ```
 
-Move the contents of `webapp/` into the app root. Leave `.lando.yml` in place. Then confirm tooling:
+That runs `create-next-app@16.4.0` inside `web`, generates in a temp directory, then copies the result into the app root without overwriting `.lando.yml` or anything else you already have. It finishes with `npm install` in `/app`. Dependencies live in the service's `node_modules` volume, mounted at `/app/node_modules`, not in your host tree. No subdirectory, no moving files by hand.
+
+The generated project is the empty TypeScript App Router template: ESLint on, Tailwind off, no `src/` directory, `@/*` import alias, Turbopack.
+
+Confirm tooling:
 
 ```sh
 lando next --version
-lando next --help
 lando npm --version
 ```
 
@@ -92,7 +96,22 @@ Start the development server:
 lando next dev
 ```
 
-Next listens on all interfaces by default, and the recipe sets `PORT=3000`. The `Local: http://localhost:3000` line in Next's output is a display URL, not a loopback-only bind. Open the URL `lando info` prints while the development server is running.
+Next listens on all interfaces by default, and the recipe sets `PORT=3000`. The `Local: http://localhost:3000` line in Next's output is a display URL, not a loopback-only bind. The command stays in the foreground; `lando start` brings up the services but doesn't launch Next. Open the URL `lando info` prints while the development server is running.
+
+### Already have a Next.js project?
+
+Skip the scaffold. Install and run:
+
+```sh
+lando npm install
+lando next dev
+```
+
+### When the scaffold refuses or fails
+
+- Any existing `package.json` in the app root stops the scaffold before it generates anything. That includes a second run. Use `lando npm install` instead.
+- If a generated top-level file collides with one you already have, the command stops and names the first conflicting path. Nothing is copied. Move or remove yours, then run it again.
+- If `npm install` fails, the generated sources stay. Fix the npm error, then run `lando npm install`. Don't scaffold again.
 
 Prefer Node 22, no database, or NextAuth at init?
 

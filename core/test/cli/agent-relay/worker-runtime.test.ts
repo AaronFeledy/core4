@@ -10,7 +10,7 @@ import {
   identifyAgentRelayWorker,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { AbsolutePath, type AgentSocketBridgeInput, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, type AgentSocketBridgeInput, type AppPlan, type ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Cause, Effect, Layer, Schema } from "effect";
 import {
@@ -35,7 +35,7 @@ describe("agent relay worker runtime", () => {
           paths: { userDataRoot: root },
         });
         const calls: AgentSocketBridgeInput[] = [];
-        const selected: (AppPlan | undefined)[] = [];
+        const selected: (AppPlan | ProviderId | undefined)[] = [];
         const listeners: AgentRelayOptions[] = [];
         const closed: string[] = [];
         const provider = {

@@ -43,72 +43,110 @@ export class ScratchResourceScanner extends Context.Service<
       }
       const registry = registryOption.value;
 
-      const loadResources = () =>
-        registry.select().pipe(
-          Effect.flatMap((provider) =>
-            Effect.all({
-              services: provider.list({ includeScratch: true }),
-              volumes: provider.listVolumes({ labels: { [SCRATCH_LABEL]: "TRUE" } }),
-            }),
-          ),
-          Effect.mapError((cause) =>
-            scannerError("gc", "Unable to list labeled scratch provider resources.", cause),
-          ),
-        );
+      const loadResources = Effect.fn("ScratchResourceScanner.loadResources")(
+        function* () {
+          const ids = yield* registry.list;
+          return yield* Effect.forEach(
+            [...new Set(ids)],
+            (id) =>
+              Effect.gen(function* () {
+                const provider = yield* registry.select(id).pipe(
+                  Effect.flatMap((selected) =>
+                    Effect.gen(function* () {
+                      if (!(yield* selected.isAvailable)) return undefined;
+                      return (yield* selected.getStatus).running ? selected : undefined;
+                    }),
+                  ),
+                  Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(undefined)),
+                );
+                if (provider === undefined) return [];
+                const resources = yield* Effect.all(
+                  {
+                    services: provider.list({ includeScratch: true, includeUnplanned: true }),
+                    volumes: provider.listVolumes({ labels: { [SCRATCH_LABEL]: "TRUE" } }),
+                  },
+                  { concurrency: "unbounded" },
+                );
+                return [{ provider, ...resources }];
+              }),
+            { concurrency: "unbounded" },
+          ).pipe(Effect.map((observations) => observations.flat()));
+        },
+        Effect.mapError((cause) =>
+          scannerError("gc", "Unable to list labeled scratch provider resources.", cause),
+        ),
+      );
 
       return ScratchResourceScanner.of({
         listScratchIds: loadResources().pipe(
-          Effect.map(({ services, volumes }) => {
+          Effect.map((observations) => {
             const ids = new Set<string>();
-            for (const service of services) {
-              const id = scratchIdFromLabels(service.labels, String(service.app));
-              if (id !== undefined) ids.add(id);
-            }
-            for (const volume of volumes) {
-              const id = scratchIdFromLabels(volume.labels);
-              if (id !== undefined) ids.add(id);
+            for (const { services, volumes } of observations) {
+              for (const service of services) {
+                const id = scratchIdFromLabels(service.labels, String(service.app));
+                if (id !== undefined) ids.add(id);
+              }
+              for (const volume of volumes) {
+                const id = scratchIdFromLabels(volume.labels);
+                if (id !== undefined) ids.add(id);
+              }
             }
             return [...ids].sort();
           }),
-          Effect.catch(() => Effect.succeed([])),
         ),
         pruneScratch: Effect.fn("ScratchResourceScanner.pruneScratch")(function* (id) {
           if (!isCanonicalScratchId(id)) return;
-          const { services, volumes } = yield* loadResources();
-          const matchingVolumes = volumes.filter((volume) => scratchIdFromLabels(volume.labels) === id);
-          if (matchingVolumes.some((volume) => volume.identity === undefined)) {
-            return yield* Effect.fail(
-              scannerError(
-                "gc",
-                `Scratch volume for ${id} is missing generation identity, so it cannot be pruned safely.`,
-                undefined,
-              ),
-            );
-          }
-          const provider = yield* registry
-            .select()
-            .pipe(
-              Effect.mapError((cause) =>
-                scannerError("gc", `Unable to select a provider to prune scratch app ${id}.`, cause),
-              ),
-            );
-          yield* Effect.forEach(
-            services.filter((service) => scratchIdFromLabels(service.labels, String(service.app)) === id),
-            (service) => provider.removeObservedService(service),
-            { concurrency: "unbounded", discard: true },
-          ).pipe(
-            Effect.mapError((cause) =>
-              scannerError("gc", `Unable to prune provider resources for scratch app ${id}.`, cause),
+          const observations = yield* loadResources();
+          const matches = yield* Effect.forEach(observations, ({ provider, services, volumes }) =>
+            Effect.forEach(
+              volumes.filter((volume) => scratchIdFromLabels(volume.labels) === id),
+              (volume) => {
+                const identity = volume.identity;
+                return identity === undefined
+                  ? Effect.fail(
+                      scannerError(
+                        "gc",
+                        `Scratch volume for ${id} is missing generation identity, so it cannot be pruned safely.`,
+                        undefined,
+                      ),
+                    )
+                  : Effect.succeed({ ref: volume.ref, identity });
+              },
+            ).pipe(
+              Effect.map((validatedVolumes) => ({
+                provider,
+                services: services.filter(
+                  (service) => scratchIdFromLabels(service.labels, String(service.app)) === id,
+                ),
+                volumes: validatedVolumes,
+              })),
             ),
           );
+          const seenVolumes = new Set<string>();
+          const uniqueVolumes = matches.flatMap(({ provider, volumes }) =>
+            volumes.flatMap((volume) => {
+              const key = JSON.stringify([volume.identity.coordinationKey, volume.identity.generation]);
+              if (seenVolumes.has(key)) return [];
+              seenVolumes.add(key);
+              return [{ provider, ...volume }];
+            }),
+          );
           yield* Effect.forEach(
-            matchingVolumes,
-            (volume) =>
-              volume.identity === undefined
-                ? Effect.void
-                : provider.removeVolume(volume.ref, volume.identity.generation),
+            matches,
+            ({ provider, services }) =>
+              Effect.forEach(services, (service) => provider.removeObservedService(service), {
+                concurrency: "unbounded",
+                discard: true,
+              }),
             { concurrency: "unbounded", discard: true },
           ).pipe(
+            Effect.andThen(
+              Effect.forEach(
+                uniqueVolumes,
+                ({ provider, ref, identity }) => provider.removeVolume(ref, identity.generation),
+                { concurrency: "unbounded", discard: true },
+              ),
+            ),
             Effect.mapError((cause) =>
               scannerError("gc", `Unable to prune provider resources for scratch app ${id}.`, cause),
             ),

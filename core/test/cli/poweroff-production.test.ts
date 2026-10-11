@@ -44,9 +44,9 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
       select: (plan) =>
         Effect.succeed({
           ...TestRuntimeProvider,
-          id: plan?.provider ?? ProviderId.make("docker"),
+          id: (typeof plan === "string" ? plan : plan?.provider) ?? ProviderId.make("docker"),
           destroy: Effect.fnUntraced(function* (target, options) {
-            calls.push(`${plan?.provider}:${target.app}`);
+            calls.push(`${typeof plan === "string" ? plan : plan?.provider}:${target.app}`);
             if (failure === "provider") return yield* Effect.fail(unavailable);
             if (failure === "no-plan") return { kind: "no-op" as const, reason: "no-applied-plan" as const };
             expect(options).toEqual({ volumes: false, removeState: false });

@@ -343,7 +343,7 @@ Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `Run
 
 #### 6.13.4 Failure policy
 
-Artifact failure is fail-fast by default: it interrupts siblings, skips queued work as `phase-aborted`, and fails start. App failure continues independent siblings and raises one `BuildPhaseFailedError` containing `BuildStepFailure`s after `post-build-phase`. App and service overrides MAY change fail-fast behavior; per-step overrides are not exposed.
+Artifact failure is fail-fast by default: it interrupts siblings, skips queued work as `phase-aborted`, and fails start. App failure continues independent siblings and raises one `BuildPhaseFailedError` containing `BuildStepFailure`s after `post-build-phase`. App and service overrides MAY change fail-fast behavior; per-step overrides are not exposed. For explicit global lifecycle operations, these failure policies apply within each dependency-connected service group (§20.6.5).
 
 #### 6.13.5 `buildKey` and results
 

@@ -14,13 +14,13 @@ The release-orchestrator tests inject the runner and clock so this guide stays h
 
 Stage 7 compiles the canonical CLI entry (`./core/bin/lando.ts`).
 
-Every release binary is compiled with Bun bytecode enabled.
+Every release binary is compiled with Bun bytecode enabled, including Windows cross-compilation. Use Bun 1.4.2 or newer; `.bun-version` pins the CI compiler.
 
 ```sh
 --compile --bytecode
 ```
 
-Compile targets match the Beta 1 CI platform ids (`darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64`).
+Compile targets match the Beta 1 CI platform ids (`darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64,windows-arm64`).
 
 The reference cold-build budget is enforced on linux-x64.
 

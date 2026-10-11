@@ -3,9 +3,10 @@ import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { GlobalAppError, SshError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { layer as sshService } from "../src/ssh-service.ts";
 
 const globalApp = {
@@ -69,6 +70,45 @@ test("setup creates userDataRoot/ssh as mode 0700", async () => {
     await Effect.runPromise(setup(root));
     // Then the socket directory is private to the owner.
     expect((await stat(join(root, "ssh"))).mode & 0o777).toBe(0o700);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup reports the deepest cause when global service startup fails", async () => {
+  // Given a global-app failure wrapping a tagged provider error and its underlying error.
+  const root = await mkdtemp(join(tmpdir(), "ssh-setup-failure-"));
+  const rootCause = new Error("container create: statfs /home/test/.ssh: no such file or directory");
+  const cause = new GlobalAppError({
+    message: "Unable to ensure global services are running.",
+    cause: { _tag: "ServiceStartError", message: "container create failed with HTTP 500", cause: rootCause },
+  });
+  try {
+    // When the real SSH service attempts setup.
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const ssh = yield* SshService;
+        return yield* Effect.result(ssh.setup({ force: false }));
+      }).pipe(
+        Effect.provide(sshService),
+        Effect.provideService(
+          PathsService,
+          makeLandoPaths({ platform: "linux", userDataRoot: root, env: {} }),
+        ),
+        Effect.provideService(GlobalAppService, {
+          ...globalApp,
+          ensureRunning: () => Effect.fail(cause),
+        }),
+      ),
+    );
+    // Then the SSH error retains the cause and names the specific provider failure.
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(SshError);
+      expect(result.failure.message).toBe(`SSH agent sidecar could not start: ${rootCause.message}`);
+      expect(result.failure.sshId).toBe("sidecar");
+      expect(result.failure.cause).toBe(cause);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

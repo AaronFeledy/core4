@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
@@ -54,6 +55,7 @@ export interface AppPlanCacheKeyInput {
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
   readonly sourceFingerprint?: AppPlanSourceFingerprint;
   readonly planningRuntime?: string;
+  readonly hostHome?: string;
   readonly includedFragmentShas?: ReadonlyArray<string>;
   readonly config?: unknown;
   readonly serviceInputs?: unknown;
@@ -149,6 +151,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
       landoVersion: CORE_VERSION,
       planningRuntime: input.planningRuntime ?? defaultPlanningRuntimeIdentity(),
+      hostHome: input.hostHome ?? homedir(),
       appRoot: input.appRoot,
       landofile: input.landofile,
       sourceFingerprint:

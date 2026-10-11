@@ -25,17 +25,27 @@ lando scratch:list
 
 `lando scratch:gc` is the alias of `apps:scratch:gc`. The report prints `inspected`, `reaped`, and `errors` counts.
 
-Without `--prune`, Lando only counts orphans. Registry entries, cache directories, and provider resources stay put.
+Without `--prune`, Lando only inspects and reports scratch state. Provider resources, cache directories, and registry entries stay unchanged.
+
+## Scan every running provider
+
+GC checks every installed provider that is available and running, not just the default one. A scratch started under Docker still shows up when your default is `lando`, and you don't switch providers to clean it up.
+
+GC never starts a runtime. A stopped or unreachable runtime is skipped, so its scratch resources stay out of the report. Start that runtime, then run `lando scratch:gc` again to pick them up.
 
 ## Prune
+
+Warning: `--prune` deletes. Run the dry run above first and read the counts.
 
 ```sh
 lando scratch:gc --prune
 ```
 
-`--prune` removes orphaned scratch ids: provider resources, the scratch cache directory, and the registry entry.
+`--prune` removes orphaned scratch ids: provider resources, the scratch cache directory, and the registry entry. Each provider resource is deleted through the provider that owns it, matched by scratch identity; a volume goes only if the generation Lando observed still matches at delete time. Anything that doesn't match stays put.
 
-A missing resource or directory still counts as success. A second `--prune` should report no remaining work.
+Prune is safe to repeat. A second `--prune` should report no remaining work.
+
+If a provider scan or removal fails, GC reports the failure instead of treating the scan as empty. Fix the cause, then run it again.
 
 Orphans include:
 

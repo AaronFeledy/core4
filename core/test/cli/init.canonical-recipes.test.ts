@@ -175,7 +175,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "web", type: "node:lts" },
       { name: "database", type: "postgres" },
     ],
-    expectedTooling: ["next", "npm"],
+    expectedTooling: ["next", "npm", "nextjs-scaffold"],
   },
   {
     recipe: "django",
