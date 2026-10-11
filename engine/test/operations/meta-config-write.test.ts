@@ -234,6 +234,23 @@ describe("meta config edit via injected editor seam", () => {
 });
 
 describe("meta config hostEvents hand-edit", () => {
+  test.each(["set", "unset"] as const)(
+    "%s rejects an unrelated write when existing hostEvents are invalid",
+    async (subcommand) => {
+      // Given
+      const before = "renderer: json\nhostEvents:\n  pre-start:\n    - echo container\n";
+      await seed(before);
+      // When
+      const result = await exit(
+        config({ subcommand, key: "renderer", value: "plain", configPath: configPath() }),
+      );
+      // Then
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
+      expect(await readConfig()).toBe(before);
+    },
+  );
+
   test("rejects set of hostEvents and any nested path", async () => {
     await seed("renderer: json\n");
     const before = await readConfig();

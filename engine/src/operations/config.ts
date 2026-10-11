@@ -11,7 +11,12 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { GlobalConfig, GlobalConfigView, hostEventsConfigIssues } from "@lando/sdk/schema";
+import {
+  GlobalConfig,
+  GlobalConfigView,
+  hostEventsConfigIssues,
+  hostEventsSemanticIssues,
+} from "@lando/sdk/schema";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
@@ -224,6 +229,17 @@ const configValidationError = (
 const hostEventsTreeIssues = (tree: Record<string, unknown>): readonly ValidationIssue[] =>
   Object.hasOwn(tree, "hostEvents") ? hostEventsConfigIssues(tree.hostEvents) : [];
 
+const configWritePolicyError = (
+  decoded: ReturnType<typeof decodeGlobalConfig>,
+  path: string,
+  key: string,
+): LandofileWriteValidationError | AgentEnvPatternError | undefined => {
+  if (Result.isFailure(decoded)) return undefined;
+  const issues =
+    decoded.success.hostEvents === undefined ? [] : hostEventsSemanticIssues(decoded.success.hostEvents);
+  return issues.length > 0 ? configValidationError(path, issues, key) : agentEnvPatternError(decoded);
+};
+
 const HOST_EVENTS_HAND_EDIT =
   "hostEvents can only be changed by editing config.yml. Use `lando config edit` or edit the file itself.";
 
@@ -268,7 +284,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
     dryRun: options.dryRun === true,
     readTree: readConfigTree(path),
     decode: decodeGlobalConfig,
-    afterDecode: agentEnvPatternError,
+    afterDecode: (decoded) => configWritePolicyError(decoded, path, key),
     writeText: writeConfigAtomic,
   });
   return {
@@ -306,7 +322,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     dryRun: options.dryRun === true,
     readTree: readConfigTree(path),
     decode: decodeGlobalConfig,
-    afterDecode: agentEnvPatternError,
+    afterDecode: (decoded) => configWritePolicyError(decoded, path, key),
     writeText: writeConfigAtomic,
   });
   return {
