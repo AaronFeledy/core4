@@ -5,7 +5,7 @@ import { runProbe } from "@lando/sdk/probe";
 import type { AppId } from "@lando/sdk/schema";
 import { EventService, type SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
-import { type Context, Effect, Option } from "effect";
+import { type Context, Duration, Effect, Option } from "effect";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import { SSH_SIDECAR_READINESS_POLICY, awaitRuntimeSshAgent } from "../subsystems/ssh-agent/session.ts";
@@ -46,9 +46,9 @@ export const startSshSidecar = Effect.fnUntraced(function* (
             }),
           ),
         );
-        const ready =
+        const state =
           upstream._tag === "volume"
-            ? (yield* awaitRuntimeSshAgent()) === "ready"
+            ? yield* awaitRuntimeSshAgent()
             : yield* runProbe(
                 {
                   id: "ssh-sidecar-socket-ready",
@@ -59,15 +59,18 @@ export const startSshSidecar = Effect.fnUntraced(function* (
                   catch: (cause: unknown) => cause,
                 }),
               ).pipe(
-                Effect.map((result) => result.outcome === "green"),
-                Effect.catch(() => Effect.succeed(false)),
+                Effect.map((result) => (result.outcome === "green" ? "ready" : "starting")),
+                Effect.catch(() => Effect.succeed("starting" as const)),
               );
-        if (!ready)
+        if (state !== "ready")
           return yield* Effect.fail(
             new SshAgentUnavailableError({
               mode: "sidecar",
               reason: "sidecar-not-running",
-              message: "The SSH agent sidecar started, but its agent did not answer.",
+              message:
+                state === "stopped"
+                  ? "The SSH agent sidecar stopped before its agent answered."
+                  : `The SSH agent sidecar started, but its agent did not answer within ${Duration.toSeconds(SSH_SIDECAR_READINESS_POLICY.timeout)} seconds.`,
               remediation:
                 "Run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando restart`.",
             }),

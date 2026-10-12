@@ -147,6 +147,7 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
   expect(result.services[ServiceName.make("web")]?.mounts).toEqual([]);
   expect(result.stores).toEqual([]);
   expect(setups).toBe(1);
+  expect(warnings[0]).toContain("The SSH agent sidecar stopped before its agent answered.");
   expect(warnings[0]).toContain("global:logs --service ssh-agent");
 });
 
