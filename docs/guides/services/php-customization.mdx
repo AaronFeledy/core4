@@ -94,6 +94,24 @@ services:
         - "docker-php-ext-enable imagick"
 ```
 
+PECL still takes the short name (`imagick`). PIE needs PHP 8.1 or newer and
+Packagist names, so the same extension is `imagick/imagick`. Fetch `pie.phar`
+into `/usr/local/bin/pie`, run `pie self-verify`, then `pie install`. PIE
+enables the extension itself, so skip `docker-php-ext-enable`. Keep PECL for
+older PHP.
+
+```yaml
+services:
+  app:
+    type: "php:8.3"
+    build:
+      artifact:
+        - "curl -fL --output /usr/local/bin/pie https://github.com/php/pie/releases/latest/download/pie.phar"
+        - "chmod +x /usr/local/bin/pie"
+        - "pie self-verify"
+        - "pie install imagick/imagick"
+```
+
 An artifact step runs after Lando's own PHP prerequisite build steps, in
 the same image, so a manually compiled extension can depend on the apt
 packages Lando already installed. A `build.artifact` edit changes the
@@ -175,6 +193,16 @@ endpoint, healthcheck, working directory, and `LANDO_*` environment.
     <Step name="confirm-build-step">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pecl install imagick.*docker-php-ext-enable imagick" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="extra-extension-pie-plan" render>
+    <Step name="scaffold">
+      <UseFixture name="extra-extension-pie" />
+    </Step>
+    <Step name="confirm-build-step">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "usr/local/bin/pie.*pie self-verify.*pie install imagick/imagick" } }} />
     </Step>
   </Scenario>
 
