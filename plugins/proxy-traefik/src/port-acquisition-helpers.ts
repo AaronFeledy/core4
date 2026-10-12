@@ -4,6 +4,7 @@ import { RouterPortPinMismatch } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { type OccupiedPortHolderFields, fieldsFromPortHolder } from "./occupied-port-warning.ts";
+import { ownedRouterPorts } from "./port-acquisition-ownership.ts";
 import {
   type AcquisitionFingerprint,
   type BindOutcome,
@@ -233,7 +234,9 @@ export const probeCurrent = Effect.fn("TraefikRouter.probeCurrent")(function* (
         ) ?? Effect.succeed([])
       : [],
   );
+  const guestOwned = yield* ownedRouterPorts(dependencies, [...guestOccupied]);
   for (const port of guestOccupied) {
+    if (guestOwned.has(port)) continue;
     if (httpBinds[port]?.kind === "success") httpBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
     if (httpsBinds[port]?.kind === "success") httpsBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
   }
@@ -362,7 +365,7 @@ export const pinMismatch = (
     ...(pin.httpPort === undefined ? {} : { requestedHttp: pin.httpPort }),
     ...(pin.httpsPort === undefined ? {} : { requestedHttps: pin.httpsPort }),
     remediation:
-      "Align router.httpPort/httpsPort with the running pair, or set those ports in config.yml and run lando global:stop, then lando setup.",
+      "Align router.httpPort/httpsPort with the running pair, or set those ports in config.yml and run lando setup.",
   });
 
 export const pinDiffers = (

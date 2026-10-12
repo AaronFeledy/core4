@@ -29,7 +29,7 @@ lando doctor --all
 | Check | What to do |
 | --- | --- |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
-| preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando global:stop` and `lando setup`. |
+| preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | filesystem-watch | Read the reported stage and errno to distinguish an allocation failure from an unavailable probe or failed cleanup. For watch-resource failures, close unnecessary watchers first. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |

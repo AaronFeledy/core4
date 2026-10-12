@@ -14,6 +14,7 @@ import {
   resolveTryLists,
   stillOwnPersisted,
 } from "./port-acquisition-helpers.ts";
+import { reclaimRouterPorts } from "./port-acquisition-ownership.ts";
 import {
   ACQUISITION_MODES,
   type AcquisitionDecision,
@@ -91,6 +92,7 @@ const compatibleOwnedPair = (
 
 export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquisition")(function* (
   dependencies: TraefikProxyDependencies,
+  options: { readonly rescan?: boolean } = {},
 ): Effect.fn.Return<AcquisitionDecision, unknown> {
   const lists = resolveTryLists(dependencies);
   const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
@@ -172,6 +174,7 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
     }
   }
   if (
+    options.rescan !== true &&
     previous !== undefined &&
     previousPair !== undefined &&
     compatibleOwnedPair(previous, lists) &&
@@ -203,14 +206,18 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
       fingerprint: lists.fingerprint,
     };
   }
+  const available = yield* reclaimRouterPorts(dependencies, probed, {
+    http: lists.httpTryList[0] ?? DESIRED_HTTP_PORT,
+    https: lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT,
+  });
   const decision = yield* classifyOrFail({
     platform: dependencies.paths.platform,
     helperInstalled,
     socketsActive: false,
-    http: probed.http,
-    https: probed.https,
-    httpBinds: probed.httpBinds,
-    httpsBinds: probed.httpsBinds,
+    http: available.http,
+    https: available.https,
+    httpBinds: available.httpBinds,
+    httpsBinds: available.httpsBinds,
     httpTryList: lists.httpTryList,
     httpsTryList: lists.httpsTryList,
     bindAddress: lists.bindAddress,

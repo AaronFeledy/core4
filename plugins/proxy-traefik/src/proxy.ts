@@ -335,17 +335,20 @@ export const makeTraefikRouterService = (
         }
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
         const socketProxy = yield* resolveSocketProxy(dependencies);
-        const decision = yield* persistPortAcquisition({
-          ...dependencies,
-          ...(socketProxy === undefined
-            ? {}
-            : {
-                socketProxy:
-                  options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
-              }),
-          ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
-          ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
-        });
+        const decision = yield* persistPortAcquisition(
+          {
+            ...dependencies,
+            ...(socketProxy === undefined
+              ? {}
+              : {
+                  socketProxy:
+                    options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+                }),
+            ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+            ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
+          },
+          { rescan: options?.reacquirePorts === true },
+        );
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         yield* dependencies.fileSystem.writeAtomic(
           defaultDomainFile(dependencies.paths),

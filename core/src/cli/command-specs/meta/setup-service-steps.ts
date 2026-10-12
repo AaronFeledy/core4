@@ -145,9 +145,9 @@ export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(fun
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp();
     const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
-    yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove })).pipe(
-      Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
-    );
+    yield* Effect.scoped(
+      proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove, reacquirePorts: true }),
+    ).pipe(Effect.tapError((cause) => recorder.recordFailure("proxy", cause)));
     yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });
   } else {
     yield* recordAbsentHostIntegration(recorder, selectedProviderId, "proxy", "Proxy");
