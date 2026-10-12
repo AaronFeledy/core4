@@ -588,7 +588,7 @@ export const makeTraefikRouterService = (
             yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultDomainFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
-            // dashboard.yml is intentionally excluded from cleanup: Traefik may still be running.
+            yield* dependencies.fileSystem.remove(dashboardConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));
