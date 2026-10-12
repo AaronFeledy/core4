@@ -593,7 +593,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
         ),
         pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
-          pullImage(dockerApi, spec.ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect }).pipe(
+          pullImage(dockerApi, spec.ref, {
+            ctx: DOCKER_CTX,
+            dialect: dockerPullDialect,
+            ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+          }).pipe(
             Effect.map((result) => ({
               providerId: ProviderId.make(PROVIDER_ID),
               ref: result.ref,

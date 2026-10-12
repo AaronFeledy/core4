@@ -1,7 +1,9 @@
 import { Context, DateTime, Effect, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { ArtifactRef, ProviderError } from "@lando/sdk/services";
 import {
   BuildOrchestrator,
@@ -14,6 +16,7 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
+import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { collectAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
@@ -78,6 +81,11 @@ const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBu
 const resolveSourceArtifact = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
+  options: {
+    readonly refresh: boolean;
+    readonly events: Context.Service.Shape<typeof EventService>;
+    readonly redactor: Pick<Redactor, "redactString">;
+  },
 ): Effect.Effect<ArtifactRef | undefined, ProviderError> => {
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") return Effect.succeed(undefined);
@@ -88,7 +96,35 @@ const resolveSourceArtifact = (
         : { providerId: service.provider, ref: artifact.ref, digest: artifact.digest },
     );
   }
-  return provider.pullArtifact({ ref: artifact.ref });
+  if (!options.refresh) return provider.pullArtifact({ ref: artifact.ref, policy: "missing" });
+  return provider.pullArtifact({ ref: artifact.ref, policy: "always" }).pipe(
+    Effect.catch((error) =>
+      provider.pullArtifact({ ref: artifact.ref, policy: "never" }).pipe(
+        Effect.catch(() => Effect.fail(error)),
+        Effect.tap(() =>
+          Effect.gen(function* () {
+            const message = options.redactor.redactString(
+              `Couldn't refresh ${artifact.ref}, so ${service.name} uses the local copy. ${error.message}`,
+            );
+            yield* recordCommandWarning({
+              code: "LANDO_ARTIFACT_REFRESH_FAILED",
+              message,
+              remediation: "Rebuild again once the registry is reachable to pick up updated images.",
+              context: {
+                service: String(service.name),
+                artifact: options.redactor.redactString(artifact.ref),
+                cause: error._tag,
+              },
+            });
+            if (yield* commandWarningsUseMachineOutput) return;
+            yield* options.events
+              .publish(MessageWarnEvent.make({ body: message, timestamp: yield* timestamp }))
+              .pipe(Effect.catch(() => Effect.void));
+          }),
+        ),
+      ),
+    ),
+  );
 };
 
 const sourceIdentityMatches = (
@@ -113,6 +149,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly provider: RuntimeProviderShape;
+  readonly refresh: boolean;
   readonly progress: BuildTaskProgress;
   readonly plan: AppPlan;
   readonly redactionTokens: ReadonlyArray<string>;
@@ -130,7 +167,11 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
       : identityRedactor;
   const context = redactedBuildContext(redactor, plan, service);
   const step = yield* buildStepFor(provider, service);
-  const sourceArtifact = yield* resolveSourceArtifact(provider, service);
+  const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
+    refresh: input.refresh,
+    events,
+    redactor,
+  });
   const resolvedService =
     service.artifact?.kind === "ref" && sourceArtifact?.digest !== undefined
       ? {
@@ -258,7 +299,8 @@ export const layer = Layer.effect(
     const stateStore = yield* StateStore;
 
     return BuildOrchestrator.of({
-      build: Effect.fn("BuildOrchestrator.build")(function* (plan) {
+      build: Effect.fn("BuildOrchestrator.build")(function* (plan, options) {
+        const refresh = options?.refresh === true;
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const servicePlans = Object.values(plan.services);
         const redactionTokens = collectAppPlanRedactionTokens(plan);
@@ -267,7 +309,17 @@ export const layer = Layer.effect(
         const services = yield* Effect.forEach(
           servicePlans,
           (service) =>
-            buildService({ events, paths, progress, provider, plan, redactionTokens, service, stateStore }),
+            buildService({
+              events,
+              paths,
+              progress,
+              provider,
+              refresh,
+              plan,
+              redactionTokens,
+              service,
+              stateStore,
+            }),
           { concurrency: 2 },
         ).pipe(
           Effect.tapError(() =>
