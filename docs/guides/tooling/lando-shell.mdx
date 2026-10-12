@@ -48,6 +48,8 @@ PTY allocation and host-terminal detection are separate. `lando exec`, `lando ss
 
 Host mode reads one line at a time and evaluates it as a Bun Shell template. Each accepted line composes with pipes, redirection, globs, command substitution, and built-ins (`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank line re-prompts without evaluating anything.
 
+`lando` in a line runs Lando. `bun` uses your host Bun on `PATH`, or Lando's embedded Bun if none is installed. You don't need a separate Bun installation.
+
 A `${secret:<id>}` or `${secret:<scheme>://path}` reference (for example `${secret:DB_PASSWORD}` from `LANDO_SECRET_DB_PASSWORD`, or `${secret:op://Vault/Item/field}` from 1Password) resolves only when that line runs, through the same routed secret stores as `lando start`. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 
 Host-mode history persists per accepted line to a per-app history file under the user cache root. `--no-history` disables history for the session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.

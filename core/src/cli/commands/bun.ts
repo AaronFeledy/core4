@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 
-import type { NotImplementedError } from "@lando/sdk/errors";
+import type { FileIoError, NotImplementedError } from "@lando/sdk/errors";
 
 import { emitOptionalStdout } from "@lando/renderer/output";
 import { type BunSelfSpawner, bunSelfRun, bunSelfX } from "./bun-self-runner";
@@ -22,7 +22,7 @@ export const MetaBunResultSchema = Schema.Struct({
 
 export const metaBun = Effect.fn("MetaBun.run")(function* (
   options: MetaBunOptions,
-): Effect.fn.Return<MetaBunResult, NotImplementedError> {
+): Effect.fn.Return<MetaBunResult, NotImplementedError | FileIoError> {
   const result = yield* bunSelfRun({
     argv: options.argv,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
@@ -56,7 +56,7 @@ export const MetaXResultSchema = Schema.Struct({
 
 export const metaX = Effect.fn("MetaBun.runX")(function* (
   options: MetaXOptions,
-): Effect.fn.Return<MetaXResult, NotImplementedError> {
+): Effect.fn.Return<MetaXResult, NotImplementedError | FileIoError> {
   const banner = `Running ${options.spec}`;
   if (options.onBanner !== undefined) options.onBanner(banner);
   else yield* emitOptionalStdout(`${banner}\n`);

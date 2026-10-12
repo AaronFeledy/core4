@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema } from "effect";
 
-import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { type FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
@@ -78,7 +78,7 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
   options: PluginBuildOptions = {},
 ): Effect.fn.Return<
   PluginBuildResult,
-  NotImplementedError | PluginManifestError | PluginBuildMixedTreeError
+  NotImplementedError | FileIoError | PluginManifestError | PluginBuildMixedTreeError
 > {
   const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:build");
   const { manifest } = yield* Effect.tryPromise({

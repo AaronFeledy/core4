@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 import { DateTime, Effect, Schema } from "effect";
 
-import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { type FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
@@ -84,6 +84,7 @@ export const PluginPublishResultSchema = Schema.Struct({
 
 type PluginPublishError =
   | NotImplementedError
+  | FileIoError
   | PluginManifestError
   | PluginBuildMixedTreeError
   | PluginPublishValidationError
