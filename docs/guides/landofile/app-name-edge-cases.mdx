@@ -45,6 +45,6 @@ The planner keeps the Landofile `name` as the user-facing display name. It deriv
 
 Runtime slugs are capped at 57 characters. The `lando-` prefix consumes six characters, so a per-app network name stays within the DNS limit of 63 characters. For example, `c,o,m,m,a` becomes `c-o-m-m-a`, `bad name!` becomes `bad-name`, and `UPPER` becomes `upper`.
 
-Default routes use `<service>.<slug>.lndo.site`. Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
+Default routes use `<service>.<slug>.<domain>`, where `<domain>` is `proxy.defaultDomain` from global config (`lndo.site` unless you change it). Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
 
 A 100-character lowercase name is preserved in `lando app:config`, but its runtime slug is the first 57 characters. The network and route stay valid instead of producing an overlong label.

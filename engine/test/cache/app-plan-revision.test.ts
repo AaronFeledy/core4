@@ -18,6 +18,7 @@ import {
 } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
+import { cacheInput } from "../../src/planner/app-defaults.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const runtimeLandofileInput = {
@@ -42,6 +43,22 @@ for (const config of [
     expect(changed).not.toBe(original);
   });
 }
+
+test("changes the cache key when only the resolved proxy default domain changes", () => {
+  // Given
+  const defaults = { sshAgentMode: "sidecar" as const, defaultDomain: "lndo.site" };
+  const original = deriveAppPlanCacheKey({
+    ...runtimeLandofileInput,
+    config: cacheInput(true, undefined, defaults),
+  });
+  // When
+  const changed = deriveAppPlanCacheKey({
+    ...runtimeLandofileInput,
+    config: cacheInput(true, undefined, { ...defaults, defaultDomain: "lndo.test" }),
+  });
+  // Then
+  expect(changed).not.toBe(original);
+});
 
 const runtimeAppPlan: AppPlan = {
   id: AppId.make("runtime-key"),

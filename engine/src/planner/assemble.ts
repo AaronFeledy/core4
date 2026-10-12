@@ -70,7 +70,7 @@ import { finalizeServices } from "./endpoints.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { attachServiceCredsScope } from "./landofile-scopes.ts";
-import { DEFAULT_PROXY_DOMAIN, appNetworkName } from "./naming.ts";
+import { appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
@@ -251,8 +251,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
             hostnames: pinnedService.hostnames ?? [],
             routes,
-            defaultRouteHostname:
-              routes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
+            defaultRouteHostname: routes.length === 0 ? `${name}.${appSlug}.${defaultDomain}` : undefined,
             resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
             fileSystem,
           })
@@ -344,6 +343,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     pluginManifests: manifests,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
+      defaultDomain,
       sshAgentMode: sshAgentIntent.mode,
       gpgAgentForward: gpgAgentIntent.forward,
     }),
