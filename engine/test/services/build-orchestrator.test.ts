@@ -20,6 +20,9 @@ import {
 import { createRedactor } from "@lando/sdk/secrets";
 import {
   type ArtifactBuildSpec,
+  type ArtifactPullPolicy,
+  type ArtifactPullSpec,
+  type BuildOptions,
   BuildOrchestrator,
   EventService,
   PathsService,
@@ -531,33 +534,42 @@ describe("BuildOrchestratorLayer.layer", () => {
     expect(error).toBe(failure);
   });
 
-  test("pulls ref-only artifacts when the provider advertises artifactPull", async () => {
-    const artifactPlan: AppPlan = {
-      ...plan,
-      services: {
-        [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } },
-      },
-    };
-    const pulls: string[] = [];
-    const provider = {
-      ...TestRuntimeProvider,
-      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
-      pullArtifact: (spec: { readonly ref: string }) =>
-        Effect.sync(() => {
-          pulls.push(spec.ref);
-          return { providerId, ref: spec.ref };
-        }),
-    };
+  test.each([
+    [undefined, "missing"],
+    [{ pull: "always" }, "always"],
+  ] satisfies ReadonlyArray<readonly [BuildOptions | undefined, ArtifactPullPolicy]>)(
+    "acquires ref-only artifacts with options %j and policy %s",
+    async (options, policy) => {
+      // Given
+      const artifactPlan: AppPlan = {
+        ...plan,
+        services: {
+          [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } },
+        },
+      };
+      const pulls: ArtifactPullSpec[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: ArtifactPullSpec) =>
+          Effect.sync(() => {
+            pulls.push(spec);
+            return { providerId, ref: spec.ref };
+          }),
+      };
 
-    const builtPlan = await Effect.runPromise(
-      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
-        Effect.provide(layer(provider)),
-      ),
-    );
+      // When
+      const builtPlan = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan, options)).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
 
-    expect(pulls).toEqual(["debian:12.11-slim"]);
-    expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
-  });
+      // Then
+      expect(pulls).toEqual([{ ref: "debian:12.11-slim", policy }]);
+      expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+    },
+  );
 
   test("keeps planned artifact digest when artifactPull returns no digest", async () => {
     const artifactPlan: AppPlan = {

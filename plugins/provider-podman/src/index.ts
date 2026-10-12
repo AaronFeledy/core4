@@ -768,6 +768,7 @@ const assembleRuntimeProvider = (
           pullImage(podmanApi, spec.ref, {
             ctx: PODMAN_CTX,
             dialect: libpodPullDialect,
+            ...(spec.policy === undefined ? {} : { policy: spec.policy }),
             publish: (event) =>
               options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
           }).pipe(

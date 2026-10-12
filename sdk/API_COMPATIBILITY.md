@@ -6,6 +6,8 @@
 
 - `RouterService.setup(config, options?)` additively accepts optional `reacquirePorts` to rescan host ports instead of reusing the persisted pair. Only explicit `lando setup` sets it. App and scratch startup omit it and retain owned ports while config is unchanged; changed preferences still trigger a rescan. Rescans treat provider-verified publications of Lando's own router as available. This invocation option is not retained or exposed in config, and changes no JSON Schema.
 
+- `BuildOrchestrator.build(plan, options?: BuildOptions)` adds a command-level `pull` policy, defaulting to `"missing"` for offline-capable starts; app and global rebuild commands pass `"always"` to refresh tags. `ArtifactPullSpec.policy?: ArtifactPullPolicy` accepts `"always"` (the provider default when omitted) or `"missing"` (reuse a provider-local copy, acquire only when absent). `@lando/sdk/services` additively exports the erased types `BuildOptions` and `ArtifactPullPolicy`; no JSON Schema artifact changes.
+
 - `ServiceStartError` adds optional `logTail` (`service`, `lines`, `truncated`, optional `exitCode` / `timedOut`) for a redacted console snapshot retained through rollback. For blocked dependency gates, `logTail.service` identifies the dependency, while `ServiceStartError.service` identifies the waiting service. `CommandResultEnvelope.error` includes both `service` and the optional `logTail`.
 
 - `RuntimeProviderRegistry.select(target?: AppPlan | ProviderId)` accepts an explicit provider ID for planless resource observation and cleanup. Real plans still select their provider; omitting the target still selects the configured default.

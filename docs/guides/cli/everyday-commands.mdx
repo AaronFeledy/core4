@@ -52,7 +52,7 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, recreating its containers. `rebuild` also reruns the build. Use `rebuild` after you change service types, images, or build steps.
+Bare `restart` stops then starts the app, recreating its containers and reusing local images. `rebuild` also re-pulls the images your services reference so updated tags take effect, then reruns the build. Use `rebuild` after you change service types, images, or build steps. Rebuild needs registry access for those images even when they are already local.
 
 `lando restart --service redis` (or `-s`, repeatable) stops and starts only those named services. Other services keep running and keep their host ports. Lando does not pull in dependencies. If a selected container is missing or needs recreation (published-port, bind-source, or network drift), the command refuses and tells you to run `lando rebuild -s <name>`.
 

@@ -31,6 +31,7 @@ import {
   type AppPlanner,
   type AppSelector,
   type ApplyOptions,
+  type BuildOptions,
   BuildOrchestrator,
   type CacheService,
   type ConfigService,
@@ -94,6 +95,7 @@ interface ProviderCalls {
   readonly actions: Array<"apply" | "build">;
   readonly apply: Array<ApplyCall>;
   readonly build: Array<AppPlan>;
+  readonly buildOptions: Array<BuildOptions | undefined>;
   readonly destroy: Array<DestroyCall>;
   readonly inspect: Array<InspectCall>;
   readonly routes: Array<{ readonly app: string; readonly hostnames: ReadonlyArray<string> }>;
@@ -229,6 +231,7 @@ const makeHarness = async (
     actions: [],
     apply: [],
     build: [],
+    buildOptions: [],
     destroy: [],
     inspect: [],
     routes: [],
@@ -340,10 +343,11 @@ const makeHarness = async (
     loadAppFeature: () => Effect.die("not used"),
   });
   const buildOrchestrator = BuildOrchestrator.of({
-    build: (plan: AppPlan) =>
+    build: (plan: AppPlan, options?: BuildOptions) =>
       Effect.sync(() => {
         calls.actions.push("build");
         calls.build.push(plan);
+        calls.buildOptions.push(options);
         return {
           ...plan,
           services: Object.fromEntries(
@@ -911,6 +915,7 @@ describe("meta:global command effects", () => {
 
       expect(harness.calls.apply).toHaveLength(2);
       expect(harness.calls.build).toHaveLength(2);
+      expect(harness.calls.buildOptions).toEqual([undefined, undefined]);
       expect(harness.calls.actions).toEqual(["build", "apply", "build", "apply"]);
       expect(String(harness.calls.apply[0]?.plan.id)).toBe("global");
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
@@ -1604,6 +1609,8 @@ describe("meta:global command effects", () => {
   test("rebuild publishes rebuilt routes and reports route URLs without router setup", async () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
+
+      expect(harness.calls.buildOptions).toEqual([{ pull: "always" }, { pull: "always" }]);
 
       expect(harness.calls.destroy).toHaveLength(1);
       expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });

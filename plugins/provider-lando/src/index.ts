@@ -1292,6 +1292,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   runtimePullImage(podmanApi, spec.ref, {
                     ctx: LANDO_CTX,
                     dialect: libpodPullDialect,
+                    ...(spec.policy === undefined ? {} : { policy: spec.policy }),
                     publish: (event) =>
                       options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ??
                       Effect.void,

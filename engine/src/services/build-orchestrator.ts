@@ -2,7 +2,7 @@ import { Context, DateTime, Effect, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { ArtifactRef, ProviderError } from "@lando/sdk/services";
+import type { ArtifactPullPolicy, ArtifactRef, ProviderError } from "@lando/sdk/services";
 import {
   BuildOrchestrator,
   EventService,
@@ -78,6 +78,7 @@ const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBu
 const resolveSourceArtifact = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
+  pull: ArtifactPullPolicy,
 ): Effect.Effect<ArtifactRef | undefined, ProviderError> => {
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") return Effect.succeed(undefined);
@@ -88,7 +89,7 @@ const resolveSourceArtifact = (
         : { providerId: service.provider, ref: artifact.ref, digest: artifact.digest },
     );
   }
-  return provider.pullArtifact({ ref: artifact.ref });
+  return provider.pullArtifact({ ref: artifact.ref, policy: pull });
 };
 
 const sourceIdentityMatches = (
@@ -113,6 +114,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly provider: RuntimeProviderShape;
+  readonly pull: ArtifactPullPolicy;
   readonly progress: BuildTaskProgress;
   readonly plan: AppPlan;
   readonly redactionTokens: ReadonlyArray<string>;
@@ -130,7 +132,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
       : identityRedactor;
   const context = redactedBuildContext(redactor, plan, service);
   const step = yield* buildStepFor(provider, service);
-  const sourceArtifact = yield* resolveSourceArtifact(provider, service);
+  const sourceArtifact = yield* resolveSourceArtifact(provider, service, input.pull);
   const resolvedService =
     service.artifact?.kind === "ref" && sourceArtifact?.digest !== undefined
       ? {
@@ -258,7 +260,8 @@ export const layer = Layer.effect(
     const stateStore = yield* StateStore;
 
     return BuildOrchestrator.of({
-      build: Effect.fn("BuildOrchestrator.build")(function* (plan) {
+      build: Effect.fn("BuildOrchestrator.build")(function* (plan, options) {
+        const pull = options?.pull ?? "missing";
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const servicePlans = Object.values(plan.services);
         const redactionTokens = collectAppPlanRedactionTokens(plan);
@@ -267,7 +270,17 @@ export const layer = Layer.effect(
         const services = yield* Effect.forEach(
           servicePlans,
           (service) =>
-            buildService({ events, paths, progress, provider, plan, redactionTokens, service, stateStore }),
+            buildService({
+              events,
+              paths,
+              progress,
+              provider,
+              pull,
+              plan,
+              redactionTokens,
+              service,
+              stateStore,
+            }),
           { concurrency: 2 },
         ).pipe(
           Effect.tapError(() =>

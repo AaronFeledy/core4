@@ -173,6 +173,19 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker pullArtifact", () => {
+  test("reuses a present image when policy is missing even if registry pulls would fail", async () => {
+    // Given
+    const fake = makeFakeApi({ images: new Set([mailpitRef]), pullStatus: 429 });
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+
+    // When
+    const result = await Effect.runPromise(provider.pullArtifact({ ref: mailpitRef, policy: "missing" }));
+
+    // Then
+    expect(result).toEqual({ providerId, ref: mailpitRef, digest: "sha256:test" });
+    expect(fake.requests).toEqual([`GET /images/${encodeURIComponent(mailpitRef)}/json`]);
+  });
+
   test("POSTs /images/create and returns providerId docker with the ref", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));

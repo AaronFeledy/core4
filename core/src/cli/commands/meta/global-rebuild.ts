@@ -148,7 +148,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
             ...(options.signal === undefined ? {} : { signal: options.signal }),
           },
         },
-        (plan) => builder.build(plan),
+        (plan) => builder.build(plan, { pull: "always" }),
       );
       const partialError = globalServiceGroupError("rebuild", outcome);
       const router = yield* RouterService;

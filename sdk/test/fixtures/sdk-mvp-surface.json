@@ -49,7 +49,9 @@
     "AppPlanner": [
       "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, AppPlannerError>"
     ],
-    "BuildOrchestrator": ["build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>"],
+    "BuildOrchestrator": [
+      "build: (plan: AppPlan, options?: BuildOptions) => Effect.Effect<AppPlan, BuildError>"
+    ],
     "CacheService": [
       "invalidate: (key: string) => Effect.Effect<void, CacheError>",
       "read: <A, I>(key: string, schema?: Schema.Codec<A, I>) => Effect.Effect<A | null, CacheError>",

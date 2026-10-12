@@ -343,6 +343,8 @@ Ready predecessors are `complete` or `skip`. Interrupts propagate to in-flight p
 
 Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `RuntimeProvider.pullArtifact`; app scripts use `RuntimeProvider.execStream`. Every command retains its planned user, working directory, and environment. Providers MUST NOT re-resolve users at execution time.
 
+`BuildOrchestrator.build` acquires referenced artifacts with policy `missing` unless the caller passes `always`: reuse a provider-local copy and contact the source only when absent. App, scratch, and global start and restart, including global auto-start, use the default. `app:rebuild` and `meta:global:rebuild` pass `always` so providers that declare `artifactPull` refresh referenced artifacts from their source. The policy governs acquisition only; build-result reuse follows §6.13.5.
+
 #### 6.13.4 Failure policy
 
 Artifact failure is fail-fast by default: it interrupts siblings, skips queued work as `phase-aborted`, and fails start. App failure continues independent siblings and raises one `BuildPhaseFailedError` containing `BuildStepFailure`s after `post-build-phase`. App and service overrides MAY change fail-fast behavior; per-step overrides are not exposed. For explicit global lifecycle operations, these failure policies apply within each dependency-connected service group (§20.6.5).

@@ -60,7 +60,7 @@ Per-PR performance tests and the §13.4 merge gate enforce both budget tables.
 
 TypeScript uses `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`, `moduleResolution: "bundler"`, `module: "esnext"`, `target: "esnext"`, `lib: ["esnext"]`, `types: ["bun-types"]`, `isolatedModules`, and `skipLibCheck: false`. The selected TypeScript version MUST satisfy the selected Effect dependency's compatibility requirements; package manifests and the lockfile own the version selection. `exactOptionalPropertyTypes` is required for Effect Schema optional-property semantics.
 
-Public types MUST be inferred from Effect Schema wherever a schema can own the contract; parallel public `interface` or `type` declarations are forbidden. Internal types may use either. `@lando/sdk` exports schemas and their inferred types. Top-level exports SHOULD prefer one public symbol per file, barrels belong only at package boundaries, and side-effect imports are forbidden in core.
+Public types MUST be inferred from Effect Schema wherever a schema can own the contract; parallel public `interface` or `type` declarations are forbidden. Parameter and option types of `@lando/sdk/services` methods that are never persisted, emitted, or decoded MAY be plain TypeScript types; a schema owns such a shape once it crosses one of those boundaries. Internal types may use either. `@lando/sdk` exports schemas and their inferred types. Top-level exports SHOULD prefer one public symbol per file, barrels belong only at package boundaries, and side-effect imports are forbidden in core.
 
 ### 2.3 Native command dispatcher
 
