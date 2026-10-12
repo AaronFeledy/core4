@@ -6,6 +6,7 @@ import { Effect, type Scope } from "effect";
 
 import {
   type ConfigError,
+  type FileIoError,
   InteractionRequiredError,
   type LandoCommandError,
   NotImplementedError,
@@ -313,6 +314,7 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
 ): Effect.fn.Return<
   PluginAddResult,
   | ConfigError
+  | FileIoError
   | InteractionRequiredError
   | LandoCommandError
   | NotImplementedError

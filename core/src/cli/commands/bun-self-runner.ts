@@ -1,6 +1,8 @@
-import { DateTime, Effect } from "effect";
+import { tmpdir } from "node:os";
+import { createBunCommandEnv, inheritCommandEnv } from "@lando/engine/services/bun-command-env";
+import { DateTime, Effect, type Scope } from "effect";
 
-import { NotImplementedError } from "@lando/sdk/errors";
+import { FileIoError, NotImplementedError } from "@lando/sdk/errors";
 import { publishOptionalEvent } from "./optional-event-publish";
 
 import { RedactionService } from "@lando/redaction/service";
@@ -9,6 +11,7 @@ export interface BunSelfSpawnerOptions {
   readonly cmd: ReadonlyArray<string>;
   readonly env: Readonly<Record<string, string>>;
   readonly cwd: string;
+  readonly signal?: AbortSignal;
 }
 
 export interface BunSelfSpawner {
@@ -51,7 +54,7 @@ const isReentryBlocked = (env: NodeJS.ProcessEnv): boolean => {
 };
 
 export const defaultBunSelfSpawner: BunSelfSpawner = {
-  spawn: async ({ cmd, env, cwd }) => {
+  spawn: async ({ cmd, env, cwd, signal }) => {
     const proc = Bun.spawn({
       cmd: [...cmd],
       env,
@@ -60,8 +63,15 @@ export const defaultBunSelfSpawner: BunSelfSpawner = {
       stdout: "inherit",
       stderr: "inherit",
     });
-    const exitCode = await proc.exited;
-    return { exitCode };
+    const abort = () => proc.kill();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    try {
+      const exitCode = await proc.exited;
+      return { exitCode };
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
   },
 };
 
@@ -106,7 +116,7 @@ const redactBunSelfEvent = Effect.fnUntraced(function* (
 
 export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
   options: BunSelfRunOptions,
-): Effect.fn.Return<BunSelfRunResult, NotImplementedError> {
+): Effect.fn.Return<BunSelfRunResult, NotImplementedError | FileIoError, Scope.Scope> {
   if (isReentryBlocked(process.env)) {
     return yield* Effect.fail(
       new NotImplementedError({
@@ -122,6 +132,25 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
   const cwd = options.cwd ?? process.cwd();
   const verb = options.verb ?? options.argv[0] ?? "run";
   const callerSubsystem = options.callerSubsystem ?? "cli:meta:bun";
+  let spawnPromise: Promise<{ readonly exitCode: number }> | undefined;
+  const launcher = yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      try: () =>
+        createBunCommandEnv({ command: "lando", cwd, env: childEnv(inheritCommandEnv(options.env ?? {})) }),
+      catch: (cause) =>
+        new FileIoError({
+          message:
+            "Lando could not prepare its private command directory. Check that the temp directory is writable.",
+          path: tmpdir(),
+          cause,
+        }),
+    }),
+    (launcher) =>
+      Effect.promise(async () => {
+        if (spawnPromise !== undefined) await Promise.allSettled([spawnPromise]);
+        await launcher[Symbol.asyncDispose]();
+      }),
+  );
   yield* redactBunSelfEvent(
     {
       _tag: "pre-bun-self-exec",
@@ -134,13 +163,15 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
     },
     options.env,
   ).pipe(Effect.flatMap(publishOptionalEvent));
-  const { exitCode } = yield* Effect.promise(() =>
-    spawner.spawn({
+  const { exitCode } = yield* Effect.promise((signal) => {
+    spawnPromise = spawner.spawn({
       cmd: [execPath, ...options.argv],
-      env: { ...childEnv(process.env), ...(options.env ?? {}) },
+      env: launcher.env,
       cwd,
-    }),
-  );
+      signal,
+    });
+    return spawnPromise;
+  });
   yield* redactBunSelfEvent(
     {
       _tag: "post-bun-self-exec",
@@ -155,12 +186,14 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
     options.env,
   ).pipe(Effect.flatMap(publishOptionalEvent));
   return { exitCode };
-});
+}, Effect.scoped);
 
-export const bunSelfX = (options: BunSelfXOptions): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
+export const bunSelfX = (
+  options: BunSelfXOptions,
+): Effect.Effect<BunSelfRunResult, NotImplementedError | FileIoError> =>
   bunSelfRun({ ...options, argv: ["x", options.spec, ...options.argv] });
 
 export const bunSelfInstall = (
   options: BunSelfInstallOptions = {},
-): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
+): Effect.Effect<BunSelfRunResult, NotImplementedError | FileIoError> =>
   bunSelfRun({ ...options, argv: ["install"], verb: "install" });

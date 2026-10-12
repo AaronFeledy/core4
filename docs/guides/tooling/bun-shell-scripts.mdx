@@ -196,6 +196,8 @@ That starts the app, then prints the stamped SHA from inside `web`. The app and 
 
 `lando` in a script is the `lando` on your `PATH`. If your `PATH` has none, it is the Lando that started the script, so `./lando peek` from a download folder works too. Call it by name: a path such as `./bin/lando` inside the script runs as Bun instead of Lando.
 
+Package scripts you run with `lando bun run` follow the same rule: `lando` in them runs Lando, and `bun` runs the Bun Lando ships. A nested `lando bun` is refused.
+
 ## Run service work from the Landofile
 
 Scripts run on your host. Setting `service: web` in front matter refuses with `NotImplementedError` and points you at a Landofile tooling task. Commands that belong inside a service go in the Landofile:

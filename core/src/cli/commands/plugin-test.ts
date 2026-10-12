@@ -1,6 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { type FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
@@ -38,7 +38,7 @@ const splitPluginTestArgv = (
 
 export const pluginTest = Effect.fn("PluginTest.test")(function* (
   options: PluginTestOptions = {},
-): Effect.fn.Return<PluginTestResult, NotImplementedError | PluginManifestError> {
+): Effect.fn.Return<PluginTestResult, NotImplementedError | FileIoError | PluginManifestError> {
   const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:test");
   const { manifest } = yield* Effect.tryPromise({
     try: () => validatePluginManifest(pluginRoot),

@@ -1,4 +1,5 @@
 import type { ProcessResult } from "@lando/sdk/services";
+import { type BunCommandRuntime, createBunCommandEnv, inheritCommandEnv } from "./bun-command-env.ts";
 
 const EVALUATOR = [
   'import { $ } from "bun";',
@@ -18,6 +19,7 @@ export interface HostShellLineOptions {
   readonly values: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly runtime?: BunCommandRuntime;
   readonly signal?: AbortSignal;
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
@@ -34,11 +36,15 @@ const collect = async (stream: ReadableStream<Uint8Array>, write: (chunk: string
 };
 
 export const runHostShellLine = async (options: HostShellLineOptions): Promise<ProcessResult> => {
+  await using launcher = await createBunCommandEnv(
+    { command: "bun", env: { ...inheritCommandEnv(options.env ?? {}), BUN_BE_BUN: "1" } },
+    options.runtime,
+  );
   const evaluatorArgv = hostShellEvaluatorArgv();
   const child = Bun.spawn({
     cmd: [...evaluatorArgv],
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-    env: { ...process.env, ...options.env, BUN_BE_BUN: "1" },
+    env: launcher.env,
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",

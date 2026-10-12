@@ -7,8 +7,8 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
+import { landoLauncher } from "../../src/services/bun-command-env.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
-import { landoLauncher } from "../../src/services/shell-script-stream.ts";
 
 test.skipIf(process.platform === "win32").each([
   ["collected", 0],

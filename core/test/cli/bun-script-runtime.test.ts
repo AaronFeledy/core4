@@ -15,6 +15,72 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
   }, 120_000);
 
   test.each(["binary", "empty"] as const)(
+    "package scripts call lando and bun with %s PATH",
+    async (pathMode) => {
+      // Given: no host Bun and an isolated package whose scripts call Lando, Bun, and recursive lando bun.
+      const root = await mkdtemp(join(tmpdir(), "lando-compiled-package-env-"));
+      try {
+        const bin = join(root, "bin");
+        const empty = join(root, "empty");
+        await mkdir(bin);
+        await mkdir(empty);
+        const binary = join(bin, "lando");
+        await copyFile(compiledCli, binary);
+        await writeFile(
+          join(root, "package.json"),
+          JSON.stringify({
+            scripts: { v: "lando version", b: "bun --version", recursive: "lando bun --version" },
+          }),
+        );
+        const env = {
+          HOME: root,
+          PATH: pathMode === "binary" ? bin : empty,
+          LANDO_USER_CACHE_ROOT: join(root, "cache"),
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+        };
+        const spawnOptions = {
+          cwd: root,
+          env,
+          stdout: "pipe",
+          stderr: "pipe",
+        } as const;
+        const versionChild = Bun.spawn([binary, "version"], spawnOptions);
+        const version = (await new Response(versionChild.stdout).text()).trim();
+        expect(await versionChild.exited).toBe(0);
+        const bunChild = Bun.spawn([binary, "bun", "--version"], spawnOptions);
+        const bunVersion = (await new Response(bunChild.stdout).text()).trim();
+        expect(await bunChild.exited).toBe(0);
+        expect(bunVersion).not.toBe(version);
+        // When
+        for (const [script, expected] of [
+          ["v", version],
+          ["b", bunVersion],
+          ["recursive", undefined],
+        ] as const) {
+          const child = Bun.spawn([binary, "bun", "run", script], spawnOptions);
+          const [exitCode, stdout, stderr] = await Promise.all([
+            child.exited,
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ]);
+          // Then
+          if (expected === undefined) {
+            expect(exitCode).not.toBe(0);
+            expect(stderr + stdout).toContain("Recursive `lando bun` invocation detected");
+          } else {
+            expect(exitCode, stderr || stdout).toBe(0);
+            expect(stdout.trim()).toBe(expected);
+          }
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test.each(["binary", "empty"] as const)(
     "runs nested lando with %s PATH",
     async (pathMode) => {
       // Given: PATH contains only the relocated binary or an empty directory.

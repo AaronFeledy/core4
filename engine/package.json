@@ -141,6 +141,7 @@
     "./services/build-key": "./src/services/build-key.ts",
     "./services/build-orchestrator": "./src/services/build-orchestrator.ts",
     "./services/build-results": "./src/services/build-results.ts",
+    "./services/bun-command-env": "./src/services/bun-command-env.ts",
     "./services/bundled-global-service-loader": "./src/services/bundled-global-service-loader.ts",
     "./services/command-registry": "./src/services/command-registry.ts",
     "./services/config": "./src/services/config.ts",
