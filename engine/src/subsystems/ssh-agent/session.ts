@@ -42,29 +42,25 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
 };
 
 export const runtimeSshAgentState = Effect.gen(function* () {
-  // Only failures after observing a running container mean its agent may still be starting.
-  let running = false;
-  return yield* Effect.gen(function* () {
-    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registry)) return "stopped" as const;
-    const provider = yield* registry.value.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
-    const service = yield* provider.inspect(target);
-    const status = service.state ?? service.status;
-    if (status === "restarting") return "starting" as const;
-    if (status !== "running") return "stopped" as const;
-    running = true;
-    const result = yield* provider.exec(target, {
-      command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
-      stdin: "ignore",
-    });
-    return result.exitCode === 0 ? ("ready" as const) : ("starting" as const);
-  }).pipe(
-    // Covers provider select, inspect, and an exec round-trip; a Podman machine exec can exceed 2s.
-    Effect.timeout("5 seconds"),
-    Effect.catch(() => Effect.succeed(running ? ("starting" as const) : ("stopped" as const))),
-  );
-});
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  if (Option.isNone(registry)) return "stopped" as const;
+  const provider = yield* registry.value.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
+  const service = yield* provider.inspect(target);
+  const status = service.state ?? service.status;
+  if (status === "restarting") return "starting" as const;
+  if (status !== "running") return "stopped" as const;
+  const result = yield* provider.exec(target, {
+    command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
+    stdin: "ignore",
+  });
+  return result.exitCode === 0 ? ("ready" as const) : ("starting" as const);
+}).pipe(
+  // Covers provider select, inspect, and an exec round-trip; a Podman machine exec can exceed 2s.
+  Effect.timeout("5 seconds"),
+  // Only an observed non-running container is "stopped"; a failed or slow probe proves nothing yet.
+  Effect.catch(() => Effect.succeed("starting" as const)),
+);
 
 export const runtimeSshAgentReady = runtimeSshAgentState.pipe(Effect.map((state) => state === "ready"));
 

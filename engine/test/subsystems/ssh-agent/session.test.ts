@@ -91,7 +91,7 @@ test.each([
 });
 
 test.each([false, true])(
-  "timeout after running=%s preserves the observed container state",
+  "a probe timeout after running=%s reads as starting, not stopped",
   async (running) => {
     // Given
     const provider = {
@@ -123,7 +123,7 @@ test.each([false, true])(
       ),
     );
     // Then
-    expect(state).toBe(running ? "starting" : "stopped");
+    expect(state).toBe("starting");
   },
 );
 
