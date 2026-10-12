@@ -1,15 +1,63 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 
 import { Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
-import { engineApiFailure, missingApi, parseEngineJson, transportFailure } from "../src/engine-errors.ts";
+import {
+  apiResponseFailure,
+  engineApiFailure,
+  missingApi,
+  parseEngineJson,
+  transportFailure,
+} from "../src/engine-errors.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
 const ctx = { providerId: "test-provider", remediation: "Run the provider doctor." } as const;
 
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
+
 describe("container engine error mapping", () => {
+  test("redacts runtime-registered values in API failure messages and details", () => {
+    // Given
+    const canary = "opaque-api-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const response = { status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) };
+    // When
+    const error = apiResponseFailure(ctx, "start", response, "Start failed.");
+    // Then
+    expect(error.message).not.toContain(canary);
+    expect(error.message).toBe("Start failed. engine said [redacted]");
+    expect(JSON.stringify(error.details)).not.toContain(canary);
+    expect(error.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
+    expect(error.providerId).toBe(ctx.providerId);
+    expect(error.operation).toBe("start");
+  });
+
+  test("redacts runtime-registered values in transport failure messages and details", () => {
+    // Given
+    const canary = "opaque-transport-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const cause = new ContainerTransportError({
+      kind: "connect",
+      operation: "transport",
+      message: `Socket ${canary} unavailable.`,
+      details: { status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) },
+    });
+    // When
+    const error = transportFailure(ctx, "start", cause);
+    // Then
+    expect(error.message).not.toContain(canary);
+    expect(error.message).toBe("Socket [redacted] unavailable. engine said [redacted]");
+    expect(JSON.stringify(error.details)).not.toContain(canary);
+    expect(error.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
+    expect(error.providerId).toBe(ctx.providerId);
+    expect(error.operation).toBe("start");
+    expect(error.cause).toBe(cause);
+  });
+
   test("maps parse transport failures to internal errors", () => {
     // Given
     const cause = new ContainerTransportError({

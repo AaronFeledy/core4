@@ -68,6 +68,7 @@
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "container-runtime", "provider"],
   "dependencies": {
+    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },

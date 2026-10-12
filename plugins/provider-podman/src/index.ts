@@ -520,7 +520,7 @@ const podmanUnavailable = (operation: string, socketPath: string, cause?: unknow
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message: `The Podman socket "${socketPath}" is not reachable.`,
+    message: redactString(`The Podman socket "${socketPath}" is not reachable.`),
     remediation:
       "Ensure your user-installed Podman is running (e.g. `systemctl --user start podman.socket` on Linux). Verify the socket path or `DOCKER_HOST` env. Run `lando doctor` for a full diagnostic.",
     ...(cause === undefined ? {} : { cause }),

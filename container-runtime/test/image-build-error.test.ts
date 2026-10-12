@@ -1,10 +1,43 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Effect, Schema } from "effect";
 
 import { encodeCommandResult } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { requestContainerBuild } from "../src/image-build-http.ts";
+
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
+
+test.each(["error", "errorDetail"] as const)(
+  "redacts runtime-registered values in daemon %s frames",
+  async (field) => {
+    // Given
+    const canary = "opaque-build-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const message = `engine said ${canary}; exit status 1`;
+    const frame = field === "error" ? { error: message } : { errorDetail: { message } };
+    const request = () => Effect.succeed({ status: 200, body: JSON.stringify(frame) });
+    // When
+    const failure = await Effect.runPromise(
+      Effect.flip(
+        requestContainerBuild({
+          request,
+          options: { providerId: "docker", api: { request } },
+          path: "/build",
+          tag: "lando-web",
+          stdin: (async function* () {})(),
+          secretValues: [],
+        }),
+      ),
+    );
+    // Then
+    expect(failure._tag).toBe("ArtifactBuildError");
+    expect(failure.message).toContain("engine said [redacted]; exit status 1");
+    expect(JSON.stringify(failure)).not.toContain(canary);
+  },
+);
 
 test.each(["error", "errorDetail"] as const)("projects a redacted daemon %s frame", async (field) => {
   // Given

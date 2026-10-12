@@ -10,6 +10,7 @@ import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
 } from "@lando/container-runtime/podman/version-floor";
+import { redactString } from "@lando/container-runtime/redact";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
@@ -398,7 +399,7 @@ const machineFailure = (
     message:
       diagnostics.length === 0
         ? `Podman machine ${operation} failed.`
-        : `Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`,
+        : redactString(`Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`),
     remediation: "Fix the Podman machine error and rerun `lando setup`.",
     cause,
   });
