@@ -36,6 +36,12 @@ describe("artifact build step user switching", () => {
       `FROM ${baseTag}\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER runtime-only\nRUN compile-as-app\n`,
     );
     expect(dockerfile?.match(/^USER .+$/gmu)?.at(-1)).toBe("USER runtime-only");
+    const builds = capture.requests.filter((entry) => entry.path.startsWith("/build?"));
+    expect(builds).toHaveLength(2);
+    expect(builds.map((entry) => new URLSearchParams(entry.path.split("?")[1]).get("forcerm"))).toEqual([
+      "true",
+      "true",
+    ]);
   });
 
   test.each([
@@ -105,10 +111,10 @@ describe("artifact build step user switching", () => {
       );
       // Then
       expect(capture.requests.map((entry) => `${entry.method} ${entry.path}`)).toEqual([
-        `POST /build?t=${baseTag}&dockerfile=Dockerfile`,
+        `POST /build?t=${baseTag}&dockerfile=Dockerfile&forcerm=true`,
         `GET /images/${baseTag}/json`,
         `GET /images/${baseTag}/json`,
-        `POST /build?t=${tag}&dockerfile=Dockerfile`,
+        `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
         `GET /images/${tag}/json`,
       ]);
       expect((await capture.dockerfiles())[1]).toBe(
@@ -130,7 +136,7 @@ describe("artifact build step user switching", () => {
       );
       // Then: only the existing final-tag availability check, never a parent inspection.
       expect(capture.requests.map((entry) => `${entry.method} ${entry.path}`)).toEqual([
-        `POST /build?t=${tag}&dockerfile=Dockerfile`,
+        `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
         `GET /images/${tag}/json`,
       ]);
       expect(await capture.dockerfiles()).toEqual(["FROM debian:12\nRUN compile\n"]);

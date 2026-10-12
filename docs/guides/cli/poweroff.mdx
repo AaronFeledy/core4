@@ -46,6 +46,8 @@ not required for scripts.
 
 User apps stop first, followed by scratch cleanup, then the global app.
 Lando stops the managed runtime service only after all targeted apps stop.
+Before it does, Lando removes containers that image builds left behind, so
+their storage helpers don't keep running.
 If an app cannot stop, the command fails with that app's id and remediation
 instead of reporting it as powered off. The runtime stays available so you
 can resolve the failure and retry.

@@ -1,12 +1,16 @@
 import { readFile, rm } from "node:fs/promises";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+
+import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
+import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 
 import {
   type ExecConmonReaper,
   managedConmonPathForPodman,
   reapLingeringExecConmons,
 } from "./exec-conmon.ts";
+import { LANDO_CTX } from "./provider-context.ts";
 
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
@@ -50,6 +54,7 @@ export interface RuntimeServiceSeams {
   readonly process?: ProcessSeam;
   readonly fs?: FsSeam;
   readonly execConmon?: ExecConmonReaper;
+  readonly apiClient?: (socketPath: string) => EngineHttpApi;
 }
 
 type TerminationResult = { readonly terminated: boolean; readonly pid?: number };
@@ -171,6 +176,35 @@ export const verifyOwnedRuntimePid = (
   processSeam: ProcessSeam = realProcessSeam,
 ): Effect.Effect<boolean> => ownedRuntimePid(spec, processSeam).pipe(Effect.map((pid) => pid !== undefined));
 
+const defaultApiClient = (socketPath: string): EngineHttpApi => makePodmanApiClient(socketPath, LANDO_CTX);
+
+const StorageContainers = Schema.fromJsonString(
+  Schema.Array(Schema.Struct({ Id: Schema.String, State: Schema.optionalKey(Schema.String) })),
+);
+
+/**
+ * A FROM-only, failed, or interrupted build can leave its working container in
+ * storage with the rootfs still mounted, and each mount keeps a fuse-overlayfs
+ * helper alive after the service exits. Removing those storage-only containers
+ * through the service unmounts them; Podman-managed containers are left alone.
+ */
+const reclaimLeftoverBuildContainers = Effect.fnUntraced(function* (api: EngineHttpApi) {
+  const request = api.request;
+  if (request === undefined) return;
+  const response = yield* request({ method: "GET", path: "/libpod/containers/json?all=true&external=true" });
+  if (response.status < 200 || response.status >= 300) return;
+  const containers = yield* Schema.decodeUnknownEffect(StorageContainers)(response.body);
+  yield* Effect.forEach(
+    containers.filter((container) => container.State === "storage"),
+    (container) =>
+      request({
+        method: "DELETE",
+        path: `/libpod/containers/${encodeURIComponent(container.Id)}?force=true`,
+      }).pipe(Effect.catch(() => Effect.void)),
+    { discard: true },
+  );
+});
+
 export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOwnedRuntimeService")(
   function* (
     spec: ManagedRuntimeServiceSpec,
@@ -182,6 +216,11 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
     const pid = yield* ownedRuntimePid(spec, processSeam);
     const result = yield* Effect.gen(function* () {
       if (pid === undefined) return { terminated: false };
+
+      yield* reclaimLeftoverBuildContainers((seams.apiClient ?? defaultApiClient)(spec.socketPath)).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.catch(() => Effect.void),
+      );
 
       const terminated = yield* processSeam.terminate(pid).pipe(
         Effect.as(true),

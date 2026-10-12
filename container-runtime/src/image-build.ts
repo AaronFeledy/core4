@@ -103,6 +103,8 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
   } else {
     params.set("dockerfile", "Dockerfile");
   }
+  // Buildah keeps mounted stage containers after FROM-only, failed, or interrupted builds without forcerm.
+  params.set("forcerm", "true");
   return `/build?${params.toString()}`;
 };
 
