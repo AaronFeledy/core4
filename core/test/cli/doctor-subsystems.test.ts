@@ -421,14 +421,14 @@ describe("meta:doctor subsystem checks", () => {
       expect(proxy?.solutions[0]?.description).toContain("8080");
       expect(proxy?.solutions[0]?.description).toContain("8443");
       expect(proxy?.solutions[0]?.description).toContain("lando info");
-      expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
+      expect(proxy?.solutions[0]?.command).toBe("lando global:stop && lando setup");
       expect(proxy?.solutions[0]?.description).not.toContain("38080");
     } finally {
       acquisition.cleanup();
     }
   });
 
-  test("uses restart advice when occupied-hop router is stopped", async () => {
+  test("uses stop-then-setup advice when occupied-hop router is stopped", async () => {
     const acquisition = writeAcquisitionState("occupied-hop");
     const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     const layer = Layer.mergeAll(
@@ -442,7 +442,7 @@ describe("meta:doctor subsystem checks", () => {
       const proxy = result.checks.find((check) => check.name === "router");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.context.ready).toBe("false");
-      expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
+      expect(proxy?.solutions[0]?.command).toBe("lando global:stop && lando setup");
       expect(proxy?.solutions[0]?.description).toContain("any occupied preferred ports");
       expect(proxy?.solutions[0]?.description).toContain("Lando last selected HTTP");
     } finally {

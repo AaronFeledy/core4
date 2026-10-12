@@ -35,13 +35,14 @@ User surfaces say **router** and **routes**. Service `routes:` is preferred; top
 - `router.enabled: false`, resolved by normal precedence (§7.4, §7.5), MUST prevent router startup and publication for the app. `lando info` reports only published endpoints.
 - Route priority is one shared space across every app, derived from the route alone under §6.6. A router that publishes its own routers (dashboard, diagnostics, fallback) MUST pin them outside the app bands defined there: diagnostic fallbacks at `ROUTE_PRIORITY_DIAGNOSTIC`, router-owned hostnames above `ROUTE_PRIORITY_MAX`. Otherwise an app that claims the same hostname captures them.
 - `RouterService.revalidateStartup` re-observes the running router's startup against its live state and refreshes whatever persisted startup observation the implementation keeps. It is distinct from `setup`: it acquires no ports, starts no services, and takes no `Scope`. It fails with `ProxyError` or `RouterWatcherError`. An unavailable router implements it as a no-op, so a record left by an earlier router stays reported until a selected router revalidates it.
+- `applyRoutes` and `removeRoutes` MUST NOT require `setup` in the same process. Global lifecycle commands publish routes without it (§20.6.5), so `applyRoutes` reports authorities and maintains TLS for the router state the last `setup` established.
 - A remediation MUST NOT name a command that cannot affect the condition it diagnoses. Every operation named as a recovery step for a router diagnostic (`lando global:restart`, `lando global:rebuild`, `lando setup`, `lando doctor --fix`) MUST run `revalidateStartup` on success so a cleared condition clears its record (§20.6.5).
 
 #### 10.2.1 Default global-app realization
 
 The `@lando/proxy-traefik` router layer realizes routing through the global app's `traefik` service (§20). The plugin MUST contribute paired `routerServices:` and `globalServices:` entries; otherwise plugin loading fails with `ProxyContributionPairError`.
 
-- `applyRoutes` persists plugin-owned dynamic configuration in a Lando-managed mount; `setup` calls `GlobalAppService.ensureRunning(["traefik"])`.
+- `applyRoutes` persists plugin-owned dynamic configuration in a Lando-managed mount; `setup` calls `GlobalAppService.ensureRunning(["traefik"])`. `setup` persists the configured default domain beside the port-acquisition state, and a process that has not run `setup` reads both before applying routes.
 - `setup` and `revalidateStartup` read the router's startup log once, classify file-watcher failures (`inotify-limit`, `disk`, `permission`, `other`), and either clear or rewrite a persisted watcher-diagnostic record under the global app root. A classified failure fails with `RouterWatcherError` carrying `failureClass`, `watcherHost`, redacted `detail`, and ordered remediation. `stop` removes the record. The `router-file-watcher` doctor check reports the record as an unrevalidated observation and never clears it or probes live.
 - Alternative `RouterService` plugins MAY avoid `GlobalAppService`; selection follows §4.3.
 - A legacy out-of-band Traefik container produces `LegacyProxyContainerDetected`; migration is plugin-supplied (§20.10.3).
@@ -72,11 +73,11 @@ The default router publishes one host-global HTTP/HTTPS pair on `127.0.0.1`; URL
 - Global and Landofile `router:` support `enabled`, `bindAddress`, `httpPort`, `httpsPort`, `httpFallbacks`, and `httpsFallbacks`; env keys are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, plus JSON-document fallback setters.
 - `httpPort` and `httpsPort` replace preferred candidates; fallback arrays replace remaining candidates; an empty fallback list means preferred-only.
 - Precedence is compiled defaults, global `router:`, env, then Landofile `router:`. `pluginConfig."@lando/proxy-traefik"` MUST NOT duplicate this surface.
-- An already-running router's persisted pair wins. An app-specific mismatch fails with a tagged error and remediation to align config or run `lando global:restart`.
+- An already-running router's persisted pair wins. An app-specific mismatch fails with a tagged error and remediation to align the pin with the running pair, or to set it in installation config and run `lando global:stop` then `lando setup`. Global restart never re-acquires ports (§20.6.5).
 - The chosen pair is the only Traefik host publish. It is persisted and reused while config and ownership still match; changed preference, missing router, or foreign ownership causes rescan.
 - Privileged-port `EACCES` MAY use the socket helper and then the same ordered high-port candidates. A healthy peer Lando router MUST NOT be treated as stale `rootlessport`.
 - Exhaustion fails closed with the attempted ports; silent disablement is forbidden.
-- Fallback selection MUST notify at acquisition, naming occupied preferred ports, chosen ports, identifiable holders, and `lando global:restart` remediation.
+- Fallback selection MUST notify at acquisition, naming occupied preferred ports, chosen ports, identifiable holders, and `lando info`. The doctor recovery for a fallback pair is to free the preferred ports, then run `lando global:stop` and `lando setup`; a stopped router is missing, so setup rescans.
 - `lando doctor` MUST warn, not fail, for non-Lando holders of preferred ports and offer holder-specific remediation for DDEV, Lando 3, Docksal, Apache, nginx, Caddy, IIS/`http.sys`, or unknown processes. `LegacyProxyContainerDetected` remains the sole legacy-proxy owner.
 - Doctor and `EADDRINUSE` remapping MUST use persisted chosen ports.
 

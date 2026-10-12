@@ -32,15 +32,20 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(function* (
 ): Effect.fn.Return<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> {
   yield* globalStop();
   const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal }).pipe(
-    Effect.catchTag("GlobalAppError", (error) =>
-      Effect.gen(function* () {
+    Effect.catchTags({
+      GlobalAppError: Effect.fnUntraced(function* (error) {
         if (error.operation === "start") {
           const router = yield* RouterService;
           yield* Effect.result(router.revalidateStartup);
         }
         return yield* Effect.fail(error);
       }),
-    ),
+      ProxyApplyError: Effect.fnUntraced(function* (error) {
+        const router = yield* RouterService;
+        yield* Effect.result(router.revalidateStartup);
+        return yield* Effect.fail(error);
+      }),
+    }),
   );
   // The router is the reason this command is prescribed as a recovery step,
   // so re-observe its startup here: without it a restart cannot affect the

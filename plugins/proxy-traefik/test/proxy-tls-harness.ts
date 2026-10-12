@@ -4,6 +4,7 @@ import type { CaError } from "@lando/sdk/errors";
 import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, CertificateSpec } from "@lando/sdk/services";
 
+import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 
 export const app = AppId.make("demo/app");
@@ -47,8 +48,10 @@ export const makeHarness = (issueFailure?: CaError) => {
       });
     },
   };
-  const service = makeTraefikRouterService({
+  const dependencies: TraefikProxyDependencies = {
     certificateAuthority,
+    probeBind: () => Effect.succeed({ kind: "success" }),
+    probeForward: () => Effect.succeed({ kind: "success" }),
     fileSystem: {
       mkdir: (path) => Effect.sync(() => void operations.push(`mkdir:${path}`)),
       writeAtomic: (path, content) =>
@@ -87,6 +90,7 @@ export const makeHarness = (issueFailure?: CaError) => {
           },
         ]),
     },
-  });
-  return { calls, files, operations, service };
+  };
+  const makeService = () => makeTraefikRouterService(dependencies);
+  return { calls, files, operations, service: makeService(), makeService };
 };
