@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 
 import { Effect, Schema } from "effect";
 
@@ -27,7 +28,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["4"] });
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
-  ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? "lando");
+  ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addStorage({
     store: `${appName}-rabbitmq-data`,
     target: DATA_TARGET,
@@ -75,7 +76,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
       { hostname: `${input.name}.${appName}.lndo.site`, endpoint: MANAGEMENT_PORT },
     ];
     const managementUser = input.service.environment?.RABBITMQ_DEFAULT_USER ?? "lando";
-    const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? "lando";
+    const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD;
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {

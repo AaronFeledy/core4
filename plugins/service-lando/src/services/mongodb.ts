@@ -1,3 +1,4 @@
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
@@ -42,7 +43,7 @@ const credsFor = (
           },
         }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
-    defaults: { user: "lando", password: "lando", database: appNameFor(input) },
+    defaults: { user: "lando", password: DEFAULT_PASSWORD, database: appNameFor(input) },
     ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };

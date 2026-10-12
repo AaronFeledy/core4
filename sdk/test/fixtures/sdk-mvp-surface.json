@@ -1,5 +1,11 @@
 {
   "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
+  "publicDefaultCredentialExports": [
+    "DEFAULT_PASSWORD",
+    "MINIO_DEFAULT_PASSWORD",
+    "PUBLIC_DEFAULT_CREDENTIALS",
+    "isPublicDefaultCredential"
+  ],
   "schemaNames": [
     "AppId",
     "AppPlan",

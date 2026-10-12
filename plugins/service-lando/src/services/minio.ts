@@ -1,3 +1,4 @@
+import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
@@ -14,7 +15,7 @@ const CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
 
 export const MINIO_FEATURE_ID = "service-lando.minio";
-export const MINIO_DEFAULT_ROOT_PASSWORD = "landolando";
+export const MINIO_DEFAULT_ROOT_PASSWORD = MINIO_DEFAULT_PASSWORD;
 
 const bucketNameFor = (value: string): string => {
   const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");

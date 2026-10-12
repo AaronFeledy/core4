@@ -1,5 +1,6 @@
 import { Clock, DateTime, Effect, Layer, Option, Stream } from "effect";
 
+import { redactString } from "@lando/container-runtime/redact";
 import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
@@ -12,7 +13,6 @@ import {
   type RoutePlan,
   ServiceName,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   CertificateAuthority,
   EventService,
@@ -92,7 +92,6 @@ export { renderTraefikDynamicConfig } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
-const secretsRedactor = createRedactor("secrets");
 
 /**
  * Selecting a provider reads only `plan.provider`. The host-level global app that
@@ -130,7 +129,7 @@ const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(f
     yield* clearWatcherDiagnostic(dependencies.fileSystem, dependencies.paths);
     return;
   }
-  const redact = dependencies.redactDiagnostic ?? secretsRedactor.redactString;
+  const redact = dependencies.redactDiagnostic ?? redactString;
   const detail = boundWatcherDetail(redact(hit.detail));
   const watcherHost = watcherHostLabel({
     providerId: observation.providerId,
