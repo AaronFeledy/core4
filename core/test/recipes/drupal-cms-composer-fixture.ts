@@ -17,7 +17,7 @@ case 'create-project':
     $target = $positional[1];
     if (!in_array('--no-install', $args, true) || !in_array('--no-scripts', $args, true)) exit(2);
     mkdir($target . '/web/core/lib', 0777, true);
-    $write($target . '/composer.json', ['require' => ['drupal/cms' => '^2.0', 'drupal/drupal_cms_starter' => '^2'], 'repositories' => ['drupal' => ['type' => 'composer', 'url' => 'https://packages.drupal.org/8']], 'scripts' => ['post-update-cmd' => 'rm -f vendor/bin/composer']]);
+    $write($target . '/composer.json', ['require' => ['drupal/cms' => '^2.0'], 'repositories' => ['drupal' => ['type' => 'composer', 'url' => 'https://packages.drupal.org/8']], 'scripts' => ['post-update-cmd' => 'rm -f vendor/bin/composer']]);
     file_put_contents($target . '/web/early.txt', "early\n");
     file_put_contents($target . '/web/core/lib/Drupal.php', "late\n");
     if ($legacyLog = getenv('COMPOSER_LOG')) {
@@ -94,6 +94,10 @@ case 'install':
     if ($mode === 'installed-extra') $metadata['extra'] = ['installer-name' => 'evil'];
     mkdir($target . '/web/modules/contrib/svg_image/.git', 0777, true);
     $write($target . '/web/modules/contrib/svg_image/composer.json', $metadata);
+    if (isset($root['require']['drupal/drupal_cms_starter'])) {
+        mkdir($target . '/recipes/drupal_cms_starter', 0777, true);
+        file_put_contents($target . '/recipes/drupal_cms_starter/recipe.yml', "name: Starter\n");
+    }
     exit(0);
 case 'run-script':
     $root = $read($target . '/composer.json');
