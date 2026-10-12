@@ -11,7 +11,7 @@ import type {
 } from "../engine-api.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
-import { withApiReason } from "../redact.ts";
+import { redactString, withApiReason } from "../redact.ts";
 import {
   type SocketHttpConnection,
   connectSocket,
@@ -258,7 +258,7 @@ export const makeUnixDockerApiClient = (
           providerId: ctx.providerId,
           operation: "docker-api",
           message: "Docker API response did not include an HTTP status code.",
-          details: stdout,
+          details: redactString(stdout),
         }),
       );
     }

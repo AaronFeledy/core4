@@ -39,6 +39,32 @@ test.each(["error", "errorDetail"] as const)(
   },
 );
 
+test.each([
+  ["a build argument that prefixes it", "shared-private-suffix", ["shared"]],
+  ["a secret pattern inside it", "opaque password=inner private-suffix", []],
+] as const)("masks a registered value whole despite %s", async (_case, canary, buildArgs) => {
+  // Given
+  Effect.runSync(registerRedactionValues([canary]));
+  const request = () =>
+    Effect.succeed({ status: 200, body: JSON.stringify({ error: `engine said ${canary}; exit status 1` }) });
+  // When
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      requestContainerBuild({
+        request,
+        options: { providerId: "docker", api: { request } },
+        path: "/build",
+        tag: "lando-web",
+        stdin: (async function* () {})(),
+        secretValues: buildArgs,
+      }),
+    ),
+  );
+  // Then
+  expect(failure.message).toContain("engine said [redacted]; exit status 1");
+  expect(JSON.stringify(failure)).not.toContain("private-suffix");
+});
+
 test.each(["error", "errorDetail"] as const)("projects a redacted daemon %s frame", async (field) => {
   // Given
   const daemonMessage = 'building at STEP "RUN mkdir -p /etc/lando": password=hunter2 exit status 1';

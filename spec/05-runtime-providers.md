@@ -190,7 +190,7 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `ServiceCopyError` | Service file transfer failed. |
 | `ArtifactTransferError` | Artifact export or import failed. |
 
-Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details`, optional `remediation`, and an optional original `cause` for debug logs.
+Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details` when present, optional `remediation`, and an optional original `cause` for debug logs. `message` and `details` MUST already be redacted with the live value set when the error is returned, so library callers see the same masking as CLI output.
 
 ### 5.8 Bundled providers
 

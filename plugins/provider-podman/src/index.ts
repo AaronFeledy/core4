@@ -537,12 +537,14 @@ export class PodmanServerVersionUnsupportedError extends ProviderUnavailableErro
     super({
       providerId: PROVIDER_ID,
       operation: "select",
-      message: `Podman server version "${observedVersion}" (reported by the Podman API /libpod/info) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
-      details: {
+      message: redactString(
+        `Podman server version "${observedVersion}" (reported by the Podman API /libpod/info) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+      ),
+      details: redactDetails({
         observedVersion,
         source: "libpod-info",
         minimumVersion: MINIMUM_PODMAN_VERSION,
-      },
+      }),
       remediation: `Upgrade Podman Desktop or your system Podman to >= ${MINIMUM_PODMAN_VERSION}, then retry.`,
     });
   }
