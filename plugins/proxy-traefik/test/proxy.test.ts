@@ -11,8 +11,9 @@ import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 
-const app = AppId.make("demo");
 afterEach(resetRegisteredRedactionValuesForTesting);
+
+const app = AppId.make("demo");
 const routes = [
   {
     hostname: "api.demo.lndo.site",
