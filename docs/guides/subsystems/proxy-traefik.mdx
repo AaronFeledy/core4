@@ -26,7 +26,7 @@ lando info
 lando doctor --format=json
 ```
 
-`lando doctor --format=json` puts `preferred-host-ports` in `result.provider.checks`. That check is `warn` with `runtimeStatus: preferred-port-occupied` when something else owns 80 or 443. The `router` check in `result.subsystems.checks` sets `context.acquisitionMode` to `occupied-hop` and reports the selected `httpPort` and `httpsPort`. Use the URL from `lando info`. To move back to your preferred ports, free them, then run `lando global:stop` and `lando setup`.
+`lando doctor --format=json` puts `preferred-host-ports` in `result.provider.checks`. That check is `warn` with `runtimeStatus: preferred-port-occupied` when something else owns 80 or 443. The `router` check in `result.subsystems.checks` sets `context.acquisitionMode` to `occupied-hop` and reports the selected `httpPort` and `httpsPort`. Use the URL from `lando info`. To move back to your preferred ports, free them, then run `lando setup`.
 
 ## Prepare HTTPS
 
@@ -77,12 +77,10 @@ router:
 
 This Landofile prefers 8080 and 8443, then walks the rest of each list. The same `router` block works in the installation `config.yml`. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values must be JSON arrays such as `[8000,8888]`. The default bind address is `127.0.0.1`.
 
-Router ports are shared by every app. After changing the `router` block in `config.yml`, stop the global app, then run setup. Setup picks the new ports and starts Traefik on them. `lando global:restart` keeps the ports Traefik already has.
+Router ports are shared by every app. After changing the `router` block in `config.yml`, run `lando setup`. Setup rescans the candidate ports and moves Traefik to the pair it picks, even while Traefik is running. Starting an app that uses the router also picks up changed router ports; with unchanged config, app and scratch starts keep the owned pair so URLs stay stable. `lando global:restart` keeps the ports Traefik already has.
 
 ```sh
-lando global:stop
 lando setup
-lando global:start
 lando info
 ```
 

@@ -67,17 +67,18 @@ Tagged errors are `TunnelProviderUnavailableError`, `TunnelTargetUnresolvedError
 
 #### 10.2.3 Host-port acquisition
 
-The default router publishes one host-global HTTP/HTTPS pair on `127.0.0.1`; URLs omit ports `80` and `443`. Ports come from fixed ordered per-protocol candidate lists, with first successful TCP bind winning; HTTP reachability MUST NOT determine availability.
+The default router publishes one host-global HTTP/HTTPS pair on `127.0.0.1`; URLs omit ports `80` and `443`. Ports come from fixed ordered per-protocol candidate lists, with the first available candidate winning. TCP bind outcomes determine availability, subject to the router-ownership and socket-helper rules below; HTTP reachability MUST NOT determine availability.
 
 - The HTTP order is `80`, `8080`, `8000`, `8888`, `8008`, `38080`; HTTPS is `443`, `8443`, `4443`, `4433`, `4444`, `444`, `38443`.
 - Global and Landofile `router:` support `enabled`, `bindAddress`, `httpPort`, `httpsPort`, `httpFallbacks`, and `httpsFallbacks`; env keys are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, plus JSON-document fallback setters.
 - `httpPort` and `httpsPort` replace preferred candidates; fallback arrays replace remaining candidates; an empty fallback list means preferred-only.
 - Precedence is compiled defaults, global `router:`, env, then Landofile `router:`. `pluginConfig."@lando/proxy-traefik"` MUST NOT duplicate this surface.
-- An already-running router's persisted pair wins. An app-specific mismatch fails with a tagged error and remediation to align the pin with the running pair, or to set it in installation config and run `lando global:stop` then `lando setup`. Global restart never re-acquires ports (§20.6.5).
-- The chosen pair is the only Traefik host publish. It is persisted and reused while config and ownership still match; changed preference, missing router, or foreign ownership causes rescan.
+- App-specific pins MUST NOT replace an already-running router's persisted pair. An app-specific mismatch fails with a tagged error and remediation to align the pin with the running pair, or to set it in installation config and run `lando setup`. Global restart never re-acquires ports (§20.6.5).
+- The chosen pair is the only Traefik host publish. App start, including its router setup step, and scratch startup reuse an owned persisted pair while its bind address and preferred candidates are unchanged and both selected ports remain candidates; otherwise acquisition rescans. Explicit `lando setup` MUST pass `reacquirePorts` to router setup, which then always rescans.
+- During a rescan, an `EADDRINUSE` candidate MUST count as available when provider ownership verification shows the global app's `traefik` service publishes it; missing or failed verification keeps it occupied.
 - Privileged-port `EACCES` MAY use the socket helper and then the same ordered high-port candidates. A healthy peer Lando router MUST NOT be treated as stale `rootlessport`.
 - Exhaustion fails closed with the attempted ports; silent disablement is forbidden.
-- Fallback selection MUST notify at acquisition, naming occupied preferred ports, chosen ports, identifiable holders, and `lando info`. The doctor recovery for a fallback pair is to free the preferred ports, then run `lando global:stop` and `lando setup`; a stopped router is missing, so setup rescans.
+- Fallback selection MUST notify at acquisition, naming occupied preferred ports, chosen ports, identifiable holders, and `lando info`. The doctor recovery for a fallback pair is to free the preferred ports, then run `lando setup`.
 - `lando doctor` MUST warn, not fail, for non-Lando holders of preferred ports and offer holder-specific remediation for DDEV, Lando 3, Docksal, Apache, nginx, Caddy, IIS/`http.sys`, or unknown processes. `LegacyProxyContainerDetected` remains the sole legacy-proxy owner.
 - Doctor and `EADDRINUSE` remapping MUST use persisted chosen ports.
 
