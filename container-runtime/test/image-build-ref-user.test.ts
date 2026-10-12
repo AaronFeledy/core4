@@ -117,10 +117,10 @@ test("materializes a digest-pinned base before inherited-user inspection", async
 
   // Then
   expect(first.paths).toEqual([
-    `POST /build?t=${baseTag}&dockerfile=Dockerfile`,
+    `POST /build?t=${baseTag}&dockerfile=Dockerfile&forcerm=true`,
     `GET /images/${baseTag}/json`,
     `GET /images/${baseTag}/json`,
-    `POST /build?t=${tag}&dockerfile=Dockerfile`,
+    `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
     `GET /images/${tag}/json`,
   ]);
   expect(first.dockerfiles).toEqual([
@@ -150,10 +150,10 @@ test("inspects a referenced parent for an authored service user even without ste
 
   // Then
   expect(result.paths).toEqual([
-    `POST /build?t=${baseTag}&dockerfile=Dockerfile`,
+    `POST /build?t=${baseTag}&dockerfile=Dockerfile&forcerm=true`,
     `GET /images/${baseTag}/json`,
     `GET /images/${baseTag}/json`,
-    `POST /build?t=${tag}&dockerfile=Dockerfile`,
+    `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
     `GET /images/${tag}/json`,
   ]);
   expect(result.dockerfiles).toEqual([

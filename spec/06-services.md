@@ -54,6 +54,8 @@ Build instructions use named, weighted, user-scoped groups. Final order follows 
 
 `sourcefile:` is the provider-neutral external build-definition key. Compose build fields normalize when possible; other provider aliases belong in provider schemas. Build secrets and SSH require `buildSecrets` and `buildSsh`. Artifact tags are not assumed globally meaningful or pushable.
 
+Artifact builds, including setup probes, MUST remove their temporary build containers and release those containers' mounts whether the build succeeds, fails, or is cancelled. Built artifacts and reusable build cache MAY remain.
+
 ### 6.4 App mounts and mounts
 
 `appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, planning sets `workingDirectory`, exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT`, and records the result in `ServiceInfo`.

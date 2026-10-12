@@ -200,6 +200,8 @@ All bundled providers implement the complete `RuntimeProvider` contract.
 
 The default provider uses Podman privately but presents the “Lando runtime” to users. It owns verified runtime bundles, private configuration and storage, its API endpoint, and managed macOS/Windows machines under Lando-controlled roots (§12.4). Production bundle entries MUST name immutable published assets with real checksums and sizes and MUST remain available for older binaries. Overrides MAY redirect development to another manifest or paired URL/checksum but MUST NOT disable verification. Resolution precedence is alternate manifest, paired URL/checksum, then bundled manifest; there is no channel-aware or runtime-fetched production manifest.
 
+Before it stops its runtime service, the provider makes a bounded, best-effort attempt to remove build-only containers left in its private storage. That attempt MUST NOT remove service containers, volumes, artifacts, or build cache, and its failure MUST NOT block the stop.
+
 Podman-backed providers require Podman 6 or newer. Supported managed hosts are Apple Silicon macOS, Windows 11 or newer, and Linux with cgroups v2 and nftables; rootless networking uses Pasta with Netavark/Aardvark. Unsupported legacy stacks MUST fail closed with tagged remediation.
 
 Intel macOS is unsupported by the managed provider. Setup, bundle resolution, runtime readiness, and status MUST fail closed with remediation naming `lando setup --provider=docker` or `LANDO_PROVIDER=docker`; the provider remains discoverable so dependent capability selection does not silently skip it.

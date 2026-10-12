@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect } from "effect";
+import { Deferred, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
+import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makeLandoPaths } from "@lando/paths";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ExecConmonReaper } from "../src/exec-conmon.ts";
 import {
   type FsSeam,
@@ -107,6 +110,152 @@ describe("verifyOwnedRuntimePid", () => {
 });
 
 describe("terminateOwnedRuntimeService", () => {
+  test("removes only storage containers sequentially before SIGTERM", async () => {
+    const actions: string[] = [];
+    const result = await run(
+      terminateOwnedRuntimeService(baseSpec, {
+        process: makeProcessSeam({
+          terminate: () =>
+            Effect.sync(() => {
+              actions.push("SIGTERM");
+            }),
+        }),
+        fs: {
+          unlink: (path) =>
+            Effect.sync(() => {
+              actions.push(`unlink ${path}`);
+            }),
+        },
+        execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
+        apiClient: (socketPath) => {
+          expect(socketPath).toBe(baseSpec.socketPath);
+          return {
+            request: (request) =>
+              Effect.sync(() => {
+                actions.push(`${request.method} ${request.path}`);
+                return {
+                  status: 200,
+                  body: JSON.stringify([
+                    { Id: "build/one", State: "storage" },
+                    { Id: "global", State: "running" },
+                    { Id: "stopped", State: "exited" },
+                    { Id: "unknown" },
+                    { Id: "build-two", State: "storage" },
+                  ]),
+                };
+              }),
+          };
+        },
+      }),
+    );
+    expect(result).toEqual({ terminated: true, pid: 123 });
+    expect(actions).toEqual([
+      "GET /libpod/containers/json?all=true&external=true",
+      "DELETE /libpod/containers/build%2Fone?force=true",
+      "DELETE /libpod/containers/build-two?force=true",
+      "SIGTERM",
+      `unlink ${baseSpec.socketPath}`,
+      `unlink ${baseSpec.pidPath}`,
+    ]);
+  });
+
+  test("bounds a hung reclaim before terminating the service", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const fiber = yield* Effect.forkChild(
+          terminateOwnedRuntimeService(baseSpec, {
+            process: makeProcessSeam(),
+            fs: { unlink: () => Effect.void },
+            execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
+            apiClient: () => ({
+              request: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+            }),
+          }),
+        );
+        yield* Deferred.await(entered);
+        yield* TestClock.adjust(Duration.seconds(10));
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+    expect(result).toEqual({ terminated: true, pid: 123 });
+  });
+
+  for (const processOverride of [
+    { readPid: () => Effect.fail("missing") },
+    { isAlive: () => Effect.succeed(false) },
+    { readCmdline: () => Effect.succeed(["unowned"]) },
+  ]) {
+    test(`skips the API when ownership verification fails at ${Object.keys(processOverride)[0]}`, async () => {
+      const requests: EngineHttpRequest[] = [];
+      await run(
+        terminateOwnedRuntimeService(baseSpec, {
+          process: makeProcessSeam(processOverride),
+          execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
+          apiClient: () => ({
+            request: (request) => {
+              requests.push(request);
+              return Effect.succeed({ status: 200, body: "[]" });
+            },
+          }),
+        }),
+      );
+      expect(requests).toEqual([]);
+    });
+  }
+
+  const apiError = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "cleanup",
+    message: "unavailable",
+  });
+  const storageList = { status: 200, body: '[{"Id":"leftover","State":"storage"}]' };
+  const reclaimFailures: ReadonlyArray<
+    readonly [
+      string,
+      (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, ProviderUnavailableError>,
+    ]
+  > = [
+    ["list", () => Effect.fail(apiError)],
+    ["list-status", () => Effect.succeed({ status: 500, body: "" })],
+    ["json", () => Effect.succeed({ status: 200, body: "{" })],
+    ["schema", () => Effect.succeed({ status: 200, body: '[{"Id":42}]' })],
+    [
+      "delete",
+      (request) => (request.method === "DELETE" ? Effect.fail(apiError) : Effect.succeed(storageList)),
+    ],
+    [
+      "delete-status",
+      (request) => Effect.succeed(request.method === "DELETE" ? { status: 500, body: "" } : storageList),
+    ],
+  ];
+
+  for (const [failure, respond] of reclaimFailures) {
+    test(`still terminates and unlinks when reclaim fails at ${failure}`, async () => {
+      const actions: string[] = [];
+      const result = await run(
+        terminateOwnedRuntimeService(baseSpec, {
+          process: makeProcessSeam({
+            terminate: () =>
+              Effect.sync(() => {
+                actions.push("SIGTERM");
+              }),
+          }),
+          fs: {
+            unlink: (path) =>
+              Effect.sync(() => {
+                actions.push(path);
+              }),
+          },
+          execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
+          apiClient: () => ({ request: respond }),
+        }),
+      );
+      expect(result).toEqual({ terminated: true, pid: 123 });
+      expect(actions).toEqual(["SIGTERM", baseSpec.socketPath, baseSpec.pidPath]);
+    });
+  }
+
   test("SIGKILLs only orphaned managed exec conmons when the pid file is missing", async () => {
     const killedPids: number[] = [];
     const processSeam = makeProcessSeam({
