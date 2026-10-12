@@ -52,7 +52,7 @@ export const transportFailure = (
   const input = {
     providerId: ctx.providerId,
     operation,
-    message: withApiReason(cause.message, cause.details),
+    message: redactString(withApiReason(cause.message, cause.details)),
     ...(cause.details === undefined ? {} : { details: redactDetails(cause.details) }),
     remediation: ctx.remediation,
     cause,

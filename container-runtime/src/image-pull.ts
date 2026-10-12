@@ -2,9 +2,10 @@ import { DateTime, Effect, Ref, Stream } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { ImagePullProgressEvent } from "@lando/sdk/events";
+import type { ArtifactPullPolicy } from "@lando/sdk/services";
 
 import type { PullDialect } from "./dialect.ts";
-import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { parseJsonOrUndefined } from "./engine-json.ts";
 import { redactDetails, redactString, withApiReason } from "./redact.ts";
@@ -63,10 +64,17 @@ export interface PullImageOptions<E = never> {
   readonly ctx: ProviderErrorContext;
   readonly dialect: PullDialect;
   readonly platform?: string;
+  readonly policy?: ArtifactPullPolicy;
   readonly publish?: (event: ImagePullProgressEvent) => Effect.Effect<void, E>;
 }
 
 export type PullImageDeps<E = never> = PullImageOptions<E>;
+
+export const inspectRequest = (dialect: PullDialect, reference: string): EngineHttpRequest =>
+  dialect.inspect?.request(reference) ?? {
+    method: "GET",
+    path: `/libpod/images/${encodeURIComponent(reference)}/json`,
+  };
 
 export interface PulledImage {
   readonly ref: string;
@@ -203,6 +211,49 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
   reference: string,
   options: PullImageOptions<E>,
 ): Effect.fn.Return<PulledImage, ProviderUnavailableError | ProviderInternalError | E> {
+  if (options.policy === "missing" || options.policy === "never") {
+    const request = api.request;
+    if (request === undefined) {
+      return yield* Effect.fail(
+        missingApi(
+          options.ctx,
+          "pullArtifact",
+          `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
+        ),
+      );
+    }
+    const response = yield* request(inspectRequest(options.dialect, reference));
+    if (response.status === 200) {
+      const inspect = options.dialect.inspect;
+      if (inspect === undefined) return { ref: reference };
+      const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
+        message: "Container engine API returned malformed JSON.",
+        details: redactDetails(response),
+      });
+      const digest = inspect.decodeDigest(decoded);
+      return { ref: reference, ...(digest === undefined ? {} : { digest }) };
+    }
+    if (response.status !== 404) {
+      return yield* Effect.fail(
+        pullFailure({
+          ctx: options.ctx,
+          reference,
+          message: withApiReason(`pre-pull inspect HTTP ${response.status}.`, response),
+          details: response,
+        }),
+      );
+    }
+    if (options.policy === "never") {
+      return yield* Effect.fail(
+        pullFailure({
+          ctx: options.ctx,
+          reference,
+          message: `Container image ${reference} is not present locally.`,
+        }),
+      );
+    }
+  }
+
   const emitFrame = Effect.fnUntraced(function* (
     line: string,
   ): Effect.fn.Return<void, ProviderUnavailableError | E> {

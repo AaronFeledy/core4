@@ -18,6 +18,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
+import { redactDetails } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 
 const textDecoder = new TextDecoder();
@@ -56,7 +57,7 @@ const execFailure = (
     operation: "exec",
     service: session.service.name,
     message: failure.message,
-    details: failure.details,
+    details: redactDetails(failure.details),
   });
 
 const execStartHttpStatus = (error: ExecError): number | undefined => {

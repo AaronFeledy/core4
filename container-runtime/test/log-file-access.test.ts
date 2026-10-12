@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "@lando/container-runtime/data-plane";
@@ -7,6 +8,9 @@ import { ProviderInternalError } from "@lando/sdk/errors";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
 
 const bytes = (value: string): Uint8Array => encoder.encode(value);
 const text = (value: Uint8Array): string => decoder.decode(value);
@@ -456,6 +460,26 @@ describe("Docker-compatible log file access", () => {
     if (exit._tag === "Failure") {
       expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ProviderInternalError);
     }
+  });
+
+  test("redacts runtime-registered values in log helper stderr", async () => {
+    // Given
+    const canary = "opaque-log-helper-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const access = makeDockerLogFileAccess({
+      providerId: "test",
+      api: makeChunkedProtocolApi([dockerFrame(2, bytes(`helper said ${canary}\n`))]),
+      container: "service",
+      helperPayload: bytes("helper"),
+    });
+    // When
+    const failure = await Effect.runPromise(access.stat("/var/log/app.log").pipe(Effect.flip));
+    // Then
+    if (!(failure instanceof ProviderInternalError)) throw new TypeError("Expected ProviderInternalError");
+    expect(failure.details).toBe("helper said [redacted]\n");
+    expect(failure.message).not.toContain(canary);
+    expect(failure.providerId).toBe("test");
+    expect(failure.operation).toBe("logFileAccess");
   });
 
   test("clamps maximum reads so base64 frames fit within protocol bounds", async () => {

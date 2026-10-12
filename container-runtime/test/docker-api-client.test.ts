@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import {
@@ -15,6 +16,9 @@ import {
 
 const ctx = { providerId: "custom-docker", remediation: "Start the custom engine." } as const;
 
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
+
 const connection = (writes: Array<string | Uint8Array>): SocketHttpConnection => ({
   async *[Symbol.asyncIterator]() {
     yield new TextEncoder().encode("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
@@ -27,6 +31,58 @@ const connection = (writes: Array<string | Uint8Array>): SocketHttpConnection =>
 });
 
 describe("Docker API client", () => {
+  test("redacts runtime-registered values in malformed curl stdout", async () => {
+    // Given
+    const canary = "opaque-curl-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const spawn = new Proxy(Bun.spawn, {
+      apply: () => ({
+        stdout: new Blob([`engine said ${canary}`]).stream(),
+        stderr: new Blob([]).stream(),
+        stdin: null,
+        exited: Promise.resolve(0),
+      }),
+    });
+    const request = makeDockerApiClient("unix:///var/run/docker.sock", ctx, { spawn }).request;
+    if (request === undefined) throw new TypeError("Expected request client");
+    // When
+    const failure = await Effect.runPromise(request({ method: "GET", path: "/info" }).pipe(Effect.flip));
+    // Then
+    expect(failure.details).toBe("engine said [redacted]");
+    expect(failure.message).not.toContain(canary);
+    expect(failure.operation).toBe("docker-api");
+    expect(failure.providerId).toBe(ctx.providerId);
+  });
+
+  test.each([
+    ["a failed info request", `{"message":"engine said opaque-info-canary-1261"}\n500`, 0, "info"],
+    ["malformed info JSON", "engine said opaque-info-canary-1261\n200", 0, "info"],
+    ["a failed curl request", "", 7, "request"],
+  ] as const)("redacts runtime-registered values from %s", async (_case, stdout, exitCode, call) => {
+    // Given
+    const canary = "opaque-info-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const spawn = new Proxy(Bun.spawn, {
+      apply: () => ({
+        stdout: new Blob([stdout]).stream(),
+        stderr: new Blob([`curl said ${canary}`]).stream(),
+        stdin: null,
+        exited: Promise.resolve(exitCode),
+      }),
+    });
+    const client = makeDockerApiClient("unix:///var/run/docker.sock", ctx, { spawn });
+    const request = client.request;
+    if (request === undefined) throw new TypeError("Expected request client");
+    // When
+    const failure = await Effect.runPromise(
+      (call === "info" ? client.info : request({ method: "GET", path: "/info" })).pipe(Effect.flip),
+    );
+    // Then
+    expect(JSON.stringify(failure)).not.toContain(canary);
+    expect(JSON.stringify(failure)).toContain("[redacted]");
+    expect(failure.providerId).toBe(ctx.providerId);
+  });
+
   test("constructs a lazy named-pipe client when given a Docker Desktop URI", () => {
     // Given / When
     const client = makeDockerApiClient("npipe:////./pipe/docker_engine", ctx);

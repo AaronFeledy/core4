@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { redactString } from "@lando/container-runtime/redact";
 import { Effect } from "effect";
 
 import {
@@ -204,7 +205,7 @@ const provisioningFailure = (
     remediation:
       "Resolve the apt-get failure, then rerun `lando setup --yes`; or install uidmap tools manually.",
     exitCode: result.exitCode,
-    stderr: result.stderr,
+    stderr: redactString(result.stderr),
   });
 
 const findNextAvailableRange = (path: string, requestedStart: number): number => {
@@ -291,7 +292,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
                 message: `Failed to provision ${isSubuid ? "subordinate UID" : "subordinate GID"} range.`,
                 remediation: `Manually add a range for your user to ${path}, e.g. \`sudo usermod ${isSubuid ? "--add-subuids" : "--add-subgids"} 100000-165535 $USER\`, then rerun \`lando setup\`.`,
                 exitCode: result.exitCode,
-                stderr: result.stderr,
+                stderr: redactString(result.stderr),
               }),
             );
           }
@@ -329,7 +330,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
                   remediation:
                     "Manually create the directory and delegation config, then rerun `lando setup`.",
                   exitCode: mkdirResult.exitCode,
-                  stderr: mkdirResult.stderr,
+                  stderr: redactString(mkdirResult.stderr),
                 }),
               );
             }
@@ -347,7 +348,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
                   remediation:
                     "Manually create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`, run `sudo systemctl daemon-reload`, then rerun `lando setup`.",
                   exitCode: writeResult.exitCode,
-                  stderr: writeResult.stderr,
+                  stderr: redactString(writeResult.stderr),
                 }),
               );
             }

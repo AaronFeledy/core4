@@ -22,6 +22,7 @@
       "name": "@lando/container-runtime",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
       },

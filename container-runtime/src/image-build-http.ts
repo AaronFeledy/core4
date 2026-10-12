@@ -1,7 +1,7 @@
 import { Effect, Predicate } from "effect";
 
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
 import { parseNdjsonLines } from "./engine-json.ts";
 
 export interface ContainerBuildHttpRequest {
@@ -41,8 +41,8 @@ const redactBuildQuery = (value: string): string =>
 
 const redactSecrets = (value: string, secretValues: ReadonlyArray<string>): string =>
   redactBuildQuery(
-    createRedactor("secrets", {
-      authoritativeValues: secretValues.flatMap((secret) => [secret, encodeURIComponent(secret)]),
+    createStandaloneRedactor("secrets", {
+      authoritativeTokens: secretValues.flatMap((secret) => [secret, encodeURIComponent(secret)]),
     }).redactString(value),
   );
 

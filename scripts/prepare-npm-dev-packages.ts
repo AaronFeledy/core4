@@ -14,10 +14,10 @@ type NpmDistTag = "dev" | "next";
 export const releasePackageWorkspaces: ReadonlyArray<string> = [
   "sdk",
   "paths",
+  "redaction",
   "container-runtime",
   "state-store",
   "landofile",
-  "redaction",
   "http-client",
   "managed-file",
   "data-mover",
@@ -32,10 +32,10 @@ export const releasePackageWorkspaces: ReadonlyArray<string> = [
 export const releasePackageNames: ReadonlyArray<string> = [
   "@lando/sdk",
   "@lando/paths",
+  "@lando/redaction",
   "@lando/container-runtime",
   "@lando/state-store",
   "@lando/landofile",
-  "@lando/redaction",
   "@lando/http-client",
   "@lando/managed-file",
   "@lando/data-mover",

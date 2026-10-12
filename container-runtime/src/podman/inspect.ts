@@ -13,7 +13,7 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { fingerprintInspectPublishPorts } from "../plan.ts";
-import { withApiReason } from "../redact.ts";
+import { redactDetails, withApiReason } from "../redact.ts";
 import { inspectBindSources, inspectNetworkNames } from "./bring-up-recreate.ts";
 
 interface ContainerInspect {
@@ -162,7 +162,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
         message: withApiReason(`provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`, {
           body: response.body,
         }),
-        details: { service: service.name, body: response.body },
+        details: redactDetails({ service: service.name, body: response.body }),
         remediation: ctx.remediation,
       }),
     );

@@ -1,7 +1,7 @@
 import { Effect, Exit } from "effect";
 
 import type { StartAppOptions } from "@lando/sdk/app";
-import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -24,6 +24,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
   execution: {
+    readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly beforeStart?: Effect.Effect<void>;
     readonly onFailedStart?: Effect.Effect<void>;
@@ -72,6 +73,7 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
   execution: {
+    readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly beforeStart?: Effect.Effect<void>;
     readonly onFailedStart?: Effect.Effect<void>;
