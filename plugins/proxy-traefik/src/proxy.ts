@@ -37,6 +37,7 @@ import {
   acquisitionStateFile,
   appCertificateFiles,
   defaultCertificateFiles,
+  defaultDomainFile,
   defaultTlsFile,
   diagnosticConfigFile,
   diagnosticHtmlFile,
@@ -290,8 +291,8 @@ export const makeTraefikRouterService = (
     yield* restart(ServiceName.make(TRAEFIK_PROXY_ID));
     pendingReload.delete(appKey);
   });
-  let authorityPorts = DEFAULT_AUTHORITY_PORTS;
-  let defaultDomain = "lndo.site";
+  let authorityPorts: AuthorityPorts | undefined;
+  let defaultDomain: string | undefined;
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {
     if (dependencies.paths.platform === "win32") {
@@ -329,23 +330,30 @@ export const makeTraefikRouterService = (
         }),
       ),
       setup: Effect.fn("RouterService.setup")(function* (config, options) {
-        defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         if (dependencies.paths.platform === "win32") {
           yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
         }
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
         const socketProxy = yield* resolveSocketProxy(dependencies);
-        const decision = yield* persistPortAcquisition({
-          ...dependencies,
-          ...(socketProxy === undefined
-            ? {}
-            : {
-                socketProxy:
-                  options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
-              }),
-          ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
-          ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
-        });
+        const decision = yield* persistPortAcquisition(
+          {
+            ...dependencies,
+            ...(socketProxy === undefined
+              ? {}
+              : {
+                  socketProxy:
+                    options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+                }),
+            ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+            ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
+          },
+          { rescan: options?.reacquirePorts === true },
+        );
+        defaultDomain = normalizeDefaultDomain(config.defaultDomain);
+        yield* dependencies.fileSystem.writeAtomic(
+          defaultDomainFile(dependencies.paths),
+          `${defaultDomain}\n`,
+        );
         const advertised = advertisedPorts(decision);
         authorityPorts = advertised;
         if (decision.notices.length > 0) {
@@ -358,13 +366,24 @@ export const makeTraefikRouterService = (
       revalidateStartup: Effect.fn("RouterService.revalidateStartup")(function* () {
         const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
         const advertised =
-          state === undefined ? authorityPorts : { http: state.httpPort, https: state.httpsPort };
+          state === undefined
+            ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
+            : { http: state.httpPort, https: state.httpsPort };
         authorityPorts = advertised;
         yield* finalizeRouterStartup(dependencies, advertised);
       }, Effect.mapError(mapStartupRevalidationError))(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app) => {
           const apply = Effect.gen(function* () {
+            const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+            authorityPorts =
+              state === undefined
+                ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
+                : { http: state.httpPort, https: state.httpsPort };
+            const persistedDomain = yield* dependencies.fileSystem
+              .readText(defaultDomainFile(dependencies.paths))
+              .pipe(Effect.catch(() => Effect.succeed("")));
+            defaultDomain = normalizeDefaultDomain(persistedDomain) || defaultDomain || "lndo.site";
             const appKey = String(app);
             const file = routeFile(dependencies.paths, app);
             const hadRouteFile = yield* dependencies.fileSystem.exists(file);
@@ -561,6 +580,7 @@ export const makeTraefikRouterService = (
             }
             yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
+            yield* dependencies.fileSystem.remove(defaultDomainFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));

@@ -14,11 +14,13 @@ export const cacheInput = (
   routerEnabled: boolean,
   scanner: GlobalConfig["scanner"],
   defaults: UserAppDefaults & {
+    readonly defaultDomain: string;
     readonly sshAgentMode: SshAgentIntent["mode"];
     readonly gpgAgentForward?: boolean;
   },
 ) => ({
   routerEnabled,
+  defaultDomain: defaults.defaultDomain,
   scanner: scanner ?? null,
   appEnv: defaults.appEnv ?? null,
   appLabels: defaults.appLabels ?? null,
@@ -34,16 +36,21 @@ const isPathWithin = (root: string, candidate: string): boolean => {
   );
 };
 
+export const isExcludedFromUserAppDefaults = (
+  appName: string,
+  appRoot: string,
+  paths: AppDefaultPaths | undefined,
+): boolean =>
+  appName === "global" ||
+  (paths !== undefined && (appRoot === paths.globalAppRoot || isPathWithin(paths.scratchDir, appRoot)));
+
 export const resolveUserAppDefaults = (
   appName: string,
   appRoot: string,
   paths: AppDefaultPaths | undefined,
   config: GlobalConfig | undefined,
 ): UserAppDefaults => {
-  const excluded =
-    appName === "global" ||
-    (paths !== undefined && (appRoot === paths.globalAppRoot || isPathWithin(paths.scratchDir, appRoot)));
-  return excluded
+  return isExcludedFromUserAppDefaults(appName, appRoot, paths)
     ? {}
     : {
         ...(config?.appEnv === undefined ? {} : { appEnv: config.appEnv }),

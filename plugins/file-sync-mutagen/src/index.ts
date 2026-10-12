@@ -15,6 +15,7 @@
 import path from "node:path";
 import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
+import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import {
   type PluginDoctorCheckContribution,
@@ -73,7 +74,9 @@ const sourceIsInsideAppRoot = (spec: FileSyncSessionSpec): boolean => {
 const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter): boolean => {
   if (
     filter.app !== undefined &&
-    (info.app.kind !== filter.app.kind || info.app.id !== filter.app.id || info.app.root !== filter.app.root)
+    (info.app.kind !== filter.app.kind ||
+      info.app.id !== filter.app.id ||
+      !sameRealpath(info.app.root, filter.app.root))
   ) {
     return false;
   }

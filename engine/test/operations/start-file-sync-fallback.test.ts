@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
@@ -453,6 +454,35 @@ describe("file-sync session reconciliation", () => {
       expect(result.failure.remediation).toContain("untouched");
     }
     expect(calls).toEqual([]);
+  });
+
+  test("resumes a legacy session whose root is realpath-equivalent to the plan", async () => {
+    const legacyRoot = AbsolutePath.make(`${plan.root}-short`);
+    await symlink(plan.root, legacyRoot);
+    const calls: string[] = [];
+    const engine = {
+      ...TestFileSyncEngine,
+      id: "mutagen",
+      listSessions: () =>
+        Effect.succeed([
+          listed({
+            ...entry.session,
+            app: { ...entry.session.app, root: legacyRoot },
+            source: legacyRoot,
+          }),
+        ]),
+      resumeSession: () => Effect.sync(() => calls.push("resume")),
+      flushSession: () => Effect.sync(() => calls.push("flush")),
+      createSession: () => Effect.sync(() => calls.push("create")).pipe(Effect.as(ref)),
+    };
+    try {
+      await Effect.runPromise(
+        startFileSyncSessions(singleSessionPlan, events).pipe(Effect.provideService(FileSyncEngine, engine)),
+      );
+      expect(calls).toEqual(["flush"]);
+    } finally {
+      await rm(legacyRoot, { force: true });
+    }
   });
 
   test("rejects full-spec drift without changing the existing session", async () => {

@@ -3,6 +3,7 @@ import { Effect, Result, Schema } from "effect";
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, StreamFrame, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import { ServiceStartError } from "../errors/provider.ts";
 import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
 import { emitYamlDocument } from "../yaml/document.ts";
@@ -106,6 +107,9 @@ const taggedErrorJson = (
   };
   if (error instanceof SqlConfirmRequiredError) {
     return { ...base, service: error.service, steps: error.steps, ...extra };
+  }
+  if (error instanceof ServiceStartError) {
+    return { ...base, service: error.service, ...extra };
   }
   return { ...base, ...extra };
 };

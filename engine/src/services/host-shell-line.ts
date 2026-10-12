@@ -1,8 +1,10 @@
 import type { ProcessResult } from "@lando/sdk/services";
+import { type BunCommandRuntime, createBunCommandEnv, inheritCommandEnv } from "./bun-command-env.ts";
 
 const EVALUATOR = [
   'import { $ } from "bun";',
   "delete process.env.BUN_BE_BUN;",
+  "delete process.env.BUN_FEATURE_FLAG_NO_ORPHANS;",
   'process.on("message", async (message) => {',
   '  if (typeof message === "object" && message !== null && message.type === "abort") process.exit(130);',
   '  if (typeof message !== "object" || message === null || message.type !== "run" || !Array.isArray(message.fragments) || !message.fragments.every((fragment) => typeof fragment === "string") || !Array.isArray(message.values) || !message.values.every((value) => typeof value === "string")) process.exit(2);',
@@ -17,6 +19,7 @@ export interface HostShellLineOptions {
   readonly values: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly runtime?: BunCommandRuntime;
   readonly signal?: AbortSignal;
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
@@ -33,11 +36,15 @@ const collect = async (stream: ReadableStream<Uint8Array>, write: (chunk: string
 };
 
 export const runHostShellLine = async (options: HostShellLineOptions): Promise<ProcessResult> => {
+  await using launcher = await createBunCommandEnv(
+    { command: "bun", env: { ...inheritCommandEnv(options.env ?? {}), BUN_BE_BUN: "1" } },
+    options.runtime,
+  );
   const evaluatorArgv = hostShellEvaluatorArgv();
   const child = Bun.spawn({
     cmd: [...evaluatorArgv],
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-    env: { ...process.env, ...options.env, BUN_BE_BUN: "1" },
+    env: launcher.env,
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",

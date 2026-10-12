@@ -1,7 +1,9 @@
 import { DateTime, Effect, Schema } from "effect";
 
+import { routerEnabled } from "@lando/engine/config/router-config";
 import { startedServiceRow } from "@lando/engine/operations/authority-url";
-import { applyGlobalRoutesForSelectedServices } from "@lando/engine/operations/global-routes";
+import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
+import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 
 import {
   applyGlobalServiceGroups,
@@ -18,10 +20,6 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   ProxyApplyError,
-  ProxySetupError,
-  RouterPortPinMismatch,
-  RouterPortsExhausted,
-  RouterWatcherError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
@@ -93,10 +91,6 @@ export type GlobalStartError =
   | ProviderError
   | ProviderUnavailableError
   | ProxyApplyError
-  | ProxySetupError
-  | RouterPortPinMismatch
-  | RouterPortsExhausted
-  | RouterWatcherError
   | SecretStoreUnavailableError
   | SecretReferenceInvalidError
   | ToolingExecError;
@@ -130,12 +124,26 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
   const loaded = yield* loadGlobalPlan();
   if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
-  const services = yield* selectGlobalServices({
+  const router = yield* RouterService;
+  let services = yield* selectGlobalServices({
     commandId: "meta:global:start",
     services: loaded.plan.services,
     requested: options.services,
     expandDependencies: true,
   });
+  const available = Object.values(loaded.plan.services);
+  if (
+    (options.services?.length ?? 0) > 0 &&
+    routerEnabled(loaded.plan) &&
+    available.some((service) => service.name === router.id) &&
+    loaded.plan.routes.some((route) => services.some((service) => service.name === route.service))
+  ) {
+    const selected = includeAvailableDependencies(
+      [...services.map((service) => service.name), router.id],
+      available,
+    );
+    services = available.filter((service) => selected.has(service.name));
+  }
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
@@ -182,12 +190,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
       const partialError = globalServiceGroupError("start", outcome);
       const selectedNames = new Set(outcome.services.map((service) => service.name));
       const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
-      const router = yield* RouterService;
-      const applyRoutes = applyGlobalRoutesForSelectedServices(
-        router,
-        { ...loaded.plan, routes: loaded.plan.routes.filter((route) => !failedNames.has(route.service)) },
-        selectedNames,
-      );
+      const applyRoutes = publishGlobalRoutes(router, provider, loaded.plan, {
+        started: selectedNames,
+        failed: failedNames,
+      });
       if (partialError !== undefined) {
         yield* Effect.result(applyRoutes);
         return yield* Effect.fail(partialError);

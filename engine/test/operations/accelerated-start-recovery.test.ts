@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test";
-import { ProviderId } from "@lando/sdk/schema";
+import { rm, symlink } from "node:fs/promises";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
   beginAcceleratedStart,
+  openJournal,
   readJournal,
   requireNoPendingAcceleratedStart,
 } from "../../src/operations/accelerated-start-journal.ts";
+import { digest } from "../../src/operations/accelerated-start-record.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -206,3 +209,74 @@ test("adoption replaces the durable attempt before target mutation", async () =>
   expect(adopted.retained ?? null).toEqual(before.pending);
   expect(harness.calls).toEqual([]);
 });
+
+test("recovers when a retained session still uses a realpath-equivalent legacy root", async () => {
+  const harness = await Effect.runPromise(recoveryHarness());
+  const previous = harness.sessions[0];
+  if (previous === undefined) throw new Error("Expected a retained file-sync session");
+  const legacyRoot = AbsolutePath.make(`${app.root}-short`);
+  await symlink(app.root, legacyRoot);
+  const legacySpec = {
+    ...previous.spec,
+    app: { ...previous.spec.app, root: legacyRoot },
+    source: legacyRoot,
+  };
+  harness.sessions.splice(0, 1, { ...previous, app: legacySpec.app, spec: legacySpec });
+  try {
+    const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
+    expect(Exit.isSuccess(result)).toBe(true);
+    expect(harness.calls[0]).toBe("terminate:old");
+  } finally {
+    await rm(legacyRoot, { force: true });
+  }
+});
+
+test.each([
+  [false, false],
+  [true, false],
+  [false, true],
+])(
+  "verifies legacy journal digests with mount tampering=%s and session tampering=%s",
+  async (mountTampered, sessionTampered) => {
+    // Given: both the live session and the retained journal were written with the legacy spelling.
+    const harness = await Effect.runPromise(recoveryHarness());
+    const legacyRoot = AbsolutePath.make(`${app.root}-journal-short`);
+    await symlink(app.root, legacyRoot);
+    const legacySpec = { ...session, app: { ...app, root: legacyRoot }, source: legacyRoot };
+    const previous = harness.sessions[0];
+    if (previous === undefined) throw new Error("Expected a retained file-sync session");
+    harness.sessions.splice(0, 1, { ...previous, app: legacySpec.app, spec: legacySpec });
+    try {
+      const bucket = await Effect.runPromise(openJournal(app).pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(
+        bucket.modify((record) => {
+          if (record === null) throw new Error("Expected a retained journal");
+          return [
+            undefined,
+            {
+              ...record,
+              mountPlanDigest: mountTampered
+                ? "unverified"
+                : digest([{ engineId: "mutagen", session: legacySpec }]),
+              sessions: [
+                {
+                  name: `${session.service}/${session.mountKey}`,
+                  specDigest: sessionTampered ? "unverified" : digest(legacySpec),
+                },
+              ],
+            },
+          ] as const;
+        }),
+      );
+      // When: startup replans the same filesystem locations using canonical paths.
+      const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
+      // Then: only a digest proven by the surviving session permits reseeding.
+      const verified = !mountTampered && !sessionTampered;
+      expect(Exit.isSuccess(result)).toBe(verified);
+      expect(harness.calls.includes("create:one-way-replica")).toBe(verified);
+      expect(harness.calls[0]).toBe("terminate:old");
+    } finally {
+      await rm(legacyRoot, { force: true });
+    }
+  },
+);

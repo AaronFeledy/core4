@@ -722,15 +722,32 @@ test("an already-aborted line is never sent to the evaluator", async () => {
   }
 });
 
-test("the evaluator bootstrap marker is absent from the user command environment", async () => {
+test("interactive host lines see LANDO_HOST_EVENT from the step env", async () => {
   const stdout: string[] = [];
   const result = await runHostShellLine({
-    fragments: ['printf "%s" "$BUN_BE_BUN"'],
+    fragments: ['printf "%s" "$LANDO_HOST_EVENT"'],
+    values: [],
+    env: { LANDO_HOST_EVENT: "1" },
+    writeStdout: stdout.push.bind(stdout),
+    writeStderr: () => {},
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(stdout.join("")).toBe("1");
+});
+
+test("the evaluator bootstrap marker is absent from the user command environment", async () => {
+  // Given
+  const stdout: string[] = [];
+  // When
+  const result = await runHostShellLine({
+    fragments: ['printf "%s%s" "$BUN_BE_BUN" "$BUN_FEATURE_FLAG_NO_ORPHANS"'],
     values: [],
     writeStdout: stdout.push.bind(stdout),
     writeStderr: () => {},
   });
 
+  // Then
   expect(result.exitCode).toBe(0);
   expect(stdout.join("")).toBe("");
 });

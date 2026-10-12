@@ -4,6 +4,12 @@
 
 ## Compatibility notes
 
+- `RouterService.setup(config, options?)` additively accepts optional `reacquirePorts` to rescan host ports instead of reusing the persisted pair. Only explicit `lando setup` sets it. App and scratch startup omit it and retain owned ports while config is unchanged; changed preferences still trigger a rescan. Rescans treat provider-verified publications of Lando's own router as available. This invocation option is not retained or exposed in config, and changes no JSON Schema.
+
+- `BuildOrchestrator.build(plan, options?: BuildOptions)` adds `BuildOptions.refresh?: boolean`, defaulting to false to reuse local artifacts and acquire only absent ones. App and global rebuild commands pass `{ refresh: true }` to refresh tags; a failed refresh uses a provider-local copy with a warning and fails only when no local copy exists. `ArtifactPullSpec.policy?: ArtifactPullPolicy` accepts `"always"` (the provider default when omitted; acquire from source), `"missing"` (reuse a provider-local copy, acquire only when absent), or `"never"` (reuse a provider-local copy, fail without contacting the source when absent). Provider policies remain strict; the build orchestrator owns refresh fallback. `@lando/sdk/services` additively exports the erased types `BuildOptions` and `ArtifactPullPolicy`; no JSON Schema artifact changes.
+
+- `ServiceStartError` adds optional `logTail` (`service`, `lines`, `truncated`, optional `exitCode` / `timedOut`) for a redacted console snapshot retained through rollback. For blocked dependency gates, `logTail.service` identifies the dependency, while `ServiceStartError.service` identifies the waiting service. `CommandResultEnvelope.error` includes both `service` and the optional `logTail`.
+
 - `RuntimeProviderRegistry.select(target?: AppPlan | ProviderId)` accepts an explicit provider ID for planless resource observation and cleanup. Real plans still select their provider; omitting the target still selects the configured default.
 
 - `RestartAppOptions` additively accepts optional `services` for a scoped restart of named planned services with no dependency pull-in. Unknown names fail with the existing `ServiceNotFoundError`. Bare restart (no `services`) is unchanged. `RestartAppError` additively includes `ProviderError` so scoped restart can surface inspect, stop, apply, and `ServiceRestartWouldRecreateError`. `PreRestartEvent` and `PostRestartEvent` additively accept optional `services`; a full-app restart omits the field. `ApplyOptions.forbidRecreate` asks bring-up to fail instead of recreating on publish-port, bind-source, or network drift, or on host-port bind-rejection recovery. Combining it with `reconcile: true` fails. `ServiceRuntimeInfo` additively reports optional `publishFingerprint`, `bindSources`, and `networkNames` when inspect can read them.
@@ -307,6 +313,7 @@
 - `RendererCapabilities` is the complete four-field public capability surface (`color`, `interactive`, `animation`, `notifications`) with immutable snapshot constants for none/TTY-initial/verbose-TTY run shapes. `Renderer.capabilities` is a getter returning the current snapshot. `NotifyDesktopEvent` (`notify.desktop`), `NotifyConfig` (global `notify:`), and `CommandInvocationCorrelation` ship as additive contracts; CLI lifecycle events carry `invocationId` / optional `parentInvocationId`. `HostProxyRequest` drops the unreleased `notify`/`clipboardCopy` variants (exactly `openUrl`/`openPath`/`runLando`/`runBun`); `HOST_PROXY_REQUEST_TAGS` freezes that membership. `@lando/sdk/renderer` re-exports `RendererCapabilities` and the snapshot constants as runtime values.
 - `GlobalConfig.notify` is an additive optional field decoding against `NotifyConfig`.
 - `GlobalConfig.events.deliveryQueueCapacity` is an additive optional positive-integer host override, capped at 65536, for core's bounded, non-blocking per-subscriber event delivery queues; the runtime default remains 64.
+- `GlobalConfig.hostEvents` is an additive optional `HostEvents` map of v1 steps (`string` | `{cmd, service?}` | `{command}`) for pre/post start, stop, restart, rebuild, and destroy. It is file-only (`config.yml`); env overlays drop any path whose first segment is `hostEvents`. Distinct from `GlobalConfig.events` (delivery policy) and from the global-app Landofile. Load rejects a command string with unbalanced quotes and says to quote the whole value. `@lando/sdk/schema` additively exports `HostEvents`, `HostEventStep`, `HostEventCmdStep`, `HostEventCommandStep`, `HostEventName`, `HOST_EVENT_NAMES`, `HOST_EVENT_CONTAINER_FORBIDDEN_NAMES`, `hostEventsSemanticIssues`, `hostEventsConfigIssues`, `formatHostEventsIssueMessage`, `hostEventStepLocation`, `isHostEventContainerStep`, `LIFECYCLE_COMMAND_IDS` (includes `apps:poweroff`), `LifecycleCommandId`, `LIFECYCLE_COMMAND_ALIASES` (includes `poweroff`), `resolveLifecycleCommandId`, `isLifecycleCommandId`, and `LANDO_HOST_EVENT_ENV`.
 - `GlobalConfig.proxy` is an additive optional ingress-proxy settings block; `proxy.defaultDomain` is an optional string that decodes to `"lndo.site"` when omitted. Distinct from `network.proxy` (HTTP egress).
 - `@lando/sdk/schema` additively accepts Compose service spellings and alternate scalar/list forms on `ServiceConfig`. `environment` decodes both a map and a Compose `KEY=value` list (a bare list entry without `=`, or a null map value, is rejected since Landofiles do not read host environment variables); `labels` decodes both a map and a Compose list, canonicalizing null or bare values to empty strings; `dependsOn` decodes a service-name list or a Compose condition-map (`{ <svc>: { condition, required?, restart? } }`) and canonicalizes to a `ServiceDependency[]` long form. New additive exports: `ServiceDependency`, `ServiceDependencyCondition` (Compose `service_started`/`service_healthy`/`service_completed_successfully` vocabulary), and `ServiceConfigInput`; `ServiceConfig` additively gains `envFile` and `labels` fields. The Landofile authoring surface (`services.<name>:`) additionally accepts the Compose cross-key spellings `working_dir`, `env_file`, and `depends_on`, with the Lando alias winning when both a Compose key and its Lando counterpart are present. Restructuring `ServiceConfig.dependsOn` from a string list to `ServiceDependency[]` is a pre-ship shape change (no compatibility shim); the Compose condition vocabulary is preserved into the canonical form for orchestration honoring in a later story.
 - US-472 makes `DependencyPlan.condition` use the normative `ServiceDependencyCondition` literals (`service_started`, `service_healthy`, and `service_completed_successfully`) and makes `DependencyPlan.required` a required planner-resolved boolean. `ServiceDependencyCondition` is registered as its own public JSON Schema identifier. As a pre-ship provider-contract change, `RuntimeProviderShape` gains the mandatory scoped `waitForExit(target, options?)` method returning `ServiceExitResult` so orchestration can observe a service process exit code; `WaitForExitOptions.signal` and `BuildAppOptions.signal` propagate cancellation through dependency gates.
@@ -373,6 +380,10 @@ It registers no JSON Schema.
 - `RouterPortPair`
 - `routerPortPairFromAcquisition`
 - `LANDOFILE_EDITOR_SCHEMA_URL`
+- `LANDO_HOST_EVENT_ENV`
+- `LIFECYCLE_COMMAND_ALIASES`
+- `LIFECYCLE_COMMAND_IDS`
+- `LifecycleCommandId`
 - `getEditorJsonSchema`
 - `AGENT_SOCKET_CONTAINER_DIR`
 - `SSH_AGENT_SOCKET_NAME`
@@ -396,6 +407,8 @@ It registers no JSON Schema.
 - `AppLabelDefaults`
 - `CORE_SERVICE_ENV_KEYS`
 - `isCoreServiceEnvKey`
+- `isLifecycleCommandId`
+- `resolveLifecycleCommandId`
 - `ScannerConfig`
 - `ScanPlan`
 - `ServiceFileConfig`
@@ -605,6 +618,18 @@ It registers no JSON Schema.
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HostEventCmdStep`
+- `HostEventCommandStep`
+- `HostEventName`
+- `HostEventStep`
+- `HostEvents`
+- `HOST_EVENT_NAMES`
+- `HOST_EVENT_CONTAINER_FORBIDDEN_NAMES`
+- `formatHostEventsIssueMessage`
+- `hostEventStepLocation`
+- `hostEventsConfigIssues`
+- `hostEventsSemanticIssues`
+- `isHostEventContainerStep`
 - `HostPlatformFamily`
 - `hostPlatformFamily`
 - `HostProxyBridgeInput`
@@ -969,6 +994,7 @@ It registers no JSON Schema.
 - `GlobalConfig.notify`
 - `GlobalConfig.logLevel`
 - `GlobalConfig.proxy`
+- `GlobalConfig.hostEvents`
 - `PluginManifest.deprecated`
 - `PluginManifest.bootstrap`
 - `PluginManifest.requires`

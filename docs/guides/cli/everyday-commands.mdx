@@ -52,7 +52,7 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, recreating its containers. `rebuild` also reruns the build. Use `rebuild` after you change service types, images, or build steps.
+Bare `restart` stops then starts the app, recreating its containers and reusing local images. `rebuild` also re-pulls the images your services reference so updated tags take effect, then reruns the build. Use `rebuild` after you change service types, images, or build steps. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too.
 
 `lando restart --service redis` (or `-s`, repeatable) stops and starts only those named services. Other services keep running and keep their host ports. Lando does not pull in dependencies. If a selected container is missing or needs recreation (published-port, bind-source, or network drift), the command refuses and tells you to run `lando rebuild -s <name>`.
 
@@ -109,9 +109,14 @@ from runtime discovery, not the saved plan:
 Use `lando list --format=json` for the same `status` on each entry in `result.apps`.
 `--status` keeps only matching rows after that one discovery pass. Repeat it to
 keep more than one value: `lando list --status=active --status=stopped`.
-The same filter applies to the table, JSON, and MCP results. `running` is not a
-status; the command rejects it. A `--status` or `--path` filter that matches
-nothing prints `No Lando apps match the filters.`
+`--path` matches an existing directory and apps beneath it, resolving relative
+paths against your current directory (the session directory in MCP). Use `.`,
+`./drupal`, `~/projects`, or an absolute path; symlinks work too. A bare word
+like `drupal` matches root substrings even if that folder exists. Nonexistent
+paths also fall back to substring matching.
+The same `--status` and `--path` filters apply to the table, JSON, and MCP
+results. `running` is not a status; the command rejects it. A `--status` or
+`--path` filter that matches nothing prints `No Lando apps match the filters.`
 
 The service list includes saved service names; it is not a list of running services.
 The table adds `(stale)` when the recorded root no longer exists; JSON reports
@@ -155,7 +160,7 @@ lando_cd() {
 ```
 
 Use a name without quotes or backslashes, which have special meaning in jq.
-For duplicate names, use `lando list --path` to find the right root.
+For duplicate names, pass the folder you already know to `lando list --path`.
 Container-only discoveries may have no saved root.
 
 <Guide>

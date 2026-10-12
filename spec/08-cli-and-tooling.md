@@ -135,9 +135,9 @@ Command-wide rules:
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
-- `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched.
+- `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched. Stopping the managed runtime service before its recorded runtime directory is removed follows §5.8.1.
 - `--clear` is universal and purges relevant caches.
-- `app:start` and `app:rebuild` materialize declared dependencies. Repeating a successful start MUST NOT require network unless a source is absent, the lock changed, or app commands require it.
+- `app:start` and `app:rebuild` materialize declared dependencies. Repeating a successful start MUST NOT require network unless a source is absent, the lock changed, or app commands require it. `app:rebuild` refreshes referenced artifacts with local fallback and a warning (§6.13.3); acquisition needs network only for referenced artifacts with no local copy.
 - `apps:poweroff` includes user, global, and scratch apps by default. `--keep-global` and `--keep-scratch` compose and MUST be reported.
 - `meta:global:start` refuses an empty global app. `meta:global:list --format json` is canonical for automation.
 - Scratch behavior is owned by §21. `ScratchSourceUnresolvedError` rejects both or neither of `--fork` and `--from`. Scratch JSON list output is canonical for automation.
@@ -175,13 +175,17 @@ Translation is preview-only without `--write`, MUST be explicit or unambiguous, 
 
 #### 8.2.3 The `app:shell` command
 
-`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. `--service` uses provider exec with TTY and §6.9.1 agent context. Secrets resolve only when explicitly referenced and MUST NOT be preloaded. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
+`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. Its line evaluator runs on the embedded Bun and removes `BUN_BE_BUN` and `BUN_FEATURE_FLAG_NO_ORPHANS` before a line runs, so `lando` in a line runs as Lando and keeps its detached workers. `--service` uses provider exec with TTY and §6.9.1 agent context. Secrets resolve only when explicitly referenced and MUST NOT be preloaded. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
 
 The command publishes `cli-app:shell-init`, `cli-app:shell-run`, and `cli-app:shell-error`; inner commands publish `pre-shell-exec`/`post-shell-exec` or `pre-provider-exec`/`post-provider-exec` with redacted shapes.
+
+In compiled mode, the host line evaluator MUST append a scoped private `bun` launcher to its effective `PATH`. The launcher sets `BUN_BE_BUN=1` and executes `process.execPath`, so a host Bun on `PATH` wins and a host without Bun uses the embedded Bun. Source mode needs no launcher. The launcher directory MUST be removed after the evaluator exits; `lando` in a line still runs with neither Bun bootstrap variable set.
 
 #### 8.2.4 The `meta:bun` and `meta:x` commands
 
 `meta:bun` forwards Bun argv to `BunSelfRunner`; `meta:x` requires a package spec and invokes `BunSelfRunner.x`. Both use caller cwd, stream output, preserve child exit status, run at `minimal`, and publish `cli-meta:bun-*`, `cli-meta:x-*`, and `pre-bun-self-exec`/`post-bun-self-exec`.
+
+For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando` launcher to the child's effective `PATH` whenever a target resolves: the `lando` on that effective `PATH`, else the running compiled CLI. Source or library mode with no `lando` on `PATH` creates no launcher. When a launcher is present, a bare `lando` in package scripts, lifecycle scripts, or `x` binaries MUST run as Lando with neither `BUN_BE_BUN` nor `BUN_FEATURE_FLAG_NO_ORPHANS` set. Other commands keep their Bun environment, so `bun` in a package script still uses the embedded Bun without a host installation. Caller environment overrides MUST NOT disable `BUN_BE_BUN` or `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` in the child. The launcher MUST preserve `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1`, so nested `lando bun` remains refused, and its directory MUST be removed only after the child exits, including on interruption. This only changes the child's command resolution: embedded mode still self-spawns `process.execPath` with `BUN_BE_BUN=1`, never a Bun selected from `PATH`. A path-qualified call to a Lando binary is outside this guarantee.
 
 `BunSelfRunner` prevents recursive `BUN_BE_BUN` entry with `BunSelfReentryError`. Child failures return `BunSelfExecError`. Offline uncached `meta:x` returns `BunSelfOfflineError`; `meta:bun` passes offline policy through. Core reserves aliases `bun` and `x`.
 
@@ -331,6 +335,12 @@ Tooling adds invocation-time scopes `task.name`, `task.subnamespace`, `task.comm
 
 Landofile `events:` accepts the same step types as `cmds` and adds decoded `.event` payload context. Event-triggered tasks execute directly and MUST NOT register router commands. The valid event set MUST be extended from fully resolved tooling before validation, including `pre-restart`, `post-restart`, and `pre-<tool>`/`post-<tool>`.
 
+Host-wide steps live in `<userConfRoot>/config.yml` under `hostEvents`, never in `GlobalConfig.events` (delivery policy) and never in the global-app Landofile. Env overlays MUST drop any path whose first segment is `hostEvents`. The ten supported names are pre/post `start`, `stop`, `restart`, `rebuild`, and `destroy`. Restart and rebuild nest the same stop/start (or destroy/start) trees as project events. v1 steps are a string, `{cmd, service?}` (`:host` allowed), or `{command}`; `task`, `defer`, `for`, `env`, `flags`, `args`, `dir`, `user`, and unknown fields fail at load. Container (non-`:host`) steps in `pre-start`, `post-stop`, and `post-destroy` fail at load and MUST name `config.yml hostEvents.<event>[i]`. A `command:` step that resolves to a lifecycle command id also fails at load.
+
+`compileEffectiveEvents` runs host steps first, then project steps. A host step that canonically matches a project step for the same event is dropped (`"x"` matches `{cmd: x}`, an omitted service is the plan primary, and `:host` is part of the key). Missing plan services and exited, stopped, created, dead, or paused containers skip that host step with an info notice; `:host` is never skipped. Other errors fail like project steps. `post-start` and `post-stop` keep warn-only failure. There is no Landofile opt-out. Compiled steps carry `{source, sourceIndex}` so errors and the invocation frame point at `config.yml hostEvents.<event>[i]`. Provenance survives both cached and fresh plan attach. Status is `active`, `skipped`, or `deduped` at plan time.
+
+The in-process re-entry guard and depth-16 limit still apply. Only `:host` child processes started by host steps receive `LANDO_HOST_EVENT=1`; a nested Lando that sees it skips `hostEvents` with a notice. `meta config set` and `meta config unset` MUST reject any `hostEvents` path and tell the user to edit `config.yml` by hand. `meta config view` reports the host configuration and `app config` reports host-step status from the resolved Landofile. `app config explain` remains a non-executing canonical-file recipe report.
+
 Nested event/command invocation MUST reject cycles with a visited stack and bounded depth. A failed pre-step prevents the body; a failed body prevents success post-steps; post-steps preserve order and failure is fatal with redacted output. CLI, MCP, and library paths MUST preserve identical ordering and failure semantics.
 
 #### 8.5.8 Tooling includes
@@ -347,7 +357,7 @@ CLI mode auto-discovers `.lando/scripts/**/*.bun.sh`; path segments form `app:` 
 
 Top comment front matter validates as `BunShellScriptFrontMatter` and MAY carry `desc`, `summary`, `aliases`, `topLevelAlias`, `service`, `bootstrap`, `flags`, `args`, `passThrough`, `sources`, `generates`, `status`, `preconditions`, `run`, `platforms`, `internal`, and `disabled`. Missing or malformed metadata returns `BunShellScriptFrontMatterError`; empty files return `BunShellScriptEmptyError`.
 
-Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness.
+Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness. `runScript` runs the file on the embedded Bun (`process.execPath` with `BUN_BE_BUN=1`), and Bun Shell exports that switch and `BUN_FEATURE_FLAG_NO_ORPHANS` to every command. A bare `lando` command in a script MUST run as Lando with neither variable set, so it neither falls into Bun nor reaps a nested `lando start`'s detached workers; it resolves to the `lando` on the script's `PATH`, else the running compiled CLI. Other commands keep both variables so Bun Shell's `bun` fallback still reaches the embedded Bun. A path-qualified call to a Lando binary is outside this guarantee.
 
 ### 8.6 The `ToolingEngine` abstraction
 

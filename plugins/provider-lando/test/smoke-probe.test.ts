@@ -139,6 +139,7 @@ describe("runSmokeReadinessProbe", () => {
     expect(build?.headers?.["Content-Type"]).toBe("application/x-tar");
     expect(build?.stdin).toBeDefined();
     expect(build?.path).toContain("dockerfile=Dockerfile");
+    expect(build?.path).toContain("&forcerm=true");
     if (build?.stdin === undefined) throw new Error("expected smoke build context");
     const chunks: Uint8Array[] = [];
     for await (const chunk of build.stdin) chunks.push(chunk);

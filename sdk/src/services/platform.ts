@@ -70,7 +70,11 @@ export class RouterService extends Context.Service<
     ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
     readonly setup: (
       config: ProxyConfig,
-      options?: { readonly autoApprove?: boolean },
+      options?: {
+        readonly autoApprove?: boolean;
+        /** Rescan host ports instead of reusing the persisted pair; set only by explicit `lando setup`. */
+        readonly reacquirePorts?: boolean;
+      },
     ) => Effect.Effect<
       void,
       ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,

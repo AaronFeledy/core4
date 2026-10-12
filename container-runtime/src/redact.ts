@@ -1,6 +1,15 @@
-import { createRedactor } from "@lando/sdk/secrets";
+import { createStandaloneRedactor } from "@lando/redaction/service";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Context } from "effect";
 
-const secretsRedactor = createRedactor("secrets");
+// Provider diagnostics must observe secret values registered after this shim is imported.
+const secretsRedactor = createStandaloneRedactor("secrets");
+
+// The engine supplies its canonical redactor without coupling container helpers to the secret store.
+export const StartFailureLogRedactor = Context.Reference<Redactor>(
+  "@lando/container-runtime/StartFailureLogRedactor",
+  { defaultValue: () => secretsRedactor },
+);
 
 export const redactString = (value: string): string => secretsRedactor.redactString(value);
 

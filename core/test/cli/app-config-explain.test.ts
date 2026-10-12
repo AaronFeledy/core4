@@ -411,4 +411,34 @@ describe("appConfigExplain", () => {
       expect(text).toContain("bare-provenance");
     });
   });
+
+  it("explains recipe provenance even when host configuration is invalid", async () => {
+    // Given
+    await withApp(landofile(), async (cwd) => {
+      const previous = new Map<string, string>();
+      for (const [key, value] of Object.entries(process.env)) {
+        if (key.startsWith("LANDO_") && value !== undefined) {
+          previous.set(key, value);
+          delete process.env[key];
+        }
+      }
+      process.env.LANDO_USER_CONF_ROOT = cwd;
+      process.env.LANDO_USER_DATA_ROOT = join(cwd, "data");
+      process.env.LANDO_USER_CACHE_ROOT = join(cwd, "cache");
+      writeFileSync(
+        join(cwd, "config.yml"),
+        "hostEvents:\n  pre-start:\n    - echo invalid-container-step\n",
+      );
+      try {
+        // When
+        const result = await explain(cwd);
+        // Then
+        expect(result.comparison.status).toBe("matched");
+        expect(optionNamed(result, "php").value).toBe("8.4");
+      } finally {
+        for (const key of Object.keys(process.env)) if (key.startsWith("LANDO_")) delete process.env[key];
+        for (const [key, value] of previous) process.env[key] = value;
+      }
+    });
+  });
 });

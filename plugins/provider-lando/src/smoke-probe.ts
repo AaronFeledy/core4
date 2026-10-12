@@ -103,7 +103,7 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
 export const runBuildSmokeProbe = (deps: SmokeProbeDeps, baseImage: string) => {
   const image = `provider-lando-smoke-build:${randomUUID()}`;
   const cleanup = removeSmokeResource(deps, "build", `/images/${encodeURIComponent(image)}?force=true`);
-  const buildParams = new URLSearchParams({ t: image, dockerfile: "Dockerfile" });
+  const buildParams = new URLSearchParams({ t: image, dockerfile: "Dockerfile", forcerm: "true" });
   const attempt = smokeApiRequest(deps, "build", {
     method: "POST",
     path: `/build?${buildParams.toString()}`,

@@ -67,6 +67,7 @@ THIS APP
   app:build      Build dist/ from src/ on the host
   app:curl
   app:env:init   Create .env from .env.example if it is missing
+  app:peek       Start the app and print the stamp web serves
   app:smoke      Fetch a URL from the running site and fail loudly
   app:stamp      Write a version stamp into dist/
 ```
@@ -150,11 +151,9 @@ Folders do not claim bare namespaced aliases. `.lando/scripts/db/seed.bun.sh` re
 
 ## Use Bun Shell and your host tools
 
-Bun Shell reads like bash: pipes, redirects, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, your package managers) comes from your host `PATH`.
+Bun Shell reads like bash: pipes, redirects, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, `lando`, your package managers) comes from your host `PATH`.
 
 Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
-
-Calling `lando` from inside a project script currently fails with the compiled CLI ([#1205](https://github.com/AaronFeledy/core4/issues/1205)).
 
 ## Smoke test the running site
 
@@ -176,6 +175,28 @@ lando smoke https://web.scripts-demo.lndo.site/version.txt
 ```
 
 That prints the stamped SHA. Ask for a path that does not exist and `curl -f` exits `22`, so `lando smoke` exits `22` too. Drop it straight into CI or a git hook.
+
+## Call `lando` from a script
+
+A script can run `lando` like any other host command, so one file can bring the app up and work inside it. Save this as `.lando/scripts/peek.bun.sh`:
+
+```sh
+# ---
+# desc: Start the app and print the stamp web serves
+# ---
+lando start
+lando exec web -- cat /app/dist/version.txt
+```
+
+```sh
+lando peek
+```
+
+That starts the app, then prints the stamped SHA from inside `web`. The app and its URL stay up after the script exits, the same as a `lando start` you type yourself.
+
+`lando` in a script is the `lando` on your `PATH`. If your `PATH` has none, it is the Lando that started the script, so `./lando peek` from a download folder works too. Call it by name: a path such as `./bin/lando` inside the script runs as Bun instead of Lando.
+
+Package scripts you run with `lando bun run` follow the same rule: `lando` in them runs Lando, and `bun` runs the Bun Lando ships. A nested `lando bun` is refused.
 
 ## Run service work from the Landofile
 

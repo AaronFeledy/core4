@@ -44,7 +44,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `getStatus` | Reports readiness and actionable provider state. |
 | `getVersions` | Reports provider and runtime component versions. |
 | `buildArtifact` | Builds a runnable artifact from an `ArtifactBuildSpec`. |
-| `pullArtifact` | Acquires a referenced artifact. |
+| `pullArtifact` | Acquires a referenced artifact with optional policy `always` (default; acquire from source), `missing` (reuse a provider-local copy, acquire only when absent), or `never` (reuse a provider-local copy, fail without contacting the source when absent; §6.13.3). Provider policies are strict and do not fall back. |
 | `removeArtifact` | Removes an artifact owned or selected by the request. |
 | `apply` | Reconciles an `AppPlan` and returns materialized runtime results. |
 | `start`, `stop`, `restart` | Changes lifecycle state for selected services. |
@@ -74,6 +74,8 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
 
 `stop` reports `stopped` or `unchanged`; `destroy` reports `destroyed` or `unchanged`. Every renderer and machine format MUST preserve that distinction. The operation result vocabulary is distinct from the provider's `DestroyOutcome` (`destroyed`, or `no-op` with reason `no-applied-plan`, §5.3): rule 1 returns `unchanged` without any provider call, an applied-plan teardown (rule 2) reports `destroyed`, and an orphan teardown (rule 3) derives its result from what it removed, `unchanged` when nothing was removed. A direct provider `no-op` MUST NOT be rendered as `destroyed`; it corresponds to `unchanged` unless the same operation removed other resources. Both operations stop and remove the selected containers, but `stop` retains the applied plan and volumes, while `destroy` clears applied state and follows its volume policy. An orphan teardown MUST report what it removed; a result that lists a service MUST mean that service was stopped and removed. Orphan volume removal under `destroy --volumes` MUST classify cache and data volumes exactly as planful bring-down does. A plain `destroy` leaves data stores, so rule 3 lets a later `destroy --volumes` remove them.
+
+Selected global stop (§20.7) is the one teardown exception to rule 3: an otherwise valid selected orphan request (orphaned runtime resources, no applied plan) fails with `AppResolveError` before any mutation, because route ownership cannot be reconstructed without applied route definitions. Whole-global stop follows rule 3.
 
 The relaxation is scoped to teardown callers. `start` and every other non-teardown caller keep the fail-closed refusal of orphaned runtime resources (`AppResolveError`) and MUST NOT be served by widening the shared evidence resolver's default.
 
@@ -188,7 +190,7 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `ServiceCopyError` | Service file transfer failed. |
 | `ArtifactTransferError` | Artifact export or import failed. |
 
-Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details`, optional `remediation`, and an optional original `cause` for debug logs.
+Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details` when present, optional `remediation`, and an optional original `cause` for debug logs. `message` and `details` MUST already be redacted with the live value set when the error is returned, so library callers see the same masking as CLI output.
 
 ### 5.8 Bundled providers
 
@@ -197,6 +199,8 @@ All bundled providers implement the complete `RuntimeProvider` contract.
 #### 5.8.1 Default: Lando-managed runtime (`@lando/provider-lando`)
 
 The default provider uses Podman privately but presents the “Lando runtime” to users. It owns verified runtime bundles, private configuration and storage, its API endpoint, and managed macOS/Windows machines under Lando-controlled roots (§12.4). Production bundle entries MUST name immutable published assets with real checksums and sizes and MUST remain available for older binaries. Overrides MAY redirect development to another manifest or paired URL/checksum but MUST NOT disable verification. Resolution precedence is alternate manifest, paired URL/checksum, then bundled manifest; there is no channel-aware or runtime-fetched production manifest.
+
+Before it stops its runtime service, the provider makes a bounded, best-effort attempt to remove build-only containers left in its private storage. That attempt MUST NOT remove service containers, volumes, artifacts, or build cache, and its failure MUST NOT block the stop.
 
 Podman-backed providers require Podman 6 or newer. Supported managed hosts are Apple Silicon macOS, Windows 11 or newer, and Linux with cgroups v2 and nftables; rootless networking uses Pasta with Netavark/Aardvark. Unsupported legacy stacks MUST fail closed with tagged remediation.
 

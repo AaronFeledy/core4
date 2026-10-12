@@ -1,4 +1,5 @@
 import { serviceContainerName } from "@lando/container-runtime/plan";
+import { redactDetails } from "@lando/container-runtime/redact";
 import { Effect, Stream } from "effect";
 
 import { ServiceExecError } from "@lando/sdk/errors";
@@ -51,7 +52,7 @@ export const windowsStdinExec = (
             operation: "exec",
             service: target.service,
             message: "Managed Windows Podman CLI could not execute the command.",
-            details: { cause },
+            details: redactDetails({ cause }),
           }),
       ),
     );
@@ -79,7 +80,7 @@ export const windowsStdinExecStream = (
             operation: "exec",
             service: target.service,
             message: "Managed Windows Podman CLI could not stream the command.",
-            details: { cause },
+            details: redactDetails({ cause }),
           }),
       ),
     );

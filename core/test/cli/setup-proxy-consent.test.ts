@@ -32,9 +32,10 @@ test.each([{ argv: ["--yes"] }, { argv: ["--no-interactive"] }, { argv: ["--yes"
     );
 
     // Then: the invocation grants automatic consent to the router.
-    expect(approvals).toEqual([{ autoApprove: true }]);
+    expect(approvals).toEqual([{ autoApprove: true, reacquirePorts: true }]);
     expect(configs).toHaveLength(1);
     expect(configs[0]).not.toHaveProperty("autoApprove");
+    expect(configs[0]).not.toHaveProperty("reacquirePorts");
   },
 );
 
@@ -61,5 +62,5 @@ test("preserves interactive consent when setup has no approval flags", async () 
   // Then
   expect(configs).toHaveLength(1);
   expect(configs[0]).not.toHaveProperty("autoApprove");
-  expect(approvals).toEqual([{ autoApprove: false }]);
+  expect(approvals).toEqual([{ autoApprove: false, reacquirePorts: true }]);
 });

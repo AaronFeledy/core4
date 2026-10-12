@@ -12,7 +12,7 @@ import type {
   ProviderErrorContext,
 } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
-import { type PullImageOptions, pullImage } from "./image-pull.ts";
+import { type PullImageOptions, inspectRequest, pullImage } from "./image-pull.ts";
 import { redactDetails } from "./redact.ts";
 
 export interface EnsureImageOptions<E = never> {
@@ -22,12 +22,6 @@ export interface EnsureImageOptions<E = never> {
   readonly platform?: string;
   readonly publish?: PullImageOptions<E>["publish"];
 }
-
-const inspectRequest = (dialect: PullDialect, reference: string): EngineHttpRequest =>
-  dialect.inspect?.request(reference) ?? {
-    method: "GET",
-    path: `/libpod/images/${encodeURIComponent(reference)}/json`,
-  };
 
 const request = (
   api: EngineHttpApi,

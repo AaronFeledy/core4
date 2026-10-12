@@ -59,7 +59,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: ["@lando/sdk", "@lando/paths"],
     devDependencies: [],
   },
-  "@lando/container-runtime": { dependencies: ["@lando/sdk"], devDependencies: [] },
+  "@lando/container-runtime": { dependencies: ["@lando/sdk", "@lando/redaction"], devDependencies: [] },
   "@lando/redaction": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/http-client": { dependencies: ["@lando/redaction", "@lando/sdk"], devDependencies: [] },
   "@lando/managed-file": {
@@ -142,6 +142,8 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/provider-docker": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: PLUGIN_TEST_TARGETS,
+    // Provider error regressions register process-global canaries; runtime imports remain forbidden.
+    testTargets: [...PLUGIN_RUNTIME_TARGETS, ...PLUGIN_TEST_TARGETS, "@lando/redaction"],
   },
   "@lando/provider-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

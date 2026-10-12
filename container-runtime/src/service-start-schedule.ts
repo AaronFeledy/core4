@@ -26,6 +26,9 @@ export type ServiceStartNode =
 export interface BlockedService {
   readonly service: string;
   readonly unmetGate: string;
+  readonly dependency: string;
+  readonly lastExitCode?: number;
+  readonly timedOut?: boolean;
 }
 
 export type ServiceStartResult =
@@ -105,29 +108,47 @@ export const buildServiceStartGraph = (plan: AppPlan): ScheduleGraph<ServiceStar
   };
 };
 
+interface GateProbeResult {
+  readonly ok: boolean;
+  readonly lastExitCode?: number;
+  readonly timedOut?: boolean;
+}
+
 const probeHealthy = Effect.fnUntraced(function* <E, R>(
   service: ServicePlan,
   handlers: ServiceStartHandlers<E, R>,
-): Effect.fn.Return<boolean, never, R> {
+): Effect.fn.Return<GateProbeResult, never, R> {
   const healthcheck = service.healthcheck;
   const command = gateVerifiableCommand(healthcheck);
-  if (healthcheck === undefined || command === undefined) return false;
+  if (healthcheck === undefined || command === undefined) return { ok: false };
 
   if (healthcheck.startPeriodSeconds !== undefined && healthcheck.startPeriodSeconds > 0) {
     yield* Effect.sleep(Duration.seconds(healthcheck.startPeriodSeconds));
   }
 
+  let lastExitCode: number | undefined;
+  let timedOut = false;
   const attempt = Effect.timeoutOrElse(
-    Effect.map(Effect.result(handlers.execHealthcheck(service, command)), (result) =>
-      result._tag === "Success" && result.success.exitCode === 0 ? "green" : "red",
-    ),
+    Effect.gen(function* () {
+      const result = yield* Effect.result(handlers.execHealthcheck(service, command));
+      if (result._tag === "Success") {
+        lastExitCode = result.success.exitCode;
+        timedOut = false;
+        return result.success.exitCode === 0 ? "green" : "red";
+      }
+      timedOut = false;
+      return "red";
+    }),
     {
       duration: Duration.seconds(healthcheck.timeoutSeconds),
-      orElse: () => Effect.succeed((() => "red" as const)()),
+      orElse: () => {
+        timedOut = true;
+        return Effect.succeed("red" as const);
+      },
     },
   );
 
-  return yield* runProbe(
+  const ok = yield* runProbe(
     {
       id: `service-start-health:${String(service.name)}`,
       policy: {
@@ -145,6 +166,11 @@ const probeHealthy = Effect.fnUntraced(function* <E, R>(
     Effect.map((result) => result.outcome === "green"),
     Effect.catch(() => Effect.succeed(false)),
   );
+  return {
+    ok,
+    ...(lastExitCode === undefined ? {} : { lastExitCode }),
+    ...(timedOut ? { timedOut: true } : {}),
+  };
 });
 
 export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule")(function* <E, R>(
@@ -165,7 +191,16 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
     }),
   );
   const blocked: Array<BlockedService> = [];
+  const gateOutcomes = new Map<string, Pick<BlockedService, "lastExitCode" | "timedOut">>();
   let changed = false;
+
+  const recordGateOutcome = (nodeId: string, outcome: GateProbeResult): "succeeded" | "failed" => {
+    gateOutcomes.set(nodeId, {
+      ...(outcome.lastExitCode === undefined ? {} : { lastExitCode: outcome.lastExitCode }),
+      ...(outcome.timedOut === true ? { timedOut: true } : {}),
+    });
+    return outcome.ok ? "succeeded" : "failed";
+  };
 
   const settled = yield* runDependencySchedule(graph, {
     concurrency: 1,
@@ -175,10 +210,14 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
       if (unmetGate !== undefined) {
         if (value._tag === "service") {
           const unmet = nodeById.get(unmetGate);
+          const dependency = unmet?._tag === "gate" ? String(unmet.service.name) : unmetGate;
+          const outcome = gateOutcomes.get(unmetGate) ?? {};
           blocked.push({
             service: String(value.service.name),
             unmetGate:
               unmet?._tag === "gate" ? gateId(String(unmet.service.name), unmet.condition) : unmetGate,
+            dependency,
+            ...outcome,
           });
         }
         return Effect.succeed("blocked" as const);
@@ -205,12 +244,14 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
           return Effect.succeed("succeeded" as const);
         case "service_healthy":
           return probeHealthy(value.service, handlers).pipe(
-            Effect.map((healthy) => (healthy ? ("succeeded" as const) : ("failed" as const))),
+            Effect.map((result) => recordGateOutcome(node.id, result)),
           );
         case "service_completed_successfully":
           return handlers.waitForExit(value.service).pipe(
-            Effect.map((result) => (result.exitCode === 0 ? ("succeeded" as const) : ("failed" as const))),
-            Effect.catch(() => Effect.succeed("failed" as const)),
+            Effect.map((result) =>
+              recordGateOutcome(node.id, { ok: result.exitCode === 0, lastExitCode: result.exitCode }),
+            ),
+            Effect.catch(() => Effect.succeed(recordGateOutcome(node.id, { ok: false }))),
           );
       }
     },

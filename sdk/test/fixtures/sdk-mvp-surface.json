@@ -39,7 +39,7 @@
       "id: string",
       "capabilities: ProxyCapabilities",
       "prepare?: (config: ProxyConfig) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>",
-      "setup: (config: ProxyConfig, options?: { readonly autoApprove?: boolean }) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError, Scope.Scope>",
+      "setup: (config: ProxyConfig, options?: { readonly autoApprove?: boolean; /** Rescan host ports instead of reusing the persisted pair; set only by explicit `lando setup`. */ readonly reacquirePorts?: boolean; }) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError, Scope.Scope>",
       "revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>",
       "applyRoutes: (routes: ReadonlyArray<RoutePlan>, appId: AppId) => Effect.Effect<ProxyApplyResult, ProxyApplyError>",
       "removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>",
@@ -49,7 +49,9 @@
     "AppPlanner": [
       "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, AppPlannerError>"
     ],
-    "BuildOrchestrator": ["build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>"],
+    "BuildOrchestrator": [
+      "build: (plan: AppPlan, options?: BuildOptions) => Effect.Effect<AppPlan, BuildError>"
+    ],
     "CacheService": [
       "invalidate: (key: string) => Effect.Effect<void, CacheError>",
       "read: <A, I>(key: string, schema?: Schema.Codec<A, I>) => Effect.Effect<A | null, CacheError>",

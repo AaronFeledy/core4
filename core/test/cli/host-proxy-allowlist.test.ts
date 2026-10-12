@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
+import { LIFECYCLE_COMMAND_IDS } from "@lando/sdk/schema";
 
 import {
   HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS,
@@ -17,6 +18,15 @@ const EXPECTED_ALLOWLIST = ["app:open"];
 const liveSpecs = (): ReadonlyArray<LandoCommandSpec> => builtInCommandEntries.map((entry) => entry.spec);
 
 describe("host-proxy allowlist forbidden-id guard", () => {
+  test("builds on the sdk lifecycle command id list", () => {
+    for (const id of LIFECYCLE_COMMAND_IDS) {
+      expect(HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS).toContain(id);
+    }
+    expect(HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS).toContain("apps:poweroff");
+    expect(HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS).toContain("meta:bun");
+    expect(HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS).toContain("meta:x");
+  });
+
   test("flags every lifecycle command", () => {
     for (const id of [
       "app:start",

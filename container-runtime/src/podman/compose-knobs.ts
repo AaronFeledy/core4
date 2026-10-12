@@ -96,8 +96,8 @@ const queryKnob = (
  *
  * - `pull_policy` — Podman's compat `POST /containers/create` has no
  *   pull-policy field (pulls go through `/images/create`), and
- *   `ArtifactPullSpec` is `{ ref }` only. Realizing it would need a new
- *   provider-neutral plan field that does not exist.
+ *   `ArtifactPullSpec.policy` carries only a per-command policy. Realizing
+ *   per-service pull policy would need a provider-neutral plan field that does not exist.
  * - `gpus` — Podman's compat handler honors `HostConfig.DeviceRequests` only
  *   for `Driver: "cdi"` plus `DeviceIDs`; `count`, `capabilities`, and
  *   `options` are parsed and ignored, so the mapping cannot be total.

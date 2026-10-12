@@ -5,6 +5,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -78,5 +79,32 @@ describe("bringUpRecreateReasons", () => {
         { skipAbsentFields: true },
       ),
     ).toEqual(["publish-port", "bind-source", "network"]);
+  });
+
+  test("does not recreate when only an app-mount bind source spelling changes", () => {
+    const withAppMount: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "bind",
+          source: "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\embedded-app",
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+    };
+    expect(
+      bringUpRecreateReasons(
+        plan,
+        withAppMount,
+        {
+          bindSources: {
+            "/app": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\embedded-app",
+          },
+        },
+        { skipAbsentFields: true },
+      ),
+    ).toEqual([]);
   });
 });

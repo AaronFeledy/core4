@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -10,6 +11,9 @@ import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableErro
 import { LIBPOD_API_PREFIX, isNamedPipeEndpoint, makePodmanApiClient } from "../src/podman/api-client.ts";
 
 const ctx = { providerId: "custom-podman", remediation: "Start the custom Podman machine." } as const;
+
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
 
 interface SocketFixture {
   readonly endpoint: string;
@@ -48,6 +52,51 @@ const httpResponse = (body: string, status = 200): string =>
   `HTTP/1.1 ${status} Test\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`;
 
 describe("Podman API client", () => {
+  test.each(["info", "ping"] as const)(
+    "redacts runtime-registered values in rejected %s responses",
+    async (operation) => {
+      // Given
+      const canary = "opaque-podman-api-canary-1261";
+      Effect.runSync(registerRedactionValues([canary]));
+      await withSocketServer(
+        () => httpResponse(JSON.stringify({ message: `engine said ${canary}` }), 500),
+        async ({ endpoint }) => {
+          const client = makePodmanApiClient(endpoint, ctx);
+          // When
+          const failure = await Effect.runPromise(client[operation].pipe(Effect.flip));
+          // Then
+          if (!(failure instanceof ProviderUnavailableError))
+            throw new TypeError("Expected ProviderUnavailableError");
+          expect(failure.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
+          expect(failure.message).toContain("HTTP 500");
+          expect(failure.operation).toBe("capabilities");
+          expect(failure.providerId).toBe(ctx.providerId);
+        },
+      );
+    },
+  );
+
+  test("redacts runtime-registered values in malformed info actualValue", async () => {
+    // Given
+    const canary = "opaque-podman-json-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    await withSocketServer(
+      () => httpResponse(`engine said ${canary}`),
+      async ({ endpoint }) => {
+        const client = makePodmanApiClient(endpoint, ctx);
+        // When
+        const failure = await Effect.runPromise(client.info.pipe(Effect.flip));
+        // Then
+        if (!(failure instanceof ProviderCapabilityError))
+          throw new TypeError("Expected ProviderCapabilityError");
+        expect(failure.actualValue).toBe("engine said [redacted]");
+        expect(failure.capability).toBe("podman-info");
+        expect(failure.operation).toBe("capabilities");
+        expect(failure.providerId).toBe(ctx.providerId);
+      },
+    );
+  });
+
   test("identifies and normalizes named-pipe endpoints", () => {
     // Given / When / Then
     expect(isNamedPipeEndpoint("npipe://./pipe/podman-machine-default")).toBe(true);

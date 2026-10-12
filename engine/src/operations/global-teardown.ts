@@ -1,13 +1,29 @@
+import { AppResolveError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
-import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  FileSystem,
+  GlobalAppService,
+  RouterService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
+import { unknownPlanServiceError } from "./unknown-service.ts";
+
+const runtimeOnline = (provider: Pick<RuntimeProviderShape, "isAvailable" | "getStatus">) =>
+  provider.isAvailable.pipe(
+    Effect.flatMap((available) =>
+      available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+    ),
+    Effect.catch(() => Effect.succeed(false)),
+  );
 
 export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(function* () {
   const globalApp = yield* GlobalAppService;
@@ -17,12 +33,7 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
   const observedProvider = {
     ...provider,
-    isAvailable: provider.isAvailable.pipe(
-      Effect.flatMap((available) =>
-        available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
-      ),
-      Effect.catch(() => Effect.succeed(false)),
-    ),
+    isAvailable: runtimeOnline(provider),
   } satisfies AppliedStateProvider;
   const evidence = yield* resolveTeardownEvidence(root, [observedProvider]);
   if (evidence.kind === "applied") yield* missingRootAppliedTarget(evidence.plan, root);
@@ -32,6 +43,127 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
 });
 
 type GlobalTeardown = Effect.Success<ReturnType<typeof resolveGlobalTeardown>>;
+
+export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelection")(function* (
+  resolved: GlobalTeardown,
+  requested: ReadonlyArray<string>,
+) {
+  const evidence = resolved.evidence;
+  let services: ReadonlyArray<{ readonly name: string }>;
+  switch (evidence.kind) {
+    case "applied":
+      services = Object.values(evidence.plan.services);
+      break;
+    case "orphans":
+      services = evidence.groups.flatMap((group) =>
+        group.services.map((service) => ({ name: service.service })),
+      );
+      break;
+    case "absent":
+      services = [];
+      break;
+    default: {
+      const unreachable: never = evidence;
+      return unreachable;
+    }
+  }
+  const available = Object.fromEntries(services.map((service) => [String(service.name), service]));
+  const missing = requested.find((name) => !Object.hasOwn(available, name));
+  if (missing !== undefined)
+    return yield* Effect.fail(
+      unknownPlanServiceError({
+        prefix: "meta:global:stop",
+        tool: "meta:global:stop",
+        requested: missing,
+        services: available,
+        planLabel: "global app plan",
+        remediation: (first) => `Example: lando global:stop --service ${first}`,
+      }),
+    );
+  switch (evidence.kind) {
+    case "applied":
+      break;
+    case "orphans":
+    case "absent":
+      return yield* Effect.fail(
+        new AppResolveError({
+          message: "Selected global services cannot be stopped without matching applied app state.",
+          reason: "mismatch",
+          detail: "provider-resources",
+          remediation: "Restore the matching applied state before retrying service-scoped global:stop.",
+        }),
+      );
+    default: {
+      const unreachable: never = evidence;
+      return unreachable;
+    }
+  }
+  const online = yield* runtimeOnline(resolved.provider);
+  const observed = online
+    ? yield* resolved.provider.list({ app: evidence.plan.id, includeUnplanned: true })
+    : [];
+  const owned = observed.filter(
+    (service) =>
+      service.app === evidence.plan.id &&
+      service.appRoot === resolved.paths.root &&
+      service.providerId === evidence.plan.provider &&
+      service.containerId !== undefined,
+  );
+  const activeNames = new Set(
+    owned
+      .filter(
+        (service) =>
+          service.status === "running" || service.status === "paused" || service.status === "restarting",
+      )
+      .map((service) => String(service.service)),
+  );
+  const selected = new Set(requested);
+  return {
+    plan: evidence.plan,
+    services: Object.values(evidence.plan.services)
+      .reverse()
+      .flatMap((service) =>
+        selected.has(String(service.name))
+          ? owned.filter((observation) => observation.service === service.name)
+          : [],
+      ),
+    routes:
+      online && evidence.plan.routes.some((route) => selected.has(String(route.service)))
+        ? evidence.plan.routes.filter(
+            (route) => !selected.has(String(route.service)) && activeNames.has(String(route.service)),
+          )
+        : undefined,
+  };
+});
+
+export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(function* (
+  resolved: GlobalTeardown,
+  selection: Effect.Success<ReturnType<typeof resolveGlobalStopSelection>>,
+) {
+  const services: string[] = [];
+  for (const service of selection.services) {
+    const result = yield* resolved.provider.removeObservedService(service);
+    switch (result.kind) {
+      case "removed":
+        services.push(String(service.service));
+        break;
+      case "absent":
+        break;
+      default: {
+        const unreachable: never = result;
+        return unreachable;
+      }
+    }
+  }
+  if (selection.routes !== undefined) {
+    const router = yield* RouterService;
+    yield* router.applyRoutes(selection.routes, selection.plan.id);
+  }
+  return {
+    changed: services.length > 0,
+    services,
+  };
+});
 
 export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({
   kind: "global" as const,

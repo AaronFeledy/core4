@@ -41,6 +41,9 @@ export const routingStateFile = (paths: ProxyPaths): string =>
 export const acquisitionStateFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), ".lando-port-acquisition.json");
 
+export const defaultDomainFile = (paths: ProxyPaths): string =>
+  joinFor(paths)(dynamicConfigDir(paths), ".lando-default-domain");
+
 export const defaultTlsFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), "tls-default.yml");
 

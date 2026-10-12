@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { DateTime, Duration, Effect, Stream } from "effect";
 
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
@@ -16,6 +17,9 @@ import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../sr
 import { exec } from "../src/podman/exec.ts";
 
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
@@ -121,6 +125,27 @@ describe("podman exec user", () => {
 });
 
 describe("podman exec start errors", () => {
+  test("redacts runtime-registered values in a failed exec create response", async () => {
+    // Given
+    const canary = "opaque-exec-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const api: EngineHttpApi = {
+      request: () =>
+        Effect.succeed({ status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) }),
+    };
+    // When
+    const failure = await Effect.runPromise(
+      exec(plan, target, { command: ["id"] }, { api, ctx }).pipe(Effect.flip),
+    );
+    // Then
+    if (!(failure instanceof ServiceExecError)) throw new TypeError("Expected ServiceExecError");
+    expect(failure.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
+    expect(failure.message).not.toContain(canary);
+    expect(failure.service).toBe(serviceName);
+    expect(failure.operation).toBe("exec");
+    expect(failure.providerId).toBe(ctx.providerId);
+  });
+
   const apiFailingStartWith = (error: ProviderUnavailableError): EngineHttpApi => ({
     request: (input) =>
       input.method === "POST" && input.path === createPath

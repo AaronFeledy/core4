@@ -16,6 +16,7 @@ import {
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import {
   type AppPlannerError,
   CacheService,
@@ -24,7 +25,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Result } from "effect";
+import { type Context, DateTime, Effect, Predicate, Result } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -69,7 +70,7 @@ import { finalizeServices } from "./endpoints.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { attachServiceCredsScope } from "./landofile-scopes.ts";
-import { DEFAULT_PROXY_DOMAIN, appNetworkName } from "./naming.ts";
+import { appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
@@ -91,6 +92,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   certificateAuthorityResolver: Context.Service.Shape<typeof CertificateAuthorityResolver> | undefined,
   authoredLandofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
+  knownAppRoot?: string,
 ): Effect.fn.Return<AppPlan, AppPlannerError> {
   const {
     landofile,
@@ -116,6 +118,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     pathsService,
     landofile: authoredLandofile,
     capabilities: providerCapabilities,
+    ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
   });
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
@@ -248,8 +251,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
             hostnames: pinnedService.hostnames ?? [],
             routes,
-            defaultRouteHostname:
-              routes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
+            defaultRouteHostname: routes.length === 0 ? `${name}.${appSlug}.${defaultDomain}` : undefined,
             resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
             fileSystem,
           })
@@ -314,7 +316,25 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     });
   }
   const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
-  const effectiveEvents = compileEffectiveEvents({ landofile });
+  const hostEvents =
+    AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService) ||
+    globalConfig?.hostEvents === undefined
+      ? undefined
+      : globalConfig.hostEvents;
+  const hostEventCompileBase = {
+    landofile,
+    ...(hostEvents === undefined ? {} : { hostEvents }),
+    skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
+  };
+  const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
+    compileEffectiveEvents({ ...hostEventCompileBase, services });
+  const planServices = (services: Readonly<Record<string, unknown>>) =>
+    Object.fromEntries(
+      Object.entries(services).map(([name, service]) => [
+        name,
+        { primary: Predicate.isObject(service) && service.primary === true },
+      ]),
+    );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const cacheKey = deriveAppPlanCacheKey({
     appRoot,
@@ -323,6 +343,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     pluginManifests: manifests,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
+      defaultDomain,
       sshAgentMode: sshAgentIntent.mode,
       gpgAgentForward: gpgAgentIntent.forward,
     }),
@@ -359,7 +380,10 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
       return attachServiceCredsScope(
-        attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEvents),
+        attachEffectiveEvents(
+          attachEffectiveTooling(cached, effectiveTooling),
+          effectiveEventsFor(planServices(cached.services)),
+        ),
         serviceCredsScope,
       );
     }
@@ -468,7 +492,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
       effectiveTooling,
     ),
-    effectiveEvents,
+    effectiveEventsFor(planServices(finalized.services)),
   );
   attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);

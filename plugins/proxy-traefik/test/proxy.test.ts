@@ -436,16 +436,17 @@ describe("Traefik RouterService", () => {
     expect(harness.restarted).toEqual(["traefik", "traefik", "traefik", "traefik"]);
   });
 
-  test("reuses a durable acknowledged HTTP route across fresh Windows service instances", async () => {
+  test("reuses a durable acknowledged HTTP route with persisted authorities across fresh Windows service instances", async () => {
     const harness = makeHarness(undefined, {}, "win32", true);
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     const httpRoutes = routes.slice(1);
 
     await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
     const fresh = harness.makePersistedService();
-    await Effect.runPromise(fresh.applyRoutes(httpRoutes, app));
+    const applied = await Effect.runPromise(fresh.applyRoutes(httpRoutes, app));
 
     expect(harness.restarted).toEqual(["traefik"]);
+    expect(applied.authorities.map(({ port }) => port)).toEqual([8080]);
   });
 
   test("does not trust an acknowledgement after route bytes change", async () => {

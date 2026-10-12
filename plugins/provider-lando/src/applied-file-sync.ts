@@ -1,4 +1,5 @@
 import { APP_LABEL } from "@lando/container-runtime/labels";
+import { sameRealpath } from "@lando/paths";
 import { Effect } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
@@ -59,8 +60,8 @@ export const verifiedFileSyncSessions = (plan: AppPlan): ReadonlyArray<FileSyncS
       seen.has(key) ||
       session.app.kind !== "user" ||
       session.app.id !== plan.id ||
-      session.app.root !== plan.root ||
-      session.source !== mount.source ||
+      !sameRealpath(session.app.root, plan.root) ||
+      !sameRealpath(session.source, mount.source) ||
       session.mode !== "two-way-safe" ||
       session.permissions !== undefined ||
       session.excludes.length !== mount.excludes.length ||
