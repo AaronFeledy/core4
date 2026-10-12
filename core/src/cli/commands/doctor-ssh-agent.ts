@@ -5,8 +5,13 @@ import {
   type HostAgentDiscoveryOptions,
   discoverHostSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/host-agent-discovery";
-import { runtimeSshAgentReady } from "@lando/engine/subsystems/ssh-agent/session";
+import {
+  SSH_SIDECAR_READINESS_POLICY,
+  awaitRuntimeSshAgent,
+  runtimeSshAgentReady,
+} from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
+import { runProbe } from "@lando/sdk/probe";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -60,6 +65,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       : undefined);
   let delivery: Details["delivery"] = capabilities?.agentSocket?.delivery ?? "none";
   let runtimeVolume: string | undefined;
+  let waitAfterSetup = false;
   const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
     Effect.tryPromise({
       try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
@@ -80,9 +86,22 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         if (provider?.id === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
           delivery = "runtime-volume";
           runtimeVolume = socket.runtimeVolume;
-          return { source: "sidecar" as const, reachable: yield* runtimeSshAgentReady };
+          return {
+            source: "sidecar" as const,
+            reachable: waitAfterSetup
+              ? (yield* awaitRuntimeSshAgent()) === "ready"
+              : yield* runtimeSshAgentReady,
+          };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
+        if (waitAfterSetup)
+          yield* runProbe(
+            {
+              id: "doctor-ssh-sidecar-ready",
+              policy: SSH_SIDECAR_READINESS_POLICY,
+            },
+            probeAgent(upstream),
+          );
         const probed = yield* Effect.result(probeAgent(upstream));
         return {
           source: "sidecar" as const,
@@ -128,7 +147,10 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         break;
       case "sidecar": {
         const setup = yield* Effect.result(input.sshService.setup({ force: false }));
-        if (Result.isSuccess(setup)) upstream = yield* inspect;
+        if (Result.isSuccess(setup)) {
+          waitAfterSetup = true;
+          upstream = yield* inspect;
+        }
         const recovered = Result.isSuccess(setup) && upstream.reachable && delivery !== "none";
         fixContext.fixOutcome = recovered ? "recovered" : "failed";
         fixContext.fixCommand = "ssh.setup";

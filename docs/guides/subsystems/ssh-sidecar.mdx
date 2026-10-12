@@ -22,7 +22,7 @@ sshAgent:
 
 That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:rebuild`.
 
-Lando starts the sidecar with the global app when a start needs it. You do not start an SSH agent by hand.
+Lando starts the sidecar when a start needs it. You do not start an SSH agent by hand. `lando start`, `lando restart`, and `lando rebuild` check the sidecar's agent first. If it does not answer, whether after `lando poweroff`, a reboot, or a crash, Lando starts the sidecar and waits up to about 30 seconds for the agent under a "Start SSH agent sidecar" progress step. A sidecar that is already running costs nothing extra. Forwarding comes back after a poweroff or reboot without `lando setup` or `lando global:start`.
 
 ## What lands in the container
 
@@ -42,9 +42,15 @@ The planner records only the eligible services and the selected mode under the p
 
 ## When the sidecar is missing
 
-Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or ready, or a required relay or bridge fails, `lando start` still succeeds. Lando publishes a warning and starts the app without the `SSH_AUTH_SOCK` overlay. `lando doctor` reports `runtime-volume` delivery and the volume name on the managed provider, using in-runtime readiness rather than host socket reachability. A failed check reports degraded with `lando setup` or `lando doctor --fix` as remediation.
+Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, no sidecar service is installed, the sidecar cannot start or its agent never answers within the wait, or a required relay or bridge fails, `lando start` still succeeds. Lando publishes a warning that names the cause and starts the app without the `SSH_AUTH_SOCK` overlay. The fix depends on the cause:
 
-Setup and the global app follow the same rule. If the sidecar cannot start, `lando setup` prints a warning with the cause, finishes its other steps, and records the `shell` step as unavailable. `lando doctor` keeps reporting that setup record until the next `lando setup` run. `lando doctor --fix` can restart the sidecar, but it does not rewrite the setup record. `lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, so a broken sidecar does not stop Traefik or the other global services from starting. Those commands still exit non-zero and name the service that failed.
+- The sidecar could not start: fix the cause, then run `lando restart`. `lando global:logs --service ssh-agent` shows the sidecar's output.
+- It started but the agent did not answer: run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando restart`.
+- No SSH agent sidecar service is installed: install and select the bundled SSH agent plugin, then restart the app.
+
+Every later start retries on its own. `lando doctor` reports `runtime-volume` delivery and the volume name on the managed provider, using in-runtime readiness rather than host socket reachability. A failed check reports degraded with `lando setup` or `lando doctor --fix` as remediation.
+
+Setup and the global app follow the same rule. If the sidecar cannot start, `lando setup` prints a warning with the cause, finishes its other steps, and records the `shell` step as unavailable. `lando doctor` keeps reporting that setup record until the next `lando setup` run, even after an app start brings the sidecar up. `lando doctor --fix` can restart the sidecar and waits for its agent before reporting the `ssh` check recovered or failed, but it does not rewrite the setup record. `lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, so a broken sidecar does not stop Traefik or the other global services from starting. Those commands still exit non-zero and name the service that failed.
 
 Host mode does the opposite and fails closed. That difference is deliberate: nobody opts into the sidecar, so it must never block setup or a start; everyone who opts into host forwarding wants to know when it is not working.
 

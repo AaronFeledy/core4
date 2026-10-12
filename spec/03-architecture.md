@@ -229,7 +229,7 @@ A cold `app:start` follows this canonical order; optional global and build detai
 6. `post-bootstrap`, `ready`
 7. `cli-app:start-init`
 8. `pre-init`, `post-init`
-9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
+9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
 10. `post-start` (running-state check, healthchecks, url scan by priority), `ready-app`
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
