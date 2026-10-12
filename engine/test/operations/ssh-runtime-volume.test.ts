@@ -183,6 +183,40 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
   expect(selected).toEqual([]);
 });
 
+test("host-socket path stops waiting when the started sidecar exits", async () => {
+  // Given
+  let setups = 0;
+  // When
+  const result = await Effect.runPromise(
+    Effect.result(
+      resolveSshAgentUpstream({
+        appId: plan.id,
+        provider: ProviderId.make("docker"),
+        intent: { mode: "sidecar" },
+      }),
+    ).pipe(
+      Effect.provideService(SshService, {
+        ...ssh,
+        setup: () =>
+          Effect.sync(() => {
+            setups++;
+          }),
+      }),
+      Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
+      Effect.provide(LandoEventService.layer),
+    ),
+  );
+  // Then
+  expect(setups).toBe(1);
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      reason: "sidecar-not-running",
+      message: "The SSH agent sidecar stopped before its agent answered.",
+    },
+  });
+});
+
 test("stopped sidecar starts once and forwards after delayed readiness with task progress", async () => {
   // Given
   let setups = 0;

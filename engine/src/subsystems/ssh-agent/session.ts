@@ -70,8 +70,12 @@ export const SSH_SIDECAR_READINESS_POLICY = {
   timeout: Duration.seconds(30),
 } as const;
 
-export const awaitRuntimeSshAgent = Effect.fnUntraced(function* () {
-  const lastState = yield* Ref.make<"ready" | "starting" | "stopped">("starting");
+export type SshSidecarState = Effect.Success<typeof runtimeSshAgentState>;
+
+export const awaitRuntimeSshAgent = Effect.fnUntraced(function* (
+  check: Effect.Effect<SshSidecarState> = runtimeSshAgentState,
+) {
+  const lastState = yield* Ref.make<SshSidecarState>("starting");
   yield* runProbe(
     {
       id: "ssh-sidecar-ready",
@@ -79,7 +83,7 @@ export const awaitRuntimeSshAgent = Effect.fnUntraced(function* () {
       // Green ends probing for both terminal states; the Ref preserves which terminal state won.
       classify: { success: (state) => (state === "starting" ? "yellow" : "green"), failure: () => "yellow" },
     },
-    runtimeSshAgentState.pipe(Effect.tap((state) => Ref.set(lastState, state))),
+    check.pipe(Effect.tap((state) => Ref.set(lastState, state))),
   ).pipe(Effect.catch(() => Effect.void));
   return yield* Ref.get(lastState);
 });
