@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
@@ -70,10 +68,6 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: RabbitMQServiceConfig,
   resolve: (input) => {
-    const appName = input.appName ?? (basename(input.appRoot) || "app");
-    const routes = input.service.routes ?? [
-      { hostname: `${input.name}.${appName}.lndo.site`, endpoint: MANAGEMENT_PORT },
-    ];
     const managementUser = input.service.environment?.RABBITMQ_DEFAULT_USER ?? "lando";
     const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? "lando";
     return Effect.succeed({
@@ -82,7 +76,6 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
         ...input.service,
         type: "rabbitmq",
         image: input.service.image ?? image,
-        routes,
       },
       features: [{ id: RABBITMQ_FEATURE_ID }],
       tooling: {

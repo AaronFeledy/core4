@@ -86,19 +86,16 @@ describe("tomcat ServiceType", () => {
         });
       });
 
-      test("resolves a default route and enables certs", async () => {
+      test("resolves the default webroot and enables certs", async () => {
         const resolution = await resolveTomcatService(serviceType, { type: id });
 
-        expect(resolution.normalizedConfig.routes).toEqual([
-          { hostname: "appserver.myapp.lndo.site", endpoint: 8080 },
-        ]);
         expect(resolution.normalizedConfig.certs).toBe(true);
         expect(resolution.normalizedConfig.webroot).toEqual(
           PortablePath.make("/usr/local/tomcat/webapps/ROOT"),
         );
       });
 
-      test("authored routes replace the default route", async () => {
+      test("preserves authored routes", async () => {
         const routes = [{ hostname: "java.example.test", scheme: "https", endpoint: 8080 }] as const;
         const resolution = await resolveTomcatService(serviceType, { type: id, routes });
 

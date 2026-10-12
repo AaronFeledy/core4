@@ -89,12 +89,9 @@ describe("rabbitmq ServiceType", () => {
         });
       });
 
-      test("resolves default routes and tooling", async () => {
+      test("resolves default tooling", async () => {
         const resolution = await resolveRabbitMQService(serviceType, { type: id });
 
-        expect(resolution.normalizedConfig.routes).toEqual([
-          { hostname: "queue.myapp.lndo.site", endpoint: 15672 },
-        ]);
         expect(resolution.tooling).toEqual({
           rabbitmqctl: { service: "queue", cmd: "rabbitmqctl" },
           rabbitmqadmin: {
@@ -119,7 +116,7 @@ describe("rabbitmq ServiceType", () => {
         });
       });
 
-      test("authored routes replace the default route", async () => {
+      test("preserves authored routes", async () => {
         const routes = [{ hostname: "mq.example.test", scheme: "https", endpoint: 15672 }] as const;
         const resolution = await resolveRabbitMQService(serviceType, { type: id, routes });
 

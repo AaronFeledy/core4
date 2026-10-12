@@ -178,10 +178,10 @@ describe("Traefik RouterService TLS", () => {
     expect(harness.files.has("/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.crt")).toBe(false);
     await Effect.runPromise(harness.service.stop);
 
-    // Then: neither default configuration nor certificate material remains.
+    // Then: TLS material is removed, but the dashboard survives while Traefik may still run.
     expect(
       [...harness.files.keys()].filter((path) => path.startsWith("/lando/global/proxy-traefik/dynamic")),
-    ).toEqual([]);
+    ).toEqual(["/lando/global/proxy-traefik/dynamic/dashboard.yml"]);
   });
 
   test("preserves a tagged CA failure inside ProxyApplyError", async () => {

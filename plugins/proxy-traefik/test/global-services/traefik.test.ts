@@ -3,9 +3,8 @@ import { Effect, Schema } from "effect";
 
 import { ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
 
+import { TRAEFIK_DASHBOARD_PRIORITY, renderTraefikDashboardConfig } from "../../src/dashboard.ts";
 import traefikGlobalService, {
-  TRAEFIK_DASHBOARD_HOSTNAME,
-  TRAEFIK_DASHBOARD_PRIORITY,
   TRAEFIK_DYNAMIC_CONFIG_DIR,
   TRAEFIK_IMAGE,
   buildTraefikServiceConfig,
@@ -84,25 +83,41 @@ describe("traefik global service ServiceConfig", () => {
     expect(text).not.toContain("--providers.docker");
   });
 
-  test("routes the dashboard through the file provider on traefik.lndo.site → api@internal", async () => {
+  test("starts without overwriting router-owned dashboard configuration", async () => {
     const config = await decodeConfig();
     const text = commandText(config);
-    expect(TRAEFIK_DASHBOARD_HOSTNAME).toBe("traefik.lndo.site");
-    expect(text).toContain("Host(`traefik.lndo.site`)");
-    expect(text).toContain("api@internal");
-    // The router is materialized into the dynamic config directory at start.
+    expect(text).not.toContain("dashboard.yml");
+    expect(text).not.toContain("Host(");
     expect(text).toContain(TRAEFIK_DYNAMIC_CONFIG_DIR);
     expect(text).toContain("exec traefik");
   });
 
-  test("pins the dashboard router above every app route priority", async () => {
+  test("pins both domain-derived dashboard routers above every app route priority", () => {
     // Given
-    const config = await decodeConfig();
+    const domain = " Custom.Test. ";
     // When
-    const text = commandText(config);
+    const config = Bun.YAML.parse(renderTraefikDashboardConfig(domain));
     // Then
     expect(TRAEFIK_DASHBOARD_PRIORITY).toBeGreaterThan(ROUTE_PRIORITY_MAX);
-    expect(text).toContain(`priority: ${TRAEFIK_DASHBOARD_PRIORITY}`);
+    expect(config).toEqual({
+      http: {
+        routers: {
+          dashboard: {
+            rule: "Host(`traefik.custom.test`)",
+            priority: TRAEFIK_DASHBOARD_PRIORITY,
+            service: "api@internal",
+            entryPoints: ["web"],
+          },
+          "dashboard-https": {
+            rule: "Host(`traefik.custom.test`)",
+            priority: TRAEFIK_DASHBOARD_PRIORITY,
+            service: "api@internal",
+            entryPoints: ["websecure"],
+            tls: {},
+          },
+        },
+      },
+    });
   });
 
   test("does not author extra_hosts; host reachability is planner-owned", async () => {

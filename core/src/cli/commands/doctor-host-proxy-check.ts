@@ -1,3 +1,5 @@
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { DEFAULT_PROXY_DOMAIN } from "@lando/engine/planner/naming";
 import { Duration, Effect, Ref, Result } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
@@ -15,6 +17,7 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
   hostProxy: typeof HostProxyService.Service,
   fix: boolean,
 ): Effect.fn.Return<DoctorSubsystemCheck, never, HostDnsResolver> {
+  const baseDomain = (yield* resolveProxyDefaultDomain).trim().toLowerCase().replace(/\.+$/, "");
   const status = yield* Effect.result(hostProxy.status());
   const context: Record<string, string> = {
     subsystem: "host-proxy",
@@ -24,17 +27,17 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
           active: String(status.success.active),
           mode: status.success.mode,
           mechanism: status.success.mechanism,
-          baseDomain: status.success.baseDomain,
+          baseDomain,
           loopback: status.success.loopback,
         }
-      : { active: "false" }),
+      : { active: "false", baseDomain }),
   };
   if (Result.isFailure(status)) {
     return yield* buildDegradedCheck(HOST_PROXY_SPEC, context, fix, undefined, status.failure);
   }
 
   const resolver = yield* HostDnsResolver;
-  const hostname = `lando-doctor-probe.${status.success.baseDomain}`;
+  const hostname = `lando-doctor-probe.${baseDomain}`;
   const addressesRef = yield* Ref.make<ReadonlyArray<string>>([]);
   const resolved = yield* Effect.result(
     runProbe(
@@ -65,9 +68,11 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
   };
   if (dnsReady) return passCheck(HOST_PROXY_SPEC, dnsContext);
 
-  const manualRemediation = status.success.active
-    ? `Host DNS does not resolve ${hostname} to ${status.success.loopback}. Run \`lando setup\` to repair the active DNS integration.`
-    : `Host DNS does not resolve ${hostname} to ${status.success.loopback}. Configure a local DNS rule for *.${status.success.baseDomain} to point to ${status.success.loopback}, then run \`lando doctor\` again.`;
+  const cause =
+    baseDomain === DEFAULT_PROXY_DOMAIN
+      ? `${baseDomain} relies on public DNS, which fails offline or behind a resolver that drops loopback answers (DNS-rebinding protection).`
+      : `Lando does not configure DNS for ${baseDomain}.`;
+  const manualRemediation = `Host DNS does not resolve ${hostname} to ${status.success.loopback}. ${cause} Add a local DNS rule (dnsmasq or your OS resolver) that resolves *.${baseDomain} to ${status.success.loopback}, then run \`lando doctor\` again.`;
   if (!status.success.active) {
     return {
       name: HOST_PROXY_SPEC.name,
