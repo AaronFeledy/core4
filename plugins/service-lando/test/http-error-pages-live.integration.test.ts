@@ -28,6 +28,7 @@ const suites: ReadonlyArray<{
   readonly cases: ReadonlyArray<ErrorPageCase>;
 }> = [
   { server: "static", files: staticFixtureFiles, cases: staticCases },
+  { server: "nginx", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx-fpm", files: phpFixtureFiles, cases: nginxFpmCases },
   {
     server: "apache",
@@ -84,7 +85,7 @@ for (const suite of suites) {
       }, 30_000);
     }
 
-    if (suite.server === "static") return;
+    if (suite.server === "static" || suite.server === "nginx") return;
 
     test("PATH_INFO for /pathinfo.php/one/two is /one/two", async () => {
       if (stack === undefined) throw new Error(`${suite.server} stack did not start`);

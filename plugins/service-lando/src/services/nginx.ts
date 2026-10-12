@@ -16,7 +16,12 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -24,10 +29,20 @@ import { mountAppRoot } from "./_volume-helpers.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
+import { defaultStaticCommand } from "./static.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+const NginxWebroot = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
+      message:
+        "nginx webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
+    }),
+  ),
+  Schema.brand("NginxWebroot"),
+);
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -111,11 +126,15 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
       condition: "service_healthy",
       required: true,
     });
-    if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.addBuildStep(landoErrorPagesBuildStep());
-      ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
-      ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user));
-    }
+  }
+  if (service.command === undefined && service.entrypoint === undefined) {
+    ctx.addBuildStep(landoErrorPagesBuildStep());
+    ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
+    ctx.setCommand(
+      backend.length > 0
+        ? phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user)
+        : defaultStaticCommand("nginx", webroot, port, service.user),
+    );
   }
 
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
@@ -173,19 +192,22 @@ export const nginxServiceType: ServiceType = {
   identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.succeed({
-      base: "lando" as const,
-      normalizedConfig: normalizedService(input.service),
-      logSources: NGINX_LOG_SOURCES,
-      features: [
-        { id: NGINX_FEATURE_ID },
-        {
-          id: "lando.env",
-          config: {
-            appPaths: { appRoot: "/app", projectMount: "/app" },
-            webroot: input.service.webroot ?? "/app",
+    serviceTypeResolve("nginx", "Failed to resolve nginx", () => {
+      const webroot = Schema.decodeUnknownSync(NginxWebroot)(input.service.webroot ?? "/app");
+      return {
+        base: "lando" as const,
+        normalizedConfig: normalizedService(input.service),
+        logSources: NGINX_LOG_SOURCES,
+        features: [
+          { id: NGINX_FEATURE_ID },
+          {
+            id: "lando.env",
+            config: {
+              appPaths: { appRoot: "/app", projectMount: "/app" },
+              webroot,
+            },
           },
-        },
-      ],
+        ],
+      };
     }),
 };

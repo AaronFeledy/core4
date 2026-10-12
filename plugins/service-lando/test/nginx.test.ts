@@ -8,6 +8,7 @@ import type {
   AppFeatureServiceView,
 } from "@lando/sdk/services";
 
+import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import {
   NGINX_FEATURE_ID,
   nginxPhpFpmWireFeature,
@@ -65,6 +66,115 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("nginx ServiceType", () => {
+  test.each([undefined, "appserver"])(
+    "rejects relative or unsafe webroots during resolution with backend %s",
+    async (backend) => {
+      // Given: either standalone nginx or a PHP-FPM frontend with an unsafe root.
+      for (const webroot of ["public", "/app/$host"] as const) {
+        // When / Then: resolution fails before either launcher can use the root.
+        await expectRejectsToThrow(
+          composeNginxPlan({ type: "nginx", webroot, ...(backend === undefined ? {} : { backend }) }),
+          /nginx webroot must be an absolute container path using only letters, digits, '\.', '_', '-', and '\/'\./,
+        );
+      }
+    },
+  );
+
+  test.each([undefined, "appserver"])("accepts a safe absolute webroot with backend %s", async (backend) => {
+    // Given / When: a valid root uses every supported punctuation character.
+    const webroot = "/app/web-root_1.x";
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      webroot,
+      ...(backend === undefined ? {} : { backend }),
+    });
+
+    // Then: both launchers and the environment preserve the authored path.
+    expect(plan.environment.LANDO_WEBROOT).toBe(webroot);
+    expect(planCommandText(plan.command)).toContain(
+      backend === undefined ? `root "${webroot}";` : `root ${webroot};`,
+    );
+  });
+
+  test("serves /app with the generated static launcher when no backend is authored", async () => {
+    // Given / When: a standalone nginx service with default web settings.
+    const plan = await composeNginxPlan({ type: "nginx" });
+
+    // Then: the launcher owns the static site and its error-page assets.
+    const command = planCommandText(plan.command);
+    expect(command).toContain("listen 80;");
+    expect(command).toContain('root "/app";');
+    expect(command).toContain("index index.html index.htm;");
+    expect(command).toContain("location / { try_files $uri $uri/ =404; }");
+    expect(command).toContain("error_page 403 /_lando/errors/403.html;");
+    expect(command).toContain("error_page 404 /_lando/errors/404.html;");
+    expect(command).toContain("alias /usr/share/lando/errors/;");
+    expect(command).toContain("include /etc/nginx/conf.d/*.conf;");
+    expect(command).not.toContain("fastcgi_pass");
+    expectSharedErrorPagesBuildStep(plan);
+    expect(plan.extensions["@lando/core/service-features"]).toMatchObject({
+      buildSteps: expect.arrayContaining([
+        expect.objectContaining({ command: ["rm", "-f", "/etc/nginx/conf.d/default.conf"] }),
+      ]),
+    });
+    expect(plan.dependsOn).toEqual([]);
+  });
+
+  test("serves the authored webroot when standalone", async () => {
+    // Given / When: a standalone site under the public subdirectory.
+    const plan = await composeNginxPlan({ type: "nginx", webroot: "/app/public" });
+
+    // Then: nginx serves that directory rather than the image's default root.
+    expect(planCommandText(plan.command)).toContain('root "/app/public";');
+    expect(plan.environment.LANDO_WEBROOT).toBe("/app/public");
+  });
+
+  test("moves the listener, endpoint, and healthcheck when port is authored", async () => {
+    // Given / When: a standalone site listening on a non-default port.
+    const plan = await composeNginxPlan({ type: "nginx", port: 8080 });
+
+    // Then: all three port consumers agree.
+    const command = planCommandText(plan.command);
+    expect(command).toContain("listen 8080;");
+    expect(command).not.toContain("listen 80;");
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+  });
+
+  test("omits the worker user directive when standalone runs as non-root", async () => {
+    // Given / When: the image's nginx account owns the standalone process.
+    const plan = await composeNginxPlan({ type: "nginx", user: "nginx", home: false, port: 8080 });
+
+    // Then: the same writable launcher runs without a root-only directive.
+    const command = planCommandText(plan.command);
+    expect(plan.user).toBe("nginx");
+    expect(command).toContain("nginx -c /tmp/lando-nginx.conf");
+    expect(command).not.toContain("user nginx;");
+  });
+
+  test.each(["command", "entrypoint"] as const)(
+    "opts out of the launcher when %s is authored",
+    async (field) => {
+      // Given / When: authored startup replaces Lando's standalone launcher.
+      const authored = ["nginx", "-g", "daemon off;"];
+      const plan = await composeNginxPlan({ type: "nginx", [field]: authored });
+
+      // Then: image startup and its stock site remain the author's responsibility.
+      expect(plan[field]).toEqual(authored);
+      if (field === "entrypoint") expect(plan.command).toBeUndefined();
+      expect(plan.extensions["@lando/core/service-features"]).not.toMatchObject({
+        buildSteps: expect.arrayContaining([
+          expect.objectContaining({ command: ["rm", "-f", "/etc/nginx/conf.d/default.conf"] }),
+        ]),
+      });
+      expect(plan.extensions["@lando/core/service-features"]).not.toMatchObject({
+        buildSteps: expect.arrayContaining([
+          expect.objectContaining({ id: LANDO_ERROR_PAGES_BUILD_STEP_ID }),
+        ]),
+      });
+    },
+  );
+
   test("plans a default nginx web service with app bind mount", async () => {
     const plan = await composeNginxPlan({ type: "nginx" });
 

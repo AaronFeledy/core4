@@ -1,0 +1,6 @@
+name: nginx-public
+services:
+  web:
+    type: nginx
+    webroot: /app/public
+    port: 8080

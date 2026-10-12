@@ -50,6 +50,7 @@ section below.
 | `php:*` via `apache` (default) | `src/services/php-via.ts` `apacheStartCommand` | none | works | **fixed** |
 | `php:*` via `fpm` | `src/services/php-via.ts` `fpmStartCommand` | `/tmp/lando-php-fpm.conf` | works | **fixed** |
 | `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
+| `nginx` without `backend:` | `src/services/nginx.ts` via `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf`, under a `/var/solr` tree prepared in the image for the planned user | works | **fixed** |
 | `minio` | `src/services/minio.ts` | `mkdir` under `/data`, a tree prepared in the image for the planned user | works | **fixed** |
@@ -60,7 +61,6 @@ section below.
 | `memcached`, `valkey`, `redis` without `password:` | respective `src/services/*.ts` | none | works | safe |
 | `static:caddy` | `src/services/static.ts` | none | write-free; default `:80` is still privileged | safe write, privileged port |
 | `postgres`, `mongodb` with `config.server` | `src/services/postgres.ts`, `src/services/mongodb.ts` | none — the command only names a config path | works | safe |
-| `nginx` without `backend:` | `src/services/nginx.ts` | none — the image entrypoint starts the daemon | n/a | safe |
 
 Service types with no Lando-emitted default command (`compose`, `lando`,
 `mariadb`, `mysql`, `mssql`, `mailhog`, `mailpit`, `phpmyadmin`, `tomcat`,
@@ -117,6 +117,11 @@ already creates `APACHE_RUN_DIR` and `APACHE_LOCK_DIR` mode `1777` and hands
 block into `/etc/nginx/conf.d/default.conf`, which is root-owned on the image.
 Each launcher now writes a complete nginx main configuration to
 `/tmp/lando-nginx.conf` and runs `nginx -c /tmp/lando-nginx.conf -g 'daemon off;'`.
+
+Standalone `nginx` uses the same static server-block helper as `static:nginx`.
+It serves `webroot:` (default `/app`) and listens on `port:` (default `80`),
+with the same writable configuration paths and Lando error pages. An authored
+`command:` or `entrypoint:` opts out of the generated nginx launcher and default-site removal.
 
 The generated file is a whole configuration rather than a `conf.d` snippet
 because `-c` replaces the main configuration file; there is no flag that adds

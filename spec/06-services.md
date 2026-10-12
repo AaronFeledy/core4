@@ -256,7 +256,7 @@ The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*
 | `python` | `lando` | `framework` |
 | `ruby` | `lando` | `framework` |
 | `go` | `lando` | `framework` |
-| `nginx` | `lando` | `webroot`, framework presets |
+| `nginx` | `lando` | `webroot`, `port`, PHP-FPM `backend` |
 | `apache` | `lando` | `webroot`, `allowOverride`, framework presets |
 | `mariadb` | `lando` | `creds`, `config.server` |
 | `mysql` | `lando` | `creds`, `config.server` |
@@ -291,6 +291,8 @@ Every canonical or plugin type MUST declare its base, resolve through features, 
 **Default launchers run as the planned user.** A type's default `command` (installed when the author declares neither `command` nor `entrypoint`) runs as `ServicePlan.user`. A type that accepts a non-root `user:` MUST start and keep serving with every user its catalog metadata advertises, without requiring an authored `command` or root-only setup in its launcher. Prefer daemon command-line configuration; when a file is required, use a path writable by the planned user and configure the daemon to read it. Volume-backed write targets require explicit ownership setup; if the provider cannot realize that ownership, planning MUST fail with a tagged error naming the service and option. Shared generated assets use one helper rather than per-launcher copies. The contract is verified by the running service serving its configured content, not merely by successful planning. Provider-specific Compose overrides MUST NOT substitute for a provider-neutral ownership contract. Any remaining privilege requirements, including restricted low ports on the target runtime, MUST be documented for the affected type.
 
 **Listen port follows `port:`.** `ServiceConfig.port` MUST move the daemon's listener, not only the endpoint, healthcheck, and route target. Every bundled launcher derives its listen address from the planned port. For Apache this means `Listen <port>` and, for `php` via `apache`, a `<VirtualHost *:<port>>` derived from the same value. An explicit non-default port replaces the image's default `Listen 80`; it MUST NOT leave an additional listener on port 80. Without an authored `port:`, the type retains its published default listener configuration. Fixed secondary ports, such as a console port, MUST be documented as limits in the type's guide.
+
+**nginx serves its webroot.** Unless the author declares `command` or `entrypoint`, `nginx` generates its own server configuration. Without `backend`, it serves static files from `webroot` (default `/app`); with `backend`, it passes PHP requests to that service's PHP-FPM listener. Either way it listens on `port` and serves Lando's shared 403/404 pages for server-generated errors. `webroot` MUST be an absolute container path made of letters, digits, `.`, `_`, `-`, and `/`; any other value fails during planning.
 
 #### 6.12.2 Framework presets
 
