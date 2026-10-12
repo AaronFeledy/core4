@@ -40,7 +40,6 @@ import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts"
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { applyServiceHome } from "./home.ts";
-import { DEFAULT_PROXY_DOMAIN } from "./naming.ts";
 import { evaluateRouteHostname } from "./route-hostname.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
@@ -350,7 +349,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
           ...(yield* routeAccumulator.add(
             {
               priority: 2,
-              hostname: `${name}.${input.appSlug}.${DEFAULT_PROXY_DOMAIN}`,
+              hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
               scheme: "https",
               service: ServiceName.make(name),
               ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),

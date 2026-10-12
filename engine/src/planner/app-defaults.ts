@@ -14,11 +14,13 @@ export const cacheInput = (
   routerEnabled: boolean,
   scanner: GlobalConfig["scanner"],
   defaults: UserAppDefaults & {
+    readonly defaultDomain: string;
     readonly sshAgentMode: SshAgentIntent["mode"];
     readonly gpgAgentForward?: boolean;
   },
 ) => ({
   routerEnabled,
+  defaultDomain: defaults.defaultDomain,
   scanner: scanner ?? null,
   appEnv: defaults.appEnv ?? null,
   appLabels: defaults.appLabels ?? null,

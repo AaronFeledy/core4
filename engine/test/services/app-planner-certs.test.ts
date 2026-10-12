@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { planAppPlannerCerts } from "./app-planner-certs-harness.ts";
@@ -117,6 +117,39 @@ test("covers the generated default proxy hostname", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["certs-configured-domain", "global"])(
+  "uses proxy.defaultDomain for the default route and certificate SANs of %s",
+  async (name) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-domain-"));
+    const appRoot = join(root, "app");
+    try {
+      await mkdir(appRoot, { recursive: true });
+      const ca = makeTestCertificateAuthority();
+      // When
+      const appPlan = await planAppPlannerCerts({
+        appRoot,
+        cacheRoot: join(root, "cache"),
+        ca,
+        config: Schema.decodeUnknownSync(GlobalConfig)({ proxy: { defaultDomain: "lndo.test" } }),
+        landofile: Schema.decodeUnknownSync(LandofileShape)({
+          name,
+          runtime: 4,
+          services: { web: { type: "node:22", certs: true } },
+        }),
+      });
+      // Then
+      const hostname = `web.${name}.lndo.test`;
+      expect(appPlan.routes.map((route) => route.hostname)).toEqual([hostname]);
+      expect(appPlan.services[ServiceName.make("web")]?.certs?.sans).toContain(hostname);
+      const issued = ca.calls.find((call) => call.op === "issueCert");
+      expect(issued?.op === "issueCert" ? issued.spec.sans : []).toContain(hostname);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("issues a leaf certificate for default type: tomcat without authored certs", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-tomcat-"));

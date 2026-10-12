@@ -94,7 +94,7 @@ Expressions parse to an AST and record their minimum bootstrap level:
 | `minimal` | `app.*`, safe `global.*`, `recipe.*`, loader helpers |
 | origin-dependent | `vars.*` |
 | `plugins` | self `service.{name,type,primary,creds.*}`, `plugin.<id>.{root,config,version}` |
-| `app` | self routes/endpoints; `services.<name>.*`; permitted `globalServices.<name>.*` (§20.8.3) |
+| `app` | `proxy.defaultDomain`; self routes/endpoints; `services.<name>.*`; permitted `globalServices.<name>.*` (§20.8.3) |
 | `provider` | `info.*` |
 | invocation-specific | tooling `task`, `flags`, `args`, `raw`, `sources`, `generates`, `checksum`, `timestamp`; event `event`; recipe-init `answers`, `recipe`, `destination`, `flags`, `cwd` |
 
@@ -171,16 +171,16 @@ Per-root precedence is explicit runtime option, root-specific environment variab
 
 | Group | Global keys |
 |---|---|
-| Files/roots | `envPrefix`, `domain`, `landoFile`, `landoLockFile`, `preLandoFiles`, `postLandoFiles`, `userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot` |
+| Files/roots | `envPrefix`, `landoFile`, `landoLockFile`, `preLandoFiles`, `postLandoFiles`, `userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot` |
 | Providers/apps | `defaultProvider`, `providers`, `appEnv`, `appLabels`, `globalServices` |
 | Plugins | `plugins`, `pluginDirs`, `disablePlugins`, `pluginConfig` |
-| Network/router | `bindAddress`, `router`, `network.proxy`, `network.ca`, `scanner`, `healthcheck` |
+| Network/router | `bindAddress`, `router`, `proxy.defaultDomain`, `network.proxy`, `network.ca`, `scanner`, `healthcheck` |
 | Experience | `logger`, `renderer`, `notify`, `toolingEngine`, `commandAliases`, `agentEnv`, `keys`, `maxKeyWarning`, `logLevelConsole` |
 | Agents/secrets | `sshAgent`, `gpgAgent`, `defaultSecretStore` |
 | Automation | `mcp`, `build`, `experimental`, `stats` |
 | Landofile evaluation | discovery, include, load, and TypeScript-evaluation bounds; `defaultTemplateEngine`; unsafe-engine opt-in; outside-root relaxations |
 
-Published nested keys include `router.{enabled,bindAddress,httpPort,httpsPort,httpFallbacks,httpsFallbacks}`, `network.proxy.{http,https,noProxy,injectIntoServices}`, `network.ca.{trustHost,certs,injectIntoServices}`, `notify.{enabled,thresholdMs,commands}`, `commandAliases.{enabled,disabled,custom}`, `agentEnv.{enabled,allow,deny}`, `sshAgent.{sidecar,socket}`, `gpgAgent.{forward,socket}`, `mcp.{allow,deny,tooling,maxConcurrent}`, `scanner.{path,okCodes,retries,timeout}`, `healthcheck.{retry,delay}`, `build.{concurrency,failFast,transcripts}`, and `stats.report`. Evaluation-policy keys are `discovery.maxDepth`, `landofile.tsTimeoutMs`, `loadMaxFileBytes`, `loadMaxFilesPerExpression`, `loadMaxRecursionDepth`, `includeMaxDepth`, `allowLoadOutsideRoot`, `allowIncludeOutsideRoot`, and the unsafe-template-engine opt-in. Values are bounded and schema-validated; tuning defaults are not architecture contracts.
+Published nested keys include `router.{enabled,bindAddress,httpPort,httpsPort,httpFallbacks,httpsFallbacks}`, `proxy.defaultDomain`, `network.proxy.{http,https,noProxy,injectIntoServices}`, `network.ca.{trustHost,certs,injectIntoServices}`, `notify.{enabled,thresholdMs,commands}`, `commandAliases.{enabled,disabled,custom}`, `agentEnv.{enabled,allow,deny}`, `sshAgent.{sidecar,socket}`, `gpgAgent.{forward,socket}`, `mcp.{allow,deny,tooling,maxConcurrent}`, `scanner.{path,okCodes,retries,timeout}`, `healthcheck.{retry,delay}`, `build.{concurrency,failFast,transcripts}`, and `stats.report`. Evaluation-policy keys are `discovery.maxDepth`, `landofile.tsTimeoutMs`, `loadMaxFileBytes`, `loadMaxFilesPerExpression`, `loadMaxRecursionDepth`, `includeMaxDepth`, `allowLoadOutsideRoot`, `allowIncludeOutsideRoot`, and the unsafe-template-engine opt-in. Values are bounded and schema-validated; tuning defaults are not architecture contracts.
 
 `notify` is currently the only key published through `PublishedGlobalConfigKey`/`configKey`; it decodes as `NotifyConfig` (§8.9.7). Its canonical-command allowlist is validated against the cwd-independent global registry, so global validity MUST NOT depend on app discovery.
 

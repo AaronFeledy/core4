@@ -27,9 +27,9 @@ User surfaces say **router** and **routes**. Service `routes:` is preferred; top
 
 `RouterService` exposes identity, `ProxyCapabilities`, setup from `ProxyConfig`, route apply/remove returning `ProxyApplyResult`, durable `ProxyStatus`, and stop; failures use `ProxyError`. Core owns `RoutePlan`; plugins own realization.
 
-- The default local domain is configurable and defaults to `lndo.site`.
+- The default local domain is global `proxy.defaultDomain`, which defaults to `lndo.site`. Generated default route hostnames and their certificate SANs use it for user and global apps, and a change to it invalidates cached plans.
 - `RoutePlan` supports hostnames, wildcard hostnames, ports, paths, TLS intent, and filters. Route status appears in `lando info` and post-start output.
-- The global `domain` config supports offline and custom-domain workflows.
+- `proxy.defaultDomain` supports offline and custom-domain workflows. DNS for a custom domain is configured outside Lando.
 - Router plugins reconcile stale routes on rebuild and destroy. `stop` durably removes all app route definitions without stopping unrelated global services; `status` reports that durable state.
 - `RouteFilter` contributions translate provider-neutral filters. Bundled filters are `stripPrefix`, `addPrefix`, `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `auth.basic`, and `rateLimit` (§6.6). Filters merge by `name`, then unnamed type identity, and retain authored order. Path routes MUST NOT strip implicitly.
 - `router.enabled: false`, resolved by normal precedence (§7.4, §7.5), MUST prevent router startup and publication for the app. `lando info` reports only published endpoints.

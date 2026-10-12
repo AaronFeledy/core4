@@ -2,8 +2,8 @@ import { Effect, Layer } from "effect";
 
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
-import type { LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, PathsService } from "@lando/sdk/services";
+import type { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
+import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider, type makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
@@ -18,12 +18,25 @@ export type AppPlannerCertsPlanInput = {
   readonly cacheRoot: string;
   readonly landofile: LandofileShape;
   readonly ca?: AppPlannerCertsTestCa | undefined;
+  readonly config?: GlobalConfig;
 };
 
 export const planAppPlannerCertsEffect = (input: AppPlannerCertsPlanInput) => {
+  const config = input.config;
   const dependencies = Layer.mergeAll(
     PluginRegistryLayer.layer,
     BunFileSystem.layer,
+    ...(config === undefined
+      ? []
+      : [
+          Layer.succeed(
+            ConfigService,
+            ConfigService.of({
+              load: Effect.succeed(config),
+              get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+            }),
+          ),
+        ]),
     Layer.succeed(
       PathsService,
       makeLandoPaths({
