@@ -1,0 +1,240 @@
+---
+id: wordpress-vite
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, wordpress, php, node, vite, hmr]
+---
+
+# Run Vite HMR with the WordPress recipe
+
+Add a `node:22` service beside WordPress, proxy it on `vite.<app>.lndo.site`, and load theme assets from Vite during local development.
+
+This builds on [Run the WordPress recipe](wordpress-workflow.mdx). The app name below is `wp-vite`.
+
+## Add Node and npm tooling
+
+Merge a `node` service and `npm` tooling into `.lando.yml`:
+
+```yaml
+services:
+  node:
+    type: "node:22"
+    port: 5173
+    primary: false
+    routes:
+      - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+tooling:
+  npm:
+    cmds:
+      - npm
+    description: "Run npm inside the node service."
+    service: node
+```
+
+Then:
+
+```sh
+lando start
+lando info
+```
+
+`lando info` lists both `appserver` (`https://wp-vite.lndo.site`) and `node` (`https://vite.wp-vite.lndo.site`). Until Vite listens on `5173`, the Vite URLs return HTTP 502. That is expected.
+
+If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. Match those ports in the Vite and theme config below.
+
+## Scaffold a Vite theme
+
+Create `wp-content/themes/vite-theme/` with a normal theme shell (`style.css`, `functions.php`, `index.php`, `header.php`, `footer.php`) plus a Vite app:
+
+```json
+{
+  "name": "vite-theme",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
+```
+
+```js
+// vite.config.js
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  root: '.',
+  base: '/',
+  publicDir: false,
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    manifest: true,
+    rollupOptions: {
+      input: 'src/main.js',
+    },
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    allowedHosts: ['vite.wp-vite.lndo.site'],
+    origin: 'https://vite.wp-vite.lndo.site:8443',
+    hmr: {
+      host: 'vite.wp-vite.lndo.site',
+      protocol: 'wss',
+      clientPort: 8443,
+    },
+  },
+});
+```
+
+Swap `wp-vite` for your app name. Drop `:8443` from `origin` and `clientPort` when `lando info` shows plain `443`. `allowedHosts` must match the Vite hostname Traefik sends.
+
+```js
+// src/main.js
+import './main.css';
+
+const banner = document.querySelector('.vite-banner');
+if (banner) {
+  banner.textContent = 'Vite HMR is connected.';
+}
+```
+
+```css
+/* src/main.css */
+.vite-banner {
+  color: #0b5fff;
+  font-weight: 700;
+}
+```
+
+Install from the theme directory inside `node`:
+
+```sh
+lando npm --prefix wp-content/themes/vite-theme install
+lando npm --prefix wp-content/themes/vite-theme --version
+lando exec node -- node --version
+```
+
+## Enqueue Vite in development
+
+Point the theme at the Vite origin while you develop. Use the HTTPS URL `lando info` prints for `node` (include the port when info shows one):
+
+```php
+<?php
+declare(strict_types=1);
+
+const VITE_THEME_DEV = true;
+const VITE_THEME_ORIGIN = 'https://vite.wp-vite.lndo.site:8443';
+
+add_action( 'wp_enqueue_scripts', static function (): void {
+	if ( VITE_THEME_DEV ) {
+		wp_enqueue_script( 'vite-client', VITE_THEME_ORIGIN . '/@vite/client', array(), null, true );
+		wp_enqueue_script( 'vite-theme-main', VITE_THEME_ORIGIN . '/src/main.js', array( 'vite-client' ), null, true );
+		return;
+	}
+
+	$manifest_path = get_stylesheet_directory() . '/dist/.vite/manifest.json';
+	if ( ! file_exists( $manifest_path ) ) {
+		return;
+	}
+	$manifest = json_decode( (string) file_get_contents( $manifest_path ), true );
+	$entry    = $manifest['src/main.js'] ?? null;
+	if ( ! is_array( $entry ) ) {
+		return;
+	}
+	if ( ! empty( $entry['css'] ) && is_array( $entry['css'] ) ) {
+		foreach ( $entry['css'] as $index => $css_file ) {
+			wp_enqueue_style(
+				'vite-theme-' . $index,
+				get_stylesheet_directory_uri() . '/dist/' . ltrim( (string) $css_file, '/' ),
+				array(),
+				null
+			);
+		}
+	}
+	if ( ! empty( $entry['file'] ) ) {
+		wp_enqueue_script(
+			'vite-theme-main',
+			get_stylesheet_directory_uri() . '/dist/' . ltrim( (string) $entry['file'], '/' ),
+			array(),
+			null,
+			true
+		);
+	}
+} );
+
+add_filter( 'script_loader_tag', static function ( string $tag, string $handle, string $src ): string {
+	if ( VITE_THEME_DEV && in_array( $handle, array( 'vite-client', 'vite-theme-main' ), true ) ) {
+		return '<script type="module" src="' . esc_url( $src ) . '"></script>' . "\n";
+	}
+	return $tag;
+}, 10, 3 );
+```
+
+Activate the theme:
+
+```sh
+lando wp theme activate vite-theme
+```
+
+## Run the Vite dev server
+
+```sh
+lando npm --prefix wp-content/themes/vite-theme run dev
+```
+
+Leave that running. Open the WordPress HTTPS URL from `lando info`. The page should load `@vite/client` and `src/main.js` from `vite.wp-vite.lndo.site`, and the banner text should flip to `Vite HMR is connected.` Edit `src/main.css` or `src/main.js` and the browser picks up the change without a full reload.
+
+Confirm the Vite origin serves the entry:
+
+```sh
+curl -fsS https://vite.wp-vite.lndo.site:8443/src/main.js
+curl -fsS https://vite.wp-vite.lndo.site:8443/@vite/client | head
+```
+
+## Build for production
+
+```sh
+lando npm --prefix wp-content/themes/vite-theme run build
+```
+
+That writes `dist/.vite/manifest.json` plus hashed assets under `dist/assets/`. Set `VITE_THEME_DEV` to `false` so WordPress enqueues the built files from the theme directory instead of the Vite origin.
+
+## Config checks
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="wordpress-vite" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"wordpress\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the WordPress recipe](wordpress-workflow.mdx)
+- [Add Node.js](../services/node.mdx)
+- [Route shorthand](../proxy/route-shorthand.mdx)
