@@ -141,19 +141,16 @@ describe("minio ServiceType", () => {
     expect(plan.user).toBe("1000:1000");
   });
 
-  test("resolves the default console route, tooling, feature, and catalog schema", async () => {
+  test("resolves tooling, feature, and catalog schema", async () => {
     const resolution = await resolveMinioService({ type: "minio" });
 
     expect(resolution.base).toBe("lando");
     expect(resolution.features).toEqual([{ id: MINIO_FEATURE_ID }]);
-    expect(resolution.normalizedConfig.routes).toEqual([
-      { hostname: "storage.myapp.lndo.site", endpoint: 9001 },
-    ]);
     expect(resolution.tooling?.mc).toEqual({ service: "storage", cmd: "mc" });
     expect(minioServiceType.schema).toBe(MinIOServiceConfig);
   });
 
-  test("authored routes replace the default console route", async () => {
+  test("preserves authored routes", async () => {
     const resolution = await resolveMinioService({
       type: "minio",
       routes: [{ hostname: "files.example.test", scheme: "https", endpoint: 9001 }],

@@ -70,7 +70,7 @@ Routes need shared cross-app networking. The default `lando` provider advertises
 
 ## Open `*.lndo.site` on this machine
 
-`*.lndo.site` is host DNS plus Traefik. `lando setup` writes that resolution on this machine. Other devices do not get it. See [Reach an app from another device](./external-access.mdx) and [Resolve lndo.site on this machine](./host-proxy.mdx).
+Public DNS answers `*.lndo.site` with `127.0.0.1`; Traefik routes the request on your app host. Lando does not configure host DNS. On another device, loopback points at that device, not the app host. Custom `proxy.defaultDomain` values need your own DNS rule. See [Reach an app from another device](./external-access.mdx) and [Resolve lndo.site on this machine](./host-proxy.mdx).
 
 ## Keep host gateways separate
 

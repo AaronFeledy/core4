@@ -20,9 +20,10 @@ Mailpit listens on SMTP port `1025` and serves its UI on `8025`. Open
 `https://inbox.mailpit-demo.lndo.site` after start.
 
 This is separate from the **global** Mailpit that lives in the host-level
-Lando app (`https://mailpit.lndo.site`). Keep the global one when every
-app on the machine should share one inbox. Use `type: mailpit` when this
-app needs its own capture server.
+Lando app at `https://mailpit.lndo.site`. Its hostname follows global
+`proxy.defaultDomain`; see [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
+Keep the global one when every app on the machine should share one inbox.
+Use `type: mailpit` when this app needs its own capture server.
 
 <Guide>
   <Scenario id="resolved-config" render>

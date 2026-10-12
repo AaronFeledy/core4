@@ -123,7 +123,7 @@ Routes live under top-level `proxy:` or preferred service `routes:`. Every `Rout
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
-Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. LAN publication is opt-in and warns. Internal endpoints never bind the host.
+Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. When a service authors no routes, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
 Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
 

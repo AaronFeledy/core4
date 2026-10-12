@@ -17,6 +17,8 @@ lando info
 
 Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
 
+The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, and global Mailpit is at `https://mailpit.lndo.site`. Both follow global `proxy.defaultDomain`. Add the selected port when it is not 80 or 443.
+
 When 80 and 443 are free, those URLs omit the port. When something else owns them, start prints `Port 80 is in use` or `Port 443 is in use`, names the holder if it can, and says `using 8080.` or `using 8443.` Then `lando info` prints the bound URLs, like `http://app.myapp.lndo.site:8080` and `https://app.myapp.lndo.site:8443`.
 
 ## Read lando info and lando doctor
@@ -40,7 +42,7 @@ lando info
 
 HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
-The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so there is nothing to configure. Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx). Custom domains you resolve to loopback can fail when the router blocks DNS rebinding. That same guide covers the remediations.
+The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-proxy.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
 You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
 
@@ -55,6 +57,8 @@ lando info
 ```
 
 Default hostnames move to the new domain, like `web.myapp.lndo.test`, and so do recipe routes written as `{{ app.name }}.{{ proxy.defaultDomain }}`. Hostnames you spelled out in full under `routes:` stay as written. Restart each app to publish its new routes and issue certificates for the new names.
+
+Restarting an app with routing enabled also moves the Traefik dashboard to `traefik.lndo.test/dashboard/`. Traefik picks up the change without recreating its container. Global services publish their routes when the global app starts, so run `lando global:restart` to move global Mailpit to `https://mailpit.lndo.test`.
 
 Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with dnsmasq or your resolver, or add each hostname to `/etc/hosts`. Until then, if URL scanning is on, `lando restart` warns that each URL `did not answer` with `ENOTFOUND`.
 
