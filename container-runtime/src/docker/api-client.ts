@@ -11,7 +11,7 @@ import type {
 } from "../engine-api.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
-import { redactString, withApiReason } from "../redact.ts";
+import { redactDetails, redactString, withApiReason } from "../redact.ts";
 import {
   type SocketHttpConnection,
   connectSocket,
@@ -28,8 +28,8 @@ const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: 
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation,
-    message: withApiReason(message, details),
-    ...(details === undefined ? {} : { details }),
+    message: redactString(withApiReason(message, details)),
+    ...(details === undefined ? {} : { details: redactDetails(details) }),
   });
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
@@ -44,7 +44,7 @@ const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) 
             message: "Docker API returned malformed info JSON.",
             capability: "docker-info",
             requiredValue: "valid JSON Docker info response",
-            actualValue: response.body,
+            actualValue: redactString(response.body),
             cause,
           }),
       );

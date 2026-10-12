@@ -67,7 +67,6 @@ describe("Podman API client", () => {
           // Then
           if (!(failure instanceof ProviderUnavailableError))
             throw new TypeError("Expected ProviderUnavailableError");
-          expect(JSON.stringify(failure.details)).not.toContain(canary);
           expect(failure.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
           expect(failure.message).toContain("HTTP 500");
           expect(failure.operation).toBe("capabilities");

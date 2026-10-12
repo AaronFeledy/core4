@@ -28,9 +28,7 @@ describe("container engine error mapping", () => {
     // When
     const error = apiResponseFailure(ctx, "start", response, "Start failed.");
     // Then
-    expect(error.message).not.toContain(canary);
     expect(error.message).toBe("Start failed. engine said [redacted]");
-    expect(JSON.stringify(error.details)).not.toContain(canary);
     expect(error.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
     expect(error.providerId).toBe(ctx.providerId);
     expect(error.operation).toBe("start");
@@ -49,9 +47,7 @@ describe("container engine error mapping", () => {
     // When
     const error = transportFailure(ctx, "start", cause);
     // Then
-    expect(error.message).not.toContain(canary);
     expect(error.message).toBe("Socket [redacted] unavailable. engine said [redacted]");
-    expect(JSON.stringify(error.details)).not.toContain(canary);
     expect(error.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
     expect(error.providerId).toBe(ctx.providerId);
     expect(error.operation).toBe("start");

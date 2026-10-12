@@ -54,6 +54,35 @@ describe("Docker API client", () => {
     expect(failure.providerId).toBe(ctx.providerId);
   });
 
+  test.each([
+    ["a failed info request", `{"message":"engine said opaque-info-canary-1261"}\n500`, 0, "info"],
+    ["malformed info JSON", "engine said opaque-info-canary-1261\n200", 0, "info"],
+    ["a failed curl request", "", 7, "request"],
+  ] as const)("redacts runtime-registered values from %s", async (_case, stdout, exitCode, call) => {
+    // Given
+    const canary = "opaque-info-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const spawn = new Proxy(Bun.spawn, {
+      apply: () => ({
+        stdout: new Blob([stdout]).stream(),
+        stderr: new Blob([`curl said ${canary}`]).stream(),
+        stdin: null,
+        exited: Promise.resolve(exitCode),
+      }),
+    });
+    const client = makeDockerApiClient("unix:///var/run/docker.sock", ctx, { spawn });
+    const request = client.request;
+    if (request === undefined) throw new TypeError("Expected request client");
+    // When
+    const failure = await Effect.runPromise(
+      (call === "info" ? client.info : request({ method: "GET", path: "/info" })).pipe(Effect.flip),
+    );
+    // Then
+    expect(JSON.stringify(failure)).not.toContain(canary);
+    expect(JSON.stringify(failure)).toContain("[redacted]");
+    expect(failure.providerId).toBe(ctx.providerId);
+  });
+
   test("constructs a lazy named-pipe client when given a Docker Desktop URI", () => {
     // Given / When
     const client = makeDockerApiClient("npipe:////./pipe/docker_engine", ctx);

@@ -30,8 +30,6 @@ test.each([
   }
   expect(failure._tag).toBe(tag);
   expect(failure.message).not.toContain(canary);
-  expect(JSON.stringify(failure.details)).not.toContain(canary);
-  expect(JSON.stringify(failure.details)).toContain("[redacted]");
   expect(failure.details).toEqual({ status, body: body.replace(canary, "[redacted]") });
   expect(failure.providerId).toBe("docker");
   expect(failure.operation).toBe("list");

@@ -139,7 +139,6 @@ describe("podman exec start errors", () => {
     );
     // Then
     if (!(failure instanceof ServiceExecError)) throw new TypeError("Expected ServiceExecError");
-    expect(JSON.stringify(failure.details)).not.toContain(canary);
     expect(failure.details).toEqual({ status: 500, body: '{"message":"engine said [redacted]"}' });
     expect(failure.message).not.toContain(canary);
     expect(failure.service).toBe(serviceName);

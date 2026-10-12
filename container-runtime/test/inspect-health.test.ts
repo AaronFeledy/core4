@@ -140,7 +140,6 @@ describe("podman inspect health", () => {
     // Then
     if (!(failure instanceof ProviderUnavailableError))
       throw new TypeError("Expected ProviderUnavailableError");
-    expect(JSON.stringify(failure.details)).not.toContain(canary);
     expect(failure.details).toEqual({ service: serviceName, body: '{"message":"engine said [redacted]"}' });
     expect(failure.message).not.toContain(canary);
     expect(failure.message).toContain("HTTP 500. engine said [redacted]");
