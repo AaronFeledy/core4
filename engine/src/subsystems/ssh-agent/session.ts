@@ -16,6 +16,8 @@ import {
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../../providers/managed.ts";
+import { probeSshAgent } from "./agent-probe.ts";
+import type { AgentRelayUpstream } from "./relay.ts";
 
 export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: PortablePath): MountPlan => {
   switch (mount._tag) {
@@ -61,6 +63,23 @@ export const runtimeSshAgentState = Effect.gen(function* () {
   // Only an observed non-running container is "stopped"; a failed or slow probe proves nothing yet.
   Effect.catch(() => Effect.succeed("starting" as const)),
 );
+
+// The sidecar always runs on the managed runtime, so its container state ends a wait early
+// even when the app reaches the agent through a host socket.
+export const sidecarSocketState = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>
+  runtimeSshAgentState.pipe(
+    Effect.flatMap((sidecar) =>
+      sidecar === "stopped"
+        ? Effect.succeed(sidecar)
+        : Effect.tryPromise({
+            try: () => probe(upstream, { timeoutMs: 2_000 }),
+            catch: (cause: unknown) => cause,
+          }).pipe(
+            Effect.as("ready" as const),
+            Effect.catch(() => Effect.succeed("starting" as const)),
+          ),
+    ),
+  );
 
 export const runtimeSshAgentReady = runtimeSshAgentState.pipe(Effect.map((state) => state === "ready"));
 

@@ -6,12 +6,11 @@ import {
   discoverHostSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/host-agent-discovery";
 import {
-  SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
   runtimeSshAgentReady,
+  sidecarSocketState,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
-import { runProbe } from "@lando/sdk/probe";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -94,14 +93,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
-        if (waitAfterSetup)
-          yield* runProbe(
-            {
-              id: "doctor-ssh-sidecar-ready",
-              policy: SSH_SIDECAR_READINESS_POLICY,
-            },
-            probeAgent(upstream),
-          );
+        if (waitAfterSetup) yield* awaitRuntimeSshAgent(sidecarSocketState(upstream, input.probe));
         const probed = yield* Effect.result(probeAgent(upstream));
         return {
           source: "sidecar" as const,

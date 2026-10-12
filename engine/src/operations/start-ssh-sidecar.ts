@@ -5,31 +5,14 @@ import type { AppId } from "@lando/sdk/schema";
 import { EventService, type SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { type Context, Duration, Effect, Option } from "effect";
-import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
   runtimeSshAgentState,
+  sidecarSocketState,
 } from "../subsystems/ssh-agent/session.ts";
 import { startSshSidecarTreeId } from "./start-progress.ts";
-
-// The sidecar always runs on the managed runtime, so its container state ends the wait early
-// even when the app reaches the agent through a host socket.
-const hostSocketState = (upstream: AgentRelayUpstream) =>
-  runtimeSshAgentState.pipe(
-    Effect.flatMap((sidecar) =>
-      sidecar === "stopped"
-        ? Effect.succeed(sidecar)
-        : Effect.tryPromise({
-            try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
-            catch: (cause: unknown) => cause,
-          }).pipe(
-            Effect.as("ready" as const),
-            Effect.catch(() => Effect.succeed("starting" as const)),
-          ),
-    ),
-  );
 
 export const startSshSidecar = Effect.fnUntraced(function* (
   input: { readonly appId: AppId; readonly appName?: string },
@@ -67,7 +50,7 @@ export const startSshSidecar = Effect.fnUntraced(function* (
           ),
         );
         const state = yield* awaitRuntimeSshAgent(
-          upstream._tag === "volume" ? runtimeSshAgentState : hostSocketState(upstream),
+          upstream._tag === "volume" ? runtimeSshAgentState : sidecarSocketState(upstream),
         );
         if (state !== "ready")
           return yield* Effect.fail(
