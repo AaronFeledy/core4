@@ -137,7 +137,7 @@ Command-wide rules:
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
 - `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched. Stopping the managed runtime service before its recorded runtime directory is removed follows §5.8.1.
 - `--clear` is universal and purges relevant caches.
-- `app:start` and `app:rebuild` materialize declared dependencies. Repeating a successful start MUST NOT require network unless a source is absent, the lock changed, or app commands require it. `app:rebuild` refreshes referenced artifacts (§6.13.3), so it needs their sources.
+- `app:start` and `app:rebuild` materialize declared dependencies. Repeating a successful start MUST NOT require network unless a source is absent, the lock changed, or app commands require it. `app:rebuild` refreshes referenced artifacts with local fallback and a warning (§6.13.3); acquisition needs network only for referenced artifacts with no local copy.
 - `apps:poweroff` includes user, global, and scratch apps by default. `--keep-global` and `--keep-scratch` compose and MUST be reported.
 - `meta:global:start` refuses an empty global app. `meta:global:list --format json` is canonical for automation.
 - Scratch behavior is owned by §21. `ScratchSourceUnresolvedError` rejects both or neither of `--fork` and `--from`. Scratch JSON list output is canonical for automation.

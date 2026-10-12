@@ -44,7 +44,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `getStatus` | Reports readiness and actionable provider state. |
 | `getVersions` | Reports provider and runtime component versions. |
 | `buildArtifact` | Builds a runnable artifact from an `ArtifactBuildSpec`. |
-| `pullArtifact` | Acquires a referenced artifact with optional policy `always` (default; acquire from source) or `missing` (reuse a provider-local copy, acquire only when absent; §6.13.3). |
+| `pullArtifact` | Acquires a referenced artifact with optional policy `always` (default; acquire from source), `missing` (reuse a provider-local copy, acquire only when absent), or `never` (reuse a provider-local copy, fail without contacting the source when absent; §6.13.3). Provider policies are strict and do not fall back. |
 | `removeArtifact` | Removes an artifact owned or selected by the request. |
 | `apply` | Reconciles an `AppPlan` and returns materialized runtime results. |
 | `start`, `stop`, `restart` | Changes lifecycle state for selected services. |

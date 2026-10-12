@@ -343,7 +343,7 @@ Ready predecessors are `complete` or `skip`. Interrupts propagate to in-flight p
 
 Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `RuntimeProvider.pullArtifact`; app scripts use `RuntimeProvider.execStream`. Every command retains its planned user, working directory, and environment. Providers MUST NOT re-resolve users at execution time.
 
-`BuildOrchestrator.build` acquires referenced artifacts with policy `missing` unless the caller passes `always`: reuse a provider-local copy and contact the source only when absent. App, scratch, and global start and restart, including global auto-start, use the default. `app:rebuild` and `meta:global:rebuild` pass `always` so providers that declare `artifactPull` refresh referenced artifacts from their source. The policy governs acquisition only; build-result reuse follows §6.13.5.
+`BuildOrchestrator.build` defaults `BuildOptions.refresh` to false and acquires referenced artifacts with policy `missing`: reuse a provider-local copy and contact the source only when absent. App, scratch, and global start and restart, including global auto-start, use the default. `app:rebuild` and `meta:global:rebuild` pass `{ refresh: true }` so providers that declare `artifactPull` refresh referenced artifacts with `always`. When a refresh fails, the orchestrator tries the provider-local copy with `never` and on success records command warning `LANDO_ARTIFACT_REFRESH_FAILED`, failing with the original refresh error only when no local copy exists. Interrupts and defects propagate without fallback. Provider policies remain strict. Acquisition policy does not change build-result reuse under §6.13.5.
 
 #### 6.13.4 Failure policy
 

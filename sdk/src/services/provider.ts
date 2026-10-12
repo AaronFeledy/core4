@@ -116,13 +116,14 @@ export interface ArtifactRef {
   readonly digest?: string;
 }
 
-export type ArtifactPullPolicy = "always" | "missing";
+export type ArtifactPullPolicy = "always" | "missing" | "never";
 
 export interface ArtifactPullSpec {
   readonly ref: string;
   /**
    * `always` (the default when omitted) acquires from the artifact's source;
-   * `missing` reuses a provider-local copy and contacts the source only when none exists.
+   * `missing` reuses a provider-local copy and acquires only when absent;
+   * `never` reuses a provider-local copy and fails without contacting the source when absent.
    */
   readonly policy?: ArtifactPullPolicy;
 }

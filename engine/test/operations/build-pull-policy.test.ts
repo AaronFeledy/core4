@@ -50,6 +50,6 @@ test.each([{ services: undefined }, { services: [web.name] }])(
     );
 
     // Then
-    expect(calls).toEqual([{ pull: "always" }]);
+    expect(calls).toEqual([{ refresh: true }]);
   },
 );

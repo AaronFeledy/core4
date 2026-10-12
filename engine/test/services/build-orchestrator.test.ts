@@ -3,7 +3,19 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Deferred, Effect, Fiber, Layer, Predicate, Queue, Stream } from "effect";
+import {
+  Cause,
+  type Context,
+  DateTime,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Predicate,
+  Queue,
+  Stream,
+} from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -34,6 +46,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
@@ -536,7 +549,7 @@ describe("BuildOrchestratorLayer.layer", () => {
 
   test.each([
     [undefined, "missing"],
-    [{ pull: "always" }, "always"],
+    [{ refresh: true }, "always"],
   ] satisfies ReadonlyArray<readonly [BuildOptions | undefined, ArtifactPullPolicy]>)(
     "acquires ref-only artifacts with options %j and policy %s",
     async (options, policy) => {
@@ -570,6 +583,182 @@ describe("BuildOrchestratorLayer.layer", () => {
       expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
     },
   );
+
+  test("uses the local artifact and publishes one redacted warning when refresh fails", async () => {
+    // Given
+    const ref = "debian:12.11-slim";
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: { ...web, artifact: { kind: "ref", ref } } },
+    };
+    const failure = new ProviderInternalError({
+      providerId: "test",
+      operation: "pullArtifact",
+      message: "registry unavailable topsecret",
+    });
+    const pulls: ArtifactPullSpec[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) => {
+        pulls.push(spec);
+        return spec.policy === "never"
+          ? Effect.succeed({ providerId, ref, digest: "sha256:local" })
+          : Effect.fail(failure);
+      },
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const queue = yield* events.subscribeQueue;
+          const builder = yield* BuildOrchestrator;
+          const built = yield* builder.build(artifactPlan, { refresh: true });
+          return { built, events: [...(yield* Queue.clear(queue))] };
+        }),
+      ).pipe(Effect.provide(layerWithRedaction(provider, redactionLayer))),
+    );
+
+    // Then
+    expect(result.built.services[web.name]?.artifact).toEqual({ kind: "ref", ref, digest: "sha256:local" });
+    expect(pulls).toEqual([
+      { ref, policy: "always" },
+      { ref, policy: "never" },
+    ]);
+    const warnings = result.events.filter((event) => event._tag === "message.warn");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.body).toContain(ref);
+    expect(warnings[0]?.body).toContain(web.name);
+    expect(warnings[0]?.body).not.toContain("topsecret");
+    expect(DateTime.isDateTime(warnings[0]?.timestamp)).toBe(true);
+  });
+
+  test("records a structured warning instead of a message event for machine output", async () => {
+    // Given
+    const ref = "debian:12.11-slim";
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: { ...web, artifact: { kind: "ref", ref } } },
+    };
+    const failure = new ProviderInternalError({
+      providerId: "test",
+      operation: "pullArtifact",
+      message: "registry unavailable topsecret",
+    });
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) =>
+        spec.policy === "never" ? Effect.succeed({ providerId, ref }) : Effect.fail(failure),
+    };
+    const commandWarnings = makeCommandWarnings(true);
+
+    // When
+    const events = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const builder = yield* BuildOrchestrator;
+          yield* builder.build(artifactPlan, { refresh: true });
+          return [...(yield* Queue.clear(queue))];
+        }),
+      ).pipe(
+        Effect.provideService(CommandWarnings, commandWarnings),
+        Effect.provide(layerWithRedaction(provider, redactionLayer)),
+      ),
+    );
+
+    // Then
+    const warnings = await Effect.runPromise(commandWarnings.list);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      code: "LANDO_ARTIFACT_REFRESH_FAILED",
+      context: { service: web.name, artifact: ref, cause: "ProviderInternalError" },
+    });
+    expect(warnings[0]?.message).not.toContain("topsecret");
+    expect(events.filter((event) => event._tag === "message.warn")).toEqual([]);
+  });
+
+  test.each([false, true])("preserves the pull failure for refresh=%s", async (refresh) => {
+    // Given
+    const ref = "debian:12.11-slim";
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: { ...web, artifact: { kind: "ref", ref } } },
+    };
+    const failure = new ProviderInternalError({
+      providerId: "test",
+      operation: "pullArtifact",
+      message: "registry unavailable",
+    });
+    const localFailure = new ProviderInternalError({
+      providerId: "test",
+      operation: "pullArtifact",
+      message: "local copy missing",
+    });
+    const pulls: ArtifactPullSpec[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) => {
+        pulls.push(spec);
+        return Effect.fail(spec.policy === "never" ? localFailure : failure);
+      },
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (builder) =>
+        builder.build(artifactPlan, refresh ? { refresh: true } : undefined),
+      ).pipe(Effect.flip, Effect.provide(layer(provider))),
+    );
+
+    // Then
+    expect(error).toBe(failure);
+    expect(pulls).toEqual(
+      refresh
+        ? [
+            { ref, policy: "always" },
+            { ref, policy: "never" },
+          ]
+        : [{ ref, policy: "missing" }],
+    );
+  });
+
+  test.each(["defect", "interrupt"] as const)("propagates refresh %s", async (kind) => {
+    // Given
+    const ref = "debian:12.11-slim";
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: { ...web, artifact: { kind: "ref", ref } } },
+    };
+    const pulls: ArtifactPullSpec[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) => {
+        pulls.push(spec);
+        return kind === "defect" ? Effect.die("pull defect") : Effect.interrupt;
+      },
+    };
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(BuildOrchestrator, (builder) => builder.build(artifactPlan, { refresh: true })).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(kind === "defect" ? Cause.hasDies(exit.cause) : Cause.hasInterrupts(exit.cause)).toBe(true);
+    }
+    expect(pulls).toEqual([{ ref, policy: "always" }]);
+  });
 
   test("keeps planned artifact digest when artifactPull returns no digest", async () => {
     const artifactPlan: AppPlan = {

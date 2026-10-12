@@ -1610,7 +1610,7 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
 
-      expect(harness.calls.buildOptions).toEqual([{ pull: "always" }, { pull: "always" }]);
+      expect(harness.calls.buildOptions).toEqual([{ refresh: true }, { refresh: true }]);
 
       expect(harness.calls.destroy).toHaveLength(1);
       expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });

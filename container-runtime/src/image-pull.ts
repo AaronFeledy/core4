@@ -211,7 +211,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
   reference: string,
   options: PullImageOptions<E>,
 ): Effect.fn.Return<PulledImage, ProviderUnavailableError | ProviderInternalError | E> {
-  if (options.policy === "missing") {
+  if (options.policy === "missing" || options.policy === "never") {
     const request = api.request;
     if (request === undefined) {
       return yield* Effect.fail(
@@ -240,6 +240,15 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
           reference,
           message: withApiReason(`pre-pull inspect HTTP ${response.status}.`, response),
           details: response,
+        }),
+      );
+    }
+    if (options.policy === "never") {
+      return yield* Effect.fail(
+        pullFailure({
+          ctx: options.ctx,
+          reference,
+          message: `Container image ${reference} is not present locally.`,
         }),
       );
     }

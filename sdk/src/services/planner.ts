@@ -15,7 +15,7 @@ import type {
   RouteInputError,
 } from "../errors/index.ts";
 import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
-import type { ArtifactPullPolicy, ProviderError, ProviderSelectionError } from "./provider.ts";
+import type { ProviderError, ProviderSelectionError } from "./provider.ts";
 
 export type AppPlannerError =
   | LandofileValidationError
@@ -34,10 +34,12 @@ export type BuildAppError = BuildError | BuildPhaseFailedError;
 
 export interface BuildOptions {
   /**
-   * How referenced artifacts are acquired. Defaults to `"missing"` so routine starts
-   * stay offline once artifacts are local; rebuild commands pass `"always"` to refresh tags.
+   * Refresh referenced artifacts from their source. When a refresh fails and the
+   * provider still has a local copy, the build continues with that copy and publishes
+   * a warning, failing only when no local copy exists. Defaults to false: reuse local
+   * copies and acquire only absent artifacts.
    */
-  readonly pull?: ArtifactPullPolicy;
+  readonly refresh?: boolean;
 }
 
 export interface BuildAppOptions {

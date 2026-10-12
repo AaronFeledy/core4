@@ -107,7 +107,7 @@ const runStreamPull = async (
 };
 
 describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
-  test("reuses a local image without pulling or progress when policy is missing", async () => {
+  test.each(["missing", "never"] as const)("reuses local images for %s", async (policy) => {
     // Given
     const reference = "docker.io/library/alpine:3.20";
     const requests: EngineHttpRequest[] = [];
@@ -128,7 +128,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
       pullImage(api, reference, {
         ctx: dockerCtx,
         dialect,
-        policy: "missing",
+        policy,
         publish: (event) =>
           Effect.sync(() => {
             events.push(event);
@@ -147,6 +147,38 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
       dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
     );
     expect(events).toEqual([]);
+  });
+
+  test("fails without pulling when policy is never and local inspect returns 404", async () => {
+    // Given
+    const reference = "alpine:3.20";
+    const requests: EngineHttpRequest[] = [];
+    const api: EngineHttpApi = {
+      request: (request) => {
+        requests.push(request);
+        return Effect.succeed({ status: 404, body: "{}" });
+      },
+      stream: (request) => {
+        requests.push(request);
+        return Stream.empty;
+      },
+    };
+
+    // When
+    const failure = await Effect.runPromise(
+      pullImage(api, reference, { ctx: dockerCtx, dialect, policy: "never" }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.operation).toBe("pullArtifact");
+    expect(failure.message).toContain(reference);
+    expect(requests).toEqual([
+      {
+        method: "GET",
+        path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
+      },
+    ]);
   });
 
   test("pulls when policy is missing and local inspect returns 404", async () => {
