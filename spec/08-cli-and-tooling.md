@@ -175,7 +175,7 @@ Translation is preview-only without `--write`, MUST be explicit or unambiguous, 
 
 #### 8.2.3 The `app:shell` command
 
-`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. `--service` uses provider exec with TTY and §6.9.1 agent context. Secrets resolve only when explicitly referenced and MUST NOT be preloaded. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
+`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. Its line evaluator runs on the embedded Bun and removes `BUN_BE_BUN` and `BUN_FEATURE_FLAG_NO_ORPHANS` before a line runs, so `lando` in a line runs as Lando and keeps its detached workers. `--service` uses provider exec with TTY and §6.9.1 agent context. Secrets resolve only when explicitly referenced and MUST NOT be preloaded. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
 
 The command publishes `cli-app:shell-init`, `cli-app:shell-run`, and `cli-app:shell-error`; inner commands publish `pre-shell-exec`/`post-shell-exec` or `pre-provider-exec`/`post-provider-exec` with redacted shapes.
 
@@ -353,7 +353,7 @@ CLI mode auto-discovers `.lando/scripts/**/*.bun.sh`; path segments form `app:` 
 
 Top comment front matter validates as `BunShellScriptFrontMatter` and MAY carry `desc`, `summary`, `aliases`, `topLevelAlias`, `service`, `bootstrap`, `flags`, `args`, `passThrough`, `sources`, `generates`, `status`, `preconditions`, `run`, `platforms`, `internal`, and `disabled`. Missing or malformed metadata returns `BunShellScriptFrontMatterError`; empty files return `BunShellScriptEmptyError`.
 
-Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness.
+Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness. `runScript` runs the file on the embedded Bun (`process.execPath` with `BUN_BE_BUN=1`), and Bun Shell exports that switch and `BUN_FEATURE_FLAG_NO_ORPHANS` to every command. A bare `lando` command in a script MUST run as Lando with neither variable set, so it neither falls into Bun nor reaps a nested `lando start`'s detached workers; it resolves to the `lando` on the script's `PATH`, else the running compiled CLI. Other commands keep both variables so Bun Shell's `bun` fallback still reaches the embedded Bun. A path-qualified call to a Lando binary is outside this guarantee.
 
 ### 8.6 The `ToolingEngine` abstraction
 

@@ -1,13 +1,131 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import { landoLauncher } from "../../src/services/shell-script-stream.ts";
+
+test.skipIf(process.platform === "win32").each([
+  ["collected", 0],
+  ["live", 0],
+  ["collected", 3],
+  ["live", 3],
+] as const)(
+  "isolates only lando and removes its launcher in %s mode after exit %i",
+  async (mode, exitCode) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-shell-env-'space "));
+    const script = join(root, "environment.bun.sh");
+    const sh = Bun.which("sh");
+    if (sh === null) throw new TypeError("Missing host sh");
+    const frames: StreamFrameSinkFrame[] = [];
+    const shellLayer = BunShellRunner.layer(() => {
+      throw new TypeError("unused interactive IO");
+    });
+    try {
+      await writeFile(
+        join(root, "lando"),
+        '#!/bin/sh\nprintf "<%s><%s>\\n" "${BUN_BE_BUN-unset}" "${BUN_FEATURE_FLAG_NO_ORPHANS-unset}"\nprintf "%s\\n" "$@"\n',
+        { mode: 0o755 },
+      );
+      await writeFile(
+        script,
+        `lando "two words" x; sh -c 'printf "[%s]\\n" "$BUN_BE_BUN"'; which lando; echo "$0"; exit ${exitCode}\n`,
+      );
+      // When
+      const result = await Effect.runPromise(
+        Effect.flatMap(ShellRunner, (shell) =>
+          shell.runScript(script, { cwd: root, env: { PATH: `${root}${delimiter}${dirname(sh)}` } }),
+        ).pipe(
+          Effect.catchTag("ShellExecError", (error) => Effect.succeed(error)),
+          Effect.provide(shellLayer),
+          Effect.provide(
+            mode === "live"
+              ? Layer.succeed(StreamFrameSink, {
+                  emit: (frame) =>
+                    Effect.sync(() => {
+                      frames.push(frame);
+                    }),
+                })
+              : Layer.empty,
+          ),
+        ),
+      );
+      // Then
+      expect(result.exitCode).toBe(exitCode);
+      const stdout = result.stdout;
+      if (stdout === undefined) throw new TypeError("Missing script output");
+      const lines = stdout.trim().split("\n");
+      expect(lines.slice(0, 4)).toEqual(["<unset><unset>", "two words", "x", "[1]"]);
+      expect(lines[5]).toBe(script);
+      const launcherPath = lines[4];
+      if (launcherPath === undefined) throw new TypeError("Missing launcher path");
+      expect(dirname(launcherPath)).not.toBe(root);
+      expect(await access(dirname(launcherPath)).catch((cause: unknown) => cause)).toMatchObject({
+        code: "ENOENT",
+      });
+      if (mode === "live") expect(frames.map((frame) => frame.chunk).join("")).toBe(stdout);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("leaves PATH unchanged when source mode has no lando delegate", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-shell-no-delegate-"));
+  const script = join(root, "path.bun.sh");
+  expect(Bun.isStandaloneExecutable).toBe(false);
+  expect(Bun.which("lando", { PATH: root, cwd: root })).toBeNull();
+  try {
+    await writeFile(script, 'echo "$PATH"; echo "$0"\n');
+    // When
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { env: { PATH: root } })).pipe(
+        Effect.provide(
+          BunShellRunner.layer(() => {
+            throw new TypeError("unused interactive IO");
+          }),
+        ),
+      ),
+    );
+    // Then
+    expect(result.stdout).toBe(`${root}\n${script}\n`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("quotes spaces and apostrophes in a POSIX launcher delegate", () => {
+  // Given
+  const target = "/tmp/space and 'quote/lando";
+  // When
+  const launcher = landoLauncher(target, "linux");
+  // Then
+  expect(launcher).toEqual({
+    name: "lando",
+    content:
+      "#!/bin/sh\nunset BUN_BE_BUN BUN_FEATURE_FLAG_NO_ORPHANS\nexec '/tmp/space and '\\''quote/lando' \"$@\"\n",
+  });
+});
+
+test("escapes percent signs and uses CRLF in a Windows launcher", () => {
+  // Given
+  const target = "C:\\Program Files\\%lando%\\lando.exe";
+  // When
+  const launcher = landoLauncher(target, "win32");
+  // Then
+  expect(launcher).toEqual({
+    name: "lando.cmd",
+    content:
+      '@echo off\r\nsetlocal DisableDelayedExpansion\r\nset "BUN_BE_BUN="\r\nset "BUN_FEATURE_FLAG_NO_ORPHANS="\r\n"C:\\Program Files\\%%lando%%\\lando.exe" %*\r\nexit /b %errorlevel%\r\n',
+  });
+});
 
 test.each(["collected", "live"] as const)(
   "preserves script inputs and both output streams with restricted PATH in %s mode",

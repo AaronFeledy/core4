@@ -14,6 +14,72 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     compiledCli = await ensureCompiledCli();
   }, 120_000);
 
+  test.each(["binary", "empty"] as const)(
+    "runs nested lando with %s PATH",
+    async (pathMode) => {
+      // Given: PATH contains only the relocated binary or an empty directory.
+      const root = await mkdtemp(join(tmpdir(), "lando-compiled-script-env-"));
+      const bin = join(root, "bin");
+      const cacheRoot = join(root, "cache");
+      const emptyPath = join(root, "empty");
+      try {
+        await mkdir(bin);
+        await mkdir(emptyPath);
+        const binary = join(bin, "lando");
+        await copyFile(compiledCli, binary);
+        await mkdir(join(root, ".lando/scripts"), { recursive: true });
+        await writeFile(join(root, ".lando.yml"), "name: compiled-script\n");
+        await writeFile(
+          join(root, ".lando/scripts/probe.bun.sh"),
+          "# ---\n# desc: Runtime probe\n# ---\nlando version\n",
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile: { name: "compiled-script" },
+            entries: [{ id: "app:probe", summary: "Runtime probe", hidden: false, source: "bun-script" }],
+            cwd: root,
+            cacheRoot,
+          }),
+        );
+        const versionProcess = Bun.spawn([binary, "--version"], { stdout: "pipe", stderr: "pipe" });
+        const version = (await new Response(versionProcess.stdout).text()).trim();
+        expect(await versionProcess.exited).toBe(0);
+        for (const path of [
+          appCommandCachePath(cacheRoot, "compiled-script", root),
+          appToolingCompilationCachePath(cacheRoot, root),
+        ]) {
+          const payload = decodeAppCommandIndex(new Uint8Array(await readFile(path)));
+          if (payload === null) throw new TypeError(`Invalid command cache: ${path}`);
+          await writeFile(path, encodeAppCommandIndex({ ...payload, landoVersion: version }));
+        }
+        // When
+        const child = Bun.spawn([binary, "probe"], {
+          cwd: root,
+          env: {
+            ...process.env,
+            PATH: pathMode === "binary" ? bin : emptyPath,
+            LANDO_USER_CACHE_ROOT: cacheRoot,
+            LANDO_USER_DATA_ROOT: join(root, "data"),
+            LANDO_USER_CONF_ROOT: join(root, "conf"),
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [exitCode, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]);
+        // Then
+        expect(exitCode, stderr || stdout).toBe(0);
+        expect(stdout).toContain(version);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
   test.each([
     ["text", 0],
     ["json", 0],
