@@ -53,13 +53,13 @@ services:
 
 ## Serve a subdirectory
 
-Set `webroot:` to the full container path nginx should serve. Without it, nginx serves `/app`. Set `port:` to move nginx's listener, endpoint, and healthcheck together:
+Set `webroot:` to a path relative to the app mount at `/app`. For example, `public` serves `/app/public`. Omit it or use `.` to serve the app root. An absolute container path is allowed when you need a very specific location outside the usual app layout. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path. Set `port:` to move nginx's listener, endpoint, and healthcheck together:
 
 ```yaml
 services:
   web:
     type: nginx
-    webroot: /app/public
+    webroot: public
     port: 8080
 ```
 
@@ -69,7 +69,7 @@ services:
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
     </Step>
     <Step name="cleanup">

@@ -26,6 +26,7 @@ import {
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mountAppRoot } from "./_volume-helpers.ts";
+import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
@@ -33,16 +34,6 @@ import { defaultStaticCommand } from "./static.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
-const APP_MOUNT_TARGET = PortablePath.make("/app");
-const NginxWebroot = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
-      message:
-        "nginx webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
-    }),
-  ),
-  Schema.brand("NginxWebroot"),
-);
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -110,7 +101,7 @@ const phpFastcgiCommand = (
 const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
-  const webroot = service.webroot ?? APP_MOUNT_TARGET;
+  const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -166,7 +157,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     const fpm = fpmPortByService.get(backend);
     if (fpm === undefined) return;
     const listen = service.port ?? DEFAULT_PORT;
-    const webroot = service.webroot ?? APP_MOUNT_TARGET;
+    const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
     mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
     mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user));
@@ -193,7 +184,7 @@ export const nginxServiceType: ServiceType = {
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve("nginx", "Failed to resolve nginx", () => {
-      const webroot = Schema.decodeUnknownSync(NginxWebroot)(input.service.webroot ?? "/app");
+      const webroot = resolveWebroot("nginx", input.service.webroot, input.service.appMount);
       return {
         base: "lando" as const,
         normalizedConfig: normalizedService(input.service),

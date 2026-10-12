@@ -262,7 +262,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
   ...(
     [
       ["via", "nginx", "via", "fpm"],
-      ["webroot", "web", "webroot", "/app/web"],
+      ["webroot", "web", "webroot", "web"],
       ["composer_version", "'2.7.7'", "composer", { version: "2.7.7" }],
       ["composer", "{phpunit/phpunit: '^11'}", "composer", { packages: { "phpunit/phpunit": "^11" } }],
       ["db_client", "mysql:8.4", "db_client", "mysql:8.4"],

@@ -222,22 +222,22 @@ describe("apache ServiceType", () => {
 
   test("serves an authored webroot through Apache config and LANDO env", async () => {
     // Given / When
-    const plan = await composeApachePlan({ type: "apache", webroot: "/app/public files/$site" });
+    const plan = await composeApachePlan({ type: "apache", webroot: "public" });
 
     // Then
     expect(plan.environment).toMatchObject({
-      APACHE_DOCUMENT_ROOT: "/app/public files/$site",
-      LANDO_WEBROOT: "/app/public files/$site",
+      APACHE_DOCUMENT_ROOT: "/app/public",
+      LANDO_WEBROOT: "/app/public",
     });
     const directives = apacheDirectives(plan.command);
-    expect(directives).toContain('DocumentRoot "/app/public files/$site"');
-    expect(directives).toContain('<Directory "/app/public files/$site">');
+    expect(directives).toContain('DocumentRoot "/app/public"');
+    expect(directives).toContain('<Directory "/app/public">');
   });
 
   test("rejects line breaks in an authored webroot before generating Apache config", async () => {
     // Given / When / Then
     expect(composeApachePlan({ type: "apache", webroot: "/app/public\nRequire all denied" })).rejects.toThrow(
-      /Apache webroot must not contain line breaks/,
+      /Apache webroot must be a path relative to the app mount/,
     );
   });
 

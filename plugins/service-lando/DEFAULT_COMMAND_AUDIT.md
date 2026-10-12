@@ -119,7 +119,7 @@ Each launcher now writes a complete nginx main configuration to
 `/tmp/lando-nginx.conf` and runs `nginx -c /tmp/lando-nginx.conf -g 'daemon off;'`.
 
 Standalone `nginx` uses the same static server-block helper as `static:nginx`.
-It serves `webroot:` (default `/app`) and listens on `port:` (default `80`),
+It serves `webroot:` (default `.`, relative to the `/app` mount; absolute container paths also work) and listens on `port:` (default `80`),
 with the same writable configuration paths and Lando error pages. An authored
 `command:` or `entrypoint:` opts out of the generated nginx launcher and default-site removal.
 

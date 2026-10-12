@@ -4,7 +4,6 @@ import {
   type LoweringPatch,
   type ServiceLoweringContext,
   type V4Wire,
-  containerWebroot,
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import {
@@ -31,7 +30,6 @@ export const lowerPhpOptions = (
   ];
   let companions: Readonly<Record<string, V4Wire>> | undefined;
   const via = service.via;
-  const webrootPath = containerWebroot(service.webroot);
 
   if (Object.hasOwn(service, "via")) {
     if (via === "apache" || (typeof via === "string" && via.startsWith("apache:"))) {
@@ -56,7 +54,7 @@ export const lowerPhpOptions = (
         [companionName]: {
           type: "nginx",
           backend: ctx.serviceName,
-          ...(Object.hasOwn(service, "webroot") ? { webroot: webrootPath ?? service.webroot } : {}),
+          ...(Object.hasOwn(service, "webroot") ? { webroot: service.webroot } : {}),
         },
       };
       diagnostics.push(
@@ -90,7 +88,7 @@ export const lowerPhpOptions = (
     }
   }
 
-  if (Object.hasOwn(service, "webroot")) patch.webroot = webrootPath ?? service.webroot;
+  if (Object.hasOwn(service, "webroot")) patch.webroot = service.webroot;
 
   if (service.composer_version === false) {
     patch.composer = false;

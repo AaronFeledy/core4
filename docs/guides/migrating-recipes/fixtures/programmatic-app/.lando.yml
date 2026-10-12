@@ -6,7 +6,7 @@ recipe:
     database: mariadb:11.4
     name: migrate-programmatic
     php: "8.2"
-    webroot: /app
+    webroot: .
   producer:
     contentDigest: sha256:c0b2cde89f016351b3fd769068969460e7ebdcc01853ff6e61381f1290853fd8
     manifestVersion: 0.1.0
@@ -23,7 +23,7 @@ services:
     framework: none
     port: 80
     type: "php:{{ recipe.php }}"
-    webroot: /app
+    webroot: .
   database:
     type: "{{ recipe.database }}"
 tooling:

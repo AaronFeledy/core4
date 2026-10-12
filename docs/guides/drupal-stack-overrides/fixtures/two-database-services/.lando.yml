@@ -5,7 +5,7 @@ services:
   appserver:
     type: php:8.3
     framework: drupal
-    webroot: /app/web
+    webroot: web
     allowOverride: true
     port: 80
     dependsOn:

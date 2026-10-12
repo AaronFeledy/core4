@@ -6,9 +6,9 @@ recipe:
     database: mariadb:11.4
     name: migrate-demo
     php: "8.2"
-    webroot: /app
+    webroot: .
   producer:
-    contentDigest: sha256:d5ea6255c0dad0ba58f063079c6cf7f35999bf351e397419b978b895b887f150
+    contentDigest: sha256:82c9c3a5c8f8ae44b1be5bd8a68ddfc0bdda51833a8f50ecd7660e6457cb6406
     manifestVersion: 0.1.0
     packageName: "@lando/recipe-lamp"
     recipeId: lamp
@@ -23,7 +23,7 @@ services:
     framework: none
     port: 80
     type: "php:{{ recipe.php }}"
-    webroot: /app
+    webroot: .
   database:
     type: "{{ recipe.database }}"
 tooling:

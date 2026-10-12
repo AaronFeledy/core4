@@ -1,12 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:9d0a43bc508ef91bf00d51e85bb554b3349761fc2929ac2d4f9b34f77d8dc652";
+  "sha256:7fb28d607a78846087002b733f3600df86fc452eabfabc624f2ff8ab756d7dc3";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -113,14 +113,14 @@ export const laravelSnapshot: RecipeSnapshot = {
     php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["mariadb:11.4", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
-    webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+    webroot: { kind: "string", pattern: WEBROOT_PATTERN.source },
     worker: { kind: "boolean" },
   },
   defaults: {
     php: PHP_DEFAULT,
     database: "mariadb:11.4",
     composer: "2",
-    webroot: "/app/public",
+    webroot: "public",
     worker: false,
   },
   template: { expression },

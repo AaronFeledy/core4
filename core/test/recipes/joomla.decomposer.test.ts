@@ -110,7 +110,7 @@ describe("joomla decomposition", () => {
     { options: { ...defaults, php: "5.6" }, path: "options.php" },
     { options: { ...defaults, database: "sqlite" }, path: "options.database" },
     { options: { ...defaults, composer: true }, path: "options.composer" },
-    { options: { ...defaults, webroot: "app" }, path: "options.webroot" },
+    { options: { ...defaults, webroot: "unsafe path" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
       Effect.result(

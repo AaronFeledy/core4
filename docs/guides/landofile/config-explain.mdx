@@ -21,7 +21,7 @@ For a Landofile that `lando init --recipe=lamp` produced with `php` set to `8.2`
 ```text
 Recipe: lamp 0.1.0
 Producer: bundled @lando/recipe-lamp
-Digest: sha256:d5ea6255c0dad0ba58f063079c6cf7f35999bf351e397419b978b895b887f150
+Digest: sha256:82c9c3a5c8f8ae44b1be5bd8a68ddfc0bdda51833a8f50ecd7660e6457cb6406
 Comparison: matched against snapshot 0.1.0
 
 composer: "2"
@@ -43,11 +43,11 @@ php: "8.2"
   status: chosen-by-value
   references: services.appserver.type = php:{{ recipe.php }}
 
-webroot: "/app"
-  default: "/app"
+webroot: "."
+  default: "."
   status: accepted-by-value
   references: none
-  taken over: services.appserver.webroot was {{ recipe.webroot }}, now "/app"
+  taken over: services.appserver.webroot was {{ recipe.webroot }}, now "."
 ```
 
 Each option gets a `status`, its `references` (the sites that still hold the generated `{{ recipe.<name> }}` expression), and any `taken over` sites.
@@ -58,7 +58,7 @@ Each option gets a `status`, its `references` (the sites that still hold the gen
 
 ### A site is managed only while the whole expression survives
 
-A reference counts only when the site still holds the complete generated expression. Replace `{{ recipe.webroot }}` with `/app` and the site is `taken over`, even though `/app` is exactly what the expression would have produced. Same value, different ownership. Edit the option under `recipe.options` if you want the recipe to keep steering it; edit the service directly if you want it out of the recipe's hands.
+A reference counts only when the site still holds the complete generated expression. Replace `{{ recipe.webroot }}` with `.` and the site is `taken over`, even though `.` is exactly what the expression would have produced. Same value, different ownership. Edit the option under `recipe.options` if you want the recipe to keep steering it; edit the service directly if you want it out of the recipe's hands.
 
 ## Get JSON
 

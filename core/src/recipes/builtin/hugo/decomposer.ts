@@ -18,7 +18,7 @@ export const hugoDecomposer = makeZeroOptionDecomposer({
         primary: false,
         type: "static:nginx",
         appMount: { target: "/app" },
-        webroot: "/app/public",
+        webroot: "public",
         routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
       },
     },

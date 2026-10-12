@@ -5,7 +5,7 @@ services:
   appserver:
     type: php:8.3
     framework: drupal
-    webroot: /app/docroot
+    webroot: docroot
     allowOverride: true
     port: 80
     environment:

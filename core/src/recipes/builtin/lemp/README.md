@@ -5,7 +5,7 @@ Generic LEMP (Linux + nginx + MariaDB + PHP) starter.
 ## Generated services
 
 - `web`: `nginx`, serves `/app` and forwards PHP requests to `appserver` via FastCGI.
-- `appserver`: `php:<8.2|8.3>` with `via: fpm`, `framework: none`, and webroot `/app`.
+- `appserver`: `php:<8.2|8.3>` with `via: fpm`, `framework: none`, and app-root webroot `.`.
   This is the primary service for tooling, with no separate HTTP route.
 - `database`: `mariadb`.
 

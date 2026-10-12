@@ -6,7 +6,7 @@ import { HUGO_BUILD_ARTIFACT } from "./install.ts";
 import { HUGO_SCAFFOLD } from "./scaffold.ts";
 
 export const HUGO_RECIPE_VERSION = "0.1.0";
-export const HUGO_CONTENT_DIGEST = "sha256:65aa531b997b15eb2bc24861fa71525abfe1491049841c2872c681d8775de0e4";
+export const HUGO_CONTENT_DIGEST = "sha256:6e7014a1d19659c1fa5931cae1a975fd92dab38c545f79b729b1658374574027";
 export const hugoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-hugo",
@@ -41,7 +41,7 @@ export const hugoSnapshot: RecipeSnapshot = {
               ["type", lit("static:nginx")],
               ["primary", lit(false)],
               ["appMount", obj([["target", lit("/app")]])],
-              ["webroot", lit("/app/public")],
+              ["webroot", lit("public")],
               ["routes", arr(defaultRoute())],
             ]),
           ],

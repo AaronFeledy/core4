@@ -67,14 +67,14 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 
 describe("nginx ServiceType", () => {
   test.each([undefined, "appserver"])(
-    "rejects relative or unsafe webroots during resolution with backend %s",
+    "rejects unsafe webroots during resolution with backend %s",
     async (backend) => {
       // Given: either standalone nginx or a PHP-FPM frontend with an unsafe root.
-      for (const webroot of ["public", "/app/$host"] as const) {
+      for (const webroot of ["web root", "/app/$host"] as const) {
         // When / Then: resolution fails before either launcher can use the root.
         await expectRejectsToThrow(
           composeNginxPlan({ type: "nginx", webroot, ...(backend === undefined ? {} : { backend }) }),
-          /nginx webroot must be an absolute container path using only letters, digits, '\.', '_', '-', and '\/'\./,
+          /nginx webroot must be a path relative to the app mount/,
         );
       }
     },
@@ -122,7 +122,7 @@ describe("nginx ServiceType", () => {
 
   test("serves the authored webroot when standalone", async () => {
     // Given / When: a standalone site under the public subdirectory.
-    const plan = await composeNginxPlan({ type: "nginx", webroot: "/app/public" });
+    const plan = await composeNginxPlan({ type: "nginx", webroot: "public" });
 
     // Then: nginx serves that directory rather than the image's default root.
     expect(planCommandText(plan.command)).toContain('root "/app/public";');
@@ -364,7 +364,7 @@ describe("nginx PHP FPM app-feature wire", () => {
   test("FastCGI upstream uses the PHP FPM service's authored port", async () => {
     const { context, commands } = applyWire([
       viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
-      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver", webroot: "/app/web" }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver", webroot: "web" }),
     ]);
 
     await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
