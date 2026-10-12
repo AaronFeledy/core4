@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, DateTime, Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -19,6 +20,9 @@ import { waitForServiceHealth } from "../src/podman/health.ts";
 import { inspect } from "../src/podman/inspect.ts";
 
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("healthapp");
 const appRoot = AbsolutePath.make("/tmp/lando-health-app");
@@ -124,6 +128,25 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test("redacts runtime-registered values in a failed inspect response", async () => {
+    // Given
+    const canary = "opaque-inspect-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const fake = apiFromResponses([
+      { status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) },
+    ]);
+    // When
+    const failure = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }).pipe(Effect.flip));
+    // Then
+    if (!(failure instanceof ProviderUnavailableError))
+      throw new TypeError("Expected ProviderUnavailableError");
+    expect(failure.details).toEqual({ service: serviceName, body: '{"message":"engine said [redacted]"}' });
+    expect(failure.message).not.toContain(canary);
+    expect(failure.message).toContain("HTTP 500. engine said [redacted]");
+    expect(failure.operation).toBe("inspect");
+    expect(failure.providerId).toBe(ctx.providerId);
+  });
+
   test.each([
     { fields: {}, reasons: [] },
     { fields: { Mounts: null, NetworkSettings: { Networks: null } }, reasons: [] },

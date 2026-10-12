@@ -13,6 +13,8 @@ import { SecretStore } from "@lando/sdk/services";
 
 export interface RedactionForProfileOptions {
   readonly redactionTokens?: Iterable<string> | undefined;
+  /** Exact values masked like resolved secrets; an unusable one suppresses any text that contains it. */
+  readonly authoritativeTokens?: Iterable<string> | undefined;
   readonly sourceEnv?: Record<string, string | undefined> | undefined;
   readonly proxyUrls?: Iterable<string | undefined> | undefined;
   readonly transcriptEnv?: TranscriptRedactionEnv | undefined;
@@ -167,7 +169,7 @@ const makeRedactorOptions = (
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => ({
   values: dedupeValues(collectOptionValues(options)),
-  authoritativeValues: [...secretValues],
+  authoritativeValues: [...secretValues, ...(options?.authoritativeTokens ?? [])],
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 

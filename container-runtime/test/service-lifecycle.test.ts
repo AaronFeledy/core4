@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
@@ -55,6 +56,9 @@ const plan: AppPlan = {
 };
 const target = { app: appId, service: serviceName };
 
+beforeEach(resetRegisteredRedactionValuesForTesting);
+afterEach(resetRegisteredRedactionValuesForTesting);
+
 describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (providerName) => {
   const ctx = { providerId: providerName, remediation: `Repair ${providerName} and retry.` } as const;
 
@@ -109,6 +113,28 @@ describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (p
 
 describe("service lifecycle failures", () => {
   const ctx = { providerId: "podman", remediation: "Repair Podman and retry." } as const;
+
+  test("redacts runtime-registered values in a failed stop response", async () => {
+    // Given
+    const canary = "opaque-lifecycle-canary-1261";
+    Effect.runSync(registerRedactionValues([canary]));
+    const api: EngineHttpApi = {
+      request: () =>
+        Effect.succeed({ status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) }),
+    };
+    // When
+    const failure = await Effect.runPromise(
+      postServiceLifecycle(plan, target, "stop", { api, ctx }).pipe(Effect.flip),
+    );
+    // Then
+    if (!(failure instanceof ProviderUnavailableError))
+      throw new TypeError("Expected ProviderUnavailableError");
+    expect(failure.details).toEqual({ service: serviceName, body: '{"message":"engine said [redacted]"}' });
+    expect(failure.message).not.toContain(canary);
+    expect(failure.message).toContain("HTTP 500. engine said [redacted]");
+    expect(failure.operation).toBe("stop");
+    expect(failure.providerId).toBe(ctx.providerId);
+  });
 
   test("fails when the service is absent from the plan", async () => {
     // Given

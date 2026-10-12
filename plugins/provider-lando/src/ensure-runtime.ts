@@ -1,5 +1,6 @@
 import { Duration, Effect, Exit } from "effect";
 
+import { redactDetails } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
@@ -165,11 +166,11 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
                       : "The Lando runtime service did not become reachable after launch.",
                   remediation:
                     "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
-                  details: {
+                  details: redactDetails({
                     attempts: result.attempts,
                     elapsedMs: result.elapsedMs,
                     ...(stderr === undefined ? {} : { stderr }),
-                  },
+                  }),
                   cause: result.lastError,
                 }),
               ),

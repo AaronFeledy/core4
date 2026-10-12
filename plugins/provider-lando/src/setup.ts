@@ -10,6 +10,7 @@ import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
 } from "@lando/container-runtime/podman/version-floor";
+import { redactDetails, redactString } from "@lando/container-runtime/redact";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
@@ -69,10 +70,12 @@ export class PodmanVersionUnsupportedError extends ProviderUnavailableError {
     super({
       providerId: PROVIDER_ID,
       operation: "setup",
-      message: `Podman version "${observedVersion}" (reported by ${
-        source === "cli" ? "`podman --version`" : "the Podman API"
-      }) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
-      details: { observedVersion, source, minimumVersion: MINIMUM_PODMAN_VERSION },
+      message: redactString(
+        `Podman version "${observedVersion}" (reported by ${
+          source === "cli" ? "`podman --version`" : "the Podman API"
+        }) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+      ),
+      details: redactDetails({ observedVersion, source, minimumVersion: MINIMUM_PODMAN_VERSION }),
       remediation: `Install or select Podman >= ${MINIMUM_PODMAN_VERSION} and rerun \`lando setup\`.`,
     });
   }
@@ -398,7 +401,7 @@ const machineFailure = (
     message:
       diagnostics.length === 0
         ? `Podman machine ${operation} failed.`
-        : `Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`,
+        : redactString(`Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`),
     remediation: "Fix the Podman machine error and rerun `lando setup`.",
     cause,
   });

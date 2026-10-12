@@ -1,5 +1,6 @@
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ProviderError } from "@lando/sdk/services";
+import { redactString } from "./redact.ts";
 
 import { type StreamBytes, makeAttachDecoder } from "./streams.ts";
 
@@ -16,7 +17,7 @@ const stderrFrameError = (providerId: string, payload: StreamBytes): ProviderInt
     providerId,
     operation: "logFileAccess",
     message: "Log helper wrote to stderr.",
-    details: decoder.decode(payload),
+    details: redactString(decoder.decode(payload)),
   });
 
 export const makeHelperExecOutputDecoder = (providerId: string) => {
