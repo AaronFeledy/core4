@@ -72,7 +72,9 @@ Hosting-platform recipes (`pantheon`, `platformsh`, `lagoon`, `acquia`), `drupal
 
 ### Relocation
 
-Lando 4 layers merge by adding and overriding. They cannot remove a key a lower layer set. When a Lando 3 higher layer removed something (a `portforward: false` in `.lando.local.yml` over a `portforward: true` in `.lando.yml`), the smallest affected unit moves up to the highest layer that last changed it, and the earlier layers stop defining it. One `needs-review` diagnostic per relocation names the key path, the layer it moved to, and the source files involved.
+Lando 4 layers merge by adding and overriding. They cannot delete a mapping key a lower layer set, but an explicitly empty list (`[]`) replaces any inherited list. Clearing a list stays in the higher layer without relocation. See [Override a list in a local layer](./your-landofile.mdx#override-a-list-in-a-local-layer) for an example.
+
+When a Lando 3 higher layer removed something that cannot be represented by an override (a `portforward: false` in `.lando.local.yml` over a `portforward: true` in `.lando.yml`), the smallest affected unit moves up to the highest layer that last changed it, and the earlier layers stop defining it. One `needs-review` diagnostic per relocation names the key path, the layer it moved to, and the source files involved.
 
 ## Read the diagnostics
 

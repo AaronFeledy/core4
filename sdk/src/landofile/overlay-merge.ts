@@ -12,6 +12,7 @@
  * Rules:
  * - Files load in order; later files override earlier files.
  * - Maps deep-merge.
+ * - An explicitly empty overlay array replaces the inherited array of any kind.
  * - Arrays of scalars replace.
  * - Arrays of objects merge by recognized identity keys: `name`, `id`,
  *   `hostname`, `service`, schema-specific keys.
@@ -67,6 +68,7 @@ const mergeArrays = (
   right: ReadonlyArray<unknown>,
   arrayKey?: string,
 ): ReadonlyArray<unknown> => {
+  if (right.length === 0) return right;
   if (!left.every(isPlainRecord) || !right.every(isPlainRecord)) return right;
 
   if (arrayKey === "filters") {
@@ -113,8 +115,9 @@ const mergeArrays = (
 };
 
 /**
- * Landofile overlay merge: deep-merge maps, replace scalar arrays, merge
- * object arrays by recognized identity key (route `filters` by name, then
+ * Landofile overlay merge: deep-merge maps, replace any array with an explicitly
+ * empty overlay array, replace scalar arrays, merge non-empty object arrays
+ * by recognized identity key (route `filters` by name, then
  * unnamed type), right-wins for scalars. Also used when service-type
  * `extends:` overlays parent config onto the child.
  */

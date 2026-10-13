@@ -10,6 +10,18 @@ import {
 } from "@lando/sdk/landofile";
 
 describe("mergeLandofiles", () => {
+  test("clears base object routes when the local layer supplies an empty array", () => {
+    // Given base and local layers with an explicitly empty local route list.
+    const layers = [
+      { services: { web: { routes: [{ hostname: "web.example.test" }] } } },
+      { services: { web: { routes: [] } } },
+    ];
+    // When the layers merge in precedence order.
+    const result = mergeLandofiles(layers);
+    // Then the inherited routes are cleared.
+    expect(result).toEqual({ services: { web: { routes: [] } } });
+  });
+
   test("deep-merges maps with later scalar precedence", () => {
     const result = mergeLandofiles<Record<string, unknown>>([
       { services: { appserver: { type: "node", environment: { A: "1", B: "base" } } } },
@@ -265,8 +277,40 @@ describe("routeFilterMatches", () => {
 });
 
 describe("mergeValues identity edges", () => {
-  test("empty right array preserves a keyed left array", () => {
-    expect(mergeValues([{ name: "a" }], [])).toEqual([{ name: "a" }]);
+  test.each([...ARRAY_IDENTITY_KEYS])("clears a %s-keyed array when the overlay is empty", (key) => {
+    // Given an inherited identity-keyed object array.
+    const left = [{ [key]: "web.example.test" }];
+    // When a higher-precedence layer supplies an empty array.
+    const result = mergeValues(left, []);
+    // Then no inherited entry remains.
+    expect(result).toEqual([]);
+  });
+
+  test("clears route filters when the overlay is empty", () => {
+    // Given named and unnamed inherited route filters.
+    const left = { filters: [{ name: "strip", type: "stripPrefix" }, { type: "requestHeader" }] };
+    // When the overlay explicitly empties the filter list.
+    const result = mergeValues(left, { filters: [] });
+    // Then both filter identity kinds are cleared.
+    expect(result).toEqual({ filters: [] });
+  });
+
+  test("clears scalar arrays when the overlay is empty", () => {
+    // Given inherited shorthand routes.
+    const left = ["web.example.test"];
+    // When the overlay explicitly empties the list.
+    const result = mergeValues(left, []);
+    // Then the scalar array is replaced too.
+    expect(result).toEqual([]);
+  });
+
+  test("keeps a non-empty object overlay when the inherited array is empty", () => {
+    // Given a non-empty route overlay over an empty inherited list.
+    const right = [{ hostname: "web.example.test" }];
+    // When the arrays merge.
+    const result = mergeValues([], right);
+    // Then the overlay entries are preserved.
+    expect(result).toEqual(right);
   });
 
   test("empty right array clears an unkeyed left array", () => {

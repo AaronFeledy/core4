@@ -178,6 +178,7 @@ const delta = (left: unknown, right: unknown, context: DeltaContext): unknown =>
   if (equal(left, right)) return unchanged;
   const { path, removals } = context;
   if (Array.isArray(left) && Array.isArray(right)) {
+    if (right.length === 0) return right;
     const key = path.at(-1)?.key;
     if (!left.every(isPlainRecord) || !right.every(isPlainRecord)) return right;
     const identity = (item: Record<string, unknown>) =>
