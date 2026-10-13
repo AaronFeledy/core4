@@ -72,25 +72,28 @@ const registry = (state: string, selected: string[]) => ({
   },
 });
 
-test("managed sidecar uses the plugin volume without host probing or worker services", async () => {
-  // Given
-  const selected: string[] = [];
-  // When
-  const session = await Effect.runPromise(
-    startSshAgentSession(plan, app, capabilities, { mode: "sidecar" }).pipe(
-      Effect.provideService(SshService, ssh),
-      Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
-      Effect.provideService(PathsService, makeLandoPaths({ platform: "darwin" })),
-      Effect.provide(LandoEventService.layer),
-      Effect.provide(PrivateFileAccessService.layer),
-    ),
-  );
-  // Then
-  expect(session?.mount).toEqual({ _tag: "volume", volume: "plugin-owned-agent" });
-  expect(session?.socketName).toBe("agent.sock");
-  expect(selected).toEqual(["lando"]);
-  await session?.close();
-});
+test.each(["win32", "linux", "darwin"] as const)(
+  "managed sidecar on %s uses the volume without host probing or worker services",
+  async (platform) => {
+    // Given
+    const selected: string[] = [];
+    // When
+    const session = await Effect.runPromise(
+      startSshAgentSession(plan, app, capabilities, { mode: "sidecar" }).pipe(
+        Effect.provideService(SshService, ssh),
+        Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+        Effect.provideService(PathsService, makeLandoPaths({ platform })),
+        Effect.provide(LandoEventService.layer),
+        Effect.provide(PrivateFileAccessService.layer),
+      ),
+    );
+    // Then
+    expect(session?.mount).toEqual({ _tag: "volume", volume: "plugin-owned-agent" });
+    expect(session?.socketName).toBe("agent.sock");
+    expect(selected).toEqual(["lando"]);
+    await session?.close();
+  },
+);
 
 test("stopped sidecar warns and leaves the app without an overlay", async () => {
   // Given

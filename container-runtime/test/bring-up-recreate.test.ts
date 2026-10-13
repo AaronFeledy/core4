@@ -103,6 +103,12 @@ const makeFakeApi = (input: {
   readonly existingNetworks?: ReadonlyArray<string>;
   readonly networkExists?: boolean;
   readonly containerExists?: boolean;
+  readonly running?: boolean;
+  readonly additionalMounts?: ReadonlyArray<{
+    readonly Type: string;
+    readonly Source: string;
+    readonly Destination: string;
+  }>;
   readonly agentMount?: {
     readonly Type: string;
     readonly Source: string;
@@ -112,7 +118,7 @@ const makeFakeApi = (input: {
 }) => {
   const calls: EngineHttpRequest[] = [];
   let exists = input.containerExists ?? true;
-  let running = true;
+  let running = input.running ?? true;
   let hostPort = "18080";
   let bindSource = input.existingBindSource;
   const api: PodmanApiClient = {
@@ -141,7 +147,10 @@ const makeFakeApi = (input: {
             body:
               input.agentMount === undefined
                 ? body
-                : JSON.stringify({ ...JSON.parse(body), Mounts: [input.agentMount] }),
+                : JSON.stringify({
+                    ...JSON.parse(body),
+                    Mounts: [input.agentMount, ...(input.additionalMounts ?? [])],
+                  }),
           };
         }
         if (request.method === "POST" && action === "stop") {
@@ -240,6 +249,91 @@ describe("Podman publish-port recreate", () => {
     expect(result.changed).toBe(changed);
     expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
   });
+  test.each([
+    ["absent", undefined, undefined, true],
+    ["matching", "volume", "lando-ssh-agent", false],
+    ["changed", "volume", "previous-ssh-agent", true],
+    ["bind", "bind", "/previous/ssh-agent", true],
+  ] as const)("SSH sidecar storage volume: %s", async (_scenario, oldType, oldSource, changed) => {
+    const target = PortablePath.make("/run/lando/ssh-agent");
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      ...(oldType === undefined || oldSource === undefined
+        ? {}
+        : {
+            agentMount: {
+              Type: oldType,
+              Source: oldType === "volume" ? `/var/lib/volumes/${oldSource}/_data` : oldSource,
+              ...(oldType === "volume" ? { Name: oldSource } : {}),
+              Destination: target,
+            },
+          }),
+    });
+    const base = planWithHostPort(18080);
+    const service = base.services[serviceName];
+    if (service === undefined) throw new Error("Test service is missing.");
+    const plan = {
+      ...base,
+      services: {
+        [serviceName]: {
+          ...service,
+          storage: [{ store: "lando-ssh-agent", target, readOnly: false }],
+        },
+      },
+    };
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+    expect(result.changed).toBe(changed);
+    expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(changed ? 1 : 0);
+  });
+
+  test.each([
+    ["remove unsupported Windows bind", "/windows/ssh", undefined, true, false],
+    ["keep matching POSIX bind", "/posix/ssh", "/posix/ssh", false, true],
+    ["replace changed POSIX bind", "/previous/ssh", "/current/ssh", true, true],
+  ] as const)("SSH sidecar host endpoint: %s", async (_scenario, oldSource, source, changed, running) => {
+    const target = PortablePath.make("/run/lando/ssh-agent");
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      running,
+      agentMount: {
+        Type: "volume",
+        Source: "/var/lib/volumes/lando-ssh-agent/_data",
+        Name: "lando-ssh-agent",
+        Destination: target,
+      },
+      additionalMounts: [{ Type: "bind", Source: oldSource, Destination: "/ssh-auth" }],
+    });
+    const base = planWithHostPort(18080);
+    const service = base.services[serviceName];
+    if (service === undefined) throw new Error("Test service is missing.");
+    const plan = {
+      ...base,
+      services: {
+        [serviceName]: {
+          ...service,
+          storage: [{ store: "lando-ssh-agent", target, readOnly: false }],
+          mounts:
+            source === undefined
+              ? []
+              : [
+                  {
+                    type: "bind" as const,
+                    source,
+                    target: PortablePath.make("/ssh-auth"),
+                    readOnly: false,
+                    realization: "passthrough" as const,
+                  },
+                ],
+        },
+      },
+    };
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+    expect(result.changed).toBe(changed);
+    expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(changed ? 1 : 0);
+  });
+
   test("recreates an existing container that is missing the planned physical network", async () => {
     const fake = makeFakeApi({
       deleteStatus: 204,
