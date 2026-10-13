@@ -228,6 +228,13 @@ lando exec appserver -- php -v
   </Scenario>
 </Guide>
 
+## Compile theme assets
+
+A contrib or custom theme with its own `package.json` needs a Node sidecar, not
+a PHP extension. Add `node` next to `appserver`, point `lando npm` at the theme
+with tooling `dir:`, then `lando npm install` and the theme's build script. See
+[Compile PHP theme assets with Node](../services/node-theme-assets.mdx).
+
 ## Destroy the app
 
 ```sh
@@ -243,6 +250,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 - [Import and export app databases](../tooling/db-import-export.mdx)
 - [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)
 - [Add Mailpit](../services/mailpit.mdx)
+- [Compile PHP theme assets with Node](../services/node-theme-assets.mdx)
 - [Mount a custom php.ini](../services/php-customization.mdx)
 - [Add PHP](../services/php.mdx)
 - [Add MariaDB](../services/mariadb.mdx)

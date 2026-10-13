@@ -1,0 +1,13 @@
+name: drupal-theme-pinned
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    framework: drupal
+    webroot: web
+    port: 80
+  node:
+    type: "node:22"
+    packageRoot: web/themes/contrib/bootstrap5
+    primary: false
+    endpoints: []

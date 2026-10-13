@@ -1,0 +1,182 @@
+---
+id: node-theme-assets
+provider: test
+timeout: 90000
+tags: [beta, docs, node, php, tooling, drupal, wordpress]
+---
+
+# Compile PHP theme assets with Node
+
+Add a `node` service next to `appserver`, point `lando npm` at the theme, then
+install and run the theme's build script. Nothing else is required. Dart Sass
+is the `sass` npm package; it installs like any other `devDependency` on
+arm64 and amd64.
+
+```yaml
+services:
+  node:
+    type: "node:22"
+    primary: false
+    endpoints: []
+tooling:
+  npm:
+    service: node
+    dir: /app/web/themes/contrib/bootstrap5
+    description: Run npm inside the theme.
+    cmds:
+      - npm
+```
+
+Keep the recipe's `appserver`, database, and existing tooling. Rebuild, then:
+
+```sh
+lando rebuild
+lando npm install
+lando npm run build:sass
+```
+
+WordPress themes use the same sidecar. Change `dir:` to
+`/app/wp-content/themes/mytheme`. A custom Drupal theme uses
+`/app/web/themes/custom/mytheme`.
+
+<Guide>
+  <Scenario id="sidecar-and-theme-dir" render>
+    <Step name="scaffold">
+      <UseFixture name="php-theme-drupal" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"primary\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"endpoints\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/contrib/bootstrap5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: drupal-theme-assets" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Add the Node sidecar
+
+`type: "node:22"` pins the image. `primary: false` leaves `appserver` as the
+app you open. `endpoints: []` drops the default Node HTTP endpoint so Lando
+does not publish a URL for a process that is only there to run npm.
+
+Omit `command:`. The Node service keeps an idle process so the container
+stays up for tooling. The [Laravel recipe](../recipes/laravel-workflow.mdx)
+ships this sidecar already; its `package.json` lives at the app root, so it
+skips `dir:`.
+
+## Point lando npm at the theme
+
+Node does not register `lando npm` by itself. Author the task and set `dir:`
+to the theme path inside the container. `/app` is the bind-mounted app root.
+
+A task `dir` is the working directory inside that service. Lando does not
+resolve it against the host checkout. Set it on `npm` only. An app-wide
+`toolingDefaults.dir` would also move `lando drush` and `lando composer`.
+
+`lando npm install --save-dev sass` still forwards the extra argv to `npm`.
+See [Declare flags and args on a tooling task](../tooling/flags-and-args.mdx).
+
+## Install and build
+
+```sh
+lando npm install
+lando npm run build:sass
+```
+
+Use the script name the theme already lists. Drupal Bootstrap 5 calls its Sass
+build `build:sass`. Other themes use `build`, `build:css`, or `sass`.
+
+Compiled CSS writes into the theme on the shared `/app` mount, so Apache or
+nginx serves it without a copy step.
+
+Do not put `sass` on service `globals` unless you want a global CLI for the
+whole image. Theme `devDependencies` belong in the theme's `package.json`.
+`globals` is for tools such as `gulp-cli`; see [Add Node.js](./node.mdx#install-global-npm-packages).
+
+Skip `node-sass`. That binding is obsolete. The Dart Sass package name is
+`sass`.
+
+## Watch Sass while you edit
+
+If the theme has a watch script, leave it running in a second terminal:
+
+```sh
+lando npm run watch:sass
+```
+
+The idle Node command holds the container open. Stop the watch with Ctrl+C.
+
+## Infer Node from the theme package
+
+`packageRoot` changes only where Lando reads `.nvmrc` and `package.json` for
+version inference. It does not change mounts or the container working
+directory. You still need tooling `dir:` so `lando npm` runs in the theme.
+
+Use it only with bare `type: node`, and only when that directory already
+exists:
+
+```yaml
+services:
+  node:
+    type: node
+    packageRoot: web/themes/contrib/bootstrap5
+    primary: false
+    endpoints: []
+```
+
+Pin `type: "node:22"` when the theme is not on disk yet, or when the Landofile
+should own the version. Combining `packageRoot` with `type: "node:22"` fails
+at plan time.
+
+Service `workingDirectory` sets the container process cwd. It does not set
+the cwd for `lando npm`. Tooling `dir:` does.
+
+  <Scenario id="infer-from-theme" render>
+    <Step name="scaffold-infer">
+      <UseFixture name="php-theme-infer" />
+    </Step>
+    <Step name="confirm-package-root">
+      <Verify file="php-theme-infer/web/themes/contrib/bootstrap5/.nvmrc" expect={{ regex: "^22[.]11[.]0\\s*$" }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"packageRoot\":\\s*\"web/themes/contrib/bootstrap5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/contrib/bootstrap5\"" } }} />
+    </Step>
+    <Step name="plan-infer">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: drupal-theme-infer" } }} />
+    </Step>
+    <Step name="cleanup-infer">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-package-root-on-pin" render={false} reason="Plan-time tagged failure when packageRoot is set on type node:22">
+    <Step name="scaffold-invalid">
+      <UseFixture name="php-theme-package-root-pinned" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "packageRoot only with bare type: node" }} />
+    </Step>
+    <Step name="cleanup-invalid">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Add Node.js](./node.mdx) for version inference, `globals`, and `packageRoot`
+- [Set tooling defaults and command aliases](../tooling/defaults-and-aliases.mdx)
+- [Run the Drupal recipe](../recipes/drupal-workflow.mdx)
+- [Run the WordPress recipe](../recipes/wordpress-workflow.mdx)
+- [Run the Laravel recipe](../recipes/laravel-workflow.mdx)

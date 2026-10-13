@@ -180,6 +180,10 @@ services:
 The directory must exist inside the app root. Lando rejects absolute paths,
 parent traversal, and symbolic links for inference inputs.
 
+`packageRoot` does not change mounts or the container working directory. For a
+PHP app whose theme lives under the webroot, add a Node sidecar and set
+tooling `dir:`. See [Compile PHP theme assets with Node](./node-theme-assets.mdx).
+
 ## Pin the service type
 
 Use an explicit type when the Landofile, rather than project files, should own

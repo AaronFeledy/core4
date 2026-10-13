@@ -1,0 +1,38 @@
+name: drupal-theme-assets
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    framework: drupal
+    webroot: web
+    composer: "2"
+    allowOverride: true
+    port: 80
+    dependsOn:
+      - database
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: mariadb:11.4
+  node:
+    type: "node:22"
+    primary: false
+    endpoints: []
+tooling:
+  drush:
+    service: appserver
+    description: Run Drush inside the appserver service.
+    cmds:
+      - vendor/bin/drush
+  composer:
+    service: appserver
+    description: Run Composer inside the appserver service.
+    cmds:
+      - composer
+  npm:
+    service: node
+    dir: /app/web/themes/contrib/bootstrap5
+    description: Run npm inside the theme.
+    cmds:
+      - npm
