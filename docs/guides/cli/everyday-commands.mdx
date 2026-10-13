@@ -58,6 +58,22 @@ Bare `restart` stops then starts the app, recreating its containers and reusing 
 
 If another process takes a selected service's host port after it stops, restart fails and leaves that service down. Check `lando info`, free the port or run `lando rebuild -s <name>`, then check `lando info` again.
 
+## Fix an image pull failure
+
+Read the engine reason after the HTTP status in the pull error. A blocked registry,
+missing image tag, or registry connection failure needs a registry or network fix,
+not a runtime reinstall. Check the image reference and the container engine's
+registry policy, then retry once registry access works.
+
+For authentication failures, follow the error's credential remediation. Stale
+credentials can affect public images too. Clear the affected registry's stale
+credentials with the engine's logout command or remove its stale `auths` entry,
+then authenticate again if the registry requires it.
+
+Use `lando start --format=json` to inspect the tagged error and remediation.
+Already-pulled images can still work without registry access; see
+[Work offline](../config/offline-dev.mdx).
+
 ## Wait for another command to finish
 
 `start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
