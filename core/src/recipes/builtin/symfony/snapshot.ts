@@ -1,11 +1,11 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:40915902ba0eb60926e169ad7da8e0c2d3c2f4330634ce908c5c197cac7a2e92";
+  "sha256:0d6606fdae30b856e52b9883f03c13a6fb9355e76bd52b0784e3977d6871e49e";
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-symfony",
@@ -17,7 +17,7 @@ export const symfonyDefaults = {
   php: PHP_DEFAULT,
   database: "postgres:16",
   composer: "2",
-  webroot: "/app/public",
+  webroot: "public",
 } as const;
 export const symfonySnapshot: RecipeSnapshot = {
   identity: symfonyProducer,
@@ -25,7 +25,7 @@ export const symfonySnapshot: RecipeSnapshot = {
     php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["postgres:16", "mariadb:11.4"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
-    webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+    webroot: { kind: "string", pattern: WEBROOT_PATTERN.source },
   },
   defaults: symfonyDefaults,
   template: {

@@ -1,6 +1,6 @@
 import type { PromptAnswers } from "../prompts/runtime";
 
-export const WEBROOT_PATTERN = /^\/[A-Za-z0-9._/-]*$/u;
+export const WEBROOT_PATTERN = /^[A-Za-z0-9._/-]+$/u;
 
 export const PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
 export const PHP_DEFAULT = "8.4" as const;
@@ -51,7 +51,7 @@ export const webrootPromptYaml = (fallback: string): string => `  - name: webroo
     default: ${fallback}
     validate:
       pattern: ${WEBROOT_PATTERN.source}
-      message: Webroot must be an absolute container path.`;
+      message: Webroot must be a path relative to the app root, such as web, or an absolute container path.`;
 
 export const databasePromptYaml = (values: ReadonlyArray<string>): string => `  - name: database
     type: select

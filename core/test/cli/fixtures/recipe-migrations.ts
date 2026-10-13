@@ -60,7 +60,7 @@ const template = (stage: 0 | 1 | 2): RecipeSnapshot["template"] => {
 const snapshot = (identity: RecipeProducer, stage: 0 | 1 | 2): RecipeSnapshot => ({
   identity,
   optionTypes: { php: { kind: "string" }, webroot: { kind: "string" }, database: { kind: "string" } },
-  defaults: { php: stage === 0 ? "8.2" : "8.3", webroot: "/app", database: "mariadb:11.4" },
+  defaults: { php: stage === 0 ? "8.2" : "8.3", webroot: ".", database: "mariadb:11.4" },
   template: template(stage),
   assets: [],
 });
@@ -166,7 +166,7 @@ recipe:
     contentDigest: ${producer("1.0.0", "1").contentDigest}
   options:
     php: "${input.php ?? "8.2"}"
-    webroot: /app
+    webroot: .
     database: mariadb:11.4
 ${appserver === "appserver" ? "" : `  services:\n    appserver: ${appserver}\n`}services:
   ${appserver}:

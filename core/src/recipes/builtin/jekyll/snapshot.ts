@@ -4,7 +4,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JEKYLL_RECIPE_VERSION = "0.1.0";
 export const JEKYLL_CONTENT_DIGEST =
-  "sha256:970b821b5c23347946dc7fc6976e9548f1135f761e79e3f828f3b3ebfbc71c87";
+  "sha256:0c86af9b144cd66a7a83e12fd4aaae96a14ba3da8df8298cb3af322d91441172";
 export const jekyllProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-jekyll",
@@ -52,7 +52,7 @@ export const jekyllSnapshot: RecipeSnapshot = {
               ["type", lit("static:nginx")],
               ["primary", lit(false)],
               ["appMount", obj([["target", lit("/app")]])],
-              ["webroot", lit("/app/_site")],
+              ["webroot", lit("_site")],
               ["routes", arr(defaultRoute())],
             ]),
           ],

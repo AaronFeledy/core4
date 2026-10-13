@@ -26,21 +26,32 @@ describe("php-stack helper", () => {
   test("resolves lamp defaults from empty extras", () => {
     const resolved = resolvePhpStackAnswers(
       {},
-      { php: "8.4", database: "mariadb:11.4", webroot: "/app", composer: "2" },
+      { php: "8.4", database: "mariadb:11.4", webroot: ".", composer: "2" },
     );
     expect(resolved.php).toBe("8.4");
     expect(resolved.database).toBe("mariadb:11.4");
-    expect(resolved.webroot).toBe("/app");
+    expect(resolved.webroot).toBe(".");
     expect(resolved.composer).toBe("2");
     expect(resolved.webserver).toBe("apache");
   });
 
-  test("webroot pattern accepts container paths and rejects relatives", () => {
+  test("webroot pattern accepts relative and absolute paths but rejects unsupported characters", () => {
     expect(WEBROOT_PATTERN.test("/app")).toBe(true);
     expect(WEBROOT_PATTERN.test("/app/web")).toBe(true);
     expect(WEBROOT_PATTERN.test("/app/public")).toBe(true);
-    expect(WEBROOT_PATTERN.test("relative")).toBe(false);
-    expect(WEBROOT_PATTERN.test("app/web")).toBe(false);
+    expect(WEBROOT_PATTERN.test(".")).toBe(true);
+    expect(WEBROOT_PATTERN.test("web")).toBe(true);
+    expect(WEBROOT_PATTERN.test("./public/")).toBe(true);
+    expect(WEBROOT_PATTERN.test("")).toBe(false);
+    expect(WEBROOT_PATTERN.test("public files")).toBe(false);
+    expect(WEBROOT_PATTERN.test("web;echo")).toBe(false);
+  });
+
+  test("renders an app-root nginx webroot as a YAML string", () => {
+    // Given / When
+    const yaml = renderNginxEdgeLines(".", "test-app").join("\n");
+    // Then
+    expect(Bun.YAML.parse(yaml)).toMatchObject({ edge: { webroot: "." } });
   });
 
   test("apache appserver omits via and can keep allowOverride", () => {

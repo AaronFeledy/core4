@@ -13,7 +13,7 @@ export const lempDecomposer: RecipeDecomposerFactory = makeOptionBearingDecompos
           primary: false,
           type: "nginx",
           backend: "appserver",
-          webroot: "/app",
+          webroot: ".",
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         appserver: {
@@ -21,7 +21,7 @@ export const lempDecomposer: RecipeDecomposerFactory = makeOptionBearingDecompos
           primary: true,
           framework: "none",
           via: "fpm",
-          webroot: "/app",
+          webroot: ".",
           dependsOn: ["database"],
         },
         database: { type: "mariadb" },

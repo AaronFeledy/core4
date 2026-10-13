@@ -9,14 +9,14 @@ lando start
 lando info
 ```
 
-The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe laravel --name=my-laravel-app --yes \
   --answer=php=8.1 \
   --answer=database=postgres:16 \
   --answer=composer=2.7.7 \
-  --answer=webroot=/app/public \
+  --answer=webroot=public \
   --answer=worker=true
 ```
 
@@ -80,7 +80,7 @@ lando info
 ## 4. init
 
 ```bash
-lando init --recipe laravel --name=my-laravel-worker --yes --answer=php=8.1 --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=/app/public --answer=worker=true
+lando init --recipe laravel --name=my-laravel-worker --yes --answer=php=8.1 --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=public --answer=worker=true
 ```
 
 ## 5. inspect

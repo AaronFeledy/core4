@@ -294,7 +294,7 @@ describe("withScenarioContext", () => {
     }
   });
 
-  test("serves static guide fixture files through the scenario curl shim", async () => {
+  test.each(["dist", "./dist/", "/app/dist"])("serves static files when webroot is %s", async (webroot) => {
     const result = await Effect.runPromise(
       withScenarioContext({ guideId: "static", scenarioId: "fetch-known-file" }, (context) =>
         Effect.gen(function* () {
@@ -304,7 +304,7 @@ describe("withScenarioContext", () => {
             "services:",
             "  web:",
             "    type: static",
-            "    webroot: /app/dist",
+            `    webroot: ${webroot}`,
           ]);
           yield* Effect.promise(() =>
             writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
@@ -319,6 +319,29 @@ describe("withScenarioContext", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("hello from lando static\n");
     expect(result.command).toEqual(["curl", "index.html"]);
+  });
+
+  test.each([".", '"."', "/app"])("serves the app root when webroot is %s", async (webroot) => {
+    // Given
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "static", scenarioId: "fetch-app-root" }, (context) =>
+        Effect.gen(function* () {
+          yield* writeLandofile(context.testDir, [
+            "name: static-demo",
+            "services:",
+            "  web:",
+            "    type: static",
+            `    webroot: ${webroot}`,
+          ]);
+          yield* Effect.promise(() => writeFile(join(context.testDir, "index.html"), "app root\n"));
+          // When
+          return yield* context.runCli(["curl", "index.html"]);
+        }),
+      ),
+    );
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("app root\n");
   });
 
   test("forwards runCli options to custom overrides", async () => {

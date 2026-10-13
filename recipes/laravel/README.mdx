@@ -16,14 +16,14 @@ lando start
 lando info
 ```
 
-The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe laravel --name=my-laravel-app --yes \
   --answer=php=8.1 \
   --answer=database=postgres:16 \
   --answer=composer=2.7.7 \
-  --answer=webroot=/app/public \
+  --answer=webroot=public \
   --answer=worker=true
 ```
 
@@ -88,7 +88,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
   <Scenario id="non-default-options" render>
     <Step name="init">
       <Variable name="appName" value="laravel-worker" display="my-laravel-worker" />
-      <Run command="lando init --recipe laravel --name={{appName}} --yes --answer=php=8.1 --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=/app/public --answer=worker=true" />
+      <Run command="lando init --recipe laravel --name={{appName}} --yes --answer=php=8.1 --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=public --answer=worker=true" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
@@ -97,7 +97,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"cli\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />

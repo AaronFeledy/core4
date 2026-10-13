@@ -141,7 +141,7 @@ describe("drupal decomposition", () => {
     { options: { ...defaults, webserver: "caddy" }, path: "options.webserver" },
     { options: { ...defaults, database: "sqlite" }, path: "options.database" },
     { options: { ...defaults, composer: "false" }, path: "options.composer" },
-    { options: { ...defaults, webroot: "web" }, path: "options.webroot" },
+    { options: { ...defaults, webroot: "unsafe path" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
       Effect.result(

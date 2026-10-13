@@ -1,15 +1,30 @@
-import { Effect, Schema } from "effect";
+import { posix } from "node:path";
+
+import { Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
 const DEFAULT_WEBROOT = PortablePath.make("/usr/local/tomcat/webapps/ROOT");
+const TomcatDeployPath = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
+      message:
+        "tomcat webroot is the container path the app is deployed to and must be absolute, such as /usr/local/tomcat/webapps/ROOT.",
+    }),
+  ),
+);
 const VERSIONS = ["9", "10", "11"] as const;
 const ARTIFACTS = {
   "9": "tomcat:9-jre21",
@@ -22,10 +37,10 @@ export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
-  const webroot = service.webroot ?? DEFAULT_WEBROOT;
+  const webroot = posix.normalize(service.webroot ?? DEFAULT_WEBROOT);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  mountAppRoot(ctx, { target: webroot, realization: "passthrough" });
+  mountAppRoot(ctx, { target: PortablePath.make(webroot), realization: "passthrough" });
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(port),
@@ -53,16 +68,20 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: TomcatServiceConfig,
   resolve: (input) => {
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "tomcat",
-        image: input.service.image ?? image,
-        webroot: input.service.webroot ?? DEFAULT_WEBROOT,
-        certs: input.service.certs ?? true,
-      },
-      features: [{ id: TOMCAT_FEATURE_ID }],
+    return serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
+      const webroot = input.service.webroot ?? DEFAULT_WEBROOT;
+      Schema.decodeUnknownSync(TomcatDeployPath)(webroot);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "tomcat",
+          image: input.service.image ?? image,
+          webroot,
+          certs: input.service.certs ?? true,
+        },
+        features: [{ id: TOMCAT_FEATURE_ID }],
+      };
     });
   },
 });

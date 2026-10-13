@@ -13,7 +13,7 @@ cd symfony-demo
 lando start
 ```
 
-The named init creates `symfony-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, PostgreSQL 16, Composer 2, and webroot `/app/public`. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
+The named init creates `symfony-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, PostgreSQL 16, Composer 2, and webroot `public`. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
 
 Default PHP is 8.4, so `symfony new` / `symfony/skeleton` can install the current 8.x line. Pass `--answer=php=8.3` if you want the 7.4 LTS line.
 
@@ -21,7 +21,7 @@ Default PHP is 8.4, so `symfony new` / `symfony/skeleton` can install the curren
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: symfony`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache`, gets `DATABASE_URL` and `REDIS_URL` |
+| `appserver` | `php:8.4`, `framework: symfony`, webroot `public`, Composer `2`, Apache on port `80`, depends on `database` and `cache`, gets `DATABASE_URL` and `REDIS_URL` |
 | `database` | `type: postgres:16` |
 | `cache` | `type: redis` |
 | Tooling | `lando console` (`php bin/console`) and `lando composer` on `appserver` |

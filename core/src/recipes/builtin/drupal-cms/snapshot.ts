@@ -2,7 +2,7 @@ import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
-import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import { recipeAssetDigest } from "../snapshot-asset.ts";
 import { arr, call, cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
@@ -11,7 +11,7 @@ import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET 
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:c460f74ee0127bfa5da4054da5df1d9b1371d142e8620a66518c8877a51786b3";
+  "sha256:2c6a5dd9eff961d8b3407275e436c8de8603afd928f735e0b3d65768b7761982";
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal-cms",
@@ -24,7 +24,7 @@ export const drupalCmsDefaults = {
   webserver: "apache",
   database: "mariadb:11.4",
   composer: "2",
-  webroot: "/app/web",
+  webroot: "web",
 } as const;
 /** The one PostgreSQL member of the declared database domain. */
 export const DRUPAL_CMS_POSTGRES_DATABASE = "postgres:16";
@@ -68,7 +68,7 @@ export const drupalCmsSnapshot: RecipeSnapshot = {
     webserver: { kind: "enum", values: ["apache", "nginx"] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
-    webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+    webroot: { kind: "string", pattern: WEBROOT_PATTERN.source },
   },
   defaults: drupalCmsDefaults,
   template: {

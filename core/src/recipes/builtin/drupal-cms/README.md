@@ -4,7 +4,7 @@ Drupal CMS 2 scaffold with PHP, a database (MariaDB or PostgreSQL), and Drush.
 
 ## Generated services
 
-- `appserver`: `php:8.4`, `framework: drupal`, `webroot: /app/web`, `allowOverride: true`. A root artifact step installs Git for the pinned SVG Image source. Database credentials are injected as environment variables.
+- `appserver`: `php:8.4`, `framework: drupal`, `webroot: web`, `allowOverride: true`. A root artifact step installs Git for the pinned SVG Image source. Database credentials are injected as environment variables.
 - `database`: `mariadb` or `postgres` (prompt: `database`).
 
 ## Generated tooling
