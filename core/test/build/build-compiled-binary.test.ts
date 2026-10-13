@@ -80,6 +80,7 @@ describe("compiled binary OpenTUI native pruning", () => {
       { target, outfile: `./dist/lando-${target}`, version: "4.0.0-beta.1" },
       runner,
       fixtureShimAssets,
+      "linux-x64",
     );
 
     // Then: compile, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
@@ -134,8 +135,8 @@ describe("compiled binary OpenTUI native pruning", () => {
   });
 
   test("Windows cross-compilation enables bytecode without changing production bundling", async () => {
-    // Given: a Windows target distinct from this compiler host.
-    const target = process.platform === "win32" && process.arch === "x64" ? "windows-arm64" : "windows-x64";
+    // Given: a Windows target and an explicitly non-Windows compiler host.
+    const target = "windows-x64";
     let received: Bun.BuildConfig | undefined;
     // When: the central builder passes its configuration to Bun.
     await buildCompiledBinary(
@@ -145,6 +146,7 @@ describe("compiled binary OpenTUI native pruning", () => {
         return { success: true, logs: [], outputs: [] };
       },
       fixtureShimAssets,
+      "linux-x64",
     );
     // Then: bytecode, ESM splitting, and native pruning remain enabled on a different host.
     expect(received).toMatchObject({
@@ -156,6 +158,43 @@ describe("compiled binary OpenTUI native pruning", () => {
     });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.compile).toEqual({ target: `bun-${target}`, outfile: "./dist/lando.exe" });
+  });
+
+  test.each(["windows-x64", "windows-arm64"])("embeds the icon for %s on a Windows host", async (target) => {
+    // Given: a Windows release target and the repository's ICO asset.
+    const icon = resolve(import.meta.dirname, "../../../scripts/lando.ico");
+    const outfile = "./dist/lando.exe";
+    let received: Bun.BuildConfig | undefined;
+    // When: the binary is compiled on a Windows host.
+    await buildCompiledBinary(
+      { target, outfile, version: "4.0.0-dev.1" },
+      async (config) => {
+        received = config;
+        return { success: true, logs: [], outputs: [] };
+      },
+      fixtureShimAssets,
+      target,
+    );
+    // Then: Bun receives only the icon resource, pointing at an existing ICO file.
+    expect(received?.compile).toEqual({ target: `bun-${target}`, outfile, windows: { icon } });
+    expect(await Bun.file(icon).slice(0, 4).bytes()).toEqual(Uint8Array.of(0, 0, 1, 0));
+  });
+
+  test("omits Windows resources for a non-Windows target on a Windows host", async () => {
+    // Given: a Linux release target and a Windows compiler host.
+    let received: Bun.BuildConfig | undefined;
+    // When: the binary is cross-compiled from Windows.
+    await buildCompiledBinary(
+      { target: "linux-x64", outfile: "./dist/lando", version: "4.0.0-dev.1" },
+      async (config) => {
+        received = config;
+        return { success: true, logs: [], outputs: [] };
+      },
+      fixtureShimAssets,
+      "windows-x64",
+    );
+    // Then: the compile configuration contains no Windows resources.
+    expect(received?.compile).toEqual({ target: "bun-linux-x64", outfile: "./dist/lando" });
   });
 
   test("CLI accepts the normative Bun build flags and normalizes the target", () => {

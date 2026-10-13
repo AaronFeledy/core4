@@ -7,7 +7,7 @@ import { gzipSync } from "node:zlib";
 
 import type { BunPlugin } from "bun";
 
-import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { opentuiNativeCatalog } from "./generated/opentui-native/catalog.generated.ts";
 
@@ -15,6 +15,7 @@ export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_OUTFILE = resolve(REPO_ROOT, "core/dist/lando");
+const WINDOWS_ICON = resolve(REPO_ROOT, "scripts/lando.ico");
 
 export interface CompiledBinaryOptions {
   readonly target?: string;
@@ -139,6 +140,7 @@ export const buildCompiledBinary = async (
   options: CompiledBinaryOptions,
   build: CompiledBinaryBuildRunner = (config) => Bun.build(config),
   prepareShimAssets: HostProxyShimAssetBuilder = buildHostProxyShimAssets,
+  host: string = hostTarget(),
 ): Promise<Bun.BuildOutput> => {
   const platform = platformFor(options.target ?? hostTarget());
   const version = resolveCompiledBinaryVersion({
@@ -154,7 +156,14 @@ export const buildCompiledBinary = async (
       format: "esm",
       splitting: true,
       // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json.
-      compile: { target: bunTargetFor(platform), outfile: options.outfile },
+      compile: {
+        target: bunTargetFor(platform),
+        outfile: options.outfile,
+        // Bun applies PE icons only on Windows hosts, silently ignoring cross-compiles; CI builds Windows releases on native Windows runners.
+        ...(isWindowsCiPlatform(platform) && isWindowsCiPlatform({ id: host })
+          ? { windows: { icon: WINDOWS_ICON } }
+          : {}),
+      },
       bytecode: true,
       minify: true,
       sourcemap: "external",
