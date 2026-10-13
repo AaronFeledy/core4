@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.
+
 - `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
 
 - `RouterService.setup(config, options?)` additively accepts optional `reacquirePorts` to rescan host ports instead of reusing the persisted pair. Only explicit `lando setup` sets it. App and scratch startup omit it and retain owned ports while config is unchanged; changed preferences still trigger a rescan. Rescans treat provider-verified publications of Lando's own router as available. This invocation option is not retained or exposed in config, and changes no JSON Schema.
@@ -608,6 +610,7 @@ It registers no JSON Schema.
 - `FileSyncSessionRef`
 - `FileSyncSessionSpec`
 - `PreparedFileSyncTarget`
+- `RetainedFileSyncQuiescence`
 - `FileSyncSessionStatus`
 - `FileSyncSessionTarget`
 - `FileSyncSetupOptions`
@@ -1330,3 +1333,5 @@ It registers no JSON Schema.
 - `SqlRecoveryOperationError`
 - `SqlSeedSourceError`
 - `SqlSeedStateError`
+
+- The pre-release file-sync contribution now builds its engine from `LandoPluginContext` so durable session receipts use the plugin state store. `FileSyncEngineShape.appLifecycle` adds `disposalPhase(app)` to resume interrupted disposal, and `RuntimeProviderShape` adds optional `disposeFileSyncTargets(plan)` for verified helper/cache cleanup and `quiesceRetainedFileSync(plan)` for exact writer teardown and an Effect Schema-derived proof of which prepared volumes still exist after a retained start without an applied receipt. `PreparedFileSyncTarget.endpoint` accepts optional numeric beta owner/group and file/directory modes, verified by the Windows Mutagen binder. `ProcessSpawnOptions.windowsHide` allows background Windows child processes without a console window.

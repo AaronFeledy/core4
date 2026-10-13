@@ -122,6 +122,7 @@ const buildSpawnOptions = (input: ProcessSpawnOptions) => {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(input.env === undefined ? {} : { env: { ...process.env, ...input.env } }),
     ...(cgroup === undefined ? {} : { cgroup }),
+    windowsHide: input.windowsHide ?? true,
     stdin: (input.stdin === undefined && input.stdinStream === undefined ? "ignore" : "pipe") as
       | "ignore"
       | "pipe",

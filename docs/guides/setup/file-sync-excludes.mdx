@@ -8,7 +8,7 @@ tags: [beta, docs, file-sync, excludes, setup]
 
 # Exclude paths from file sync
 
-Every service skips `node_modules`, `vendor`, `.git`, and `tmp` by default. Those paths are not synced into the container.
+Every service skips `node_modules`, `vendor`, `.git`, and `tmp` by default. The host copies of those paths are not synced into the container. Install dependencies through Lando tooling so they live in the service volumes.
 
 ## Add your own excludes
 
@@ -44,4 +44,5 @@ After you change excludes, rebuild so the mounts update:
 
 ```sh
 lando rebuild
+lando doctor
 ```

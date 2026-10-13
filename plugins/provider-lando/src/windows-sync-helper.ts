@@ -1,12 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
+import {
+  buildVolumePruneRequest,
+  parseVolumePruneResult,
+} from "@lando/container-runtime/podman/volume-prune";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Effect, Predicate, Schema } from "effect";
+import { Duration, Effect, Predicate, Schema } from "effect";
 
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
+import { runProbe } from "@lando/sdk/probe";
 import { fileSyncVolumeName } from "@lando/sdk/schema";
 
 const TARGET_PATH = "/sync";
@@ -66,6 +71,8 @@ export interface WindowsSyncHelperSpec {
   readonly mountKey: string;
   /** Immutable image reference; the caller selects a helper image with a shell and sleep. */
   readonly image: string;
+  readonly owner?: string;
+  readonly group?: string;
 }
 
 export interface WindowsSyncHelperEndpoint {
@@ -159,7 +166,13 @@ const safeHostConfig = (host: JsonRecord | undefined): boolean =>
 const validSpec = (spec: WindowsSyncHelperSpec): boolean =>
   [spec.appId, spec.appName, spec.service, spec.mountKey].every(
     (part) => part.length > 0 && !part.includes("/") && !part.includes("\0"),
-  ) && /@sha256:[a-f0-9]{64}$/u.test(spec.image);
+  ) &&
+  /@sha256:[a-f0-9]{64}$/u.test(spec.image) &&
+  ((spec.owner === undefined && spec.group === undefined) ||
+    (spec.owner !== undefined &&
+      spec.group !== undefined &&
+      /^\d+$/u.test(spec.owner) &&
+      /^\d+$/u.test(spec.group)));
 
 const identity = (spec: WindowsSyncHelperSpec) => {
   const volumeName = fileSyncVolumeName(spec.appName, spec.service, spec.mountKey);
@@ -175,6 +188,8 @@ const identity = (spec: WindowsSyncHelperSpec) => {
       KEEP_ALIVE,
       HELPER_USER,
       TARGET_PATH,
+      spec.owner ?? null,
+      spec.group ?? null,
     ]),
   );
   const safeApp = spec.appId.replace(/[^a-zA-Z0-9_.-]/gu, "-").slice(0, 32);
@@ -366,6 +381,73 @@ const loadReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) 
 const collision = (kind: string) =>
   failure("syncHelper", `The ${kind} exists without a complete matching ownership receipt.`);
 
+/** Change only the verified volume root, never recursive app contents. */
+const ensureSyncRootOwner = Effect.fn("WindowsSyncHelper.ensureSyncRootOwner")(function* (
+  api: Api,
+  containerId: string,
+  owner: string,
+  group: string,
+) {
+  const created = yield* request(api, {
+    method: "POST",
+    path: `/containers/${encodeURIComponent(containerId)}/exec`,
+    body: {
+      Cmd: ["chown", `${owner}:${group}`, TARGET_PATH],
+      User: HELPER_USER,
+      AttachStdin: false,
+      AttachStdout: false,
+      AttachStderr: false,
+      Tty: false,
+    },
+  });
+  const id = parse(created.body)?.Id;
+  if ((created.status !== 200 && created.status !== 201) || typeof id !== "string" || id.length === 0)
+    return yield* Effect.fail(
+      failure("syncHelper.rootOwner", "Podman could not create the volume ownership command."),
+    );
+  const started = yield* request(api, {
+    method: "POST",
+    path: `/exec/${encodeURIComponent(id)}/start`,
+    body: { Detach: true, Tty: false },
+  });
+  if (started.status !== 200 && started.status !== 204)
+    return yield* Effect.fail(
+      failure("syncHelper.rootOwner", "Podman could not start the volume ownership command."),
+    );
+  const result = yield* runProbe(
+    {
+      id: "windows-sync-root-owner",
+      policy: { maxAttempts: 30, delay: Duration.millis(100), timeout: Duration.seconds(5) },
+      classify: {
+        success: (exitCode) => (exitCode === 0 ? "green" : "yellow"),
+        failure: () => "red",
+      },
+    },
+    request(api, { method: "GET", path: `/exec/${encodeURIComponent(id)}/json` }).pipe(
+      Effect.flatMap((response) => {
+        const body = parse(response.body);
+        if (response.status !== 200 || body === undefined)
+          return Effect.fail(
+            failure("syncHelper.rootOwner", "Podman could not inspect the volume ownership command."),
+          );
+        if (body.Running === true) return Effect.succeed(undefined);
+        if (typeof body.ExitCode !== "number")
+          return Effect.fail(
+            failure("syncHelper.rootOwner", "Podman returned an invalid ownership command result."),
+          );
+        return Effect.succeed(body.ExitCode);
+      }),
+    ),
+  );
+  if (result.outcome !== "green")
+    return yield* Effect.fail(
+      failure(
+        "syncHelper.rootOwner",
+        "The sync volume root could not be assigned to the planned development user.",
+      ),
+    );
+});
+
 /** Prepare a persistent Docker-transport target inside the managed Podman machine. */
 export const ensureWindowsSyncHelper = (
   api: Api,
@@ -533,6 +615,67 @@ export const ensureWindowsSyncHelper = (
           );
         }
       }
+      if (spec.owner !== undefined && spec.group !== undefined) {
+        yield* ensureSyncRootOwner(api, containerId, spec.owner, spec.group);
+      }
+      return {
+        containerId,
+        containerName,
+        volumeName,
+        path: TARGET_PATH,
+      } satisfies WindowsSyncHelperEndpoint;
+    }),
+  );
+
+/** Read-only proof of an existing exact helper and volume for retained recovery. */
+export const inspectWindowsSyncHelper = (
+  api: Api,
+  stateStore: PluginStateStore,
+  spec: WindowsSyncHelperSpec,
+) =>
+  withReceiptLock(
+    stateStore,
+    spec,
+    Effect.gen(function* () {
+      if (!validSpec(spec))
+        return yield* Effect.fail(failure("syncHelper.inspect", "Invalid sync helper identity."));
+      const { volumeName, containerName, digest } = identity(spec);
+      const receipt = yield* loadReceipt(stateStore, spec);
+      const volume = yield* inspectVolume(api, volumeName);
+      const container = yield* inspectContainer(api, containerName);
+      if (receipt === null) {
+        if (volume !== undefined || container !== undefined)
+          return yield* Effect.fail(collision("sync resources"));
+        return undefined;
+      }
+      if (receipt.specDigest !== digest || receipt.removing === true)
+        return yield* Effect.fail(collision("sync helper receipt"));
+      if (receipt.volumeCreatedAt === null) {
+        if (volume !== undefined || container !== undefined || receipt.containerId !== null)
+          return yield* Effect.fail(collision("sync preparation"));
+        return undefined;
+      }
+      if (volume === undefined) return yield* Effect.fail(collision("sync volume"));
+      yield* requireOwnedVolume(
+        volume,
+        volumeName,
+        labelsFor(spec, digest, "volume", receipt.volumeNonce),
+        receipt.volumeCreatedAt,
+      );
+      if (receipt.containerId === null) {
+        if (container !== undefined) return yield* Effect.fail(collision("sync helper"));
+        return { volumeName };
+      }
+      if (container === undefined) return yield* Effect.fail(collision("sync helper"));
+      const containerId = yield* ownedContainerId(
+        api,
+        container,
+        containerName,
+        spec,
+        volumeName,
+        labelsFor(spec, digest, "helper", receipt.helperNonce),
+        receipt.containerId,
+      );
       return {
         containerId,
         containerName,
@@ -558,14 +701,6 @@ export const removeWindowsSyncHelper = (
           failure("syncHelper.remove", "Sync helper identity is invalid or its image is not digest-pinned."),
         );
       }
-      if (options.removeVolume === true) {
-        return yield* Effect.fail(
-          failure(
-            "syncHelper.volume.remove",
-            "Automatic sync volume removal requires an instance-conditional Podman API.",
-          ),
-        );
-      }
       const { volumeName, containerName, digest } = identity(spec);
       const receipt = yield* loadReceipt(stateStore, spec);
       const volume = yield* inspectVolume(api, volumeName);
@@ -575,8 +710,20 @@ export const removeWindowsSyncHelper = (
           return yield* Effect.fail(collision("sync resources"));
         return false;
       }
-      if (receipt.specDigest !== digest || receipt.volumeCreatedAt === null) {
+      if (receipt.specDigest !== digest) {
         return yield* Effect.fail(collision("sync volume"));
+      }
+      if (receipt.volumeCreatedAt === null) {
+        if (
+          options.removeVolume !== true ||
+          volume !== undefined ||
+          container !== undefined ||
+          receipt.containerId !== null
+        )
+          return yield* Effect.fail(collision("sync preparation"));
+        const bucket = yield* openReceipt(stateStore, spec).pipe(Effect.mapError(stateFailure));
+        yield* bucket.remove.pipe(Effect.mapError(stateFailure));
+        return true;
       }
       if (volume !== undefined) {
         yield* requireOwnedVolume(
@@ -586,13 +733,15 @@ export const removeWindowsSyncHelper = (
           receipt.volumeCreatedAt,
         );
       }
-      if (container === undefined && receipt.removing !== true) {
-        if (receipt.containerId !== null) return yield* Effect.fail(collision("sync helper"));
-        return false;
-      }
-      if (volume === undefined) return yield* Effect.fail(collision("sync volume"));
-      if (receipt.containerId === null) return yield* Effect.fail(collision("sync helper"));
-      if (container !== undefined) {
+      if (container === undefined && receipt.removing !== true && receipt.containerId !== null)
+        return yield* Effect.fail(collision("sync helper"));
+      if (container === undefined && options.removeVolume !== true && receipt.removing !== true) return false;
+      if (volume === undefined && !(options.removeVolume === true && receipt.removing === true))
+        return yield* Effect.fail(collision("sync volume"));
+      if (container !== undefined && receipt.containerId === null)
+        return yield* Effect.fail(collision("sync helper"));
+      if (receipt.removing !== true) yield* saveReceipt(stateStore, spec, { ...receipt, removing: true });
+      if (container !== undefined && receipt.containerId !== null) {
         const id = yield* ownedContainerId(
           api,
           container,
@@ -602,9 +751,6 @@ export const removeWindowsSyncHelper = (
           labelsFor(spec, digest, "helper", receipt.helperNonce),
           receipt.containerId,
         );
-        if (receipt.removing !== true) {
-          yield* saveReceipt(stateStore, spec, { ...receipt, removing: true });
-        }
         const removed = yield* request(api, {
           method: "DELETE",
           path: `/containers/${encodeURIComponent(id)}?force=true`,
@@ -620,6 +766,33 @@ export const removeWindowsSyncHelper = (
         if ((yield* inspectContainer(api, containerName)) !== undefined) {
           return yield* Effect.fail(collision("sync helper"));
         }
+      }
+      if (options.removeVolume === true) {
+        if (volume !== undefined) {
+          const pruned = yield* request(
+            api,
+            buildVolumePruneRequest({
+              ctx: { providerId: "lando", remediation: REMEDIATION },
+              filters: { label: [`dev.lando.sync.nonce=${receipt.volumeNonce}`] },
+              all: true,
+            }),
+          );
+          if (pruned.status !== 200) {
+            return yield* Effect.fail(
+              failure("syncHelper.volume.remove", "Podman could not prune the owned sync volume."),
+            );
+          }
+          if (parseVolumePruneResult(pruned.body).errors.length > 0) {
+            return yield* Effect.fail(
+              failure("syncHelper.volume.remove", "Podman reported an owned sync volume prune error."),
+            );
+          }
+          if ((yield* inspectVolume(api, volumeName)) !== undefined)
+            return yield* Effect.fail(collision("sync volume"));
+        }
+        const bucket = yield* openReceipt(stateStore, spec).pipe(Effect.mapError(stateFailure));
+        yield* bucket.remove.pipe(Effect.mapError(stateFailure));
+        return true;
       }
       yield* saveReceipt(stateStore, spec, {
         ...receipt,

@@ -20,10 +20,8 @@ describe("@lando/file-sync-mutagen contract", () => {
   });
 });
 
-describe("@lando/file-sync-mutagen live contract matrix (gated: LANDO_TEST_FILE_SYNC_LIVE=1)", () => {
+describe("@lando/file-sync-mutagen fake contract matrix", () => {
   test("satisfies runFileSyncEngineContractMatrix on all canonical platforms", async () => {
-    if (process.env.LANDO_TEST_FILE_SYNC_LIVE !== "1") return;
-
     const currentPlatform: "darwin" | "linux" | "win32" | "wsl" =
       process.platform === "darwin"
         ? "darwin"

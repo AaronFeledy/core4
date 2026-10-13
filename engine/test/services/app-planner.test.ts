@@ -2862,7 +2862,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("marks slow provider bind mounts as accelerated", async () => {
+  test("accelerates the app mount but keeps auxiliary binds as passthrough", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
       const web = appPlan.services[ServiceName.make("web")];
@@ -2873,7 +2873,7 @@ describe("AppPlannerLayer.layer", () => {
         source: process.cwd(),
         target: PortablePath.make("/app"),
         readOnly: false,
-        realization: "accelerated",
+        realization: "passthrough",
       });
       expect(web?.mounts.some((mount) => mount.type === "volume")).toBe(false);
     });

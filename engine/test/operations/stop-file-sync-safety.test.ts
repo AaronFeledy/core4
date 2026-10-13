@@ -295,6 +295,7 @@ describe("stop file sync safety", () => {
             }),
           dispose: () => Effect.void,
           completeDisposal: () => Effect.void,
+          disposalPhase: () => Effect.succeed("active" as const),
         },
         flushSession: () =>
           Effect.sync(() => {

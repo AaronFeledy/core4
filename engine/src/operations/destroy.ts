@@ -34,7 +34,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import { deleteCwdAppMapEntriesForRoot } from "../cache/cwd-app-map.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
-import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import {
   verifyActiveVolumeCoordination,
@@ -57,6 +57,7 @@ import {
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 
@@ -121,17 +122,24 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
   const provider = yield* registry.select(plan);
   const ref = target.app;
   const volumes = resolvedOptions.volumes ?? false;
+  const inspectedFileSync =
+    provider.inspectAppliedFileSync === undefined
+      ? {
+          status:
+            plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
+              ? ("unknown" as const)
+              : ("ordinary" as const),
+        }
+      : yield* provider.inspectAppliedFileSync(plan);
+  const retainedUnapplied = retained !== undefined && inspectedFileSync.status !== "accelerated";
   const appliedFileSync =
-    retained !== undefined
-      ? { status: "ordinary" as const }
-      : provider.inspectAppliedFileSync === undefined
-        ? {
-            status:
-              plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
-                ? ("unknown" as const)
-                : ("ordinary" as const),
-          }
-        : yield* provider.inspectAppliedFileSync(plan);
+    retainedUnapplied && plan.fileSync[0] !== undefined
+      ? {
+          status: "accelerated" as const,
+          engineId: plan.fileSync[0].engineId,
+          sessions: plan.fileSync.map(({ session }) => session),
+        }
+      : inspectedFileSync;
   if (appliedFileSync.status === "unknown") {
     return yield* Effect.fail(
       new FileSyncStopError({
@@ -144,37 +152,59 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     );
   }
 
-  const selectedFileSync = yield* Effect.serviceOption(FileSyncEngine);
-  if (
-    appliedFileSync.status === "accelerated" &&
-    Option.isSome(selectedFileSync) &&
-    selectedFileSync.value.appLifecycle !== undefined
-  ) {
+  if (retainedUnapplied && provider.quiesceRetainedFileSync === undefined) {
     return yield* Effect.fail(
       new FileSyncStopError({
-        engineId: selectedFileSync.value.id,
+        engineId: plan.fileSync[0]?.engineId ?? "unavailable",
         sessionRef: String(plan.id),
-        message: "Durable file sync disposal requires verified provider cleanup.",
-        remediation:
-          "Keep the app stopped and preserve its sync sessions and volumes until provider cleanup can verify ownership.",
+        message: "The provider cannot prove retained sync writers are stopped.",
+        remediation: "Restore the provider's retained target quiescence hook before retrying destroy.",
       }),
     );
   }
 
+  const selectedFileSync = yield* Effect.serviceOption(FileSyncEngine);
+  const lifecycle =
+    appliedFileSync.status === "accelerated" && Option.isSome(selectedFileSync)
+      ? selectedFileSync.value.appLifecycle
+      : undefined;
+  const durablePhase = lifecycle === undefined ? undefined : yield* lifecycle.disposalPhase(ref);
+  // Retained app writes can survive in prepared volumes even when a session was never recorded.
+  // Prove each existing volume and stop its writers before deciding which sessions must drain.
+  const retainedPreparedVolumeNames =
+    retainedUnapplied &&
+    durablePhase !== "disposing" &&
+    durablePhase !== "completed" &&
+    provider.quiesceRetainedFileSync !== undefined
+      ? (yield* provider.quiesceRetainedFileSync(plan)).preparedVolumeNames
+      : undefined;
   const fileSyncApplicable =
     appliedFileSync.status === "accelerated" &&
-    (yield* Option.match(selectedFileSync, {
-      onNone: () => Effect.succeed(false),
-      onSome: (engine) => engine.isAvailable,
-    }));
+    (durablePhase === "completed" ||
+      (yield* Option.match(selectedFileSync, {
+        onNone: () => Effect.succeed(false),
+        onSome: (engine) => engine.isAvailable,
+      })));
   const sessions =
-    fileSyncApplicable && Option.isSome(selectedFileSync)
+    fileSyncApplicable &&
+    Option.isSome(selectedFileSync) &&
+    durablePhase !== "disposing" &&
+    durablePhase !== "completed"
       ? yield* selectedFileSync.value.listSessions({ app: ref })
       : [];
   if (
     appliedFileSync.status === "accelerated" &&
     (appliedFileSync.engineId !== (Option.isSome(selectedFileSync) ? selectedFileSync.value.id : undefined) ||
-      !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))
+      (durablePhase !== "disposing" &&
+        durablePhase !== "completed" &&
+        !(retainedUnapplied
+          ? sessions.every(({ spec }) =>
+              appliedFileSync.sessions.some((planned) => sameFileSyncSessionSpec(planned, spec)),
+            ) &&
+            (retainedPreparedVolumeNames ?? []).every((name) =>
+              sessions.some(({ spec }) => spec.target._tag === "volume" && spec.target.name === name),
+            )
+          : hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))))
   ) {
     return yield* Effect.fail(
       new FileSyncStopError({
@@ -187,26 +217,54 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     );
   }
   const quiesceForFileSync = provider.quiesceForFileSync;
-  if (sessions.length > 0 && quiesceForFileSync === undefined) {
+  if (
+    appliedFileSync.status === "accelerated" &&
+    durablePhase !== "completed" &&
+    (retainedUnapplied ? provider.quiesceRetainedFileSync === undefined : quiesceForFileSync === undefined)
+  ) {
     return yield* Effect.fail(
       new FileSyncStopError({
-        engineId: appliedFileSync.status === "accelerated" ? appliedFileSync.engineId : "unavailable",
+        engineId: appliedFileSync.engineId,
         sessionRef: String(sessions[0]?.ref ?? plan.id),
         message: "This provider cannot stop app writes before flushing file sync.",
         remediation: "Use a provider with file sync quiescence support, then retry destroy.",
       }),
     );
   }
+  if (
+    appliedFileSync.status === "accelerated" &&
+    lifecycle !== undefined &&
+    durablePhase !== "completed" &&
+    provider.disposeFileSyncTargets === undefined
+  ) {
+    return yield* Effect.fail(
+      new FileSyncStopError({
+        engineId: appliedFileSync.engineId,
+        sessionRef: String(plan.id),
+        message: "The provider cannot verify sync target cleanup.",
+        remediation: "Restore the provider cleanup hook before retrying destroy.",
+      }),
+    );
+  }
 
-  // End the retained attempt's sessions before hooks can write through them.
-  if (retained !== undefined) yield* retained.terminate;
-  yield* runAppInitEvents(plan);
-  const preDestroy = PreDestroyEvent.make({
-    _tag: "pre-destroy",
-    app: ref,
-    timestamp: now(),
-  });
-  yield* publishAndRunAppEvent(plan, "pre-destroy", preDestroy);
+  if (retained !== undefined && lifecycle === undefined)
+    return yield* Effect.fail(
+      new FileSyncStopError({
+        engineId: plan.fileSync[0]?.engineId ?? "unavailable",
+        sessionRef: String(plan.id),
+        message: "Retained accelerated sessions have no durable drain lifecycle.",
+        remediation: "Restore the recorded file-sync engine before retrying destroy.",
+      }),
+    );
+  if (!retainedUnapplied && durablePhase !== "disposing" && durablePhase !== "completed") {
+    yield* runAppInitEvents(plan);
+    const preDestroy = PreDestroyEvent.make({
+      _tag: "pre-destroy",
+      app: ref,
+      timestamp: now(),
+    });
+    yield* publishAndRunAppEvent(plan, "pre-destroy", preDestroy);
+  }
 
   yield* withDestroyProgress({
     events,
@@ -218,7 +276,35 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     },
     work: Effect.fnUntraced(function* (tree) {
       if (fileSyncApplicable) yield* tree.startTask("file-sync");
-      if (sessions.length > 0 && quiesceForFileSync !== undefined) {
+      if (appliedFileSync.status === "accelerated" && lifecycle !== undefined) {
+        if (durablePhase !== "completed") {
+          if (!retainedUnapplied) {
+            if (quiesceForFileSync === undefined)
+              return yield* Effect.fail(
+                new FileSyncStopError({
+                  engineId: appliedFileSync.engineId,
+                  sessionRef: String(plan.id),
+                  message: "The provider cannot quiesce file-sync app writers.",
+                  remediation: "Restore the provider's file-sync quiescence hook before retrying destroy.",
+                }),
+              );
+            yield* quiesceForFileSync({ app: plan.id, plan });
+          }
+          if (durablePhase !== "disposing" && durablePhase !== "absent") yield* lifecycle.drain(ref);
+          if (durablePhase !== "absent") yield* lifecycle.dispose(ref);
+          if (provider.disposeFileSyncTargets === undefined)
+            return yield* Effect.fail(
+              new FileSyncStopError({
+                engineId: appliedFileSync.engineId,
+                sessionRef: String(plan.id),
+                message: "The provider cannot dispose prepared file-sync targets.",
+                remediation: "Restore the provider's target disposal hook before retrying destroy.",
+              }),
+            );
+          yield* provider.disposeFileSyncTargets(plan);
+          if (durablePhase !== "absent") yield* lifecycle.completeDisposal(ref);
+        }
+      } else if (sessions.length > 0 && quiesceForFileSync !== undefined) {
         yield* quiesceForFileSync({ app: plan.id, plan });
         yield* terminateFileSyncSessions(ref, sessions);
       }
@@ -372,8 +458,58 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
   return yield* target !== undefined
     ? destroyAppForTarget(options, target)
     : withTeardownResolution({
-        applied: (resolved) => destroyAppWithResolvedTarget(options, resolved, false, false),
-        orphans: (resolution) => destroyOrphans(options, resolution),
+        applied: Effect.fn("AppOperation.destroy.applied")(function* (resolved) {
+          const { pending } = yield* readDiscardableStart(resolved.app);
+          if (pending === null || pending.phase === "completed")
+            return yield* destroyAppWithResolvedTarget(options, resolved, false, false);
+          // A failed ordinary-to-accelerated start can leave the old ordinary
+          // applied plan while prepared sync targets and sessions still exist.
+          const desired = yield* resolveDesiredAppTarget;
+          if (desired.root !== resolved.root || desired.app.id !== resolved.app.id)
+            return yield* Effect.fail(
+              new AppResolveError({
+                message: "The desired app identity differs from retained applied runtime state.",
+                reason: "mismatch",
+                detail: "app-ref",
+                remediation: "Restore the matching app plan before destroying retained sync state.",
+              }),
+            );
+          yield* retainedStartDisposal(desired.app, desired.plan);
+          return yield* destroyAppWithResolvedTarget(options, desired, true, false);
+        }),
+        orphans: Effect.fn("AppOperation.destroy.orphans")(function* (resolution) {
+          const pendingGroups = yield* Effect.forEach(resolution.groups, (group) =>
+            readDiscardableStart({ kind: "user", id: group.appId, root: resolution.root }).pipe(
+              Effect.map(({ pending }) => ({ group, pending })),
+            ),
+          );
+          const retainedGroups = pendingGroups.filter(
+            ({ pending }) => pending !== null && pending.phase !== "completed",
+          );
+          if (retainedGroups.length === 0) return yield* destroyOrphans(options, resolution);
+          const first = retainedGroups[0];
+          if (first === undefined || retainedGroups.length !== 1 || !resolution.landofilePresent)
+            return yield* Effect.fail(
+              new FileSyncStopError({
+                engineId: first?.pending?.engineId ?? "unavailable",
+                sessionRef: String(first?.group.appId ?? resolution.root),
+                message: "Retained sync state cannot be matched to a readable app plan for safe destroy.",
+                remediation: "Restore the matching Landofile and retry destroy.",
+              }),
+            );
+          const desired = yield* resolveDesiredAppTarget;
+          if (desired.root !== resolution.root || desired.app.id !== first.group.appId)
+            return yield* Effect.fail(
+              new AppResolveError({
+                message: "The desired app identity differs from retained orphaned runtime state.",
+                reason: "mismatch",
+                detail: "app-ref",
+                remediation: "Restore the matching app plan before destroying retained sync state.",
+              }),
+            );
+          yield* retainedStartDisposal(desired.app, desired.plan);
+          return yield* destroyAppWithResolvedTarget(options, desired, true, false);
+        }),
         absent: (resolution) => destroyDesiredOrUnchanged(options, resolution),
       }).pipe(
         Effect.map(

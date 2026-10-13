@@ -113,16 +113,22 @@ describe("@lando/file-sync-mutagen engine identity", () => {
         Effect.sync(() => {
           calls.push("complete");
         }),
+      disposalPhase: () =>
+        Effect.sync(() => {
+          calls.push("phase");
+          return "active" as const;
+        }),
     };
     const lifecycle = makeFileSyncEngine({ client }).appLifecycle;
     expect(lifecycle).toBeDefined();
     if (lifecycle === undefined) return;
     const app = buildSpec().app;
+    expect(await Effect.runPromise(lifecycle.disposalPhase(app))).toBe("active");
     await Effect.runPromise(lifecycle.invalidateDrain(app));
     await Effect.runPromise(lifecycle.drain(app));
     await Effect.runPromise(lifecycle.dispose(app));
     await Effect.runPromise(lifecycle.completeDisposal(app));
-    expect(calls).toEqual(["invalidate", "drain", "dispose", "complete"]);
+    expect(calls).toEqual(["phase", "invalidate", "drain", "dispose", "complete"]);
   });
 
   test("setup is a Scope-typed no-op", async () => {

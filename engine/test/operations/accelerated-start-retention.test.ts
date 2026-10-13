@@ -9,7 +9,7 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
 test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
-  "retention preserves original failures when the journal write fails from %s",
+  "retention keeps original failures first when the journal write fails from %s",
   async (phase) => {
     // Given a pending attempt whose durable journal becomes unreadable before retention.
     const app = { kind: "user", id: plan.id, root: plan.root } as const;
@@ -51,22 +51,16 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
       pending.retainTargets(Cause.combine(Cause.fail(original), Cause.fail(secondary))),
     );
 
-    // Then recovery stays first, followed by every original failure and the journal failure.
-    const retained = Option.getOrThrow(Cause.findErrorOption(cause));
-    expect(retained).toMatchObject({
-      _tag: "FileSyncStartError",
-      cause: original,
-      message: expect.stringContaining(original.message),
-      remediation: expect.stringContaining(path),
-    });
-    expect(Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual([
-      retained,
-      original,
-      secondary,
-      expect.objectContaining({
-        _tag: "FileSyncStartError",
-        cause: expect.objectContaining({ _tag: "StateStoreError", reason: "decode" }),
-      }),
-    ]);
+    // Then the original failure stays first, followed by the secondary and journal failures.
+    expect(Option.getOrThrow(Cause.findErrorOption(cause))).toBe(original);
+    const failures = Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
+    expect(failures).toHaveLength(3);
+    expect(failures[0]).toBe(original);
+    expect(failures[1]).toBe(secondary);
+    const journalFailure = failures[2];
+    expect(journalFailure).toBeInstanceOf(FileSyncStartError);
+    if (!(journalFailure instanceof FileSyncStartError)) throw new Error("Expected journal failure");
+    expect(journalFailure.cause).toMatchObject({ _tag: "StateStoreError", reason: "decode" });
+    expect(journalFailure.remediation).toContain(path);
   },
 );

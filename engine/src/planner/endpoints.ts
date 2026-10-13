@@ -299,7 +299,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...planWithShadows,
       ...(appMount === undefined ? {} : { appMount: { ...appMount, realization } }),
       mounts: planWithShadows.mounts.map((mount) =>
-        mount.type === "bind" ? { ...mount, realization } : mount,
+        mount.type === "bind" ? { ...mount, realization: "passthrough" as const } : mount,
       ),
     };
 

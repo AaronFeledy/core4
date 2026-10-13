@@ -29,6 +29,8 @@ export interface PreparedFileSyncSessions {
   readonly rollback: Effect.Effect<void, FileSyncError>;
   /** A target may be removed only when this attempt created every session using it. */
   readonly rollbackTargets: boolean;
+  /** Writer teardown must be followed by a durable drain rather than termination. */
+  readonly preserveOnFailure?: boolean;
 }
 
 const managedFileSyncRefs = new WeakMap<Scope.Closeable, Set<FileSyncSessionRef>>();
@@ -130,6 +132,8 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
   }
 
   const engine = engineOption.value;
+  const preservesDurableHistory =
+    engine.sessionsPersistAcrossProcesses === true && engine.appLifecycle !== undefined;
   if (plan.fileSync.some((entry) => entry.engineId !== engine.id)) {
     return yield* Effect.fail(
       new FileSyncStartError({
@@ -201,6 +205,21 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                   );
                 }
                 if (existingSession.status !== "running" && existingSession.status !== "paused") {
+                  if (existingSession.conflictedPaths !== undefined) {
+                    const detail = existingSession.detail?.trim();
+                    return yield* Effect.fail(
+                      new FileSyncDriftError({
+                        engineId: engine.id,
+                        sessionRef: existingSession.ref,
+                        conflictedPaths: existingSession.conflictedPaths,
+                        message: `Existing file-sync session for ${entry.session.service}/${entry.session.mountKey} has unresolved synchronization conflicts${existingSession.conflictedPaths.length > 0 ? `: ${existingSession.conflictedPaths.join(", ")}` : ""}`,
+                        remediation:
+                          detail === undefined || detail.length === 0
+                            ? `Preserve both file versions and inspect session ${existingSession.ref} before resolving these conflicts. Retry start after the session is healthy.`
+                            : `${detail} Retry start after the session is healthy.`,
+                      }),
+                    );
+                  }
                   return yield* Effect.fail(
                     new FileSyncStartError({
                       engineId: engine.id,
@@ -249,13 +268,14 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               }
 
               const sessionScope = managed?.scope ?? (yield* Scope.make());
-              const ref = yield* Effect.uninterruptibleMask(() =>
+              const ref = yield* Effect.uninterruptibleMask((restore) =>
                 Effect.gen(function* () {
                   uncertainMutation = true;
                   if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
-                  const created = yield* engine
+                  const create = engine
                     .createSession(entry.session)
                     .pipe(Effect.provideService(Scope.Scope, sessionScope));
+                  const created = yield* preservesDurableHistory ? restore(create) : create;
                   if (managed !== undefined) markManagedFileSyncRef(managed, created);
                   createdRefs.push(created);
                   uncertainMutation = false;
@@ -273,6 +293,23 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
           const exit = yield* Effect.exit(restore(reconcile));
           if (Exit.isSuccess(exit)) {
             if (engine.sessionsPersistAcrossProcesses !== true) return;
+            const durableDrain = engine.appLifecycle?.drain;
+            if (durableDrain !== undefined) {
+              const app = plan.fileSync[0]?.session.app;
+              if (app === undefined)
+                return yield* Effect.fail(
+                  new FileSyncStartError({
+                    engineId: engine.id,
+                    message: "Durable sync start lost its app identity.",
+                    remediation: "Retry after checking the saved app plan.",
+                  }),
+                );
+              return {
+                rollbackTargets: false,
+                preserveOnFailure: true,
+                rollback: Effect.uninterruptible(durableDrain(app)),
+              } satisfies PreparedFileSyncSessions;
+            }
             return {
               rollbackTargets: createdRefs.length === plan.fileSync.length,
               rollback: Effect.uninterruptible(
@@ -283,20 +320,26 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               ),
             } satisfies PreparedFileSyncSessions;
           }
+          // A durable provider-bound session can contain writes even before all mounts
+          // are ready. Keep its ledger and receipts for the retained-start retry.
           const cleanupActions: Array<Effect.Effect<void, FileSyncError>> =
             managed === undefined
-              ? [
-                  ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                  ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                ]
+              ? preservesDurableHistory
+                ? []
+                : [
+                    ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
+                    ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
+                  ]
               : [
                   Scope.close(managed.scope, Exit.void),
-                  ...(engine.sessionsPersistAcrossProcesses === true
-                    ? [
-                        ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                        ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                      ]
-                    : []),
+                  ...(preservesDurableHistory
+                    ? []
+                    : engine.sessionsPersistAcrossProcesses === true
+                      ? [
+                          ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
+                          ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
+                        ]
+                      : []),
                   managed.onScopeClosedByStartApp ?? Effect.void,
                 ];
           const cleanupExits = yield* Effect.forEach(cleanupActions, (action) => Effect.exit(action));
@@ -317,6 +360,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
             safeToRollbackTargets !== undefined &&
             !hadExistingSession &&
             !uncertainMutation &&
+            !(preservesDurableHistory && createdRefs.length > 0) &&
             app !== undefined
           ) {
             const remaining = yield* engine.listSessions({ app }).pipe(

@@ -150,6 +150,8 @@ export const makeHarness = (
     readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly onVolumeLock?: (key: string) => void;
     readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["destroy"]>) => void;
+    readonly quiesceRetainedFileSync?: RuntimeProviderShape["quiesceRetainedFileSync"];
+    readonly disposeFileSyncTargets?: RuntimeProviderShape["disposeFileSyncTargets"];
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -214,6 +216,12 @@ export const makeHarness = (
             }),
         }),
     quiesceForFileSync: () => Effect.void,
+    ...(options.quiesceRetainedFileSync === undefined
+      ? {}
+      : { quiesceRetainedFileSync: options.quiesceRetainedFileSync }),
+    ...(options.disposeFileSyncTargets === undefined
+      ? {}
+      : { disposeFileSyncTargets: options.disposeFileSyncTargets }),
     apply: (appliedPlan, applyOptions) =>
       Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
         Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),

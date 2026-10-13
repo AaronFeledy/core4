@@ -35,7 +35,7 @@ export const CODEGEN_CATALOG = [
     // Without these edges pin generators and importers run in the same
     // wave and the import can observe the file mid-truncation (`Bun.write` is
     // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
-    dependsOn: ["mutagen-versions", "php-msmtp-pins"],
+    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
@@ -49,6 +49,13 @@ export const CODEGEN_CATALOG = [
     id: "mutagen-versions",
     ownership: "committed-pin",
     script: "build-mutagen-versions.ts",
+    workspace: "repo",
+  },
+  {
+    dependsOn: ["core-service-env-catalog"],
+    id: "docker-cli-versions",
+    ownership: "committed-pin",
+    script: "build-docker-cli-versions.ts",
     workspace: "repo",
   },
   {
@@ -88,7 +95,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Also imports every bundled plugin; see `bundled-plugins`.
-    dependsOn: ["mutagen-versions", "php-msmtp-pins"],
+    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",

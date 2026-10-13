@@ -34,10 +34,16 @@ export const prepareAcceleratedStart = (
         );
       const ref = execution.app;
       const pendingStart = yield* beginAcceleratedStart(builtPlan, ref);
+      const selectedBeforePrepare = yield* Effect.serviceOption(FileSyncEngine);
+      const preserveHistory =
+        Option.isSome(selectedBeforePrepare) &&
+        selectedBeforePrepare.value.sessionsPersistAcrossProcesses === true &&
+        selectedBeforePrepare.value.appLifecycle !== undefined &&
+        selectedBeforePrepare.value.bindPreparedTargets !== undefined;
       const preparation = yield* Effect.exit(
         restore(
           Effect.gen(function* () {
-            if (pendingStart.retained !== undefined)
+            if (pendingStart.retained !== undefined && !preserveHistory)
               yield* terminateRetainedSessions(ref, pendingStart.retained);
             return yield* prepare(builtPlan);
           }),
@@ -50,10 +56,11 @@ export const prepareAcceleratedStart = (
       if (Exit.isFailure(coverage)) {
         if (prepared.rollback === undefined || pendingStart.retained !== undefined)
           return yield* Effect.failCause(yield* pendingStart.retainTargets(coverage.cause));
-        const rollback = yield* Effect.exit(prepared.rollback);
+        const rollback = yield* Effect.exit(prepared.rollback.pipe(Effect.andThen(pendingStart.clear)));
         if (Exit.isFailure(rollback))
-          return yield* Effect.failCause(Cause.combine(coverage.cause, rollback.cause));
-        yield* pendingStart.clear;
+          return yield* Effect.failCause(
+            yield* pendingStart.retainTargets(Cause.combine(coverage.cause, rollback.cause)),
+          );
         return yield* Effect.failCause(coverage.cause);
       }
       const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
@@ -95,11 +102,16 @@ export const prepareAcceleratedStart = (
                         remediation: "Restore the engine and run `lando start`.",
                       }),
                     );
-                  yield* reseedRetainedTargets(
-                    builtPlan,
-                    { record: pendingStart.retained, targets: prepared.targets },
-                    engine,
-                  );
+                  // A provider-bound durable session may retain app writes after apply intent.
+                  // Its next two-way-safe create must reconcile or report a conflict, never
+                  // overwrite the retained target with one-way source bytes.
+                  if (!(boundEngine !== undefined && engine.sessionsPersistAcrossProcesses === true)) {
+                    yield* reseedRetainedTargets(
+                      builtPlan,
+                      { record: pendingStart.retained, targets: prepared.targets },
+                      engine,
+                    );
+                  }
                 }
                 return yield* startFileSyncSessions(
                   builtPlan,
@@ -122,27 +134,30 @@ export const prepareAcceleratedStart = (
       const safe = yield* Ref.get(safeToRollbackTargets);
       const app = builtPlan.fileSync[0]?.session.app;
       // An interrupted parent cannot run this ownership probe; a bounded child can.
-      const noOwnedSessions =
+      const inventory =
         safe && app !== undefined && engine !== undefined
           ? yield* Effect.forkDetach(
               restore(engine.listSessions({ app })).pipe(Effect.timeoutOption("3 seconds")),
-            ).pipe(
-              Effect.flatMap(Fiber.await),
-              Effect.flatMap((inventoryExit) =>
-                Exit.isFailure(inventoryExit)
-                  ? Effect.failCause(Cause.combine(syncExit.cause, inventoryExit.cause))
-                  : Effect.succeed(
-                      Option.isSome(inventoryExit.value) && inventoryExit.value.value.length === 0,
-                    ),
-              ),
-            )
-          : false;
-      if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
-      if (prepared.rollback === undefined)
+            ).pipe(Effect.flatMap(Fiber.await))
+          : undefined;
+      if (inventory !== undefined && Exit.isFailure(inventory))
+        return yield* Effect.failCause(
+          yield* pendingStart.retainTargets(Cause.combine(syncExit.cause, inventory.cause)),
+        );
+      const noOwnedSessions =
+        inventory !== undefined &&
+        Exit.isSuccess(inventory) &&
+        Option.isSome(inventory.value) &&
+        inventory.value.value.length === 0;
+      // An unreadable or nonempty inventory cannot prove target rollback safety.
+      // Retain the exact attempt so a later start can verify it once the ledger is available.
+      if (!noOwnedSessions || prepared.rollback === undefined)
         return yield* Effect.failCause(yield* pendingStart.retainTargets(syncExit.cause));
       const rollback = yield* Effect.exit(prepared.rollback.pipe(Effect.andThen(pendingStart.clear)));
       if (Exit.isFailure(rollback))
-        return yield* Effect.failCause(Cause.combine(syncExit.cause, rollback.cause));
+        return yield* Effect.failCause(
+          yield* pendingStart.retainTargets(Cause.combine(syncExit.cause, rollback.cause)),
+        );
       return yield* Effect.failCause(syncExit.cause);
     }),
   );

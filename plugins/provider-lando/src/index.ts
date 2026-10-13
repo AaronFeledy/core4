@@ -114,7 +114,15 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { inspectAppliedFileSync } from "./applied-file-sync.ts";
+import { inspectAppliedFileSync, verifiedFileSyncSessions } from "./applied-file-sync.ts";
+import { inspectWindowsSyncHelper, removeWindowsSyncHelper } from "./windows-sync-helper.ts";
+import { quiesceRetainedWindowsSyncWriters } from "./windows-sync-recovery.ts";
+import {
+  makeWindowsSyncTargetOperations,
+  prepareWindowsSyncTargets,
+  windowsSyncPermissionsForUser,
+} from "./windows-sync-targets.ts";
+
 import {
   inspectAppliedPlan,
   listAppliedPlans,
@@ -250,6 +258,7 @@ export {
   type PreparedWindowsSyncTargets,
   type WindowsSyncTargetOperations,
   makeWindowsSyncTargetOperations,
+  windowsSyncPermissionsForUser,
   prepareWindowsSyncTargets,
 } from "./windows-sync-targets.ts";
 export type { EnsureRuntimeDeps } from "./ensure-runtime.ts";
@@ -1113,6 +1122,31 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             })
         : undefined;
     const appliedPlanState = options.appliedPlanState;
+    const windowsSyncImage =
+      "docker.io/oven/bun@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb";
+    const windowsSyncTargets =
+      shouldManageRuntime && family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
+        ? makeWindowsSyncTargetOperations(podmanApi, appliedPlanState, (image) =>
+            runtimePullImage(podmanApi, image, {
+              ctx: LANDO_CTX,
+              dialect: libpodPullDialect,
+              policy: "missing",
+            }).pipe(
+              Effect.asVoid,
+              Effect.mapError((cause) =>
+                cause instanceof ProviderUnavailableError
+                  ? cause
+                  : new ProviderUnavailableError({
+                      providerId: "lando",
+                      operation: "prepareFileSyncTargets",
+                      message: "Could not prepare the pinned Windows sync helper image.",
+                      remediation: "Retry after checking the managed Podman image store.",
+                      cause,
+                    }),
+              ),
+            ),
+          )
+        : undefined;
     const provider: RuntimeProviderWithContainerEvents = {
       ...RuntimeProvider.of({
         id: "lando",
@@ -1130,6 +1164,141 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           ? {
               inspectAppliedFileSync: (plan: AppPlan) =>
                 ensureEffect.pipe(Effect.andThen(inspectAppliedFileSync(appliedPlanState, podmanApi, plan))),
+              ...(windowsSyncTargets === undefined
+                ? {}
+                : {
+                    prepareFileSyncTargets: (plan: AppPlan) =>
+                      ensureEffect.pipe(
+                        Effect.andThen(prepareWindowsSyncTargets(plan, windowsSyncImage, windowsSyncTargets)),
+                        Effect.map(({ targets }) => ({
+                          targets: targets.map(({ session, endpoint, permissions }) => ({
+                            session,
+                            endpoint: {
+                              _tag: "container" as const,
+                              containerId: endpoint.containerId,
+                              path: endpoint.path,
+                              volumeName: endpoint.volumeName,
+                              permissions,
+                            },
+                          })),
+                        })),
+                      ),
+                    quiesceRetainedFileSync: Effect.fn("LandoProvider.quiesceRetainedFileSync")(function* (
+                      plan: AppPlan,
+                    ) {
+                      const sessions = verifiedFileSyncSessions(plan);
+                      if (sessions === undefined)
+                        return yield* Effect.fail(
+                          new ProviderUnavailableError({
+                            providerId: "lando",
+                            operation: "quiesceRetainedFileSync",
+                            message: "Retained sync plan cannot be verified.",
+                            remediation: "Restore the recorded app plan before retrying retained cleanup.",
+                          }),
+                        );
+                      const specs = sessions.map((session) => ({
+                        session,
+                        permissions: windowsSyncPermissionsForUser(plan.services[session.service]?.user),
+                      }));
+                      if (specs.some(({ permissions }) => permissions === undefined))
+                        return yield* Effect.fail(
+                          new ProviderUnavailableError({
+                            providerId: "lando",
+                            operation: "quiesceRetainedFileSync",
+                            message: "Retained sync helper ownership has an unsupported service user.",
+                            remediation: "Restore the recorded numeric service user before retrying cleanup.",
+                          }),
+                        );
+                      yield* ensureEffect;
+                      const preparedVolumeNames: string[] = [];
+                      const targets = yield* Effect.forEach(specs, ({ session, permissions }) => {
+                        if (permissions === undefined)
+                          return Effect.fail(
+                            new ProviderUnavailableError({
+                              providerId: "lando",
+                              operation: "quiesceRetainedFileSync",
+                              message: "Retained sync helper identity is incomplete.",
+                              remediation: "Restore the saved app plan before retrying cleanup.",
+                            }),
+                          );
+                        return inspectWindowsSyncHelper(podmanApi, appliedPlanState, {
+                          appId: String(plan.id),
+                          appName: plan.name,
+                          service: String(session.service),
+                          mountKey: session.mountKey,
+                          image: windowsSyncImage,
+                          owner: permissions.owner,
+                          group: permissions.group,
+                        }).pipe(
+                          Effect.map((owned) => {
+                            const volumeName = session.target._tag === "volume" ? session.target.name : "";
+                            if (owned !== undefined) preparedVolumeNames.push(volumeName);
+                            return {
+                              volumeName,
+                              ...(owned !== undefined && "containerId" in owned
+                                ? { containerId: owned.containerId }
+                                : {}),
+                            };
+                          }),
+                        );
+                      });
+                      yield* quiesceRetainedWindowsSyncWriters(podmanApi, plan, targets);
+                      return { preparedVolumeNames };
+                    }),
+                    disposeFileSyncTargets: Effect.fn("LandoProvider.disposeFileSyncTargets")(function* (
+                      plan: AppPlan,
+                    ) {
+                      const sessions = verifiedFileSyncSessions(plan);
+                      if (sessions === undefined)
+                        return yield* Effect.fail(
+                          new ProviderUnavailableError({
+                            providerId: "lando",
+                            operation: "disposeFileSyncTargets",
+                            message: "The applied accelerated mount plan cannot be verified for cleanup.",
+                            remediation: "Restore the saved app plan before retrying sync cleanup.",
+                          }),
+                        );
+                      const owned = sessions.map((session) => ({
+                        session,
+                        permissions: windowsSyncPermissionsForUser(plan.services[session.service]?.user),
+                      }));
+                      if (owned.some(({ permissions }) => permissions === undefined))
+                        return yield* Effect.fail(
+                          new ProviderUnavailableError({
+                            providerId: "lando",
+                            operation: "disposeFileSyncTargets",
+                            message: "Saved sync helper ownership has an unsupported service user.",
+                            remediation: "Restore the applied numeric service user before retrying cleanup.",
+                          }),
+                        );
+                      yield* ensureEffect;
+                      for (const { session, permissions } of owned) {
+                        if (permissions === undefined)
+                          return yield* Effect.fail(
+                            new ProviderUnavailableError({
+                              providerId: "lando",
+                              operation: "disposeFileSyncTargets",
+                              message: "Saved sync helper owner was lost.",
+                              remediation: "Restore the applied plan and retry cleanup.",
+                            }),
+                          );
+                        yield* removeWindowsSyncHelper(
+                          podmanApi,
+                          appliedPlanState,
+                          {
+                            appId: String(plan.id),
+                            appName: plan.name,
+                            service: String(session.service),
+                            mountKey: session.mountKey,
+                            image: windowsSyncImage,
+                            owner: permissions.owner,
+                            group: permissions.group,
+                          },
+                          { removeVolume: true },
+                        );
+                      }
+                    }),
+                  }),
             }
           : {}),
         ...(occupiedPublishPorts === undefined ? {} : { occupiedPublishPorts }),
