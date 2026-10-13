@@ -196,6 +196,7 @@ test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
               return Effect.succeed({ appId, socketPath });
             },
           }),
+          Effect.provide(LandoEventService.layer),
         ),
     );
     // Then

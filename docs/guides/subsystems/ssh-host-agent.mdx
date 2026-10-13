@@ -101,7 +101,7 @@ Host mode fails closed. If the agent cannot be reached, `lando start` stops with
 
 Every error carries `remediation`. Machine consumers get the same fields in `--format=json` output.
 
-Sidecar mode (the default) behaves differently on purpose: a missing capability, a stopped sidecar, or a broken relay produces a warning that names the reason and the fix, the app starts without `SSH_AUTH_SOCK`, and `lando doctor` shows the `ssh` check as degraded. Only the mode you opted into blocks the start.
+Sidecar mode (the default) behaves differently on purpose. Start brings a stopped sidecar up itself. A missing capability, a sidecar that cannot start, or a broken relay produces a warning that names the cause and the fix, the app starts without `SSH_AUTH_SOCK`, and `lando doctor` shows the `ssh` check as degraded. Only the mode you opted into blocks the start.
 
 ## Security
 

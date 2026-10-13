@@ -111,7 +111,7 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 
 #### 20.6.3 Auto-start integration with user apps
 
-`AppFeature.requires.globalServices` is the only dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
+`AppFeature.requires.globalServices` is the only hard dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
 - A healthy set emits the start pair with `cached: true` and proceeds without provider work.
 - A cold or unhealthy set starts the required services with `cached: false` before user-app build.
@@ -119,9 +119,11 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 
 Direct Landofile `dependsOn` syntax for global services is not part of this contract (§14.2).
 
+The §10.4 SSH sidecar is not declared through `requires.globalServices`. The SSH overlay ensures the sidecar best-effort through `SshService.setup`, only when its agent does not answer, and its failure never aborts user-app start. The bundled sidecar's `setup` calls `ensureRunning`, so that start emits its own `pre-global-start`/`post-global-start` pair (`triggeredBy: "ensure-running"`).
+
 #### 20.6.4 Standard event sequence
 
-The global start event pair is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
+The global start event pair for required services is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. The SSH sidecar's best-effort start pair (§20.6.3) fires at start-time overlay resolution, only when the sidecar needed starting: in start and restart that is after the required-service pair and before the user-app build; in a service-scoped rebuild it follows the user-app build. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
 
 #### 20.6.5 Restart, rebuild, and router revalidation
 

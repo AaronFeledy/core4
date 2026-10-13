@@ -194,7 +194,7 @@ Container-only discoveries may have no saved root.
   </Scenario>
 </Guide>
 
-`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up.
+`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
 
 ## Check the host
 
