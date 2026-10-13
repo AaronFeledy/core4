@@ -119,7 +119,7 @@ Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<d
 
 `hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Filters merge by `name`, then unnamed type identity, and retain authored order. Prefix stripping MUST NOT be implicit (§10.2).
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2).
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
@@ -194,7 +194,7 @@ Contributed `logSources` MUST have unique ids, absolute paths, and compatible st
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay under §7.2. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
