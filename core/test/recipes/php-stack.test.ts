@@ -114,7 +114,7 @@ describe("php-stack helper", () => {
 
     // Then
     expect(lines).toEqual([
-      "    # primary URL: http(s)://my-app.lndo.site",
+      "    # primary URL uses the configured proxy.defaultDomain for my-app",
       "    routes:",
       '      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"',
       "        scheme: both",
@@ -135,7 +135,6 @@ describe("php-stack helper", () => {
     }).join("\n");
 
     // Then
-    expect(yaml).toContain("# primary URL: http(s)://apache-app.lndo.site");
     expect(yaml).toContain("    routes:");
     expect(yaml).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
     expect(yaml).toContain("scheme: both");
@@ -157,7 +156,6 @@ describe("php-stack helper", () => {
     expect(appserver).toContain("via: fpm");
     expect(appserver).not.toContain("routes:");
     expect(appserver).not.toContain("{{ app.name }}");
-    expect(edge).toContain("# primary URL: http(s)://nginx-app.lndo.site");
     expect(edge).toContain("    routes:");
     expect(edge).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
     expect(edge).not.toContain("via: fpm");

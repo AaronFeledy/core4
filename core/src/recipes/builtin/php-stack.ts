@@ -91,7 +91,7 @@ export const resolvePhpStackAnswers = (
 };
 
 export const renderPrimaryRouteLines = (appName: string): ReadonlyArray<string> => [
-  `    # primary URL: http(s)://${appName}.lndo.site`,
+  `    # primary URL uses the configured proxy.defaultDomain for ${appName}`,
   "    routes:",
   '      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"',
   "        scheme: both",
