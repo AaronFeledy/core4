@@ -1,4 +1,5 @@
 import {
+  TOOLING_REPLACE_ARRAY_KEYS,
   identityKeyFor,
   isPlainRecord,
   mergeLandofiles,
@@ -180,6 +181,7 @@ const delta = (left: unknown, right: unknown, context: DeltaContext): unknown =>
   if (Array.isArray(left) && Array.isArray(right)) {
     if (right.length === 0) return right;
     const key = path.at(-1)?.key;
+    if (TOOLING_REPLACE_ARRAY_KEYS.some((arrayKey) => arrayKey === key)) return right;
     if (!left.every(isPlainRecord) || !right.every(isPlainRecord)) return right;
     const identity = (item: Record<string, unknown>) =>
       key === "filters" ? routeFilterIdentity(item)?.kind : identityKeyFor(item);

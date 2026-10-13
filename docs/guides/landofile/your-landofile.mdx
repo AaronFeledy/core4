@@ -55,7 +55,9 @@ Top-level `proxy:` is the other spelling: a map of service name to the same rout
 
 Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
 
-Maps deep-merge, scalars and scalar arrays replace, and object arrays merge by recognized identity keys such as `name`, `id`, `hostname`, or `service`. Route filters match by `name`, or by `type` when unnamed. An explicitly empty array (`[]`) replaces the inherited array of any kind: routes, endpoints, mounts, tooling steps, and filters. Omit a key to leave its inherited value alone; use `[]` to clear its list. Mapping keys themselves cannot be deleted by an overlay.
+Maps deep-merge. Scalars and scalar arrays replace. A tooling task's `cmds` list also replaces: when a higher layer sets `cmds`, it becomes the task's whole step list, even when its steps name the same services as the inherited ones. Includes and service-type `extends:` follow the same rule.
+
+Other object arrays, including routes, endpoints, and `dependsOn`, merge by recognized identity keys such as `name`, `id`, `hostname`, or `service`. Route filters match by `name`, or by `type` when unnamed. An explicitly empty array (`[]`) replaces the inherited array of any kind. Omit a key to leave its inherited value alone; use `[]` to clear its list. Mapping keys themselves cannot be deleted by an overlay.
 
 For example, start with this `.lando.yml`:
 
@@ -66,14 +68,26 @@ services:
     type: "node:22"
     routes:
       - hostname: web.example.test
+tooling:
+  test:
+    cmds:
+      - service: web
+        cmd: echo base-first
+      - service: web
+        cmd: echo base-second
 ```
 
-Clear the inherited routes in `.lando.local.yml`:
+Clear the inherited routes and replace the tooling steps in `.lando.local.yml`:
 
 ```yaml
 services:
   web:
     routes: []
+tooling:
+  test:
+    cmds:
+      - service: web
+        cmd: echo local-only
 ```
 
 Inspect the merged config without starting containers:
@@ -82,7 +96,7 @@ Inspect the merged config without starting containers:
 lando app:config --format=json
 ```
 
-`services.web.routes` is now `[]`, not the inherited object route. Non-empty object overlays still merge matching entries rather than replacing the whole list.
+`services.web.routes` is now `[]`, not the inherited object route. `tooling.test.cmds` contains only `echo local-only`; neither base step remains. Non-empty route, endpoint, filter, and `dependsOn` object overlays still merge matching entries rather than replacing the whole list.
 
 ## Reach for other keys
 
@@ -121,6 +135,8 @@ lando info
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"routes\":\\s*\\[\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "web\\.example\\.test" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmds\":\\s*\\[\\s*\\{[^}]*\"cmd\":\\s*\"echo local-only\"[^}]*\\}\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "echo base-(first|second)" } } }} />
     </Step>
     <Step name="cleanup-layers">
       <Cleanup />

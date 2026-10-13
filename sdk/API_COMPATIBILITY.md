@@ -4,7 +4,9 @@
 
 ## Compatibility notes
 
-- `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
+- `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging, except the tooling arrays in the next note. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
+
+- Pre-ship behavior correction: tooling arrays `cmds`, `deps`, `status`, `preconditions`, and `prompt` replace wholesale across Landofile layers, includes, and service-type `extends:`. They no longer merge steps by `service`; `dependsOn`, routes, endpoints, and filters keep their existing identity rules. `@lando/sdk/landofile` additively exports `TOOLING_REPLACE_ARRAY_KEYS` so translation deltas share the replacement policy. No signature or JSON Schema changes.
 
 - `RouterService.setup(config, options?)` additively accepts optional `reacquirePorts` to rescan host ports instead of reusing the persisted pair. Only explicit `lando setup` sets it. App and scratch startup omit it and retain owned ports while config is unchanged; changed preferences still trigger a rescan. Rescans treat provider-verified publications of Lando's own router as available. This invocation option is not retained or exposed in config, and changes no JSON Schema.
 
