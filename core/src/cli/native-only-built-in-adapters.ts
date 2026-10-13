@@ -11,8 +11,9 @@ import { runMetaShellenv, runMetaUninstall } from "./cli-adapters/meta-plugin";
 import { initOptionsFromInput } from "./command-specs/apps/init";
 import { renderAgentSkillsResult } from "./commands/agent-skills";
 import { initApp } from "./commands/init";
+import { makeInitOutput } from "./commands/init-output.ts";
 import { compiledCommandInputFromArgv } from "./compiled-input";
-import { emitDiagnosticLine, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
+import { activeResultFormat, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
 
 export const runNativeOnlyBuiltIn = async (
   entry: BuiltInCommandEntry,
@@ -26,12 +27,14 @@ export const runNativeOnlyBuiltIn = async (
           Effect.gen(function* () {
             const events = yield* EventService;
             const privateFileAccess = yield* PrivateFileAccessService;
+            const postInitIO = yield* makeInitOutput(activeResultFormat);
             return yield* Effect.tryPromise({
               try: () =>
                 initApp({
                   ...initOptionsFromInput(input),
                   signal,
-                  onWarn: emitDiagnosticLine,
+                  onWarn: postInitIO.err,
+                  postInitIO,
                   events,
                   privateFileAccess,
                 }),

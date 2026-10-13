@@ -15,8 +15,8 @@ import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "..
 import { shouldRunPostInitAction } from "./authorization";
 
 export interface PostInitIO {
-  readonly out: (line: string) => void;
-  readonly err: (line: string) => void;
+  readonly out: (line: string) => void | Promise<void>;
+  readonly err: (line: string) => void | Promise<void>;
 }
 
 export const createStdioPostInitIO = (
@@ -383,7 +383,7 @@ const runBun = async (
       }
       if (permission.kind === "warn") {
         const io = options.io ?? createStdioPostInitIO();
-        io.err(defaultRunWarning(spec, permission.allowlist));
+        await io.err(defaultRunWarning(spec, permission.allowlist));
       }
       await spawnBun(["x", spec, ...(action.argv ?? [])], cwd, index, action.verb, options);
       return;
@@ -395,12 +395,12 @@ const runBun = async (
   }
 };
 
-const runMessage = (
+const runMessage = async (
   action: Extract<RecipePostInitAction, { type: "message" }>,
   options: RunPostInitOptions,
-): void => {
+): Promise<void> => {
   const io = options.io ?? createStdioPostInitIO();
-  io.out(action.text);
+  await io.out(action.text);
 };
 
 const rejectGitInit = (index: number): never => {
@@ -449,7 +449,7 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
 
     switch (action.type) {
       case "message": {
-        runMessage(action, options);
+        await runMessage(action, options);
         executed.push({ index, type: "message" });
         break;
       }

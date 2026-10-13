@@ -120,7 +120,7 @@ export interface InitAppOptions {
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
   readonly privateFileAccess: PrivateFileAccess;
-  readonly onWarn?: (message: string) => void;
+  readonly onWarn?: (message: string) => void | Promise<void>;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
   readonly destination?: string;
