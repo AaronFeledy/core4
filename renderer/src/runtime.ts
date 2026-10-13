@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
-import type { RendererIO } from "./io.ts";
+import { type RendererIO, withStdioTerminalNewlines } from "./io.ts";
 
 type LineFormatter = (event: LandoEvent) => string | null;
 
@@ -63,10 +63,14 @@ export const layerPlainTaskDetail = (io: RendererIO): Layer.Layer<never, never, 
   layerRenderer(renderPlainTaskDetailLine, io, "stdout");
 
 export const layerJson = (io: RendererIO): Layer.Layer<never, never, EventService> =>
-  layerRenderer(renderJsonLine, io, "stderr");
+  layerRenderer(renderJsonLine, withStdioTerminalNewlines(io, false), "stderr");
 
 export const layerJsonNotification = (io: RendererIO): Layer.Layer<never, never, EventService> =>
-  layerRenderer((event) => (event._tag === "notify.desktop" ? JSON.stringify(event) : null), io, "stderr");
+  layerRenderer(
+    (event) => (event._tag === "notify.desktop" ? JSON.stringify(event) : null),
+    withStdioTerminalNewlines(io, false),
+    "stderr",
+  );
 
 export const layerVerbose = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderVerboseLine, io, "stdout");
@@ -88,7 +92,7 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
   drainRendererSync(renderPlainLine, io, "stdout", events);
 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
-  drainRendererSync(renderJsonLine, io, "stderr", events);
+  drainRendererSync(renderJsonLine, withStdioTerminalNewlines(io, false), "stderr", events);
 
 const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
@@ -147,15 +151,17 @@ export const makePlainRenderer = (io: RendererIO) =>
     output: makeOutputChannel(io),
   });
 
-export const makeJsonRenderer = (io: RendererIO) =>
-  Renderer.of({
+export const makeJsonRenderer = (io: RendererIO) => {
+  const machineIO = withStdioTerminalNewlines(io, false);
+  return Renderer.of({
     id: "json" as const,
     get capabilities(): RendererCapabilities {
-      return capabilitiesForFallback("json", io);
+      return capabilitiesForFallback("json", machineIO);
     },
-    message: makeMessageContract(renderJsonLine, io, "stderr"),
-    output: makeOutputChannel(io),
+    message: makeMessageContract(renderJsonLine, machineIO, "stderr"),
+    output: makeOutputChannel(machineIO),
   });
+};
 
 export const makeVerboseRenderer = (io: RendererIO) =>
   Renderer.of({

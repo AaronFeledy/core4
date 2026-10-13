@@ -77,9 +77,7 @@ export const buildStartSummary = (
         ...(rows.length === 0 ? { notes: ["No services were started."] } : {}),
       },
     ],
-    nextSteps: ready
-      ? ["lando info", "lando logs", "lando exec <service> -- <command>"]
-      : ["lando info", "lando logs"],
+    nextCommands: ready ? ["info", "logs", "exec"] : ["info", "logs"],
     footer: ready ? `${total} ${noun} ready` : `${readyCount} of ${total} ${noun} ready`,
   };
 };

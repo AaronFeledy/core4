@@ -1,7 +1,7 @@
 import type { RendererIO } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
-import { isRenderableTaskTreeEvent, renderPlainLine } from "./format.ts";
+import { isRenderableTaskTreeEvent, renderLandoLine } from "./format.ts";
 import { TaskTreeCollection } from "./task-tree-collection.ts";
 
 export interface LiveRegionHandle {
@@ -51,7 +51,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
       renderFooter();
       return;
     }
-    const line = renderPlainLine(event);
+    const line = renderLandoLine(event, true);
     if (line !== null) controller.commitScrollback(line.endsWith("\n") ? line : `${line}\n`);
   };
   const resize = (width: number, height: number): void => {
@@ -61,7 +61,6 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
   };
   const openSession = (commandId: string): void => {
     viewModel.openSession(commandId);
-    renderFooter();
   };
   const closeSession = (): ReadonlyArray<string> => viewModel.closeSession();
   const hasTasks = (): boolean => viewModel.hasTasks();

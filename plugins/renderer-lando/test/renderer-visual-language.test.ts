@@ -6,6 +6,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import {
   type LandoEvent,
+  MessageInfoEvent,
   MessageWarnEvent,
   TaskCompleteEvent,
   TaskDetailEvent,
@@ -14,14 +15,14 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import { EventService } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { renderPlain } from "@lando/renderer/runtime";
 
-import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
+import { makeLandoEventConsumer, makeLandoService } from "../src/renderer-runtime.ts";
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 
 class RecordingLiveRegion {
@@ -166,6 +167,9 @@ const longLabelEvents = (): ReadonlyArray<LandoEvent> => [
   taskTreeComplete("Lando runtime ready after validating proxy and CA configuration", 1, 0),
 ];
 
+const messageInfo = (body: string): LandoEvent =>
+  Schema.decodeUnknownSync(MessageInfoEvent)({ _tag: "message.info", body, timestamp: ts });
+
 const messageWarn = (body: string): LandoEvent =>
   Schema.decodeUnknownSync(MessageWarnEvent)({ _tag: "message.warn", body, timestamp: ts });
 
@@ -272,37 +276,62 @@ describe("lando renderer visual language", () => {
     }
   });
 
-  test("warnings carry a text glyph in TTY output and stay plain in non-TTY fallback", async () => {
-    const events = [...successEvents(), messageWarn("runtime bundle checksum is using a placeholder")];
+  test.each([
+    ["info", messageInfo, "i", "ℹ"],
+    ["warn", messageWarn, "!", "⚠"],
+  ] as const)(
+    "%s messages reserve a cell and a gap before and after live acquisition",
+    async (_severity, message, ttyPrefix, plainPrefix) => {
+      const events = [message("before the tree"), ...successEvents(), message("after the tree")];
 
-    const controller = new RecordingLiveRegion();
-    const tty = substrateIo(createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }));
-    const program = Effect.gen(function* () {
-      const service = yield* EventService;
-      for (const event of events) yield* service.publish(event);
-      yield* Effect.sleep("20 millis");
-    });
-    await Effect.runPromise(
-      Effect.scoped(
-        program.pipe(
-          Effect.provide(
-            Layer.provideMerge(
-              makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
-              LandoEventService.layer,
+      const controller = new RecordingLiveRegion();
+      const tty = substrateIo(createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }));
+      const program = Effect.gen(function* () {
+        const service = yield* EventService;
+        for (const event of events) yield* service.publish(event);
+        yield* Effect.sleep("20 millis");
+      });
+      await Effect.runPromise(
+        Effect.scoped(
+          program.pipe(
+            Effect.provide(
+              Layer.provideMerge(
+                makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
+                LandoEventService.layer,
+              ),
             ),
           ),
         ),
-      ),
-    );
-    expect(controller.scrollback.map(stripAnsi).join("\n")).toContain(
-      "⚠ runtime bundle checksum is using a placeholder",
-    );
+      );
+      expect(controller.scrollback.map(stripAnsi).join("\n")).toContain(`${ttyPrefix} after the tree`);
+      expect(tty.stdout()).toContain(`${ttyPrefix} before the tree`);
 
-    const plain = createBufferedRendererIO();
-    renderPlain(plain, events);
-    expect(plain.stdout()).toContain("⚠ runtime bundle checksum is using a placeholder");
-    expect(plain.stdout()).not.toContain(`${escapeChar}[`);
-  });
+      const plain = createBufferedRendererIO();
+      renderPlain(plain, events);
+      expect(plain.stdout()).toContain(`${plainPrefix} before the tree`);
+      expect(plain.stdout()).toContain(`${plainPrefix} after the tree`);
+      expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+    },
+  );
+
+  test.each([
+    ["info", "i", "ℹ"],
+    ["warn", "!", "⚠"],
+  ] as const)(
+    "imperative %s reserves one glyph cell and a space in TTY output",
+    async (severity, ttyPrefix, plainPrefix) => {
+      for (const isTTY of [true, false]) {
+        const io = createBufferedRendererIO({ isTTY });
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const renderer = yield* Renderer;
+            yield* renderer.message[severity]("Installing local certificate trust");
+          }).pipe(Effect.provide(makeLandoService(io))),
+        );
+        expect(io.stdout()).toBe(`${isTTY ? ttyPrefix : plainPrefix} Installing local certificate trust\n`);
+      }
+    },
+  );
 
   test("json renderer stays undecorated NDJSON with no spaceship styling", async () => {
     const events = failureEvents();

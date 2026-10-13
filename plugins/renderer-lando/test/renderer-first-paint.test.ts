@@ -245,6 +245,37 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
 });
 
 describe("first paint via the production TTY consumer and fake OpenTUI substrate", () => {
+  test("init paints its declared children in the first frame, without an empty session prelude", async () => {
+    const fixture = makeLiveRegionFixture();
+    const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
+    const io = { ...base, externalOutputStream: process.stdout };
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(cliInit("apps:init", "init-first-paint"));
+          yield* events.publish(treeStart("init:drupal-cms", "Initialize cms", ["render", "postinit"]));
+          yield* waitForConsumer(() => written(fixture).includes("◌ postinit"));
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, {
+                createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
+              }),
+              LandoEventService.layer,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(stripAnsi(fixture.writes[0] ?? "")).toBe(
+      "╭─ apps:init\r\n│ ◌ render\r\n│ ◌ postinit\r\n╰─ 0/2 running\r\n",
+    );
+    expect(written(fixture)).not.toContain("0/0 running");
+  });
+
   test("publishes the live skeleton before completion, then commits and releases the finished tree", async () => {
     const fixture = makeLiveRegionFixture();
     const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });

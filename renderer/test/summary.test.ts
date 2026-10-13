@@ -628,3 +628,45 @@ test("keeps multiline field values inside the frame", () => {
   expect(errorLine.startsWith("│")).toBe(true);
   expect(displayWidth(errorLine)).toBe(32);
 });
+
+describe("built-in next commands", () => {
+  test.each([
+    ["boxed", formatSummary],
+    ["quiet", formatQuietSummary],
+    ["rail", formatRailSummary],
+  ] as const)(
+    "%s preserves finite commands while redacting arbitrary steps and fields",
+    (_layout, format) => {
+      const doc: SummaryDocument = {
+        title: "lando private-token",
+        sections: [{ title: "Services", rows: [{ label: "lando", value: "private-token" }] }],
+        nextSteps: ["lando logs --token=private-token"],
+        nextCommands: ["info", "logs", "exec"],
+      };
+      const redact = (text: string) =>
+        text.replaceAll("lando", "[redacted]").replaceAll("private-token", "[redacted]");
+      const prepared = redactSummaryDocument(doc, redact);
+      expect(prepared.title).toBe("[redacted] [redacted]");
+      expect(prepared.nextSteps).toEqual(["[redacted] logs --token=[redacted]"]);
+      const output = stripAnsi(format(doc, { columns: 100, redact }));
+      expect(output).toContain("lando info");
+      expect(output).toContain("lando logs");
+      expect(output).toContain("lando exec <service> -- <command>");
+      expect(output).toContain("[redacted] logs --token=[redacted]");
+      expect(output).not.toContain("private-token");
+    },
+  );
+
+  test("does not echo unknown runtime command ids", () => {
+    const doc = {
+      title: "Next",
+      sections: [],
+      nextCommands: ["info", "private-token", "__proto__", "constructor"],
+    } as unknown as SummaryDocument;
+    const output = stripAnsi(formatQuietSummary(doc));
+    expect(output).toContain("lando info");
+    expect(output).not.toContain("private-token");
+    expect(output).not.toContain("__proto__");
+    expect(output).not.toContain("constructor");
+  });
+});

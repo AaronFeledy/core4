@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
 import * as RendererOutput from "@lando/renderer/output";
@@ -7,7 +8,7 @@ import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
@@ -580,5 +581,95 @@ describe("write helpers", () => {
       ),
     );
     expect(io.stderr()).toBe("oops\n");
+  });
+});
+
+describe("native Windows TTY result newlines", () => {
+  const nativeIO = () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const stream = (writes: string[]) =>
+      Object.assign(new EventEmitter(), {
+        isTTY: true,
+        columns: 100,
+        rows: 24,
+        write: (chunk: string) => {
+          writes.push(chunk);
+          return true;
+        },
+      }) as unknown as NodeJS.WriteStream;
+    return {
+      io: createStdioRendererIO(stream(stdout), stream(stderr), undefined, { platform: "win32" }),
+      stdout,
+      stderr,
+    };
+  };
+
+  test.each(["lando", "plain"] as const)(
+    "%s human results use CRLF after the command scope closes",
+    async (rendererMode) => {
+      const fixture = nativeIO();
+      await runWithRendererHandling(Effect.succeed("ready"), {
+        runtime: Layer.empty,
+        rendererMode,
+        io: fixture.io,
+        render: () => "Started\n  app is ready\n\nURLs\n  https://app.test",
+        formatError: String,
+        setExitCode: () => undefined,
+      });
+      expect(fixture.stdout.join("")).toBe("Started\r\n  app is ready\r\n\r\nURLs\r\n  https://app.test\r\n");
+      expect(fixture.stderr).toEqual([]);
+    },
+  );
+
+  test.each(["json", "yaml"] as const)(
+    "lando renderer preserves %s envelope LF bytes",
+    async (resultFormat) => {
+      const fixture = nativeIO();
+      await runWithRendererHandling(Effect.succeed({ answer: "ready" }), {
+        runtime: Layer.empty,
+        rendererMode: "lando",
+        resultFormat,
+        resultSchema: Schema.Struct({ answer: Schema.String }),
+        io: fixture.io,
+        command: "app:info",
+        formatError: String,
+        setExitCode: () => undefined,
+      });
+      const output = fixture.stdout.join("");
+      expect(output).toContain("ready");
+      expect(output.endsWith("\n")).toBe(true);
+      expect(output).not.toContain("\r");
+      expect(fixture.stderr).toEqual([]);
+    },
+  );
+
+  test("lando renderer preserves NDJSON result LF bytes", async () => {
+    const fixture = nativeIO();
+    const rows = ['{"answer":"ready"}', '{"answer":"next"}'].join("\n");
+    await runWithRendererHandling(Effect.succeed("ready"), {
+      runtime: Layer.empty,
+      rendererMode: "lando",
+      resultFormat: "ndjson",
+      io: fixture.io,
+      render: () => rows,
+      formatError: String,
+      setExitCode: () => undefined,
+    });
+    expect(fixture.stdout.join("")).toBe(`${rows}\n`);
+    expect(fixture.stderr).toEqual([]);
+  });
+
+  test("json renderer preserves text-result LF bytes", async () => {
+    const fixture = nativeIO();
+    await runWithRendererHandling(Effect.succeed("ready"), {
+      runtime: Layer.empty,
+      rendererMode: "json",
+      io: fixture.io,
+      render: () => "first\nsecond",
+      formatError: String,
+      setExitCode: () => undefined,
+    });
+    expect(fixture.stdout.join("")).toBe("first\nsecond\n");
   });
 });

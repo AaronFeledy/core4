@@ -207,6 +207,8 @@ describe("buildStartSummary service rows", () => {
 
   test("uses Started and URLs/Services labels when fully ready", () => {
     const summary = buildStartSummary(readyResult);
+    expect(summary.nextCommands).toEqual(["info", "logs", "exec"]);
+    expect(summary.nextSteps).toBeUndefined();
     expect(summary.title).toBe("Started");
     expect(summary.subtitle).toBe("my-app is ready");
     expect(summary.sections.map((section) => section.title)).toEqual(["URLs", "Services"]);
@@ -214,6 +216,7 @@ describe("buildStartSummary service rows", () => {
 
   test("uses Not fully ready when any service is not ready", () => {
     const summary = buildStartSummary(mixedResult);
+    expect(summary.nextCommands).toEqual(["info", "logs"]);
     expect(summary.title).toBe("Not fully ready");
     expect(summary.subtitle).toBe("my-app is not fully ready");
   });

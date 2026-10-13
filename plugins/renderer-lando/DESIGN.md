@@ -91,6 +91,10 @@ Viewport: the live tree paints at the current cursor, immediately under the
 typed command. It grows and shrinks in place. Logs commit above the tree, then
 the tree is rewritten below. Do not pin the tree to the terminal footer.
 Full-tail expand uses the alternate screen; leaving it returns to inline paint.
+Native Windows TTY text writes use CRLF so every new line starts at column zero,
+including summaries printed after the live region closes. Existing CRLF and
+carriage-return progress remain intact; machine output and redirected streams
+keep their original bytes.
 
 ## 5. Components
 
@@ -113,7 +117,13 @@ Full-tail expand uses the alternate screen; leaving it returns to inline paint.
 - **Expanded**: `╭─ {task.label}`, one glyph row, `╰─ tail`.
 - **Accessibility**: glyph plus word; 40-col wrap; no color-only state.
 - **Motion**: braille spinner on the focused running row only. No decorative motion.
-- **Layout**: open-right left rail. First paint is title, pending rows, footer.
+- **Layout**: open-right left rail. First paint is title, pending rows, footer, emitted together after the declared children are known; opening a session does not paint an empty tree.
+
+### Information and warning messages
+
+- **Structure**: `i {body}` for information and `! {body}` for warnings, one ASCII marker followed by one space.
+- **Layout**: each marker occupies one cell. Emoji presentation of `ℹ` and `⚠` can overlap the following space in Windows terminal fonts, so TTY messages use text `i` and the task warning marker `!`.
+- **Modes**: plain and non-TTY messages retain the shared undecorated formatter.
 
 ### Tooling live status
 
