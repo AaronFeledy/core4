@@ -21,6 +21,8 @@ The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, 
 
 When 80 and 443 are free, those URLs omit the port. When something else owns them, start prints `Port 80 is in use` or `Port 443 is in use`, names the holder if it can, and says `using 8080.` or `using 8443.` Then `lando info` prints the bound URLs, like `http://app.myapp.lndo.site:8080` and `https://app.myapp.lndo.site:8443`.
 
+On Linux, when binding ports 80 and 443 needs elevated permissions, Lando can ask to install a systemd socket proxy. That helper forwards HTTP and HTTPS traffic to Traefik; it is not tied to `lndo.site` and does not configure DNS. Declining keeps the unprivileged fallback-port path.
+
 ## Read lando info and lando doctor
 
 ```sh

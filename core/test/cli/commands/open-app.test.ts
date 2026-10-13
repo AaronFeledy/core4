@@ -390,6 +390,20 @@ describe("renderOpenAppResult", () => {
     expect(withFlag).toContain(qrFor("https://web.myapp.lndo.site").trimEnd());
   });
 
+  test("explicit --qr still renders a configured-domain URL", () => {
+    // Given
+    const url = "https://web.dev.example.test";
+    const result = {
+      ...printed,
+      targets: [{ service: "web", hostname: "web.dev.example.test", scheme: "https" as const, url }],
+    };
+    const context = { ...tty, proxyDefaultDomain: "dev.example.test" };
+    // When
+    const output = renderOpenAppResult(result, context, { qr: true });
+    // Then
+    expect(output).toContain(qrFor(url).trimEnd());
+  });
+
   test("loopback 127.0.0.1 URLs get a QR only when --qr is set", () => {
     const loopback = {
       ...printed,

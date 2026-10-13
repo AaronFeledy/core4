@@ -37,7 +37,7 @@ const consentToInstall = Effect.fnUntraced(function* (
   return yield* Effect.scoped(
     interaction.confirm({
       name: "install-socket-proxy",
-      message: "Install a systemd socket proxy so Lando can serve http://*.lndo.site on ports 80 and 443?",
+      message: "Install a systemd socket proxy so Lando can serve local HTTP/HTTPS on ports 80 and 443?",
       default: true,
     }),
   ).pipe(Effect.catch(() => Effect.succeed(true)));

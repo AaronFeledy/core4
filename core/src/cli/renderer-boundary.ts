@@ -4,6 +4,7 @@ import { JqExpressionError } from "@lando/sdk/errors";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
@@ -47,6 +48,7 @@ export interface RenderContext {
   readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
+  readonly proxyDefaultDomain?: string;
   /** Host env snapshot used for OSC 8 capability (TERM, NO_COLOR). */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Exact-value redactor for summary fields; apply before paint, never after. */
@@ -373,7 +375,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
         return { _tag: "handled-success" } as const;
       }
-      return { _tag: "success", value: commandExit.value } as const;
+      const proxyDefaultDomain = yield* resolveProxyDefaultDomain;
+      return { _tag: "success", value: commandExit.value, proxyDefaultDomain } as const;
     });
     const applySuccessExitCode = (value: A) =>
       Effect.sync(() => {
@@ -446,6 +449,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const displayValue = redactor === undefined ? value : (redactor.redactValue(value) as A);
         const paintContext: RenderContext = {
           ...renderContext,
+          proxyDefaultDomain: commandOutcome.value.proxyDefaultDomain,
           ...(redactor === undefined ? {} : { redact: (text) => redactor.redactString(text) }),
         };
         const rendered = options.render?.(displayValue, paintContext);
