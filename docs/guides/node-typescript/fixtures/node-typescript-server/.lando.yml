@@ -1,0 +1,26 @@
+name: node-typescript-server
+services:
+  app:
+    type: "node:22"
+    primary: true
+    port: 3000
+    command:
+      - npx
+      - tsx
+      - src/server.ts
+tooling:
+  npm:
+    cmds:
+      - npm
+    description: Run npm inside the app service.
+    service: app
+  node:
+    cmds:
+      - node
+    description: Run Node inside the app service.
+    service: app
+  npx:
+    cmds:
+      - npx
+    description: Run npx inside the app service.
+    service: app
