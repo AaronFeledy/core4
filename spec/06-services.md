@@ -58,7 +58,7 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 
 ### 6.4 App mounts and mounts
 
-`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, the app source mounts at the authored target, which defaults to `/app`. Planning sets `workingDirectory` to that target unless the author sets one or the type names another default (§6.12.1), exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT` as that container path, and records the result in `ServiceInfo`. Raw `compose` services get neither a default working directory nor injected environment (§6.9).
+`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, the app source mounts at the authored target, which defaults to `/app`. Planning sets `workingDirectory` to that target unless the author sets one or the type names another default (§6.12.1), exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT` as that container path, and records the result in `ServiceInfo`. Raw `compose` services get no default working directory and no app-path variables (§6.9).
 
 | Mount type | Contract | Capability |
 |---|---|---|
@@ -155,7 +155,7 @@ Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`,
 
 `LANDO_GLOBAL_*` is projected only for global services required by activated `AppFeature`s (§20.6.3). Plugins MAY add typed projections through `AppFeature.apply()`.
 
-`lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment.
+`lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment, plus `LANDO_HOST_IP` when host reachability applies.
 
 #### 6.9.1 Host agent-context forwarding (`agentEnv`)
 

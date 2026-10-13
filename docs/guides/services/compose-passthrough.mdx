@@ -83,8 +83,10 @@ remediation is to move unsupported provider-specific config under
 
 ## Know what Lando adds
 
-Lando injects no `LANDO_*` variables into a compose service. Set anything the
-image needs with `environment:` or `env_file:`.
+Lando injects none of its app identity or app-path `LANDO_*` variables into a
+compose service. The only one it adds is `LANDO_HOST_IP`, the host alias
+`host.lando.internal`, when the provider can reach your host. Set anything
+else the image needs with `environment:` or `env_file:`.
 
 Lando still bind-mounts the app source at `/app`, or at `appMount.target`
 when you set one, and joins the service to the per-app network `lando-<slug>`
