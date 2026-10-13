@@ -10,13 +10,12 @@ import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_por
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
+  appMountTarget,
   classifyComposeVolume,
   mountAppRoot,
   occupiedTargets,
   parseServiceMount,
 } from "./_volume-helpers.ts";
-
-const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
 export const COMPOSE_FEATURE_PRIORITY = 600;
@@ -38,7 +37,8 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const appName = appNameFor(ctx);
   const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
   const optedOutOfAppMount =
-    service.appMount === false || authoredMounts.some((mount) => mount.target === APP_MOUNT_TARGET);
+    service.appMount === false ||
+    authoredMounts.some((mount) => mount.target === appMountTarget(service.appMount));
   if (!optedOutOfAppMount) {
     mountAppRoot(ctx);
   }
@@ -55,7 +55,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const composeVolumes = (service.volumes ?? []).map((entry) =>
     classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }),
   );
-  const occupied = occupiedTargets(service, APP_MOUNT_TARGET);
+  const occupied = occupiedTargets(service, appMountTarget(service.appMount));
   const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
   for (const volume of composeVolumes.filter((entry) => !occupied.has(entry.target))) {
     switch (volume._tag) {

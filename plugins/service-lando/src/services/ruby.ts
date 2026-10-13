@@ -20,7 +20,7 @@ const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset>
   rails: {
     port: 3000,
     defaultCommand: ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"],
-    webroot: "/app/public",
+    webroot: "public",
     env: new Map([
       ["RAILS_ENV", "development"],
       ["RAILS_LOG_TO_STDOUT", "true"],
@@ -29,7 +29,7 @@ const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset>
   none: {
     port: 3000,
     defaultCommand: null,
-    webroot: "/app",
+    webroot: ".",
     env: new Map(),
   },
 };

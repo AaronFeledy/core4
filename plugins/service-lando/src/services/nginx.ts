@@ -25,7 +25,7 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { appPaths, mountAppRoot } from "./_volume-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
@@ -194,7 +194,7 @@ export const nginxServiceType: ServiceType = {
           {
             id: "lando.env",
             config: {
-              appPaths: { appRoot: "/app", projectMount: "/app" },
+              appPaths: appPaths(input.service.appMount),
               webroot,
             },
           },

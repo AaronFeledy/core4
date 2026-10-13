@@ -81,31 +81,20 @@ every accepted, preserved, and rejected key. If a key is rejected, the
 remediation is to move unsupported provider-specific config under
 `providers.<id>`, or open an issue to grow the subset.
 
-## Read the LANDO_* environment
+## Know what Lando adds
 
-Unless `appMount: false` is set, a compose service emits the same `LANDO_*`
-identity variables as any other service, and joins the per-app network:
+A compose service is a raw passthrough. Lando injects no `LANDO_*` variables
+into it; the container sees only the `environment:` and `env_file:` you
+author.
 
-```
-LANDO=ON
-LANDO_APP_NAME
-LANDO_APP_KIND
-LANDO_PROJECT
-LANDO_SERVICE_API
-LANDO_SERVICE_NAME
-LANDO_SERVICE_TYPE=compose
-LANDO_APP_ROOT=/app
-LANDO_PROJECT_MOUNT=/app
-```
-
-The service also joins the per-app network `lando-<slug>` like any other
-service.
+Lando still bind-mounts the app source at `/app`, or at `appMount.target`
+when you set one, and joins the service to the per-app network `lando-<slug>`
+so it can reach the rest of the app by service name.
 
 ## Skip the app mount
 
 Set `appMount: false` when the third-party image must not see the app
-source. With it set, Lando skips the synthetic `/app` bind mount, and omits
-`LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT`:
+source. With it set, Lando skips the app-source bind mount:
 
 ```yaml
 services:

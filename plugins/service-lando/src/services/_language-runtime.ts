@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 
-import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import {
@@ -12,7 +11,8 @@ import {
 } from "./_feature-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
+import { resolveWebroot } from "./_webroot.ts";
 
 export interface LanguageFrameworkPreset {
   readonly port: number;
@@ -50,7 +50,6 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly resolveFallback: (version: V) => string;
 }
 
-const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_KEEP_ALIVE = ["sh", "-c", "tail -f /dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
@@ -81,7 +80,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
     addEnvRecord(ctx, env);
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
-    ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+    ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
     applyAuthoredProcessFields(ctx, ["user"]);
     mountAppRoot(ctx, {
       excludes: spec.mountExcludes,
@@ -120,7 +119,9 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const framework = validateFramework(input.service.framework);
         const preset = spec.presets[framework];
         const endpointPort = input.service.port ?? preset.port;
-        const webroot = spec.includeWebrootInFeatureConfig ? { webroot: preset.webroot } : {};
+        const webroot = spec.includeWebrootInFeatureConfig
+          ? { webroot: resolveWebroot(spec.displayName, preset.webroot, input.service.appMount) }
+          : {};
         return {
           base: "lando" as const,
           normalizedConfig: { ...input.service, type: `${spec.language}:${resolvedVersion}` },
@@ -135,7 +136,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
                 defaultCommand: preset.defaultCommand,
               },
             },
-            { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" }, ...webroot } },
+            { id: "lando.env", config: { appPaths: appPaths(input.service.appMount), ...webroot } },
           ],
         };
       }),

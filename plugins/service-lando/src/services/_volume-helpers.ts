@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve as resolvePath, win32 } from "node:path";
+import { isAbsolute, posix, resolve as resolvePath, win32 } from "node:path";
 
 import {
   AbsolutePath,
@@ -13,13 +13,21 @@ import type { ServiceAppMountIntent, ServiceFeatureContext } from "@lando/sdk/se
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
+export const appMountTarget = (appMount: ServiceConfig["appMount"]): PortablePath =>
+  PortablePath.make(posix.resolve("/", typeof appMount === "object" ? appMount.target : "/app"));
+
+export const appPaths = (appMount: ServiceConfig["appMount"]) => {
+  const target = appMountTarget(appMount);
+  return { appRoot: target, projectMount: target };
+};
+
 export const mountAppRoot = (
   ctx: ServiceFeatureContext,
   options: Partial<Pick<ServiceAppMountIntent, "target" | "excludes" | "readOnly">> & {
     readonly realization?: "passthrough";
   } = {},
 ): void => {
-  const target = options.target ?? PortablePath.make("/app");
+  const target = options.target ?? appMountTarget(ctx.normalizedConfig.appMount);
   const readOnly = options.readOnly ?? false;
   const realization = options.realization === undefined ? {} : { realization: options.realization };
   ctx.setAppMount({
@@ -144,10 +152,10 @@ const kebabTarget = (target: string): string =>
     .filter((segment) => segment.length > 0)
     .join("-");
 
-export const occupiedTargets = (service: ServiceConfig, appMountTarget: string): ReadonlySet<string> => {
+export const occupiedTargets = (service: ServiceConfig, defaultTarget: string): ReadonlySet<string> => {
   const targets = new Set<string>();
   if (service.appMount !== false) {
-    targets.add(typeof service.appMount === "object" ? service.appMount.target : appMountTarget);
+    targets.add(typeof service.appMount === "object" ? appMountTarget(service.appMount) : defaultTarget);
   }
   for (const mount of service.mounts ?? []) {
     targets.add(typeof mount === "string" ? parseShortVolume(mount).target : mount.target);

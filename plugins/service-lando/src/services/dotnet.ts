@@ -7,10 +7,9 @@ import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { appMountTarget, mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = 5000;
-const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const VERSIONS = ["8.0", "9.0"] as const;
 const ARTIFACTS = {
@@ -32,7 +31,7 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["9.0"] });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
   mountAppRoot(ctx, { realization: "passthrough" });
   ctx.addStorage({
     store: NUGET_CACHE.store,

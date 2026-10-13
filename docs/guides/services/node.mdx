@@ -10,7 +10,8 @@ tags: [beta, docs, node, service, runtime]
 Put `type: node` on the primary service to use the Node version your project
 already declares. Lando reads `.nvmrc` first, then checks `package.json`
 `engines.node` when it exists. Your repository is bind-mounted read-write at
-`/app`, which is also the working directory:
+`/app` by default, which is also the working directory; set `appMount.target`
+to move both:
 
 ```yaml
 name: node-demo

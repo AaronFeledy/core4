@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, type LogSource, LogSourceId, PortNumber, PortablePath } from "@lando/sdk/schema";
+import { AbsolutePath, type LogSource, LogSourceId, PortNumber } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
   ServiceFeatureContext,
@@ -16,12 +16,11 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
-const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -153,7 +152,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
   applyAuthoredProcessFields(ctx, ["user"]);
   mountAppRoot(ctx, { realization: "passthrough" });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
@@ -196,7 +195,7 @@ export const apacheServiceType: ServiceType = {
           { id: APACHE_FEATURE_ID },
           {
             id: "lando.env",
-            config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
+            config: { appPaths: appPaths(input.service.appMount), webroot },
           },
         ],
       };

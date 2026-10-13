@@ -3,6 +3,7 @@ import { posix } from "node:path";
 import { Schema } from "effect";
 
 import type { ServiceConfig } from "@lando/sdk/schema";
+import { appMountTarget } from "./_volume-helpers.ts";
 
 /** Resolve an authored document root without changing the authored service config. */
 export const resolveWebroot = (
@@ -10,7 +11,7 @@ export const resolveWebroot = (
   authored: string | undefined,
   appMount?: ServiceConfig["appMount"],
 ): string => {
-  const mount = posix.resolve("/", typeof appMount === "object" ? appMount.target : "/app");
+  const mount = appMountTarget(appMount);
   const path = Schema.decodeUnknownSync(
     Schema.String.pipe(
       Schema.check(
