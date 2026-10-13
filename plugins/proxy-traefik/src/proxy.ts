@@ -93,6 +93,7 @@ import {
 export { renderTraefikDynamicConfig } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
+const ROUTE_RELOAD_LOCK_WAIT_MS = 120_000;
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
 const secretsRedactor = createRedactor("secrets");
 
@@ -296,6 +297,12 @@ export const makeTraefikRouterService = (
   });
   let authorityPorts: AuthorityPorts | undefined;
   let defaultDomain: string | undefined;
+  const guardRouterMutation = <A, E>(operation: Effect.Effect<A, E>) =>
+    dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
+      ? dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
+          timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+        })
+      : operation;
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {
     if (dependencies.paths.platform === "win32") {
@@ -315,12 +322,15 @@ export const makeTraefikRouterService = (
       id: TRAEFIK_PROXY_ID,
       capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
       prepare: Effect.fn("RouterService.prepare")(
-        function* (config) {
-          const decision = yield* acquire(config);
-          defaultDomain = normalizeDefaultDomain(config.defaultDomain);
-          authorityPorts = advertisedPorts(decision);
-          yield* ensureDashboardFile(dependencies, defaultDomain);
-        },
+        (config) =>
+          guardRouterMutation(
+            Effect.gen(function* () {
+              const decision = yield* acquire(config);
+              defaultDomain = normalizeDefaultDomain(config.defaultDomain);
+              authorityPorts = advertisedPorts(decision);
+              yield* ensureDashboardFile(dependencies, defaultDomain);
+            }),
+          ),
         Effect.mapError((cause) => {
           const mapped = mapSetupError(cause);
           return mapped instanceof RouterWatcherError
@@ -333,50 +343,64 @@ export const makeTraefikRouterService = (
             : mapped;
         }),
       ),
-      setup: Effect.fn("RouterService.setup")(function* (config, options) {
-        if (dependencies.paths.platform === "win32") {
-          yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
-        }
-        yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
-        const socketProxy = yield* resolveSocketProxy(dependencies);
-        const decision = yield* persistPortAcquisition(
-          {
-            ...dependencies,
-            ...(socketProxy === undefined
-              ? {}
-              : {
-                  socketProxy:
-                    options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
-                }),
-            ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
-            ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
-          },
-          { rescan: options?.reacquirePorts === true },
-        );
-        defaultDomain = normalizeDefaultDomain(config.defaultDomain);
-        yield* dependencies.fileSystem.writeAtomic(
-          defaultDomainFile(dependencies.paths),
-          `${defaultDomain}\n`,
-        );
-        const advertised = advertisedPorts(decision);
-        authorityPorts = advertised;
-        if (decision.notices.length > 0) {
-          yield* publishFallbackWarn(dependencies, decision);
-        }
-        yield* prepareTraefikDiagnostics(dependencies);
-        yield* ensureDashboardFile(dependencies, defaultDomain);
-        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
-        yield* finalizeRouterStartup(dependencies, advertised);
-      }, Effect.mapError(mapSetupError)),
-      revalidateStartup: Effect.fn("RouterService.revalidateStartup")(function* () {
-        const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-        const advertised =
-          state === undefined
-            ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
-            : { http: state.httpPort, https: state.httpsPort };
-        authorityPorts = advertised;
-        yield* finalizeRouterStartup(dependencies, advertised);
-      }, Effect.mapError(mapStartupRevalidationError))(),
+      setup: Effect.fn("RouterService.setup")(
+        (config, options) =>
+          guardRouterMutation(
+            Effect.gen(function* () {
+              if (dependencies.paths.platform === "win32") {
+                yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
+              }
+              yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
+              const socketProxy = yield* resolveSocketProxy(dependencies);
+              const decision = yield* persistPortAcquisition(
+                {
+                  ...dependencies,
+                  ...(socketProxy === undefined
+                    ? {}
+                    : {
+                        socketProxy:
+                          options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+                      }),
+                  ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+                  ...(config.routerPin === undefined
+                    ? {}
+                    : { routerPin: routerPinFromConfig(config.routerPin) }),
+                },
+                { rescan: options?.reacquirePorts === true },
+              );
+              defaultDomain = normalizeDefaultDomain(config.defaultDomain);
+              yield* dependencies.fileSystem.writeAtomic(
+                defaultDomainFile(dependencies.paths),
+                `${defaultDomain}\n`,
+              );
+              const advertised = advertisedPorts(decision);
+              authorityPorts = advertised;
+              if (decision.notices.length > 0) {
+                yield* publishFallbackWarn(dependencies, decision);
+              }
+              yield* prepareTraefikDiagnostics(dependencies);
+              yield* ensureDashboardFile(dependencies, defaultDomain);
+              yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
+              yield* finalizeRouterStartup(dependencies, advertised);
+            }),
+          ),
+        Effect.mapError(mapSetupError),
+      ),
+      revalidateStartup: Effect.fn("RouterService.revalidateStartup")(
+        () =>
+          guardRouterMutation(
+            Effect.gen(function* () {
+              const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+              const advertised =
+                state === undefined
+                  ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
+                  : { http: state.httpPort, https: state.httpsPort };
+              authorityPorts = advertised;
+              yield* finalizeRouterStartup(dependencies, advertised);
+            }),
+          ),
+        Effect.mapError(mapStartupRevalidationError),
+      )(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app) => {
           const apply = Effect.gen(function* () {
@@ -526,7 +550,9 @@ export const makeTraefikRouterService = (
           });
           const guarded =
             dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-              ? dependencies.stateStore.withLock(routeReloadLockKey(), apply)
+              ? dependencies.stateStore.withLock(routeReloadLockKey(), apply, {
+                  timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+                })
               : apply;
           return guarded;
         },
@@ -549,7 +575,9 @@ export const makeTraefikRouterService = (
           });
           const guarded =
             dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-              ? dependencies.stateStore.withLock(routeReloadLockKey(), remove)
+              ? dependencies.stateStore.withLock(routeReloadLockKey(), remove, {
+                  timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+                })
               : remove;
           return guarded;
         },
@@ -598,7 +626,9 @@ export const makeTraefikRouterService = (
           });
           const guarded =
             dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-              ? dependencies.stateStore.withLock(routeReloadLockKey(), stop)
+              ? dependencies.stateStore.withLock(routeReloadLockKey(), stop, {
+                  timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+                })
               : stop;
           return guarded;
         },

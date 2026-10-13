@@ -284,6 +284,7 @@ import {
   PluginManifest,
   PluginSetupContribution,
   PluginSetupFlagContribution,
+  PluginStateLockOptions,
   RouterServiceContribution,
   SecretStoreContribution,
 } from "./plugin.ts";
@@ -664,6 +665,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PluginContribution,
   PluginDoctorReport,
   PluginManifest,
+  PluginStateLockOptions,
   RouterServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
@@ -1115,6 +1117,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginSetupContribution: "Public Lando schema contract for Plugin Setup Contribution.",
   PluginContribution: "Public Lando schema contract for Plugin Contribution.",
   PluginManifest: "Public Lando schema contract for Plugin Manifest.",
+  PluginStateLockOptions: "Bounded acquisition options for a plugin-scoped durable-state lock.",
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PluginTrustState: "Public Lando schema contract for Plugin Trust State.",
   GlobalServiceContribution: "Public Lando schema contract for Global Service Contribution.",
