@@ -31,7 +31,7 @@
       "name": "@lando/core",
       "version": "0.0.0",
       "bin": {
-        "lando4": "./bin/lando.ts",
+        "lando": "./bin/lando.ts",
       },
       "dependencies": {
         "@gabrielbryk/jq-ts": "1.7.0",

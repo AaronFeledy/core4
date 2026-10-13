@@ -14,7 +14,7 @@ const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-const fixture = async (name = "lando4.exe") => {
+const fixture = async (name = "lando.exe") => {
   const root = await mkdtemp(join(tmpdir(), "lando-windows-replace-"));
   roots.push(root);
   const pluginsRoot = join(root, "plugins");
@@ -83,12 +83,13 @@ test("aborts under lock when fresh compatibility fails and preserves completed r
   expect(receipt?.updatedPlugins).toEqual(f.result.updatedPlugins);
 });
 
-test.each(["lando4.exe", "LANDO4.EXE"])(
+test.each(["lando.exe", "LANDO.EXE", "lando4.exe", "LANDO4.EXE"])(
   "refreshes ownership after replacing %s without touching Lando 3",
   async (name) => {
     // Given an owned executable beside an unrelated Lando 3 installation.
     const f = await fixture(name);
-    const foreign = join(f.root, "lando.exe");
+    const foreign = join(f.root, "legacy", "lando.exe");
+    await mkdir(join(f.root, "legacy"));
     await writeFile(foreign, "lando3");
     await writeFile(f.input.stagedBinaryPath, "new-version-bytes");
     const finish = spyOn(f.handoff, "finishDeferred");
@@ -122,11 +123,11 @@ test.each(["lando4.exe", "LANDO4.EXE"])(
   },
 );
 
-test.each(["lando.exe", "lando4", "digest-drift", "path-mismatch"])(
+test.each(["other.exe", "lando4", "digest-drift", "path-mismatch"])(
   "refuses %s at swap time without moving anything",
   async (scenario) => {
     // Given a real record that is foreign, stale, or does not name the requested target.
-    const f = await fixture(scenario === "lando.exe" || scenario === "lando4" ? scenario : "lando4.exe");
+    const f = await fixture(scenario === "other.exe" || scenario === "lando4" ? scenario : "lando.exe");
     if (scenario === "digest-drift") await writeFile(f.input.executablePath, "bad");
     const input = {
       ...f.input,

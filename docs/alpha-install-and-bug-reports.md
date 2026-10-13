@@ -5,7 +5,7 @@ description: Install the Lando 4 Alpha, run setup, and attach the right diagnost
 
 # Get a v4.0.0-dev.N binary and run setup
 
-Get a `v4.0.0-dev.N` binary for your platform, then run `lando setup` and `lando doctor`. Lando v4 is an experimental Alpha.
+Get a `v4.0.0-dev.N` binary for your platform, then run setup and doctor. Lando v4 is an experimental Alpha.
 
 ## Current install options
 
@@ -61,7 +61,7 @@ Replace `lando-linux-x64` with your asset name. Windows:
 .\lando-windows-x64.exe --version
 ```
 
-Rename the verified Windows binary to `lando4.exe` and put it on PATH before setup. The `lando4` name keeps it separate from an existing Lando 3 install. See [Put lando4 on PATH and run setup](./guides/install/path-and-setup.mdx).
+Rename the verified Windows binary to `lando.exe` and put it on PATH before setup. Verify that `Get-Command lando` points to the Alpha binary, especially if Lando 3 is already installed. See [Put lando on PATH and run setup](./guides/install/path-and-setup.mdx).
 
 Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run (GitHub login required). Extract the zip and verify the binary yourself.
 
@@ -81,7 +81,7 @@ bun run core/bin/lando.ts --version
 
 ## Run lando setup
 
-You need a `lando` binary from the steps above.
+You need the Alpha binary from the steps above. Follow [Put lando on PATH and run setup](./guides/install/path-and-setup.mdx) and verify the executable path before continuing; an existing `lando` command can still run an older installation.
 
 1. Run setup. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
 
@@ -153,6 +153,7 @@ If doctor still reports issues, try `lando doctor --fix` when it offers one.
 The following install paths are **not yet available** in Alpha:
 
 - **POSIX installer script** at `https://get.lando.dev/install.sh` (referenced in `scripts/install.sh`)
+- **PowerShell installer script** at `https://get.lando.dev/install.ps1` (referenced in `scripts/install.ps1`)
 - **Channel manifests** at `https://update.lando.dev/v4/{stable,next,dev}.json`
 
 These will be stood up before Beta. For now, use the GitHub prerelease or build from source paths above.

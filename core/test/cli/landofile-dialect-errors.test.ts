@@ -10,14 +10,14 @@ const failures = [
     appRoot: "/app",
     sourceFile: "/app/.lando.yml",
     message: "Legacy canonical .lando.yml",
-    remediation: "Run `lando4 app:config:translate --from lando3 --write`.",
+    remediation: "Run `lando app:config:translate --from lando3 --write`.",
   }),
   new LandofileDialectMixError({
     appRoot: "/app",
     canonicalFile: "/app/.lando.yml",
     conflictingLayer: "/app/.lando.local.yml",
     message: "Legacy layer .lando.local.yml",
-    remediation: "Run `lando4 app:config:translate --from lando3 --file .lando.local.yml --write`.",
+    remediation: "Run `lando app:config:translate --from lando3 --file .lando.local.yml --write`.",
   }),
 ];
 

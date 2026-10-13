@@ -55,12 +55,12 @@ describe("record-backed uninstall", () => {
           const bin =
             scenario === "no-record" ? join(roots.userDataRoot, "bin") : join(roots.root, "external");
           mkdirSync(bin, { recursive: true });
-          const legacy = join(bin, "lando");
+          const legacy = join(bin, "legacy-cli");
           const state = join(roots.root, ".lando");
           mkdirSync(state, { mode: 0o700 });
           writeFileSync(join(state, "state"), "legacy state", { mode: 0o600 });
           writeFileSync(legacy, "legacy executable", { mode: 0o755 });
-          const binary = scenario === "foreign-basename" ? legacy : join(bin, "lando4");
+          const binary = scenario === "foreign-basename" ? legacy : join(bin, "lando");
           if (binary !== legacy) writeFileSync(binary, "v4 executable", { mode: 0o755 });
           const bytes = readFileSync(binary);
           const record = join(roots.userDataRoot, "install", "record.json");

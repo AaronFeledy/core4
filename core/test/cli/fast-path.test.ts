@@ -74,14 +74,17 @@ const buildBundledCli = async (): Promise<{
   };
 };
 
-const expectShellenvOutput = (stdout: string): void => {
-  const lines = stdout.trim().split("\n");
-
-  expect(lines).toHaveLength(2);
-  expect(lines[0]).toStartWith("export LANDO_USER_DATA_ROOT=");
-  expect(lines[1]).toMatch(
-    /^case ":\$\{PATH\}:" in \*'.+\/bin:'\*\) ;; \*\) export PATH='.+\/bin'":\$\{PATH\}" ;; esac$/u,
+const expectShellenvOutput = async (stdout: string): Promise<void> => {
+  expect(stdout).toStartWith("export LANDO_USER_DATA_ROOT=");
+  const evaluated = await runCommand(
+    ["/bin/sh", "-c", `${stdout}\nprintf '%s\\n%s' "$LANDO_USER_DATA_ROOT" "$PATH"`],
+    { PATH: "/legacy:/tools" },
   );
+  expect(evaluated.exitCode).toBe(0);
+  expect(evaluated.stderr).toBe("");
+  const [root, path] = evaluated.stdout.split("\n");
+  expect(root).toBeDefined();
+  expect(path).toBe(`${join(root ?? "", "bin")}:/legacy:/tools`);
 };
 
 describe("fast path import canary", () => {
@@ -144,7 +147,7 @@ describe("CLI shellenv fast path", () => {
       expect(withLando.exitCode).toBe(0);
       expect(withLando.stderr).toBe("");
       expect(withLando.stdout).toBe(withoutLando.stdout);
-      expectShellenvOutput(withoutLando.stdout);
+      await expectShellenvOutput(withoutLando.stdout);
     } finally {
       await bundled.cleanup();
       await rm(homeWithoutLando, { recursive: true, force: true });
@@ -158,7 +161,7 @@ describe("CLI shellenv fast path", () => {
 
     expect(result.stderr).not.toContain("FAST_PATH_CANARY");
     expect(result.exitCode).toBe(0);
-    expectShellenvOutput(result.stdout);
+    await expectShellenvOutput(result.stdout);
   });
 });
 
@@ -211,7 +214,7 @@ describe("exhaustive level-none fast paths", () => {
           expect(result.stdout.trim()).toBe(corePackage.version);
           break;
         case "shellenv":
-          expectShellenvOutput(result.stdout);
+          await expectShellenvOutput(result.stdout);
           break;
         case "recipes":
           expect(result.stdout).toStartWith("Bundled recipes (");
