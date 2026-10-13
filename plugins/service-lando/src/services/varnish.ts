@@ -6,7 +6,6 @@ import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
@@ -127,7 +126,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
       );
     }
 
-    const appName = appNameFor(input);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -136,9 +134,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
         image: input.service.image ?? image,
         backend,
         certs: input.service.certs ?? true,
-        routes: input.service.routes ?? [
-          { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
-        ],
       },
       features: [{ id: VARNISH_FEATURE_ID }],
     });

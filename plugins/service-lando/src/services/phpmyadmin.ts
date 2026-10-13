@@ -13,7 +13,6 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
-import { appNameFor } from "../app-name.ts";
 import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
@@ -71,7 +70,6 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
-    const appName = appNameFor(input);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -79,9 +77,6 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
         type: "phpmyadmin",
         image: input.service.image ?? image,
         certs: input.service.certs ?? true,
-        routes: input.service.routes ?? [
-          { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
-        ],
       },
       features: [{ id: PHPMYADMIN_FEATURE_ID }],
     });

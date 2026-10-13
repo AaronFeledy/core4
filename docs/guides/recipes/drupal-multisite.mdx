@@ -19,7 +19,7 @@ Add one `routes:` entry per hostname. Every hostname hits the same appserver.
 services:
   appserver:
     type: php:8.3
-    webroot: /app/web
+    webroot: web
     allowOverride: true
     routes:
       - hostname: site1.lndo.site

@@ -466,6 +466,23 @@ describe("Traefik RouterService", () => {
     expect(harness.restarted).toEqual(["traefik", "traefik"]);
   });
 
+  test("reloads Windows Traefik when only the dashboard domain changes", async () => {
+    // Given
+    const harness = makeHarness(undefined, {}, "win32", true);
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    const httpRoutes = routes.slice(1);
+    await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
+
+    // When
+    await Effect.runPromise(
+      Effect.scoped(harness.makePersistedService().setup({ defaultDomain: "lndo.test" })),
+    );
+    await Effect.runPromise(harness.makePersistedService().applyRoutes(httpRoutes, app));
+
+    // Then
+    expect(harness.restarted).toEqual(["traefik", "traefik"]);
+  });
+
   test("does not acknowledge a failed Windows reload and retries unchanged persisted routes", async () => {
     const harness = makeHarness(undefined, {}, "win32", true);
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));

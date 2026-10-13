@@ -4,7 +4,7 @@ Symfony scaffold with PHP 8.1-8.6, Composer, PostgreSQL or MariaDB, and Redis.
 
 ## Generated services
 
-- `appserver` — `php:<8.1-8.6>`, `framework: symfony`, webroot `/app/public`.
+- `appserver`: `php:<8.1-8.6>`, `framework: symfony`, app-relative webroot `public`.
 - `database` — `postgres:16` or `mariadb:11.4` (prompt: `database`).
 - `cache` — `redis`.
 

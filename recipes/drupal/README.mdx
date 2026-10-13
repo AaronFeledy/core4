@@ -15,7 +15,7 @@ lando start
 lando info
 ```
 
-`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe drupal --name=my-drupal-app --yes \
@@ -65,7 +65,7 @@ For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://a
   <Scenario id="non-default-options" render>
     <Step name="init">
       <Variable name="appName" value="drupal-nginx" display="my-drupal-nginx" />
-      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=/app/web" />
+      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=web" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />

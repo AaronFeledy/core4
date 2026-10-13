@@ -13,7 +13,7 @@ cd laravel-demo
 lando start
 ```
 
-The named init creates `laravel-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Apache is up after start. Drop a Laravel app in so `artisan` exists.
+The named init creates `laravel-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Apache is up after start. Drop a Laravel app in so `artisan` exists.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: laravel`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
+| `appserver` | `php:8.4`, `framework: laravel`, webroot `public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
 | `database` | `type: mariadb:11.4` |
 | `cache` | `type: redis` |
 | `node` | `node:22`, `primary: false`, no `command`, idle until `lando npm` runs |

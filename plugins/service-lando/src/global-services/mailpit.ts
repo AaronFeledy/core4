@@ -10,7 +10,7 @@
  *
  * Mailpit's default entrypoint binds SMTP on `0.0.0.0:1025` and the web UI / API
  * on `0.0.0.0:8025`, so no custom start script is needed. The web UI is routed
- * through the global Traefik proxy at `mailpit.lndo.site`, while per-app
+ * through the global Traefik proxy at `mailpit.<proxy.defaultDomain>`, while per-app
  * services reach SMTP over the shared cross-app network via the projected
  * `LANDO_MAIL_HOST` / `LANDO_MAIL_PORT` contract.
  */
@@ -19,7 +19,7 @@ import { Effect, Schema } from "effect";
 import { ServiceConfig } from "@lando/sdk/schema";
 
 import {
-  MAILPIT_DASHBOARD_HOSTNAME,
+  MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION,
   MAILPIT_IMAGE,
   MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
@@ -41,7 +41,7 @@ const mailpitServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
     { _tag: "internal", port: MAILPIT_WEB_PORT, protocol: "http" },
   ],
   hostnames: [MAILPIT_SHARED_NETWORK_HOST],
-  routes: [{ hostname: MAILPIT_DASHBOARD_HOSTNAME, endpoint: MAILPIT_WEB_PORT }],
+  routes: [{ hostname: MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION, endpoint: MAILPIT_WEB_PORT }],
   environment: {},
 });
 

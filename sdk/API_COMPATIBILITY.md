@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
+
 - `@lando/sdk/secrets` additively exports `DEFAULT_PASSWORD` (`lando`), `MINIO_DEFAULT_PASSWORD` (`landolando`), the frozen read-only `PUBLIC_DEFAULT_CREDENTIALS` list, and `isPublicDefaultCredential`. Matching is exact and case-sensitive, without trimming. Only heuristic secret-key collection excludes these published values; explicit tokens, secret-store values, resolved secret references, pattern masking, and deep-key masking remain unchanged. No schema artifacts change.
 
 - `RouterService.setup(config, options?)` additively accepts optional `reacquirePorts` to rescan host ports instead of reusing the persisted pair. Only explicit `lando setup` sets it. App and scratch startup omit it and retain owned ports while config is unchanged; changed preferences still trigger a rescan. Rescans treat provider-verified publications of Lando's own router as available. This invocation option is not retained or exposed in config, and changes no JSON Schema.

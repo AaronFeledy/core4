@@ -211,7 +211,8 @@ describe("provider-docker pullArtifact", () => {
     expect(failure._tag).toBe("ProviderUnavailableError");
     expect(failure.message).toContain("manifest unknown");
     expect(failure.remediation ?? "").not.toMatch(/lando destroy/u);
-    expect(failure.remediation).toContain("lando doctor --provider=docker");
+    expect(failure.remediation).toContain("image reference");
+    expect(failure.remediation).not.toContain("lando doctor");
   });
 
   test("fails the pull when post-pull inspect is not 200", async () => {

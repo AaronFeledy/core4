@@ -11,6 +11,47 @@ const ctx: ServiceLoweringContext = {
 };
 
 describe("lowerCatalogCommon", () => {
+  test.each([".", "./", "", "././", ".///"])(
+    "omits Tomcat webroot %s when it names the app root",
+    (webroot) => {
+      // Given: a versioned Tomcat service using an app-root source directory.
+      const service = { type: "tomcat:10", webroot };
+      // When: the service is lowered.
+      const result = lowerCatalogCommon(service, ctx);
+      // Then: the native default deploy path remains available with one rewrite diagnostic.
+      expect(result.patch).toEqual({ type: "tomcat:10" });
+      expect(result.blocked).toBeUndefined();
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "rewritten", keyPath: [...ctx.keyPath, "webroot"] }),
+      ]);
+    },
+  );
+
+  test("drops Tomcat webroot when it names a relative build directory", () => {
+    // Given / When: Lando 3 deploys only the build output directory.
+    const result = lowerCatalogCommon({ type: "tomcat", webroot: "target/app" }, ctx);
+    // Then: translation omits the incompatible path and explains how to migrate it.
+    expect(result.patch).toEqual({ type: "tomcat" });
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        kind: "dropped",
+        keyPath: [...ctx.keyPath, "webroot"],
+        remediation:
+          "Set webroot to an absolute container deploy path, or serve the build output from the app root.",
+      }),
+    ]);
+  });
+
+  test("preserves Tomcat webroot when it names an absolute deploy path", () => {
+    // Given / When: an explicit container destination is lowered.
+    const webroot = "/usr/local/tomcat/webapps/app";
+    const result = lowerCatalogCommon({ type: "tomcat", webroot }, ctx);
+    // Then: the path passes through without diagnostics.
+    expect(result.patch).toEqual({ type: "tomcat", webroot });
+    expect(result.diagnostics).toEqual([]);
+  });
+
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly service: Record<string, unknown>;
@@ -231,20 +272,20 @@ describe("lowerCatalogCommon", () => {
     {
       name: "direct common fields",
       service: { type: "node", command: ["npm", "start"], port: "3001", webroot: "public", user: "node" },
-      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "/app/public", user: "node" },
-      kinds: ["rewritten"],
+      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "public", user: "node" },
+      kinds: [],
     },
     {
       name: "app-relative webroot with a leading current directory",
       service: { type: "php:8.3", webroot: "./web/" },
-      patch: { type: "php:8.3", webroot: "/app/web" },
-      kinds: ["rewritten"],
+      patch: { type: "php:8.3", webroot: "./web/" },
+      kinds: [],
     },
     {
       name: "app-root webroot",
       service: { type: "php:8.3", webroot: "." },
-      patch: { type: "php:8.3", webroot: "/app" },
-      kinds: ["rewritten"],
+      patch: { type: "php:8.3", webroot: "." },
+      kinds: [],
     },
     {
       name: "container-absolute webroot",

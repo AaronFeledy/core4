@@ -13,7 +13,7 @@ cd backdrop-demo
 lando start
 ```
 
-The named init creates `backdrop-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Backdrop into the app root so `index.php` exists, then open the URL `lando info` prints.
+The named init creates `backdrop-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Apache and MariaDB are up after start. Drop Backdrop into the app root so `index.php` exists, then open the URL `lando info` prints.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 

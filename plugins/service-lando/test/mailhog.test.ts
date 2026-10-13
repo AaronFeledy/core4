@@ -91,22 +91,6 @@ describe("mailhog ServiceType", () => {
     expect(plan.environment).toMatchObject({ MH_SMTP_BIND_ADDR: "0.0.0.0:2525" });
   });
 
-  test("resolves a default web UI route", async () => {
-    const resolution = await Effect.runPromise(
-      mailhogServiceType.resolve({
-        name: "mail",
-        service: serviceConfig({ type: "mailhog" }),
-        appRoot: "/srv/apps/myapp",
-        appName: "myapp",
-        metadata,
-      }),
-    );
-
-    expect(resolution.normalizedConfig.routes).toEqual([
-      { hostname: "mail.myapp.lndo.site", endpoint: 8025 },
-    ]);
-  });
-
   test("records deprecation-used with the catalog notice", async () => {
     const summary = await Effect.runPromise(
       Effect.gen(function* () {

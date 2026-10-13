@@ -27,6 +27,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { ensureDashboardFile } from "./dashboard.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
 import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
@@ -36,6 +37,7 @@ import {
   TRAEFIK_CONTAINER_CERTIFICATE_DIR,
   acquisitionStateFile,
   appCertificateFiles,
+  dashboardConfigFile,
   defaultCertificateFiles,
   defaultDomainFile,
   defaultTlsFile,
@@ -256,6 +258,7 @@ const routeReloadSnapshot = (dependencies: TraefikProxyDependencies, app: AppId,
     readOptional(dependencies, defaults.cert),
     readOptional(dependencies, defaults.key),
     readOptional(dependencies, defaultTlsFile(dependencies.paths)),
+    readOptional(dependencies, dashboardConfigFile(dependencies.paths)),
   ]);
 };
 const routerListsFromConfig = (router: NonNullable<ProxyConfig["router"]>): TraefikRouterLists => ({
@@ -315,6 +318,7 @@ export const makeTraefikRouterService = (
           const decision = yield* acquire(config);
           defaultDomain = normalizeDefaultDomain(config.defaultDomain);
           authorityPorts = advertisedPorts(decision);
+          yield* ensureDashboardFile(dependencies, defaultDomain);
         },
         Effect.mapError((cause) => {
           const mapped = mapSetupError(cause);
@@ -359,6 +363,7 @@ export const makeTraefikRouterService = (
           yield* publishFallbackWarn(dependencies, decision);
         }
         yield* prepareTraefikDiagnostics(dependencies);
+        yield* ensureDashboardFile(dependencies, defaultDomain);
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
         yield* finalizeRouterStartup(dependencies, advertised);
       }, Effect.mapError(mapSetupError)),
@@ -383,6 +388,7 @@ export const makeTraefikRouterService = (
               .readText(defaultDomainFile(dependencies.paths))
               .pipe(Effect.catch(() => Effect.succeed("")));
             defaultDomain = normalizeDefaultDomain(persistedDomain) || defaultDomain || "lndo.site";
+            yield* ensureDashboardFile(dependencies, defaultDomain);
             const appKey = String(app);
             const file = routeFile(dependencies.paths, app);
             const hadRouteFile = yield* dependencies.fileSystem.exists(file);
@@ -421,7 +427,7 @@ export const makeTraefikRouterService = (
                     certificatePairIsCurrent(
                       defaultCertificate,
                       defaultPrivateKey,
-                      [`test.${defaultDomain}`, defaultDomain, "traefik.lndo.site"],
+                      [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
                       yield* Clock.currentTimeMillis,
                     ));
                 if (
@@ -469,7 +475,7 @@ export const makeTraefikRouterService = (
                   certificatePairIsCurrent(
                     defaultCertificatePem,
                     defaultPrivateKeyPem,
-                    [`test.${defaultDomain}`, defaultDomain, "traefik.lndo.site"],
+                    [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
                     yield* Clock.currentTimeMillis,
                   ));
               const refreshAppCertificate =
@@ -581,6 +587,7 @@ export const makeTraefikRouterService = (
             yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultDomainFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
+            yield* dependencies.fileSystem.remove(dashboardConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));

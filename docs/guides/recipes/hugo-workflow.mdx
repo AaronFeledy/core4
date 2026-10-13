@@ -39,7 +39,7 @@ Init writes `.lando.yml` and a small starter site: a Hugo config, a content arch
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*1313" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"hugo server --bind 0.0.0.0 --port 1313\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hugo\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
     </Step>
@@ -97,7 +97,7 @@ The starter archetype writes `draft = false`, so the post publishes as soon as y
 lando hugo build
 ```
 
-That runs a one-shot build into `public/`. `web` ships with `webroot: /app/public`, so there's nothing to configure. The running `hugo server` writes to the same directory on every change, so don't expect `hugo build` output to stay untouched while you keep editing; stop the server or build elsewhere if you need a frozen copy.
+That runs a one-shot build into `public/`. `web` ships with `webroot: public`, so there's nothing to configure. The running `hugo server` writes to the same directory on every change, so don't expect `hugo build` output to stay untouched while you keep editing; stop the server or build elsewhere if you need a frozen copy.
 
 ## Builder versus web
 

@@ -19,6 +19,7 @@ export const renderShareResult = (
     url: result.publicUrl,
     isTTY: ctx?.isTTY === true,
     format,
+    ...(ctx?.proxyDefaultDomain === undefined ? {} : { proxyDefaultDomain: ctx.proxyDefaultDomain }),
   });
 };
 

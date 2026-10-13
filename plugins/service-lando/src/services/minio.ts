@@ -103,12 +103,6 @@ export const minioServiceType: ServiceType = {
       normalizedConfig: {
         ...input.service,
         type: "minio",
-        routes: input.service.routes ?? [
-          {
-            hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
-            endpoint: CONSOLE_PORT,
-          },
-        ],
       },
       features: [{ id: MINIO_FEATURE_ID }],
       tooling: { mc: { service: input.name, cmd: "mc" } },

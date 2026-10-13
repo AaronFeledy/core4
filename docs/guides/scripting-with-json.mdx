@@ -195,6 +195,14 @@ projects inside `result`. Warnings land in `warnings`. A closed pipe exits
 such as `app:logs` and `app:exec` emit only the terminal envelope under
 `yaml`; per-frame streaming stays a JSON concern.
 
+Plugin `message.warn` events also land in `warnings` for JSON and YAML
+results, whether the command succeeds or fails. Each uses the code
+`LANDO_MESSAGE_WARN` and puts the event body in `message`, with secrets
+redacted. Existing coded warnings keep their own codes and remediation.
+For JSON streams, read warnings from the terminal result frame's
+`envelope.warnings`; YAML streaming commands put them in the terminal
+envelope document. Human warning output is unchanged.
+
 `--jq` output is jq's output, whatever the format. `--format=yaml --jq .ok`
 prints `true`, byte for byte what `--format=json --jq .ok` prints. Do not
 expect a YAML document from a jq selection.
@@ -240,7 +248,7 @@ lando app:config --format=json | jq -e .ok
 ```
 
 Stdout and stderr are handled independently because you can redirect them
-separately. A consumer that closes stdout does not silence a warning headed
+separately. A consumer that closes stdout does not silence diagnostics headed
 for stderr, and a closed stderr does not truncate the envelope on stdout.
 Grab the Lando exit status from `PIPESTATUS` in bash or `pipestatus` in zsh;
 the pipeline's own status is whatever the last consumer returned.

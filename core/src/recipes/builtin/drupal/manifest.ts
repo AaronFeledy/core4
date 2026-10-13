@@ -41,7 +41,7 @@ ${phpPromptYaml}
 ${webserverPromptYaml}
 ${databasePromptYaml(DRUPAL_DATABASES)}
 ${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
-${webrootPromptYaml("/app/web")}
+${webrootPromptYaml("web")}
 files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml
