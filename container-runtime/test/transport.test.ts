@@ -470,6 +470,173 @@ describe("socket HTTP transport", () => {
     expect(connection.destroyed).toBe(true);
   });
 
+  for (const [framing, chunks] of [
+    ["Content-Length", [bytes("Content-Length: 11\r\n\r\nhello"), bytes(" world")]],
+    [
+      "chunked",
+      [
+        bytes("Transfer-Encoding: chunked\r\n\r\n5\r\nhe"),
+        bytes("llo\r\n6\r\n wor"),
+        bytes("ld\r\n0\r\n\r\n"),
+      ],
+    ],
+  ] as const) {
+    test(`retains a split ${framing} HTTP error body when streaming`, async () => {
+      // Given
+      const connection = new CountingDestroyConnection([
+        bytes("HTTP/1.1 500 Internal Server Error\r\n"),
+        ...chunks,
+      ]);
+      const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+      const controller = new AbortController();
+      let responseHeads = 0;
+
+      // When/Then
+      await expect(
+        Array.fromAsync(
+          client.stream({
+            method: "POST",
+            path: "/images/create",
+            signal: controller.signal,
+            onResponseHead: () => {
+              responseHeads += 1;
+            },
+          }),
+        ),
+      ).rejects.toMatchObject({
+        kind: "http",
+        details: { status: 500, body: "hello world" },
+      });
+      expect(responseHeads).toBe(0);
+      expect(connection.destroyed).toBe(true);
+      controller.abort();
+      expect(connection.destroyCalls).toBe(1);
+    });
+  }
+
+  for (const framing of ["Content-Length", "chunked"] as const) {
+    test(`caps ${framing} stream error wire bytes without waiting for EOF`, async () => {
+      // Given
+      const body = "x".repeat(128 * 1024);
+      const wire =
+        framing === "chunked"
+          ? `Transfer-Encoding: chunked\r\n\r\n${body.length.toString(16)}\r\n${body}`
+          : `Content-Length: ${body.length}\r\n\r\n${body}`;
+      const connection = new WaitingConnection([], `HTTP/1.1 500 Internal Server Error\r\n${wire}`);
+      const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+      const expectedBytes = 64 * 1024 - (framing === "chunked" ? 7 : 0);
+
+      // When/Then
+      try {
+        await expect(
+          Array.fromAsync(client.stream({ method: "POST", path: "/images/create" })),
+        ).rejects.toMatchObject({
+          kind: "http",
+          details: { status: 500, body: "x".repeat(expectedBytes) },
+        });
+        expect(connection.destroyed).toBe(true);
+      } finally {
+        connection.destroy();
+      }
+    });
+
+    test(`finishes a framed ${framing} error without waiting for EOF`, async () => {
+      // Given
+      const wire =
+        framing === "chunked"
+          ? "Transfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n"
+          : "Content-Length: 2\r\n\r\n{}extra";
+      const connection = new WaitingConnection([], `HTTP/1.1 500 Internal Server Error\r\n${wire}`);
+      const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+      // When/Then
+      try {
+        await expect(
+          Array.fromAsync(client.stream({ method: "POST", path: "/images/create" })),
+        ).rejects.toMatchObject({
+          details: { status: 500, body: "{}" },
+        });
+        expect(connection.destroyed).toBe(true);
+      } finally {
+        connection.destroy();
+      }
+    });
+  }
+
+  test("cancels an incomplete framed error read and closes the socket", async () => {
+    // Given
+    const connection = new WaitingConnection(
+      [],
+      "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\n\r\n{",
+    );
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    const controller = new AbortController();
+
+    // When
+    const streamed = Array.fromAsync(
+      client.stream({ method: "POST", path: "/images/create", signal: controller.signal }),
+    );
+    await waitFor(() => connection.writes.length > 0);
+    controller.abort();
+
+    // Then
+    await expect(streamed).rejects.toMatchObject({ name: "AbortError" });
+    expect(connection.destroyed).toBe(true);
+  });
+
+  test.each([
+    ["unframed", "", {}],
+    ["request Upgrade", "Content-Length: 100\r\n", { Connection: "Upgrade", Upgrade: "tcp" }],
+    ["response Upgrade", "Connection: Upgrade\r\nUpgrade: tcp\r\nContent-Length: 100\r\n", {}],
+  ] as const)("fails fast for a %s error without draining", async (_name, framing, headers) => {
+    // Given
+    const connection = new WaitingConnection([], `HTTP/1.1 500 Internal Server Error\r\n${framing}\r\n`);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    // When/Then
+    try {
+      await expect(
+        Array.fromAsync(client.stream({ method: "POST", path: "/images/create", headers })),
+      ).rejects.toMatchObject({
+        details: { method: "POST", path: "/images/create", status: 500 },
+      });
+      expect(connection.destroyed).toBe(true);
+    } finally {
+      connection.destroy();
+    }
+  });
+
+  test("stops pending stdin without flushing it on a framed HTTP failure", async () => {
+    // Given
+    const connection = new CountingDestroyConnection([
+      bytes("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 2\r\n\r\n{}"),
+    ]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    let returned = false;
+    const stdin: AsyncIterable<Bytes> = {
+      [Symbol.asyncIterator]: () => ({
+        next: () => new Promise<IteratorResult<Bytes>>(() => {}),
+        return: async () => {
+          returned = true;
+          return { done: true, value: undefined };
+        },
+      }),
+    };
+
+    // When/Then
+    await expect(
+      Array.fromAsync(
+        client.stream({ method: "POST", path: "/images/create", headers: { Connection: "close" }, stdin }),
+      ),
+    ).rejects.toMatchObject({
+      kind: "http",
+      details: { body: "{}" },
+    });
+    expect(returned).toBe(true);
+    expect(connection.writes).toHaveLength(1);
+    expect(connection.destroyCalls).toBe(1);
+  });
+
   test("fails a non-2xx stream response immediately with its status, without draining the body", async () => {
     // A hijacked request declares no body end, so waiting for one would hang the caller.
     const connection = new WaitingConnection([], "HTTP/1.1 404 Not Found\r\n\r\n");
