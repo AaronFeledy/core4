@@ -63,27 +63,25 @@ describe("effective app mount paths", () => {
   });
 
   const mountCases = [
-    { type: "php:8.2", serviceType: php82ServiceType, webroot: "public", cwd: "/site/public" },
-    { type: "nginx", serviceType: nginxServiceType, webroot: "public", cwd: "/site/public" },
-    { type: "apache", serviceType: apacheServiceType },
-    { type: "static:nginx", serviceType: staticNginxServiceType },
-    { type: "static:caddy", serviceType: staticCaddyServiceType },
-    { type: "node:22", serviceType: node22ServiceType },
-    { type: "lando", serviceType: landoServiceType, image: "alpine:3" },
-    { type: "python:3.12", serviceType: python312ServiceType },
-    { type: "ruby:3.3", serviceType: ruby33ServiceType },
-    { type: "ruby:3.3", serviceType: ruby33ServiceType, framework: "rails", expectedWebroot: "/site/public" },
-    { type: "go:1.22", serviceType: go122ServiceType },
-    { type: "dotnet", serviceType: dotnetServiceType, expectsAppPaths: false },
+    { serviceType: php82ServiceType, webroot: "public", cwd: "/site/public" },
+    { serviceType: nginxServiceType, webroot: "public", cwd: "/site/public" },
+    { serviceType: apacheServiceType },
+    { serviceType: staticNginxServiceType },
+    { serviceType: staticCaddyServiceType },
+    { serviceType: node22ServiceType },
+    { serviceType: landoServiceType, image: "alpine:3" },
+    { serviceType: python312ServiceType },
+    { serviceType: ruby33ServiceType },
+    { serviceType: ruby33ServiceType, framework: "rails", expectedWebroot: "/site/public" },
+    { serviceType: go122ServiceType },
+    { serviceType: dotnetServiceType },
     {
-      type: "compose",
       serviceType: composeServiceType,
       image: "alpine:3",
       expectsAppPaths: false,
       cwd: undefined,
     },
   ] satisfies ReadonlyArray<{
-    readonly type: string;
     readonly serviceType: ServiceType;
     readonly image?: string;
     readonly framework?: string;
@@ -94,13 +92,13 @@ describe("effective app mount paths", () => {
   }>;
 
   for (const entry of mountCases) {
-    test(`${entry.type} ${"framework" in entry ? entry.framework : ""} follows a moved app mount`, async () => {
+    test(`${entry.serviceType.id} ${"framework" in entry ? entry.framework : ""} follows a moved app mount`, async () => {
       // Given: an app mount with a trailing slash and an optional framework/webroot.
       const { serviceType } = entry;
       const config = Schema.decodeUnknownSync(LandofileShape)({
         services: {
           web: {
-            type: entry.type,
+            type: serviceType.id,
             appMount: { target: "/site/" },
             ...("image" in entry ? { image: entry.image } : {}),
             ...("framework" in entry ? { framework: entry.framework } : {}),
@@ -220,6 +218,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     expectedType: "apache",
     expectsAppPaths: true,
     expectsWebroot: "/app",
+  },
+  {
+    id: "dotnet",
+    serviceType: dotnetServiceType,
+    landofileService: { type: "dotnet" },
+    expectedType: "dotnet",
+    expectsAppPaths: true,
+    expectsWebroot: null,
   },
   {
     id: "nginx",

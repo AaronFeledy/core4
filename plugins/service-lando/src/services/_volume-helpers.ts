@@ -152,10 +152,10 @@ const kebabTarget = (target: string): string =>
     .filter((segment) => segment.length > 0)
     .join("-");
 
-export const occupiedTargets = (service: ServiceConfig, defaultTarget: string): ReadonlySet<string> => {
+export const occupiedTargets = (service: ServiceConfig): ReadonlySet<string> => {
   const targets = new Set<string>();
   if (service.appMount !== false) {
-    targets.add(typeof service.appMount === "object" ? appMountTarget(service.appMount) : defaultTarget);
+    targets.add(appMountTarget(service.appMount));
   }
   for (const mount of service.mounts ?? []) {
     targets.add(typeof mount === "string" ? parseShortVolume(mount).target : mount.target);

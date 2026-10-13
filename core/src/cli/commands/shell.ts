@@ -311,8 +311,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       app: plan.name,
       service: String(service.name),
       shell: "sh",
-      cwd:
-        options.cwd ?? (service.workingDirectory === undefined ? "/app" : String(service.workingDirectory)),
+      cwd: options.cwd ?? service.workingDirectory ?? "/app",
       exitCode,
     };
   }

@@ -83,9 +83,8 @@ remediation is to move unsupported provider-specific config under
 
 ## Know what Lando adds
 
-A compose service is a raw passthrough. Lando injects no `LANDO_*` variables
-into it; the container sees only the `environment:` and `env_file:` you
-author.
+Lando injects no `LANDO_*` variables into a compose service. Set anything the
+image needs with `environment:` or `env_file:`.
 
 Lando still bind-mounts the app source at `/app`, or at `appMount.target`
 when you set one, and joins the service to the per-app network `lando-<slug>`
@@ -94,7 +93,7 @@ so it can reach the rest of the app by service name.
 ## Skip the app mount
 
 Set `appMount: false` when the third-party image must not see the app
-source. With it set, Lando skips the app-source bind mount:
+source:
 
 ```yaml
 services:

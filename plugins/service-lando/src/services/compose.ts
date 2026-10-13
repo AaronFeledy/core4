@@ -55,7 +55,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const composeVolumes = (service.volumes ?? []).map((entry) =>
     classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }),
   );
-  const occupied = occupiedTargets(service, appMountTarget(service.appMount));
+  const occupied = occupiedTargets(service);
   const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
   for (const volume of composeVolumes.filter((entry) => !occupied.has(entry.target))) {
     switch (volume._tag) {

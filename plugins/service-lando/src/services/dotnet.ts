@@ -7,7 +7,7 @@ import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appMountTarget, mountAppRoot } from "./_volume-helpers.ts";
+import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = 5000;
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
@@ -68,7 +68,10 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
         certs: input.service.certs ?? true,
         storage: [...(input.service.storage ?? []), NUGET_CACHE],
       },
-      features: [{ id: DOTNET_FEATURE_ID }],
+      features: [
+        { id: DOTNET_FEATURE_ID },
+        { id: "lando.env", config: { appPaths: appPaths(input.service.appMount) } },
+      ],
     });
   },
 });

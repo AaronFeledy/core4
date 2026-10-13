@@ -58,7 +58,7 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 
 ### 6.4 App mounts and mounts
 
-`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, planning sets `workingDirectory`, exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT`, and records the result in `ServiceInfo`.
+`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, the app source mounts at the authored target, which defaults to `/app`. Planning sets `workingDirectory` to that target unless the author sets one or the type names another default (§6.12.1), exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT` as that container path, and records the result in `ServiceInfo`. Raw `compose` services get neither a default working directory nor injected environment (§6.9).
 
 | Mount type | Contract | Capability |
 |---|---|---|
@@ -298,7 +298,7 @@ Every canonical or plugin type MUST declare its base, resolve through features, 
 
 #### 6.12.2 Framework presets
 
-Language types may expose `framework:` presets as ordinary overridable config. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
+Language types may expose `framework:` presets as ordinary overridable config. A preset's default webroot is relative to the app mount, like an authored `webroot`. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
 
 Canonical PHP does not interpret framework ids. It uses `webroot` (§6.12.1) and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
 
