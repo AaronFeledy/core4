@@ -6,7 +6,7 @@ import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { mountAppRoot, parseServiceMount } from "./_volume-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
@@ -24,11 +24,24 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   }
 
   if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  const appMountTarget =
+    service.appMount !== false && typeof service.appMount === "object"
+      ? PortablePath.make(service.appMount.target)
+      : APP_MOUNT_TARGET;
+  ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget);
   applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
 
-  if (service.appMount !== false) {
-    mountAppRoot(ctx);
+  const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
+  if (service.appMount !== false && !authoredMounts.some((mount) => mount.target === appMountTarget)) {
+    mountAppRoot(ctx, { target: appMountTarget });
+  }
+  for (const mount of authoredMounts) {
+    ctx.addMount({
+      type: mount.type,
+      ...(mount.source === undefined ? {} : { source: mount.source }),
+      target: PortablePath.make(mount.target),
+      readOnly: mount.readOnly,
+    });
   }
 
   for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
