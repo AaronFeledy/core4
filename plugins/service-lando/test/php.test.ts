@@ -451,6 +451,17 @@ describe("php serving modes (via:)", () => {
     });
   });
 
+  test("an authored mount at another spelling of the moved app mount replaces the default bind", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      appMount: { target: "/site" },
+      mounts: [{ source: "./alternate", target: "/site/" }],
+    });
+
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
+  });
+
   test("plans authored PHP ini bind mounts alongside the app mount", async () => {
     const appRoot = "C:\\Users\\aaron\\Windows Projects\\windows-cms-fresh";
     const plan = await composePhpPlan(

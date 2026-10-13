@@ -13,8 +13,11 @@ import type { ServiceAppMountIntent, ServiceFeatureContext } from "@lando/sdk/se
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
+/** Canonical spelling of a container destination, so equivalent spellings compare equal. */
+export const canonicalTarget = (target: string): string => posix.resolve("/", target);
+
 export const appMountTarget = (appMount: ServiceConfig["appMount"]): PortablePath =>
-  PortablePath.make(posix.resolve("/", typeof appMount === "object" ? appMount.target : "/app"));
+  PortablePath.make(canonicalTarget(typeof appMount === "object" ? appMount.target : "/app"));
 
 export const appPaths = (appMount: ServiceConfig["appMount"]) => {
   const target = appMountTarget(appMount);
@@ -158,10 +161,10 @@ export const occupiedTargets = (service: ServiceConfig): ReadonlySet<string> => 
     targets.add(appMountTarget(service.appMount));
   }
   for (const mount of service.mounts ?? []) {
-    targets.add(typeof mount === "string" ? parseShortVolume(mount).target : mount.target);
+    targets.add(canonicalTarget(typeof mount === "string" ? parseShortVolume(mount).target : mount.target));
   }
   for (const storage of service.storage ?? []) {
-    targets.add(typeof storage === "string" ? storage : storage.target);
+    targets.add(canonicalTarget(typeof storage === "string" ? storage : storage.target));
   }
   return targets;
 };

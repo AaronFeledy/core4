@@ -13,7 +13,13 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appMountTarget, appPaths, mountAppRoot, parseServiceMount } from "./_volume-helpers.ts";
+import {
+  appMountTarget,
+  appPaths,
+  canonicalTarget,
+  mountAppRoot,
+  parseServiceMount,
+} from "./_volume-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
@@ -187,7 +193,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
-  if (!authoredMounts.some((mount) => mount.target === appMountTarget(service.appMount))) {
+  if (!authoredMounts.some((mount) => canonicalTarget(mount.target) === appMountTarget(service.appMount))) {
     mountAppRoot(ctx);
   }
   for (const mount of authoredMounts) {

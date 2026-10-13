@@ -11,6 +11,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
   appMountTarget,
+  canonicalTarget,
   classifyComposeVolume,
   mountAppRoot,
   occupiedTargets,
@@ -38,7 +39,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
   const optedOutOfAppMount =
     service.appMount === false ||
-    authoredMounts.some((mount) => mount.target === appMountTarget(service.appMount));
+    authoredMounts.some((mount) => canonicalTarget(mount.target) === appMountTarget(service.appMount));
   if (!optedOutOfAppMount) {
     mountAppRoot(ctx);
   }
@@ -57,7 +58,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   );
   const occupied = occupiedTargets(service);
   const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
-  for (const volume of composeVolumes.filter((entry) => !occupied.has(entry.target))) {
+  for (const volume of composeVolumes.filter((entry) => !occupied.has(canonicalTarget(entry.target)))) {
     switch (volume._tag) {
       case "mount":
         ctx.addMount({

@@ -398,6 +398,47 @@ describe("compose ServiceType (raw passthrough)", () => {
       });
     });
 
+    test("a compose volume at another spelling of the moved app mount does not add a second bind", async () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          worker: {
+            type: "compose",
+            image: "alpine:3",
+            appMount: { target: "/site" },
+            volumes: ["./x:/site/"],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = await planComposeService({ service, serviceName: "worker" });
+
+      expect(plan.mounts.map((mount) => String(mount.target))).toEqual(["/site"]);
+    });
+
+    test("an authored mount at another spelling of the moved app mount replaces the default bind", async () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          worker: {
+            type: "compose",
+            image: "alpine:3",
+            appMount: { target: "/site/" },
+            mounts: [{ source: "./alternate", target: "/site/./" }],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = await planComposeService({ service, serviceName: "worker" });
+
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
+    });
+
     test("appMount: false opts out — no appMount, no synthetic /app bind, no app-path env", async () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",
