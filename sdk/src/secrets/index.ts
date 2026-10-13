@@ -8,4 +8,5 @@
  */
 export * from "./redactor.ts";
 export * from "./redactor-profiles.ts";
+export * from "./public-default-credentials.ts";
 export { parseSecretReference, type ParsedSecretReference } from "./reference.ts";

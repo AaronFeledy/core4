@@ -172,6 +172,8 @@ Redaction is one non-replaceable security invariant shared by logs, events, runn
 
 `@lando/sdk/secrets` owns the pure `createSecretRedactor`, `createRedactor`, pattern catalog, profiles, `REDACTED`, deep `redactValue`, and the `redactString`, optional bounded-string, and structured-value operations. A consumer requiring bounded output MUST fail closed when bounded redaction is unavailable. `RedactionService` supplies the live value set and profile redactors without network, provider, or plugin access and is eager at `minimal`. Pure helpers that build output outside an Effect context, such as CLI diagnostics and `container-runtime` provider errors, use the standalone redactor from `@lando/redaction`. It applies the same profiles and every value registered so far, never resolves the secret store, and accepts caller tokens (for example build arguments) into the same longest-first value layer.
 
+Heuristic secret-key collection MUST exclude exact, case-sensitive matches of the published default credential values (`lando`, `landolando`) exported by `@lando/sdk/secrets`, without whitespace normalization. This exclusion MUST NOT apply to explicit token registration, secret-store values, or resolved `${secret:...}` values, and MUST NOT weaken pattern or deep-key masking.
+
 Consumers MUST compose this redactor and MUST NOT replace, weaken, or reimplement it. `redactValue` MUST preserve structure and MUST NOT throw on cyclic or exotic input. The lowercase `[redacted]` sentinel is canonical; transcript placeholders are a separate byte-stable contract. Boundary and fixture gates enforce this ownership (§13.1, §13.4).
 
 ---

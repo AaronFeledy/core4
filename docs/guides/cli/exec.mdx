@@ -64,6 +64,12 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 `app:exec` sets its own command exit code to the executed command's `exitCode`. A non-zero result is mirrored onto the CLI process, so `lando exec` propagates the target command's failure to the shell.
 
+## Masked output
+
+Lando masks credentials in what `lando exec`, `lando logs`, and tooling print. A value from a service environment key named like a password, token, key, or secret prints as `[redacted]`, and so does the password in a connection URL. The service itself still gets the real value.
+
+Lando's published default credentials, `lando` and `landolando`, print as-is. They're documented defaults, not secrets, and masking them would also blank `host.lando.internal` and every `lando doctor` hint. To keep a password masked, set your own or pull it from a [secret store](../config/secret-stores.mdx).
+
 ## Machine-readable output
 
 `--format json` emits one JSON object per stdout/stderr chunk, then exactly one result frame:

@@ -23,6 +23,7 @@
     "manifest": "./plugin.yaml"
   },
   "dependencies": {
+    "@lando/container-runtime": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",

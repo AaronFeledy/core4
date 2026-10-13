@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
@@ -9,6 +10,8 @@ import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
+
+afterEach(resetRegisteredRedactionValuesForTesting);
 
 const app = AppId.make("demo");
 const routes = [
@@ -746,6 +749,26 @@ describe("watcher diagnostics", () => {
     const harness = makeHarness(undefined, {
       readTraefikLogs: () => Effect.succeed({ providerId: "lando", text: `${failureText} TOKEN=${secret}` }),
     });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then
+    const failure = watcherFailure(exit);
+    const record = readRecord(harness.files);
+    for (const detail of [failure.detail, record.detail]) {
+      expect(detail).not.toContain(secret);
+      expect(detail).toContain("[redacted]");
+    }
+  });
+
+  test("masks registered values in watcher failures and persisted diagnostics", async () => {
+    // Given
+    const secret = "watcher-registered-canary";
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () => Effect.succeed({ providerId: "lando", text: `${failureText} ${secret}` }),
+    });
+    await Effect.runPromise(registerRedactionValues([secret]));
     // When
     const exit = await Effect.runPromiseExit(
       Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
