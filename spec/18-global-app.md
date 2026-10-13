@@ -141,7 +141,7 @@ The global app owns one route definition. After its groups are attempted, includ
 | `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |
 | `meta:global:list` | `global:list` | `minimal` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
 | `meta:global:logs` | `global:logs` | `global` | Stream logs with standard service, follow, tail, and since filters. |
-| `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); build follows §6.13 up-to-date semantics. |
+| `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); referenced artifacts refresh under §6.13.3 and build results follow §6.13.5. |
 | `meta:global:restart` | `global:restart` | `global` | Stop, then start, then router startup revalidation (§20.6.5). |
 | `meta:global:start` | `global:start` | `global` | Start all enabled services or repeated `--service` selections with their dependencies, then publish routes (§20.6.5). |
 | `meta:global:status` | `global:status` | `global` | Report live runtime status. |
@@ -204,7 +204,7 @@ Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Select
 
 #### 20.11.1 `@lando/service-mailpit` (canonical reference)
 
-The bundled `@lando/service-mailpit` plugin is the reference pairing of a `ServiceType`, enabled `globalServices: mailpit` contribution, `AppFeature.requires.globalServices`, and plugin-owned tooling commands. Its feature projects Mailpit connection values into selected user services without requiring user Landofile changes.
+The bundled `@lando/service-mailpit` plugin is the reference pairing of a `ServiceType`, enabled `globalServices: mailpit` contribution, `AppFeature.requires.globalServices`, and plugin-owned tooling commands. Its feature projects Mailpit connection values into selected user services without requiring user Landofile changes. Its web route is `mailpit.{{ proxy.defaultDomain }}`, resolved during global planning; a domain change moves it when global routes are next published (§20.6.5).
 
 #### 20.11.2 Migration of `@lando/proxy-traefik`
 

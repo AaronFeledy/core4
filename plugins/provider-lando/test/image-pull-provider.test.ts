@@ -41,6 +41,29 @@ const captureImagePullProgress = (events: ImagePullProgressEvent[], event: Publi
 };
 
 describe("provider pullArtifact", () => {
+  test("reuses a present local image when policy is missing without a registry pull", async () => {
+    // Given
+    const fake = makeApplyApi(200);
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
+            podmanApi: fake.api,
+          }),
+        ),
+      ),
+    );
+
+    // When
+    const result = await Effect.runPromise(provider.pullArtifact({ ref: applyRef, policy: "missing" }));
+
+    // Then
+    expect(result).toEqual({ providerId: applyProviderId, ref: applyRef });
+    expect(fake.requests).toEqual([`GET /libpod/images/${encodeURIComponent(applyRef)}/json`]);
+  });
+
   test("pulls an artifact ref through the provider and publishes progress events", async () => {
     const events: ImagePullProgressEvent[] = [];
     const provider = await Effect.runPromise(

@@ -107,6 +107,179 @@ const runStreamPull = async (
 };
 
 describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
+  test.each(["missing", "never"] as const)("reuses local images for %s", async (policy) => {
+    // Given
+    const reference = "docker.io/library/alpine:3.20";
+    const requests: EngineHttpRequest[] = [];
+    const events: ImagePullProgressEvent[] = [];
+    const api: EngineHttpApi = {
+      request: (request) => {
+        requests.push(request);
+        return Effect.succeed(inspectSuccess(reference));
+      },
+      stream: (request) => {
+        requests.push(request);
+        return Stream.fromIterable([bytes('{"status":"Pull complete"}\n')]);
+      },
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      pullImage(api, reference, {
+        ctx: dockerCtx,
+        dialect,
+        policy,
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
+      }),
+    );
+
+    // Then
+    expect(requests).toEqual([
+      {
+        method: "GET",
+        path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
+      },
+    ]);
+    expect(result).toEqual(
+      dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
+    );
+    expect(events).toEqual([]);
+  });
+
+  test("fails without pulling when policy is never and local inspect returns 404", async () => {
+    // Given
+    const reference = "alpine:3.20";
+    const requests: EngineHttpRequest[] = [];
+    const api: EngineHttpApi = {
+      request: (request) => {
+        requests.push(request);
+        return Effect.succeed({ status: 404, body: "{}" });
+      },
+      stream: (request) => {
+        requests.push(request);
+        return Stream.empty;
+      },
+    };
+
+    // When
+    const failure = await Effect.runPromise(
+      pullImage(api, reference, { ctx: dockerCtx, dialect, policy: "never" }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.operation).toBe("pullArtifact");
+    expect(failure.message).toContain(reference);
+    expect(requests).toEqual([
+      {
+        method: "GET",
+        path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
+      },
+    ]);
+  });
+
+  test("pulls when policy is missing and local inspect returns 404", async () => {
+    // Given
+    const reference = "alpine:3.20";
+    const requests: EngineHttpRequest[] = [];
+    let inspections = 0;
+    const api: EngineHttpApi = {
+      request: (request) => {
+        requests.push(request);
+        inspections += 1;
+        return Effect.succeed(inspections === 1 ? { status: 404, body: "{}" } : inspectSuccess(reference));
+      },
+      stream: (request) => {
+        requests.push(request);
+        return Stream.empty;
+      },
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      pullImage(api, reference, { ctx: dockerCtx, dialect, policy: "missing" }),
+    );
+
+    // Then
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[1]).toEqual(dialect.request(reference));
+    expect(result).toEqual(
+      dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
+    );
+  });
+
+  test.each(["always", undefined] as const)("pulls before any inspect when policy is %s", async (policy) => {
+    // Given
+    const reference = "alpine:3.20";
+    const requests: EngineHttpRequest[] = [];
+    const api: EngineHttpApi = {
+      request: (request) => {
+        requests.push(request);
+        return Effect.succeed(inspectSuccess(reference));
+      },
+      stream: (request) => {
+        requests.push(request);
+        return Stream.empty;
+      },
+    };
+
+    // When
+    await Effect.runPromise(
+      pullImage(api, reference, { ctx: dockerCtx, dialect, ...(policy === undefined ? {} : { policy }) }),
+    );
+
+    // Then
+    expect(requests[0]).toEqual(dialect.request(reference));
+    expect(requests).toHaveLength(dialect === dockerPullDialect ? 2 : 1);
+  });
+
+  test("fails without pulling when local inspect returns 500", async () => {
+    // Given
+    const requests: EngineHttpRequest[] = [];
+    const api: EngineHttpApi = {
+      request: (request) => {
+        requests.push(request);
+        return Effect.succeed({
+          status: 500,
+          body: '{"message":"https://user:s3cr3tPass@registry.internal"}',
+        });
+      },
+      stream: (request) => {
+        requests.push(request);
+        return Stream.empty;
+      },
+    };
+
+    // When
+    const failure = await Effect.runPromise(
+      pullImage(api, "alpine:3.20", { ctx: dockerCtx, dialect, policy: "missing" }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.operation).toBe("pullArtifact");
+    expect(JSON.stringify(failure)).not.toContain("s3cr3tPass");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("GET");
+  });
+
+  test("fails through missingApi when missing policy has no request transport", async () => {
+    // Given
+    const api: EngineHttpApi = { stream: () => Stream.empty };
+
+    // When
+    const failure = await Effect.runPromise(
+      pullImage(api, "alpine:3.20", { ctx: dockerCtx, dialect, policy: "missing" }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.operation).toBe("pullArtifact");
+  });
+
   test("maps shared status and progressDetail fields to progress", () => {
     // Given
     const line = '{"status":"Downloading","progressDetail":{"current":100,"total":200}}';

@@ -18,6 +18,7 @@ import {
 import { ServiceName } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type BuildOptions,
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
@@ -189,7 +190,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
-  execution: { readonly forceAppBuild?: boolean } = {},
+  execution: {
+    readonly buildOptions?: BuildOptions;
+    readonly forceAppBuild?: boolean;
+  } = {},
 ): Effect.fn.Return<StartAppResult, SdkStartAppError, BoundStartAppServices> {
   const resolvedOptions = options ?? {};
   const registry = yield* RuntimeProviderRegistry;
@@ -329,7 +333,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
             platform: provider.platform,
             ...(managed === undefined ? {} : { managed }),
             use: Effect.fnUntraced(function* (applyPlan) {
-              const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
+              const builtPlan = yield* withBuildProvider(
+                builds.build(applyPlan, execution.buildOptions),
+                provider,
+              );
               const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
               const serviceList = Object.values(builtPlan.services);
               const { pendingStart, preparedRollback, sessionLease } = yield* prepareAcceleratedStart(

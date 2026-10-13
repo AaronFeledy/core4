@@ -192,7 +192,6 @@ describe("layer deltas", () => {
       before: [{ name: "a", id: "1" }, { id: "1" }],
       after: [{ name: "a", id: "1", x: 1 }, { id: "1" }],
     },
-    { label: "clear keyed array", before: [{ name: "a" }], after: [] },
   ])("conservative whole-array relocation: $label", ({ before, after }) => {
     const result = check([prefix("dist", { items: before }), prefix("local", { items: after })]);
     expect(mergeLandofiles(result.emitted.map(({ fragment }) => fragment))).toEqual({ items: after });
@@ -217,14 +216,17 @@ describe("layer deltas", () => {
     expect(result.relocations).toEqual([]);
     expect(result.emitted[1]?.fragment).toEqual({ items: [{ name: "b" }] });
   });
-  test("empty keyed overlay leaves effective desired unchanged without relocation", () => {
-    const desired = mergeLandofiles([{ items: [{ name: "a" }] }, { items: [] }]);
-    const result = check([prefix("dist", { items: [{ name: "a" }] }), prefix("local", desired)]);
-    expect(desired).toEqual({ items: [{ name: "a" }] });
+  test("emits an empty object route array in the higher layer without relocation", () => {
+    // Given translated Lando 3 prefixes that clear inherited object routes.
+    const base = { services: { web: { routes: [{ hostname: "web.example.test" }] } } };
+    const local = { services: { web: { routes: [] } } };
+    // When the translator plans replayable layer fragments.
+    const result = check([prefix("dist", base), prefix("local", local)]);
+    // Then clearing stays in the higher layer, without a needs-review relocation.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([base, local]);
     expect(result.relocations).toEqual([]);
-    expect(result.emitted[1]?.fragment).toEqual({});
   });
-  test("nested arrays hoist their enclosing array without item path segments", () => {
+  test("clearing nested filters emits the changed route without relocation", () => {
     const result = check([
       prefix("dist", {
         services: {
@@ -233,7 +235,10 @@ describe("layer deltas", () => {
       }),
       prefix("local", { services: { web: { routes: [{ name: "a", filters: [] }, { name: "b" }] } } }),
     ]);
-    expect(result.relocations.map(({ unitPath }) => unitPath)).toEqual([keys("services", "web", "routes")]);
+    expect(result.relocations).toEqual([]);
+    expect(result.emitted[1]?.fragment).toEqual({
+      services: { web: { routes: [{ name: "a", filters: [] }] } },
+    });
   });
   test("replay accepts filter replacement despite removed nested fields", () => {
     const result = check([

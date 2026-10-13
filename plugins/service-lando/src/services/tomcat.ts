@@ -12,7 +12,6 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mountAppRoot } from "./_volume-helpers.ts";
 
@@ -69,7 +68,6 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: TomcatServiceConfig,
   resolve: (input) => {
-    const appName = appNameFor(input);
     return serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
       const webroot = input.service.webroot ?? DEFAULT_WEBROOT;
       Schema.decodeUnknownSync(TomcatDeployPath)(webroot);
@@ -81,9 +79,6 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
           image: input.service.image ?? image,
           webroot,
           certs: input.service.certs ?? true,
-          routes: input.service.routes ?? [
-            { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
-          ],
         },
         features: [{ id: TOMCAT_FEATURE_ID }],
       };

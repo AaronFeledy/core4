@@ -119,11 +119,11 @@ Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<d
 
 `hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Filters merge by `name`, then unnamed type identity, and retain authored order. Prefix stripping MUST NOT be implicit (§10.2).
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2).
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
-Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. LAN publication is opt-in and warns. Internal endpoints never bind the host.
+Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. When a service authors no routes, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
 Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
 
@@ -194,7 +194,7 @@ Contributed `logSources` MUST have unique ids, absolute paths, and compatible st
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay under §7.2. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
@@ -346,6 +346,8 @@ Ready predecessors are `complete` or `skip`. Interrupts propagate to in-flight p
 #### 6.13.3 Provider dispatch
 
 Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `RuntimeProvider.pullArtifact`; app scripts use `RuntimeProvider.execStream`. Every command retains its planned user, working directory, and environment. Providers MUST NOT re-resolve users at execution time.
+
+`BuildOrchestrator.build` defaults `BuildOptions.refresh` to false and acquires referenced artifacts with policy `missing`: reuse a provider-local copy and contact the source only when absent. App, scratch, and global start and restart, including global auto-start, use the default. `app:rebuild` and `meta:global:rebuild` pass `{ refresh: true }` so providers that declare `artifactPull` refresh referenced artifacts with `always`. When a refresh fails, the orchestrator tries the provider-local copy with `never` and on success records command warning `LANDO_ARTIFACT_REFRESH_FAILED`, failing with the original refresh error only when no local copy exists. Interrupts and defects propagate without fallback. Provider policies remain strict. Acquisition policy does not change build-result reuse under §6.13.5.
 
 #### 6.13.4 Failure policy
 

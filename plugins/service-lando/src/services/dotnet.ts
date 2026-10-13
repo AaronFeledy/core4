@@ -5,7 +5,6 @@ import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mountAppRoot } from "./_volume-helpers.ts";
@@ -61,7 +60,6 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: DotnetServiceConfig,
   resolve: (input) => {
-    const appName = appNameFor(input);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -69,9 +67,6 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
         type: "dotnet",
         image: input.service.image ?? image,
         certs: input.service.certs ?? true,
-        routes: input.service.routes ?? [
-          { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
-        ],
         storage: [...(input.service.storage ?? []), NUGET_CACHE],
       },
       features: [{ id: DOTNET_FEATURE_ID }],

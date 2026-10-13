@@ -51,6 +51,39 @@ services:
 
 Top-level `proxy:` is the other spelling: a map of service name to the same route list.
 
+## Override a list in a local layer
+
+Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
+
+Maps deep-merge, scalars and scalar arrays replace, and object arrays merge by recognized identity keys such as `name`, `id`, `hostname`, or `service`. Route filters match by `name`, or by `type` when unnamed. An explicitly empty array (`[]`) replaces the inherited array of any kind: routes, endpoints, mounts, tooling steps, and filters. Omit a key to leave its inherited value alone; use `[]` to clear its list. Mapping keys themselves cannot be deleted by an overlay.
+
+For example, start with this `.lando.yml`:
+
+```yaml
+name: empty-routes-overlay
+services:
+  web:
+    type: "node:22"
+    routes:
+      - hostname: web.example.test
+```
+
+Clear the inherited routes in `.lando.local.yml`:
+
+```yaml
+services:
+  web:
+    routes: []
+```
+
+Inspect the merged config without starting containers:
+
+```sh
+lando app:config --format=json
+```
+
+`services.web.routes` is now `[]`, not the inherited object route. Non-empty object overlays still merge matching entries rather than replacing the whole list.
+
 ## Reach for other keys
 
 | Key | What it does |
@@ -78,6 +111,19 @@ lando info
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"your-landofile-demo\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"tooling\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="empty-routes-overlay" render={false} reason="Regression coverage: a local empty list clears inherited object routes">
+    <Step name="scaffold-layers">
+      <UseFixture name="empty-routes-overlay" />
+    </Step>
+    <Step name="inspect-cleared-routes">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"routes\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "web\\.example\\.test" } } }} />
+    </Step>
+    <Step name="cleanup-layers">
+      <Cleanup />
     </Step>
   </Scenario>
 </Guide>

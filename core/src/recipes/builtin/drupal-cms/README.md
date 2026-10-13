@@ -39,7 +39,8 @@ metadata is the patch commit's `composer.json` verbatim plus two Lando-authored
 fields: `version: 3.x-dev` (the 3.x development line the patch targets) and a
 git `source` pinned to `c788b1e2f2be29f62c9812b2b0558472afa61d6d`. The root
 requires `drupal/svg_image:3.x-dev` and `enshrined/svg-sanitize:^1.0`, with no
-alias. Composer resolves the lock without installing, the scaffold verifies the
+alias, plus `drupal/drupal_cms_starter:^2`, which `drupal/cms` no longer requires
+itself. The scaffold fails if that recipe is not installed. Composer resolves the lock without installing, the scaffold verifies the
 repository and locked source and metadata, audits the lock, installs, verifies
 the checkout, replays the deferred root `post-update-cmd` and
 `post-create-project-cmd` hooks (recipe unpack), then re-verifies and

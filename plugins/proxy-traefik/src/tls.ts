@@ -57,7 +57,7 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
   if (input.refreshDefaultCertificate || !hasDefaultCertificate) {
     const issued = yield* dependencies.certificateAuthority.issueCert({
       cn: `*.${input.defaultDomain}`,
-      sans: [`*.${input.defaultDomain}`, input.defaultDomain, "traefik.lndo.site"],
+      sans: [`*.${input.defaultDomain}`, input.defaultDomain, `traefik.${input.defaultDomain}`],
     });
     yield* copyCertificate(dependencies, issued.certPath, defaultFiles.cert);
     yield* copyPrivateKey(dependencies, issued.keyPath, defaultFiles.key);

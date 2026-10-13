@@ -107,7 +107,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
     { discard: true },
   );
   yield* stopSelected;
-  const builtPlan = yield* withBuildProvider(builds.build(plan), provider);
+  const builtPlan = yield* withBuildProvider(builds.build(plan, { refresh: true }), provider);
   const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
   const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
   const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
@@ -207,7 +207,12 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
                   },
                   resolvedTarget,
                   managed,
-                  { forceAppBuild: true, skipInitEvents: true, transactionPreflightDone: true },
+                  {
+                    buildOptions: { refresh: true },
+                    forceAppBuild: true,
+                    skipInitEvents: true,
+                    transactionPreflightDone: true,
+                  },
                 ),
                 proxy.removeRoutes(plan.id),
                 isPostStartStepError,

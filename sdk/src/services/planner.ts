@@ -32,6 +32,16 @@ export type AppPlannerError =
 export type BuildError = EventError | ProviderSelectionError | ProviderError;
 export type BuildAppError = BuildError | BuildPhaseFailedError;
 
+export interface BuildOptions {
+  /**
+   * Refresh referenced artifacts from their source. When a refresh fails and the
+   * provider still has a local copy, the build continues with that copy and publishes
+   * a warning, failing only when no local copy exists. Defaults to false: reuse local
+   * copies and acquire only absent artifacts.
+   */
+  readonly refresh?: boolean;
+}
+
 export interface BuildAppOptions {
   readonly force?: boolean;
   readonly signal?: AbortSignal;
@@ -50,7 +60,7 @@ export class AppPlanner extends Context.Service<
 export class BuildOrchestrator extends Context.Service<
   BuildOrchestrator,
   {
-    readonly build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>;
+    readonly build: (plan: AppPlan, options?: BuildOptions) => Effect.Effect<AppPlan, BuildError>;
     readonly buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildAppError>;
   }
 >()("@lando/core/BuildOrchestrator") {}

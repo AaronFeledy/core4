@@ -69,24 +69,25 @@ ports:
 
 ## The proxy does not widen LAN reach
 
-The proxy answers a hostname like `web.external-access-demo.lndo.site`, but that hostname only resolves on this machine. `lando setup` writes `*.lndo.site` resolution into this machine's DNS only. It never touches other devices.
+The proxy answers a hostname like `web.external-access-demo.lndo.site`. Public DNS resolves `*.lndo.site` to `127.0.0.1`, and Lando does not write host DNS rules. On another device, that address points at the device itself, not your app host.
 
 Proxy routing and published ports are independent. Reaching a proxied hostname from the host does not need a `ports:` entry. `ports:` only controls direct host-port publication.
 
-Another device on the LAN has no `*.lndo.site` DNS entry, so it cannot reach the proxy by hostname. It can reach an explicitly bound `IP:port`, or you can add an equivalent hosts entry on that device.
+Another device can reach an explicitly bound `IP:port`. To use a proxy hostname there, point it at the app host's LAN IP with your own DNS or hosts entry and ensure the proxy listener and firewall allow LAN access.
 
 ## Custom domains and DNS rebinding
 
-`*.lndo.site` is written on this machine by `lando setup`. It never goes through your LAN router.
+Public `*.lndo.site` answers pass through your configured resolver, which may be your LAN router. Offline hosts or unreachable public DNS can make these names fail.
 
-A custom hostname you point at `127.0.0.1` often does. Many home and office routers refuse DNS answers that map a public-looking name to loopback. That protection is called DNS rebinding, and it makes the custom name fail on this host even though the app is running.
+Many home and office resolvers/routers also drop DNS answers that map a public-looking name to loopback. DNS-rebinding protection can block both `*.lndo.site` and custom domains even while the app is running.
 
-Lando has no flag that turns that protection off. Pick one of these:
+Lando has no flag that changes host DNS or turns that protection off. Choose the fix for your network:
 
-1. Keep the default `*.lndo.site` names and run `lando setup` so this machine resolves them locally. See [Resolve lndo.site on this machine](./host-proxy.mdx).
-2. Own DNS yourself: `lando setup --host-proxy=none`, then add `/etc/hosts` or dnsmasq entries on this machine.
-3. From another device, skip hostnames. Use the LAN `IP:port` from the bind above.
-4. On the router, allowlist the custom zone or disable DNS rebinding protection for it. That is a router setting, not a Lando setting.
+- Configure a local dnsmasq or OS resolver rule that maps `*.<domain>` to `127.0.0.1`, or add hosts entries for individual names. Use your `proxy.defaultDomain` (default `lndo.site`). See [Resolve lndo.site on this machine](./host-proxy.mdx).
+- If your resolver blocks loopback answers, allowlist the specific development zone, including `lndo.site` if you use it. Keep DNS-rebinding protection enabled for other zones.
+- From another device, use the LAN `IP:port` from the bind above, or configure that device's hostname resolution to the app host's LAN IP, not loopback.
+
+Run `lando doctor` on the app host after changing its DNS rule.
 
 Proxy hostname routing is covered in [Use the Traefik proxy](./proxy-traefik.mdx).
 

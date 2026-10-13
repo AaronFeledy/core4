@@ -82,10 +82,13 @@ const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "di
 
 export const isReadySubsystemId = (serviceId: string): boolean => !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
 
-const manualSetupSolution = (description: string, command = "lando setup"): DoctorSolution => ({
+const manualSetupSolution = (
+  description: string,
+  command: string | null = "lando setup",
+): DoctorSolution => ({
   kind: "manual",
   description,
-  command,
+  ...(command === null ? {} : { command }),
 });
 
 const automaticFixSolution = (description: string): DoctorSolution => ({
@@ -103,9 +106,9 @@ export interface SubsystemSpec {
    */
   readonly manualRemediation: string;
   /**
-   * Command shown for manual remediation (defaults to "lando setup").
+   * Command shown for manual remediation (defaults to "lando setup"; null omits it).
    */
-  readonly manualCommand?: string;
+  readonly manualCommand?: string | null;
   /**
    * Remediation advertised for a degraded `automatic` subsystem in read-only
    * mode (before `--fix` is run).
@@ -155,8 +158,9 @@ export const SCANNER_SPEC: SubsystemSpec = {
 export const HOST_PROXY_SPEC: SubsystemSpec = {
   name: "host-proxy",
   recovery: "manual",
+  manualCommand: null,
   manualRemediation:
-    "Host DNS integration is inactive. If .lndo.site routes do not resolve to 127.0.0.1, run `lando setup` to configure hostname resolution. Container-to-host callbacks are checked separately under host-proxy-transport.",
+    "Add a local DNS rule (dnsmasq or your OS resolver) that resolves *.<proxy.defaultDomain> to 127.0.0.1. The default lndo.site relies on public DNS, which fails offline or behind a resolver that drops loopback answers (DNS-rebinding protection).",
 };
 
 const SUBSYSTEM_SPECS: ReadonlyArray<SubsystemSpec> = [

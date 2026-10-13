@@ -148,7 +148,7 @@ describe("meta:doctor subsystem checks", () => {
     const hostProxy = result.checks.find((check) => check.name === "host-proxy");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.dnsResolved).toBe("false");
-    expect(hostProxy?.solutions[0]?.description).toContain("Configure a local DNS rule");
+    expect(hostProxy?.solutions[0]?.description).toContain("Add a local DNS rule");
     expect(hostProxy?.solutions[0]?.command).toBeUndefined();
   });
 
@@ -175,7 +175,8 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.active).toBe("true");
     expect(hostProxy?.context.dnsResolved).toBe("false");
-    expect(hostProxy?.solutions[0]?.command).toBe("lando setup");
+    expect(hostProxy?.solutions[0]?.kind).toBe("manual");
+    expect(hostProxy?.solutions[0]?.command).toBeUndefined();
   });
 
   test("reports lookup failures as unresolved without leaking resolver errors", async () => {
