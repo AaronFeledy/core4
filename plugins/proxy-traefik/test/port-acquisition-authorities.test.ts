@@ -111,6 +111,7 @@ describe("acquisition authority ports", () => {
     // Given: classification is forced to a successful privileged bind.
     const store = memoryFiles();
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,
@@ -156,6 +157,7 @@ describe("acquisition authority ports", () => {
     const store = memoryFiles();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,
@@ -218,6 +220,7 @@ describe("stale socketsActive restart", () => {
     const privilege = makePrivilege();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,

@@ -152,6 +152,7 @@ const makeDeps = (
   store: ReturnType<typeof memoryFiles>,
   classifyOverride: ClassifyOverride,
 ): TraefikProxyDependencies => ({
+  probeForward: () => Effect.succeed({ kind: "success" }),
   certificateAuthority: makeTestCertificateAuthority(),
   fileSystem: store.fileSystem,
   paths,
@@ -358,6 +359,7 @@ describe("setup try-list probe walk", () => {
     const store = memoryFiles();
     const probed: number[] = [];
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,

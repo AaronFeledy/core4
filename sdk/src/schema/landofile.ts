@@ -715,7 +715,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "Internal or published network endpoints exposed by the service.",
     }),
     routes: Schema.optionalKey(Schema.Array(RouteInput)).annotate({
-      description: "Hostnames routed to service endpoints.",
+      description:
+        "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckField),

@@ -111,6 +111,7 @@ const makeHarness = (
   };
   const service = makeTraefikRouterService({
     ...watcherDependencies,
+    probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
@@ -160,6 +161,7 @@ const makeHarness = (
   const makePersistedService = (watcherDependencies: WatcherDependencies = {}) =>
     makeTraefikRouterService({
       ...watcherDependencies,
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

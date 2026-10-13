@@ -44,7 +44,7 @@ HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTP
 
 The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-proxy.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
-You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
+Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published endpoints still work.
 
 ## Change the default domain
 
@@ -86,6 +86,13 @@ Router ports are shared by every app. After changing the `router` block in `conf
 ```sh
 lando setup
 lando info
+```
+
+After Traefik starts or restarts, Lando gives it up to 10 seconds to answer on both router ports before it warns. If `lando global:restart` or `lando global:rebuild` still warns that the ports did not answer, read Traefik's startup log and check the published ports:
+
+```sh
+lando global:logs --service=traefik --tail=100
+lando global:info
 ```
 
 ## Read an unmatched host
