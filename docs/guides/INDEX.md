@@ -142,6 +142,7 @@ the Beta guides above.
 |---|---|---|---|---|
 | — | — | php service type (runtime + framework presets) | `docs/guides/services/php.mdx` | Shipped |
 | — | — | node service type | `docs/guides/services/node.mdx` | Shipped |
+| — | — | compile PHP CMS theme assets with a Node sidecar | `docs/guides/services/node-theme-assets.mdx` | Shipped |
 | — | — | python service type | `docs/guides/services/python.mdx` | Shipped |
 | — | — | ruby service type | `docs/guides/services/ruby.mdx` | Shipped |
 | — | — | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |
@@ -271,7 +272,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | WordPress recipe day-to-day workflow | `docs/guides/recipes/wordpress-workflow.mdx` | Shipped |
 | — | — | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | — | — | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
-| — | — | compile PHP CMS theme assets with a Node sidecar | `docs/guides/services/node-theme-assets.mdx` | Shipped |
 | — | — | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
