@@ -38,7 +38,7 @@ const requireConfigExpressionError = (failure: unknown): ConfigExpressionError =
   return failure;
 };
 
-const phpishDraft = (routes: ReadonlyArray<NormalizedRoute>): PlannedServiceDraft => ({
+const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): PlannedServiceDraft => ({
   name: "appserver",
   hostnames: [],
   authoredArtifact: undefined,
@@ -126,11 +126,52 @@ describe("resolveRoute hostname expressions", () => {
 });
 
 describe("finalizeServices auto-generated hostnames", () => {
+  test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
+    // Given
+    const draft = phpishDraft(undefined);
+    const plannedServiceDraft: PlannedServiceDraft = {
+      ...draft,
+      draft: {
+        ...draft.draft,
+        endpoints: [
+          { _tag: "internal", protocol: "tcp", port: 1025, name: "smtp" },
+          { _tag: "internal", protocol: "http", port: 8025, name: "ui" },
+          { _tag: "internal", protocol: "http", port: 8080, name: "secondary" },
+        ],
+      },
+    };
+
+    // When
+    const finalized = await Effect.runPromise(
+      finalizeServices({
+        plannedServiceDrafts: [plannedServiceDraft],
+        appId: AppId.make(APP_SLUG),
+        appRoot: APP_ROOT,
+        appSlug: APP_SLUG,
+        appName: APP_NAME,
+        defaultDomain: "lando.test",
+        provider: PROVIDER,
+        providerCapabilities: TestRuntimeProvider.capabilities,
+        metadata,
+        fileSyncEngineId: undefined,
+      }),
+    );
+
+    // Then
+    expect(finalized.routes).toHaveLength(1);
+    expect(finalized.routes[0]).toMatchObject({
+      hostname: `appserver.${APP_SLUG}.lando.test`,
+      scheme: "https",
+      endpoint: "ui",
+      backend: { service: "appserver", protocol: "http", port: 8025 },
+    });
+  });
+
   test("still auto-generates service.slug.lndo.site without authored routes", async () => {
     // Given / When
     const finalized = await Effect.runPromise(
       finalizeServices({
-        plannedServiceDrafts: [phpishDraft([])],
+        plannedServiceDrafts: [phpishDraft(undefined)],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,

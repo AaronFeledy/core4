@@ -6,6 +6,34 @@ import {
 } from "../../src/services/app-plan-redaction.ts";
 
 describe("app-plan redaction tokens", () => {
+  test("excludes published default credentials while collecting custom plan passwords", () => {
+    // Given
+    const plan = {
+      services: {
+        database: { environment: { MYSQL_PASSWORD: "lando", MYSQL_ROOT_PASSWORD: "lando" } },
+        storage: { environment: { MINIO_ROOT_PASSWORD: "landolando" } },
+        custom: { environment: { DB_PASSWORD: "private-plan-password" } },
+      },
+    };
+    // When
+    const tokens = collectAppPlanRedactionTokens(plan);
+    // Then
+    expect(tokens).toEqual(["private-plan-password"]);
+  });
+
+  test("excludes published defaults from authored passwords, labels, and tooling environment", () => {
+    // Given
+    const landofile = {
+      services: { database: { password: "lando", labels: { "db.password": "landolando" } } },
+      tooling: { task: { env: { DB_PASSWORD: "lando" } } },
+      toolingDefaults: { env: { API_SECRET: "landolando", CUSTOM_PASSWORD: "private-tooling-password" } },
+    };
+    // When
+    const tokens = collectLandofileRedactionTokens(landofile);
+    // Then
+    expect(tokens).toEqual(["private-tooling-password"]);
+  });
+
   test("includes secret service environment values from an app plan", () => {
     // Given
     const canary = "env-file-json-canary";

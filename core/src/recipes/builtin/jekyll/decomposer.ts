@@ -22,7 +22,7 @@ export const jekyllDecomposer = makeZeroOptionDecomposer({
         primary: false,
         type: "static:nginx",
         appMount: { target: "/app" },
-        webroot: "/app/_site",
+        webroot: "_site",
         routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
       },
     },

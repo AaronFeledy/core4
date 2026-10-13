@@ -1273,8 +1273,13 @@ describe("AppPlannerLayer.layer", () => {
           | undefined
       )?.buildSteps;
       expect(buildSteps?.[0]?.id).toBe("lando.boot:scaffold");
-      expect(buildSteps?.slice(1).every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
-      expect((buildSteps?.length ?? 0) > 1).toBe(true);
+      expect(buildSteps?.slice(0, 3).map((step) => step.id)).toEqual([
+        "lando.boot:scaffold",
+        "service-lando.http-errors:pages",
+        "service-lando.nginx:default-site",
+      ]);
+      expect(buildSteps?.slice(3).every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
+      expect((buildSteps?.length ?? 0) > 3).toBe(true);
     });
   });
 

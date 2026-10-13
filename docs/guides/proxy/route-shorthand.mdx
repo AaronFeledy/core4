@@ -167,9 +167,9 @@ apps: Lando does not assign hostname ownership between apps.
 Equivalent declarations of one match dedupe. Different backends or ordered filter
 operations for the same match fail planning with `RouteInputError`, naming the
 authored entries. `both` overlaps each individual scheme; it cannot hide a conflict.
-An omitted filter list equals an empty list. Filter `name` controls layer merging,
+After layer merging, an omitted filter list equals an empty list for this conflict check. Filter `name` controls layer merging,
 not HTTP execution, so changing only that name does not create a distinct route.
-Layer precedence and filter merging happen before this check and are unchanged.
+Layer precedence and filter merging happen before this check.
 
 ## Add filters
 
@@ -260,6 +260,8 @@ routes:
 ```
 
 merges to exactly two filters: `strip-v1` with `prefix: /v2` and one `responseHeader` with `value: local`. Give a filter a `name` whenever two filters share a `type` on the same route; otherwise an overlay can only replace the first unnamed one.
+
+To clear every inherited filter on a matching route, set `filters: []` in the higher layer. Omitting `filters` keeps the inherited list. The same empty-list rule applies to `routes: []`, `endpoints: []`, and every other array. See [Override a list in a local layer](../landofile/your-landofile.mdx#override-a-list-in-a-local-layer) for a two-file routes example.
 
 ## Check what merged
 

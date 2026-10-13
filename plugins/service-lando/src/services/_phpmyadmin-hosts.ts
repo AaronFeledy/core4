@@ -1,5 +1,6 @@
 import { PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { AppFeatureServiceView } from "@lando/sdk/services";
 
 export type PmaCreds = {
@@ -7,7 +8,7 @@ export type PmaCreds = {
   readonly password: string;
 };
 
-const DEFAULT_CREDS: PmaCreds = { user: "lando", password: "lando" };
+const DEFAULT_CREDS: PmaCreds = { user: "lando", password: DEFAULT_PASSWORD };
 
 export const authoredPmaCreds = (config: ServiceConfig): PmaCreds | undefined => {
   const user = config.creds?.user;

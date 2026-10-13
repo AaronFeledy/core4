@@ -5,7 +5,7 @@ import { ServiceConfig } from "@lando/sdk/schema";
 
 import mailpitGlobalService from "../../src/global-services/mailpit.ts";
 import {
-  MAILPIT_DASHBOARD_HOSTNAME,
+  MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION,
   MAILPIT_IMAGE,
   MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
@@ -50,15 +50,15 @@ describe("mailpit global service ServiceConfig", () => {
     expect(config.hostnames).toContain(MAILPIT_SHARED_NETWORK_HOST);
   });
 
-  test("routes the web UI through mailpit.lndo.site by default", async () => {
+  test("leaves the web UI domain expression for the global planner", async () => {
     const config = await decodeConfig();
-    expect(MAILPIT_DASHBOARD_HOSTNAME).toBe("mailpit.lndo.site");
     const routes = config.routes ?? [];
     const webRoute = routes.find(
       (route): route is Exclude<(typeof routes)[number], string> =>
-        typeof route !== "string" && route.hostname === MAILPIT_DASHBOARD_HOSTNAME,
+        typeof route !== "string" && route.hostname === MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION,
     );
     expect(webRoute).toBeDefined();
+    expect(webRoute?.hostname).toBe("mailpit.{{ proxy.defaultDomain }}");
     expect(webRoute?.endpoint).toBe(MAILPIT_WEB_PORT);
   });
 });

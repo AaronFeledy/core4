@@ -1,14 +1,14 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
-import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import { cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:734160ff120bb8f081eaae70643aa1562c5747375bb9c023da4aea72ccec3ea3";
+  "sha256:7cbb3ec383cb13f76defc11dba2a8aecfadcc5af1160e84a58529a1d32f08b25";
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal",
@@ -22,7 +22,7 @@ export const drupalDefaults = {
   webserver: "apache",
   database: "mariadb:11.4",
   composer: "2",
-  webroot: "/app/web",
+  webroot: "web",
 } as const;
 /**
  * The scaffold tooling command defers its Drupal major version to the recipe
@@ -40,7 +40,7 @@ export const drupalSnapshot: RecipeSnapshot = {
     webserver: { kind: "enum", values: ["apache", "nginx"] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
-    webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+    webroot: { kind: "string", pattern: WEBROOT_PATTERN.source },
   },
   defaults: drupalDefaults,
   template: {

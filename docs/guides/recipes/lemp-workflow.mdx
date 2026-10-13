@@ -21,8 +21,8 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 
 | Piece | What you get |
 | --- | --- |
-| `web` | `nginx`, `backend: appserver`, webroot `/app`, HTTP and HTTPS routes, not primary |
-| `appserver` | `php:8.4`, `framework: none`, `via: fpm`, webroot `/app`, primary, depends on `database` |
+| `web` | `nginx`, `backend: appserver`, webroot `.`, HTTP and HTTPS routes, not primary |
+| `appserver` | `php:8.4`, `framework: none`, `via: fpm`, webroot `.`, primary, depends on `database` |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 

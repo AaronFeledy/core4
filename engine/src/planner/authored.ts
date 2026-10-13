@@ -111,7 +111,12 @@ export const normalizeAuthoredRoutes = (input: {
   readonly name: string;
   readonly service: ServiceConfig;
   readonly landofile: LandofileShape;
-}): Effect.Effect<ReadonlyArray<NormalizedRoute>, RouteInputError> => {
+}): Effect.Effect<ReadonlyArray<NormalizedRoute> | undefined, RouteInputError> => {
+  if (
+    input.service.routes === undefined &&
+    input.landofile.proxy?.[ServiceName.make(input.name)] === undefined
+  )
+    return Effect.succeed(undefined);
   const serviceRoutes = normalizeRoutes(input.service.routes ?? [], {
     keyPath: `services.${input.name}.routes`,
   });

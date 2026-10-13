@@ -13,7 +13,7 @@ import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
 import { lampRecipeYaml } from "../../src/recipes/builtin/lamp/manifest.ts";
 import { lampProducer, lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
 
-const defaults = { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "/app" };
+const defaults = { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "." };
 const alternatives = { php: "8.1", database: "mysql:8.0", composer: "false", webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: lampProducer, options: defaults, secrets: {} };
 const decomposer = lampDecomposer({
@@ -100,7 +100,7 @@ describe("lamp decomposition", () => {
     ["composer", false],
     ["composer", "3"],
     ["webroot", 42],
-    ["webroot", "relative"],
+    ["webroot", "unsafe path"],
     ["webroot", "/app;bad"],
   ] as const)("rejects %s=%s with a typed option path", (name, value) => {
     // Given

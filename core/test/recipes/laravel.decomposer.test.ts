@@ -17,7 +17,7 @@ const defaults = {
   php: "8.4",
   database: "mariadb:11.4",
   composer: "2",
-  webroot: "/app/public",
+  webroot: "public",
   worker: false,
 };
 const alternate = {
@@ -120,7 +120,7 @@ describe("Laravel deterministic decomposition", () => {
     ["composer", "3"],
     ["composer", "false"],
     ["webroot", false],
-    ["webroot", "relative"],
+    ["webroot", ""],
     ["webroot", "/app/unsafe path"],
     ["worker", "true"],
   ] as const)("rejects invalid %s option %s with its typed path", (name, value) => {
@@ -151,7 +151,7 @@ describe("Laravel deterministic decomposition", () => {
       php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] },
       database: { kind: "enum", values: ["mariadb:11.4", "postgres:16"] },
       composer: { kind: "enum", values: ["2", "2.7.7"] },
-      webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+      webroot: { kind: "string", pattern: "^[A-Za-z0-9._/-]+$" },
       worker: { kind: "boolean" },
     });
     expect<unknown>(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(

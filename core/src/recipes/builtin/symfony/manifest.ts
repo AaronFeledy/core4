@@ -31,7 +31,7 @@ prompts:
 ${phpPromptYaml}
 ${databasePromptYaml(SYMFONY_DATABASES)}
 ${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
-${webrootPromptYaml("/app/public")}
+${webrootPromptYaml("public")}
 files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml

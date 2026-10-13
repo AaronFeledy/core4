@@ -14,6 +14,18 @@ const translate = (text: string) => {
   return Effect.runPromise(translator.translate(documentSet([document(".lando.yml", text)])));
 };
 
+test("omits the source webroot when translating a Tomcat app-root deployment", async () => {
+  // Given / When: a complete Lando 3 document deploys the app root.
+  const result = await translate('services: {java: {type: "tomcat:10", webroot: "."}}');
+  // Then: the translated service can use Tomcat's default absolute deploy path.
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    { services: { java: { type: "tomcat:10" } } },
+  ]);
+  expect(result.diagnostics).toEqual([
+    expect.objectContaining({ kind: "rewritten", keyPath: ["services", "java", "webroot"] }),
+  ]);
+});
+
 test("lowers catalog services when a document declares database and node", async () => {
   // Given / When
   const result = await translate(
@@ -354,7 +366,7 @@ test("writes MySQL authentication into 99-lando.cnf ahead of authored build step
   ]);
 });
 
-test("rewrites app-relative webroots as container paths across a service and its companion", async () => {
+test("preserves app-relative webroots across a service and its companion", async () => {
   // Given / When
   const result = await translate(
     "services:\n  appserver:\n    type: php:8.3\n    via: nginx\n    webroot: web\n  legacy:\n    type: apache\n    webroot: ./public/\n",
@@ -363,9 +375,9 @@ test("rewrites app-relative webroots as container paths across a service and its
   expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
     {
       services: {
-        appserver: { type: "php:8.3", via: "fpm", webroot: "/app/web" },
-        "appserver-nginx": { type: "nginx", backend: "appserver", webroot: "/app/web" },
-        legacy: { type: "apache", webroot: "/app/public" },
+        appserver: { type: "php:8.3", via: "fpm", webroot: "web" },
+        "appserver-nginx": { type: "nginx", backend: "appserver", webroot: "web" },
+        legacy: { type: "apache", webroot: "./public/" },
       },
     },
   ]);
@@ -373,8 +385,6 @@ test("rewrites app-relative webroots as container paths across a service and its
     { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "generated", keyPath: ["services", "appserver", "via"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "via"] },
-    { kind: "rewritten", keyPath: ["services", "appserver", "webroot"] },
-    { kind: "rewritten", keyPath: ["services", "legacy", "webroot"] },
   ]);
 });
 

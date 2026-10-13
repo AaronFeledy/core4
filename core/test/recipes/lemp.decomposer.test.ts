@@ -32,7 +32,7 @@ const authoring = {
       type: "nginx",
       primary: false,
       backend: "appserver",
-      webroot: "/app",
+      webroot: ".",
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     },
     appserver: {
@@ -40,7 +40,7 @@ const authoring = {
       primary: true,
       framework: "none",
       via: "fpm",
-      webroot: "/app",
+      webroot: ".",
       dependsOn: ["database"],
     },
     database: { type: "mariadb" },
@@ -72,10 +72,10 @@ describe("lemp decomposition", () => {
       type: "nginx",
       primary: false,
       backend: "appserver",
-      webroot: "/app",
+      webroot: ".",
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
-    expect(fragment.services?.appserver).toMatchObject({ primary: true, via: "fpm", webroot: "/app" });
+    expect(fragment.services?.appserver).toMatchObject({ primary: true, via: "fpm", webroot: "." });
     expect(fragment.services?.appserver).not.toHaveProperty("routes");
   });
 

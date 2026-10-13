@@ -142,7 +142,7 @@ you set.
 
 ## Set the webroot yourself
 
-`framework: wordpress` installs pinned, checksum-verified WP-CLI on stock PHP images, sets `WP_CLI_ALLOW_ROOT=1` for tooling, and writes `conf.d/50-lando-wordpress.ini` with `memory_limit = 512M` for CLI and web PHP alike; a later drop-in such as `zz-custom.ini` overrides it. No framework name switches the served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you set `webroot:`. To serve a framework public directory, point `webroot:` at that path, or put nginx in front with `via: fpm`. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
+`framework: wordpress` installs pinned, checksum-verified WP-CLI on stock PHP images, sets `WP_CLI_ALLOW_ROOT=1` for tooling, and writes `conf.d/50-lando-wordpress.ini` with `memory_limit = 512M` for CLI and web PHP alike; a later drop-in such as `zz-custom.ini` overrides it. No framework name switches the served webroot for Drupal, Laravel, Symfony, or WordPress. Omit `webroot:` or use `.` to serve the app root at `/app`. To serve a framework public directory, set `webroot: public`, or put nginx in front with `via: fpm`. Relative paths resolve against `/app`; `LANDO_WEBROOT` inside the container is always the resolved absolute path. An absolute value such as `webroot: /srv/site` is allowed when you need a very specific container path outside the usual app layout. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
 
 ## Run Composer
 

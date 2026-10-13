@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
+import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
@@ -14,7 +15,6 @@ const CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
 
 export const MINIO_FEATURE_ID = "service-lando.minio";
-export const MINIO_DEFAULT_ROOT_PASSWORD = "landolando";
 
 const bucketNameFor = (value: string): string => {
   const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -29,7 +29,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const appName = appNameFor(ctx);
   const apiPort = service.port ?? DEFAULT_API_PORT;
   const rootUser = service.environment?.MINIO_ROOT_USER ?? "lando";
-  const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? MINIO_DEFAULT_ROOT_PASSWORD;
+  const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? MINIO_DEFAULT_PASSWORD;
   const bucket = bucketNameFor(service.database ?? appName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -103,12 +103,6 @@ export const minioServiceType: ServiceType = {
       normalizedConfig: {
         ...input.service,
         type: "minio",
-        routes: input.service.routes ?? [
-          {
-            hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
-            endpoint: CONSOLE_PORT,
-          },
-        ],
       },
       features: [{ id: MINIO_FEATURE_ID }],
       tooling: { mc: { service: input.name, cmd: "mc" } },

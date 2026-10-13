@@ -71,23 +71,7 @@ describe("mailpit ServiceType", () => {
     expect(plan.environment).toMatchObject({ MP_SMTP_BIND_ADDR: "0.0.0.0:2525" });
   });
 
-  test("resolves a default web UI route", async () => {
-    const resolution = await Effect.runPromise(
-      mailpitServiceType.resolve({
-        name: "mail",
-        service: serviceConfig({ type: "mailpit" }),
-        appRoot: "/srv/apps/myapp",
-        appName: "myapp",
-        metadata,
-      }),
-    );
-
-    expect(resolution.normalizedConfig.routes).toEqual([
-      { hostname: "mail.myapp.lndo.site", endpoint: 8025 },
-    ]);
-  });
-
-  test("authored routes replace the default route", async () => {
+  test("preserves authored routes", async () => {
     const routes = [{ hostname: "inbox.example.test", scheme: "https", endpoint: 8025 }] as const;
     const resolution = await Effect.runPromise(
       mailpitServiceType.resolve({

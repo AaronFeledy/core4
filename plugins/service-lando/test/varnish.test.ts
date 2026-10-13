@@ -96,12 +96,9 @@ describe("varnish ServiceType", () => {
         ]);
       });
 
-      test("resolves a default route and enables certs", async () => {
+      test("resolves the backend and enables certs", async () => {
         const resolution = await resolveVarnishService(serviceType, { type: id, backend: "appserver" });
 
-        expect(resolution.normalizedConfig.routes).toEqual([
-          { hostname: "cache.myapp.lndo.site", endpoint: 80 },
-        ]);
         expect(resolution.normalizedConfig.certs).toBe(true);
         expect(resolution.normalizedConfig.backend).toBe("appserver");
       });

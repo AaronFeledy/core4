@@ -620,7 +620,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "App-root-relative source directory used only by service-type project-file inference; it does not change mounts or the container working directory.",
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
-      description: "Container path served as this service's HTTP document root.",
+      description:
+        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. Tomcat uses it as the absolute deploy path.',
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
@@ -715,7 +716,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "Internal or published network endpoints exposed by the service.",
     }),
     routes: Schema.optionalKey(Schema.Array(RouteInput)).annotate({
-      description: "Hostnames routed to service endpoints.",
+      description:
+        "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckField),

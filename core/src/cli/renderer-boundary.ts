@@ -1,10 +1,13 @@
 import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Result, Schema, Tracer } from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
@@ -47,6 +50,7 @@ export interface RenderContext {
   readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
+  readonly proxyDefaultDomain?: string;
   /** Host env snapshot used for OSC 8 capability (TERM, NO_COLOR). */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Exact-value redactor for summary fields; apply before paint, never after. */
@@ -114,6 +118,9 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
+const isMessageWarnEvent = Schema.is(
+  Schema.Union([Schema.toEncoded(MessageWarnEvent), Schema.toType(MessageWarnEvent)]),
+);
 
 /**
  * Parents spans under a command stage without `Effect.withParentSpan`, which
@@ -373,7 +380,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
         return { _tag: "handled-success" } as const;
       }
-      return { _tag: "success", value: commandExit.value } as const;
+      const proxyDefaultDomain = yield* resolveProxyDefaultDomain;
+      return { _tag: "success", value: commandExit.value, proxyDefaultDomain } as const;
     });
     const applySuccessExitCode = (value: A) =>
       Effect.sync(() => {
@@ -407,6 +415,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
           local: true,
         }),
+        Effect.provideService(EventPublicationObserver, (event) =>
+          envelopeFormat && isMessageWarnEvent(event)
+            ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
+            : Effect.void,
+        ),
         Effect.withErrorReporting({ defectsOnly: true }),
       ),
     );
@@ -446,6 +459,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const displayValue = redactor === undefined ? value : (redactor.redactValue(value) as A);
         const paintContext: RenderContext = {
           ...renderContext,
+          proxyDefaultDomain: commandOutcome.value.proxyDefaultDomain,
           ...(redactor === undefined ? {} : { redact: (text) => redactor.redactString(text) }),
         };
         const rendered = options.render?.(displayValue, paintContext);

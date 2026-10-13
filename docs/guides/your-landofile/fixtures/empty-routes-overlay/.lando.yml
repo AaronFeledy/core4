@@ -1,0 +1,6 @@
+name: empty-routes-overlay
+services:
+  web:
+    type: "node:22"
+    routes:
+      - hostname: web.example.test

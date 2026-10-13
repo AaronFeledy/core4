@@ -60,7 +60,7 @@ routes:
     scheme: both
 ```
 
-Change `proxy.defaultDomain` once and every recipe URL that uses the expression follows, without editing Landofiles. Services with no authored `routes:` follow too: their default hostname is `<service>.<app>.<proxy.defaultDomain>`.
+Change `proxy.defaultDomain` once and every recipe URL that uses the expression follows, without editing Landofiles. Services with no `routes:` and no `proxy:` entry follow too: their default hostname is `<service>.<app>.<proxy.defaultDomain>`.
 
 A site that mixes scopes, like `APP_LABEL` above, is left alone by the loader and resolves at plan time.
 

@@ -1,5 +1,6 @@
 import { Clock, DateTime, Effect, Layer, Option, Stream } from "effect";
 
+import { redactString } from "@lando/container-runtime/redact";
 import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
@@ -12,7 +13,6 @@ import {
   type RoutePlan,
   ServiceName,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   CertificateAuthority,
   EventService,
@@ -27,6 +27,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { ensureDashboardFile } from "./dashboard.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
 import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
@@ -36,6 +37,7 @@ import {
   TRAEFIK_CONTAINER_CERTIFICATE_DIR,
   acquisitionStateFile,
   appCertificateFiles,
+  dashboardConfigFile,
   defaultCertificateFiles,
   defaultDomainFile,
   defaultTlsFile,
@@ -92,7 +94,6 @@ export { renderTraefikDynamicConfig } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
-const secretsRedactor = createRedactor("secrets");
 
 /**
  * Selecting a provider reads only `plan.provider`. The host-level global app that
@@ -130,7 +131,7 @@ const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(f
     yield* clearWatcherDiagnostic(dependencies.fileSystem, dependencies.paths);
     return;
   }
-  const redact = dependencies.redactDiagnostic ?? secretsRedactor.redactString;
+  const redact = dependencies.redactDiagnostic ?? redactString;
   const detail = boundWatcherDetail(redact(hit.detail));
   const watcherHost = watcherHostLabel({
     providerId: observation.providerId,
@@ -168,8 +169,9 @@ const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(f
 const finalizeRouterStartup = Effect.fn("TraefikRouter.finalizeRouterStartup")(function* (
   dependencies: TraefikProxyDependencies,
   advertised: AuthorityPorts,
+  context: "setup" | "revalidation",
 ) {
-  yield* assertAdvertisedForward(dependencies, advertised);
+  yield* assertAdvertisedForward(dependencies, advertised, context);
   yield* observeWatcherStartup(dependencies);
   yield* dependencies.fileSystem.writeAtomic(
     fallbackConfigFile(dependencies.paths),
@@ -257,6 +259,7 @@ const routeReloadSnapshot = (dependencies: TraefikProxyDependencies, app: AppId,
     readOptional(dependencies, defaults.cert),
     readOptional(dependencies, defaults.key),
     readOptional(dependencies, defaultTlsFile(dependencies.paths)),
+    readOptional(dependencies, dashboardConfigFile(dependencies.paths)),
   ]);
 };
 const routerListsFromConfig = (router: NonNullable<ProxyConfig["router"]>): TraefikRouterLists => ({
@@ -316,6 +319,7 @@ export const makeTraefikRouterService = (
           const decision = yield* acquire(config);
           defaultDomain = normalizeDefaultDomain(config.defaultDomain);
           authorityPorts = advertisedPorts(decision);
+          yield* ensureDashboardFile(dependencies, defaultDomain);
         },
         Effect.mapError((cause) => {
           const mapped = mapSetupError(cause);
@@ -360,8 +364,9 @@ export const makeTraefikRouterService = (
           yield* publishFallbackWarn(dependencies, decision);
         }
         yield* prepareTraefikDiagnostics(dependencies);
+        yield* ensureDashboardFile(dependencies, defaultDomain);
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
-        yield* finalizeRouterStartup(dependencies, advertised);
+        yield* finalizeRouterStartup(dependencies, advertised, "setup");
       }, Effect.mapError(mapSetupError)),
       revalidateStartup: Effect.fn("RouterService.revalidateStartup")(function* () {
         const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
@@ -370,7 +375,7 @@ export const makeTraefikRouterService = (
             ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
             : { http: state.httpPort, https: state.httpsPort };
         authorityPorts = advertised;
-        yield* finalizeRouterStartup(dependencies, advertised);
+        yield* finalizeRouterStartup(dependencies, advertised, "revalidation");
       }, Effect.mapError(mapStartupRevalidationError))(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app) => {
@@ -384,6 +389,7 @@ export const makeTraefikRouterService = (
               .readText(defaultDomainFile(dependencies.paths))
               .pipe(Effect.catch(() => Effect.succeed("")));
             defaultDomain = normalizeDefaultDomain(persistedDomain) || defaultDomain || "lndo.site";
+            yield* ensureDashboardFile(dependencies, defaultDomain);
             const appKey = String(app);
             const file = routeFile(dependencies.paths, app);
             const hadRouteFile = yield* dependencies.fileSystem.exists(file);
@@ -422,7 +428,7 @@ export const makeTraefikRouterService = (
                     certificatePairIsCurrent(
                       defaultCertificate,
                       defaultPrivateKey,
-                      [`test.${defaultDomain}`, defaultDomain, "traefik.lndo.site"],
+                      [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
                       yield* Clock.currentTimeMillis,
                     ));
                 if (
@@ -470,7 +476,7 @@ export const makeTraefikRouterService = (
                   certificatePairIsCurrent(
                     defaultCertificatePem,
                     defaultPrivateKeyPem,
-                    [`test.${defaultDomain}`, defaultDomain, "traefik.lndo.site"],
+                    [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
                     yield* Clock.currentTimeMillis,
                   ));
               const refreshAppCertificate =
@@ -582,6 +588,7 @@ export const makeTraefikRouterService = (
             yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultDomainFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
+            yield* dependencies.fileSystem.remove(dashboardConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));

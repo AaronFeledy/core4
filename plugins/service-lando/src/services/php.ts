@@ -14,6 +14,7 @@ import {
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mountAppRoot, parseServiceMount } from "./_volume-helpers.ts";
+import { resolveWebroot } from "./_webroot.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
@@ -71,21 +72,12 @@ export const PHP_FEATURE_ID = "service-lando.php" as const;
 export const PHP_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
-const PhpWebroot = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
-      message:
-        "PHP webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
-    }),
-  ),
-  Schema.brand("PhpWebroot"),
-);
 
 const PhpFeatureConfigSchema = Schema.Struct({
   allowOverride: Schema.Boolean,
   version: Schema.Literals([...SUPPORTED_PHP_VERSIONS]),
   via: Schema.Literals(["apache", "fpm", "cli"]),
-  webroot: PhpWebroot,
+  webroot: Schema.String,
 });
 type PhpFeatureConfig = typeof PhpFeatureConfigSchema.Type;
 
@@ -250,7 +242,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const xdebug = resolvePhpXdebug(input.service.xdebug);
       assertPhpXdebugSupported(resolvedVersion, xdebug);
       resolvePhpDbClient(input.service.db_client);
-      const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
+      const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
 
       return {

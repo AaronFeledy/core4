@@ -22,7 +22,7 @@ lando global:install
 
 `--yes` is accepted for consistency with `lando setup --yes`. Global install does not prompt.
 
-Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik. You do not start Traefik by hand.
+Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand.
 
 ## Override a bundled service
 

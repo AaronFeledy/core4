@@ -31,6 +31,7 @@ import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { withRetainedSession } from "./retained-session.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
+import { startSshSidecar } from "./start-ssh-sidecar.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
 type AgentError = SshAgentUnavailableError | SshAgentTransportError;
@@ -66,19 +67,21 @@ export const validateAgentSocketCapability = (capabilities: Capabilities, intent
 export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
   input: SessionOptions & {
     readonly appId: AppId;
+    readonly appName?: string;
     readonly provider?: ProviderId;
     readonly intent: SshAgentIntent;
   },
 ): Effect.fn.Return<
   AgentRelayUpstream | { readonly _tag: "volume"; readonly volume: string },
-  SshAgentUnavailableError
+  SshAgentUnavailableError,
+  EventService
 > {
   const unavailable = () =>
     new SshAgentUnavailableError({
-      message: "The selected SSH agent is unavailable.",
+      message: "No SSH agent sidecar service is installed.",
       mode: "sidecar",
       reason: "sidecar-not-running",
-      remediation: "Run `lando setup` to install and start the SSH agent sidecar, then restart this app.",
+      remediation: "Install and select the bundled SSH agent plugin, then restart this app.",
     });
   switch (input.intent.mode) {
     case "sidecar": {
@@ -86,15 +89,19 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
       const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
       if (input.provider === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
-        if (!(yield* runtimeSshAgentReady)) return yield* Effect.fail(unavailable());
-        return { _tag: "volume" as const, volume: socket.runtimeVolume };
+        const upstream = { _tag: "volume" as const, volume: socket.runtimeVolume };
+        if (yield* runtimeSshAgentReady) return upstream;
+        return yield* startSshSidecar(input, ssh.value, upstream);
       }
       const upstream: AgentRelayUpstream = { _tag: "unix", path: socket.socketPath };
-      yield* Effect.tryPromise({
+      const ready = yield* Effect.tryPromise({
         try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
         catch: unavailable,
-      });
-      return upstream;
+      }).pipe(
+        Effect.as(true),
+        Effect.catch(() => Effect.succeed(false)),
+      );
+      return ready ? upstream : yield* startSshSidecar(input, ssh.value, upstream);
     }
     case "host": {
       const discovered = yield* discoverHostSshAgent({
@@ -131,6 +138,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
   const upstream = yield* resolveSshAgentUpstream({
     ...options,
     appId: plan.id,
+    appName: plan.name,
     provider: plan.provider,
     intent,
     platform: options.platform ?? paths.platform,
@@ -211,7 +219,7 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
             yield* events
               .publish(
                 MessageWarnEvent.make({
-                  body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
+                  body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.message}${/[.!?]$/.test(error.message) ? "" : "."} ${error.remediation}`,
                   timestamp: DateTime.nowUnsafe(),
                 }),
               )
