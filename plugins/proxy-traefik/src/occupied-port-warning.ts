@@ -79,8 +79,13 @@ const occupantPhrase = (input: OccupiedPortWarningInput): string => {
   return "";
 };
 
+const ALTERNATE_URL_HELP = "The alternate URL is available; run lando info to see it.";
+
+const formatOccupiedPortHop = (input: OccupiedPortWarningInput): string =>
+  `Port ${String(input.preferred)} is in use${occupantPhrase(input)}; using ${String(input.chosen)}.`;
+
 export const formatOccupiedPortWarning = (input: OccupiedPortWarningInput): string =>
-  `Port ${String(input.preferred)} is in use${occupantPhrase(input)}; using ${String(input.chosen)}. The alternate URL is available; run lando info to see it.`;
+  `${formatOccupiedPortHop(input)} ${ALTERNATE_URL_HELP}`;
 
 export type OccupiedPortProbe = {
   readonly holder?: string;
@@ -89,20 +94,26 @@ export type OccupiedPortProbe = {
   readonly holderSystemdUnit?: string;
 };
 
+const portWarningInput = (
+  preferred: number,
+  chosen: number,
+  probe: OccupiedPortProbe,
+): OccupiedPortWarningInput => ({
+  preferred,
+  chosen,
+  kind: classifyOccupancyHolder({
+    ...(probe.holder === undefined ? {} : { comm: probe.holder }),
+    ...(probe.holderCmdline === undefined ? {} : { cmdline: probe.holderCmdline }),
+  }),
+  identity: {
+    ...(probe.holder === undefined ? {} : { comm: probe.holder }),
+    ...(probe.holderPid === undefined ? {} : { pid: probe.holderPid }),
+  },
+  ...(probe.holderSystemdUnit === undefined ? {} : { systemdUnit: probe.holderSystemdUnit }),
+});
+
 export const warningFromHolder = (preferred: number, chosen: number, probe: OccupiedPortProbe): string =>
-  formatOccupiedPortWarning({
-    preferred,
-    chosen,
-    kind: classifyOccupancyHolder({
-      ...(probe.holder === undefined ? {} : { comm: probe.holder }),
-      ...(probe.holderCmdline === undefined ? {} : { cmdline: probe.holderCmdline }),
-    }),
-    identity: {
-      ...(probe.holder === undefined ? {} : { comm: probe.holder }),
-      ...(probe.holderPid === undefined ? {} : { pid: probe.holderPid }),
-    },
-    ...(probe.holderSystemdUnit === undefined ? {} : { systemdUnit: probe.holderSystemdUnit }),
-  });
+  formatOccupiedPortWarning(portWarningInput(preferred, chosen, probe));
 
 export const occupiedHopNotices = (input: {
   readonly preferredHttp: number;
@@ -114,10 +125,14 @@ export const occupiedHopNotices = (input: {
 }): readonly string[] => {
   const notices: string[] = [];
   if (input.httpPort !== input.preferredHttp) {
-    notices.push(warningFromHolder(input.preferredHttp, input.httpPort, input.http));
+    notices.push(formatOccupiedPortHop(portWarningInput(input.preferredHttp, input.httpPort, input.http)));
   }
   if (input.httpsPort !== input.preferredHttps) {
-    notices.push(warningFromHolder(input.preferredHttps, input.httpsPort, input.https));
+    notices.push(formatOccupiedPortHop(portWarningInput(input.preferredHttps, input.httpsPort, input.https)));
+  }
+  if (notices.length > 0) {
+    const last = notices.length - 1;
+    notices[last] = `${notices[last]}\n${ALTERNATE_URL_HELP}`;
   }
   return notices;
 };

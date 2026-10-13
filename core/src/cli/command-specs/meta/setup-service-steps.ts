@@ -105,7 +105,7 @@ export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function*
         yield* events.value
           .publish(
             MessageInfoEvent.make({
-              body: "Installing local certificate trust. Windows may open a Security Warning; approve it to continue. --yes cannot answer Windows security prompts.",
+              body: "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
               timestamp: yield* DateTime.now,
             }),
           )

@@ -51,7 +51,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
       renderFooter();
       return;
     }
-    const line = renderLandoLine(event, true);
+    const line = renderLandoLine(event, true, terminalColumns);
     if (line !== null) controller.commitScrollback(line.endsWith("\n") ? line : `${line}\n`);
   };
   const resize = (width: number, height: number): void => {

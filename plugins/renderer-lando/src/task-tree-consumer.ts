@@ -51,7 +51,7 @@ export const layer = (
         | undefined;
 
       const line = (event: LandoEvent): void => {
-        const text = renderLandoLine(event, true);
+        const text = renderLandoLine(event, true, io.terminalColumns);
         if (text !== null) journal.writeStdout(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {

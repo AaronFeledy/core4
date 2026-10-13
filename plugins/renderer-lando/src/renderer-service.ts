@@ -35,7 +35,7 @@ const makeMessageContract = (io: RendererIO) => {
   const output = outputJournalFor(io);
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
-      const line = renderLandoLine(event, io.isTTY === true);
+      const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
       if (line !== null) output.writeStdout(`${line}\n`);
     });
   return {
@@ -78,6 +78,6 @@ export const makeLandoService = (
 
 export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
-    const line = renderLandoLine(event, io.isTTY === true);
+    const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
     if (line !== null) io.writeStdout(`${line}\n`);
   });
