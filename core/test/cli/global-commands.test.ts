@@ -199,11 +199,11 @@ const fakeServiceType = makeLegacyServiceTypeFake({
     }),
 });
 
-const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => {
-  const modulePath = join(moduleRoot, "fake-global-service.mjs");
+const writeGlobalServiceModule = async (moduleRoot: string, router = false): Promise<string> => {
+  const modulePath = join(moduleRoot, router ? "fake-router-global-service.mjs" : "fake-global-service.mjs");
   await writeFile(
     modulePath,
-    'import { Effect } from "effect";\nexport default Effect.succeed({ api: 4, type: "lando", home: false });\n',
+    `import { Effect } from "effect";\nexport default Effect.succeed({ api: 4, type: "lando", home: false${router ? ", routes: []" : ""} });\n`,
   );
   return modulePath;
 };
@@ -214,6 +214,7 @@ const makeHarness = async (
   options: HarnessOptions = {},
 ): Promise<Harness> => {
   const modulePath = await writeGlobalServiceModule(moduleRoot);
+  const routerModulePath = await writeGlobalServiceModule(moduleRoot, true);
   const manifest = Schema.decodeSync(PluginManifest)({
     name: "@lando/fake-global-command",
     version: "1.0.0",
@@ -222,7 +223,7 @@ const makeHarness = async (
       serviceTypes: [fakeServiceType.id],
       globalServices: (options.serviceNames ?? ["proxy", "mail"]).map((id) => ({
         id,
-        module: modulePath,
+        module: id === "traefik" || id === "traefik-diagnostics" ? routerModulePath : modulePath,
         enabledByDefault: true,
       })),
     },
@@ -688,11 +689,7 @@ describe("meta:global command effects", () => {
         expect(harness.calls.routes).toEqual([
           {
             app: "global",
-            hostnames: [
-              "mailpit.global.lndo.site",
-              "traefik.global.lndo.site",
-              "traefik-diagnostics.global.lndo.site",
-            ],
+            hostnames: ["mailpit.global.lndo.site"],
           },
         ]);
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-start");
@@ -872,11 +869,7 @@ describe("meta:global command effects", () => {
         expect(harness.calls.routes).toEqual([
           {
             app: "global",
-            hostnames: [
-              "mailpit.global.lndo.site",
-              "traefik.global.lndo.site",
-              "traefik-diagnostics.global.lndo.site",
-            ],
+            hostnames: ["mailpit.global.lndo.site"],
           },
         ]);
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");

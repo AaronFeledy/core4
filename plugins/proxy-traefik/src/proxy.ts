@@ -169,8 +169,9 @@ const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(f
 const finalizeRouterStartup = Effect.fn("TraefikRouter.finalizeRouterStartup")(function* (
   dependencies: TraefikProxyDependencies,
   advertised: AuthorityPorts,
+  context: "setup" | "revalidation",
 ) {
-  yield* assertAdvertisedForward(dependencies, advertised);
+  yield* assertAdvertisedForward(dependencies, advertised, context);
   yield* observeWatcherStartup(dependencies);
   yield* dependencies.fileSystem.writeAtomic(
     fallbackConfigFile(dependencies.paths),
@@ -365,7 +366,7 @@ export const makeTraefikRouterService = (
         yield* prepareTraefikDiagnostics(dependencies);
         yield* ensureDashboardFile(dependencies, defaultDomain);
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
-        yield* finalizeRouterStartup(dependencies, advertised);
+        yield* finalizeRouterStartup(dependencies, advertised, "setup");
       }, Effect.mapError(mapSetupError)),
       revalidateStartup: Effect.fn("RouterService.revalidateStartup")(function* () {
         const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
@@ -374,7 +375,7 @@ export const makeTraefikRouterService = (
             ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
             : { http: state.httpPort, https: state.httpsPort };
         authorityPorts = advertised;
-        yield* finalizeRouterStartup(dependencies, advertised);
+        yield* finalizeRouterStartup(dependencies, advertised, "revalidation");
       }, Effect.mapError(mapStartupRevalidationError))(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app) => {

@@ -37,7 +37,7 @@ That's the whole product in one file. The rest of this site is footnotes.
 
 ## Add a hostname
 
-Most apps skip `routes:`. Default hostnames look like `app.your-landofile-demo.lndo.site`. Author extra routes when you need another name:
+Most apps skip `routes:`. Default hostnames look like `app.your-landofile-demo.lndo.site`. Authored routes replace the default hostname, so list every name you want:
 
 ```yaml
 services:
@@ -49,7 +49,7 @@ services:
         scheme: both
 ```
 
-Top-level `proxy:` is the other spelling: a map of service name to the same route list.
+Top-level `proxy:` is the other spelling: a map of service name to the same route list. Set `routes: []` to give a service no hostname at all.
 
 ## Override a list in a local layer
 
