@@ -1,10 +1,12 @@
 import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Result, Schema, Tracer } from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
@@ -114,6 +116,9 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
+const isMessageWarnEvent = Schema.is(
+  Schema.Union([Schema.toEncoded(MessageWarnEvent), Schema.toType(MessageWarnEvent)]),
+);
 
 /**
  * Parents spans under a command stage without `Effect.withParentSpan`, which
@@ -407,6 +412,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
           local: true,
         }),
+        Effect.provideService(EventPublicationObserver, (event) =>
+          envelopeFormat && isMessageWarnEvent(event)
+            ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
+            : Effect.void,
+        ),
         Effect.withErrorReporting({ defectsOnly: true }),
       ),
     );
