@@ -189,12 +189,9 @@ describe("phpmyadmin ServiceType", () => {
         expect(plan.environment?.PMA_HOSTS).toBeUndefined();
       });
 
-      test("resolves a default route and enables certs", async () => {
+      test("enables certs by default", async () => {
         const resolution = await resolvePhpMyAdminService(serviceType, { type: id });
 
-        expect(resolution.normalizedConfig.routes).toEqual([
-          { hostname: "pma.myapp.lndo.site", endpoint: 80 },
-        ]);
         expect(resolution.normalizedConfig.certs).toBe(true);
       });
 
@@ -206,7 +203,7 @@ describe("phpmyadmin ServiceType", () => {
         expect(resolution.normalizedConfig.dependsOn).toBeUndefined();
       });
 
-      test("authored routes replace the default route", async () => {
+      test("preserves authored routes", async () => {
         const routes = [{ hostname: "pma.example.test", scheme: "https", endpoint: 80 }] as const;
         const resolution = await resolvePhpMyAdminService(serviceType, { type: id, routes });
 

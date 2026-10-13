@@ -39,7 +39,7 @@ export const SETUP_BUILTIN_FLAGS = {
   }),
   "host-proxy": Flags.string({
     description:
-      "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",
+      "Reserved for host DNS integration, which Lando does not provide; `auto` and `none` currently behave the same.",
     options: ["auto", "none"],
     default: "auto",
   }),

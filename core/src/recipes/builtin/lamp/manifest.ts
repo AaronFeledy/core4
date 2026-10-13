@@ -32,7 +32,7 @@ prompts:
 ${phpPromptYaml}
 ${databasePromptYaml(LAMP_DATABASES)}
 ${composerPromptYaml()}
-${webrootPromptYaml("/app")}
+${webrootPromptYaml(".")}
 files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml

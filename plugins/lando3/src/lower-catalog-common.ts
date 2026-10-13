@@ -9,7 +9,6 @@ import {
   type ServiceLoweringContext,
   type V4Wire,
   asStringArray,
-  containerWebroot,
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import { serviceConfigMount } from "./service-config-mount.ts";
@@ -47,13 +46,17 @@ export const lowerCatalogCommon = (
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   let blocked = false;
   let companions: Record<string, V4Wire> | undefined;
-  const drop = (relative: Lando3Path, message: string): void => {
+  const drop = (
+    relative: Lando3Path,
+    message: string,
+    remediation = "Configure the equivalent behavior by hand in the generated service if needed.",
+  ): void => {
     diagnostics.push(
       droppedServiceKey({
         ctx,
         relative,
         message,
-        remediation: "Configure the equivalent behavior by hand in the generated service if needed.",
+        remediation,
       }),
     );
   };
@@ -168,13 +171,21 @@ export const lowerCatalogCommon = (
     patch.user = service.meUser;
     diagnostics.push(rewrittenMeUser({ ctx }));
   }
-  if (service.webroot !== undefined) {
-    const webroot = containerWebroot(service.webroot);
-    patch.webroot = webroot ?? service.webroot;
-    if (webroot !== undefined && webroot !== service.webroot) {
-      rewrite(["webroot"], `Rewrote the app-relative webroot as the container path ${webroot}.`);
+  if (resolution.id === "tomcat" && typeof service.webroot === "string" && !service.webroot.startsWith("/")) {
+    const source = service.webroot.replace(/^(?:\.\/)+/u, "").replace(/\/+$/u, "");
+    if (source === "" || source === ".") {
+      rewrite(
+        ["webroot"],
+        "Omitted webroot: Lando 4 Tomcat deploys the app root to /usr/local/tomcat/webapps/ROOT by default.",
+      );
+    } else {
+      drop(
+        ["webroot"],
+        "Lando 4 Tomcat deploys the whole app root; a relative source webroot has no equivalent deploy path.",
+        "Set webroot to an absolute container deploy path, or serve the build output from the app root.",
+      );
     }
-  }
+  } else if (service.webroot !== undefined) patch.webroot = service.webroot;
   const port = numericPort(service.port);
   if (port !== undefined) patch.port = port;
 

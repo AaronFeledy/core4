@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type Cause,
@@ -522,11 +522,16 @@ const appendInitAnswers = (
 
 const staticRootFromLandofile = (content: string): string | undefined => {
   if (!/^\s*type:\s*static(?::\w+)?\s*$/m.test(content)) return undefined;
-  const webroot = /^\s*webroot:\s*(\S+)\s*$/m.exec(content)?.[1] ?? "/app";
-  if (webroot === "/app") return ".";
-  return webroot.startsWith("/app/") && !webroot.split("/").includes("..")
-    ? webroot.slice("/app/".length)
-    : undefined;
+  const webroot = /^\s*webroot:\s*(\S+)\s*$/m.exec(content)?.[1]?.replace(/^["']|["']$/g, "") ?? ".";
+  if (
+    posix.isAbsolute(webroot) &&
+    (webroot.split("/").includes("..") || (webroot !== "/app" && !webroot.startsWith("/app/")))
+  ) {
+    return undefined;
+  }
+  const resolved = posix.resolve("/app", webroot);
+  if (resolved === "/app") return ".";
+  return resolved.startsWith("/app/") ? resolved.slice("/app/".length) : undefined;
 };
 
 const runScenarioLayerCommand = async (

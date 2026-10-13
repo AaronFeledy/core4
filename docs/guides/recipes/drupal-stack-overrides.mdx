@@ -7,13 +7,13 @@ tags: [beta, docs, recipes, drupal, php, database]
 
 # Change a Drupal stack after init
 
-`lando init --recipe drupal` writes PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Edit `.lando.yml` after that, then `lando rebuild`.
+`lando init --recipe drupal` writes PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Edit `.lando.yml` after that, then `lando rebuild`.
 
-Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.4, Apache, `mariadb:11.4`, Composer 2, and `/app/web`.
+Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.4, Apache, `mariadb:11.4`, Composer 2, and `web`.
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `/app/web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush` and `composer` tooling that call project-local `vendor/bin/drush` and `composer`.
+The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush` and `composer` tooling that call project-local `vendor/bin/drush` and `composer`.
 
 <Guide>
   <Scenario id="default-recipe-output" render>
@@ -24,7 +24,7 @@ The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `/
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
     </Step>
   </Scenario>
@@ -113,12 +113,12 @@ services:
 
 ## Set a Drush URI and move the webroot
 
-The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` to use a specific URL instead. Include the port when the proxy uses one. Moving the webroot to `/app/docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
+The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` to use a specific URL instead. Include the port when the proxy uses one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
 
 ```yaml
 services:
   appserver:
-    webroot: /app/docroot
+    webroot: docroot
     environment:
       DRUSH_OPTIONS_URI: https://drupal-stack-overrides.lndo.site
 ```
@@ -133,7 +133,7 @@ services:
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/docroot\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"docroot\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DRUSH_OPTIONS_URI\":\\s*\"https://drupal-stack-overrides\\.lndo\\.site\"" } }} />
     </Step>
   </Scenario>

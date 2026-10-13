@@ -7,13 +7,13 @@ tags: [beta, docs, recipes, lamp, php, database]
 
 # Change a LAMP stack after init
 
-`lando init --recipe lamp` writes Apache, PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Edit `.lando.yml` after that, then `lando rebuild`.
+`lando init --recipe lamp` writes Apache, PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Edit `.lando.yml` after that, then `lando rebuild`.
 
-Init prompts for PHP 8.1 through 8.6, MariaDB or MySQL (with versions), Composer, and webroot. `--yes` keeps PHP 8.4, `mariadb:11.4`, Composer 2, and `/app`.
+Init prompts for PHP 8.1 through 8.6, MariaDB or MySQL (with versions), Composer, and webroot. `--yes` keeps PHP 8.4, `mariadb:11.4`, Composer 2, and `.`.
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.4`, `framework: none`, port `80`, `composer: "2"`, `webroot: /app`, a `database` service with `type: mariadb:11.4`, plus `composer` and `php` tooling.
+The generated Landofile is an Apache-backed `appserver` on `php:8.4`, `framework: none`, port `80`, `composer: "2"`, `webroot: .`, a `database` service with `type: mariadb:11.4`, plus `composer` and `php` tooling.
 
 <Guide>
   <Scenario id="default-recipe-output" render>

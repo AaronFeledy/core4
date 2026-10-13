@@ -240,7 +240,7 @@ export const decodeChunkedBuffer = (
   return { chunks, remainder: remaining, complete: false };
 };
 
-export const flushChunkedBufferAtEnd = (buffer: Bytes): ReadonlyArray<Bytes> => {
+export const flushChunkedBufferAtEnd = (buffer: Bytes, allowPartial = false): ReadonlyArray<Bytes> => {
   const chunks: Bytes[] = [];
   let remaining: Bytes = buffer;
 
@@ -253,7 +253,7 @@ export const flushChunkedBufferAtEnd = (buffer: Bytes): ReadonlyArray<Bytes> => 
 
     const chunkStart = sizeEnd + chunkSeparator.length;
     const chunkEnd = chunkStart + size;
-    if (remaining.length < chunkEnd) break;
+    if (remaining.length < chunkEnd && !allowPartial) break;
 
     if (size === 0) return chunks;
 
@@ -290,6 +290,36 @@ const collectBytes = async (chunks: AsyncIterable<Bytes>): Promise<Bytes> => {
   const collected: Bytes[] = [];
   for await (const chunk of chunks) collected.push(chunk);
   return concatBytes(collected);
+};
+
+const STREAM_ERROR_BODY_LIMIT = 64 * 1024;
+
+const readStreamErrorBody = async (
+  head: ParsedHttpHead,
+  chunks: AsyncIterable<Bytes>,
+): Promise<string | undefined> => {
+  const chunked = head.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
+  const lengthHeader = head.headers.get("content-length");
+  const length = lengthHeader === undefined ? undefined : Number(lengthHeader);
+  if (!chunked && (length === undefined || !Number.isSafeInteger(length) || length < 0)) return undefined;
+  // Bound wire bytes as well as decoded bytes, including incomplete chunks and chunk metadata.
+  const limit = chunked ? STREAM_ERROR_BODY_LIMIT : Math.min(length ?? 0, STREAM_ERROR_BODY_LIMIT);
+  let buffer: Bytes = head.bodyStart.slice(0, limit);
+  if (chunked) {
+    const decoded = decodeChunkedBuffer(buffer);
+    if (decoded.complete) return textDecoder.decode(concatBytes(decoded.chunks));
+  }
+  if (buffer.length < limit) {
+    for await (const chunk of chunks) {
+      buffer = concatBytes([buffer, chunk.slice(0, limit - buffer.length)]);
+      if (chunked) {
+        const decoded = decodeChunkedBuffer(buffer);
+        if (decoded.complete) return textDecoder.decode(concatBytes(decoded.chunks));
+      }
+      if (buffer.length >= limit) break;
+    }
+  }
+  return textDecoder.decode(chunked ? concatBytes(flushChunkedBufferAtEnd(buffer, true)) : buffer);
 };
 
 const socketReadSystemCode = (cause: unknown): SocketReadSystemCode | undefined => {
@@ -513,21 +543,35 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       let chunkedBody = false;
       let bodyBuffer: Bytes = new Uint8Array(0) as Bytes;
 
-      for await (const chunk of readResponse(connection, operation, input)) {
+      const response = readResponse(connection, operation, input);
+      for await (const chunk of response) {
         if (parsed === undefined) {
           initialChunks.push(chunk);
           const merged = concatBytes(initialChunks);
           if (indexOfBytes(merged, headerSeparator) === -1) continue;
           parsed = parseHttpHead(merged, operation);
           if (parsed.status !== 101 && (parsed.status < 200 || parsed.status >= 300)) {
-            // Fail immediately rather than draining the error body: hijacked (`Connection: Upgrade`)
-            // requests declare no body end and the engine can hold the socket open after an error
-            // status. Consumers classify from `status` in the details instead.
+            // Hijacked and unframed errors must not wait for an engine-held socket to close.
+            const upgraded = [...Object.entries(request.headers ?? {}), ...parsed.headers].some(
+              ([key, value]) =>
+                key.toLowerCase() === "upgrade" ||
+                (key.toLowerCase() === "connection" &&
+                  value
+                    .toLowerCase()
+                    .split(/\s*,\s*/u)
+                    .includes("upgrade")),
+            );
+            const body = upgraded ? undefined : await readStreamErrorBody(parsed, response);
             throw fail(
               "http",
               operation,
               `Container runtime stream request failed with HTTP ${parsed.status}.`,
-              { method: input.method, path: input.path, status: parsed.status },
+              {
+                method: input.method,
+                path: input.path,
+                status: parsed.status,
+                ...(body === undefined ? {} : { body }),
+              },
             );
           }
           input.onResponseHead?.();

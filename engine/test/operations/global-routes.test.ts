@@ -18,7 +18,7 @@ const plan: AppPlan = {
   services: {},
   routes: [
     {
-      hostname: "mailpit.lndo.site",
+      hostname: "mailpit.custom.test",
       priority: 1,
       scheme: "https",
       service: mail,
@@ -133,7 +133,7 @@ describe("global route publication", () => {
     );
     // Then all declared routes and their advertised URLs are available.
     expect(router.routesByApp.get(plan.id)).toEqual(siblingPlan.routes);
-    expect(urls.get(mail)).toEqual(["https://mailpit.lndo.site:38443"]);
+    expect(urls.get(mail)).toEqual(["https://mailpit.custom.test:38443"]);
   });
 
   for (const status of ["stopped", "missing", "running", "paused", "restarting"] as const) {

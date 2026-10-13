@@ -2,7 +2,7 @@ name: static-demo
 services:
   web:
     type: static
-    webroot: /app/dist
+    webroot: dist
 tooling:
   curl:
     service: web

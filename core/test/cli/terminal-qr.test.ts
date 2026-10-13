@@ -22,6 +22,38 @@ const expectQr = (url: string): string => {
 };
 
 describe("isLocalQrUrl", () => {
+  for (const url of [
+    "https://dev.example.test",
+    "https://web.dev.example.test",
+    "https://WEB.DEV.EXAMPLE.TEST./",
+    LOCAL_SITE,
+    LOOPBACK,
+    LOCALHOST,
+    IPV6_LOOPBACK,
+  ]) {
+    test(`treats ${url} as local with a configured domain`, () => {
+      // Given
+      const domain = "  Dev.Example.Test...  ";
+      // When
+      const local = isLocalQrUrl(url, domain);
+      // Then
+      expect(local).toBe(true);
+    });
+  }
+  for (const url of [
+    "https://other.example.test",
+    "https://notdev.example.test",
+    "https://dev.example.test.public.test",
+  ]) {
+    test(`keeps ${url} public with a configured domain`, () => {
+      // Given
+      const domain = "dev.example.test";
+      // When
+      const local = isLocalQrUrl(url, domain);
+      // Then
+      expect(local).toBe(false);
+    });
+  }
   test("treats *.lndo.site, 127.0.0.1, localhost, and ::1 as local", () => {
     expect(isLocalQrUrl(LOCAL_SITE)).toBe(true);
     expect(isLocalQrUrl(LOOPBACK)).toBe(true);

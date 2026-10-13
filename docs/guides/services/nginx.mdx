@@ -51,21 +51,48 @@ services:
     via: fpm
 ```
 
-## Run as a non-root user
+## Serve a subdirectory
 
-Set `user: nginx` to run nginx as the image's own `nginx` account. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
+Set `webroot:` to a path relative to the app mount at `/app`. For example, `public` serves `/app/public`. Omit it or use `.` to serve the app root. An absolute container path is allowed when you need a very specific location outside the usual app layout. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path. Set `port:` to move nginx's listener, endpoint, and healthcheck together:
 
 ```yaml
 services:
   web:
     type: nginx
-    backend: app
+    webroot: public
+    port: 8080
+```
+
+  <Scenario id="authored-webroot-and-port" render>
+    <Step name="scaffold">
+      <UseFixture name="nginx-public" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Run as a non-root user
+
+Set `user: nginx` to run nginx as the image's own `nginx` account, with or without a PHP backend. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
+
+```yaml
+services:
+  web:
+    type: nginx
     user: nginx
     home: false
     port: 8080
 ```
 
-`home: false` is there because Lando persists the planned user's home directory and only knows where `root`'s home is on this image. Use `home.path:` instead when you want that directory to survive a rebuild. `port:` moves the listen port itself, not just Lando's endpoint, because Lando templates it into the generated config. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`. This applies to the generated launcher, which nginx only uses with `backend:`; without it the image entrypoint starts the daemon and owns the port.
+`home: false` is there because Lando persists the planned user's home directory and only knows where `root`'s home is on this image. Use `home.path:` instead when you want that directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
+
+If you set your own `command:` or `entrypoint:`, your startup owns nginx's configuration. Lando does not generate a launcher or remove the image's default site.
 
 ## Pin a version
 

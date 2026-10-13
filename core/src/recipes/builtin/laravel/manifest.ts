@@ -31,7 +31,7 @@ prompts:
 ${phpPromptYaml}
 ${databasePromptYaml(LARAVEL_DATABASES)}
 ${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
-${webrootPromptYaml("/app/public")}
+${webrootPromptYaml("public")}
   - name: worker
     type: confirm
     message: Add a queue worker service?

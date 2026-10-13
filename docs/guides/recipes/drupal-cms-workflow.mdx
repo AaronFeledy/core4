@@ -13,7 +13,7 @@ cd drupal-cms-demo
 lando start
 ```
 
-The named init creates `drupal-cms-demo/` and writes `.lando.yml` plus `.lando/php/drupal-cms.ini` there. Change into it before app commands. `--yes` keeps PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The ini sets `memory_limit = 512M` and is mounted for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS, then confirm with the tooling below.
+The named init creates `drupal-cms-demo/` and writes `.lando.yml` plus `.lando/php/drupal-cms.ini` there. Change into it before app commands. `--yes` keeps PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. The ini sets `memory_limit = 512M` and is mounted for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS, then confirm with the tooling below.
 
 If something else owns 80 or 443, Lando falls back to the next free port, starting with `:8080` / `:8443`. `lando info` shows the URL it picked.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando falls back to the next free port, starti
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M, Git installed at build for the pinned SVG Image source |
+| `appserver` | `php:8.4`, `framework: drupal`, webroot `web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M, Git installed at build for the pinned SVG Image source |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -40,7 +40,7 @@ lando drupal-cms-install
 
 Scaffold creates Drupal CMS in a private staging directory. Git is installed automatically in `appserver`. A first-priority package repository pins the upstream SVG Image security patch from [merge request 65](https://git.drupalcode.org/project/svg_image/-/merge_requests/65) at commit `c788b1e2f2be29f62c9812b2b0558472afa61d6d`. The declared `3.x-dev` build uses the fixed `enshrined/svg-sanitize` 1.0 release; it does not claim to be a tagged SVG Image release or disable security checks.
 
-The scaffold verifies the package metadata and actual checkout, audits before and after installation, and runs Drupal's native hooks, including recipe unpacking. It keeps the pin in `composer.json` and `composer.lock` and checks again after the hooks. Any mismatch, audit failure, or install failure stops before anything reaches your app. Successful files are promoted without overwriting user content. Interrupted copies resume when you rerun the command; a completed scaffold refuses to run again.
+It also requires the `drupal_cms_starter` recipe that install uses, since `drupal/cms` no longer pulls it in. The scaffold verifies the package metadata and actual checkout, audits before and after installation, and runs Drupal's native hooks, including recipe unpacking. It keeps the pin in `composer.json` and `composer.lock` and checks again after the hooks. Any mismatch, audit failure, or install failure stops before anything reaches your app. Successful files are promoted without overwriting user content. Interrupted copies resume when you rerun the command; a completed scaffold refuses to run again.
 
 `lando drupal-cms-install` runs project-local Drush with the recipe's database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a generated password when install finishes.
 
@@ -215,7 +215,7 @@ lando exec appserver -- php -v
   <Scenario id="nginx-postgres" render>
     <Step name="init">
       <Variable name="appName" value="drupal-cms-nginx" display="drupal-cms-nginx" />
-      <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=/app/web" />
+      <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=web" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />

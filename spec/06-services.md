@@ -119,11 +119,11 @@ Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<d
 
 `hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Filters merge by `name`, then unnamed type identity, and retain authored order. Prefix stripping MUST NOT be implicit (§10.2).
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2).
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
-Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. LAN publication is opt-in and warns. Internal endpoints never bind the host.
+Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. When a service authors no routes, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
 Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
 
@@ -194,7 +194,7 @@ Contributed `logSources` MUST have unique ids, absolute paths, and compatible st
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay under §7.2. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
@@ -256,7 +256,7 @@ The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*
 | `python` | `lando` | `framework` |
 | `ruby` | `lando` | `framework` |
 | `go` | `lando` | `framework` |
-| `nginx` | `lando` | `webroot`, framework presets |
+| `nginx` | `lando` | `webroot`, `port`, PHP-FPM `backend` |
 | `apache` | `lando` | `webroot`, `allowOverride`, framework presets |
 | `mariadb` | `lando` | `creds`, `config.server` |
 | `mysql` | `lando` | `creds`, `config.server` |
@@ -292,11 +292,15 @@ Every canonical or plugin type MUST declare its base, resolve through features, 
 
 **Listen port follows `port:`.** `ServiceConfig.port` MUST move the daemon's listener, not only the endpoint, healthcheck, and route target. Every bundled launcher derives its listen address from the planned port. For Apache this means `Listen <port>` and, for `php` via `apache`, a `<VirtualHost *:<port>>` derived from the same value. An explicit non-default port replaces the image's default `Listen 80`; it MUST NOT leave an additional listener on port 80. Without an authored `port:`, the type retains its published default listener configuration. Fixed secondary ports, such as a console port, MUST be documented as limits in the type's guide.
 
+**`webroot` is relative to the app mount.** `php`, `nginx`, `apache`, and `static` resolve `webroot` against the effective app mount target, which defaults to `/app` and follows `appMount.target`; `webroot` defaults to `.`, the app root itself. Authors normally write a relative path such as `web` or `public`. An absolute container path is accepted for a document root outside the usual layout. A relative path that leaves the app mount, or a path with characters other than letters, digits, `.`, `_`, `-`, and `/`, MUST fail during planning. Generated document-root configuration and `LANDO_WEBROOT` use the resolved absolute path. `php` and `nginx` default their working directory to that path; `apache` and `static` default to the app mount target; an authored working directory wins. On a standalone `apache` service an authored `APACHE_DOCUMENT_ROOT` overrides the generated document root. Configuration views such as `app:config` keep the authored spelling rather than the resolved path. `tomcat` is the exception: its `webroot` is the absolute container path the whole app is deployed to. Translating a Lando 3 Tomcat `webroot` of `.` omits it; any other relative Lando 3 value is dropped with a diagnostic.
+
+**nginx serves its webroot.** Unless the author declares `command` or `entrypoint`, `nginx` generates its own server configuration. Without `backend`, it serves static files from `webroot`; with `backend`, it passes PHP requests to that service's PHP-FPM listener. Either way it listens on `port` and serves Lando's shared 403/404 pages for server-generated errors.
+
 #### 6.12.2 Framework presets
 
 Language types may expose `framework:` presets as ordinary overridable config. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
 
-Canonical PHP does not interpret framework ids. It uses absolute `webroot` and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
+Canonical PHP does not interpret framework ids. It uses `webroot` (§6.12.1) and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
 
 #### 6.12.3 Catalog membership rules
 

@@ -2,7 +2,7 @@
 import { renderUnicodeCompact } from "uqr";
 
 const LOCAL_QR_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-const LNDO_SITE_SUFFIX = ".lndo.site";
+const DEFAULT_LOCAL_QR_DOMAIN = "lndo.site";
 const ENVELOPE_FORMATS = new Set(["json", "yaml"]);
 
 export interface TerminalQrDecision {
@@ -10,12 +10,19 @@ export interface TerminalQrDecision {
   readonly isTTY: boolean;
   readonly format?: string;
   readonly force?: boolean;
+  readonly proxyDefaultDomain?: string;
 }
 
-export const isLocalQrUrl = (value: string): boolean => {
+export const isLocalQrUrl = (value: string, proxyDefaultDomain = DEFAULT_LOCAL_QR_DOMAIN): boolean => {
   try {
-    const hostname = new URL(value).hostname.toLowerCase();
-    return LOCAL_QR_HOSTS.has(hostname) || hostname.endsWith(LNDO_SITE_SUFFIX);
+    const hostname = new URL(value).hostname.toLowerCase().replace(/\.$/u, "");
+    const domain = proxyDefaultDomain.trim().toLowerCase().replace(/\.+$/u, "");
+    return (
+      LOCAL_QR_HOSTS.has(hostname) ||
+      [DEFAULT_LOCAL_QR_DOMAIN, domain].some(
+        (localDomain) => hostname === localDomain || hostname.endsWith(`.${localDomain}`),
+      )
+    );
   } catch {
     return false;
   }
@@ -26,7 +33,7 @@ export const shouldRenderTerminalQr = (decision: TerminalQrDecision): boolean =>
   if (decision.format !== undefined && ENVELOPE_FORMATS.has(decision.format)) return false;
   if (!decision.isTTY) return false;
   if (decision.force === true) return true;
-  return !isLocalQrUrl(decision.url);
+  return !isLocalQrUrl(decision.url, decision.proxyDefaultDomain);
 };
 
 export const renderTerminalQr = (value: string): string | undefined => {

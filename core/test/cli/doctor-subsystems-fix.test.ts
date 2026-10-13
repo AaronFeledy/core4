@@ -117,6 +117,7 @@ describe("each subsystem failure path produces a tagged error with severity + so
       if (classified === undefined) throw new Error(`missing classification for ${name}`);
       expect(["info", "warn", "error"]).toContain(classified.severity);
       expect(classified.solution.description.length).toBeGreaterThan(0);
+      if (name === "host-proxy") expect(classified.solution.command).toBeUndefined();
     }
     expect(classifySubsystemFailure("nope", "unavailable")).toBeUndefined();
   });
@@ -190,6 +191,7 @@ describe("doctor --fix recovery", () => {
       expect(check?.context.fixOutcome).toBe("skipped-manual");
       expect(check?.context.fixExitCode).toBeUndefined();
       expect(check?.solutions[0]?.kind).toBe("manual");
+      if (name === "host-proxy") expect(check?.solutions[0]?.command).toBeUndefined();
     }
   });
 
