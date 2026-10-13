@@ -14,8 +14,8 @@
  * - Maps deep-merge.
  * - An explicitly empty overlay array replaces the inherited array of any kind.
  * - Arrays of scalars replace.
- * - Tooling arrays `cmds`, `deps`, `status`, `preconditions`, and `prompt`
- *   replace wholesale; their entries have no stable `name` or `id` merge identity.
+ * - Tooling `cmds` arrays replace wholesale; a step's `service` is where it
+ *   runs, not a merge identity.
  * - Other arrays of objects merge by recognized identity keys: `name`, `id`,
  *   `hostname`, `service`, schema-specific keys.
  * - Route `filters` arrays merge by `name` when present, otherwise by `type`.
@@ -34,7 +34,12 @@
  */
 export const ARRAY_IDENTITY_KEYS = ["name", "id", "hostname", "service"] as const;
 
-export const TOOLING_REPLACE_ARRAY_KEYS = ["cmds", "deps", "status", "preconditions", "prompt"] as const;
+/**
+ * Tooling task array keys that replace wholesale instead of merging by identity.
+ * Matched by key name, like route `filters`. Lists only keys the tooling schema
+ * accepts; add `deps`, `status`, `preconditions`, or `prompt` when tasks accept them.
+ */
+export const TOOLING_REPLACE_ARRAY_KEYS = ["cmds"] as const;
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -121,8 +126,8 @@ const mergeArrays = (
 
 /**
  * Landofile overlay merge: deep-merge maps, replace any array with an explicitly
- * empty overlay array, replace scalar and tooling arrays (`cmds`, `deps`,
- * `status`, `preconditions`, `prompt`), merge other non-empty object arrays
+ * empty overlay array, replace scalar arrays and tooling `cmds`, merge other
+ * non-empty object arrays
  * by recognized identity key (route `filters` by name, then
  * unnamed type), right-wins for scalars. Also used when service-type
  * `extends:` overlays parent config onto the child.

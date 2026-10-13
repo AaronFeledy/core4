@@ -10,27 +10,24 @@ import {
 } from "@lando/sdk/landofile";
 
 describe("mergeLandofiles", () => {
-  test.each(["cmds", "deps", "status", "preconditions", "prompt"])(
-    "replaces tooling %s when a local layer overrides one of several services",
-    (key) => {
-      // Given inherited tasks targeting different services.
-      const base = {
-        tooling: {
-          test: {
-            [key]: [
-              { service: "a", cmd: "old-a" },
-              { service: "b", cmd: "b" },
-            ],
-          },
+  test("replaces tooling cmds when a local layer overrides one of several services", () => {
+    // Given inherited steps targeting different services.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "old-a" },
+            { service: "b", cmd: "b" },
+          ],
         },
-      };
-      const local = { tooling: { test: { [key]: [{ service: "a", cmd: "new-a" }] } } };
-      // When a local layer supplies its task list.
-      const result = mergeLandofiles([base, local]);
-      // Then only the local tasks remain.
-      expect(result).toEqual(local);
-    },
-  );
+      },
+    };
+    const local = { tooling: { test: { cmds: [{ service: "a", cmd: "new-a" }] } } };
+    // When a local layer supplies its step list.
+    const result = mergeLandofiles([base, local]);
+    // Then only the local steps remain.
+    expect(result).toEqual(local);
+  });
 
   test("replaces tooling cmds when inherited steps share a service", () => {
     // Given two inherited steps targeting the same service.
