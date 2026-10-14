@@ -4,18 +4,12 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
+import { type Baseline, percentile95, readBaseline } from "./bench-startup-baseline.ts";
+import { readTtyOverheadBaseline, runTtyOverheadBenchmark } from "./bench-tty-renderer-overhead.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_BASELINE = resolve(REPO_ROOT, "scripts/bench-baselines.json");
 const DEFAULT_BINARY = resolve(REPO_ROOT, "core/dist/lando");
-
-type Baseline = {
-  readonly description: string;
-  readonly platform: "linux-x64";
-  readonly command: ReadonlyArray<string>;
-  readonly runs: number;
-  readonly startupBudgetMs: number;
-  readonly firstOutputBudgetMs: number;
-};
 
 type Options = {
   readonly binary: string;
@@ -51,10 +45,6 @@ Options:
   --first-output-budget-ms <n>     First-output p95 budget (default: baseline firstOutputBudgetMs)
   --json                           Emit a JSON summary
 `;
-
-class BaselineError extends Error {
-  override readonly name = "BaselineError";
-}
 
 const positiveNumber = (value: string, label: string): number => {
   const parsed = Number(value);
@@ -106,67 +96,6 @@ export const parseArgs = (argv: ReadonlyArray<string>): Options => {
     ...(firstOutputBudgetMs === undefined ? {} : { firstOutputBudgetMs }),
     json,
   };
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const stringField = (record: Record<string, unknown>, key: string): string => {
-  const value = record[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new BaselineError(`Baseline field ${key} must be a non-empty string`);
-  }
-  return value;
-};
-
-const numberField = (record: Record<string, unknown>, key: string): number => {
-  const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new BaselineError(`Baseline field ${key} must be a positive number`);
-  }
-  return value;
-};
-
-const isNonEmptyStringArray = (value: unknown): value is ReadonlyArray<string> =>
-  Array.isArray(value) &&
-  value.length > 0 &&
-  value.every((entry: unknown): entry is string => typeof entry === "string");
-
-export const readBaseline = async (path: string): Promise<Baseline> => {
-  const parsed: unknown = await Bun.file(path).json();
-  if (!isRecord(parsed) || !("openTuiStartup" in parsed)) {
-    throw new BaselineError("Baseline JSON must contain openTuiStartup");
-  }
-  const record = parsed.openTuiStartup;
-  if (!isRecord(record)) throw new BaselineError("openTuiStartup baseline must be an object");
-
-  const platform = stringField(record, "platform");
-  if (platform !== "linux-x64") {
-    throw new BaselineError("Baseline field platform must be linux-x64");
-  }
-  const command = record.command;
-  if (!isNonEmptyStringArray(command)) {
-    throw new BaselineError("Baseline field command must be a non-empty string array");
-  }
-  const runs = numberField(record, "runs");
-  if (!Number.isInteger(runs)) throw new BaselineError("Baseline field runs must be a positive integer");
-
-  return {
-    description: stringField(record, "description"),
-    platform,
-    command,
-    runs,
-    startupBudgetMs: numberField(record, "startupBudgetMs"),
-    firstOutputBudgetMs: numberField(record, "firstOutputBudgetMs"),
-  };
-};
-
-const percentile95 = (values: ReadonlyArray<number>): number => {
-  if (values.length === 0) throw new Error("Cannot compute p95 without samples");
-  const sorted = [...values].sort((left, right) => left - right);
-  const value = sorted[Math.ceil(sorted.length * 0.95) - 1];
-  if (value === undefined) throw new Error("Unable to compute p95");
-  return value;
 };
 
 const consume = async (stream: ReadableStream<Uint8Array>, onChunk: () => void): Promise<string> => {
@@ -254,6 +183,7 @@ const formatSummary = (summary: Summary): string =>
 const main = async (): Promise<void> => {
   const options = parseArgs(Bun.argv.slice(2));
   const baseline = await readBaseline(options.baselinePath);
+  const ttyBaseline = await readTtyOverheadBaseline(options.baselinePath);
   const summary = await runBenchmark(options, baseline);
   const startupPassed = summary.startupP95Ms < summary.startupBudgetMs;
   const firstOutputPassed = summary.firstOutputP95Ms < summary.firstOutputBudgetMs;
@@ -267,8 +197,18 @@ const main = async (): Promise<void> => {
     process.exitCode = 1;
     return;
   }
-  if (options.json) process.stdout.write(`${JSON.stringify({ ok: true, ...summary })}\n`);
-  else process.stdout.write(`${formatSummary(summary)}\n`);
+  const ttyRendererOverhead = await runTtyOverheadBenchmark(options, ttyBaseline);
+  const overheadLine = `median TTY ${formatMs(ttyRendererOverhead.ttyMedianMs)} - piped ${formatMs(ttyRendererOverhead.pipedMedianMs)} = ${formatMs(ttyRendererOverhead.overheadMs)} (budget ${formatMs(ttyRendererOverhead.overheadBudgetMs)})`;
+  if (!ttyRendererOverhead.ok) {
+    if (options.json)
+      process.stderr.write(`${JSON.stringify({ ok: false, ...summary, ttyRendererOverhead })}\n`);
+    else process.stderr.write(`TTY renderer overhead benchmark failed: ${overheadLine}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  if (options.json)
+    process.stdout.write(`${JSON.stringify({ ok: true, ...summary, ttyRendererOverhead })}\n`);
+  else process.stdout.write(`${formatSummary(summary)}\nTTY renderer overhead passed: ${overheadLine}\n`);
 };
 
 if (import.meta.main) {

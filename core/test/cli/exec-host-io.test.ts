@@ -66,11 +66,14 @@ describe("attachExecHostIo", () => {
     expect(destroyOnReturn).toBe(false);
   });
 
-  test("preserves explicit PTY intent when interactive stdin is piped", () => {
+  test("forwards piped stdin without a PTY even when stdout is a terminal", async () => {
     // Given
     const options = { command: ["cat"], interactive: true, tty: true } as const;
     const stdin = {
       isTTY: false,
+      setRawMode: () => {
+        throw new Error("piped input must not enter raw mode");
+      },
       readableFlowing: null,
       resume: () => {},
       pause: () => {},
@@ -79,19 +82,21 @@ describe("attachExecHostIo", () => {
     };
 
     // When
-    const attached = attachExecHostIo(options, stdin, { isTTY: false });
+    const attached = attachExecHostIo(options, stdin, { isTTY: true, columns: 120, rows: 40 });
+    await Effect.runPromise(withInheritedStdinRawMode(attached.tty === true, Effect.void, stdin));
 
     // Then
-    expect(attached.tty).toBe(true);
-    expect(attached.hostTerminal).toBeUndefined();
+    expect(attached.tty).toBe(false);
+    expect(attached.stdinStream).toBeDefined();
     expect(attached.terminalResize).toBeUndefined();
+    expect(attached.env).toBeUndefined();
   });
 
-  test("preserves forced PTY intent on a pipe without inventing attached facts", () => {
+  test("preserves ssh PTY intent with terminal stdin and piped output", () => {
     // Given
     const options = { command: ["sh", "-l"], tty: true } as const;
     const stdin = {
-      isTTY: false,
+      isTTY: true,
       readableFlowing: null,
       resume: () => {},
       pause: () => {},
@@ -107,6 +112,28 @@ describe("attachExecHostIo", () => {
     expect(attached.hostTerminal).toBeUndefined();
     expect(attached.terminalResize).toBeUndefined();
     expect(attached.env).toMatchObject({ COLUMNS: "80", LINES: "24" });
+  });
+
+  test("preserves interactive PTY input and resize when both streams are terminals", () => {
+    // Given
+    const stdin = {
+      isTTY: true,
+      readableFlowing: null,
+      resume: () => {},
+      pause: () => {},
+      async *[Symbol.asyncIterator]() {
+        yield new TextEncoder().encode("hello");
+      },
+      iterator: () => stdin[Symbol.asyncIterator](),
+    };
+    // When
+    const attached = attachExecHostIo({ command: ["cat"], tty: true, interactive: true }, stdin, {
+      isTTY: true,
+    });
+    // Then
+    expect(attached.tty).toBe(true);
+    expect(attached.stdinStream).toBeDefined();
+    expect(attached.terminalResize).toBeDefined();
   });
 });
 

@@ -82,11 +82,7 @@ describe("node:lts ServiceType", () => {
     expect(plan.appMount?.excludes).toEqual([]);
     expect(plan.appMount?.includes).toEqual([]);
     expect(plan.appMount?.realization).toBe("passthrough");
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
-    expect(plan.mounts[0]?.readOnly).toBe(false);
-    expect(plan.mounts[0]?.realization).toBe("passthrough");
+    expect(plan.mounts).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck).toBeUndefined();
@@ -212,10 +208,8 @@ describe("node:22 ServiceType", () => {
     expect(String(plan.appMount?.source)).toBe(APP_ROOT);
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
-    expect(plan.mounts[0]?.realization).toBe("passthrough");
+    expect(plan.appMount?.realization).toBe("passthrough");
+    expect(plan.mounts).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck).toBeUndefined();

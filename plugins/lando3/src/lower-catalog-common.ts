@@ -4,6 +4,7 @@ import type { Lando3Path } from "./contract.ts";
 import { withoutHostIpVariable } from "./host-reachability.ts";
 import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
 import { lowerServiceMemory } from "./lower-service-memory.ts";
+import { lowerTomcatWebroot } from "./lower-tomcat-webroot.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -171,25 +172,17 @@ export const lowerCatalogCommon = (
     patch.user = service.meUser;
     diagnostics.push(rewrittenMeUser({ ctx }));
   }
-  if (resolution.id === "tomcat" && typeof service.webroot === "string" && !service.webroot.startsWith("/")) {
-    const source = service.webroot.replace(/^(?:\.\/)+/u, "").replace(/\/+$/u, "");
-    if (source === "" || source === ".") {
-      rewrite(
-        ["webroot"],
-        "Omitted webroot: Lando 4 Tomcat deploys the app root to /usr/local/tomcat/webapps/ROOT by default.",
-      );
-    } else {
-      drop(
-        ["webroot"],
-        "Lando 4 Tomcat deploys the whole app root; a relative source webroot has no equivalent deploy path.",
-        "Set webroot to an absolute container deploy path, or serve the build output from the app root.",
-      );
-    }
+  const appMountDisabled =
+    service.app_mount === false || service.app_mount === "disabled" || service.app_mount === "off";
+  if (resolution.id === "tomcat") {
+    const webroot = lowerTomcatWebroot(service, ctx, appMountDisabled);
+    Object.assign(patch, webroot.patch);
+    diagnostics.push(...webroot.diagnostics);
   } else if (service.webroot !== undefined) patch.webroot = service.webroot;
   const port = numericPort(service.port);
   if (port !== undefined) patch.port = port;
 
-  if (service.app_mount === false || service.app_mount === "disabled" || service.app_mount === "off") {
+  if (appMountDisabled) {
     patch.appMount = false;
     rewrite(["app_mount"], "Rewrote disabled app_mount as appMount: false.");
   } else if (["cached", "delegated", "consistent"].includes(String(service.app_mount))) {

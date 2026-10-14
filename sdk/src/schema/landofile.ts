@@ -12,6 +12,7 @@ import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { StringImportRef } from "./landofile-reference.ts";
+import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { mapInputWithPrecheck } from "./map-input.ts";
 import { StorageScope } from "./mounts.ts";
@@ -31,6 +32,25 @@ import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
+const REPLACE = { kind: "replace" } as const;
+const ROUTE_MERGE = {
+  kind: "keyed",
+  identity: "route-match",
+  whenUnkeyed: "replace",
+  onMatch: "merge",
+} as const;
+const DEPENDENCY_MERGE = {
+  kind: "keyed",
+  identity: "dependency-service",
+  whenUnkeyed: "replace",
+  onMatch: "merge",
+} as const;
+const keyedMerge = (identity: Extract<LayerMergeRule, { kind: "keyed" }>["identity"]): LayerMergeRule => ({
+  kind: "keyed",
+  identity,
+  whenUnkeyed: "replace",
+  onMatch: "merge",
+});
 
 export { EndpointInput } from "./endpoint.ts";
 export { BuildBlock } from "./build-block.ts";
@@ -46,7 +66,14 @@ export const RouteObjectInput = Schema.Struct({
     description: "Target service endpoint name or port.",
   }),
   pathPrefix: Schema.optionalKey(Schema.String).annotate({ description: "Request path prefix to match." }),
-  filters: Schema.optionalKey(Schema.Array(RouteFilter)).annotate({
+  filters: Schema.optionalKey(
+    layerMerge(Schema.Array(RouteFilter), {
+      kind: "keyed",
+      identity: "filter-name-or-type",
+      whenUnkeyed: "replace",
+      onMatch: "replace-on-type-change",
+    }),
+  ).annotate({
     description: "Ordered provider-neutral route filters; names identify filters across layers.",
   }),
 });
@@ -270,14 +297,14 @@ const COMPOSE_DEPENDS_ON_DESCRIPTION =
   "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.";
 
 const ComposeDependsOnInput = Schema.Union([
-  Schema.Array(Schema.String),
-  ServiceDependencyInputRecord,
-  Schema.Array(ServiceDependency),
+  layerMerge(Schema.Array(Schema.String), DEPENDENCY_MERGE),
+  layerMerge(ServiceDependencyInputRecord, DEPENDENCY_MERGE),
+  layerMerge(Schema.Array(ServiceDependency), DEPENDENCY_MERGE),
 ])
   .annotate({ description: COMPOSE_DEPENDS_ON_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
-      Schema.Array(ServiceDependency),
+      layerMerge(Schema.Array(ServiceDependency), DEPENDENCY_MERGE),
       SchemaTransformation.transformEffect({
         decode: (input) => {
           if (Array.isArray(input)) {
@@ -316,6 +343,7 @@ const ComposeDependsOnInput = Schema.Union([
       }),
     ),
   )
+  .pipe((schema) => layerMerge(schema, DEPENDENCY_MERGE))
   .annotate({ description: COMPOSE_DEPENDS_ON_DESCRIPTION });
 
 const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown).annotate(
@@ -378,11 +406,11 @@ const ComposeConfigOrSecretEntry = Schema.StructWithRest(
 );
 
 const composeConfigOrSecretInput = (description: string) =>
-  Schema.Array(Schema.Union([Schema.String, ComposeConfigOrSecretEntry]))
+  layerMerge(Schema.Array(Schema.Union([Schema.String, ComposeConfigOrSecretEntry])), REPLACE)
     .annotate({ description })
     .pipe(
       Schema.decodeTo(
-        Schema.Array(ComposeConfigOrSecretEntry),
+        layerMerge(Schema.Array(ComposeConfigOrSecretEntry), REPLACE),
         SchemaTransformation.transform<
           ReadonlyArray<typeof ComposeConfigOrSecretEntry.Encoded>,
           ReadonlyArray<string | typeof ComposeConfigOrSecretEntry.Type>
@@ -426,7 +454,7 @@ const ServiceSecurityCaEntry = Schema.Union([Schema.String, StringImportRef]).an
 });
 
 const ServiceSecurity = Schema.Struct({
-  ca: Schema.optionalKey(Schema.Array(ServiceSecurityCaEntry)).annotate({
+  ca: Schema.optionalKey(layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE)).annotate({
     description: "Additional CA certificate paths for this service.",
   }),
   inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
@@ -437,12 +465,15 @@ const ServiceSecurity = Schema.Struct({
   }),
 });
 
-const ServiceSecurityCaAlias = Schema.Union([ServiceSecurityCaEntry, Schema.Array(ServiceSecurityCaEntry)]);
+const ServiceSecurityCaAlias = Schema.Union([
+  ServiceSecurityCaEntry,
+  layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE),
+]);
 const Forbidden = Schema.optionalKey(Schema.Never);
 
 const ServiceSecurityInput = Schema.Union([
   Schema.Struct({
-    ca: Schema.optionalKey(Schema.Array(ServiceSecurityCaEntry)),
+    ca: Schema.optionalKey(layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE)),
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
@@ -621,7 +652,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:
-        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. Tomcat uses it as the absolute deploy path.',
+        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. With appMount: false it must be absolute.',
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
@@ -691,10 +722,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     ).annotate({
       description: "Application source mount configuration, or false to disable the app mount.",
     }),
-    mounts: Schema.optionalKey(Schema.Array(MountInput)).annotate({
+    mounts: Schema.optionalKey(layerMerge(Schema.Array(MountInput), REPLACE)).annotate({
       description: "Additional host or managed-file mounts attached to the service.",
     }),
-    storage: Schema.optionalKey(Schema.Array(StorageInput)).annotate({
+    storage: Schema.optionalKey(layerMerge(Schema.Array(StorageInput), REPLACE)).annotate({
       description: "Persistent or cached storage attached to the service.",
     }),
     home: Schema.optionalKey(
@@ -712,16 +743,18 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     scanner: Schema.optionalKey(ScannerConfig).annotate({
       description: "How the post-start URL scan probes this service, or false to skip it.",
     }),
-    endpoints: Schema.optionalKey(Schema.Array(EndpointInput)).annotate({
+    endpoints: Schema.optionalKey(
+      layerMerge(Schema.Array(EndpointInput), keyedMerge("endpoint-name")),
+    ).annotate({
       description: "Internal or published network endpoints exposed by the service.",
     }),
-    routes: Schema.optionalKey(Schema.Array(RouteInput)).annotate({
+    routes: Schema.optionalKey(layerMerge(Schema.Array(RouteInput), ROUTE_MERGE)).annotate({
       description:
         "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckField),
-    logs: Schema.optionalKey(Schema.Array(LogSourceInput)),
+    logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
     security: Schema.optionalKey(ServiceSecurityField).annotate({
@@ -757,7 +790,13 @@ export const ServiceConfigInput = Schema.StructWithRest(
       description: "Compose alias for the canonical envFile service field; accepts one path or a path list.",
     }),
     depends_on: Schema.optionalKey(
-      Schema.Union([Schema.Array(Schema.String), ServiceDependencyInputRecord]),
+      layerMerge(
+        Schema.Union([
+          layerMerge(Schema.Array(Schema.String), DEPENDENCY_MERGE),
+          layerMerge(ServiceDependencyInputRecord, DEPENDENCY_MERGE),
+        ]),
+        DEPENDENCY_MERGE,
+      ),
     ).annotate({
       description:
         "Compose alias for the canonical dependsOn service field; accepts a service-name list or condition map.",
@@ -1154,20 +1193,20 @@ export type EventStep = typeof EventStep.Type;
 
 export const LandofileEvents = Schema.StructWithRest(
   Schema.Struct({
-    "pre-init": Schema.optionalKey(Schema.Array(EventStep)),
-    "post-init": Schema.optionalKey(Schema.Array(EventStep)),
-    "pre-start": Schema.optionalKey(Schema.Array(EventStep)),
-    "post-start": Schema.optionalKey(Schema.Array(EventStep)),
-    "pre-stop": Schema.optionalKey(Schema.Array(EventStep)),
-    "post-stop": Schema.optionalKey(Schema.Array(EventStep)),
-    "pre-restart": Schema.optionalKey(Schema.Array(EventStep)),
-    "post-restart": Schema.optionalKey(Schema.Array(EventStep)),
-    "pre-rebuild": Schema.optionalKey(Schema.Array(EventStep)),
-    "post-rebuild": Schema.optionalKey(Schema.Array(EventStep)),
-    "pre-destroy": Schema.optionalKey(Schema.Array(EventStep)),
-    "post-destroy": Schema.optionalKey(Schema.Array(EventStep)),
+    "pre-init": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "post-init": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "pre-start": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "post-start": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "pre-stop": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "post-stop": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "pre-restart": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "post-restart": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "pre-rebuild": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "post-rebuild": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "pre-destroy": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "post-destroy": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
   }),
-  [Schema.Record(Schema.String, Schema.Array(EventStep))],
+  [Schema.Record(Schema.String, layerMerge(Schema.Array(EventStep), REPLACE))],
 ).annotate({
   identifier: "LandofileEvents",
   description: "Ordered tasks keyed by lifecycle or tooling event name, validated after tooling resolution.",
@@ -1212,7 +1251,9 @@ export const ToolingTaskShape = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
   cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
-  cmds: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, ToolingStepShape]))).annotate({
+  cmds: Schema.optionalKey(
+    layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE),
+  ).annotate({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
   arguments: Schema.optionalKey(Schema.Literal(false)).annotate({
@@ -1453,7 +1494,7 @@ const LandofileShapeBase = Schema.Struct({
   }),
   agentEnv: Schema.optionalKey(Schema.Boolean),
   version: Schema.optionalKey(Schema.String),
-  includes: Schema.optionalKey(Schema.Array(IncludeEntry)),
+  includes: Schema.optionalKey(layerMerge(Schema.Array(IncludeEntry), REPLACE)),
   include: Schema.optionalKey(Schema.Array(Schema.String)),
   remotes: Schema.optionalKey(Schema.Record(Schema.String, RemoteConfig)),
   sync: Schema.optionalKey(Schema.Record(Schema.String, DatasetBinding)),
@@ -1469,7 +1510,7 @@ const LandofileShapeBase = Schema.Struct({
     description: "App GPG-agent forwarding policy, overriding global settings per field.",
   }),
   services: Schema.optionalKey(Schema.Record(ServiceName, ServiceConfigDecode)),
-  proxy: Schema.optionalKey(Schema.Record(ServiceName, Schema.Array(RouteInput))),
+  proxy: Schema.optionalKey(Schema.Record(ServiceName, layerMerge(Schema.Array(RouteInput), ROUTE_MERGE))),
   router: Schema.optionalKey(RouterConfig).annotate({
     description: "App-authored shared-router bind address and port policy.",
   }),

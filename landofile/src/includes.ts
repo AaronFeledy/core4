@@ -687,7 +687,7 @@ const withResolvedTooling = (
 ): Record<string, unknown> => {
   const inline = inlineWithoutIncludes(landofile);
   const own = Predicate.isObject(inline.tooling) ? inline.tooling : {};
-  const merged = mergeValues(included, own);
+  const merged = mergeValues(LandofileShape, included, own, ["tooling"]);
   if (!Predicate.isObject(merged) || Object.keys(merged).length === 0) return inline;
   return { ...inline, tooling: merged };
 };

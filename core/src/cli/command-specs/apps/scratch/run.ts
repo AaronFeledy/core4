@@ -2,18 +2,22 @@ import { Flags } from "../../../spec/metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import {
+  type ScratchRunError,
   type ScratchRunResult,
   ScratchRunResultSchema,
-  renderScratchRunResult,
+  type ScratchRunServices,
   scratchRun,
   scratchRunOptionsFromInput,
   scratchRunRedactionTokens,
   scratchRunSuccessExitCode,
 } from "../../../commands/scratch-run";
-import type { RenderContext } from "../../../renderer-boundary";
+import { attachExecHostIo, toolingHostStdin } from "../../../exec-host-io";
+import { isEnvelopeResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { booleanFlag, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { execInputUsesCliHostIo } from "../../app/exec";
 
-export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
+export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunError, ScratchRunServices> = {
   resultSchema: ScratchRunResultSchema,
   id: "apps:scratch:run",
   summary: "Run a one-off command in a disposable scratch app.",
@@ -38,17 +42,32 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
     }),
   },
   streaming: StreamFrame,
-  run: (input) => scratchRun(scratchRunOptionsFromInput(input)),
-  streamFrames: (value) => {
-    const result = value as ScratchRunResult;
-    const frames = [];
-    if (result.stdout.length > 0)
-      frames.push({ _tag: "stdout" as const, service: result.service, chunk: result.stdout });
-    if (result.stderr.length > 0)
-      frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
-    return frames;
+  streamingMode: "live",
+  run: (input) => {
+    const options = scratchRunOptionsFromInput(input);
+    const nonInteractive =
+      typeof input === "object" &&
+      input !== null &&
+      "interaction" in input &&
+      input.interaction === "non-interactive";
+    if (!execInputUsesCliHostIo(input) || nonInteractive) return scratchRun(options);
+    const flags = specFlagsOf(input);
+    const format = stringFlag(flags, "format");
+    const envelopeFormat =
+      (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
+    const rendererMode =
+      typeof input === "object" && input !== null && "rendererMode" in input ? input.rendererMode : undefined;
+    const mode = toolingHostStdin(!envelopeFormat && rendererMode !== "json");
+    const hostIo =
+      mode === "none"
+        ? {}
+        : attachExecHostIo({
+            command: options.command,
+            tty: mode === "keyboard",
+            interactive: mode === "keyboard",
+          });
+    return scratchRun({ ...options, ...hostIo, hostIo: "cli", envelopeFormat });
   },
   redactionTokens: (value) => scratchRunRedactionTokens(value as ScratchRunResult),
-  render: (result, ctx) => renderScratchRunResult(result as ScratchRunResult, ctx as RenderContext),
   successExitCode: (result) => scratchRunSuccessExitCode(result),
 };

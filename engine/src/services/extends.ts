@@ -1,7 +1,7 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
-import type { ServiceConfig } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import type {
   FeatureRef,
   ServiceImageIdentity,
@@ -16,7 +16,7 @@ import { mergeValues } from "@lando/sdk/landofile";
 export const MAX_SERVICE_TYPE_EXTENDS_DEPTH = 4;
 
 const mergeServiceConfig = (parent: ServiceConfig, child: ServiceConfig): ServiceConfig =>
-  mergeValues(parent, child) as ServiceConfig;
+  mergeValues(ServiceConfig, parent, child) as ServiceConfig;
 
 /**
  * Feature lists merge by id: parent features come first; a child `FeatureRef`
@@ -42,7 +42,7 @@ const mergeFeatures = (
     }
     const mergedConfig =
       existing.config !== undefined && feature.config !== undefined
-        ? (mergeValues(existing.config, feature.config) as Record<string, unknown>)
+        ? (mergeValues(Schema.Unknown, existing.config, feature.config) as Record<string, unknown>)
         : (feature.config ?? existing.config);
     byId.set(feature.id, {
       id: feature.id,
@@ -53,12 +53,14 @@ const mergeFeatures = (
 };
 
 const mergeOptionalRecord = <T>(
+  root: Schema.Top,
   parent: Readonly<Record<string, T>> | undefined,
   child: Readonly<Record<string, T>> | undefined,
+  path: ReadonlyArray<string> = [],
 ): Readonly<Record<string, T>> | undefined => {
   if (parent === undefined) return child;
   if (child === undefined) return parent;
-  return mergeValues(parent, child) as Record<string, T>;
+  return mergeValues(root, parent, child, path) as Record<string, T>;
 };
 
 /**
@@ -100,8 +102,8 @@ export const mergeResolutionOverParent = (
   parent: ServiceTypeResolution,
   child: ServiceTypeResolution,
 ): ServiceTypeResolution => {
-  const tooling = mergeOptionalRecord(parent.tooling, child.tooling);
-  const metadata = mergeOptionalRecord(parent.metadata, child.metadata) as
+  const tooling = mergeOptionalRecord(LandofileShape, parent.tooling, child.tooling, ["tooling"]);
+  const metadata = mergeOptionalRecord(Schema.Unknown, parent.metadata, child.metadata) as
     | Record<string, unknown>
     | undefined;
   const logSources = mergeLogSources(parent.logSources, child.logSources);

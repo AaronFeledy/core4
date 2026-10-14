@@ -21,6 +21,9 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Lando",
+      logo: { src: "./src/assets/lando-logo.svg" },
+      // Starlight prefixes `base` onto `favicon` but not onto raw head hrefs.
+      head: [{ tag: "link", attrs: { rel: "icon", href: "/core4/favicon.ico", sizes: "32x32" } }],
       sidebar: [...sidebar],
     }),
     AutoImport({

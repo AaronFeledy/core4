@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type PlanMetadata,
   ProviderId,
@@ -14,9 +13,9 @@ import { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337"
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
 import { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
 import {
-  applyAuthoredAppMount,
   applyAuthoredHealthcheck,
   mergeDefaultExcludes,
+  validateAuthoredAppMount,
 } from "@lando/engine/services/planner";
 import { serviceFeatures } from "../../src/features/index.ts";
 
@@ -100,12 +99,7 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
   );
 
   if (args.applyAuthoredWrappers === false) return rawPlan;
-  const withAppMount = applyAuthoredAppMount(
-    mergeDefaultExcludes(rawPlan),
-    args.service,
-    args.appRoot,
-    serviceName,
-  );
-  if (withAppMount instanceof LandofileValidationError) throw withAppMount;
-  return applyAuthoredHealthcheck(withAppMount, args.service);
+  const appMountError = validateAuthoredAppMount(args.service, args.appRoot, serviceName);
+  if (appMountError !== undefined) throw appMountError;
+  return applyAuthoredHealthcheck(mergeDefaultExcludes(rawPlan), args.service);
 };

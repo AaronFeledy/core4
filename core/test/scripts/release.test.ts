@@ -15,7 +15,12 @@ import {
   resolveCompiledBinaryVersion,
 } from "../../../scripts/compiled-binary-version.ts";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
-import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
+import {
+  RELEASE_STAGES,
+  ReleaseStageError,
+  redactReleaseCommand,
+  runRelease,
+} from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
 
 type ReleaseStage = (typeof RELEASE_STAGES)[number];
@@ -532,6 +537,7 @@ describe("release orchestrator", () => {
         manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "9-sign",
+        hostPlatform: "win32",
         env: {
           LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
           LANDO_RELEASE_COSIGN_KEY: "key",
@@ -575,6 +581,7 @@ describe("release orchestrator", () => {
       target: "binary",
       throughStage: "9-sign",
       env: { ...windowsSigningEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
+      hostPlatform: "win32",
       runner: {
         spawn: async ({ stageId, cmd }) => {
           if (stageId === "9-sign") windowsCommands.push(cmd);
@@ -597,6 +604,7 @@ describe("release orchestrator", () => {
       target: "binary",
       throughStage: "9-sign",
       env: { ...macosSigningEnv, ...windowsSigningEnv },
+      hostPlatform: "win32",
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
@@ -647,6 +655,7 @@ describe("release orchestrator", () => {
       target: "binary",
       throughStage: "10-notarize",
       env: { ...macosSigningEnv, ...windowsSigningEnv },
+      hostPlatform: "win32",
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
@@ -726,6 +735,7 @@ describe("release orchestrator", () => {
         manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "10-notarize",
+        hostPlatform: "win32",
         env: {
           ...windowsSigningEnv,
           LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
@@ -758,6 +768,7 @@ describe("release orchestrator", () => {
         target: "binary",
         throughStage: "9-sign",
         env: { ...macosSigningEnv, ...windowsSigningEnv },
+        hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
             if (stageId === "9-sign" && cmd[0] === "codesign") throw new Error("codesign failed");
@@ -870,6 +881,7 @@ describe("release orchestrator", () => {
         target: "binary",
         throughStage: "11-manifest",
         env: { ...macosSigningEnv, ...windowsSigningEnv, ...manifestSigningEnv },
+        hostPlatform: "win32",
         runner: {
           spawn: async () => {},
           shell: async ({ stageId, script }) => {
@@ -971,6 +983,7 @@ describe("release orchestrator", () => {
         manifestGate: passingManifestGate,
         target: "all",
         throughStage: "12-provenance-sbom",
+        hostPlatform: "win32",
         env: {
           ...macosSigningEnv,
           ...windowsSigningEnv,
@@ -1064,6 +1077,7 @@ describe("release orchestrator", () => {
         manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "12-provenance-sbom",
+        hostPlatform: "win32",
         env: {
           ...macosSigningEnv,
           ...windowsSigningEnv,
@@ -1856,6 +1870,7 @@ describe("release orchestrator", () => {
         target: "binary",
         throughStage: "11-manifest",
         env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
+        hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
             spawnStages.push({ stageId, cmd });
@@ -1919,6 +1934,7 @@ describe("release orchestrator", () => {
         target: "binary",
         throughStage: "9-sign",
         env: { ...macosSigningEnv, ...windowsSigningEnv },
+        hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
             if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
@@ -1943,6 +1959,7 @@ describe("release orchestrator", () => {
         target: "binary",
         throughStage: "9-sign",
         env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-arm64" },
+        hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
             if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
@@ -1966,6 +1983,7 @@ describe("release orchestrator", () => {
         manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "9-sign",
+        hostPlatform: "win32",
         env: {
           ...windowsSigningEnv,
           LOCAL_REHEARSAL: "1",
@@ -2009,6 +2027,7 @@ describe("release orchestrator", () => {
           target: "binary",
           throughStage: "9-sign",
           env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
+          hostPlatform: "win32",
           runner: {
             spawn: async ({ stageId, cmd }) => {
               if (stageId === "9-sign" && cmd[0] === "cosign") throw new Error("cosign unavailable");
@@ -2452,6 +2471,123 @@ describe("release orchestrator", () => {
     });
   });
 
+  test.each([
+    { env: {}, refusedPlatforms: "windows-x64, windows-arm64" },
+    { env: { LANDO_RELEASE_PLATFORM: "windows-x64" }, refusedPlatforms: "windows-x64" },
+  ])(
+    "refuses $refusedPlatforms on a Linux host before any compile-stage spawn",
+    async ({ env, refusedPlatforms }) => {
+      // Given: a Linux release host and a runner that records every spawned command.
+      const spawnStages: Array<string> = [];
+
+      // When: the orchestrator reaches Windows compilation.
+      const failure = await runRelease({
+        deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
+        target: "binary",
+        throughStage: "7-compile",
+        env,
+        hostPlatform: "linux",
+        runner: {
+          spawn: async ({ stageId }) => {
+            spawnStages.push(stageId);
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+        now: () => 0,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      // Then: the specific remediation survives stage wrapping, with no install or build.
+      expect(failure).toBeInstanceOf(ReleaseStageError);
+      expect(failure).toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "7-compile",
+        artifactFamily: "binary",
+        commandSummary: `compile ${refusedPlatforms} on a linux host`,
+        remediation:
+          "Bun embeds the Lando icon and Windows version info only when compiling on Windows. Run the Windows compile on a Windows host with LANDO_RELEASE_PLATFORM=windows-x64 (or windows-arm64), and the other targets with LANDO_RELEASE_PLATFORM on their hosts.",
+      });
+      if (!(failure instanceof ReleaseStageError)) throw new Error("Expected a release stage error");
+      expect(failure.cause).not.toBeInstanceOf(ReleaseStageError);
+      expect(spawnStages).not.toContain("7-compile");
+    },
+  );
+
+  test("direct compile stage defaults to process.platform when hostPlatform is omitted", async () => {
+    // Given: a Windows target without an injected host platform.
+    const commands: Array<ReadonlyArray<string>> = [];
+
+    // When: the stage runs directly, bypassing the orchestrator's default.
+    const compilation = releaseStage("7-compile").run({
+      target: "binary",
+      env: { LANDO_RELEASE_PLATFORM: "windows-x64" },
+      localRehearsal: false,
+      runner: {
+        spawn: async ({ cmd }) => {
+          commands.push(cmd);
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+      now: () => 0,
+    });
+
+    // Then: the actual host determines whether compilation can start.
+    if (process.platform === "win32") {
+      await expect(compilation).resolves.toBeUndefined();
+      expect(commands[1]).toContain("bun-windows-x64");
+    } else {
+      await expect(compilation).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "7-compile",
+        commandSummary: `compile windows-x64 on a ${process.platform} host`,
+      });
+      expect(commands).toEqual([]);
+    }
+  });
+
+  test("compile stage builds a selected Linux binary on a Linux host", async () => {
+    // Given: a Linux-only release selection on a Linux host.
+    const commands: Array<ReadonlyArray<string>> = [];
+
+    // When: the compile stage runs.
+    await releaseStage("7-compile").run({
+      target: "binary",
+      env: { LANDO_RELEASE_PLATFORM: "linux-x64" },
+      hostPlatform: "linux",
+      localRehearsal: false,
+      runner: {
+        spawn: async ({ cmd }) => {
+          commands.push(cmd);
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+      now: () => 0,
+    });
+
+    // Then: dependency installation, compilation, and sanitization run normally.
+    expect(commands).toEqual([
+      ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+      [
+        "bun",
+        "run",
+        "scripts/build-compiled-binary.ts",
+        "--target",
+        "bun-linux-x64",
+        "--outfile",
+        "./dist/lando-linux-x64",
+        "--minify",
+        "--sourcemap=external",
+      ],
+      ["bun", "run", "scripts/sanitize-compiled-binary.ts", "./dist/lando-linux-x64"],
+    ]);
+  });
+
   test("local rehearsal compiles the Windows release artifact before signing", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const logs: Array<string> = [];
@@ -2462,6 +2598,7 @@ describe("release orchestrator", () => {
       target: "binary",
       throughStage: "7-compile",
       env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
+      hostPlatform: "win32",
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
@@ -2500,7 +2637,7 @@ describe("release orchestrator", () => {
     expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
   });
 
-  test("compile stage builds every CI platform binary with bytecode", async () => {
+  test("compile stage builds every CI platform binary with bytecode on a Windows host", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     let now = 0;
 
@@ -2510,6 +2647,7 @@ describe("release orchestrator", () => {
       target: "binary",
       throughStage: "7-compile",
       env: {},
+      hostPlatform: "win32",
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
@@ -2621,6 +2759,7 @@ describe("release orchestrator", () => {
       target: "binary",
       throughStage: "7-compile",
       env: {},
+      hostPlatform: "win32",
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {

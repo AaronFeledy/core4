@@ -313,7 +313,6 @@ describe("ensureGlobalServicesRunning", () => {
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
       expect(harness.applyCalls[0]?.options.serviceEnvironment?.[ServiceName.make("traefik")]).toEqual({
-        LANDO_HOST_IP: "host.lando.internal",
         TOKEN: "resolved-global-token",
       });
       expect(harness.applyCalls[0]?.plan.services[ServiceName.make("traefik")]?.environment).toEqual({

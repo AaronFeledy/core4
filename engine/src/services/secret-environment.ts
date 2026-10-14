@@ -14,7 +14,7 @@ export const resolveServiceEnvironmentSecrets = Effect.fnUntraced(function* (
   const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
     Effect.forEach(Object.entries(service.environment), ([key, value]) => {
       const reference = exactSecretReference(value);
-      if (reference === undefined) return Effect.succeed([key, value] as const);
+      if (reference === undefined) return Effect.succeed([]);
       if (reference instanceof SecretReferenceInvalidError) return Effect.fail(reference);
       const secret = reference.raw;
       if (storeOption._tag === "None") {
@@ -33,9 +33,9 @@ export const resolveServiceEnvironmentSecrets = Effect.fnUntraced(function* (
             onSome: (service) => service.registerValues([resolved]),
           }),
         ),
-        Effect.map((resolved) => [key, resolved] as const),
+        Effect.map((resolved) => [[key, resolved] as const]),
       );
-    }).pipe(Effect.map((environment) => [service.name, Object.fromEntries(environment)] as const)),
+    }).pipe(Effect.map((environment) => [service.name, Object.fromEntries(environment.flat())] as const)),
   );
   return Object.fromEntries(services);
 });

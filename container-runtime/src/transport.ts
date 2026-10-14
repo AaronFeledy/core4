@@ -1,3 +1,5 @@
+export { socketHttpConnection } from "./socket-http-connection.ts";
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -620,7 +622,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       input.signal?.removeEventListener("abort", abort);
       stopStdinPump?.();
       await stdinPump?.catch(() => undefined);
-      void stdinIterator?.return?.();
+      void stdinIterator?.return?.().catch(() => undefined);
       connection.destroy();
     }
   }
