@@ -10,12 +10,12 @@ import type { BunPlugin } from "bun";
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { opentuiNativeCatalog } from "./generated/opentui-native/catalog.generated.ts";
+import { WINDOWS_BRANDING, windowsPeVersion } from "./windows-branding.ts";
 
 export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_OUTFILE = resolve(REPO_ROOT, "core/dist/lando");
-const WINDOWS_ICON = resolve(REPO_ROOT, "scripts/lando.ico");
 
 export interface CompiledBinaryOptions {
   readonly target?: string;
@@ -149,6 +149,11 @@ export const buildCompiledBinary = async (
   });
   const stagingDir = await mkdtemp(resolve(tmpdir(), "lando-compile-shims-"));
   try {
+    if (isWindowsCiPlatform(platform) && !isWindowsCiPlatform({ id: host })) {
+      console.warn(
+        `[build-compiled-binary] ${platform.id}: Bun cannot embed the Lando icon or version info when cross-compiling; this binary keeps Bun's defaults. Compile on Windows for a branded binary.`,
+      );
+    }
     const shimAssets = await prepareShimAssets(stagingDir);
     const output = await build({
       entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts"), ...shimAssets],
@@ -159,9 +164,9 @@ export const buildCompiledBinary = async (
       compile: {
         target: bunTargetFor(platform),
         outfile: options.outfile,
-        // Bun applies PE icons only on Windows hosts, silently ignoring cross-compiles; CI builds Windows releases on native Windows runners.
+        // Bun applies PE branding only on Windows hosts; CI uses native Windows runners.
         ...(isWindowsCiPlatform(platform) && isWindowsCiPlatform({ id: host })
-          ? { windows: { icon: WINDOWS_ICON } }
+          ? { windows: { ...WINDOWS_BRANDING, version: windowsPeVersion(version) } }
           : {}),
       },
       bytecode: true,

@@ -9,7 +9,7 @@ description: Records architectural and release decisions for Lando v4.
 
 Beta 1 requires Bun `>=1.4.2`. The pinned CI/runtime version is `1.4.2` in `.bun-version`, and workspace package metadata mirrors that shared toolchain floor in `engines.bun`.
 
-Rationale: Bun 1.4.1 fixed cross-platform bytecode compilation, including the Linux-to-Windows startup crash; the 1.4.2 toolchain includes that fix. The central builder enables the programmatic equivalent of `bun build --compile --bytecode` for all six release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`, whether built natively or cross-compiled. Any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
+Rationale: Bun 1.4.1 fixed cross-platform bytecode compilation, including the Linux-to-Windows startup crash; the 1.4.2 toolchain includes that fix. The central builder enables the programmatic equivalent of `bun build --compile --bytecode` for all six release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Bytecode supports cross-compilation, but Windows release binaries must be compiled on Windows so Bun embeds the Lando icon and Windows version info. See "Platform scope" in `release.md` for release instructions. Any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
 
 Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. The compiler floor does not change container-runtime image pins or the `@types/bun ^1.4.0` dependency range.
 
