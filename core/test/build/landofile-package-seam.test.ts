@@ -165,6 +165,7 @@ describe("Landofile package seam", () => {
         "LANDOFILE_LEADING_COMMENT_BLOCKS",
         "LEGACY_TAGGED",
         "LandofileEmitError",
+        "TOOLING_REPLACE_ARRAY_KEYS",
         "compareKeyPaths",
         "composeServiceDispositions",
         "composeTagDispositions",

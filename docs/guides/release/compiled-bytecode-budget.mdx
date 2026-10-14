@@ -14,7 +14,7 @@ The release-orchestrator tests inject the runner and clock so this guide stays h
 
 Stage 7 compiles the canonical CLI entry (`./core/bin/lando.ts`).
 
-Every release binary is compiled with Bun bytecode enabled, including Windows cross-compilation. Use Bun 1.4.2 or newer; `.bun-version` pins the CI compiler.
+Every release binary is compiled with Bun bytecode enabled. Windows targets must compile on a Windows host so Bun embeds the Lando icon and Windows version info. See [Platform scope](../../contributing/release.md#platform-scope) for target selection. Use Bun 1.4.2 or newer; `.bun-version` pins the CI compiler.
 
 ```sh
 --compile --bytecode

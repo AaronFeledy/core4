@@ -22,11 +22,11 @@ Redirect stdin, or run it from a script or CI, and Lando publishes a task tree i
 lando composer install < /dev/null
 ```
 
+Redirected input still reaches the command as plain bytes, with no terminal in between, so `lando psql < dump.sql` runs the dump and exits.
+
 The tree has a parent task for the command, one child per target service, streamed stdout/stderr lines on each child, then a complete or fail close with the exit code.
 
 A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts.
-
-With stdout on a terminal but no keyboard attached, nobody can dismiss a pager, so tooling sets `PAGER=cat` for that run. Set `PAGER` in the service or task `env` to pick your own.
 
 ## Pick a renderer mode
 

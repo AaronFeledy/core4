@@ -3,6 +3,7 @@
 import { existsSync } from "node:fs";
 
 import { assertCompiledBinaryVersion } from "./compiled-binary-version.ts";
+import { WINDOWS_BRANDING, assertWindowsBranding } from "./windows-branding.ts";
 
 const SMOKE_SUBCOMMANDS = [["--version"], ["--help"], ["shellenv"]] as const;
 const BOGUS_SUBCOMMAND = ["__lando_windows_smoke_unknown__"] as const;
@@ -53,6 +54,12 @@ if (import.meta.main) {
   }
 
   try {
+    if (existsSync(binaryPath)) {
+      assertWindowsBranding(
+        await Bun.file(binaryPath).bytes(),
+        await Bun.file(WINDOWS_BRANDING.icon).bytes(),
+      );
+    }
     await smokeWindowsBinary(binaryPath);
     console.log(`smoke ok: ${binaryPath}`);
   } catch (error) {

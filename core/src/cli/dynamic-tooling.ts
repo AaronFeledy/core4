@@ -72,7 +72,7 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   const { restore, ...hostIo } = attachToolingHostIo(
     !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
-  const interactive = hostIo.stdinStream !== undefined;
+  const interactive = hostIo.tty === true;
   return runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       runTooling({

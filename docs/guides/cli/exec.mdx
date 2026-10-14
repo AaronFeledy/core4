@@ -8,7 +8,7 @@ tags: [beta, docs, cli, exec]
 
 # Run commands inside a service
 
-`lando exec` runs a one-off command inside a running service. It doesn't attach host stdin by default, so commands finish without waiting for input. Add `-i` when the command needs stdin.
+`lando exec` runs a one-off command inside a running service. At a terminal it doesn't attach your keyboard, so commands finish without waiting for input. Add `-i` when you want to type into the command. Piped or redirected input always reaches the command.
 
 A service name before `--` selects that service; otherwise the primary service is used. Everything after `--` is the exact argv handed to the service. The command spec is non-strict, so it parses no flags of its own past that point.
 
@@ -21,6 +21,17 @@ lando exec --cwd /srv/app -- pwd
 ```
 
 Open a shell with `lando ssh` or `lando shell --service <name>`.
+
+## Pipe input in
+
+Pipe or redirect stdin, and the command reads it as plain bytes, then exits when the input ends:
+
+```sh
+printf 'hello\n' | lando exec -- cat
+lando exec db -- mysql -u lando -plando myapp < dump.sql
+```
+
+The command gets a terminal only when your stdin and stdout are both terminals. Piped input never goes through one, so nothing echoes back. Pipe the output away (`| grep`) and the command gets no terminal either, so tools that color only on a terminal print plain text.
 
 <Guide>
   <Scenario id="scaffold-and-start" render>

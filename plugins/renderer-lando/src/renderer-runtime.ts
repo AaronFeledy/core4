@@ -1,21 +1,11 @@
 import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
-import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY_INITIAL } from "@lando/sdk/renderer";
+import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, type Renderer } from "@lando/sdk/services";
 
-import {
-  type CapabilityProbe,
-  type CapabilitySnapshotHandle,
-  createCapabilitySnapshot,
-  scheduleCapabilityProbe,
-} from "./capabilities.ts";
 import { sanitizeNotificationText } from "./notify-sanitize.ts";
-import {
-  bindIoDesktopNotificationTrigger,
-  flushPendingNotifications,
-  productionCapabilityProbe,
-} from "./notify-trigger.ts";
+import { bindIoDesktopNotificationTrigger, flushPendingNotifications } from "./notify-trigger.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import { createLiveRegionController } from "./opentui/live-region-controller.ts";
 import { prefetchLiveRegionModule } from "./opentui/live-region-substrate.ts";
@@ -26,9 +16,7 @@ import type { LiveRegionHandle } from "./task-tree-substrate-handler.ts";
 import { TranscriptTailReader, type TranscriptTailReaderShape } from "./transcript-tail-reader.ts";
 
 export type LandoRendererServiceOptions = {
-  readonly capabilityProbe?: CapabilityProbe;
   readonly triggerNotification?: (message: string, title?: string) => boolean;
-  readonly clock?: { readonly setTimeout: (fn: () => void, ms: number) => unknown };
   readonly flushNotifications?: () => Promise<void>;
 };
 
@@ -37,26 +25,7 @@ export interface LandoEventConsumerDeps extends LandoRendererServiceOptions {
   readonly loadModule?: () => Promise<OpenTuiLiveRegionModuleLike>;
   readonly raiseInterrupt?: () => void;
   readonly transcriptReader?: TranscriptTailReaderShape;
-  readonly getCapabilities?: () => { readonly notifications: boolean };
 }
-
-const capabilitySnapshotsByIo = new WeakMap<object, CapabilitySnapshotHandle>();
-
-export const resolveCapabilitySnapshot = (
-  io: RendererIO,
-  options: LandoRendererServiceOptions = {},
-): CapabilitySnapshotHandle => {
-  const key = io as object;
-  const existing = capabilitySnapshotsByIo.get(key);
-  if (existing !== undefined) return existing;
-  const tty = io.isTTY === true;
-  const snapshot = createCapabilitySnapshot(
-    tty ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE,
-  );
-  if (tty) scheduleCapabilityProbe(snapshot, options.capabilityProbe, options.clock);
-  capabilitySnapshotsByIo.set(key, snapshot);
-  return snapshot;
-};
 
 const handleNotifyDesktop = (
   event: LandoEvent,
@@ -104,26 +73,18 @@ const layerNotificationConsumer = (
     }),
   );
 
-export const makeLandoService = (
-  io: RendererIO,
-  options: LandoRendererServiceOptions = {},
-): Layer.Layer<Renderer> => {
-  const snapshot = resolveCapabilitySnapshot(io, options);
-  return makeRendererService(io, () => snapshot.get());
+export const makeLandoService = (io: RendererIO): Layer.Layer<Renderer> => {
+  const capabilities = io.isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE;
+  return makeRendererService(io, () => capabilities);
 };
 
 export const makeLandoEventConsumer = (
   io: RendererIO,
   deps: LandoEventConsumerDeps = {},
 ): Layer.Layer<never, never, EventService> => {
-  const snapshot = deps.getCapabilities === undefined ? resolveCapabilitySnapshot(io, deps) : undefined;
-  const getCapabilities =
-    deps.getCapabilities ??
-    (() =>
-      snapshot?.get() ??
-      (io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE));
+  const capabilities = io.isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE;
   const notifications = layerNotificationConsumer(
-    getCapabilities,
+    () => capabilities,
     deps.triggerNotification,
     deps.flushNotifications,
   );
@@ -157,29 +118,11 @@ export const makeLandoEventConsumer = (
   return Layer.merge(taskTree, notifications);
 };
 
-export const makeLandoNotificationConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> => {
-  const snapshot = resolveCapabilitySnapshot(
-    io,
-    io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
-  );
-  return layerNotificationConsumer(
-    () => snapshot.get(),
-    bindIoDesktopNotificationTrigger(io),
-    flushPendingNotifications,
-  );
-};
-
 export const landoRendererContribution: RendererContribution = {
   id: "lando",
-  makeService: (io) =>
-    makeLandoService(io, io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {}),
+  makeService: makeLandoService,
   makeEventConsumer: (io) =>
     makeLandoEventConsumer(io, {
-      getCapabilities: () =>
-        resolveCapabilitySnapshot(
-          io,
-          io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
-        ).get(),
       triggerNotification: bindIoDesktopNotificationTrigger(io),
       flushNotifications: flushPendingNotifications,
     }),

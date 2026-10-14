@@ -120,7 +120,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.2 includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.2 includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
 
 ## Local Bun profiling
 
@@ -141,12 +141,13 @@ bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist
 
 Do not commit profile dumps or `*.metafile.md` artifacts.
 
-## Tooling hot-path perf budget
+## Startup and tooling perf budgets
 
-CI runs the Linux x64 benchmark gate against the built binary artifact. The tracked warm p95 baseline and regression budget live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code.
+The `perf-budget-linux-x64` job in the PR and `main` workflow runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
 
 ```bash
 bun run build
+bun run bench:opentui-startup -- --binary core/dist/lando
 bun run bench:tooling-hot-path -- --binary core/dist/lando
 ```
 
