@@ -63,6 +63,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                 ...apply.options,
                 serviceEnvironment,
                 ...(apply.options.reconcile === true ? { recordedPlan } : {}),
+                completionPlan: plan,
               }),
             );
           }),

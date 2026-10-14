@@ -46,7 +46,7 @@ lando app:config:lint
 lando start
 ```
 
-The worker can't run yet: Laravel and Horizon aren't installed. It may exit and retry until installation is complete.
+The worker can't run yet: Laravel and Horizon aren't installed. The first start succeeds with a warning and a `restarting` worker row. Its `restart: unless-stopped` policy retries automatically; Horizon starts on its own when installation and configuration are complete. Check `lando logs --service=worker` while it retries.
 
 ## Install Laravel, Horizon, and Predis
 
@@ -80,11 +80,10 @@ REDIS_HOST=cache
 REDIS_PORT=6379
 ```
 
-Use the service keys `database` and `cache`, not `127.0.0.1`. Horizon only drives the `redis` queue connection, so `QUEUE_CONNECTION=redis` is the switch that matters. `LOG_CHANNEL=stderr` puts job logs in `lando logs`. Create the tables and restart so the worker boots Horizon:
+Use the service keys `database` and `cache`, not `127.0.0.1`. Horizon only drives the `redis` queue connection, so `QUEUE_CONNECTION=redis` is the switch that matters. `LOG_CHANNEL=stderr` puts job logs in `lando logs`. Create the tables and check that the supervised worker has started Horizon:
 
 ```sh
 lando artisan migrate --no-interaction
-lando restart
 lando artisan horizon:status
 ```
 
@@ -190,7 +189,7 @@ lando artisan horizon:forget JOB_UUID
 | `/horizon` and every route but `/` return 404 | `mod_rewrite` is off. Add the `a2enmod rewrite` build step and run `lando rebuild -y`. |
 | `worker` stays `stopped` after `horizon:terminate` | The service has no `restart: unless-stopped`. Add it and run `lando rebuild -y`. |
 | `No processes to terminate.` | You ran it on `appserver`. Use `lando exec worker -- php artisan horizon:terminate`. |
-| `horizon:status` says `Horizon is inactive.` | Check `lando logs -s worker`. A worker started before `artisan` existed needs `lando restart`. |
+| `horizon:status` says `Horizon is inactive.` | Check `lando logs -s worker`. A worker started before `artisan` existed retries automatically; finish installation and configuration, then check status again. |
 
 ## Tear down
 

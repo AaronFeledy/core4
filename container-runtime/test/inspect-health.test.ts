@@ -82,6 +82,7 @@ const inspectBody = (health?: string): string =>
     State: {
       Running: true,
       Status: "running",
+      ExitCode: 0,
       StartedAt: "2026-05-14T00:00:01Z",
       ...(health === undefined ? {} : { Health: { Status: health } }),
     },
@@ -93,6 +94,7 @@ const stoppedInspectBody = (health?: string): string =>
     State: {
       Running: false,
       Status: "exited",
+      ExitCode: 17,
       StartedAt: "2026-05-14T00:00:01Z",
       ...(health === undefined ? {} : { Health: { Status: health } }),
     },
@@ -128,6 +130,21 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test("omits the engine's placeholder exit code for a running unhealthy container", async () => {
+    const fake = apiWithHealth("unhealthy");
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed).toMatchObject({ status: "running", health: "unhealthy" });
+    expect(observed).not.toHaveProperty("exitCode");
+  });
+  test("preserves the exited container process code", async () => {
+    const fake = apiFromResponses([{ status: 200, body: stoppedInspectBody() }]);
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed).toMatchObject({
+      status: "stopped",
+      exitCode: 17,
+      containerId: "lando-healthapp-web-id",
+    });
+  });
   test("redacts runtime-registered values in a failed inspect response", async () => {
     // Given
     const canary = "opaque-inspect-canary-1261";

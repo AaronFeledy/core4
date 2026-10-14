@@ -62,6 +62,8 @@ describe("postgres ServiceType", () => {
       POSTGRES_USER: "lando",
       POSTGRES_PASSWORD: DEFAULT_PASSWORD,
       POSTGRES_DB: "myapp",
+      PGDATA: "/var/lib/postgresql/data",
+      PGPORT: "5432",
     });
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-postgresql-data");
@@ -86,8 +88,38 @@ describe("postgres ServiceType", () => {
       POSTGRES_USER: "appuser",
       POSTGRES_PASSWORD: "secret",
       POSTGRES_DB: "appdb",
+      PGPORT: "15432",
     });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
+    expect(plan.healthcheck?.command).toEqual([
+      "pg_isready",
+      "-h",
+      "127.0.0.1",
+      "-p",
+      "15432",
+      "-U",
+      "appuser",
+      "-d",
+      "appdb",
+    ]);
+  });
+
+  test("keeps Postgres 18 image data on the Lando volume", async () => {
+    const plan = await planPostgres({ type: "postgres", image: "postgres:18" });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "postgres:18" });
+    expect(plan.environment.PGDATA).toBe("/var/lib/postgresql/data");
+    expect(plan.storage.map((storage) => String(storage.target))).toEqual(["/var/lib/postgresql/data"]);
+  });
+
+  test("lets authored PGDATA and PGPORT environment win", async () => {
+    const plan = await planPostgres({
+      type: "postgres",
+      environment: { PGDATA: "/var/lib/postgresql/18/docker", PGPORT: "6543" },
+    });
+
+    expect(plan.environment.PGDATA).toBe("/var/lib/postgresql/18/docker");
+    expect(plan.environment.PGPORT).toBe("6543");
   });
 
   test("authored complete creds set POSTGRES_* and LANDO_DB_* without root password", async () => {
@@ -137,7 +169,7 @@ describe("postgres ServiceType", () => {
     expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_ROOT_PASSWORD");
   });
 
-  test("plans a pg_isready healthcheck for the resolved user and database", async () => {
+  test("plans a TCP pg_isready healthcheck for the resolved user and database", async () => {
     const plan = await planPostgres({
       type: "postgres",
       creds: { user: "alice", password: "s3cret", database: "appdb" },
@@ -145,7 +177,7 @@ describe("postgres ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["pg_isready", "-U", "alice", "-d", "appdb"],
+      command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "alice", "-d", "appdb"],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,

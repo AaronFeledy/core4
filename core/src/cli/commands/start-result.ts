@@ -1,17 +1,10 @@
 /** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
 
-import { type SummaryDocument, formatQuietSummary, worstSummaryTone } from "@lando/renderer/summary";
+import { type SummaryDocument, formatQuietSummary } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { START_STATUS_TONES, lifecycleLine, serviceRowsText, summaryToneFromTable } from "./service-summary";
-
-const READY_STATES = new Set(["running", "ready"]);
-
-const isReadyState = (state: string): boolean => READY_STATES.has(state);
-
-const isStartAppReady = (result: StartAppResult): boolean =>
-  result.servicesStarted.length > 0 && result.servicesStarted.every((service) => isReadyState(service.state));
 
 const startStatusTone = summaryToneFromTable(START_STATUS_TONES, "warn");
 
@@ -49,14 +42,14 @@ export const buildStartSummary = (
     tone: startStatusTone(service.state),
     value: service.state,
   }));
-  const readyCount = result.servicesStarted.filter((service) => isReadyState(service.state)).length;
   const total = result.servicesStarted.length;
-  const ready = isStartAppReady(result);
+  const restarting = result.servicesStarted.filter((service) => service.state === "restarting").length;
+  const ready = total - restarting;
   const noun = serviceNoun(total);
   return {
-    title: ready ? (action === "rebuild" ? "Rebuilt" : "Started") : "Not fully ready",
-    tone: ready ? "ok" : worstSummaryTone(rows.map((row) => row.tone)),
-    subtitle: ready ? `${result.app} is ready` : `${result.app} is not fully ready`,
+    title: action === "rebuild" ? "Rebuilt" : "Started",
+    tone: restarting === 0 ? "ok" : "warn",
+    subtitle: restarting === 0 ? `${result.app} is ready` : `${result.app} started with restarting services`,
     sections: [
       {
         title: "URLs",
@@ -77,17 +70,17 @@ export const buildStartSummary = (
         ...(rows.length === 0 ? { notes: ["No services were started."] } : {}),
       },
     ],
-    nextSteps: ready
-      ? ["lando info", "lando logs", "lando exec <service> -- <command>"]
-      : ["lando info", "lando logs"],
-    footer: ready ? `${total} ${noun} ready` : `${readyCount} of ${total} ${noun} ready`,
+    nextSteps: ["lando info", "lando logs", "lando exec <service> -- <command>"],
+    footer:
+      restarting === 0
+        ? `${total} ${noun} ready`
+        : `${ready} ${serviceNoun(ready)} ready; ${restarting} restarting`,
   };
 };
 
 const renderPlainStartAppResult = (result: StartAppResult): string => {
   const services = serviceRowsText(result.servicesStarted);
-  const prefix = isStartAppReady(result) ? "ready" : "starting";
-  return lifecycleLine(prefix, result.app, services);
+  return lifecycleLine("ready", result.app, services);
 };
 
 export const renderStartAppResult = (result: StartAppResult, ctx?: RenderContext): string => {

@@ -16,7 +16,7 @@ import {
   PreRestartEvent,
   PreServiceStopEvent,
 } from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOrchestrator,
@@ -41,15 +41,16 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { isReadinessFailure, withReadinessRetention } from "../lifecycle/readiness-failure.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { startedServiceRow } from "./authority-url.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
+import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { startFileSyncSessions } from "./start-file-sync.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
@@ -190,20 +191,25 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       ...(signal === undefined ? {} : { signal }),
     }),
   );
+  const initial = yield* Effect.forEach(services, (service) =>
+    inspectAppliedService({ provider, plan: target.plan, service: service.name }).pipe(
+      Effect.map((runtime) => [String(service.name), runtime] as const),
+    ),
+  );
   yield* startFileSyncSessions(selectedPlan, events);
 
   const routedUrls = yield* routeUrlsForPlan(proxy, target.plan);
-  const started = yield* Effect.forEach(services, (service) =>
-    provider.inspect({ app: target.plan.id, service: service.name, plan: target.plan }).pipe(
-      Effect.map((runtime) => {
-        const row = startedServiceRow(service, runtime);
-        return {
-          ...row,
-          endpoints: [...(routedUrls.get(service.name) ?? []), ...row.endpoints],
-        };
-      }),
-    ),
-  );
+  const ready = yield* waitForServiceReadiness({
+    provider,
+    plan: target.plan,
+    services: services.map((service) => service.name),
+    initial: new Map(initial),
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const started = ready.map((row) => ({
+    ...row,
+    endpoints: [...(routedUrls.get(ServiceName.make(row.name)) ?? []), ...row.endpoints],
+  }));
 
   const postRestart = PostRestartEvent.make({
     _tag: "post-restart",
@@ -274,7 +280,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
               { skipInitEvents: true, transactionPreflightDone: true },
             ),
             proxy.removeRoutes(plan.id),
-            isPostStartStepError,
+            (error) => isPostStartStepError(error) || isReadinessFailure(error),
           );
           const postRestart = PostRestartEvent.make({
             _tag: "post-restart",
@@ -291,18 +297,20 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   },
   (effect, options: RestartAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) => {
     const signal = options.signal;
-    if (signal === undefined) return effect;
-    return Effect.raceFirst(
-      effect,
-      Effect.callback<never>((resume) => {
-        const abort = () => resume(Effect.interrupt);
-        if (signal.aborted) {
-          abort();
-          return;
-        }
-        signal.addEventListener("abort", abort, { once: true });
-        return Effect.sync(() => signal.removeEventListener("abort", abort));
-      }),
+    if (signal === undefined) return withReadinessRetention(effect);
+    return withReadinessRetention(
+      Effect.raceFirst(
+        effect,
+        Effect.callback<never>((resume) => {
+          const abort = () => resume(Effect.interrupt);
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, { once: true });
+          return Effect.sync(() => signal.removeEventListener("abort", abort));
+        }),
+      ),
     );
   },
 );

@@ -122,6 +122,7 @@ type HarnessLayer = Layer.Layer<
 interface HarnessOptions {
   readonly failDestroy?: boolean;
   readonly failInspect?: boolean;
+  readonly exitedServices?: ReadonlyArray<string>;
   readonly failRouterSetup?: boolean;
   readonly failRoutes?: boolean;
   readonly failApply?: ReadonlyArray<string>;
@@ -324,8 +325,10 @@ const makeHarness = async (
         app: target.app,
         service: target.service,
         providerId,
-        status: "running",
-        state: "running",
+        status: options.exitedServices?.includes(String(target.service)) ? "stopped" : "running",
+        state: options.exitedServices?.includes(String(target.service)) ? "stopped" : "running",
+        ...(options.exitedServices?.includes(String(target.service)) ? { exitCode: 17 } : {}),
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
         endpoints: publishedEndpointsFromInspect(
           { NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } } },
           [{ _tag: "published", protocol: "https", port: 443, name: "websecure", publication: {} }],
@@ -793,17 +796,17 @@ describe("meta:global command effects", () => {
     );
   });
 
-  for (const [command, run] of [
-    ["rebuild", () => Effect.asVoid(globalRebuild())],
-    ["restart", () => Effect.asVoid(globalRestart())],
-  ] as const) {
+  for (const command of ["rebuild", "restart"] as const) {
     test(`${command} revalidates after publication failure and preserves ProxyApplyError`, async () => {
       // Given successful service groups but failing publication and router revalidation.
       const revalidated: string[] = [];
       await withHarness(
         async (harness) => {
           // When the global lifecycle command attempts publication.
-          const exit = await Effect.runPromiseExit(run().pipe(Effect.provide(harness.layer)));
+          const exit =
+            command === "rebuild"
+              ? await Effect.runPromiseExit(globalRebuild().pipe(Effect.provide(harness.layer)))
+              : await Effect.runPromiseExit(globalRestart().pipe(Effect.provide(harness.layer)));
           // Then revalidation still runs and cannot replace the publication error.
           expect(revalidated).toEqual(["router-revalidated"]);
           expect(failureOf(exit)).toMatchObject({
@@ -933,12 +936,32 @@ describe("meta:global command effects", () => {
         "built:mail",
         "built:proxy",
       ]);
-      expect(harness.calls.inspect.map((call) => String(call.target.service)).sort()).toEqual([
+      expect([...new Set(harness.calls.inspect.map((call) => String(call.target.service)))].sort()).toEqual([
         "mail",
         "proxy",
       ]);
       expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
     });
+  });
+
+  test("global start retains applied resources and suppresses its post event on readiness failure", async () => {
+    await withHarness(
+      async (harness) => {
+        const exit = await Effect.runPromiseExit(globalStart({}).pipe(Effect.provide(harness.layer)));
+        expect(failureOf(exit)).toMatchObject({
+          _tag: "ServiceNotReadyError",
+          service: "mail",
+          reason: "not-running",
+          exitCode: 17,
+          providerId: "lando",
+        });
+        expect(harness.calls.apply).toHaveLength(2);
+        expect(harness.calls.destroy).toEqual([]);
+        expect(harness.calls.routesRemoved).toEqual([]);
+        expect(harness.events.map((event) => event._tag)).not.toContain("post-global-start");
+      },
+      { exitedServices: ["mail"] },
+    );
   });
 
   test("start with --service applies and inspects only the selected subset", async () => {
@@ -953,7 +976,9 @@ describe("meta:global command effects", () => {
       expect(harness.calls.actions).toEqual(["build", "apply"]);
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
       expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan))).toEqual(["built:mail"]);
-      expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["mail"]);
+      expect([...new Set(harness.calls.inspect.map((call) => String(call.target.service)))]).toEqual([
+        "mail",
+      ]);
       expect(result.servicesStarted.map((service) => service.name)).toEqual(["mail"]);
     });
   });
@@ -1626,7 +1651,7 @@ describe("meta:global command effects", () => {
         kind: "ref",
         ref: "built:proxy",
       });
-      expect(harness.calls.inspect.map((call) => String(call.target.service)).sort()).toEqual([
+      expect([...new Set(harness.calls.inspect.map((call) => String(call.target.service)))].sort()).toEqual([
         "mail",
         "proxy",
       ]);
@@ -1768,13 +1793,17 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("rebuild preserves typed provider failures and does not publish post-global-rebuild", async () => {
+  test("rebuild tags readiness inspection failures and does not publish post-global-rebuild", async () => {
     await withHarness(
       async (harness) => {
         const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(harness.layer)));
         const failure = failureOf(exit);
 
-        expect(failure).toBeInstanceOf(ProviderUnavailableError);
+        expect(failure).toMatchObject({
+          _tag: "ServiceNotReadyError",
+          reason: "not-running",
+          lastStatus: "provider unavailable",
+        });
         expect(harness.events.map((event) => event._tag)).toContain("pre-global-rebuild");
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
       },

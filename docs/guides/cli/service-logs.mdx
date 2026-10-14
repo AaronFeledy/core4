@@ -67,8 +67,29 @@ Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Foll
 
 ## Read a start-failure log tail
 
-When `lando start` fails to start a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 lines within 4,000 characters; an oversized line keeps its end.
+When the provider cannot apply a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 lines within 4,000 characters; an oversized line keeps its end.
+
+After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their enabled healthchecks. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. Lando retains the applied app, routes, and volumes so you can inspect the failure:
+
+```sh
+lando logs -s appserver --tail 50
+lando info
+```
+
+Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: { disable: true }` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
+
+An authored `restart: always`, `unless-stopped`, or `on-failure` delegates recovery to the container engine. Start warns with the reason, available exit code, a short redacted log tail, and `lando logs -s <service>` remediation, then reports that service as `restarting`. Pressing Ctrl-C during readiness also leaves the applied app running for diagnosis while the command exits as interrupted.
 
 A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
 
 Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
+
+<Guide>
+  <Scenario id="documented-flags" render={false} reason="Verify the documented logs flags without a running container">
+    <Step name="check-flags">
+      <Run command="lando logs --help" />
+      <Verify command="lando logs --help" expect={{ stdout: { regex: "--service" } }} />
+      <Verify command="lando logs --help" expect={{ stdout: { regex: "--source" } }} />
+    </Step>
+  </Scenario>
+</Guide>

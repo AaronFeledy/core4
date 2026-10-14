@@ -14,6 +14,14 @@ If you author a service `healthcheck:` block, the plan schema accepts `kind` (`c
 
 The shipped `provider-exec` runner is command-only. `kind: command` runs via `RuntimeProvider.exec` in the container (a string command is wrapped as `sh -c`; an argv array is passed through). `kind: none` skips the probe and returns `healthy=true` with `lastStatus: skipped`. `kind: http` and `kind: tcp` fail with `The provider-exec healthcheck runner only supports command healthchecks.` There is no CLI or product HTTP/TCP probe. `url` and `port` are schema fields only.
 
+The runner probes immediately, including during `startPeriodSeconds`. Failed probes during that period do not consume retries; probes run at one-second intervals or `intervalSeconds` when shorter. The first passing probe returns immediately. After the start period, the runner permits `retries` attempts (at least one) at `intervalSeconds`, with `timeoutSeconds` per attempt.
+
+Start, restart, rebuild, and global-service start wait for enabled healthchecks before post-start subscribers run. The runner and provider `service_healthy` dependency gate share the same immediate two-phase probe. Language runtimes do not add default healthchecks; authors provide `healthcheck:` when needed.
+
+An unsupervised exited service or exhausted check fails with `ServiceNotReadyError`; applied resources stay available for diagnosis. Authored `restart: always`, `unless-stopped`, or `on-failure` makes the service supervised: exits, restarts, and exhausted checks yield a warning and a `restarting` row instead. A dependency target with `service_completed_successfully` must exit 0 instead and skips healthchecks, unless the supervised warning policy applies. Other successful rows report `ready`, `running` without a check, or `completed` for verified jobs.
+
+Non-instant readiness waits publish task-tree progress. Interruption during the barrier retains the applied app, routes, volumes, sessions, journal, and managed scopes while interruption propagates. Earlier startup phases keep their existing interrupt cleanup.
+
 This is not a user how-to. For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
 <Guide>

@@ -30,6 +30,7 @@ import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { compensateFailure, compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { isReadinessFailure } from "../lifecycle/readiness-failure.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
@@ -39,8 +40,8 @@ import { resolveServiceEnvironmentSecrets } from "../services/secret-environment
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { startedServiceRow } from "./authority-url.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -108,6 +109,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   );
   yield* stopSelected;
   const builtPlan = yield* withBuildProvider(builds.build(plan, { refresh: true }), provider);
+  const readinessPlan = { ...target.plan, services: { ...target.plan.services, ...builtPlan.services } };
+  const initial = new Map<string, import("@lando/sdk/services").ServiceRuntimeInfo>();
   const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
   const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
   yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
@@ -132,6 +135,11 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
               })
               .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
           ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected)));
+          yield* Effect.forEach(services, (service) =>
+            inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
+              Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
+            ),
+          );
         }),
       }),
   });
@@ -141,17 +149,17 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   );
 
   const routedUrls = yield* routeUrlsForPlan(proxy, builtPlan);
-  return yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
-    provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-      Effect.map((runtime) => {
-        const row = startedServiceRow(service, runtime);
-        return {
-          ...row,
-          endpoints: [...(routedUrls.get(ServiceName.make(String(service.name))) ?? []), ...row.endpoints],
-        };
-      }),
-    ),
-  );
+  const ready = yield* waitForServiceReadiness({
+    provider,
+    plan: readinessPlan,
+    services: services.map((service) => service.name),
+    initial,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  return ready.map((row) => ({
+    ...row,
+    endpoints: [...(routedUrls.get(ServiceName.make(row.name)) ?? []), ...row.endpoints],
+  }));
 });
 
 export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
@@ -216,7 +224,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
                   },
                 ),
                 proxy.removeRoutes(plan.id),
-                isPostStartStepError,
+                (error) => isPostStartStepError(error) || isReadinessFailure(error),
               );
             });
         const postRebuild = PostRebuildEvent.make({

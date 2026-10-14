@@ -190,8 +190,12 @@ The fixed `@lando/sdk` tool-provisioning helper installs pinned host executables
 
 Healthchecks accept disabled, string, string-array, and object forms, including computed `load()` values (§7.3). Object fields are `command`, `user`, `retry`, `delay`, `timeout`, and `target`.
 
-- Startup distinguishes running from ready; `ready` fires only after all healthchecks pass.
-- The default `HealthcheckRunner` uses `RuntimeProvider.exec` plus `runProbe`.
+- Start, restart, rebuild (full or selected), and global-service start MUST pass the readiness barrier before post-start subscribers run (§6.7). Success rows are `ready`, `running`, `completed`, or warning-toned `restarting`; non-instant waits MUST publish per-service progress.
+- Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, including service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Applied resources MUST remain available for diagnosis; readiness failures MUST NOT roll them back.
+- Authored `restart: always`, `unless-stopped`, or `on-failure` makes a service engine-supervised. Its exit, restart, or exhausted healthcheck MUST stop that service's readiness wait and yield `restarting` with a redacted warning, available exit code/log tail, and `lando logs -s <service>` remediation, not a startup failure. Missing restart policy and `restart: no` remain strict.
+- Interruption during readiness after committed apply, completed app-build, and applied routes MUST retain the applied app, routes, volumes, sessions, journal, and managed scopes while propagating interruption. Earlier interruptions keep existing cleanup.
+- Completion-intent services skip healthchecks and require verified exit 0 unless the supervised warning policy applies. Other unsupervised services MUST remain running throughout readiness. Engine clock skew MUST NOT extend the host-side settle wait beyond two seconds.
+- The default `HealthcheckRunner` uses the selected `RuntimeProvider.exec` plus `runProbe`, probing immediately. Start-period failures do not count against retries; the first success completes the check. Subsequent attempts follow the configured retry interval and per-attempt timeout.
 - `target` is `service` by default or `host`. Host targets use `ShellRunner`; native plugin runners MAY bypass shell. Unsupported targets fail at planning with `HealthcheckTargetUnsupportedError`.
 
 `UrlScanner` rules:

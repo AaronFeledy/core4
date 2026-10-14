@@ -66,6 +66,7 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceNotReadyError,
   ShellExecError,
   ShellScriptOutsideRootError,
   SshAgentTransportError,
@@ -209,6 +210,7 @@ export interface StartAppResult {
 export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
 
 export type StartAppError =
+  | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError

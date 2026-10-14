@@ -50,6 +50,21 @@ const ServiceStartLogTail = Schema.Struct({
 });
 export type ServiceStartLogTail = typeof ServiceStartLogTail.Type;
 
+/** Post-apply readiness failure; the applied app remains available for diagnosis. */
+export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyError>()("ServiceNotReadyError", {
+  message: Schema.String,
+  app: Schema.String,
+  service: Schema.String,
+  providerId: Schema.String,
+  reason: Schema.Literals(["not-running", "healthcheck-failed", "healthcheck-timeout"]),
+  remediation: Schema.String,
+  exitCode: Schema.optional(Schema.Number),
+  state: Schema.optional(Schema.String),
+  attempts: Schema.optional(Schema.Number),
+  lastStatus: Schema.optional(Schema.String),
+  logTail: Schema.optional(ServiceStartLogTail),
+}) {}
+
 export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("ServiceStartError", {
   ...ProviderErrorBase,
   service: Schema.String,

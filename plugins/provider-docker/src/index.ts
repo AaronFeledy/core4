@@ -622,6 +622,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
+            completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
         }),

@@ -508,6 +508,7 @@ const makeStartLayer = (
                   providerId,
                   status: "running",
                   state: "running",
+                  lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
                   endpoints: plannedApp.services[target.service]?.endpoints ?? [],
                 })
               : Effect.fail(options.inspectFailure)),
@@ -1159,7 +1160,7 @@ describe("lando start", () => {
     const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
     // Then
-    expect(harness.buildOrder).toEqual([
+    expect(harness.buildOrder.slice(0, 10)).toEqual([
       "pre-app-start",
       "artifact",
       "apply",
@@ -1171,6 +1172,8 @@ describe("lando start", () => {
       "proxy-apply",
       "tree:test-start routes applied",
     ]);
+    expect(harness.buildOrder.slice(10)).toContain("inspect:web");
+    expect(harness.buildOrder.slice(10)).toContain("inspect:database");
     expect(result.servicesStarted.find((service) => service.name === "web")?.endpoints).toEqual([
       "https://web.test-start.lndo.site:4443",
     ]);
@@ -1689,7 +1692,7 @@ describe("lando start", () => {
     });
   });
 
-  test("rolls back applied provider resources and cleans host-proxy artifacts when inspect fails", async () => {
+  test("retains applied provider resources and host-proxy artifacts when readiness inspect fails", async () => {
     await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
@@ -1710,9 +1713,14 @@ describe("lando start", () => {
       const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
       expect(exit._tag).toBe("Failure");
+      expect(failureOf(exit)).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
       expect(harness.applyPlans).toHaveLength(1);
-      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: false, removeState: false }]);
-      await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
+      expect(harness.destroyCalls).toEqual([]);
+      expect(
+        (
+          await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root))
+        ).isDirectory(),
+      ).toBe(true);
     });
   });
 
@@ -1818,13 +1826,13 @@ describe("lando start", () => {
     expect(treeComplete?.succeeded).toBe(0);
   });
 
-  test("renders starting: prefix when any service is not in a ready state per inspect", () => {
+  test("renders ready: for verified completed jobs alongside running services", () => {
     const stoppedResult: Parameters<typeof renderStartAppResult>[0] = {
       app: "test-start",
       servicesStarted: [
         {
           name: "web",
-          state: "stopped",
+          state: "completed",
           endpoints: ["http://localhost:3000"],
         },
         {
@@ -1837,9 +1845,9 @@ describe("lando start", () => {
 
     const rendered = renderStartAppResult(stoppedResult);
 
-    expect(rendered).toContain("starting: test-start");
-    expect(rendered).not.toContain("ready: test-start");
-    expect(rendered).toContain("web (stopped)");
+    expect(rendered).toContain("ready: test-start");
+    expect(rendered).not.toContain("starting: test-start");
+    expect(rendered).toContain("web (completed)");
     expect(rendered).toContain("database (running)");
   });
 
@@ -1873,7 +1881,10 @@ describe("lando start", () => {
     controller.abort();
     const harness = makeStartLayer({ signalSeen });
 
-    await Effect.runPromise(startApp({ signal: controller.signal }).pipe(Effect.provide(harness.layer)));
+    const exit = await Effect.runPromiseExit(
+      startApp({ signal: controller.signal }).pipe(Effect.provide(harness.layer)),
+    );
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
 
     expect(signalSeen).toEqual([true]);
   });

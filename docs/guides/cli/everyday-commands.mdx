@@ -58,6 +58,12 @@ Bare `restart` stops then starts the app, recreating its containers and reusing 
 
 If another process takes a selected service's host port after it stops, restart fails and leaves that service down. Check `lando info`, free the port or run `lando rebuild -s <name>`, then check `lando info` again.
 
+Start, restart, and rebuild wait for every affected service's enabled healthcheck before reporting success or running post-start steps. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.
+
+An unsupervised service that exits or never passes its healthcheck fails the command non-zero with `ServiceNotReadyError`. Applied containers, routes, and volumes stay put so you can diagnose the failure with `lando logs -s <service>` and `lando info`, fix the service or its `healthcheck:` configuration, then retry `lando start`. With authored `restart: always`, `unless-stopped`, or `on-failure`, the engine supervises the service instead: an exit, restart, or exhausted healthcheck produces a warning and a `restarting` row, not a failed start. Global-service start follows the same rule. URL-scan warnings still do not fail start.
+
+Pressing Ctrl-C during readiness stops waiting but leaves the applied app, routes, volumes, and sessions running. The command still exits as interrupted. Interrupting earlier startup phases keeps their normal cleanup.
+
 ## Fix an image pull failure
 
 Read the engine reason after the HTTP status in the pull error. A blocked registry,

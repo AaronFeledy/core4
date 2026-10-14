@@ -89,14 +89,7 @@ describe("python:3.12 ServiceType", () => {
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8000, protocol: "http", name: "web" }]);
 
-    expect(plan.healthcheck).toEqual({
-      kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 10,
-    });
+    expect(plan.healthcheck).toBeUndefined();
 
     expect(plan.environment).toMatchObject({
       LANDO: "ON",
@@ -124,7 +117,7 @@ describe("python:3.12 ServiceType", () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "django" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "django",
@@ -138,7 +131,7 @@ describe("python:3.12 ServiceType", () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "fastapi" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "fastapi",
@@ -151,7 +144,7 @@ describe("python:3.12 ServiceType", () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "flask" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "flask",
@@ -196,7 +189,7 @@ describe("python:3.12 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/python:3.12-custom" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-python"]).toMatchObject({ port: 9000 });
   });
 

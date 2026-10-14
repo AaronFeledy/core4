@@ -8,6 +8,7 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceNotReadyError,
   ToolingExecError,
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
@@ -28,7 +29,7 @@ import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { startedServiceRow } from "./authority-url.ts";
+import { waitForServiceReadiness } from "./service-readiness.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { globalInstall } from "./global-install.ts";
@@ -55,6 +56,7 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | ServiceNotReadyError
   | LoadGlobalPlanError
   | BuildError
   | GlobalDistConflictError
@@ -174,11 +176,12 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
       .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
   );
 
-  const servicesStarted = yield* Effect.forEach(selected, (service) =>
-    provider
-      .inspect({ app: plan.id, service: service.name, plan: realizedPlan })
-      .pipe(Effect.map((runtime) => startedServiceRow(service, runtime))),
-  );
+  const servicesStarted = yield* waitForServiceReadiness({
+    provider,
+    plan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
+    services: selected.map((service) => service.name),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
 
   yield* events.publish(
     PostGlobalStartEvent.make({

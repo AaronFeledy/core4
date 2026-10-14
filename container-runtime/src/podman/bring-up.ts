@@ -24,6 +24,7 @@ import {
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -51,6 +52,7 @@ import {
   shouldProbeServicePublishPort,
 } from "../service-publish-ports.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
+import { isSupervisedService } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
@@ -139,6 +141,7 @@ export interface BringUpOptions {
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
   readonly forbidRecreate?: boolean;
+  readonly completionPlan?: AppPlan;
 }
 
 interface BringUpDeps {
@@ -822,7 +825,18 @@ const startService = Effect.fnUntraced(function* (
   }
 
   const after = yield* inspectContainer(deps, name);
-  if (!after.running) {
+  const state =
+    after.body !== undefined && typeof after.body === "object" && after.body !== null
+      ? Reflect.get(after.body, "State")
+      : undefined;
+  const completed =
+    completionIntentServices(deps.options.completionPlan ?? plan).has(String(service.name)) &&
+    after.exists &&
+    typeof state === "object" &&
+    state !== null &&
+    Reflect.get(state, "ExitCode") === 0 &&
+    (Reflect.get(state, "Status") === "exited" || Reflect.get(state, "Status") === "stopped");
+  if (!after.running && !completed && !(after.exists && isSupervisedService(service))) {
     yield* Effect.fail(
       podmanFailure(deps, {
         service,
@@ -884,7 +898,7 @@ const SERVICE_START_LOG_TAIL_LINES = 50;
 const SERVICE_START_LOG_TAIL_MAX_CHARS = 4000;
 const SERVICE_START_LOG_TAIL_TIMEOUT = Duration.seconds(4);
 
-const capRedactedLogLines = (
+export const capRedactedLogLines = (
   lines: ReadonlyArray<string>,
 ): { readonly lines: string[]; readonly truncated: boolean } => {
   const kept: string[] = [];

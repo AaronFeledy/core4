@@ -1,10 +1,10 @@
-import { Duration, Effect } from "effect";
+import { Effect } from "effect";
 
-import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, HealthcheckPlan, ServiceDependencyCondition, ServicePlan } from "@lando/sdk/schema";
 
 import { gateId, gateNodeId } from "./dependency-gates.ts";
 import { type ScheduleEdge, type ScheduleGraph, runDependencySchedule } from "./dependency-schedule.ts";
+import { runHealthcheckProbe } from "./healthcheck-probe.ts";
 
 /**
  * Provider-side realization of `depends_on` conditions.
@@ -122,46 +122,25 @@ const probeHealthy = Effect.fnUntraced(function* <E, R>(
   const command = gateVerifiableCommand(healthcheck);
   if (healthcheck === undefined || command === undefined) return { ok: false };
 
-  if (healthcheck.startPeriodSeconds !== undefined && healthcheck.startPeriodSeconds > 0) {
-    yield* Effect.sleep(Duration.seconds(healthcheck.startPeriodSeconds));
-  }
-
   let lastExitCode: number | undefined;
   let timedOut = false;
-  const attempt = Effect.timeoutOrElse(
-    Effect.gen(function* () {
-      const result = yield* Effect.result(handlers.execHealthcheck(service, command));
-      if (result._tag === "Success") {
-        lastExitCode = result.success.exitCode;
-        timedOut = false;
-        return result.success.exitCode === 0 ? "green" : "red";
-      }
+  const attempt = Effect.gen(function* () {
+    const result = yield* Effect.result(handlers.execHealthcheck(service, command));
+    if (result._tag === "Success") {
+      lastExitCode = result.success.exitCode;
       timedOut = false;
-      return "red";
-    }),
-    {
-      duration: Duration.seconds(healthcheck.timeoutSeconds),
-      orElse: () => {
-        timedOut = true;
-        return Effect.succeed("red" as const);
-      },
-    },
-  );
-
-  const ok = yield* runProbe(
-    {
-      id: `service-start-health:${String(service.name)}`,
-      policy: {
-        maxAttempts: Math.max(1, healthcheck.retries),
-        delay: Duration.seconds(healthcheck.intervalSeconds),
-        backoff: "fixed",
-      },
-      classify: {
-        success: (value) => (value === "green" ? "green" : "red"),
-        failure: () => "red",
-      },
-    },
+      return result.success.exitCode === 0 ? "green" : "red";
+    }
+    timedOut = false;
+    return "red";
+  });
+  const ok = yield* runHealthcheckProbe(
+    { id: `service-start-health:${String(service.name)}`, plan: healthcheck },
     attempt,
+    Effect.sync(() => {
+      timedOut = true;
+      return "red" as const;
+    }),
   ).pipe(
     Effect.map((result) => result.outcome === "green"),
     Effect.catch(() => Effect.succeed(false)),

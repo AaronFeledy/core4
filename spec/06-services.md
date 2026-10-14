@@ -131,7 +131,17 @@ Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--
 
 ### 6.7 Healthchecks
 
-`HealthcheckInput` accepts `false`, command forms, or an object. `false` disables checks; `load()` MAY provide any form (§7.3). `HealthcheckRunner` executes `HealthcheckPlan`; the default uses `RuntimeProvider.exec`. `lando start` distinguishes running from ready, and readiness subscribers use `post-start` priority `ready`.
+`HealthcheckInput` accepts `false`, command forms, or an object. `false` disables checks; `load()` MAY provide any form (§7.3). `HealthcheckRunner` executes `HealthcheckPlan`; the default uses the selected `RuntimeProvider.exec` and `runProbe`.
+
+Start, restart, rebuild (full or selected), and global-service start MUST complete a concurrent readiness barrier before publishing `post-app-start` or `post-start`. Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, naming the service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Resources applied before a readiness failure MUST be retained, not rolled back. Once apply has committed, app-build has finished, and routes are applied, interruption during the readiness barrier MUST stop waiting and retain the applied app, routes, volumes, sessions, journal, and managed scopes; interruption MUST still propagate to the CLI. Interruptions before the barrier keep their existing cleanup. URL-scan failures MUST warn, not fail startup.
+
+A target of a `service_completed_successfully` dependency in the full plan is a completion-intent service: it MUST have verified exit code 0 and MUST skip healthcheck waiting, including selected operations. Other unsupervised services MUST remain running throughout readiness; services without enabled healthchecks settle against their current container start, with the remaining host-side wait bounded to two seconds despite engine clock skew. Container replacement or restart invalidates unsupervised readiness. Successful rows are `ready` after a healthcheck passes, `running` without an enabled healthcheck, or `completed` after verified successful completion.
+
+A service with authored `restart: always`, `unless-stopped`, or `on-failure` is engine-supervised; missing `restart` and `restart: no` are unsupervised. If a supervised service exits, restarts, or exhausts its healthcheck during readiness, startup MUST stop waiting on it, return `restarting`, and warn instead of failing. The warning MUST name the service and reason, include any stopped-container exit code and a short redacted log tail, and provide `lando logs -s <service>` remediation. `restarting` rows MUST use a warning tone. Non-instant readiness waits MUST publish progress naming the waiting services and settle their rows individually.
+
+Healthchecks MUST probe immediately. Failures during `startPeriodSeconds` MUST NOT count against retries; probes during that period use at most a one-second interval and return on first success. After that period, allow at least one attempt, otherwise `retries` attempts at `intervalSeconds`, each bounded by `timeoutSeconds`. Readiness subscribers use `post-start` priority `ready` only after the barrier succeeds.
+
+Language runtimes (`node`, `python`, `ruby`, and `go`) MUST NOT infer default healthchecks from ports or commands; endpoints remain available and authors MAY declare `healthcheck:` explicitly.
 
 ### 6.8 Certificates and security
 
