@@ -1713,7 +1713,7 @@ describe("lando start", () => {
       const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
       expect(exit._tag).toBe("Failure");
-      expect(failureOf(exit)).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
+      expect(failureOf(exit)).toMatchObject({ _tag: "ServiceNotReadyError", reason: "inspect-failed" });
       expect(harness.applyPlans).toHaveLength(1);
       expect(harness.destroyCalls).toEqual([]);
       expect(
