@@ -102,9 +102,7 @@ test.each(["sidecar", "host"] as const)(
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBe(
-        "/run/lando/ssh-agent/agent.sock",
-      );
+      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBeUndefined();
       expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",

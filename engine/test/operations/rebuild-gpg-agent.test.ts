@@ -119,14 +119,12 @@ for (const prepareExit of [0, 1]) {
       // Then
       expect(applied).toHaveLength(1);
       expect(applied[0]?.services[web.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.GNUPGHOME).toBe("/tmp/lando-gnupg");
+      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.GNUPGHOME).toBeUndefined();
       expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.GNUPGHOME).toBeUndefined();
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBe(
-        "/run/lando/ssh-agent/agent.sock",
-      );
+      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBeUndefined();
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
         source: "/relay/gpg-socket",
