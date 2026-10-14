@@ -134,6 +134,13 @@ export const attachExecHostIo = (
   };
 };
 
+export const toolingHostStdin = (
+  enabled: boolean,
+  stdin: Pick<RawModeStdin, "isTTY"> = process.stdin,
+  output: Pick<TerminalOutput, "isTTY"> = process.stdout,
+): "piped" | "keyboard" | "none" =>
+  stdin.isTTY !== true ? "piped" : enabled && output.isTTY === true ? "keyboard" : "none";
+
 export const attachToolingHostIo = (
   enabled: boolean,
   stdin: InheritedStdin = process.stdin,
@@ -145,7 +152,8 @@ export const attachToolingHostIo = (
   const restore = (): void => {
     for (const release of readers) release();
   };
-  if (stdin.isTTY !== true) {
+  const mode = toolingHostStdin(enabled, stdin, output);
+  if (mode === "piped") {
     const attached = attachExecHostIo({ command: [], tty: false }, stdin, output);
     return {
       tty: false,
@@ -153,7 +161,7 @@ export const attachToolingHostIo = (
       restore,
     };
   }
-  const hostTerminal = enabled ? attachedHostTerminal(output) : undefined;
+  const hostTerminal = mode === "keyboard" ? attachedHostTerminal(output) : undefined;
   if (hostTerminal === undefined) return { tty: false, restore };
   const attached = attachExecHostIo({ command: [], tty: true, interactive: true }, stdin, output);
   const input = attached.stdinStream;

@@ -134,7 +134,7 @@ Command-wide rules:
 - `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
-- For CLI `app:exec`, `app:ssh`, and `providerExec` tooling, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and its end MUST close the command's stdin in every output format. A PTY requires terminal stdin; `app:exec` and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML result formats disable PTYs and keyboard attachment, and tooling also disables them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, for `app:ssh` with terminal stdin, and for tooling with terminal stdin and stdout. Dispatched event, MCP, and library command invocations MUST NOT consume process stdin.
+- For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and its end MUST close the command's stdin in every output format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML result formats disable PTYs and keyboard attachment, and `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, for `app:ssh` with terminal stdin, and for `apps:scratch:run` and tooling with terminal stdin and stdout. A `.bun.sh` script runs on the host, so piped input reaches it by inheriting Lando's stdin descriptor instead of a forwarded copy; a keyboard-attached script inherits Lando's stdin, stdout, and stderr and owns the terminal, so its output reaches the user's terminal directly and is neither captured nor redacted. Keyboard-attached tooling does not render its task tree, and in human-result formats `apps:scratch:run` retires its acquisition progress before the tool starts (§8.9.2). Interrupting the CLI process MUST stop the tool or script; an interrupted script reports exit status 130, like interrupted container tooling. Dispatched event, MCP, and library command invocations MUST NOT consume process stdin.
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
 - `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched. Stopping the managed runtime service before its recorded runtime directory is removed follows §5.8.1.
 - `--clear` is universal and purges relevant caches.
@@ -265,7 +265,7 @@ Source mode and the compiled `$bunfs` binary share one registry and `runCli` dis
 - Canonical ids and aliases are colon-form tokens. Compatibility normalization is limited to `apps scratch run`; `scratch <start|stop|destroy|list|info|logs|gc|run>`; `meta recipes` and `recipes` with `list|describe|validate`; `share <list|stop>`; `meta global` and `global` with `config|destroy|info|install|list|logs|rebuild|restart|start|status|stop|uninstall`; global config `set|unset|edit|validate`; `app includes <update|verify>`; and `app config` with `translate|lint|set|unset|edit|validate`. Unsupported `apps list` and `app start` remain unknown.
 - Level-`none` files MUST NOT import OCLIF, heavy Effect graphs, `@lando/sdk`, renderers, or plugins (§1.2).
 - `@lando/core/oclif` is not exported; embedding uses `@lando/core/cli` (§16.2).
-- `SIGINT` interrupts the active Effect fiber and finalizes scoped resources.
+- `SIGINT` interrupts the active Effect fiber and finalizes scoped resources. A foreground tool or script MAY instead be cancelled through an abort signal and report its conventional exit status, and while a keyboard-attached container PTY owns the terminal, Ctrl+C reaches that PTY rather than Lando.
 
 The historical OCLIF manifest is replaced by the registry-derived embedded manifest plus `plugin-command` and `app-command` indexes (§12.1). Router bootstrap MUST NOT parse Landofiles, resolve includes, contact plugin sources, import command modules, or initialize providers.
 
@@ -635,6 +635,8 @@ The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugi
 
 `task.tree.start`/`complete` bracket concurrent children. TTY renderers show parent/child state, recent per-task `task.detail`, success/failure summaries, focus navigation, and Enter/Escape expand/collapse. Expanded full-tail view uses persisted §6.13.6/§12.4 transcripts and MUST preserve cancellation and restore the tree. It remains available after completion. Renderers publish `task.detail.expand` and `task.detail.collapse` through `EventService`.
 
+A command that hands the terminal to a foreground child partway through an invocation (`apps:scratch:run`) first retires that invocation's event-rendering consumer and waits for it: delivered events render in order, the open tree paints as a final static frame, and renderer input, the live region, and output interception are released before the child's first byte or keystroke. The handoff is one-way; later events in that invocation are not repainted, and the `Renderer` output service stays usable for the child's raw output.
+
 Non-TTY mode emits stable-prefixed detail lines and tree summaries with no input or alt screen. `json` emits structured task events on stderr. `plain` emits only completion/failure summaries. Publishers redact `task.detail`; local transcript full-tail is not exported to telemetry, guide transcripts, or JSON. Ctrl+C MUST interrupt every in-flight child and MUST NOT be swallowed in expanded view.
 
 #### 8.9.3 Default renderer implementation contract
@@ -645,7 +647,7 @@ Non-TTY mode emits stable-prefixed detail lines and tree summaries with no input
 - Core, level-`none`, pre-renderer, non-TTY, `plain`, and `json` paths MUST NOT load it.
 - Renderer tests MAY statically import `@opentui/core/testing`.
 
-Initialization failure MUST degrade to non-TTY line mode with a debug notice and MUST NOT fail the command or contaminate machine output. Task trees use the substrate's pinned split-footer live region, atomic frames, native scrollback, resize replay, and alt-screen transition. Animation runs only while needed and is capped at 30 fps. Prompt chrome uses the same substrate without changing `InteractionService` contracts. Headless frame snapshots cover task transitions, all prompt types, narrow terminals, and resize.
+Initialization failure MUST degrade to non-TTY line mode with a debug notice and MUST NOT fail the command or contaminate machine output. Task trees paint inline at the cursor with atomic frames, native scrollback, and resize replay; OpenTUI is acquired lazily for the expanded full-tail view on the alternate screen, and retirement (§8.9.2) leaves the final inline frame static. Animation runs only while needed and is capped at 30 fps. Prompt chrome uses the same substrate without changing `InteractionService` contracts. Headless frame snapshots cover task transitions, all prompt types, narrow terminals, and resize.
 
 #### 8.9.4 Rich render events
 
@@ -690,7 +692,7 @@ The closed action vocabulary and defaults are frozen; global `keymap:` overrides
 | `viewer.quit` | viewer | `q` |
 | `keymap.help` | keymap overlay | `question-mark` |
 
-Published schemas are `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, and `KeymapConfig`. Chords use canonical lowercase modifier order `ctrl+`, `alt+`, `shift+` and a closed key vocabulary. Each action has a bounded unique chord list. Malformed bindings fail ordinary `ConfigError`. `ctrl+c` is permanently reserved for `Effect.interrupt` and cannot be bound, disabled, or shadowed.
+Published schemas are `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, and `KeymapConfig`. Chords use canonical lowercase modifier order `ctrl+`, `alt+`, `shift+` and a closed key vocabulary. Each action has a bounded unique chord list. Malformed bindings fail ordinary `ConfigError`. While the renderer owns keyboard input, `ctrl+c` is permanently reserved for `Effect.interrupt` and cannot be bound, disabled, or shadowed.
 
 Same-surface chord collisions fail after schema decode with `KeymapConflictError`, carrying `_tag: "KeymapConflictError"`, `surface`, `chord`, sorted `actions`, `message`, and `remediation`. Cross-surface reuse is valid. Plugins cannot add actions. Non-TTY binds nothing.
 
