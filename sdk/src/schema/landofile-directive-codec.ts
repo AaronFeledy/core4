@@ -1,4 +1,4 @@
-import { Schema, SchemaTransformation } from "effect";
+import { Schema, type SchemaAST, SchemaTransformation } from "effect";
 import { isLandofileOverride, isLandofileReset, override, reset } from "../landofile/merge-directives.ts";
 import { isPlainRecord } from "../landofile/record.ts";
 import {
@@ -50,8 +50,29 @@ const opaque = Schema.Union([LandofileLiteralWire, Schema.Unknown]).pipe(
   ),
 );
 
-/** Derive a member codec for native directives or collision-safe JSON transport envelopes. */
+const remove = LandofileResetWire.pipe(
+  Schema.decodeTo(
+    LandofileReset,
+    SchemaTransformation.transform({
+      decode: () => reset(),
+      encode: () => ({ _tag: "LandofileReset" as const }),
+    }),
+  ),
+);
+const nativeMembers = new WeakMap<SchemaAST.AST, Schema.Top>();
+const wireMembers = new WeakMap<SchemaAST.AST, Schema.Top>();
+
+/** Derive a member codec once per value AST and directive representation. */
 export const directiveMember = (value: Schema.Top, native: boolean): Schema.Top => {
+  const cache = native ? nativeMembers : wireMembers;
+  const cached = cache.get(value.ast);
+  if (cached !== undefined) return cached;
+  const member = makeDirectiveMember(value, native);
+  cache.set(value.ast, member);
+  return member;
+};
+
+const makeDirectiveMember = (value: Schema.Top, native: boolean): Schema.Top => {
   if (native) return Schema.Union([LandofileOverride(value), LandofileReset, value]);
   if (value.ast._tag === "Unknown" || value.ast._tag === "Any") return opaque;
   const replace = LandofileOverrideWire(value).pipe(
@@ -60,15 +81,6 @@ export const directiveMember = (value: Schema.Top, native: boolean): Schema.Top 
       SchemaTransformation.transform({
         decode: (input) => override(input.value),
         encode: (input) => ({ _tag: "LandofileOverride" as const, value: input.value }),
-      }),
-    ),
-  );
-  const remove = LandofileResetWire.pipe(
-    Schema.decodeTo(
-      LandofileReset,
-      SchemaTransformation.transform({
-        decode: () => reset(),
-        encode: () => ({ _tag: "LandofileReset" as const }),
       }),
     ),
   );
