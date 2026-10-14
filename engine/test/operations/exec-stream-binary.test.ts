@@ -5,7 +5,9 @@ import { collectExecStream } from "../../src/operations/exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 
 const concat = (chunks: ReadonlyArray<string | Uint8Array>): Uint8Array => {
-  const encoded = chunks.map((chunk) => (typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk));
+  const encoded = chunks.map((chunk) =>
+    typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk,
+  );
   const bytes = new Uint8Array(encoded.reduce((total, chunk) => total + chunk.byteLength, 0));
   let offset = 0;
   for (const chunk of encoded) {

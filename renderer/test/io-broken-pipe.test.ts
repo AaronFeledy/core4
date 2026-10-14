@@ -100,7 +100,7 @@ test("guards line writes when an injected stream has no event capability", async
   // Given
   const { writeStdioLine } = await freshIO();
   const stream = {
-    write: mock((_chunk: string): boolean => {
+    write: mock((_chunk: string | Uint8Array): boolean => {
       throw brokenPipe();
     }),
   };

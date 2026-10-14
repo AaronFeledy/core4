@@ -1854,7 +1854,7 @@ describe("meta:global command effects", () => {
           emit: (frame) =>
             Effect.sync(() => {
               emitted.push({
-                chunk: frame.chunk,
+                chunk: typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
                 ...(frame.service === undefined ? {} : { service: frame.service }),
               });
             }),

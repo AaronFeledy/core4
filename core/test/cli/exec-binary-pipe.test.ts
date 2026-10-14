@@ -4,7 +4,11 @@ import { Context, DateTime, Effect, Layer, Stream } from "effect";
 import { TestRuntimeProvider, makeTestRuntime } from "@lando/core/testing";
 import { execApp } from "@lando/engine/operations/exec";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService, createStandaloneRedactor, registerRedactionValues } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -56,19 +60,10 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const withPlanner = <A, E, R>(
-  runtime: ReturnType<typeof makeTestRuntime>,
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, Exclude<R, AppPlanner>> =>
-  Effect.scoped(
-    Layer.build(runtime.layer).pipe(
-      Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
-      Effect.flatMap((context) => effect.pipe(Effect.provide(context))),
-    ),
-  );
-
 const concat = (chunks: ReadonlyArray<string | Uint8Array>): Uint8Array => {
-  const encoded = chunks.map((chunk) => (typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk));
+  const encoded = chunks.map((chunk) =>
+    typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk,
+  );
   const bytes = new Uint8Array(encoded.reduce((total, chunk) => total + chunk.byteLength, 0));
   let offset = 0;
   for (const chunk of encoded) {
@@ -171,14 +166,19 @@ describe("piped exec binary archives", () => {
 
     // When
     await Effect.runPromise(
-      withPlanner(
-        runtime,
-        execApp(attached).pipe(
-          Effect.provideService(
-            StreamFrameSink,
-            StreamFrameSink.of({
-              emit: (frame) => Effect.sync(() => frames.push(frame)),
-            }),
+      Effect.scoped(
+        Layer.build(runtime.layer).pipe(
+          Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
+          Effect.flatMap((context) =>
+            execApp(attached).pipe(
+              Effect.provideService(
+                StreamFrameSink,
+                StreamFrameSink.of({
+                  emit: (frame) => Effect.sync(() => frames.push(frame)),
+                }),
+              ),
+              Effect.provide(context),
+            ),
           ),
         ),
       ),
@@ -243,13 +243,19 @@ describe("exec spec redirected stdout", () => {
     try {
       // When
       await Effect.runPromise(
-        withPlanner(
-          runtime,
-          execSpec.run({
-            hostIo: "cli",
-            parsedArgv: ["tar", "-czf", "-", "-C", "/app", "."],
-            flags: {},
-          }),
+        Effect.scoped(
+          Layer.build(runtime.layer).pipe(
+            Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
+            Effect.flatMap((context) =>
+              execSpec
+                .run({
+                  hostIo: "cli",
+                  parsedArgv: ["tar", "-czf", "-", "-C", "/app", "."],
+                  flags: {},
+                })
+                .pipe(Effect.provide(context)),
+            ),
+          ),
         ),
       );
     } finally {

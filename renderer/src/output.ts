@@ -16,7 +16,7 @@ import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
-import { type BinaryRendererIO, type RendererIO, createStdioRendererIO } from "./io.ts";
+import { type RendererIO, createStdioRendererIO } from "./io.ts";
 import * as RendererRuntime from "./runtime.ts";
 
 type RendererMode = "lando" | "json" | "plain" | "verbose";
@@ -119,9 +119,18 @@ export const writeResultLine = (text: string): Effect.Effect<void> =>
 export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(`${text}\n`)));
 
+const byteWriter = (
+  io: RendererIO | undefined,
+  key: "writeStdoutBytes" | "writeStderrBytes",
+): ((chunk: Uint8Array) => void) | undefined => {
+  if (io === undefined) return undefined;
+  const write = (io as RendererIO & Partial<Record<typeof key, unknown>>)[key];
+  return typeof write === "function" ? (write as (chunk: Uint8Array) => void) : undefined;
+};
+
 export const layerStreamFrameSink = (
   format: CommandResultFormat,
-  io?: Pick<BinaryRendererIO, "writeStdoutBytes" | "writeStderrBytes">,
+  io?: RendererIO,
 ): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
   Layer.effect(
     StreamFrameSink,
@@ -130,7 +139,8 @@ export const layerStreamFrameSink = (
       const redaction = yield* RedactionService;
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
       const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
-        const textChunk = typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+        const textChunk =
+          typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
         const streamFrameOptions = {
           chunk: textChunk,
           ...(frame.service === undefined ? {} : { service: frame.service }),
@@ -149,7 +159,10 @@ export const layerStreamFrameSink = (
         // corrupt it. Frame transport belongs to the framed JSON stream.
         if (format === "yaml") return;
         if (frame.raw === true && typeof frame.chunk !== "string") {
-          const writeBytes = frame._tag === "stderr" ? io?.writeStderrBytes : io?.writeStdoutBytes;
+          const writeBytes = byteWriter(
+            io,
+            frame._tag === "stderr" ? "writeStderrBytes" : "writeStdoutBytes",
+          );
           if (writeBytes !== undefined) {
             writeBytes(frame.chunk);
             return;
