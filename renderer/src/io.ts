@@ -10,7 +10,7 @@ interface OutputStream {
   readonly on?: (event: "error", listener: (error: unknown) => void) => unknown;
 }
 
-/** Extra byte writers for live exec frames. Not part of the public RendererIO contract. */
+/** Stdio and buffered IO always implement the optional RendererIO byte writers. */
 export type BinaryRendererIO = RendererIO & {
   readonly writeStdoutBytes: (chunk: Uint8Array) => void;
   readonly writeStderrBytes: (chunk: Uint8Array) => void;

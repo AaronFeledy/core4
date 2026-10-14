@@ -123,10 +123,37 @@ const byteWriter = (
   io: RendererIO | undefined,
   key: "writeStdoutBytes" | "writeStderrBytes",
 ): ((chunk: Uint8Array) => void) | undefined => {
-  if (io === undefined) return undefined;
-  const write = (io as RendererIO & Partial<Record<typeof key, unknown>>)[key];
-  return typeof write === "function" ? (write as (chunk: Uint8Array) => void) : undefined;
+  const write = io?.[key];
+  return typeof write === "function" ? write : undefined;
 };
+
+/**
+ * Live-frame UTF-8 policy: redact whenever the destination is a TTY or the
+ * stream is valid UTF-8. Pass raw provider bytes only when stdout is
+ * redirected and the stream is not valid UTF-8 (gzip/tar archives). A
+ * streaming decoder keeps a multibyte character that splits across chunks
+ * from becoming U+FFFD.
+ */
+const createStreamingUtf8Decoder = (fatal: boolean) => {
+  const decoder = new TextDecoder("utf-8", { fatal });
+  let binary = false;
+  return {
+    decode(chunk: Uint8Array): string | undefined {
+      if (binary) return undefined;
+      try {
+        return decoder.decode(chunk, { stream: true });
+      } catch {
+        binary = true;
+        return undefined;
+      }
+    },
+  };
+};
+
+const frameText = (
+  frame: StreamFrameSinkFrame,
+  decoder: { decode: (chunk: Uint8Array) => string | undefined },
+): string | undefined => (typeof frame.chunk === "string" ? frame.chunk : decoder.decode(frame.chunk));
 
 export const layerStreamFrameSink = (
   format: CommandResultFormat,
@@ -138,16 +165,20 @@ export const layerStreamFrameSink = (
       const renderer = yield* Renderer;
       const redaction = yield* RedactionService;
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+      const isTty = io?.isTTY === true;
+      const stdoutUtf8 = createStreamingUtf8Decoder(!isTty);
+      const stderrUtf8 = createStreamingUtf8Decoder(!isTty);
+      const jsonStdout = createStreamingUtf8Decoder(false);
+      const jsonStderr = createStreamingUtf8Decoder(false);
       const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
-        const textChunk =
-          typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
-        const streamFrameOptions = {
-          chunk: textChunk,
-          ...(frame.service === undefined ? {} : { service: frame.service }),
-          ...(frame.source === undefined ? {} : { source: frame.source }),
-          redactor,
-        };
         if (format === "json") {
+          const textChunk = frameText(frame, frame._tag === "stdout" ? jsonStdout : jsonStderr) ?? "";
+          const streamFrameOptions = {
+            chunk: textChunk,
+            ...(frame.service === undefined ? {} : { service: frame.service }),
+            ...(frame.source === undefined ? {} : { source: frame.source }),
+            redactor,
+          };
           const line =
             frame._tag === "stdout"
               ? yield* encodeStreamStdoutFrame(streamFrameOptions)
@@ -158,7 +189,9 @@ export const layerStreamFrameSink = (
         // A YAML run emits one envelope document, so a raw chunk would
         // corrupt it. Frame transport belongs to the framed JSON stream.
         if (format === "yaml") return;
-        if (frame.raw === true && typeof frame.chunk !== "string") {
+        const decoder = frame._tag === "stdout" ? stdoutUtf8 : stderrUtf8;
+        const textChunk = frameText(frame, decoder);
+        if (frame.raw === true && !isTty && textChunk === undefined && typeof frame.chunk !== "string") {
           const writeBytes = byteWriter(
             io,
             frame._tag === "stderr" ? "writeStderrBytes" : "writeStdoutBytes",
@@ -168,7 +201,9 @@ export const layerStreamFrameSink = (
             return;
           }
         }
-        const chunk = redactor.redactString(textChunk);
+        const fallbackText =
+          typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+        const chunk = redactor.redactString(textChunk ?? fallbackText);
         if (frame.raw === true) {
           yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
           return;

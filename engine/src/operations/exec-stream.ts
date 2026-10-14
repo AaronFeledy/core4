@@ -14,6 +14,7 @@ export const emitRaw = (
   return sink.value.emit({ _tag: kind, chunk, raw: true });
 };
 
+/** Collects the exec stream and emits live frames. stdout/stderr stay in memory for the result. */
 export const collectExecStream = Effect.fnUntraced(function* <E, R>(
   stream: Stream.Stream<ExecChunk, E, R>,
   sink: Option.Option<StreamFrameSinkShape>,
