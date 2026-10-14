@@ -193,8 +193,19 @@ const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: Traver
 };
 
 const indexSignatureJsonSchema = (target: unknown, signature: AST.IndexSignature): unknown => {
-  const targetObject = jsonObject(target);
-  if (targetObject === undefined) return undefined;
+  const outer = jsonObject(target);
+  if (outer === undefined) return undefined;
+  // A struct with rest signatures emits its record under `allOf`, beside the explicit properties.
+  const targetObject =
+    outer.additionalProperties === undefined &&
+    outer.patternProperties === undefined &&
+    Array.isArray(outer.allOf)
+      ? (outer.allOf
+          .map(jsonObject)
+          .find(
+            (member) => member?.additionalProperties !== undefined || member?.patternProperties !== undefined,
+          ) ?? outer)
+      : outer;
 
   switch (signature.parameter._tag) {
     case "String":
