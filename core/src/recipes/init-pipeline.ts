@@ -10,6 +10,7 @@ import {
   type ConfigTranslateDiagnostic,
   ConfigTranslateRecipeRequestInput,
   LandofileAuthoringFragment,
+  LandofileAuthoringFragmentNative,
   type RecipeManifest,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
@@ -188,7 +189,11 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
     return yield* Effect.fail(blocked("validate"));
   const mapping = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(
     output.fragment,
-  ).pipe(Effect.mapError(() => blocked("validate")));
+  ).pipe(
+    Effect.flatMap((value) => Schema.encodeEffect(LandofileAuthoringFragmentNative)(value)),
+    Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
+    Effect.mapError(() => blocked("validate")),
+  );
   const context = mergeLandofiles([mapping, { name: request.appName }]);
   yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
     onExcessProperty: "error",
