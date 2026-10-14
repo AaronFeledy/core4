@@ -270,7 +270,7 @@ To clear every inherited filter on a matching route, set `filters: []` in the hi
 
 ## Check what merged
 
-`lando app:config` prints the merged Landofile, shorthand strings verbatim and object routes with their filters. `lando app:config:lint` rejects a malformed shorthand and names the exact list entry:
+`lando app:config` prints the merged Landofile. A shorthand route keeps its string spelling unless a higher layer matched it, which turns it into an object route; a matched `both` route shows as separate `http` and `https` entries. `lando app:config:lint` rejects a malformed shorthand and names the exact list entry:
 
 ```sh
 lando app:config --format=json
