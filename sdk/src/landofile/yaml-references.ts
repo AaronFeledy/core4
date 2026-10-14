@@ -190,6 +190,15 @@ export const resolveYamlReferences = (
       for (const target of targets) {
         const resolved = resolve(target, stack, origin);
         for (const mapping of Array.isArray(resolved) ? resolved : [resolved]) {
+          if (isLandofileOverride(mapping) || isLandofileReset(mapping)) {
+            throw new LandofileParseError({
+              message: "YAML merge key << cannot use a Landofile merge directive as its source.",
+              filePath: state.filePath,
+              line: merge.line,
+              column: merge.column,
+              remediation: "Put !override or !reset on the target member instead of the << merge source.",
+            });
+          }
           if (!isMapping(mapping)) {
             throw referenceError(
               state,
