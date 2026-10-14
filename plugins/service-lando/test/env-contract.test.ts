@@ -110,12 +110,11 @@ describe("effective app mount paths", () => {
       if (service === undefined) throw new Error("web service missing");
       // When: the service is composed through the real service features and authored wrapper.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
-      // Then: the app has one bind at the effective target, with matching env and default cwd.
+      // Then: app-source intent has no mirror bind, with matching env and default cwd.
       expect(String(plan.appMount?.target)).toBe("/site");
-      expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.target === "/site")).toHaveLength(
-        1,
+      expect(plan.mounts.some((mount) => mount.type === "bind" && mount.source === "/srv/apps/myapp")).toBe(
+        false,
       );
-      expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.target === "/app")).toHaveLength(0);
       expect(plan.workingDirectory === undefined ? undefined : String(plan.workingDirectory)).toBe(
         "cwd" in entry ? entry.cwd : "/site",
       );
@@ -195,9 +194,8 @@ describe("effective app mount paths", () => {
       metadata,
     });
     // Then: the app bind wins over the Compose volume.
-    expect(plan.mounts.filter((mount) => mount.target === "/site")).toMatchObject([
-      { type: "bind", source: "/srv/apps/myapp" },
-    ]);
+    expect(String(plan.appMount?.target)).toBe("/site");
+    expect(plan.mounts).toEqual([]);
   });
 });
 

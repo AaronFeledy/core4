@@ -73,9 +73,10 @@ describe("tomcat ServiceType", () => {
           { _tag: "internal", port: 8080, protocol: "http", name: "appserver" },
         ]);
         expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/ROOT");
-        expect(plan.mounts.some((mount) => String(mount.target) === "/usr/local/tomcat/webapps/ROOT")).toBe(
-          true,
-        );
+        expect(plan.mounts).toEqual([]);
+        expect(plan.environment.LANDO_APP_ROOT).toBe("/usr/local/tomcat/webapps/ROOT");
+        expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/usr/local/tomcat/webapps/ROOT");
+        expect(String(plan.workingDirectory)).toBe("/usr/local/tomcat/webapps/ROOT");
         expect(plan.healthcheck).toEqual({
           kind: "command",
           command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],

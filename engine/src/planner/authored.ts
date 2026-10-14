@@ -28,35 +28,29 @@ import { serviceHomeIntent } from "./home.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { applyAuthoredStorage, plannedContainerDestination } from "./storage.ts";
 
-export const applyAuthoredAppMount = (
-  servicePlan: ServicePlan,
+const validateAuthoredAppMount = (
   service: ServiceConfig,
   appRoot: string,
   serviceName: string,
-): ServicePlan | LandofileValidationError => {
+): LandofileValidationError | undefined => {
   const authored = service.appMount;
-  if (authored === undefined || authored === false) return servicePlan;
-  const existingMount = servicePlan.appMount;
-  if (existingMount === undefined) return servicePlan;
+  if (authored === undefined || authored === false) return;
   const target = plannedContainerDestination(authored.target, appRoot, [
     "services",
     serviceName,
     "appMount",
     "target",
   ]);
-  if (target instanceof LandofileValidationError) return target;
-  const merged = {
-    ...existingMount,
-    target,
-    readOnly: authored.readOnly ?? existingMount.readOnly,
-    excludes:
-      authored.excludes !== undefined
-        ? [...existingMount.excludes, ...authored.excludes.filter((e) => !existingMount.excludes.includes(e))]
-        : existingMount.excludes,
-    includes: authored.includes ?? existingMount.includes,
-  };
-  return { ...servicePlan, appMount: merged };
+  return target instanceof LandofileValidationError ? target : undefined;
 };
+
+export const applyAuthoredAppMount = (
+  servicePlan: ServicePlan,
+  service: ServiceConfig,
+  appRoot: string,
+  serviceName: string,
+): ServicePlan | LandofileValidationError =>
+  validateAuthoredAppMount(service, appRoot, serviceName) ?? servicePlan;
 
 export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.healthcheck;
@@ -150,6 +144,8 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     resolvedArtifactTag,
     configSourceInputs,
   } of input.resolvedServices) {
+    const appMountError = validateAuthoredAppMount(service, input.appRoot, name);
+    if (appMountError !== undefined) return yield* Effect.fail(appMountError);
     const rawPlan = yield* Effect.gen(function* () {
       const configuredFeatureRefs = featureRefs.filter(
         (featureRef) => !baseDefaultIds.includes(featureRef.id) || featureRef.config !== undefined,
@@ -193,8 +189,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         features,
       }).pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error)));
     });
-    const withAppMount = applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service, input.appRoot, name);
-    if (withAppMount instanceof LandofileValidationError) return yield* Effect.fail(withAppMount);
+    const withAppMount = mergeDefaultExcludes(rawPlan);
     const withStorage = applyAuthoredStorage(
       applyAuthoredHealthcheck(withAppMount, service),
       service,

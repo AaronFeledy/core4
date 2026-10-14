@@ -4,7 +4,6 @@ import {
   AbsolutePath,
   type LogSource,
   LogSourceId,
-  PortablePath,
   type ServiceConfig,
   ServiceName,
 } from "@lando/sdk/schema";
@@ -25,7 +24,6 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appPaths, mountAppRoot } from "./_volume-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
@@ -105,9 +103,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const backend = service.backend?.trim() ?? "";
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   applyAuthoredProcessFields(ctx, ["user"]);
-  mountAppRoot(ctx, { realization: "passthrough" });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
@@ -194,9 +190,12 @@ export const nginxServiceType: ServiceType = {
           {
             id: "lando.env",
             config: {
-              appPaths: appPaths(input.service.appMount),
               webroot,
             },
+          },
+          {
+            id: "lando.app-mount",
+            config: { target: "/app", realization: "passthrough", workingDirectory: webroot },
           },
         ],
       };

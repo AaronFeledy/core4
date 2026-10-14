@@ -16,7 +16,9 @@ Add per-service patterns under `services.<name>.appMount.excludes` in your Lando
 
 If a path must stay synced even when it matches an exclude, add the same pattern to `services.<name>.appMount.includes`. Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
 
-An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory and `LANDO_APP_ROOT` follow it. Match the type's own location when it mounts the app somewhere else (tomcat mounts at its webroot).
+An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, and `LANDO_PROJECT_MOUNT` follow it. Tomcat is the exception: it mounts the app at its `webroot`, so set `webroot` instead of `appMount.target` (a different `appMount.target` fails planning).
+
+Set `appMount: false` on any service type to skip the app mount entirely. The container gets no app source, no `LANDO_APP_ROOT` or `LANDO_PROJECT_MOUNT`, and starts in the image's own working directory unless you set `workingDirectory`. Use it when the image bakes the code in, for example through `build:`. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
 
 ```yaml
 services:

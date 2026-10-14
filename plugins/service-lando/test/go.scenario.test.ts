@@ -187,8 +187,8 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(web.healthcheck?.kind).toBe("command");
     expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
     expect(String(web.workingDirectory)).toBe("/app");
-    expect(web.mounts[0]?.type).toBe("bind");
-    expect(String(web.mounts[0]?.target)).toBe("/app");
+    expect(String(web.appMount?.target)).toBe("/app");
+    expect(web.mounts).toEqual([]);
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("go:1.22");
     expect(web.environment.LANDO_APP_ROOT).toBe("/app");
     expect(web.environment.GOPATH).toBe("/go");

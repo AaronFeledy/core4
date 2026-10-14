@@ -10,12 +10,9 @@ import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_por
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
-  appMountTarget,
   canonicalTarget,
   classifyComposeVolume,
-  mountAppRoot,
   occupiedTargets,
-  parseServiceMount,
 } from "./_volume-helpers.ts";
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
@@ -36,23 +33,6 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   }
 
   const appName = appNameFor(ctx);
-  const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
-  const optedOutOfAppMount =
-    service.appMount === false ||
-    authoredMounts.some((mount) => canonicalTarget(mount.target) === appMountTarget(service.appMount));
-  if (!optedOutOfAppMount) {
-    mountAppRoot(ctx);
-  }
-
-  for (const mount of authoredMounts) {
-    ctx.addMount({
-      type: mount.type,
-      ...(mount.source === undefined ? {} : { source: mount.source }),
-      target: PortablePath.make(mount.target),
-      readOnly: mount.readOnly,
-    });
-  }
-
   const composeVolumes = (service.volumes ?? []).map((entry) =>
     classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }),
   );
@@ -147,6 +127,6 @@ export const composeServiceType: ServiceType = {
     Effect.succeed({
       base: "l337",
       normalizedConfig: { ...input.service, type: "compose" },
-      features: [{ id: COMPOSE_FEATURE_ID }],
+      features: [{ id: COMPOSE_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
     }),
 };

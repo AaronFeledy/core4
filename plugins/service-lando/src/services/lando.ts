@@ -5,7 +5,6 @@ import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
@@ -21,12 +20,7 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   }
 
   if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
-  ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
   applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
-
-  if (service.appMount !== false) {
-    mountAppRoot(ctx);
-  }
 
   for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
     ctx.addEndpoint(endpoint);
@@ -57,8 +51,8 @@ export const landoServiceType: ServiceType = {
       features: [
         { id: LANDO_FEATURE_ID },
         {
-          id: "lando.env",
-          config: { appPaths: appPaths(input.service.appMount) },
+          id: "lando.app-mount",
+          config: { target: "/app" },
         },
       ],
     })),

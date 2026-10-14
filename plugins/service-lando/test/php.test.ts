@@ -94,10 +94,7 @@ describe("php:8.2 ServiceType", () => {
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts).toEqual([]);
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
 
@@ -479,8 +476,8 @@ describe("php serving modes (via:)", () => {
       appRoot,
     );
 
-    expect(plan.mounts).toHaveLength(2);
-    expect(plan.mounts[1]).toMatchObject({
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({
       type: "bind",
       source: `${appRoot}\\.lando\\php\\drupal-cms.ini`,
       target: "/usr/local/etc/php/conf.d/zz-lando-drupal-cms.ini",

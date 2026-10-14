@@ -11,7 +11,6 @@ import {
 } from "./_feature-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 export interface LanguageFrameworkPreset {
@@ -80,12 +79,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
     addEnvRecord(ctx, env);
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
-    ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
     applyAuthoredProcessFields(ctx, ["user"]);
-    mountAppRoot(ctx, {
-      excludes: spec.mountExcludes,
-      ...(spec.mountRealization === undefined ? {} : { realization: spec.mountRealization }),
-    });
     addServicePortEndpoints(ctx, { port, protocol: "http" });
     ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
     applyAuthoredProcessFields(ctx, ["entrypoint"]);
@@ -136,7 +130,15 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
                 defaultCommand: preset.defaultCommand,
               },
             },
-            { id: "lando.env", config: { appPaths: appPaths(input.service.appMount), ...webroot } },
+            { id: "lando.env", config: webroot },
+            {
+              id: "lando.app-mount",
+              config: {
+                target: "/app",
+                excludes: spec.mountExcludes,
+                ...(spec.mountRealization === undefined ? {} : { realization: spec.mountRealization }),
+              },
+            },
           ],
         };
       }),

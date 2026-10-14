@@ -2,14 +2,13 @@ import { homedir } from "node:os";
 import { isAbsolute, posix, resolve as resolvePath, win32 } from "node:path";
 
 import {
-  AbsolutePath,
   type ComposeVolumeEntry,
   type MountInput,
   PortablePath,
   type ServiceConfig,
   parseShortVolume,
 } from "@lando/sdk/schema";
-import type { ServiceAppMountIntent, ServiceFeatureContext } from "@lando/sdk/services";
+import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
@@ -18,37 +17,6 @@ export const canonicalTarget = (target: string): string => posix.resolve("/", ta
 
 export const appMountTarget = (appMount: ServiceConfig["appMount"]): PortablePath =>
   PortablePath.make(canonicalTarget(typeof appMount === "object" ? appMount.target : "/app"));
-
-export const appPaths = (appMount: ServiceConfig["appMount"]) => {
-  const target = appMountTarget(appMount);
-  return { appRoot: target, projectMount: target };
-};
-
-export const mountAppRoot = (
-  ctx: ServiceFeatureContext,
-  options: Partial<Pick<ServiceAppMountIntent, "target" | "excludes" | "readOnly">> & {
-    readonly realization?: "passthrough";
-  } = {},
-): void => {
-  const target = options.target ?? appMountTarget(ctx.normalizedConfig.appMount);
-  const readOnly = options.readOnly ?? false;
-  const realization = options.realization === undefined ? {} : { realization: options.realization };
-  ctx.setAppMount({
-    source: AbsolutePath.make(ctx.appRoot),
-    target,
-    readOnly,
-    excludes: [...(options.excludes ?? [])],
-    includes: [],
-    ...realization,
-  });
-  ctx.addMount({
-    type: "bind",
-    source: ctx.appRoot,
-    target,
-    readOnly,
-    ...realization,
-  });
-};
 
 interface ComposeTmpfsEntry {
   readonly target: string;

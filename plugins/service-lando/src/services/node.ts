@@ -19,7 +19,6 @@ import {
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
@@ -267,9 +266,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
-  ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
   applyAuthoredProcessFields(ctx, ["user"]);
-  mountAppRoot(ctx, { realization: "passthrough" });
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   if (service.command !== undefined) {
@@ -320,8 +317,8 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
           {
-            id: "lando.env",
-            config: { appPaths: appPaths(input.service.appMount) },
+            id: "lando.app-mount",
+            config: { target: "/app", realization: "passthrough" },
           },
         ],
       };
@@ -360,7 +357,7 @@ export const nodeServiceType: ServiceType = {
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-          { id: "lando.env", config: { appPaths: appPaths(input.service.appMount) } },
+          { id: "lando.app-mount", config: { target: "/app", realization: "passthrough" } },
         ],
         metadata: {
           node: {

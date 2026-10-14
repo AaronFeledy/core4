@@ -98,14 +98,7 @@ describe("apache ServiceType", () => {
     expect(plan.appMount?.readOnly).toBe(false);
     expect(plan.appMount?.realization).toBe("passthrough");
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({
-      type: "bind",
-      source: APP_ROOT,
-      readOnly: false,
-      realization: "passthrough",
-    });
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts).toEqual([]);
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
     expect(plan.healthcheck).toEqual({

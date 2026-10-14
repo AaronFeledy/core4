@@ -95,7 +95,8 @@ so it can reach the rest of the app by service name.
 ## Skip the app mount
 
 Set `appMount: false` when the third-party image must not see the app
-source:
+source. Every service type that mounts the app honors it, not just
+`compose`:
 
 ```yaml
 services:

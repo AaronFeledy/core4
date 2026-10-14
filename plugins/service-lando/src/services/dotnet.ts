@@ -7,7 +7,6 @@ import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { appMountTarget, appPaths, mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = 5000;
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
@@ -31,8 +30,6 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["9.0"] });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
-  ctx.setWorkingDirectory(service.workingDirectory ?? appMountTarget(service.appMount));
-  mountAppRoot(ctx, { realization: "passthrough" });
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,
@@ -70,7 +67,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
       },
       features: [
         { id: DOTNET_FEATURE_ID },
-        { id: "lando.env", config: { appPaths: appPaths(input.service.appMount) } },
+        { id: "lando.app-mount", config: { target: "/app", realization: "passthrough" } },
       ],
     });
   },

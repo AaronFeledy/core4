@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -13,13 +13,6 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import {
-  appMountTarget,
-  appPaths,
-  canonicalTarget,
-  mountAppRoot,
-  parseServiceMount,
-} from "./_volume-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
@@ -191,19 +184,6 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   if (xdebug !== false) {
     addEnvRecord(ctx, phpXdebugConfigEnv());
   }
-  ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
-  const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
-  if (!authoredMounts.some((mount) => canonicalTarget(mount.target) === appMountTarget(service.appMount))) {
-    mountAppRoot(ctx);
-  }
-  for (const mount of authoredMounts) {
-    ctx.addMount({
-      type: mount.type,
-      ...(mount.source === undefined ? {} : { source: mount.source }),
-      target: PortablePath.make(mount.target),
-      readOnly: mount.readOnly,
-    });
-  }
   applyServingMode(ctx, via, webroot, allowOverride, listenPort);
   if (via !== "cli") {
     addServicePortEndpoints(ctx, { port, protocol: phpEndpointProtocol(via) });
@@ -260,8 +240,9 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
           { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },
           {
             id: "lando.env",
-            config: { appPaths: appPaths(input.service.appMount), webroot },
+            config: { webroot },
           },
+          { id: "lando.app-mount", config: { target: "/app", workingDirectory: webroot } },
         ],
         ...(xdebug === false ? {} : { tooling: phpXdebugTooling(input.name, via, xdebug.mode) }),
       };

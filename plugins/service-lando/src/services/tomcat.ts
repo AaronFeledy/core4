@@ -1,5 +1,3 @@
-import { posix } from "node:path";
-
 import { Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
@@ -13,7 +11,7 @@ import {
 } from "./_feature-helpers.ts";
 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { canonicalTarget } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
 const DEFAULT_WEBROOT = PortablePath.make("/usr/local/tomcat/webapps/ROOT");
@@ -37,10 +35,8 @@ export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
-  const webroot = posix.normalize(service.webroot ?? DEFAULT_WEBROOT);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  mountAppRoot(ctx, { target: PortablePath.make(webroot), realization: "passthrough" });
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(port),
@@ -71,6 +67,14 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
     return serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
       const webroot = input.service.webroot ?? DEFAULT_WEBROOT;
       Schema.decodeUnknownSync(TomcatDeployPath)(webroot);
+      if (
+        typeof input.service.appMount === "object" &&
+        canonicalTarget(input.service.appMount.target) !== canonicalTarget(webroot)
+      ) {
+        throw new Error(
+          `tomcat deploys the app at its webroot "${webroot}". Set webroot instead of appMount.target, or make them equal.`,
+        );
+      }
       return {
         base: "lando",
         normalizedConfig: {
@@ -80,7 +84,10 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
           webroot,
           certs: input.service.certs ?? true,
         },
-        features: [{ id: TOMCAT_FEATURE_ID }],
+        features: [
+          { id: TOMCAT_FEATURE_ID },
+          { id: "lando.app-mount", config: { target: webroot, realization: "passthrough" } },
+        ],
       };
     });
   },

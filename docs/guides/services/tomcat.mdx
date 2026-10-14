@@ -48,6 +48,8 @@ Tomcat serves `/usr/local/tomcat/webapps/ROOT` by default. The app root is
 mounted there, so a `WEB-INF` directory in your project is enough. Set
 `webroot:` when you want a different deploy path inside the container. Unlike PHP, static, nginx, and Apache services, Tomcat requires an absolute container deploy path: this is where Lando mounts your app, not a path relative to `/app`.
 
+`webroot` is the app mount. `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT` report it, and `lando exec` starts there. Don't move the mount with `appMount.target`: a value that differs from `webroot` fails planning with a message pointing you back to `webroot` (an equal value is accepted). Set `appMount: false` when the image already contains the webapp and Lando should not mount anything.
+
 ## TLS and the default route
 
 Tomcat listens on `8080`. Lando gives it a default hostname route and turns
