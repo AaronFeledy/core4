@@ -1,0 +1,20 @@
+name: pgvector-demo
+services:
+  db:
+    type: postgres
+    image: pgvector/pgvector:pg18
+    home: false
+    environment:
+      PGDATA: /var/lib/postgresql/data
+  app:
+    type: "python:3.12"
+    primary: true
+    environment:
+      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ services.db.creds.password }}@db:5432/{{ services.db.creds.database }}"
+tooling:
+  uv:
+    service: app
+    cmd: uv
+  python:
+    service: app
+    cmd: python

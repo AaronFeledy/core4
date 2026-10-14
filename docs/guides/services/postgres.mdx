@@ -109,13 +109,16 @@ If you also set `command:` or `entrypoint:` on the service, yours wins. Lando wo
 
 ## Pin a version
 
-Set `image:` when `postgres:16` isn't the version you want:
+Set `image:` when `postgres:16` isn't the version you want. Landofile-supplied images need `home: false` or `home.path`, or start refuses with `HomePathCapabilityError`:
 
 ```yaml
 services:
   db:
     type: postgres
     image: postgres:15
+    home: false
 ```
+
+Postgres 18 images also need `PGDATA: /var/lib/postgresql/data` under `environment:`, or the server refuses to start on Lando's data volume. [Run vector search on Postgres with pgvector](./postgres-pgvector.mdx) has the full Postgres 18 Landofile.
 
 </Guide>
