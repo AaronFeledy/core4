@@ -21,7 +21,7 @@ lando info
 `lando start` prints the app URL. `lando info` repeats it.
 
 The `web` service serves `/app` through nginx and sends PHP requests to
-`appserver` on its internal PHP-FPM port. Both services use `/app` as the webroot.
+`appserver` on its internal PHP-FPM port. Both services use `.` as the webroot, resolving to the app mount at `/app`.
 Put your `index.php` in the project root. `appserver` remains the primary service
 for PHP and Composer tooling; it does not expose a separate HTTP route.
 

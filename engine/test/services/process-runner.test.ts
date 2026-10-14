@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -42,6 +42,41 @@ const runProcess = (input: Parameters<Context.Service.Shape<typeof ProcessRunner
   );
 
 describe("BunProcessRunner.layer", () => {
+  test.each([
+    { options: { inheritStdin: true }, expected: "[host-input\n]" },
+    { options: {}, expected: "[]" },
+    { options: { inheritStdin: true, stdin: "explicit-input" }, expected: "[explicit-input]" },
+    { options: { inheritStdin: true, inheritOutput: true }, expected: "host-input\n[]" },
+  ])("inherits the parent's stdin and output only when requested: %j", async ({ options, expected }) => {
+    // Given
+    const runnerPath = resolve(import.meta.dirname, "../../src/services/process-runner.ts");
+    const script = `
+      import { Effect } from "effect";
+      import { ProcessRunner } from "@lando/sdk/services";
+      import { layer } from ${JSON.stringify(runnerPath)};
+      const result = await Effect.runPromise(Effect.flatMap(ProcessRunner, runner =>
+        runner.run({ cmd: "cat", args: [], ...${JSON.stringify(options)} })
+      ).pipe(Effect.provide(layer)));
+      process.stdout.write("[" + result.stdout + "]");
+    `;
+    // When
+    const child = Bun.spawn([process.execPath, "-e", script], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    child.stdin.write("host-input\n");
+    await child.stdin.end();
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    // Then
+    expect(code, stderr).toBe(0);
+    expect(stdout).toBe(expected);
+  });
+
   for (const mode of ["interrupt", "timeout"] as const) {
     test(`kills and reaps a SIGTERM-resistant child on ${mode}`, async () => {
       const ready = Promise.withResolvers<number>();

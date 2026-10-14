@@ -40,12 +40,13 @@ const metadata = {
   runtime: 4 as const,
 };
 
-export type ErrorPageServer = "static" | "nginx-fpm" | "apache";
+export type ErrorPageServer = "static" | "nginx" | "nginx-fpm" | "apache";
 
 const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   static: 31088,
   "nginx-fpm": 31089,
   apache: 31090,
+  nginx: 31091,
 };
 
 interface ServiceSpec {
@@ -66,6 +67,14 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
           name: "web",
           serviceType: staticNginxServiceType,
           config: { type: "static", webroot: "/app/dist", ports },
+        },
+      ];
+    case "nginx":
+      return [
+        {
+          name: "web",
+          serviceType: nginxServiceType,
+          config: { type: "nginx", webroot: "/app/dist", ports },
         },
       ];
     case "nginx-fpm":

@@ -5,7 +5,7 @@ PostgreSQL, Redis, and an optional `via: cli` queue worker.
 
 ## Generated services
 
-- `appserver`: `php:<8.1-8.6>`, `framework: laravel`, webroot `/app/public`.
+- `appserver`: `php:<8.1-8.6>`, `framework: laravel`, app-relative webroot `public`.
 - `database`: `mariadb:11.4` or `postgres:16` (prompt: `database`).
 - `cache`: `redis`.
 - `node`: `node:22`, `primary: false`, no `command`, so it idles until

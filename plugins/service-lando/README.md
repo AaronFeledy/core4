@@ -24,7 +24,7 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 
 | Type       | Supported `framework:` values        | Notes                                                                                                                       |
 | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI, sets `WP_CLI_ALLOW_ROOT=1`, and writes `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`, CLI and web). Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
+| `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI, sets `WP_CLI_ALLOW_ROOT=1`, and writes `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`, CLI and web). Uses `webroot:` (relative to the app mount, default `.`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
 | `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints. |
 | `ruby`     | `rails`, `none`                      | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
@@ -40,7 +40,7 @@ The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 
 ## Authored web settings
 
-Apache serves `/app` by default. Set `webroot:` to change the generated httpd document root and the `APACHE_DOCUMENT_ROOT` and `LANDO_WEBROOT` environment values. An authored `APACHE_DOCUMENT_ROOT` environment value wins; an authored `command:` or `entrypoint:` owns its own Apache startup config.
+Apache serves the app root by default. Set `webroot:` to a path relative to it, such as `public`, or to an absolute container path to change the generated httpd document root. `APACHE_DOCUMENT_ROOT` and `LANDO_WEBROOT` get the resolved absolute path. An authored `APACHE_DOCUMENT_ROOT` environment value wins; an authored `command:` or `entrypoint:` owns its own Apache startup config.
 
 A generated start command runs as the service's planned `user:`. [Default start commands and the planned service user](./DEFAULT_COMMAND_AUDIT.md) records what each bundled default writes and which ones still assume root.
 

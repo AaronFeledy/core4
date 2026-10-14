@@ -1,9 +1,8 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
@@ -27,7 +26,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["4"] });
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
-  ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? "lando");
+  ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addStorage({
     store: `${appName}-rabbitmq-data`,
     target: DATA_TARGET,
@@ -70,19 +69,14 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: RabbitMQServiceConfig,
   resolve: (input) => {
-    const appName = input.appName ?? (basename(input.appRoot) || "app");
-    const routes = input.service.routes ?? [
-      { hostname: `${input.name}.${appName}.lndo.site`, endpoint: MANAGEMENT_PORT },
-    ];
     const managementUser = input.service.environment?.RABBITMQ_DEFAULT_USER ?? "lando";
-    const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? "lando";
+    const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD;
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
         ...input.service,
         type: "rabbitmq",
         image: input.service.image ?? image,
-        routes,
       },
       features: [{ id: RABBITMQ_FEATURE_ID }],
       tooling: {

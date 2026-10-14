@@ -1,10 +1,25 @@
-import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Result, Schema, Tracer } from "effect";
+import {
+  Cause,
+  Clock,
+  Effect,
+  ErrorReporter,
+  Exit,
+  Layer,
+  References,
+  Result,
+  Schema,
+  Scope,
+  Tracer,
+} from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
@@ -18,6 +33,7 @@ import {
   runCommandLifecycle,
   withCommandEventService,
 } from "./command-lifecycle";
+import { FinishCommandProgress, finishCommandProgress } from "./command-progress";
 import { type CommandTraceCapture, formatCommandTrace } from "./command-tracer";
 import { withCommandTracing } from "./command-tracing";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
@@ -47,6 +63,7 @@ export interface RenderContext {
   readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
+  readonly proxyDefaultDomain?: string;
   /** Host env snapshot used for OSC 8 capability (TERM, NO_COLOR). */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Exact-value redactor for summary fields; apply before paint, never after. */
@@ -114,6 +131,9 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
+const isMessageWarnEvent = Schema.is(
+  Schema.Union([Schema.toEncoded(MessageWarnEvent), Schema.toType(MessageWarnEvent)]),
+);
 
 /**
  * Parents spans under a command stage without `Effect.withParentSpan`, which
@@ -326,10 +346,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
               ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
             });
-      if (invocation !== undefined) {
-        // Terminal subscribers publish to the command-scoped renderer before its scope closes.
-        yield* Effect.yieldNow;
-      }
+      yield* finishCommandProgress();
       resultExit = commandExit;
       const renderSpan = yield* renderStage.start;
       return yield* withStageParent(renderCommandExit(commandExit), renderSpan);
@@ -373,7 +390,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
         return { _tag: "handled-success" } as const;
       }
-      return { _tag: "success", value: commandExit.value } as const;
+      const proxyDefaultDomain = yield* resolveProxyDefaultDomain;
+      return { _tag: "success", value: commandExit.value, proxyDefaultDomain } as const;
     });
     const applySuccessExitCode = (value: A) =>
       Effect.sync(() => {
@@ -395,10 +413,18 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }
     }
-    const executeWithEventConsumer =
-      eventConsumerLayer === undefined
-        ? executeCommand
-        : executeCommand.pipe(Effect.provide(eventConsumerLayer));
+    const executeWithEventConsumer = Effect.scoped(
+      Effect.gen(function* () {
+        if (eventConsumerLayer === undefined) return yield* executeCommand;
+        const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
+        const consumerContext = yield* Layer.buildWithScope(eventConsumerLayer, consumerScope);
+        const finish = yield* Effect.cached(Scope.close(consumerScope, Exit.void));
+        return yield* executeCommand.pipe(
+          Effect.provide(consumerContext),
+          Effect.provideService(FinishCommandProgress, finish),
+        );
+      }),
+    );
     // Build the command runtime in its own memo map. Effect 4 otherwise reuses the
     // diagnostic fallback's `RedactionService.layer`, bound to the env-only secret
     // store, and secrets from the runtime's own store would render unredacted.
@@ -407,6 +433,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
           local: true,
         }),
+        Effect.provideService(EventPublicationObserver, (event) =>
+          envelopeFormat && isMessageWarnEvent(event)
+            ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
+            : Effect.void,
+        ),
         Effect.withErrorReporting({ defectsOnly: true }),
       ),
     );
@@ -446,6 +477,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const displayValue = redactor === undefined ? value : (redactor.redactValue(value) as A);
         const paintContext: RenderContext = {
           ...renderContext,
+          proxyDefaultDomain: commandOutcome.value.proxyDefaultDomain,
           ...(redactor === undefined ? {} : { redact: (text) => redactor.redactString(text) }),
         };
         const rendered = options.render?.(displayValue, paintContext);

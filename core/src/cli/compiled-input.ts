@@ -78,6 +78,7 @@ export const compiledCommandInputFromArgv = (
       flags,
       args: {},
       ...options,
+      rendererMode: options.rendererMode ?? activeRendererMode,
       resultFormat: effectiveResultFormat,
       hostIo: "cli" as const,
     };
@@ -119,6 +120,7 @@ export const compiledCommandInputFromArgv = (
     flags,
     args,
     ...options,
+    rendererMode: options.rendererMode ?? activeRendererMode,
     resultFormat: effectiveResultFormat,
     hostIo: "cli" as const,
   };

@@ -2,7 +2,7 @@ name: blocked-demo
 recipe: lamp
 config:
   php: "8.2"
-  webroot: /app/web
+  webroot: web
   xdebug: true
 tooling:
   pull:

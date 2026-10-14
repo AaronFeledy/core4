@@ -7,14 +7,14 @@ tags: [beta, docs, static, service]
 
 # Serve a static site
 
-Put `type: static` in your services block. That defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` and listens on `80`. The document root defaults to `/app`, and the app source is mounted read-only. The server can't mutate your repository:
+Put `type: static` in your services block. That defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` and listens on `80`. The webroot defaults to `.`, resolving to the app root at `/app`, and the app source is mounted read-only. The server can't mutate your repository:
 
 ```yaml
 name: static-demo
 services:
   web:
     type: static
-    webroot: /app/dist
+    webroot: dist
 tooling:
   curl:
     service: web
@@ -55,7 +55,7 @@ Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use 
 
 ## Serve a subdirectory
 
-Set `webroot` to the full container path, just as you do for nginx, Apache, and PHP services. The fixture uses `webroot: /app/dist` to serve the build output directory and set `LANDO_WEBROOT=/app/dist` inside the container. Without `webroot`, static serves `/app`.
+Set `webroot` to a path relative to the app mount at `/app`, just as you do for nginx, Apache, and PHP services. The fixture uses `webroot: dist` to serve the build output directory. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path, here `/app/dist`. Omit `webroot` or use `.` to serve the app root. Use an absolute value such as `webroot: /srv/site` only when you need a very specific container path outside the usual app layout; make sure that directory exists in the container. Relative paths that escape `/app`, such as `../srv`, are rejected.
 
 ## Serve with Caddy
 

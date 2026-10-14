@@ -146,3 +146,9 @@ export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
 export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
+export {
+  LayerMergeRule,
+  SchemaLayerMergeAnnotationId,
+  layerMerge,
+  getLayerMergeRule,
+} from "./layer-merge.ts";

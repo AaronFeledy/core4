@@ -16,7 +16,7 @@ lando plugin:add <tunnel-service-plugin>
 
 Or `lando setup --provider=<provider-with-tunnels>`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`.
 
-`lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan. On a TTY, text output also prints a QR for the public URL; JSON and pipes stay URL-only.
+`lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan. On a TTY, text output also prints a QR for the public URL; JSON and pipes stay URL-only. Loopback URLs and hostnames under `lndo.site` or your configured `proxy.defaultDomain` stay URL-only too: a QR does not make a local address reachable from your phone.
 
 ```sh
 lando share
@@ -60,6 +60,8 @@ lando share --help
 ```
 
 `info` prints services and URLs. The default share target is the first of those routes. `--help` restates the three `--target` forms.
+
+For an explicit QR of the app's own URL, use `lando open --qr` in a terminal. It prints a QR even for a local hostname, without opening a browser. The other device still needs [network access and DNS for that hostname](../subsystems/external-access.mdx).
 
 ## List and stop tunnels
 

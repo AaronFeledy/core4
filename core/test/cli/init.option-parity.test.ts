@@ -79,13 +79,13 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).not.toContain("via:");
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("webroot: .");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
 
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe(".");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
     });
   });
@@ -108,7 +108,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).not.toContain("via:");
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("webroot: .");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       const expected = await previewBuiltinRecipe("lamp", "option-parity-lamp", {
         name: "option-parity-lamp",
@@ -117,7 +117,7 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(join(dir, "option-parity-lamp"));
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe(".");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
     });
   });
@@ -136,7 +136,7 @@ describe("recipe option parity", () => {
           database: "postgres:16",
           composer: "2",
           drupal: "10",
-          webroot: "/app/web",
+          webroot: "web",
         },
         postInitIO: { out: () => {}, err: () => {} },
       });
@@ -156,7 +156,7 @@ describe("recipe option parity", () => {
       expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toContain("recommended-project:^10");
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
-      expect(String(landofile.services?.[ServiceName.make("edge")]?.webroot ?? "")).toBe("/app/web");
+      expect(String(landofile.services?.[ServiceName.make("edge")]?.webroot ?? "")).toBe("web");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
     });
   });
@@ -219,7 +219,7 @@ describe("recipe option parity", () => {
       });
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('php: "8.4"');
-      expect(yaml).toContain("webroot: /app/web");
+      expect(yaml).toContain("webroot: web");
       expect(yaml).toContain("vendor/bin/drush");
       expect(yaml).toContain("allowOverride: true");
       expect(yaml).not.toContain("via:");
@@ -240,14 +240,14 @@ describe("recipe option parity", () => {
     });
   });
 
-  test("relative webroot fails closed with PromptValidationError", async () => {
+  test("webroot with unsupported characters fails closed with PromptValidationError", async () => {
     await withTempCwd(async (dir) => {
       const promise = initApp({
         cwd: dir,
         full: false,
         recipe: "lamp",
         nonInteractive: true,
-        answers: { name: "bad-webroot", webroot: "relative" },
+        answers: { name: "bad-webroot", webroot: "unsafe path" },
         postInitIO: { out: () => {}, err: () => {} },
       });
       await expect(promise).rejects.toBeInstanceOf(PromptValidationError);
@@ -267,7 +267,7 @@ describe("recipe option parity", () => {
       });
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('php: "8.4"');
-      expect(yaml).toContain("webroot: /app/web");
+      expect(yaml).toContain("webroot: web");
       expect(yaml).toContain("vendor/bin/drush");
       expect(yaml).toContain("drupal/cms");
       expect(yaml).not.toContain("recommended-project");
@@ -308,7 +308,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).not.toMatch(/^ {4}via:/m);
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("webroot: /app/public");
+      expect(yaml).toContain("webroot: public");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain("type: redis");
       expect(yaml).toContain("artisan:");
@@ -318,7 +318,7 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app/public");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("public");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
       expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
       expect(landofile.services?.[ServiceName.make("worker")]).toBeUndefined();
@@ -342,7 +342,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).not.toMatch(/^ {4}via:/m);
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("webroot: /app/public");
+      expect(yaml).toContain("webroot: public");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain("type: redis");
       expect(yaml).toContain("console:");
@@ -351,7 +351,7 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app/public");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("public");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
       expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
       expect(landofile.tooling?.console).toBeDefined();
@@ -371,7 +371,7 @@ describe("recipe option parity", () => {
           php: "8.1",
           database: "postgres:16",
           composer: "2.7.7",
-          webroot: "/app/public",
+          webroot: "./public/",
           worker: "true",
         },
         postInitIO: { out: () => {}, err: () => {} },
@@ -380,7 +380,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain('composer: "{{ recipe.composer }}"');
-      expect(yaml).toContain("webroot: /app/public");
+      expect(yaml).toContain("webroot: ./public/");
       expect(yaml).toContain("via: cli");
       expect(yaml).toContain("php artisan queue:work");
 
@@ -396,7 +396,7 @@ describe("recipe option parity", () => {
     });
   });
 
-  test("laravel rejects composer false and relative webroot", async () => {
+  test("laravel rejects composer false and unsafe webroot characters", async () => {
     await withTempCwd(async (dir) => {
       const noComposer = initApp({
         cwd: dir,
@@ -414,7 +414,7 @@ describe("recipe option parity", () => {
         full: false,
         recipe: "laravel",
         nonInteractive: true,
-        answers: { name: "bad-webroot", webroot: "relative" },
+        answers: { name: "bad-webroot", webroot: "unsafe path" },
         postInitIO: { out: () => {}, err: () => {} },
       });
       await expect(relativeWebroot).rejects.toBeInstanceOf(PromptValidationError);
@@ -435,7 +435,7 @@ describe("recipe option parity", () => {
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("webroot: .");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain("framework: backdrop");
       expect(yaml).toContain("allowOverride: true");
@@ -452,7 +452,7 @@ describe("recipe option parity", () => {
 
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe(".");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
     });
   });
@@ -471,7 +471,7 @@ describe("recipe option parity", () => {
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('type: "php:{{ recipe.php }}"');
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("webroot: .");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain("framework: joomla");
       expect(yaml).toContain("joomla:");
@@ -481,7 +481,7 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe(".");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
     });
   });

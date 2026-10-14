@@ -71,7 +71,11 @@ The `mariadb` type ships the client task. After start:
 lando mariadb
 ```
 
-Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can still pipe into the client with `lando exec`.
+Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). Or pipe a plain SQL file straight into the client:
+
+```sh
+lando mariadb < dump.sql
+```
 
 ## Add server config
 

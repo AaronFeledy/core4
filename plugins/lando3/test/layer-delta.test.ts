@@ -16,6 +16,8 @@ const check = (prefixes: readonly DesiredPrefix[]) => {
   return result;
 };
 const keys = (...path: string[]) => path.map((key) => ({ kind: "key" as const, key }));
+const endpoints = (items: readonly unknown[]) => ({ services: { web: { endpoints: items } } });
+const routes = (items: readonly unknown[]) => ({ services: { web: { routes: items } } });
 const sorted = (value: unknown): void => {
   if (Array.isArray(value)) value.forEach(sorted);
   else if (isPlainRecord(value)) {
@@ -25,6 +27,90 @@ const sorted = (value: unknown): void => {
 };
 
 describe("layer deltas", () => {
+  test("keeps unrelated both route additions authored during delta replay", () => {
+    // Given a recipe-shaped both route and a new both route in the desired prefix.
+    const inherited = { hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" };
+    const added = { hostname: "extra.test", scheme: "both" };
+    // When the translator computes the minimal higher-layer fragment.
+    const result = check([prefix("dist", routes([inherited])), prefix("local", routes([inherited, added]))]);
+    // Then the new route stays authored and the inherited route is not rewritten.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([routes([inherited]), routes([added])]);
+    expect(result.relocations).toEqual([]);
+  });
+  test("route-spelling additions and event replacements replay without relocation", () => {
+    const base = {
+      ...routes(["a.test", "b.test"]),
+      events: {
+        "post-start": [
+          { service: "web", cmd: "old" },
+          { service: "db", cmd: "seed" },
+        ],
+      },
+    };
+    const desired = {
+      ...routes(["a.test", "b.test", { hostname: "a.test", pathPrefix: "/api" }]),
+      events: { "post-start": [{ service: "web", cmd: "local" }] },
+    };
+    const result = check([prefix("dist", base), prefix("local", desired)]);
+    expect(result.emitted[1]?.fragment).toEqual({
+      ...routes([{ hostname: "a.test", pathPrefix: "/api" }]),
+      events: desired.events,
+    });
+    expect(result.relocations).toEqual([]);
+  });
+  test("a route removal relocates the collection identified by its opaque route keys", () => {
+    const result = check([prefix("dist", routes(["a.test", "b.test"])), prefix("local", routes(["b.test"]))]);
+    expect(result.relocations[0]?.unitPath).toEqual(keys("services", "web", "routes"));
+  });
+  test("emits complete tooling cmds in the higher layer without relocation", () => {
+    // Given an inherited list and a local list with one changed and one unchanged step.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "old-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    const local = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "new-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    // When translation plans replayable layer deltas.
+    const result = check([prefix("dist", base), prefix("local", local)]);
+    // Then the local list is emitted whole, including the unchanged step.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([base, local]);
+    expect(result.relocations).toEqual([]);
+  });
+
+  test("replaces tooling cmds across layers without relocating the inherited list", () => {
+    // Given an inherited list that the local layer shortens.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "old-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    const local = { tooling: { test: { cmds: [{ service: "a", cmd: "new-a" }] } } };
+    // When translation plans replayable layer deltas.
+    const result = check([prefix("dist", base), prefix("local", local)]);
+    // Then both effective prefixes are preserved without relocation.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([base, local]);
+    expect(result.relocations).toEqual([]);
+  });
+
   test("dist-redis/local-false preserves php in dist", () => {
     const result = check([
       prefix("dist", { services: { redis: { type: "redis" }, php: { type: "php:8.3" } } }),
@@ -76,7 +162,10 @@ describe("layer deltas", () => {
       isPlainRecord(dist) && isPlainRecord(dist.services) && isPlainRecord(dist.services.appserver)
         ? dist.services.appserver.dependsOn
         : undefined;
-    expect(dependsOn).toEqual(["database"]);
+    expect(dependsOn).toBeUndefined();
+    expect(result.emitted[1]?.fragment).toMatchObject({
+      services: { appserver: { dependsOn: ["database"] } },
+    });
     expect(JSON.stringify(dist)).not.toContain("cache");
   });
 
@@ -87,19 +176,19 @@ describe("layer deltas", () => {
   });
   test("removed identity element hoists the whole array", () => {
     const result = check([
-      prefix("dist", { items: [{ name: "a" }, { name: "b" }] }),
-      prefix("local", { items: [{ name: "a" }] }),
+      prefix("dist", endpoints([{ name: "a" }, { name: "b" }])),
+      prefix("local", endpoints([{ name: "a" }])),
     ]);
-    expect(result.emitted[0]?.fragment).toEqual({});
+    expect(result.emitted[0]?.fragment).toEqual({ services: { web: {} } });
     expect(result.relocations).toHaveLength(1);
-    expect(result.relocations[0]?.unitPath).toEqual(keys("items"));
+    expect(result.relocations[0]?.unitPath).toEqual(keys("services", "web", "endpoints"));
   });
   test("changed identity element emits alone", () => {
     const result = check([
-      prefix("dist", { items: [{ name: "a", x: 1 }, { name: "b" }] }),
-      prefix("local", { items: [{ name: "a", x: 2 }, { name: "b" }] }),
+      prefix("dist", endpoints([{ name: "a", x: 1 }, { name: "b" }])),
+      prefix("local", endpoints([{ name: "a", x: 2 }, { name: "b" }])),
     ]);
-    expect(result.emitted[1]?.fragment).toEqual({ items: [{ name: "a", x: 2 }] });
+    expect(result.emitted[1]?.fragment).toEqual(endpoints([{ name: "a", x: 2 }]));
     expect(result.relocations).toEqual([]);
   });
   test("additive changes retain every effective prefix and minimal map deltas", () => {
@@ -148,15 +237,18 @@ describe("layer deltas", () => {
   });
   test("removing a field inside an identity item hoists the whole array", () => {
     const result = check([
-      prefix("dist", { items: [{ name: "a", config: { x: 1, y: 2 } }, { name: "b" }] }),
-      prefix("local", { items: [{ name: "a", config: { x: 1 } }, { name: "b" }] }),
+      prefix("dist", endpoints([{ name: "a", config: { x: 1, y: 2 } }, { name: "b" }])),
+      prefix("local", endpoints([{ name: "a", config: { x: 1 } }, { name: "b" }])),
     ]);
-    expect(result.relocations[0]?.unitPath).toEqual(keys("items"));
+    expect(result.relocations[0]?.unitPath).toEqual(keys("services", "web", "endpoints"));
   });
   test("filter type replacement needs no relocation", () => {
     const result = check([
-      prefix("dist", { filters: [{ name: "a", type: "redirect", to: "/" }] }),
-      prefix("local", { filters: [{ name: "a", type: "addPrefix", prefix: "/x" }] }),
+      prefix("dist", routes([{ hostname: "a.test", filters: [{ name: "a", type: "redirect", to: "/" }] }])),
+      prefix(
+        "local",
+        routes([{ hostname: "a.test", filters: [{ name: "a", type: "addPrefix", prefix: "/x" }] }]),
+      ),
     ]);
     expect(result.relocations).toEqual([]);
   });
@@ -192,56 +284,73 @@ describe("layer deltas", () => {
       before: [{ name: "a", id: "1" }, { id: "1" }],
       after: [{ name: "a", id: "1", x: 1 }, { id: "1" }],
     },
-    { label: "clear keyed array", before: [{ name: "a" }], after: [] },
-  ])("conservative whole-array relocation: $label", ({ before, after }) => {
+  ])("opaque arrays replace without relocation: $label", ({ before, after }) => {
     const result = check([prefix("dist", { items: before }), prefix("local", { items: after })]);
     expect(mergeLandofiles(result.emitted.map(({ fragment }) => fragment))).toEqual({ items: after });
-    expect(result.relocations.map(({ unitPath }) => unitPath)).toEqual([keys("items")]);
-    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([{}, { items: after }]);
+    expect(result.relocations).toEqual([]);
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([{ items: before }, { items: after }]);
   });
   test("reintroduced item precedes a retained item exactly", () => {
     const result = check([
-      prefix("dist", { items: [{ name: "a" }, { name: "b" }] }),
-      prefix("canonical", { items: [{ name: "b" }] }),
-      prefix("user", { items: [{ name: "a" }, { name: "b" }] }),
+      prefix("dist", endpoints([{ name: "a" }, { name: "b" }])),
+      prefix("canonical", endpoints([{ name: "b" }])),
+      prefix("user", endpoints([{ name: "a" }, { name: "b" }])),
     ]);
-    expect(result.relocations.map(({ unitPath }) => unitPath)).toEqual([keys("items"), keys("items")]);
+    expect(result.relocations.map(({ unitPath }) => unitPath)).toEqual([
+      keys("services", "web", "endpoints"),
+      keys("services", "web", "endpoints"),
+    ]);
     expect(result.relocations.map(({ hoistedTo }) => hoistedTo)).toEqual(["canonical", "user"]);
-    expect(result.emitted[2]?.fragment).toEqual({ items: [{ name: "a" }, { name: "b" }] });
+    expect(result.emitted[2]?.fragment).toEqual(endpoints([{ name: "a" }, { name: "b" }]));
   });
   test("representable append emits only the new element", () => {
     const result = check([
-      prefix("dist", { items: [{ name: "a" }] }),
-      prefix("local", { items: [{ name: "a" }, { name: "b" }] }),
+      prefix("dist", endpoints([{ name: "a" }])),
+      prefix("local", endpoints([{ name: "a" }, { name: "b" }])),
     ]);
     expect(result.relocations).toEqual([]);
-    expect(result.emitted[1]?.fragment).toEqual({ items: [{ name: "b" }] });
+    expect(result.emitted[1]?.fragment).toEqual(endpoints([{ name: "b" }]));
   });
-  test("empty keyed overlay leaves effective desired unchanged without relocation", () => {
-    const desired = mergeLandofiles([{ items: [{ name: "a" }] }, { items: [] }]);
-    const result = check([prefix("dist", { items: [{ name: "a" }] }), prefix("local", desired)]);
-    expect(desired).toEqual({ items: [{ name: "a" }] });
+  test("emits an empty object route array in the higher layer without relocation", () => {
+    // Given translated Lando 3 prefixes that clear inherited object routes.
+    const base = { services: { web: { routes: [{ hostname: "web.example.test" }] } } };
+    const local = { services: { web: { routes: [] } } };
+    // When the translator plans replayable layer fragments.
+    const result = check([prefix("dist", base), prefix("local", local)]);
+    // Then clearing stays in the higher layer, without a needs-review relocation.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([base, local]);
     expect(result.relocations).toEqual([]);
-    expect(result.emitted[1]?.fragment).toEqual({});
   });
-  test("nested arrays hoist their enclosing array without item path segments", () => {
+  test("clearing nested filters emits the changed route without relocation", () => {
     const result = check([
       prefix("dist", {
         services: {
-          web: { routes: [{ name: "a", filters: [{ type: "redirect", to: "/" }] }, { name: "b" }] },
+          web: {
+            routes: [
+              { hostname: "a.test", filters: [{ type: "redirect", to: "/" }] },
+              { hostname: "b.test" },
+            ],
+          },
         },
       }),
-      prefix("local", { services: { web: { routes: [{ name: "a", filters: [] }, { name: "b" }] } } }),
+      prefix("local", {
+        services: { web: { routes: [{ hostname: "a.test", filters: [] }, { hostname: "b.test" }] } },
+      }),
     ]);
-    expect(result.relocations.map(({ unitPath }) => unitPath)).toEqual([keys("services", "web", "routes")]);
+    expect(result.relocations).toEqual([]);
+    expect(result.emitted[1]?.fragment).toEqual({
+      services: { web: { routes: [{ hostname: "a.test", filters: [] }] } },
+    });
   });
   test("replay accepts filter replacement despite removed nested fields", () => {
     const result = check([
       prefix("dist", {
-        routes: [{ name: "a", filters: [{ name: "f", type: "redirect", to: "/", config: { old: true } }] }],
+        ...routes([
+          { hostname: "a.test", filters: [{ name: "f", type: "redirect", to: "/", config: { old: true } }] },
+        ]),
       }),
       prefix("local", {
-        routes: [{ name: "a", filters: [{ name: "f", type: "addPrefix", prefix: "/new" }] }],
+        ...routes([{ hostname: "a.test", filters: [{ name: "f", type: "addPrefix", prefix: "/new" }] }]),
       }),
     ]);
     expect(result.relocations).toEqual([]);

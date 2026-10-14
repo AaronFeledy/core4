@@ -1,22 +1,25 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { AbsolutePath, type LogSource, LogSourceId, PortNumber, PortablePath } from "@lando/sdk/schema";
+import { AbsolutePath, type LogSource, LogSourceId, PortNumber } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
   ServiceFeatureContext,
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
-const APP_MOUNT_TARGET = PortablePath.make("/app");
-const DEFAULT_WEBROOT = "/app";
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -143,14 +146,12 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const listenPort = authoredListenPort(service.port);
   const port = listenPort ?? DEFAULT_PORT;
-  const webroot = service.webroot ?? DEFAULT_WEBROOT;
+  const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  mountAppRoot(ctx, { realization: "passthrough" });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
@@ -181,8 +182,8 @@ export const apacheServiceType: ServiceType = {
   identity: rootIdentity({ "www-data": "/home/www-data" }),
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.sync(() => {
-      const webroot = input.service.webroot ?? DEFAULT_WEBROOT;
+    serviceTypeResolve("apache", "Failed to resolve apache", () => {
+      const webroot = resolveWebroot("Apache", input.service.webroot, input.service.appMount);
       return {
         base: "lando" as const,
         normalizedConfig: { ...input.service, type: "apache" },
@@ -191,8 +192,9 @@ export const apacheServiceType: ServiceType = {
           { id: APACHE_FEATURE_ID },
           {
             id: "lando.env",
-            config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
+            config: { webroot },
           },
+          { id: "lando.app-mount", config: { target: "/app" } },
         ],
       };
     }),

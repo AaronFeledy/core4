@@ -10,10 +10,11 @@ interface RunOptions {
   readonly explicitApache?: boolean;
   readonly uidOwner?: string;
   readonly gidOwner?: string;
+  readonly projectMount?: string | false;
 }
 
 const runIdentity = (options: RunOptions) => {
-  const fragment = windowsBindWorkerIdentity("/app", options.explicitApache ?? false).join("\n");
+  const fragment = windowsBindWorkerIdentity(options.explicitApache ?? false).join("\n");
   const script = [
     "set -eu",
     'calls_file="$1"',
@@ -31,7 +32,7 @@ const runIdentity = (options: RunOptions) => {
     env: {
       ...process.env,
       LANDO_HOST_OS: options.os,
-      LANDO_PROJECT_MOUNT: "/app",
+      LANDO_PROJECT_MOUNT: options.projectMount === false ? undefined : (options.projectMount ?? "/app"),
       ...(options.explicitApache ? { APACHE_RUN_USER: "custom", APACHE_RUN_GROUP: "custom" } : {}),
     },
     stdout: "pipe",
@@ -63,6 +64,16 @@ describe("Windows PHP worker identity startup", () => {
 
   test("preserves an explicit Apache worker identity", () => {
     const result = runIdentity({ os: "win32", owner: "invalid", explicitApache: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.calls).toEqual(["server"]);
+  });
+
+  test("skips ownership inspection when the Windows project mount is unset", () => {
+    // Given a Windows worker without a project mount and an invalid owner if stat runs.
+    const options = { os: "win32", owner: "invalid", projectMount: false } as const;
+    // When the startup prelude executes.
+    const result = runIdentity(options);
+    // Then startup proceeds without ownership inspection or account changes.
     expect(result.exitCode).toBe(0);
     expect(result.calls).toEqual(["server"]);
   });

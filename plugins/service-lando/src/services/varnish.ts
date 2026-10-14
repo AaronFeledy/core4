@@ -1,12 +1,11 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
+import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
@@ -77,14 +76,6 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setUser(service.user ?? "root");
 
   const vclSource = vclOverrideBindSource(service, ctx.appRoot);
-  if (vclSource !== undefined) {
-    ctx.addMount({
-      type: "bind",
-      source: vclSource,
-      target: PortablePath.make(VCL_TARGET),
-      readOnly: true,
-    });
-  }
 
   if (service.command === undefined && service.entrypoint === undefined) {
     ctx.setEntrypoint(["/bin/sh", "-c"]);
@@ -127,7 +118,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
       );
     }
 
-    const appName = appNameFor(input);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -136,9 +126,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
         image: input.service.image ?? image,
         backend,
         certs: input.service.certs ?? true,
-        routes: input.service.routes ?? [
-          { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
-        ],
       },
       features: [{ id: VARNISH_FEATURE_ID }],
     });

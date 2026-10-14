@@ -52,6 +52,15 @@ export class EventDeliveryMetrics extends Context.Service<
 }
 
 export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
+/** Runs in the publishing fiber, including publishers retained by plugin layers. */
+export const EventPublicationObserver = Context.Reference<(event: LandoEvent) => Effect.Effect<void>>(
+  "@lando/engine/EventPublicationObserver",
+  { defaultValue: () => () => Effect.void },
+);
+
+const observePublication = (event: LandoEvent): Effect.Effect<void> =>
+  EventPublicationObserver.pipe(Effect.flatMap((observe) => observe(event)));
+
 export type EventDispatchRegistration = {
   readonly hasSubscribers: (eventName: string) => boolean;
   readonly dispatch: EventDispatcher;
@@ -195,12 +204,13 @@ const makeEventService = (
             const registration = getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
             if (!hasManifest && subscribers.size === 0 && queueSubscribers.size === 0)
-              return appendHistory(event);
+              return appendHistory(event).pipe(Effect.andThen(observePublication(event)));
             return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
               Effect.andThen(decodeDeliverableEvent(event, eventName)),
               Effect.flatMap((decoded) =>
                 publishToBus(decoded).pipe(
                   Effect.andThen(appendHistory(decoded)),
+                  Effect.andThen(observePublication(decoded)),
                   Effect.andThen(hasManifest ? registration.dispatch(decoded) : Effect.void),
                 ),
               ),

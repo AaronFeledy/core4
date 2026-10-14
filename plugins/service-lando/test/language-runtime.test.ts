@@ -3,15 +3,13 @@ import { Effect, Schema } from "effect";
 
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
 
+import { landoAppMountFeature } from "../src/features/app-mount.ts";
 import { makeLanguageRuntime } from "../src/services/_language-runtime.ts";
 import { go122ServiceType, goServiceFeature } from "../src/services/go.ts";
 import { python312ServiceType, pythonServiceFeature } from "../src/services/python.ts";
 import { ruby33ServiceType, rubyServiceFeature } from "../src/services/ruby.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
-// Captured by executing unchanged efb9e76a5 modules before the first source edit.
-// Resolve returns feature references; raw mount intents are captured separately
-// because composition would erase the omitted-vs-explicit realization difference.
 const fixtures = [
   {
     language: "go",
@@ -22,7 +20,6 @@ const fixtures = [
     serviceFeature: goServiceFeature,
     baseEnv: { GOPATH: "/go", GOCACHE: "/root/.cache/go-build", CGO_ENABLED: "0" },
     excludes: [],
-    mountRealization: "passthrough",
     includeWebroot: false,
     resolution: {
       base: "lando",
@@ -32,7 +29,8 @@ const fixtures = [
           id: "service-lando.go",
           config: { framework: "none", version: "1.22", port: 8080, defaultCommand: null },
         },
-        { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" } } },
+        { id: "lando.env", config: {} },
+        { id: "lando.app-mount", config: { target: "/app", excludes: [] } },
       ],
     },
     mounts: [
@@ -44,17 +42,6 @@ const fixtures = [
           readOnly: false,
           excludes: [],
           includes: [],
-          realization: "passthrough",
-        },
-      ],
-      [
-        "addMount",
-        {
-          type: "bind",
-          source: "/srv/apps/myapp",
-          target: "/app",
-          readOnly: false,
-          realization: "passthrough",
         },
       ],
     ],
@@ -68,7 +55,6 @@ const fixtures = [
     serviceFeature: pythonServiceFeature,
     baseEnv: { PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
     excludes: ["__pycache__"],
-    mountRealization: "passthrough",
     includeWebroot: false,
     resolution: {
       base: "lando",
@@ -78,7 +64,11 @@ const fixtures = [
           id: "service-lando.python",
           config: { framework: "none", version: "3.12", port: 8000, defaultCommand: null },
         },
-        { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" } } },
+        { id: "lando.env", config: {} },
+        {
+          id: "lando.app-mount",
+          config: { target: "/app", excludes: ["__pycache__"] },
+        },
       ],
     },
     mounts: [
@@ -90,17 +80,6 @@ const fixtures = [
           readOnly: false,
           excludes: ["__pycache__"],
           includes: [],
-          realization: "passthrough",
-        },
-      ],
-      [
-        "addMount",
-        {
-          type: "bind",
-          source: "/srv/apps/myapp",
-          target: "/app",
-          readOnly: false,
-          realization: "passthrough",
         },
       ],
     ],
@@ -114,7 +93,6 @@ const fixtures = [
     serviceFeature: rubyServiceFeature,
     baseEnv: { BUNDLE_PATH: "vendor/bundle" },
     excludes: [".bundle"],
-    mountRealization: undefined,
     includeWebroot: true,
     resolution: {
       base: "lando",
@@ -124,7 +102,8 @@ const fixtures = [
           id: "service-lando.ruby",
           config: { framework: "none", version: "3.3", port: 3000, webroot: "/app", defaultCommand: null },
         },
-        { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: "/app" } },
+        { id: "lando.env", config: { webroot: "/app" } },
+        { id: "lando.app-mount", config: { target: "/app", excludes: [".bundle"] } },
       ],
     },
     mounts: [
@@ -132,7 +111,6 @@ const fixtures = [
         "setAppMount",
         { source: "/srv/apps/myapp", target: "/app", readOnly: false, excludes: [".bundle"], includes: [] },
       ],
-      ["addMount", { type: "bind", source: "/srv/apps/myapp", target: "/app", readOnly: false }],
     ],
   },
 ] as const;
@@ -162,6 +140,9 @@ const mountIntents = (
     config: resolution.features[0]?.config ?? {},
   });
   Effect.runSync(feature.apply(ctx));
+  const mountConfig = resolution.features.find((ref) => ref.id === "lando.app-mount")?.config;
+  if (mountConfig === undefined) throw new Error("Missing app-mount feature config");
+  Effect.runSync(landoAppMountFeature.apply({ ...ctx, config: mountConfig }));
   return calls.filter(([method]) => method === "setAppMount" || method === "addMount");
 };
 
@@ -183,7 +164,6 @@ for (const fixture of fixtures) {
     },
     baseEnv: fixture.baseEnv,
     mountExcludes: fixture.excludes,
-    ...(fixture.mountRealization === undefined ? {} : { mountRealization: fixture.mountRealization }),
     includeWebrootInFeatureConfig: fixture.includeWebroot,
     extensionKey: `lando-service-${fixture.language}`,
     featureId: `service-lando.${fixture.language}`,
@@ -198,7 +178,7 @@ for (const fixture of fixtures) {
     ["module", fixture.serviceType, fixture.serviceFeature],
     ["factory", factory.makeServiceType(fixture.version), factory.serviceFeature],
   ] as const) {
-    test(`${fixture.language} ${source} resolution equals the pre-refactor fixture`, () => {
+    test(`${fixture.language} ${source} resolution declares app-mount feature defaults`, () => {
       // Given
       const input = inputFor(serviceType);
       // When
@@ -208,7 +188,7 @@ for (const fixture of fixtures) {
       expect(JSON.stringify(resolution)).toBe(JSON.stringify(fixture.resolution));
     });
 
-    test(`${fixture.language} ${source} mount intents equal the pre-refactor fixture`, () => {
+    test(`${fixture.language} ${source} app-mount feature owns the mount intent`, () => {
       // Given
       const resolution = Effect.runSync(serviceType.resolve(inputFor(serviceType)));
       // When

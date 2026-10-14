@@ -11,6 +11,7 @@ import {
   AppId,
   type AppPlan,
   type LandofileShape,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -277,9 +278,39 @@ describe("shellApp — shell modes", () => {
     expect(result.mode).toBe("service");
     expect(result.service).toBe("web");
     expect(result.exitCode).toBe(0);
+    expect(result.cwd).toBe("/app");
     expect(stdout).toBe("inside\n");
     expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
   });
+
+  test.each([undefined, "/work"])(
+    "service mode reports the planned cwd unless overridden by %s",
+    async (cwd) => {
+      // Given: a service whose planned working directory follows a moved app mount.
+      const movedPlan: AppPlan = {
+        ...plan,
+        services: { [web.name]: { ...web, workingDirectory: PortablePath.make("/site/public") } },
+      };
+      let forwardedCwd: string | undefined;
+      const provider = fakeProvider({
+        execStream: (_target, command) => {
+          forwardedCwd = command.cwd;
+          return Stream.make({ exitCode: 0 });
+        },
+      });
+      // When: the provider-backed service shell completes.
+      const result = await Effect.runPromise(
+        shellApp({
+          service: "web",
+          ...(cwd === undefined ? {} : { cwd }),
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(movedPlan, provider))),
+      );
+      // Then: the result reports the effective cwd and explicit overrides reach the provider.
+      expect(result.cwd).toBe(cwd ?? "/site/public");
+      expect(forwardedCwd).toBe(cwd);
+    },
+  );
 
   test("service mode fails with an example when the requested service is unknown", async () => {
     const exit = await Effect.runPromiseExit(

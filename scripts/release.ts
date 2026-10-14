@@ -61,6 +61,7 @@ export interface ReleaseStage {
 export interface ReleaseStageContext {
   readonly target: ArtifactTarget;
   readonly env: ReleaseEnvironment;
+  readonly hostPlatform?: NodeJS.Platform;
   readonly localRehearsal: boolean;
   readonly runner: ReleaseRunner;
   readonly logger: (line: string) => void;
@@ -81,6 +82,7 @@ interface ReleaseOptions {
   readonly target?: ArtifactTarget;
   readonly throughStage?: number | string;
   readonly env?: ReleaseEnvironment;
+  readonly hostPlatform?: NodeJS.Platform;
   readonly runner?: ReleaseRunner;
   readonly logger?: (line: string) => void;
   readonly deprecationGate?: DeprecationGate;
@@ -127,15 +129,15 @@ const resolveReleasePlatform = (platformId: string): CiPlatform => {
   return platform;
 };
 
-const hostReleasePlatform = (): CiPlatform => {
-  const platformId = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
+const hostReleasePlatform = (hostPlatform: NodeJS.Platform = process.platform): CiPlatform => {
+  const platformId = `${hostPlatform === "win32" ? "windows" : hostPlatform}-${process.arch}`;
   return resolveReleasePlatform(platformId);
 };
 
 const releasePlatformsForContext = (context: ReleaseStageContext): ReadonlyArray<CiPlatform> => {
   const platformId = envValue(context.env, "LANDO_RELEASE_PLATFORM");
   if (platformId !== undefined) return [resolveReleasePlatform(platformId)];
-  if (context.localRehearsal) return [hostReleasePlatform()];
+  if (context.localRehearsal) return [hostReleasePlatform(context.hostPlatform)];
   return CI_PLATFORMS;
 };
 
@@ -1047,6 +1049,18 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
   const artifactFamily = artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target);
+  const platforms = releasePlatformsForContext(context);
+  const hostPlatform = context.hostPlatform ?? process.platform;
+  const windowsPlatforms = platforms.filter(isWindowsCiPlatform);
+  if (windowsPlatforms.length > 0 && hostPlatform !== "win32") {
+    throw new ReleaseStageError(
+      "7-compile",
+      artifactFamily,
+      `compile ${windowsPlatforms.map((platform) => platform.id).join(", ")} on a ${hostPlatform} host`,
+      "Bun embeds the Lando icon and Windows version info only when compiling on Windows. Run the Windows compile on a Windows host with LANDO_RELEASE_PLATFORM=windows-x64 (or windows-arm64), and the other targets with LANDO_RELEASE_PLATFORM on their hosts.",
+      new Error("Windows release binaries require a Windows compile host."),
+    );
+  }
   // Omit --version when unset so the stamp resolver derives a real 4.x instead of 0.0.0.
   const version = configuredReleaseVersion(context.env);
 
@@ -1058,7 +1072,7 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
     cmd: ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
   });
 
-  for (const platform of releasePlatformsForContext(context)) {
+  for (const platform of platforms) {
     const startedAt = context.now();
     await context.runner.spawn({
       stageId: "7-compile",
@@ -1644,6 +1658,7 @@ export const runRelease = async ({
   target = "all",
   throughStage,
   env = process.env,
+  hostPlatform = process.platform,
   runner = defaultRunner,
   logger = console.log,
   deprecationGate = defaultDeprecationGate,
@@ -1662,10 +1677,11 @@ export const runRelease = async ({
     }
 
     logger(`[release] -> ${stage.id}: ${stage.description}`);
-    const context: ReleaseStageContext = { target, env, localRehearsal, runner, logger, now };
+    const context: ReleaseStageContext = { target, env, hostPlatform, localRehearsal, runner, logger, now };
     try {
       await stage.run(context);
     } catch (cause) {
+      if (cause instanceof ReleaseStageError) throw cause;
       throw new ReleaseStageError(
         stage.id,
         artifactFamilyForStage(stage, target),

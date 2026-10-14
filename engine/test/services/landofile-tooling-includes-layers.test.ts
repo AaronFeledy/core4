@@ -10,6 +10,32 @@ import { compileToolingCommands } from "../../src/cache/command-compiler";
 import { loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
+test("a local Landofile replaces tooling cmds instead of merging by service", async () => {
+  // Given canonical steps targeting two services and a one-step local override.
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-cmds-replace-"));
+  const canonicalPath = join(appRoot, ".lando.yml");
+  try {
+    await writeFile(
+      canonicalPath,
+      "name: layered\ntooling:\n  test:\n    cmds:\n      - service: a\n        cmd: old-a\n      - service: b\n        cmd: b\n",
+      "utf8",
+    );
+    await writeFile(
+      join(appRoot, ".lando.local.yml"),
+      "tooling:\n  test:\n    cmds:\n      - service: a\n        cmd: new-a\n",
+      "utf8",
+    );
+    // When the real loader decodes and merges both layers.
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
+    // Then only the local step remains.
+    expect(resolved.tooling?.test?.cmds).toEqual([{ service: "a", cmd: "new-a" }]);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
 test("a higher Landofile layer removes internal provenance from its task winner", async () => {
   // Given a base-layer internal include shadowed by a canonical-layer task
   const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-regression-"));

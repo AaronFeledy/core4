@@ -4,7 +4,7 @@ Drupal 11 scaffold with PHP, a database (MariaDB or PostgreSQL), and Drush.
 
 ## Generated services
 
-- `appserver` — `php:8.3`, `framework: drupal` (webroot `/app/web`).
+- `appserver`: `php:8.3`, `framework: drupal` (app-relative webroot `web`).
 - `database` — `mariadb` or `postgres` (prompt: `database`).
 
 ## Generated tooling

@@ -196,7 +196,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--cwd` | Working directory inside the service. |
-| `--interactive, -i` | Attach host stdin to the command. |
+| `--interactive, -i` | Attach your terminal keyboard to the command. Piped stdin is always attached. |
 | `--user, -u` | User to run the command as inside the service. |
 
 ## `lando app:includes:update`
@@ -1170,7 +1170,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--host-proxy` | Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS. (one of `auto`, `none`) |
+| `--host-proxy` | Reserved for host DNS integration, which Lando does not provide; `auto` and `none` currently behave the same. (one of `auto`, `none`) |
 | `--no-interactive` | Do not prompt; fail or use documented non-interactive setup defaults. |
 | `--provider` | Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection. |
 | `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |

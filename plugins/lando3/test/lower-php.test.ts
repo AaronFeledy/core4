@@ -34,7 +34,7 @@ describe("lowerPhpOptions", () => {
     // Then
     expect(result.patch).toEqual({
       via: "apache",
-      webroot: "/app/web",
+      webroot: "web",
       composer: { version: "2.3.10", packages: { "phpunit/phpunit": "*" } },
       xdebug: "debug",
       environment: {
@@ -68,9 +68,9 @@ describe("lowerPhpOptions", () => {
     // When
     const result = lowerPhpOptions(service, ctx);
     // Then
-    expect(result.patch).toEqual({ via: "fpm", webroot: "/app/public" });
+    expect(result.patch).toEqual({ via: "fpm", webroot: "public" });
     expect(result.companions).toEqual({
-      "appserver-nginx": { type: "nginx", backend: "appserver", webroot: "/app/public" },
+      "appserver-nginx": { type: "nginx", backend: "appserver", webroot: "public" },
     });
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "needs-review", keyPath: [...ctx.keyPath, "type"] },

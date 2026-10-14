@@ -94,10 +94,7 @@ describe("php:8.2 ServiceType", () => {
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts).toEqual([]);
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
 
@@ -451,6 +448,17 @@ describe("php serving modes (via:)", () => {
     });
   });
 
+  test("an authored mount at another spelling of the moved app mount replaces the default bind", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      appMount: { target: "/site" },
+      mounts: [{ source: "./alternate", target: "/site/" }],
+    });
+
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
+  });
+
   test("plans authored PHP ini bind mounts alongside the app mount", async () => {
     const appRoot = "C:\\Users\\aaron\\Windows Projects\\windows-cms-fresh";
     const plan = await composePhpPlan(
@@ -468,8 +476,8 @@ describe("php serving modes (via:)", () => {
       appRoot,
     );
 
-    expect(plan.mounts).toHaveLength(2);
-    expect(plan.mounts[1]).toMatchObject({
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({
       type: "bind",
       source: `${appRoot}\\.lando\\php\\drupal-cms.ini`,
       target: "/usr/local/etc/php/conf.d/zz-lando-drupal-cms.ini",

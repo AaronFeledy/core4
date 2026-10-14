@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   commandHealthcheck,
@@ -11,7 +11,7 @@ import {
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
+import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 
@@ -27,16 +27,6 @@ export const STATIC_FEATURE_ID = "service-lando.static" as const;
 export const STATIC_FEATURE_PRIORITY = 600;
 
 const DEFAULT_PORT = 80;
-const APP_MOUNT_TARGET = PortablePath.make("/app");
-const StaticWebroot = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
-      message:
-        "Static webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
-    }),
-  ),
-  Schema.brand("StaticWebroot"),
-);
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
@@ -104,9 +94,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
     if (ownsCommand) ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
   }
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  mountAppRoot(ctx, { readOnly: true, realization: "passthrough" });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
@@ -114,7 +102,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.addExtension("lando-service-static", {
     server,
-    ...(service.webroot != null ? { webroot: service.webroot } : {}),
+    webroot: docRoot,
   });
 };
 
@@ -143,7 +131,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
       serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
         const resolvedServer = validateServer(input.service.type, server);
         const serviceType = `static:${resolvedServer}`;
-        const docRoot = Schema.decodeUnknownSync(StaticWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
+        const docRoot = resolveWebroot("Static", input.service.webroot, input.service.appMount);
 
         return {
           base: "lando" as const,
@@ -155,8 +143,9 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
             },
             {
               id: "lando.env",
-              config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: docRoot },
+              config: { webroot: docRoot },
             },
+            { id: "lando.app-mount", config: { target: "/app", readOnly: true } },
           ],
         };
       }),

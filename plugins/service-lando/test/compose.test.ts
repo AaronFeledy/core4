@@ -86,13 +86,8 @@ describe("compose ServiceType (raw passthrough)", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-worker-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/worker");
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({
-      type: "bind",
-      source: "/srv/apps/myapp",
-      target: "/app",
-      readOnly: false,
-    });
+    expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app", readOnly: false });
+    expect(plan.mounts).toEqual([]);
     expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app", readOnly: false });
     // Compose uses the l337 base and must not inject LANDO_* env.
     expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
@@ -206,7 +201,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const plan = await planComposeService({ service, serviceName: "api" });
 
     expect(plan.extensions).toEqual({
-      "@lando/core/service-features": { featureIds: ["service-lando.compose"] },
+      "@lando/core/service-features": { featureIds: ["service-lando.compose", "lando.app-mount"] },
       lando: { labels: { "com.example.team": "platform" } },
       docker: { restart: "unless-stopped" },
     });
@@ -360,13 +355,7 @@ describe("compose ServiceType (raw passthrough)", () => {
         target: "/app",
         readOnly: false,
       });
-      expect(plan.mounts).toHaveLength(1);
-      expect(plan.mounts[0]).toMatchObject({
-        type: "bind",
-        source: "/srv/apps/myapp",
-        target: "/app",
-        readOnly: false,
-      });
+      expect(plan.mounts).toEqual([]);
       // Compose uses the l337 base and must not inject LANDO_* env.
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
@@ -398,6 +387,48 @@ describe("compose ServiceType (raw passthrough)", () => {
       });
     });
 
+    test("a compose volume at another spelling of the moved app mount does not add a second bind", async () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          worker: {
+            type: "compose",
+            image: "alpine:3",
+            appMount: { target: "/site" },
+            volumes: ["./x:/site/"],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = await planComposeService({ service, serviceName: "worker" });
+
+      expect(String(plan.appMount?.target)).toBe("/site");
+      expect(plan.mounts).toEqual([]);
+    });
+
+    test("an authored mount at another spelling of the moved app mount replaces the default bind", async () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          worker: {
+            type: "compose",
+            image: "alpine:3",
+            appMount: { target: "/site/" },
+            mounts: [{ source: "./alternate", target: "/site/./" }],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = await planComposeService({ service, serviceName: "worker" });
+
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
+    });
+
     test("appMount: false opts out — no appMount, no synthetic /app bind, no app-path env", async () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",
@@ -414,7 +445,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
     });
 
-    test("default app-root bind precedes user volume bind mounts", async () => {
+    test("keeps app-source intent separate from user volume bind mounts", async () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",
         services: {
@@ -430,9 +461,9 @@ describe("compose ServiceType (raw passthrough)", () => {
 
       const plan = await planComposeService({ service, serviceName: "worker" });
 
-      expect(plan.mounts).toHaveLength(2);
-      expect(plan.mounts[0]).toMatchObject({ source: "/srv/apps/myapp", target: "/app" });
-      expect(plan.mounts[1]).toMatchObject({
+      expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app" });
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({
         type: "bind",
         source: "/srv/apps/myapp/config",
         target: "/etc/worker",

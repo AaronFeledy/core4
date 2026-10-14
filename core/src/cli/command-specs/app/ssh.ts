@@ -11,6 +11,7 @@ import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { execInputUsesCliHostIo } from "./exec";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 
@@ -56,10 +57,11 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
       ...(service === undefined ? {} : { service }),
       ...(user === undefined ? {} : { user }),
     };
-    if (envelope) return execApp({ ...base, interactive: false, tty: false });
-    const tty = true;
+    if (!execInputUsesCliHostIo(input)) return execApp({ ...base, interactive: false, tty: false });
+    if (envelope) return execApp(attachExecHostIo({ ...base, interactive: false, tty: false }));
     const interactive = process.stdin.isTTY === true;
-    return withInheritedStdinRawMode(interactive, execApp(attachExecHostIo({ ...base, tty, interactive })));
+    const attached = attachExecHostIo({ ...base, tty: true, interactive });
+    return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
   successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),

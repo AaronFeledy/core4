@@ -4,7 +4,7 @@ services:
     type: "php:8.4"
     primary: true
     framework: laravel
-    webroot: /app/public
+    webroot: public
     composer: "2"
     allowOverride: true
     port: 80

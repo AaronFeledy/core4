@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { Effect } from "effect";
 
 import { appNameFor } from "../src/app-name.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
-import { rabbitmqServiceType } from "../src/services/rabbitmq.ts";
 import { type ComposeServicePlanArgs, composeServicePlan } from "./support/compose-harness.ts";
 
 describe("appNameFor", () => {
@@ -23,20 +21,6 @@ describe("appNameFor", () => {
 });
 
 describe("app-name consumers", () => {
-  test("keeps RabbitMQ's resolver-specific route policy when the app name is empty", async () => {
-    const input = {
-      name: "queue",
-      service: { type: "rabbitmq" },
-      appName: "",
-      appRoot: "/srv/fallback",
-      metadata: { resolvedAt: "2026-10-02T00:00:00Z", source: "/srv/fallback/.lando.yml", runtime: 4 },
-    } satisfies Parameters<typeof rabbitmqServiceType.resolve>[0];
-
-    const resolution = await Effect.runPromise(rabbitmqServiceType.resolve(input));
-
-    expect(resolution.normalizedConfig.routes).toEqual([{ hostname: "queue..lndo.site", endpoint: 15672 }]);
-  });
-
   test.each([
     { appName: "authored", expected: "authored" },
     { appName: "", expected: "fallback" },

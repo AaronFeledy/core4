@@ -5,13 +5,10 @@ import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = 5000;
-const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const VERSIONS = ["8.0", "9.0"] as const;
 const ARTIFACTS = {
@@ -33,8 +30,6 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["9.0"] });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  mountAppRoot(ctx, { realization: "passthrough" });
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,
@@ -61,7 +56,6 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: DotnetServiceConfig,
   resolve: (input) => {
-    const appName = appNameFor(input);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -69,12 +63,9 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
         type: "dotnet",
         image: input.service.image ?? image,
         certs: input.service.certs ?? true,
-        routes: input.service.routes ?? [
-          { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
-        ],
         storage: [...(input.service.storage ?? []), NUGET_CACHE],
       },
-      features: [{ id: DOTNET_FEATURE_ID }],
+      features: [{ id: DOTNET_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
     });
   },
 });

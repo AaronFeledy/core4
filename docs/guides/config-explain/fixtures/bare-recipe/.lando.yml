@@ -9,7 +9,7 @@ services:
     framework: none
     port: 80
     type: "php:{{ recipe.php }}"
-    webroot: /app
+    webroot: .
   database:
     type: "{{ recipe.database }}"
 tooling:
