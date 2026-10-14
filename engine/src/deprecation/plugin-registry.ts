@@ -109,12 +109,28 @@ const registerPluginDeprecations = Effect.fnUntraced(function* (manifests: Reado
   }
 });
 
+let schemaDeprecations:
+  | ReadonlyArray<
+      ReturnType<typeof schemaDeprecationsFromJsonSchema>[number] & { readonly schemaName: string }
+    >
+  | undefined;
+
+const getSchemaDeprecations = () => {
+  schemaDeprecations ??= JSON_SCHEMA_NAMES.flatMap((schemaName) =>
+    schemaDeprecationsFromJsonSchema(getJsonSchema(schemaName)).map((entry) => ({ ...entry, schemaName })),
+  );
+  return schemaDeprecations;
+};
+
 const registerSchemaDeprecations = Effect.gen(function* () {
   const deprecations = yield* DeprecationService;
-  for (const schemaName of JSON_SCHEMA_NAMES) {
-    for (const entry of schemaDeprecationsFromJsonSchema(getJsonSchema(schemaName))) {
-      yield* deprecations.register("schema-walk", "schema-field", `${schemaName}${entry.path}`, entry.notice);
-    }
+  for (const entry of getSchemaDeprecations()) {
+    yield* deprecations.register(
+      "schema-walk",
+      "schema-field",
+      `${entry.schemaName}${entry.path}`,
+      entry.notice,
+    );
   }
 });
 
