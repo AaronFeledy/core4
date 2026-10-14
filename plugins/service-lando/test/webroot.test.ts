@@ -160,32 +160,35 @@ describe("resolved service document roots", () => {
     });
   }
 
-  test.each(["../x", "/usr/local/tomcat/webapps/$host"])(
-    "Tomcat rejects deployment path %s during resolution",
-    async (webroot) => {
-      const config = Schema.decodeUnknownSync(LandofileShape)({
-        services: { java: { type: "tomcat", webroot } },
-      });
-      const service = config.services?.[ServiceName.make("java")];
-      if (service === undefined) throw new Error("java service missing");
-      const result = await Effect.runPromise(
-        Effect.result(
-          tomcatServiceType.resolve({
-            name: "java",
-            service,
-            appRoot: "/srv/apps/myapp",
-            appName: "myapp",
-            metadata,
-          }),
-        ),
-      );
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe("ServiceTypeError");
-        expect(result.failure.message).toContain("tomcat webroot");
-      }
-    },
-  );
+  test.each([
+    ["../x", "tomcat webroot ../x leaves the app mount (/app); use an absolute container path instead."],
+    [
+      "/usr/local/tomcat/webapps/$host",
+      "tomcat webroot must be a path relative to the app mount (/app), such as public, or an absolute container path, using only letters, digits, '.', '_', '-', and '/'.",
+    ],
+  ] as const)("Tomcat rejects webroot %s during resolution", async (webroot, message) => {
+    const config = Schema.decodeUnknownSync(LandofileShape)({
+      services: { java: { type: "tomcat", webroot } },
+    });
+    const service = config.services?.[ServiceName.make("java")];
+    if (service === undefined) throw new Error("java service missing");
+    const result = await Effect.runPromise(
+      Effect.result(
+        tomcatServiceType.resolve({
+          name: "java",
+          service,
+          appRoot: "/srv/apps/myapp",
+          appName: "myapp",
+          metadata,
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("ServiceTypeError");
+      expect(result.failure.message).toContain(message);
+    }
+  });
 
   test("Tomcat preserves the authored webroot without moving the app mount", async () => {
     // Given: an absolute deployment path containing redundant segments.
