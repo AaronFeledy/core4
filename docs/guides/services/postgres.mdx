@@ -118,7 +118,7 @@ services:
     port: 5433
 ```
 
-Other services then connect to `db:5433`. Lando passes the port to the server as `PGPORT`. Setting `PGPORT` under `environment:` works the same way; if you set both, they have to match or planning fails. Leave `port` out of a custom `postgresql.conf`, because a `port` line there overrides `PGPORT`.
+Other services then connect to `db:5433`. Lando passes the port to the server as `PGPORT`. Setting `PGPORT` under `environment:` works the same way; if you set both, they have to match or planning fails. An authored port also beats a `port` line in a custom `postgresql.conf`.
 
 ## Pin a version
 

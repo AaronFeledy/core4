@@ -104,7 +104,10 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
 
   if (addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`]);
+      // A command-line port beats a port line in the custom config, so an authored port still wins.
+      const portOverride =
+        service.port === undefined && service.environment?.PGPORT === undefined ? [] : ["-c", `port=${port}`];
+      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`, ...portOverride]);
     }
   }
 

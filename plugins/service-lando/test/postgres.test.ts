@@ -239,6 +239,22 @@ describe("postgres ServiceType", () => {
     expect(plan.command).toEqual(["postgres", "-c", "config_file=/etc/lando/postgresql.conf"]);
   });
 
+  test("keeps an authored port ahead of config.server", async () => {
+    const plan = await planPostgres({
+      type: "postgres",
+      port: 5433,
+      config: { server: "config/postgresql.conf" },
+    });
+
+    expect(plan.command).toEqual([
+      "postgres",
+      "-c",
+      "config_file=/etc/lando/postgresql.conf",
+      "-c",
+      "port=5433",
+    ]);
+  });
+
   test("mounts config.server but keeps an authored command", async () => {
     const plan = await planPostgres({
       type: "postgres",
