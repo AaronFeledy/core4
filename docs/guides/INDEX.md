@@ -221,8 +221,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | develop against PlanetScale with local MySQL and DATABASE_URL | `docs/guides/tooling/planetscale.mdx` | Shipped |
 | — | — | `lando ssh` service shell and host keys | `docs/guides/cli/ssh.mdx` | Shipped |
 | — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
-| — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
-| — | — | back up and restore service files with piped `lando exec` | `docs/guides/cli/exec.mdx` | Shipped |
+| — | — | `lando exec` one-off commands, including piped backup and restore of service files | `docs/guides/cli/exec.mdx` | Shipped |
 | — | — | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | — | — | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
 | — | — | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |

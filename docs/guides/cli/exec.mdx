@@ -35,7 +35,7 @@ The command gets a terminal only when your stdin and stdout are both terminals. 
 
 ## Back up and restore service files
 
-Redirected stdout is not a terminal, so `lando exec` allocates no PTY and writes raw bytes. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it.
+Redirected stdout is not a terminal, so `lando exec` allocates no PTY and writes raw bytes. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. The command still buffers the archive in memory for its result, so keep very large trees off this path.
 
 These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
 
@@ -53,7 +53,7 @@ lando exec appserver -- tar -xzf - -C /app/wp-content/uploads < uploads.tgz
 
 If you [excluded that path from file sync](../setup/file-sync-excludes.mdx), the files live on the service overlay, not on the host. A named volume is the same idea: pass that volume's mount path to `-C`.
 
-If the service image has `zstd`:
+Unverified: if the service image has `zstd`:
 
 ```sh
 lando exec appserver -- tar -c -I zstd -f - -C /app/web/sites/default/files . > files.tar.zst
