@@ -1,6 +1,6 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { HostPlatform } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 
 import type { DoctorCheck, DoctorProviderKind, DoctorSolution } from "./doctor";
 
@@ -132,7 +132,7 @@ export interface OomDoctorContext {
 
 export const OOM_CHECK_NAME = "runtime-oom";
 
-const secretsRedactor = createRedactor("secrets");
+const secretsRedactor = createStandaloneRedactor("secrets");
 const redact = (value: string): string => secretsRedactor.redactString(value);
 
 const baseSolution = (): DoctorSolution => ({

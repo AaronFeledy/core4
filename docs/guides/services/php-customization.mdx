@@ -166,8 +166,9 @@ database clients) and generates the Apache virtual-host command when
 you get none of the built-in extensions above, no generated Apache
 startup, and no `db_client:` packages. The image's own `CMD`/`ENTRYPOINT` runs instead. Invalid `db_client:` values still fail at plan time.
 
-What still applies regardless of `image:`: the `/app` bind mount, HTTP
-endpoint, healthcheck, working directory, and `LANDO_*` environment.
+What still applies regardless of `image:`: the app mount (`/app` unless
+`appMount.target` moves it, or `appMount: false` removes it), HTTP endpoint,
+healthcheck, working directory, and `LANDO_*` environment.
 
 ## Prove the config
 

@@ -1,6 +1,6 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import {
   arr,
   call,
@@ -16,7 +16,7 @@ import { backdropSettings } from "./settings.ts";
 
 export const BACKDROP_RECIPE_VERSION = "0.1.0";
 export const BACKDROP_CONTENT_DIGEST =
-  "sha256:f201b4c5eadc5bd2a83898ea57d1f526e05a9bc854a6dd1ca85230a261d691da";
+  "sha256:eb05a430766128eb49b94931f51f2c96064d2f2a3fbf6bcb338cbc50f6e663f1";
 export const backdropProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-backdrop",
@@ -28,7 +28,7 @@ export const backdropDefaults = {
   php: PHP_DEFAULT,
   database: "mariadb:11.4",
   composer: "2",
-  webroot: "/app",
+  webroot: ".",
 } as const;
 /** Backdrop reads its database credentials from this app-scoped settings blob. */
 export const BACKDROP_SETTINGS_VALUE = backdropSettings("{{ app.name }}");
@@ -43,7 +43,7 @@ export const backdropSnapshot: RecipeSnapshot = {
     php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
-    webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+    webroot: { kind: "string", pattern: WEBROOT_PATTERN.source },
   },
   defaults: backdropDefaults,
   template: {

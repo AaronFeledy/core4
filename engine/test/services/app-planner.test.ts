@@ -1273,8 +1273,13 @@ describe("AppPlannerLayer.layer", () => {
           | undefined
       )?.buildSteps;
       expect(buildSteps?.[0]?.id).toBe("lando.boot:scaffold");
-      expect(buildSteps?.slice(1).every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
-      expect((buildSteps?.length ?? 0) > 1).toBe(true);
+      expect(buildSteps?.slice(0, 3).map((step) => step.id)).toEqual([
+        "lando.boot:scaffold",
+        "service-lando.http-errors:pages",
+        "service-lando.nginx:default-site",
+      ]);
+      expect(buildSteps?.slice(3).every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
+      expect((buildSteps?.length ?? 0) > 3).toBe(true);
     });
   });
 
@@ -1296,7 +1301,7 @@ describe("AppPlannerLayer.layer", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       expect(web?.extensions["@lando/core/service-features"]).toEqual({
-        featureIds: ["service-lando.compose"],
+        featureIds: ["service-lando.compose", "lando.app-mount"],
         buildSteps: [],
       });
     });
@@ -2623,13 +2628,13 @@ describe("AppPlannerLayer.layer", () => {
       expect(web?.artifact).toEqual({ kind: "ref", ref: "node:lts" });
       expect(web?.environment).toMatchObject({ NODE_ENV: "development" });
       expect(String(web?.workingDirectory)).toBe("/app");
-      expect(web?.mounts).toContainEqual({
-        type: "bind",
+      expect(web?.appMount).toMatchObject({
         source: appRoot,
-        target: PortablePath.make("/app"),
+        target: "/app",
         readOnly: false,
         realization: "passthrough",
       });
+      expect(web?.mounts).toEqual([]);
       expect(web?.endpoints).toEqual([
         { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3000 } },
       ]);
@@ -2694,13 +2699,13 @@ describe("AppPlannerLayer.layer", () => {
       expect(web?.type).toBe("node:22");
       expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22" });
       expect(String(web?.workingDirectory)).toBe("/app");
-      expect(web?.mounts).toContainEqual({
-        type: "bind",
+      expect(web?.appMount).toMatchObject({
         source: appRoot,
-        target: PortablePath.make("/app"),
+        target: "/app",
         readOnly: false,
         realization: "passthrough",
       });
+      expect(web?.mounts).toEqual([]);
 
       expect(worker?.type).toBe("node:22");
       expect(worker?.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
@@ -2857,19 +2862,19 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("marks slow provider bind mounts as accelerated", async () => {
+  test("marks slow provider app mounts as accelerated without a mirror bind", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
       const web = appPlan.services[ServiceName.make("web")];
 
       expect(web?.appMount?.realization).toBe("accelerated");
-      expect(web?.mounts).toContainEqual({
-        type: "bind",
+      expect(web?.appMount).toMatchObject({
         source: process.cwd(),
-        target: PortablePath.make("/app"),
+        target: "/app",
         readOnly: false,
         realization: "accelerated",
       });
+      expect(web?.mounts).toEqual([]);
       expect(web?.mounts.some((mount) => mount.type === "volume")).toBe(false);
     });
   });
@@ -3450,12 +3455,12 @@ describe("AppPlannerLayer.layer", () => {
 
   test("user-authored excludes extend defaults rather than replace them", async () => {
     await withTempCwd(async () => {
-      const appPlan = await planWithCustomRegistry({
+      const appPlan = await plan({
         name: "extapp",
         runtime: 4,
         services: {
           [ServiceName.make("web")]: {
-            type: "appmount-only",
+            type: "node:lts",
             home: false,
             appMount: { target: "/app", excludes: ["dist"] },
           },
@@ -3549,12 +3554,12 @@ describe("AppPlannerLayer.layer", () => {
   test("shadow store names for /app/node_modules and /app/node-modules are distinct (no collision)", async () => {
     await withTempCwd(async () => {
       const makeApp = (exclude: string) =>
-        planWithCustomRegistry({
+        plan({
           name: "shadowapp",
           runtime: 4,
           services: {
             [ServiceName.make("web")]: {
-              type: "appmount-only",
+              type: "node:lts",
               home: false,
               appMount: { target: "/app", excludes: [exclude] },
             },

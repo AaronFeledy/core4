@@ -63,6 +63,7 @@ test("keeps the projected 3.x-dev pin through native hooks when staged negotiati
     "drupal/gin": "^5",
   });
   expect(root.require).not.toHaveProperty("drupal/drupal_cms_starter");
+  expect(await Bun.file(join(app, "recipes", "drupal_cms_starter", "recipe.yml")).exists()).toBe(true);
   expect(Object.keys(root.repositories)[0]).toBe("lando-svg-image");
   expect(root.repositories["lando-svg-image"]).toMatchObject({
     type: "package",

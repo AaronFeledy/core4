@@ -29,6 +29,9 @@ export const diagnosticHtmlFile = (paths: ProxyPaths): string =>
 export const fallbackConfigFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), "fallback.yml");
 
+export const dashboardConfigFile = (paths: ProxyPaths): string =>
+  joinFor(paths)(dynamicConfigDir(paths), "dashboard.yml");
+
 export const routeFile = (paths: ProxyPaths, app: AppId): string =>
   joinFor(paths)(
     dynamicConfigDir(paths),

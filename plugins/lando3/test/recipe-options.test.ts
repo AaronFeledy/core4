@@ -64,7 +64,7 @@ describe("published recipe option tables", () => {
         webserver: "apache",
         database: "mariadb:11.4",
         composer: "2",
-        webroot: "/app/web",
+        webroot: "web",
       },
       renames: { composer_version: "composer", via: "webserver" },
     });
@@ -86,7 +86,7 @@ describe("published recipe option tables", () => {
         composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
         webroot: { kind: "string" },
       },
-      defaults: { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "/app" },
+      defaults: { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "." },
       renames: { composer_version: "composer" },
     });
   });
@@ -112,7 +112,7 @@ describe("published recipe option tables", () => {
         php: "8.4",
         database: "mariadb:11.4",
         composer: "2",
-        webroot: "/app/public",
+        webroot: "public",
         worker: false,
       },
       renames: { composer_version: "composer" },
@@ -127,7 +127,7 @@ describe("published recipe option tables", () => {
         composer: { kind: "enum", values: ["2", "2.7.7"] },
         webroot: { kind: "string" },
       },
-      defaults: { php: "8.4", database: "postgres:16", composer: "2", webroot: "/app/public" },
+      defaults: { php: "8.4", database: "postgres:16", composer: "2", webroot: "public" },
       renames: { composer_version: "composer" },
     });
   });
@@ -286,7 +286,7 @@ describe("config option mapping", () => {
   test.each(['""', "null", "[]", "{}", "!load root.txt"])("rejects invalid string webroot %s", (value) => {
     const result = mapped(`recipe: lamp\nconfig:\n  webroot: ${value}\n`);
     expect(result.invalid).toMatchObject([{ option: "webroot", spec: { kind: "string" } }]);
-    expect(result.options.webroot).toBe("/app");
+    expect(result.options.webroot).toBe(".");
   });
   test("rejects null enum and drops prototype keys and drush", () => {
     const result = mapped("recipe: lamp\nconfig: {php: null, constructor: x, __proto__: x, drush: 12}\n");

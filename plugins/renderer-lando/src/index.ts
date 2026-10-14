@@ -5,7 +5,6 @@ import type { InteractivePromptDriver, RendererContribution } from "@lando/sdk/r
 import { PluginManifest } from "@lando/sdk/schema";
 
 import { landoRendererContribution } from "./renderer-runtime.ts";
-export { makeLandoNotificationConsumer as makeNotificationConsumer } from "./renderer-runtime.ts";
 
 export const PLUGIN_NAME = "@lando/renderer-lando" as const;
 

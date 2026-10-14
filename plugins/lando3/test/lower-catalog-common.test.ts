@@ -11,6 +11,51 @@ const ctx: ServiceLoweringContext = {
 };
 
 describe("lowerCatalogCommon", () => {
+  test.each([undefined, ".", "./", "", "././", ".///"])(
+    "translates Tomcat webroot %s to the ROOT webapp",
+    (webroot) => {
+      // Given: a versioned Tomcat service using an app-root source directory.
+      const service = { type: "tomcat:10", ...(webroot === undefined ? {} : { webroot }) };
+      // When: the service is lowered.
+      const result = lowerCatalogCommon(service, ctx);
+      // Then: only the legacy ROOT webapp is selected, with review required for other deployments.
+      expect(result.patch).toEqual({ type: "tomcat:10", webroot: "webapps/ROOT" });
+      expect(result.blocked).toBeUndefined();
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "webroot"] }),
+      ]);
+    },
+  );
+
+  test("translates Tomcat webroot when it names a relative build directory", () => {
+    // Given / When: Lando 3 uses a build directory as its webroot base.
+    const result = lowerCatalogCommon({ type: "tomcat", webroot: "target/app" }, ctx);
+    // Then: translation selects its ROOT webapp and reports lost multi-webapp deployment.
+    expect(result.patch).toEqual({ type: "tomcat", webroot: "target/app/webapps/ROOT" });
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        kind: "needs-review",
+        keyPath: [...ctx.keyPath, "webroot"],
+        message:
+          "Lando 4 serves only the ROOT webapp at /; other webapps or WAR files under target/app/webapps are not deployed.",
+      }),
+    ]);
+  });
+
+  test.each(["/site", "//site//./", "./target/../site/"])(
+    "normalizes Tomcat source webroot %s",
+    (webroot) => {
+      // Given / When: a relative or absolute-looking legacy source path is lowered.
+      const result = lowerCatalogCommon({ type: "tomcat", webroot }, ctx);
+      // Then: the source path remains app-relative and only its ROOT webapp is deployed.
+      expect(result.patch).toEqual({ type: "tomcat", webroot: "site/webapps/ROOT" });
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "webroot"] }),
+      ]);
+    },
+  );
+
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly service: Record<string, unknown>;
@@ -231,20 +276,20 @@ describe("lowerCatalogCommon", () => {
     {
       name: "direct common fields",
       service: { type: "node", command: ["npm", "start"], port: "3001", webroot: "public", user: "node" },
-      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "/app/public", user: "node" },
-      kinds: ["rewritten"],
+      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "public", user: "node" },
+      kinds: [],
     },
     {
       name: "app-relative webroot with a leading current directory",
       service: { type: "php:8.3", webroot: "./web/" },
-      patch: { type: "php:8.3", webroot: "/app/web" },
-      kinds: ["rewritten"],
+      patch: { type: "php:8.3", webroot: "./web/" },
+      kinds: [],
     },
     {
       name: "app-root webroot",
       service: { type: "php:8.3", webroot: "." },
-      patch: { type: "php:8.3", webroot: "/app" },
-      kinds: ["rewritten"],
+      patch: { type: "php:8.3", webroot: "." },
+      kinds: [],
     },
     {
       name: "container-absolute webroot",

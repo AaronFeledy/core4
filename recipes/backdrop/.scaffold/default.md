@@ -9,7 +9,7 @@ lando start
 lando info
 ```
 
-`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `/app`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `.`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 The Landofile sets `BACKDROP_SETTINGS` on `appserver` with the database credentials: database is the app name, user and password `lando`, host `database`. Backdrop reads it under Apache and in `lando bee`, so you don't edit `settings.php`. It overrides `settings.php`, so custom credentials go in the blob.
 
@@ -18,7 +18,7 @@ lando init --recipe backdrop --name=my-backdrop-app --yes \
   --answer=php=8.2 \
   --answer=database=mysql:8.0 \
   --answer=composer=2.7.7 \
-  --answer=webroot=/app
+  --answer=webroot=.
 ```
 
 `lando start` prints the app URL. `lando info` repeats it.
@@ -48,7 +48,7 @@ lando info
 ## 4. init
 
 ```bash
-lando init --recipe backdrop --name=my-backdrop-mysql --yes --answer=php=8.2 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app
+lando init --recipe backdrop --name=my-backdrop-mysql --yes --answer=php=8.2 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=.
 ```
 
 ## 5. inspect

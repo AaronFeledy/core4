@@ -3,13 +3,13 @@
  *
  * Routing uses Traefik's file provider, not the Docker provider: Lando must not
  * require socket access or label injection on per-app containers. Static flags
- * enable the file provider and dashboard; the start script writes the dashboard
- * router into the watched dynamic directory.
+ * enable the file provider and dashboard; the router plugin owns the dashboard
+ * configuration in the watched host directory.
  */
 import { readFile } from "node:fs/promises";
 
 import { makeLandoPaths } from "@lando/paths";
-import { ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
+import { ServiceConfig } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
 import { TRAEFIK_DIAGNOSTICS_ID } from "../diagnostics.ts";
@@ -21,8 +21,6 @@ import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
 
 /** Override per-install via the user `.lando.yml`. */
 export const TRAEFIK_IMAGE = "traefik:v3.3";
-
-export const TRAEFIK_DASHBOARD_HOSTNAME = "traefik.lndo.site";
 
 /** In-container directory Traefik's file provider watches for dynamic routers. */
 export const TRAEFIK_DYNAMIC_CONFIG_DIR = "/etc/traefik/dynamic";
@@ -38,36 +36,9 @@ export const TRAEFIK_STATIC_FLAGS: ReadonlyArray<string> = [
   "--providers.file.watch=true",
 ];
 
-/**
- * Lando owns the priority space above every app route, so an app that claims the
- * dashboard hostname cannot capture the dashboard router.
- */
-export const TRAEFIK_DASHBOARD_PRIORITY = ROUTE_PRIORITY_MAX + 1;
-
-export const TRAEFIK_DASHBOARD_DYNAMIC_CONFIG = [
-  "http:",
-  "  routers:",
-  "    dashboard:",
-  `      rule: "Host(\`${TRAEFIK_DASHBOARD_HOSTNAME}\`)"`,
-  `      priority: ${TRAEFIK_DASHBOARD_PRIORITY}`,
-  "      service: api@internal",
-  "      entryPoints:",
-  "        - web",
-  "",
-].join("\n");
-
-const DASHBOARD_CONFIG_PATH = `${TRAEFIK_DYNAMIC_CONFIG_DIR}/dashboard.yml`;
-const HEREDOC_DELIMITER = "LANDO_TRAEFIK_DASHBOARD";
-
-/**
- * Materialize the dashboard router, then exec Traefik. A heredoc keeps the YAML
- * intact without quote-escaping inside `sh -c`.
- */
+/** Start Traefik without overwriting the router-owned dynamic configuration. */
 export const TRAEFIK_START_SCRIPT = [
   `mkdir -p ${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
-  `cat > ${DASHBOARD_CONFIG_PATH} <<'${HEREDOC_DELIMITER}'`,
-  TRAEFIK_DASHBOARD_DYNAMIC_CONFIG.trimEnd(),
-  HEREDOC_DELIMITER,
   `exec traefik ${TRAEFIK_STATIC_FLAGS.join(" ")}`,
 ].join("\n");
 
@@ -104,6 +75,7 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
     type: "compose",
     image: TRAEFIK_IMAGE,
     appMount: false,
+    routes: [],
     dependsOn: [{ service: TRAEFIK_DIAGNOSTICS_ID, condition: "service_healthy", required: true }],
     // Router infrastructure keeps no per-user state, so there is no home to persist.
     home: false,

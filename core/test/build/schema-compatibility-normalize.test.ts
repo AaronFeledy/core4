@@ -4,6 +4,15 @@ import type { JsonSchema, JsonValue } from "../../../scripts/schema-compatibilit
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 
 describe("meaning-preserving schema normalization", () => {
+  test("ignores layer-merge metadata without ignoring arbitrary extension constraints", () => {
+    const before = { type: "array", items: { type: "string" } };
+    expect(normalizeJsonSchema({ ...before, "x-lando-merge": { kind: "replace" } })).toEqual(
+      normalizeJsonSchema(before),
+    );
+    expect(normalizeJsonSchema({ ...before, "x-custom-constraint": true })).not.toEqual(
+      normalizeJsonSchema(before),
+    );
+  });
   test.each([
     ["primitive types", [{ type: "string" }, { type: "number" }, { type: "null" }], true],
     ["integer and string", [{ type: "integer" }, { type: "string" }], true],

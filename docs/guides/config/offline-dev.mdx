@@ -37,6 +37,8 @@ Run the same command once with network access (`lando app:includes:update`) to p
 
 Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing and plugin resolution read from the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), not the network.
 
+The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
+
 `lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
 
 Runtime bundle, tool, and recipe downloads first check the local cache. A cache hit never touches the network. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
@@ -45,6 +47,6 @@ Once a remote include has a lockfile entry and a cached copy, `app:includes:upda
 
 ## Honest limits
 
-Build steps that download packages still need network access.
+Build steps that download packages need network access when their cached layers are missing or their inputs change.
 
 An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.

@@ -6,7 +6,6 @@ import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
@@ -64,12 +63,6 @@ export const mailpitServiceType: ServiceType = {
             ? {}
             : { mailFrom: [...new Set(input.service.mailFrom)] }),
           image: input.service.image ?? MAILPIT_IMAGE,
-          routes: input.service.routes ?? [
-            {
-              hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
-              endpoint: MAILPIT_WEB_PORT,
-            },
-          ],
         },
         features: [{ id: MAILPIT_FEATURE_ID }],
       })),

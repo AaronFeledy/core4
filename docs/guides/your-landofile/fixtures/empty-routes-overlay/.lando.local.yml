@@ -1,0 +1,8 @@
+services:
+  web:
+    routes: []
+tooling:
+  test:
+    cmds:
+      - service: web
+        cmd: echo local-only

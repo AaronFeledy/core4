@@ -1,12 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JOOMLA_RECIPE_VERSION = "0.1.0";
 export const JOOMLA_CONTENT_DIGEST =
-  "sha256:7995fa25a45ce49c4e23cc2a5ad42464973db11e9beca32dcc13eb77bcac205e";
+  "sha256:0a37c8c97d11cb9d405ddb09b9fa8216398ff3f6cf52b9e5c867a047a8e770b4";
 export const joomlaProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-joomla",
@@ -18,7 +18,7 @@ export const joomlaDefaults = {
   php: PHP_DEFAULT,
   database: "mariadb:11.4",
   composer: "2",
-  webroot: "/app",
+  webroot: ".",
 } as const;
 const composerEnabled = (): ExpressionNode =>
   call("ne", { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] }, lit("false"));
@@ -31,7 +31,7 @@ export const joomlaSnapshot: RecipeSnapshot = {
     php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
-    webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
+    webroot: { kind: "string", pattern: WEBROOT_PATTERN.source },
   },
   defaults: joomlaDefaults,
   template: {

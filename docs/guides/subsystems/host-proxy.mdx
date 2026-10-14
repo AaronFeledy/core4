@@ -8,27 +8,21 @@ tags: [beta, docs, subsystems, host-proxy, dns, lndo-site]
 
 # Resolve lndo.site on this machine
 
-`*.lndo.site` app URLs need to resolve to `127.0.0.1` on this machine. Run setup to prepare Lando, then check the hostname resolution.
+Run `lando doctor` to check whether your app domain resolves to `127.0.0.1` on this machine.
 
 ```sh
-lando setup
+lando doctor
 ```
 
-The default domain is `lndo.site`. If your DNS does not already send `*.lndo.site` to `127.0.0.1`, configure a local DNS rule.
+Public DNS answers `*.lndo.site`, the default app domain, with `127.0.0.1`. Lando does not write host DNS rules. Offline hosts, unreachable public DNS, or a LAN resolver/router with DNS-rebinding protection can prevent those answers from reaching you.
 
-Other devices on the LAN do not get that DNS entry. To reach an app from another device, bind a port on purpose. See [Reach an app from another device](./external-access.mdx).
+On another device, `127.0.0.1` points at that device, not your app host. To reach an app from another device, bind a port on purpose. See [Reach an app from another device](./external-access.mdx).
 
 ## Manage DNS yourself
 
-If you already own DNS (corporate split-DNS, dnsmasq, or your own `/etc/hosts` entries):
+If the lookup fails, configure dnsmasq or an OS resolver rule so `*.lndo.site` resolves to `127.0.0.1`. Hosts files do not support wildcards; add an entry for each hostname you use instead.
 
-```sh
-lando setup --host-proxy=none
-```
-
-That opts out of Lando-managed DNS.
-
-Custom public-looking names pointed at loopback often trip router DNS rebinding protection. See [Reach an app from another device](./external-access.mdx).
+If you set `proxy.defaultDomain` to a custom domain such as `lndo.test`, configure the same local rule for that domain. Neither `lando setup` nor `--host-proxy=none` changes host DNS. DNS-rebinding protection can affect both default and custom domains. See [Reach an app from another device](./external-access.mdx).
 
 ## Verify
 
@@ -36,4 +30,4 @@ Custom public-looking names pointed at loopback often trip router DNS rebinding 
 lando doctor
 ```
 
-Doctor checks whether a `*.lndo.site` name resolves to `127.0.0.1`. Skipping Lando-managed DNS is fine when that lookup works. If it fails, add a local DNS rule for `*.lndo.site` and run `lando doctor` again. This DNS pass does not cover container-to-host callbacks. Starting an app still needs a host-proxy transport session; if that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. Doctor checks that transport separately.
+Doctor probes `lando-doctor-probe.<domain>` using your configured `proxy.defaultDomain` (default `lndo.site`). If it fails, add a local DNS rule for that domain and run `lando doctor` again. This DNS pass does not cover container-to-host callbacks. Starting an app still needs a host-proxy transport session; if that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. Doctor checks that transport separately.

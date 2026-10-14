@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, database]
 
 # Import a SQL dump
 
-Prefer `lando db:import` from the bundled SQL plugin. See [Import and export app databases](/guides/tooling/db-import-export/). You can still pipe a dump through `lando exec` if you want the raw client.
+Prefer `lando db:import` from the bundled SQL plugin. It decompresses `.gz` and `.zst` dumps on the host. See [Import and export app databases](/guides/tooling/db-import-export/). For a plain SQL file, piping it into the database client works too.
 
 Grab the database name and user from `lando info` first. It redacts the password, and the commands below don't need it.
 
@@ -15,11 +15,18 @@ Grab the database name and user from `lando info` first. It redacts the password
 lando info
 ```
 
-Use `lando db:import dump.sql.gz --yes` when you want the bundled helper. `lando exec` is still there if you want the raw client.
+Use `lando db:import dump.sql.gz --yes` when you want the bundled helper.
 
 ## Import into MySQL or MariaDB
 
-The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the app name unless you set `database:`.
+The `mysql` and `mariadb` service types ship a client task that already connects to the app database. Feed it the dump:
+
+```sh
+lando mysql < dump.sql
+lando mariadb < dump.sql
+```
+
+To pick the client flags yourself, run it through `lando exec`. The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the app name unless you set `database:`.
 
 ```sh
 lando exec db -- mysql -u lando -plando myapp < dump.sql
@@ -29,13 +36,21 @@ Feed the dump on stdin from the host. Recipes do not add a second alias on top o
 
 ## Import into Postgres
 
-Postgres generates its password per app, but `psql` inside the service connects as `lando` without one:
+The `postgres` type ships `psql` the same way:
+
+```sh
+lando psql < dump.sql
+```
+
+Postgres generates its password per app, but `psql` inside the service connects as `lando` without one, so the `lando exec` form needs no password either:
 
 ```sh
 lando exec db -- psql -U lando -d myapp < dump.sql
 ```
 
 Pipe the dump on stdin. `-f` only works when the file already exists inside the service.
+
+Piped input reaches the client as plain bytes, not through a terminal. Nothing echoes back, and the client exits when the file ends.
 
 ## Write a tooling alias
 
@@ -53,7 +68,7 @@ tooling:
     cmd: mysql -u lando -plando import-a-database-demo
 ```
 
-Then `lando mysql` runs that client. For dump files, prefer `lando db:import`.
+Then `lando mysql` runs that client, and `lando mysql < dump.sql` imports through it.
 
 <Guide>
   <Scenario id="client-alias" render>

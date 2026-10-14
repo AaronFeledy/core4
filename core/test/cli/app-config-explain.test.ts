@@ -50,7 +50,7 @@ const landofile = (parts: LandofileParts = {}): string => {
       "    database: mariadb:11.4",
       "    name: explain-demo",
       `    php: "${parts.php ?? "8.4"}"`,
-      "    webroot: /app",
+      "    webroot: .",
       PRODUCER_YAML(),
       `  version: ${lampProducer.manifestVersion}`,
     ].join("\n");
@@ -182,7 +182,7 @@ describe("appConfigExplain", () => {
         "    database: mariadb:11.4",
         "    name: explain-demo",
         '    php: "8.3"',
-        "    webroot: /app",
+        "    webroot: .",
         PRODUCER_YAML(),
         "  services:",
         "    appserver: web",

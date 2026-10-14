@@ -58,7 +58,7 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 
 ### 6.4 App mounts and mounts
 
-`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, planning sets `workingDirectory`, exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT`, and records the result in `ServiceInfo`.
+`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. The `lando.app-mount` feature is its only owner: a service type opts in by declaring its default target, usually `/app`, and optionally a default working directory; types without one, such as data stores, get no app mount. When active, the app source mounts at the authored target or the type's default. Planning sets `workingDirectory` to that target unless the author sets one or the type names another default (§6.12.1), exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT` as that container path, and records the result in `ServiceInfo`. The plan carries the app mount only as `appMount`, never as a duplicate entry in `mounts`. The same feature realizes authored `mounts:` on every `lando` service, whether or not the type mounts the app, and on `compose`; an authored mount at the app mount target replaces the app mount and keeps the app-path variables and default working directory. `false` means the service does not use the app source, as with a data store: on every type it disables the mount, both variables, `LANDO_WEBROOT`, and the default working directory, and an authored working directory still applies. Raw `compose` services get the mount but no default working directory and no app-path variables (§6.9).
 
 | Mount type | Contract | Capability |
 |---|---|---|
@@ -119,11 +119,11 @@ Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<d
 
 `hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Filters merge by `name`, then unnamed type identity, and retain authored order. Prefix stripping MUST NOT be implicit (§10.2).
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2). Layered route matching uses the same scheme, case-insensitive hostname, and path-prefix identity as planning (§7.2), regardless of shorthand or object spelling.
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
-Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. LAN publication is opt-in and warns. Internal endpoints never bind the host.
+Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. When a service authors neither `services.<name>.routes` nor `proxy.<name>`, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. A service that authors either gets exactly its authored routes, so an explicitly empty list opts it out of routing without affecting published endpoints. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
 Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
 
@@ -151,11 +151,11 @@ Core publishes the reserved `LANDO`/`LANDO_*` catalog used by `appEnv` validatio
 
 Always when applicable: `LANDO`, `LANDO_DEBUG`, `LANDO_HOST_OS`, `LANDO_HOST_USER`, `LANDO_HOST_UID`, `LANDO_HOST_GID`, `LANDO_HOST_HOME`, `LANDO_APP_NAME`, `LANDO_APP_KIND`, `LANDO_APP_ROOT`, `LANDO_PROJECT`, `LANDO_PROJECT_MOUNT`, `LANDO_SERVICE_API`, `LANDO_SERVICE_NAME`, `LANDO_SERVICE_TYPE`, and `LANDO_DOMAIN`.
 
-Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`, `LANDO_CA_CERT`, `LANDO_CA_DIR`, `LANDO_CA_BUNDLE`, `LANDO_USER`, `LANDO_UID`, `LANDO_GID`, `SSH_AUTH_SOCK`, `GNUPGHOME`, `LANDO_HOST_PROXY_SOCKET`, `LANDO_HOST_PROXY_TOKEN`, `LANDO_HOST_PROXY_DEPTH`, `LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`, `LANDO_GLOBAL_<SERVICE>_HOST`, `LANDO_GLOBAL_<SERVICE>_PORT`, `LANDO_GLOBAL_<SERVICE>_<EP>_PORT`, `LANDO_GLOBAL_<SERVICE>_URL`, `LANDO_SCRATCH_ID`, `LANDO_SCRATCH_SOURCE_KIND`, and `LANDO_SCRATCH_ISOLATE`.
+Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`, `LANDO_CA_CERT`, `LANDO_CA_DIR`, `LANDO_CA_BUNDLE`, `LANDO_USER`, `LANDO_UID`, `LANDO_GID`, `LANDO_WEBROOT`, `SSH_AUTH_SOCK`, `GNUPGHOME`, `LANDO_HOST_PROXY_SOCKET`, `LANDO_HOST_PROXY_TOKEN`, `LANDO_HOST_PROXY_DEPTH`, `LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`, `LANDO_GLOBAL_<SERVICE>_HOST`, `LANDO_GLOBAL_<SERVICE>_PORT`, `LANDO_GLOBAL_<SERVICE>_<EP>_PORT`, `LANDO_GLOBAL_<SERVICE>_URL`, `LANDO_SCRATCH_ID`, `LANDO_SCRATCH_SOURCE_KIND`, and `LANDO_SCRATCH_ISOLATE`.
 
 `LANDO_GLOBAL_*` is projected only for global services required by activated `AppFeature`s (§20.6.3). Plugins MAY add typed projections through `AppFeature.apply()`.
 
-`lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment.
+`lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment, plus `LANDO_HOST_IP` when host reachability applies.
 
 #### 6.9.1 Host agent-context forwarding (`agentEnv`)
 
@@ -194,7 +194,7 @@ Contributed `logSources` MUST have unique ids, absolute paths, and compatible st
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay under §7.2. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
@@ -256,7 +256,7 @@ The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*
 | `python` | `lando` | `framework` |
 | `ruby` | `lando` | `framework` |
 | `go` | `lando` | `framework` |
-| `nginx` | `lando` | `webroot`, framework presets |
+| `nginx` | `lando` | `webroot`, `port`, PHP-FPM `backend` |
 | `apache` | `lando` | `webroot`, `allowOverride`, framework presets |
 | `mariadb` | `lando` | `creds`, `config.server` |
 | `mysql` | `lando` | `creds`, `config.server` |
@@ -292,11 +292,15 @@ Every canonical or plugin type MUST declare its base, resolve through features, 
 
 **Listen port follows `port:`.** `ServiceConfig.port` MUST move the daemon's listener, not only the endpoint, healthcheck, and route target. Every bundled launcher derives its listen address from the planned port. For Apache this means `Listen <port>` and, for `php` via `apache`, a `<VirtualHost *:<port>>` derived from the same value. An explicit non-default port replaces the image's default `Listen 80`; it MUST NOT leave an additional listener on port 80. Without an authored `port:`, the type retains its published default listener configuration. Fixed secondary ports, such as a console port, MUST be documented as limits in the type's guide.
 
+**`webroot` is relative to the app mount.** `php`, `nginx`, `apache`, `static`, and `tomcat` resolve `webroot` against the effective app mount target, which defaults to `/app` and follows `appMount.target`; `webroot` defaults to `.`, the app root itself. Authors normally write a relative path such as `web` or `public`. An absolute container path is accepted for a document root outside the usual layout. A relative path that leaves the app mount, or a path with characters other than letters, digits, `.`, `_`, `-`, and `/`, MUST fail during planning. With `appMount: false` there is nothing to resolve against: a relative or omitted `webroot` MUST fail during planning, and an absolute one names content the image provides. Generated document-root configuration uses the resolved absolute path; `LANDO_WEBROOT` exposes it only when `appMount` is not `false`. When the app mount is enabled, `php` and `nginx` default their working directory to that path; `apache`, `static`, and `tomcat` default to the app mount target; an authored working directory wins. On a standalone `apache` service an authored `APACHE_DOCUMENT_ROOT` overrides the generated document root. Configuration views such as `app:config` keep the authored spelling rather than the resolved path. Lando 3 translation MUST preserve the served content root where representable, rewrite `webroot` when the Lando 3 layout semantics differ, and diagnose deployment behavior that needs manual configuration (§7.4.1).
+
+**nginx serves its webroot.** Unless the author declares `command` or `entrypoint`, `nginx` generates its own server configuration. Without `backend`, it serves static files from `webroot`; with `backend`, it passes PHP requests to that service's PHP-FPM listener. Either way it listens on `port` and serves Lando's shared 403/404 pages for server-generated errors.
+
 #### 6.12.2 Framework presets
 
-Language types may expose `framework:` presets as ordinary overridable config. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
+Language types may expose `framework:` presets as ordinary overridable config. A preset's default webroot is relative to the app mount, like an authored `webroot`, and is omitted when `appMount` is `false`. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
 
-Canonical PHP does not interpret framework ids. It uses absolute `webroot` and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
+Canonical PHP does not interpret framework ids. It uses `webroot` (§6.12.1) and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
 
 #### 6.12.3 Catalog membership rules
 
@@ -306,7 +310,7 @@ Catalog membership is frozen by this specification; additions or removals requir
 
 `ServiceCreds` contains `user`, `password`, `database`, and optional `rootPassword`. `mariadb`, `mysql`, `postgres`, `mongodb`, and opted-in plugin types share this contract.
 
-Types provide deterministic defaults resolved at planning; authored `creds:` fields win. Values appear in `service.creds.*`, `services.<name>.creds.*`, `LANDO_DB_*`, and `ServiceInfo.creds`. Password fields are redacted by default; a type MAY mark additional fields secret.
+Types provide deterministic defaults resolved at planning; authored `creds:` fields win. Values appear in `service.creds.*`, `services.<name>.creds.*`, `LANDO_DB_*`, and `ServiceInfo.creds`. Structured output redacts password fields by default; a type MAY mark additional fields secret. Free-text output follows §3.7, which prints published default credentials as-is.
 
 #### 6.12.5 PHP service depth
 

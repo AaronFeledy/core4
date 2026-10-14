@@ -13,7 +13,7 @@ cd joomla-demo
 lando start
 ```
 
-The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
+The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
 
 If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
 

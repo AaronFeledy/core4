@@ -3,7 +3,6 @@ import {
   type LoweringPatch,
   type ServiceLoweringContext,
   asStringArray,
-  containerWebroot,
   emptyPatch,
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
@@ -160,7 +159,7 @@ export const lowerTypeOptions = (
     }
     case "nginx":
     case "apache":
-      if (typeof service.webroot === "string") patch.webroot = containerWebroot(service.webroot);
+      if (typeof service.webroot === "string") patch.webroot = service.webroot;
       if (typeof service.allowOverride === "boolean") patch.allowOverride = service.allowOverride;
       break;
     default:

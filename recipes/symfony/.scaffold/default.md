@@ -9,14 +9,14 @@ lando start
 lando info
 ```
 
-The named init creates `my-symfony-app/`. Change into it before app commands. `--yes` uses PHP 8.4, PostgreSQL 16, Composer 2, and webroot `/app/public`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+The named init creates `my-symfony-app/`. Change into it before app commands. `--yes` uses PHP 8.4, PostgreSQL 16, Composer 2, and webroot `public`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe symfony --name=my-symfony-app --yes \
   --answer=php=8.5 \
   --answer=database=mariadb:11.4 \
   --answer=composer=2 \
-  --answer=webroot=/app/public
+  --answer=webroot=public
 ```
 
 `lando start` prints the app URL. `lando info` repeats it.
@@ -46,7 +46,7 @@ lando info
 ## 4. init
 
 ```bash
-lando init --recipe symfony --name=my-symfony-mariadb --yes --answer=php=8.5 --answer=database=mariadb:11.4 --answer=composer=2 --answer=webroot=/app/public
+lando init --recipe symfony --name=my-symfony-mariadb --yes --answer=php=8.5 --answer=database=mariadb:11.4 --answer=composer=2 --answer=webroot=public
 ```
 
 ## 5. inspect

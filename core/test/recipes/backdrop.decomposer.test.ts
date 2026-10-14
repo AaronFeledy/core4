@@ -114,7 +114,7 @@ describe("backdrop decomposition", () => {
     { options: { ...defaults, php: 83 }, path: "options.php" },
     { options: { ...defaults, database: "postgres:16" }, path: "options.database" },
     { options: { ...defaults, composer: false }, path: "options.composer" },
-    { options: { ...defaults, webroot: "app" }, path: "options.webroot" },
+    { options: { ...defaults, webroot: "unsafe path" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
       Effect.result(

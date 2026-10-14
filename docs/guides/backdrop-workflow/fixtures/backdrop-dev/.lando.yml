@@ -4,7 +4,7 @@ services:
   appserver:
     type: php:8.3
     framework: backdrop
-    webroot: /app
+    webroot: .
     composer: "2"
     allowOverride: true
     port: 80

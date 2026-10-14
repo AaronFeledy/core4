@@ -23,7 +23,7 @@ test("hydrates persisted ports and default domain when a fresh router applies ro
   expect(applied.authorities.map(({ port }) => port)).toEqual([46443, 46080, 46443]);
   expect(harness.calls.find((spec) => spec.cn.startsWith("*."))).toEqual({
     cn: "*.custom.test",
-    sans: ["*.custom.test", "custom.test", "traefik.lndo.site"],
+    sans: ["*.custom.test", "custom.test", "traefik.custom.test"],
   });
   expect(harness.files.get("/lando/global/proxy-traefik/dynamic/tls-default.yml")).toContain(
     "/etc/traefik/dynamic/certs/default-custom.test.crt",
@@ -155,7 +155,7 @@ test("reissues default TLS material when the normalized default domain changes",
   // Then: a second default certificate is issued and the durable store references its keyed paths.
   const defaultCertificates = harness.calls.filter((spec) => spec.cn.startsWith("*."));
   expect(defaultCertificates.map((spec) => spec.cn)).toEqual(["*.lndo.site", "*.other.test"]);
-  expect(defaultCertificates.at(-1)?.sans).toEqual(["*.other.test", "other.test", "traefik.lndo.site"]);
+  expect(defaultCertificates.at(-1)?.sans).toEqual(["*.other.test", "other.test", "traefik.other.test"]);
   expect(
     Bun.YAML.parse(harness.files.get("/lando/global/proxy-traefik/dynamic/tls-default.yml") ?? ""),
   ).toEqual({
@@ -170,4 +170,45 @@ test("reissues default TLS material when the normalized default domain changes",
       },
     },
   });
+});
+
+test("publishes the default dashboard without setup or app routes", async () => {
+  // Given: a fresh router and an empty watched directory.
+  const harness = makeHarness();
+
+  // When: global route publication has no active application routes.
+  await Effect.runPromise(harness.service.applyRoutes([], app));
+
+  // Then: the infrastructure dashboard still has its own domain rule.
+  expect(harness.files.get("/lando/global/proxy-traefik/dynamic/dashboard.yml")).toContain(
+    "Host(`traefik.lndo.site`)",
+  );
+});
+
+test("setup moves the dashboard domain without waiting for route publication", async () => {
+  // Given: setup already published the original dashboard.
+  const harness = makeHarness();
+  await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "old.test" })));
+
+  // When: another process sets up the router with a changed domain.
+  await Effect.runPromise(Effect.scoped(harness.makeService().setup({ defaultDomain: " New.Test. " })));
+
+  // Then: the watched file replaces the old rule without a container-authored writer.
+  const dashboard = harness.files.get("/lando/global/proxy-traefik/dynamic/dashboard.yml");
+  expect(dashboard).toContain("Host(`traefik.new.test`)");
+  expect(dashboard).not.toContain("traefik.old.test");
+});
+
+test("fresh route publication restores a dashboard using the persisted domain", async () => {
+  // Given: a previous process persisted a normalized domain but its dashboard is missing.
+  const harness = makeHarness();
+  harness.files.set("/lando/global/proxy-traefik/dynamic/.lando-default-domain", " Custom.Test.\n");
+
+  // When: a fresh process publishes without setup or active app routes.
+  await Effect.runPromise(harness.makeService().applyRoutes([], app));
+
+  // Then: publication restores the router-owned rule using durable domain state.
+  expect(harness.files.get("/lando/global/proxy-traefik/dynamic/dashboard.yml")).toContain(
+    "Host(`traefik.custom.test`)",
+  );
 });

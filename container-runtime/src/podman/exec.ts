@@ -20,8 +20,13 @@ import type {
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { redactDetails } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
+import { ContainerTransportError } from "../transport.ts";
 
 const textDecoder = new TextDecoder();
+
+// Podman reports its own stdin copy failing after the exec'd process exits and closes the attach socket.
+const PODMAN_ATTACH_STDIN_COPY_ERROR =
+  /^Error: (?:read|write) unixpacket [^\r\n]+\/attach: (?:read|write): (?:connection reset by peer|broken pipe)\n(?![\s\S])/u;
 
 type ExecError = ProviderUnavailableError | ProviderInternalError | ServiceExecError | ServiceNotFoundError;
 
@@ -339,6 +344,10 @@ export const execStream = (
         const decodeChunk = makeRuntimeAttachDecoder();
         const completionAbort = new AbortController();
         const resizeEvents = command.terminalResize ?? Stream.empty;
+        const hasStdin = command.stdin === "inherit" || command.stdinStream !== undefined;
+        let responseHeadArrived = false;
+        let recoveredExitCode: number | undefined;
+        let pendingDiagnostic: { readonly kind: "stderr"; readonly chunk: Uint8Array } | undefined;
         let signalResponseStarted: () => void = () => undefined;
         const responseStarted = new Promise<void>((resolve) => {
           signalResponseStarted = resolve;
@@ -363,16 +372,66 @@ export const execStream = (
                 }
               : {}),
           },
-          onResponseHead: signalResponseStarted,
+          onResponseHead: () => {
+            responseHeadArrived = true;
+            signalResponseStarted();
+          },
         }).pipe(
           Stream.mapError((error) => execStartFailure(session, target, error)),
           command.tty === true
             ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
             : Stream.flatMap((chunk) =>
                 Stream.fromIterable(
-                  decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
+                  decodeChunk(chunk).flatMap((frame) => {
+                    const previous = pendingDiagnostic;
+                    pendingDiagnostic = undefined;
+                    const output = { kind: frame.stream, chunk: frame.payload };
+                    const text = textDecoder.decode(frame.payload);
+                    // Delay only the daemon's exact attach-copy frame until completion is proven.
+                    if (hasStdin && frame.stream === "stderr" && PODMAN_ATTACH_STDIN_COPY_ERROR.test(text)) {
+                      pendingDiagnostic = { kind: "stderr", chunk: frame.payload };
+                      return previous === undefined ? [] : [previous];
+                    }
+                    return previous === undefined ? [output] : [previous, output];
+                  }),
                 ),
               ),
+          Stream.concat(
+            Stream.suspend(() => {
+              const pending = pendingDiagnostic;
+              pendingDiagnostic = undefined;
+              return pending === undefined ? Stream.empty : Stream.make(pending);
+            }),
+          ),
+          Stream.catch((error) =>
+            Stream.unwrap(
+              Effect.gen(function* () {
+                const cause = error.cause;
+                if (
+                  hasStdin &&
+                  responseHeadArrived &&
+                  command.signal?.aborted !== true &&
+                  error instanceof ProviderUnavailableError &&
+                  cause instanceof ContainerTransportError &&
+                  (cause.kind === "read" || cause.kind === "write") &&
+                  (cause.systemCode === "ECONNRESET" || cause.systemCode === "EPIPE")
+                ) {
+                  recoveredExitCode = yield* inspectExecState(session, execId).pipe(
+                    Effect.catch(() => Effect.succeed(undefined)),
+                  );
+                  if (recoveredExitCode !== undefined) {
+                    pendingDiagnostic = undefined;
+                    return Stream.empty;
+                  }
+                }
+                const pending = pendingDiagnostic;
+                pendingDiagnostic = undefined;
+                return pending === undefined
+                  ? Stream.fail(error)
+                  : Stream.make(pending).pipe(Stream.concat(Stream.fail(error)));
+              }),
+            ),
+          ),
         );
 
         return Stream.fromEffect(
@@ -425,6 +484,7 @@ export const execStream = (
               Stream.concat(
                 Stream.fromEffect(
                   Ref.get(completedExitCode).pipe(
+                    Effect.map((code) => code ?? recoveredExitCode),
                     Effect.flatMap((code) =>
                       code !== undefined
                         ? Effect.succeed(code)
