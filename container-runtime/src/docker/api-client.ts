@@ -17,6 +17,7 @@ import {
   connectSocket,
   makeSocketHttpClient,
   normalizeNamedPipePath,
+  socketHttpConnection,
 } from "../transport.ts";
 
 export const DOCKER_API_PREFIX = "/v1.43" as const;
@@ -112,7 +113,7 @@ export const makeNamedPipeTransportClient = (
       if (connect !== undefined) return connect(pipePath);
       const socket = createConnection({ path: pipePath });
       await connectSocket(socket);
-      return socket;
+      return socketHttpConnection(socket);
     },
   });
 
@@ -139,7 +140,7 @@ export const makeTcpTransportClient = (
       if (connect !== undefined) return connect(target);
       const socket = secure ? createTlsConnection(target) : createConnection(target);
       await connectSocket(socket);
-      return socket;
+      return socketHttpConnection(socket);
     },
   });
 };
@@ -154,7 +155,7 @@ async function* streamUnixSocketRequest(
     connect: async () => {
       const socket = createConnection({ path: socketPath });
       await connectSocket(socket);
-      return socket;
+      return socketHttpConnection(socket);
     },
   });
   yield* client.stream(request);
