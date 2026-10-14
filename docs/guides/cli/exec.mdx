@@ -33,6 +33,35 @@ lando exec db -- mysql -u lando -plando myapp < dump.sql
 
 The command gets a terminal only when your stdin and stdout are both terminals. Piped input never goes through one, so nothing echoes back. Pipe the output away (`| grep`) and the command gets no terminal either, so tools that color only on a terminal print plain text.
 
+## Back up and restore service files
+
+Redirected stdout is not a terminal, so `lando exec` allocates no PTY and writes raw bytes. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it.
+
+These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
+
+```sh
+lando exec appserver -- tar -czf - -C /app/web/sites/default/files . > files.tgz
+lando exec appserver -- tar -xzf - -C /app/web/sites/default/files < files.tgz
+```
+
+WordPress uploads use the same shape:
+
+```sh
+lando exec appserver -- tar -czf - -C /app/wp-content/uploads . > uploads.tgz
+lando exec appserver -- tar -xzf - -C /app/wp-content/uploads < uploads.tgz
+```
+
+If you [excluded that path from file sync](../setup/file-sync-excludes.mdx), the files live on the service overlay, not on the host. A named volume is the same idea: pass that volume's mount path to `-C`.
+
+If the service image has `zstd`:
+
+```sh
+lando exec appserver -- tar -c -I zstd -f - -C /app/web/sites/default/files . > files.tar.zst
+lando exec appserver -- tar -x -I zstd -f - -C /app/web/sites/default/files < files.tar.zst
+```
+
+Warning: restore into a non-empty target merges and overwrites same-named files. Leftover files stay. Empty or move the target first when you want an exact copy.
+
 <Guide>
   <Scenario id="scaffold-and-start" render>
     <Step name="scaffold">
