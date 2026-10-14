@@ -46,7 +46,7 @@ lando app:config:lint
 lando start
 ```
 
-The worker can't run yet: Laravel and Horizon aren't installed. The first start succeeds with a warning and a `restarting` worker row. Its `restart: unless-stopped` policy retries automatically; Horizon starts on its own when installation and configuration are complete. Check `lando logs --service=worker` while it retries.
+The worker can't run yet: Laravel and Horizon aren't installed, so its process exits. The first start succeeds with a warning and a `restarting` worker row. Its `restart: unless-stopped` policy retries automatically; Horizon starts on its own when installation and configuration are complete. An exhausted healthcheck still fails start regardless of restart policy. Check `lando logs --service=worker` while it retries.
 
 ## Install Laravel, Horizon, and Predis
 

@@ -3,11 +3,11 @@ import { DateTime, Effect, Schema } from "effect";
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
-import { waitForServiceReadiness } from "@lando/engine/operations/service-readiness";
 
 import {
   applyGlobalServiceGroups,
   globalServiceGroupError,
+  waitForGlobalServiceGroups,
 } from "@lando/engine/operations/global-service-groups";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
@@ -171,7 +171,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
     },
     Effect.gen(function* () {
       const builds = yield* BuildOrchestrator;
-      const outcome = yield* applyGlobalServiceGroups(
+      const applied = yield* applyGlobalServiceGroups(
         loaded.plan,
         {
           provider,
@@ -183,6 +183,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
         },
         (plan) => withBuildProvider(builds.build(plan), provider),
       );
+      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
       const partialError = globalServiceGroupError("start", outcome);
       const selectedNames = new Set(outcome.services.map((service) => service.name));
       const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
@@ -195,13 +196,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
         return yield* Effect.fail(partialError);
       }
       const routeUrls = yield* applyRoutes;
-      const ready = yield* waitForServiceReadiness({
-        provider,
-        plan: outcome.builtPlan,
-        services: outcome.services.map((service) => service.name),
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      });
-      const servicesStarted = ready.map((row) => ({
+      const servicesStarted = outcome.ready.map((row) => ({
         ...row,
         endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
       }));

@@ -52,17 +52,30 @@ export type ServiceStartLogTail = typeof ServiceStartLogTail.Type;
 
 /** Post-apply readiness failure; the applied app remains available for diagnosis. */
 export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyError>()("ServiceNotReadyError", {
-  message: Schema.String,
-  app: Schema.String,
-  service: Schema.String,
-  providerId: Schema.String,
-  reason: Schema.Literals(["not-running", "healthcheck-failed", "healthcheck-timeout"]),
-  remediation: Schema.String,
-  exitCode: Schema.optional(Schema.Number),
-  state: Schema.optional(Schema.String),
-  attempts: Schema.optional(Schema.Number),
-  lastStatus: Schema.optional(Schema.String),
-  logTail: Schema.optional(ServiceStartLogTail),
+  message: Schema.String.annotate({ description: "Human-readable post-apply readiness failure." }),
+  app: Schema.String.annotate({ description: "Name of the app whose service failed readiness." }),
+  service: Schema.String.annotate({ description: "Planned service that failed readiness." }),
+  providerId: Schema.String.annotate({ description: "Provider responsible for the applied service." }),
+  reason: Schema.Literals([
+    "not-running",
+    "inspect-failed",
+    "healthcheck-failed",
+    "healthcheck-timeout",
+  ]).annotate({ description: "Lifecycle, observation, or healthcheck failure classification." }),
+  remediation: Schema.String.annotate({ description: "App-kind-specific diagnosis and recovery commands." }),
+  exitCode: Schema.optional(
+    Schema.Number.annotate({ description: "Observed terminal process exit code, when available." }),
+  ),
+  state: Schema.optional(Schema.String.annotate({ description: "Redacted last observed container state." })),
+  attempts: Schema.optional(
+    Schema.Number.annotate({ description: "Number of healthcheck attempts performed." }),
+  ),
+  lastStatus: Schema.optional(
+    Schema.String.annotate({ description: "Redacted last probe or provider observation detail." }),
+  ),
+  logTail: Schema.optional(
+    ServiceStartLogTail.annotate({ description: "Bounded, redacted service log snapshot." }),
+  ),
 }) {}
 
 export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("ServiceStartError", {

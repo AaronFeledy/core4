@@ -4,8 +4,8 @@ import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 import {
   applyGlobalServiceGroups,
   globalServiceGroupError,
+  waitForGlobalServiceGroups,
 } from "@lando/engine/operations/global-service-groups";
-import { waitForServiceReadiness } from "@lando/engine/operations/service-readiness";
 import type {
   GlobalAppError,
   GlobalDistConflictError,
@@ -141,7 +141,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         { volumes: false, removeState: false },
       );
 
-      const outcome = yield* applyGlobalServiceGroups(
+      const applied = yield* applyGlobalServiceGroups(
         loaded.plan,
         {
           provider,
@@ -153,6 +153,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         },
         (plan) => builder.build(plan, { refresh: true }),
       );
+      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
       const partialError = globalServiceGroupError("rebuild", outcome);
       const router = yield* RouterService;
       const startedNames = new Set(outcome.services.map((service) => service.name));
@@ -163,7 +164,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
       });
       const publication = yield* Effect.result(publish);
       if (partialError !== undefined) {
-        if (outcome.services.length > 0) yield* Effect.result(router.revalidateStartup);
+        if (applied.services.length > 0) yield* Effect.result(router.revalidateStartup);
         return yield* Effect.fail(partialError);
       }
       const { builtPlan } = outcome;
@@ -172,13 +173,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         return yield* Effect.fail(publication.failure);
       }
       const routeUrls = publication.success;
-      const ready = yield* waitForServiceReadiness({
-        provider,
-        plan: builtPlan,
-        services: outcome.services.map((service) => service.name),
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      });
-      const servicesRebuilt = ready.map((row) => ({
+      const servicesRebuilt = outcome.ready.map((row) => ({
         ...row,
         endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
       }));

@@ -63,7 +63,7 @@ test.each(["always", "unless-stopped", "on-failure"])(
   },
 );
 
-test.each([undefined, "no"])(
+test.each([undefined, "no", "on-failure"])(
   "unsupervised exit (%s) still fails with ServiceNotReadyError",
   async (restart) => {
     const plannedApp = restart === undefined ? plan : supervised(restart);
@@ -76,7 +76,7 @@ test.each([undefined, "no"])(
           service: target.service,
           providerId: plan.provider,
           status: "stopped",
-          exitCode: 17,
+          exitCode: restart === "on-failure" ? 0 : 17,
         }),
     };
     const timed = await runExitUnderClock(
@@ -86,8 +86,27 @@ test.each([undefined, "no"])(
     expect(failureOf(timed.exit)).toMatchObject({
       _tag: "ServiceNotReadyError",
       reason: "not-running",
-      exitCode: 17,
+      exitCode: restart === "on-failure" ? 0 : 17,
     });
+  },
+);
+
+test.each(["unknown", "stopped"])(
+  "supervision does not invent an exit for %s without terminal evidence",
+  async (status) => {
+    const provider = {
+      ...TestRuntimeProvider,
+      inspect: () => Effect.succeed({ app: plan.id, service: web.name, providerId: plan.provider, status }),
+    };
+    const timed = await runExitUnderClock(
+      waitForServiceReadiness({
+        provider,
+        plan: supervised("always"),
+        services: [web.name],
+      }),
+      "0 seconds",
+    );
+    expect(failureOf(timed.exit)).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
   },
 );
 
@@ -135,52 +154,50 @@ test("a supervised crash loop stops its healthcheck wait on the first exit", asy
   expect(byTag(harness.events, "message.warn")).toHaveLength(1);
 });
 
-test.each(["failed", "timeout"] as const)(
-  "supervised exhausted healthcheck (%s) is a structured warning",
-  async (mode) => {
-    const checked = {
-      ...plan,
-      services: {
-        [web.name]: {
-          ...web,
-          extensions: { compose: { restart: "always" } },
-          healthcheck: {
-            kind: "command" as const,
-            command: ["check"],
-            intervalSeconds: 1,
-            timeoutSeconds: 1,
-            retries: 1,
-          },
+test.each(["failed", "timeout"] as const)("supervised exhausted healthcheck (%s) is fatal", async (mode) => {
+  const checked = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        extensions: { compose: { restart: "always" } },
+        healthcheck: {
+          kind: "command" as const,
+          command: ["check"],
+          intervalSeconds: 1,
+          timeoutSeconds: 1,
+          retries: 1,
         },
       },
-    };
-    const probing = Deferred.makeUnsafe<void>();
-    const warnings = makeCommandWarnings(true);
-    const harness = makeHarness({
-      plannedApp: checked,
-      logs,
-      exec: () =>
-        Deferred.succeed(probing, undefined).pipe(
-          Effect.andThen(
-            mode === "timeout" ? Effect.never : Effect.succeed({ exitCode: 1, stdout: "", stderr: "" }),
-          ),
+    },
+  };
+  const probing = Deferred.makeUnsafe<void>();
+  const warnings = makeCommandWarnings(true);
+  const harness = makeHarness({
+    plannedApp: checked,
+    logs,
+    exec: () =>
+      Deferred.succeed(probing, undefined).pipe(
+        Effect.andThen(
+          mode === "timeout" ? Effect.never : Effect.succeed({ exitCode: 1, stdout: "", stderr: "" }),
         ),
-    });
-    const timed = await runExitUnderClock(
-      startApp({}, targetFor(checked)).pipe(
-        Effect.provide(harness.layer),
-        Effect.provideService(CommandWarnings, warnings),
       ),
-      "1 second",
-      Deferred.await(probing),
-    );
-    expect(successOf(timed.exit).servicesStarted[0]?.state).toBe("restarting");
-    expect(await Effect.runPromise(warnings.list)).toMatchObject([
-      { code: "LANDO_SERVICE_RESTARTING", context: { reason: `healthcheck-${mode}` } },
-    ]);
-    expect(byTag(harness.events, "message.warn")).toEqual([]);
-  },
-);
+  });
+  const timed = await runExitUnderClock(
+    startApp({}, targetFor(checked)).pipe(
+      Effect.provide(harness.layer),
+      Effect.provideService(CommandWarnings, warnings),
+    ),
+    "1 second",
+    Deferred.await(probing),
+  );
+  expect(failureOf(timed.exit)).toMatchObject({
+    _tag: "ServiceNotReadyError",
+    reason: `healthcheck-${mode}`,
+  });
+  expect(await Effect.runPromise(warnings.list)).toEqual([]);
+  expect(byTag(harness.events, "message.warn")).toEqual([]);
+});
 
 test("a supervised restart while a sibling waits is downgraded once", async () => {
   const slow = ServiceName.make("slow");

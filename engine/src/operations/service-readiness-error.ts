@@ -5,7 +5,7 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
 import { ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { Cause, Duration, Effect, Option, Stream } from "effect";
+import { Cause, DateTime, Duration, Effect, Option, Stream } from "effect";
 
 export interface ReadinessTarget {
   readonly provider: RuntimeProviderShape;
@@ -13,9 +13,21 @@ export interface ReadinessTarget {
   readonly service: ServiceName;
 }
 
+export const readinessCommands = (target: ReadinessTarget) => {
+  if (target.plan.extensions["@lando/core/scratch"] !== undefined)
+    return { logs: `lando scratch logs ${target.plan.id}`, retry: undefined };
+  if (String(target.plan.id) === "global")
+    return { logs: `lando global:logs -s ${target.service}`, retry: "lando global:start" };
+  return { logs: `lando logs -s ${target.service}`, retry: "lando start" };
+};
+
 export const isSupervisedTarget = (target: ReadinessTarget): boolean => {
   const service = target.plan.services[target.service];
-  return service !== undefined && isSupervisedService(service);
+  return (
+    service !== undefined &&
+    !completionIntentServices(target.plan).has(String(target.service)) &&
+    isSupervisedService(service)
+  );
 };
 
 export const redactorForReadiness = Effect.gen(function* () {
@@ -55,18 +67,22 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     ),
   );
   const name = String(target.service);
+  const commands = readinessCommands(target);
   const healthcheckRemediation =
-    evidence.reason === "not-running"
+    evidence.reason === "not-running" || evidence.reason === "inspect-failed"
       ? ""
       : " Fix or relax the healthcheck: configuration, or set healthcheck: { disable: true } to turn the probe off.";
   return yield* Effect.fail(
     new ServiceNotReadyError({
-      message: `Service ${name} is not ready (${evidence.reason}). The applied app has been retained.`,
+      message: `Service ${name} is not ready (${evidence.reason}).${target.plan.extensions["@lando/core/scratch"] === undefined ? " The applied app has been retained." : ""}`,
       app: String(target.plan.name),
       service: name,
       providerId: String(target.provider.id),
       reason: evidence.reason,
-      remediation: `Run \`lando logs -s ${name}\` to diagnose the service, fix it, then retry \`lando start\`.${healthcheckRemediation}`,
+      remediation:
+        evidence.reason === "inspect-failed"
+          ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
+          : `Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
       ...(evidence.runtime === undefined
         ? {}
@@ -86,7 +102,7 @@ export const inspectReadinessRuntime = Effect.fn("ServiceReadiness.inspect")(fun
   return yield* target.provider
     .inspect({ app: target.plan.id, service: target.service })
     .pipe(
-      Effect.catch((error) => failReadiness(target, { reason: "not-running", lastStatus: error.message })),
+      Effect.catch((error) => failReadiness(target, { reason: "inspect-failed", lastStatus: error.message })),
     );
 });
 
@@ -100,7 +116,12 @@ export const guardServiceRunning = Effect.fn("ServiceReadiness.guardRunning")(fu
   const restarted =
     initial !== undefined &&
     (initial.containerId !== runtime.containerId ||
-      initial.lastStartedAt?.getTime() !== runtime.lastStartedAt?.getTime());
+      (initial.lastStartedAt === undefined
+        ? undefined
+        : DateTime.toEpochMillis(DateTime.makeUnsafe(initial.lastStartedAt))) !==
+        (runtime.lastStartedAt === undefined
+          ? undefined
+          : DateTime.toEpochMillis(DateTime.makeUnsafe(runtime.lastStartedAt))));
   if (restarted || (!running && !(job && runtime.exitCode === 0)))
     return yield* failReadiness(target, {
       reason: "not-running",

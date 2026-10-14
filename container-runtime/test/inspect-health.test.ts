@@ -130,6 +130,32 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test("preserves an engine restart observation without a placeholder exit code", async () => {
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: false, Status: "restarting", ExitCode: 0 },
+        }),
+      },
+    ]);
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed.state).toBe("restarting");
+    expect(observed).not.toHaveProperty("exitCode");
+  });
+  test("omits placeholder exit zero for a never-started created container", async () => {
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: false, Status: "created", ExitCode: 0 },
+        }),
+      },
+    ]);
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed.status).not.toBe("running");
+    expect(observed).not.toHaveProperty("exitCode");
+  });
   test("omits the engine's placeholder exit code for a running unhealthy container", async () => {
     const fake = apiWithHealth("unhealthy");
     const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));

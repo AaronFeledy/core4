@@ -181,8 +181,9 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     service: service.name,
     providerId: plan.provider,
     status,
-    state: status,
-    ...(status !== "running" && typeof decoded.State?.ExitCode === "number"
+    state: decoded.State?.Status === "restarting" ? "restarting" : status,
+    ...((decoded.State?.Status === "exited" || decoded.State?.Status === "dead") &&
+    typeof decoded.State.ExitCode === "number"
       ? { exitCode: decoded.State.ExitCode }
       : {}),
     ...(health === undefined ? {} : { health }),

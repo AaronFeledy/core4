@@ -4,11 +4,13 @@
 
 ## Compatibility notes
 
-- `ServiceRuntimeInfo.exitCode` is evidence from a stopped container only; running containers omit it rather than reporting the engine's placeholder zero.
+- `ServiceNotReadyError.reason` adds `inspect-failed` for provider observation failures. This is never a supervised restart verdict; remediation targets `lando doctor` rather than service logs.
+
+- `ServiceRuntimeInfo.exitCode` is evidence from terminal `exited` or `dead` containers only; running and never-started `created` containers omit the engine's placeholder zero.
 
 - `ApplyOptions` adds optional `completionPlan`, the full dependency graph used to identify completion-intent services during partial apply. It is classification context, not a replacement applied-state record, so non-reconcile global starts preserve previously built unselected services.
 
-- `@lando/sdk/errors` adds `ServiceNotReadyError` (`message`, `app`, `service`, `providerId`, `reason` of `not-running` | `healthcheck-failed` | `healthcheck-timeout`, `remediation`, optional `exitCode`, `state`, `attempts`, `lastStatus`, and `ServiceStartLogTail`-shaped `logTail`). It belongs to `StartAppError` (restart/rebuild inherit), not `ProviderError` or planner channels, and registers no JSON Schema. `ServiceRuntimeInfo` adds optional container `exitCode`. Machine failure envelopes preserve service and readiness evidence. Healthcheck retries count post-start-period attempts, with immediate probes and first-success completion.
+- `@lando/sdk/errors` adds `ServiceNotReadyError` (`message`, `app`, `service`, `providerId`, `reason` of `not-running` | `inspect-failed` | `healthcheck-failed` | `healthcheck-timeout`, `remediation`, optional `exitCode`, `state`, `attempts`, `lastStatus`, and `ServiceStartLogTail`-shaped `logTail`). It belongs to `StartAppError` (restart/rebuild inherit), not `ProviderError` or planner channels, and registers no JSON Schema. `ServiceRuntimeInfo` adds optional container `exitCode`. Machine failure envelopes preserve service and readiness evidence. Healthcheck retries count post-start-period attempts, with immediate probes and first-success completion.
 
 - Pre-ship merge API change: Landofile layer merge rules are declared on the schema instead of inferred from entry properties. `mergeValues(root: Schema.Top, left, right, path?)` takes the schema root that owns the values and returns `unknown`; `mergeLandofiles(layers)` is rooted at `LandofileShape` and no longer generic. Callers validate the result. Removed: `ARRAY_IDENTITY_KEYS`, `identityKeyFor`, and `TOOLING_REPLACE_ARRAY_KEYS`. Added to `@lando/sdk/schema`: `SchemaLayerMergeAnnotationId`, the `LayerMergeRule` descriptor schema, `layerMerge`, and `getLayerMergeRule`. Added to `@lando/sdk/landofile`: `resolveLayerMergeRule`, `assertLayerMergeCompleteness`, `listLayerMergeRules`, `parseRouteShorthand`, `routeMatchKey`, `routeInputObject`, `routeInputKey`, and `expandRouteSchemes`. Published and editor JSON Schema carry an `x-lando-merge` extension, and the generated reference lists each collection's rule.
 

@@ -69,6 +69,11 @@ test.each(["restart", "rebuild"] as const)(
     const plannedApp = jobPlan();
     const harness = makeHarness({
       plannedApp,
+      onApply: (_applied, options) => {
+        expect(options?.completionPlan?.services[ServiceName.make("consumer")]?.dependsOn).toEqual([
+          { service: web.name, condition: "service_completed_successfully", required: true },
+        ]);
+      },
       inspect: () => Effect.succeed(runtime({ status: "stopped", state: "stopped", exitCode: 0 })),
       exec: () => Effect.die("Jobs must not execute healthchecks"),
     });

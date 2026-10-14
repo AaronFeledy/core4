@@ -52,7 +52,7 @@ import {
   shouldProbeServicePublishPort,
 } from "../service-publish-ports.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
-import { isSupervisedService } from "../supervision.ts";
+import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
@@ -829,14 +829,26 @@ const startService = Effect.fnUntraced(function* (
     after.body !== undefined && typeof after.body === "object" && after.body !== null
       ? Reflect.get(after.body, "State")
       : undefined;
+  const engineStatus = typeof state === "object" && state !== null ? Reflect.get(state, "Status") : undefined;
+  const terminal = engineStatus === "exited" || engineStatus === "dead";
   const completed =
     completionIntentServices(deps.options.completionPlan ?? plan).has(String(service.name)) &&
     after.exists &&
     typeof state === "object" &&
     state !== null &&
     Reflect.get(state, "ExitCode") === 0 &&
-    (Reflect.get(state, "Status") === "exited" || Reflect.get(state, "Status") === "stopped");
-  if (!after.running && !completed && !(after.exists && isSupervisedService(service))) {
+    terminal;
+  const completionIntent = completionIntentServices(deps.options.completionPlan ?? plan).has(
+    String(service.name),
+  );
+  const exitCode = typeof state === "object" && state !== null ? Reflect.get(state, "ExitCode") : undefined;
+  const supervised =
+    !completionIntent &&
+    after.exists &&
+    (terminal || engineStatus === "restarting") &&
+    typeof exitCode === "number" &&
+    isServiceRestartExpected(service, exitCode);
+  if (!after.running && !completed && !supervised) {
     yield* Effect.fail(
       podmanFailure(deps, {
         service,

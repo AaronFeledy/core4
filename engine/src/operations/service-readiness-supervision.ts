@@ -1,3 +1,4 @@
+import { isServiceRestartExpected } from "@lando/container-runtime/supervision";
 import type { ServiceNotReadyError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService, type ServiceRuntimeInfo } from "@lando/sdk/services";
@@ -8,6 +9,7 @@ import {
   type ReadinessTarget,
   inspectServiceRunning,
   isSupervisedTarget,
+  readinessCommands,
   redactorForReadiness,
 } from "./service-readiness-error.ts";
 
@@ -20,9 +22,12 @@ interface SupervisedActor {
   row: ReadinessRow | undefined;
 }
 
-const warnRestarting = Effect.fn("ServiceReadiness.warnRestarting")(function* (error: ServiceNotReadyError) {
+const warnRestarting = Effect.fn("ServiceReadiness.warnRestarting")(function* (
+  error: ServiceNotReadyError,
+  target: ReadinessTarget,
+) {
   const redactor = yield* redactorForReadiness;
-  const remediation = `lando logs -s ${error.service}`;
+  const remediation = readinessCommands(target).logs;
   const tail = redactor.redactString(error.logTail?.lines.slice(-5).join("\n") ?? "").slice(-600);
   const message = redactor.redactString(
     `Supervised service ${error.service} is restarting (${error.reason})${error.exitCode === undefined ? "" : `; exit code ${error.exitCode}`}.${error.lastStatus === undefined ? "" : ` ${error.lastStatus}`}${tail.length === 0 ? "" : `\n${tail}`}\nRun \`${remediation}\`.`,
@@ -59,15 +64,19 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
   );
   const actors = new Map(entries.map((actor) => [String(actor.target.service), actor]));
   const settle = Effect.fnUntraced(function* (error: ServiceNotReadyError) {
+    if (error.reason !== "not-running") return yield* Effect.fail(error);
     const actor = actors.get(error.service);
     if (actor === undefined) return yield* Effect.fail(error);
-    if (actor.row !== undefined) return actor.row;
-    if (actor.publishing) return yield* Deferred.await(actor.signal);
-    actor.publishing = true;
-    yield* warnRestarting(error);
+    if (error.exitCode === undefined && error.state !== "running" && error.state !== "restarting")
+      return yield* Effect.fail(error);
     const service = actor.target.plan.services[actor.target.service];
     if (service === undefined)
       return yield* Effect.die("Supervised readiness service is absent from its full plan.");
+    if (!isServiceRestartExpected(service, error.exitCode)) return yield* Effect.fail(error);
+    if (actor.row !== undefined) return actor.row;
+    if (actor.publishing) return yield* Deferred.await(actor.signal);
+    actor.publishing = true;
+    yield* warnRestarting(error, actor.target);
     const row = { ...startedServiceRow(service, actor.initial), state: "restarting", initial: actor.initial };
     actor.row = row;
     yield* Deferred.succeed(actor.signal, row);

@@ -1,9 +1,10 @@
-import { GlobalAppError } from "@lando/sdk/errors";
+import { GlobalAppError, type ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
+import { waitForServiceReadiness } from "./service-readiness.ts";
 
 const serviceGroups = (services: ReadonlyArray<ServicePlan>): ReadonlyArray<ReadonlyArray<ServicePlan>> => {
   const byName = new Map(services.map((service) => [service.name, service]));
@@ -105,3 +106,45 @@ export const globalServiceGroupError = <E>(
     cause: firstFailure.error,
   });
 };
+
+export const waitForGlobalServiceGroups = Effect.fn("GlobalServices.readiness")(function* <E>(
+  provider: RuntimeProviderShape,
+  outcome: {
+    readonly builtPlan: AppPlan;
+    readonly services: ReadonlyArray<ServicePlan>;
+    readonly failures: ReadonlyArray<{ readonly names: ReadonlyArray<string>; readonly error: E }>;
+  },
+  signal?: AbortSignal,
+) {
+  const groups = yield* Effect.forEach(
+    serviceGroups(outcome.services),
+    (services) =>
+      Effect.map(
+        Effect.result(
+          waitForServiceReadiness({
+            provider,
+            plan: outcome.builtPlan,
+            services: services.map((service) => service.name),
+            ...(signal === undefined ? {} : { signal }),
+          }),
+        ),
+        (result) => ({ services, result }),
+      ),
+    { concurrency: "unbounded" },
+  );
+  const failures: Array<{ readonly names: ReadonlyArray<string>; readonly error: E | ServiceNotReadyError }> =
+    [...outcome.failures];
+  for (const group of groups) {
+    if (Result.isFailure(group.result))
+      failures.push({
+        names: group.services.map((service) => String(service.name)),
+        error: group.result.failure,
+      });
+  }
+  return {
+    builtPlan: outcome.builtPlan,
+    services: groups.flatMap((group) => (Result.isSuccess(group.result) ? group.services : [])),
+    ready: groups.flatMap((group) => (Result.isSuccess(group.result) ? group.result.success : [])),
+    failures,
+  };
+});

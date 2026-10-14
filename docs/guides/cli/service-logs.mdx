@@ -4,6 +4,7 @@ provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
 tags: [beta, docs, cli, logs]
+defaultLayer: scenario
 ---
 
 # Read service logs
@@ -78,14 +79,16 @@ lando info
 
 Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: { disable: true }` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
 
-An authored `restart: always`, `unless-stopped`, or `on-failure` delegates recovery to the container engine. Start warns with the reason, available exit code, a short redacted log tail, and `lando logs -s <service>` remediation, then reports that service as `restarting`. Pressing Ctrl-C during readiness also leaves the applied app running for diagnosis while the command exits as interrupted.
+With authored `restart: always` or `unless-stopped`, an exit or observed restart delegates recovery to the container engine. `on-failure` does that only for a non-zero exit; exit 0 remains a readiness failure. Start warns with the reason, available exit code, a short redacted log tail, and app-specific logs remediation, then reports `restarting`. Exhausted healthchecks still fail, and completion jobs must exit 0 regardless of restart policy. Pressing Ctrl-C during user-app readiness leaves the applied app running while the command exits as interrupted.
+
+An inspection failure uses reason `inspect-failed`, not a stopped-container verdict. Run `lando doctor` to diagnose the provider. For global services, use `lando global:logs -s <service>` and retry `lando global:start`. Scratch acquisition also waits for readiness, but failure or interruption cleans up unless `--keep-on-failure` was passed. Inspect a retained scratch by its id, not with user-app `lando start`.
 
 A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
 
 Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
 
 <Guide>
-  <Scenario id="documented-flags" render={false} reason="Verify the documented logs flags without a running container">
+  <Scenario id="documented-flags" tags={["scenario", "read-only"]} render={false} reason="Verify the documented logs flags without a running container">
     <Step name="check-flags">
       <Run command="lando logs --help" />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--service" } }} />

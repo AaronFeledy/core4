@@ -52,9 +52,39 @@ test("readiness inspection transport failures are tagged, redacted, and retain a
     "0 seconds",
   );
   const error = failureOf(timed.exit);
-  expect(error).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
+  expect(error).toMatchObject({ _tag: "ServiceNotReadyError", reason: "inspect-failed" });
   expect(JSON.stringify(error)).not.toContain(secret);
   expect(cleanup).toBe(0);
+});
+
+test("provider observation failure cannot become a supervised restart", async () => {
+  // Given a supervised service whose provider cannot be observed.
+  const supervisedPlan = {
+    ...plan,
+    services: { [web.name]: { ...web, extensions: { compose: { restart: "always" } } } },
+  };
+  const provider = {
+    ...TestRuntimeProvider,
+    inspect: () =>
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "inspect",
+          message: "provider unreachable",
+        }),
+      ),
+  } satisfies RuntimeProviderShape;
+  // When start waits for readiness.
+  const timed = await runExitUnderClock(
+    waitForServiceReadiness({ provider, plan: supervisedPlan, services: [web.name] }),
+    "0 seconds",
+  );
+  // Then provider diagnosis is fatal, not a successful restarting row.
+  expect(failureOf(timed.exit)).toMatchObject({
+    _tag: "ServiceNotReadyError",
+    reason: "inspect-failed",
+    remediation: expect.stringContaining("lando doctor"),
+  });
 });
 
 test("readiness log tails use the shared redaction and line/character bounds", async () => {

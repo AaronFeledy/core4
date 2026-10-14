@@ -187,6 +187,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
     provider.apply(runtimePlan, {
       reconcile: false,
       recordedPlan: appliedPlan,
+      completionPlan: target.plan,
       forbidRecreate: true,
       ...(signal === undefined ? {} : { signal }),
     }),

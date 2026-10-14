@@ -126,6 +126,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
             provider
               .apply(applyPlan, {
                 reconcile: true,
+                completionPlan: readinessPlan,
                 recordedPlan: {
                   ...target.plan,
                   services: { ...target.plan.services, ...builtPlan.services },
