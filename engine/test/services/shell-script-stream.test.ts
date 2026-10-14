@@ -1,14 +1,92 @@
 import { expect, test } from "bun:test";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
-import { Effect, Layer, Queue, Stream } from "effect";
+import { Effect, Exit, Layer, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
+
+test.each([true, false])(
+  "reads inherited piped stdin through EOF when inheritStdin=%s",
+  async (inheritStdin) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-script-stdin-"));
+    const scriptPath = join(root, "count.bun.sh");
+    const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+    try {
+      await writeFile(scriptPath, "wc -l\n");
+      const helper = `
+      import { Effect } from "effect";
+      import { ShellRunner } from "@lando/sdk/services";
+      import { layer } from ${JSON.stringify(runnerPath)};
+      const result = await Effect.runPromise(Effect.flatMap(ShellRunner, shell =>
+        shell.runScript(${JSON.stringify(scriptPath)}, { inheritStdin: ${inheritStdin} })
+      ).pipe(Effect.provide(layer(() => { throw new TypeError("unused interactive IO"); }))));
+      process.stdout.write(result.stdout);
+    `;
+      // When
+      const child = Bun.spawn([process.execPath, "-e", helper], {
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      child.stdin.write("a\nb\nc\n");
+      await child.stdin.end();
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      // Then
+      expect(code, stderr).toBe(0);
+      expect(Number(stdout.trim())).toBe(inheritStdin ? 3 : 0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("kills a running script promptly when its signal aborts", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-abort-"));
+  const script = join(root, "sleep.bun.sh");
+  const controller = new AbortController();
+  const ready = Promise.withResolvers<void>();
+  try {
+    await writeFile(script, "echo ready; sleep 30; echo finished\n");
+    const run = Effect.flatMap(ShellRunner, (shell) =>
+      shell.runScript(script, { signal: controller.signal }),
+    ).pipe(
+      Effect.provide(
+        BunShellRunner.layer(() => {
+          throw new TypeError("unused interactive IO");
+        }),
+      ),
+      Effect.provideService(StreamFrameSink, {
+        emit: (frame) =>
+          Effect.sync(() => {
+            if (frame.chunk === "ready\n") ready.resolve();
+          }),
+      }),
+    );
+    const started = performance.now();
+    // When
+    const completion = Effect.runPromiseExit(run);
+    await Effect.runPromise(Effect.promise(() => ready.promise).pipe(Effect.timeout("2 seconds")));
+    controller.abort();
+    const exit = await Effect.runPromise(Effect.promise(() => completion).pipe(Effect.timeout("4 seconds")));
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(5000);
+  } finally {
+    controller.abort();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 7000);
 
 test.skipIf(process.platform === "win32").each([
   ["collected", 0],

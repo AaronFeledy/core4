@@ -30,7 +30,7 @@ import {
   setActiveCommandId,
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
-import { attachToolingHostIo } from "./exec-host-io";
+import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
@@ -105,41 +105,46 @@ const runDynamicBunShellTooling = (
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
-  const effect = runBunShellTooling(
-    {
-      name,
-      args: commandArgv,
-      renderProgress: true,
-      relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,
-    },
-    appRoot,
-  ).pipe(
-    Effect.flatMap((result) =>
-      result === undefined
-        ? Effect.fail(
-            new ToolingCompileError({
-              message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
-              tool: name,
-              remediation: "Run `lando app:cache:refresh` and retry the command.",
-            }),
-          )
-        : Effect.succeed(result),
-    ),
-  );
-  return runCompiledCommand(
-    effect,
-    makeLandoRuntime(
-      cliRuntimeOptions({
-        bootstrap: "minimal",
-        plugins: { policy: "discovery" },
-      }),
-    ),
-    renderRunToolingResult,
-    {
-      ...dynamicToolingOptions,
-      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
-    },
-  );
+  const mode = toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
+  return runWithProcessAbortSignal((signal) => {
+    const effect = runBunShellTooling(
+      {
+        name,
+        args: commandArgv,
+        inheritStdin: mode !== "none",
+        renderProgress: mode !== "keyboard",
+        signal,
+        relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,
+      },
+      appRoot,
+    ).pipe(
+      Effect.flatMap((result) =>
+        result === undefined
+          ? Effect.fail(
+              new ToolingCompileError({
+                message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
+                tool: name,
+                remediation: "Run `lando app:cache:refresh` and retry the command.",
+              }),
+            )
+          : Effect.succeed(result),
+      ),
+    );
+    return runCompiledCommand(
+      effect,
+      makeLandoRuntime(
+        cliRuntimeOptions({
+          bootstrap: "minimal",
+          plugins: { policy: "discovery" },
+        }),
+      ),
+      renderRunToolingResult,
+      {
+        ...dynamicToolingOptions,
+        ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
+      },
+    );
+  });
 };
 
 const runDynamicToolingFailure = (

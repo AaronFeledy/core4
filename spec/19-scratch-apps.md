@@ -178,7 +178,7 @@ The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2
 
 `apps:scratch:run` is a thin `ScratchAppService.acquire` surface, not a separate lifecycle. It defaults to the bundled `toolbox` recipe, cwd isolation, and the primary service. `--from`, `--service`, and `--no-mount` select another recipe, target, or baked isolation.
 
-Arguments after `--` pass verbatim to provider exec. TTY and agent-context forwarding follow §6.9.1; output streams through the renderer; the tool exit code becomes the command exit code and is not a tagged Lando failure. Scope close destroys the scratch on success, failure, or interruption. `--keep` converts it to a detached scratch. JSON mode uses the streaming contract in §8.11.3. There is no warm pool (§21.15).
+Arguments after `--` pass verbatim to provider exec. Stdin and PTY follow the §8.2 host-stdin rule, and agent context follows §6.9.1. Acquisition progress renders first and is retired before the tool starts (§8.9.2); tool output then streams live through the renderer, and the tool exit code becomes the command exit code and is not a tagged Lando failure. Scope close destroys the scratch on success, failure, or interruption. `--keep` converts it to a detached scratch; human output names the kept id on stderr so the tool's stdout stays clean. JSON mode uses the streaming contract in §8.11.3. There is no warm pool (§21.15).
 
 ### 21.11 Cleanup, registry, and orphan reaping
 

@@ -102,6 +102,28 @@ Lando reads its own global flags, such as `--format` and `--verbose`, anywhere o
 lando stamp -- --format=json
 ```
 
+## Feed a script stdin
+
+Pipe or redirect into the command and the script reads it to the end. Save this as `.lando/scripts/count.bun.sh`:
+
+```sh
+# ---
+# desc: Count the lines on stdin
+# ---
+wc -l
+```
+
+```sh
+printf 'a\nb\nc\n' | lando count
+lando count < src/index.html
+```
+
+The first prints `3`. Commands inside the script share that input, so a `seed` script can take `lando seed < dump.sql` and hand the dump to whatever client it runs.
+
+Run it from a terminal with nothing piped in and the script gets your keyboard. A prompt, a nested `lando psql`, or anything else that reads the terminal works the way it does when you type the command yourself, and Lando skips its task tree for that run so nothing draws over the prompt. Ctrl+C stops the script and `lando` exits `130`.
+
+With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not. A script that waits for typed input reads end of input instead of hanging your agent or CI job.
+
 ## Capture output as JSON or YAML
 
 Add `--format=json` or `--format=yaml` and Lando collects the script instead of streaming it. You get one envelope on stdout with the script's output and exit code under `result`:

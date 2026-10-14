@@ -30,6 +30,8 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
+    readonly inheritStdin?: boolean;
+    readonly signal?: AbortSignal;
   },
 ): Effect.fn.Return<
   ToolingResult,
@@ -52,11 +54,14 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     cwd,
     ...(options.args === undefined ? {} : { argv: options.args }),
     ...(env === undefined ? {} : { env }),
+    ...(options.inheritStdin === undefined ? {} : { inheritStdin: options.inheritStdin }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   }).pipe(
     Effect.catchTag("ShellExecError", (shellError) =>
-      shellError.exitCode !== undefined
+      shellError.exitCode !== undefined || options.signal?.aborted === true
         ? Effect.succeed({
-            exitCode: shellError.exitCode,
+            // An interrupted script reports the conventional SIGINT status, like container tooling.
+            exitCode: options.signal?.aborted === true ? 130 : (shellError.exitCode ?? 1),
             stdout: shellError.stdout ?? "",
             stderr: shellError.stderr ?? "",
           })
@@ -86,6 +91,8 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
     readonly renderProgress?: boolean;
+    readonly inheritStdin?: boolean;
+    readonly signal?: AbortSignal;
     readonly relativePath?: string;
   },
   appRoot: string,

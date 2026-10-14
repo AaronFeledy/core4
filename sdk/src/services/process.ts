@@ -14,6 +14,11 @@ export interface ShellCommandOptions {
   readonly argv?: ReadonlyArray<string>;
 }
 
+export interface ShellScriptOptions extends ShellCommandOptions {
+  readonly inheritStdin?: boolean;
+  readonly signal?: AbortSignal;
+}
+
 export interface ProcessSpawnOptions {
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
@@ -21,6 +26,11 @@ export interface ProcessSpawnOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
   readonly stdinStream?: AsyncIterable<Uint8Array>;
+  /**
+   * Give the child this process's own stdin descriptor (terminal, pipe or file)
+   * instead of a runner-written pipe. Only applies without stdin or stdinStream.
+   */
+  readonly inheritStdin?: boolean;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   /**
@@ -98,7 +108,7 @@ export class ShellRunner extends Context.Service<
     ) => Effect.Effect<ProcessResult, ShellExecError>;
     readonly runScript: (
       path: string,
-      options?: ShellCommandOptions,
+      options?: ShellScriptOptions,
     ) => Effect.Effect<ProcessResult, ShellExecError>;
     readonly interactive: (
       spec: ShellInteractiveSpec,

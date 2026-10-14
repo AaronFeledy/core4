@@ -122,9 +122,11 @@ const buildSpawnOptions = (input: ProcessSpawnOptions) => {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(input.env === undefined ? {} : { env: { ...process.env, ...input.env } }),
     ...(cgroup === undefined ? {} : { cgroup }),
-    stdin: (input.stdin === undefined && input.stdinStream === undefined ? "ignore" : "pipe") as
-      | "ignore"
-      | "pipe",
+    stdin: (input.stdin !== undefined || input.stdinStream !== undefined
+      ? "pipe"
+      : input.inheritStdin === true
+        ? "inherit"
+        : "ignore") as "ignore" | "inherit" | "pipe",
     stdout: "pipe" as const,
     stderr: "pipe" as const,
   };
