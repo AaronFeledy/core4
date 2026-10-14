@@ -24,7 +24,13 @@ import {
 } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
-import { decodeLandofileLayer, mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
+import {
+  decodeLandofileLayer,
+  isMergeDirective,
+  mergeLandofiles,
+  mergeValues,
+  override,
+} from "@lando/sdk/landofile";
 import type { LandofileDecodedOverlay } from "@lando/sdk/schema";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
@@ -738,26 +744,22 @@ const resolveTree = Effect.fnUntraced(function* (
       }),
     );
   }
-  const acquisition = includeAcquisitionView(landofile);
-  const incompatible = assertCompatibleIncludeFields(acquisition);
-  if (incompatible !== undefined) return yield* Effect.fail(incompatible);
   const sourced = rememberLandofileReferencedFiles(
-    resolveToolingIncludeSourceRoots(acquisition, ctx.sourceRoot, ctx.appRoot),
+    resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
     getLandofileReferencedFiles(landofile),
   );
-  const includes = authoredIncludeEntries(sourced);
-  const inline = {
-    ...landofile,
-    ...(sourced.includes === undefined ? {} : { includes: sourced.includes }),
-    ...(sourced.toolingIncludes === undefined ? {} : { toolingIncludes: sourced.toolingIncludes }),
-  };
+  const acquisition = includeAcquisitionView(sourced);
+  const incompatible = assertCompatibleIncludeFields(acquisition);
+  if (incompatible !== undefined) return yield* Effect.fail(incompatible);
+  const includes = authoredIncludeEntries(acquisition);
+  const inline = sourced;
   if (includes.length === 0)
     return rememberIncludeOverlays(
       rememberLandofileIncludeSources(
         rememberLocalIncludePaths(
           rememberVersionConstraintEntries(
-            sourced,
-            ownVersionConstraintEntries(sourced, source, layer, order),
+            acquisition,
+            ownVersionConstraintEntries(acquisition, source, layer, order),
           ),
           getLocalIncludePaths(landofile),
         ),
@@ -854,20 +856,26 @@ const resolveTree = Effect.fnUntraced(function* (
     }
   }
 
-  const toolingIncludes = composeToolingIncludeEntries([...fragments, sourced]);
+  const toolingSources = [...fragmentRecords, sourced];
+  const toolingIncludes = composeToolingIncludeEntries(toolingSources);
+  const replacesTooling = toolingSources.some((value) => isMergeDirective(value.includes));
   const overlays = [
     ...fragmentRecords.map((fragment) => withoutIncludeArrays(fragment)),
     withoutIncludeArrays(inline),
-    ...(toolingIncludes.length === 0 ? [] : [{ includes: toolingIncludes }]),
+    ...(replacesTooling
+      ? [{ includes: override(toolingIncludes) }]
+      : toolingIncludes.length === 0
+        ? []
+        : [{ includes: toolingIncludes }]),
   ];
-  const decoded = { ...sourced, ...(toolingIncludes.length === 0 ? {} : { includes: toolingIncludes }) };
+  const decoded = { ...acquisition, ...(toolingIncludes.length === 0 ? {} : { includes: toolingIncludes }) };
   return rememberIncludeOverlays(
     rememberLandofileReferencedFiles(
       rememberLandofileIncludeSources(
         rememberLocalIncludePaths(
           rememberVersionConstraintEntries(decoded, [
             ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-            ...ownVersionConstraintEntries(sourced, source, layer, order),
+            ...ownVersionConstraintEntries(acquisition, source, layer, order),
           ]),
           [...localIncludePaths],
         ),

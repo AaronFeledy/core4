@@ -94,3 +94,59 @@ test("standalone file loading consumes lowest-layer directives", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["includes", "toolingIncludes"])(
+  "%s override retains only the new tooling namespace",
+  async (field) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-tooling-override-"));
+    try {
+      const canonical = join(root, ".lando.yml");
+      const declaration = (name: string) =>
+        field === "includes"
+          ? `\n  - source: ./${name}.yml\n    kind: tooling\n    namespace: ${name}\n`
+          : `\n  ${name}:\n    file: ./${name}.yml\n`;
+      await Bun.write(join(root, "old.yml"), "tooling:\n  task:\n    cmd: old\n");
+      await Bun.write(join(root, "new.yml"), "tooling:\n  task:\n    cmd: new\n");
+      await Bun.write(canonical, `name: directives\n${field}:${declaration("old")}`);
+      await Bun.write(join(root, ".lando.local.yml"), `${field}: !override${declaration("new")}`);
+      const result = await Effect.runPromise(
+        loadLandofileLayers(root, canonical, {
+          ports: makeTestLandofilePorts(root),
+          templates: { modules: [] },
+          stateStore: makeTestLandofileStateStore(),
+        }),
+      );
+      expect(Object.keys(result.tooling ?? {})).toEqual(["new:task"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(["!override\n  - source: ./tasks.yml\n    kind: tooling\n    namespace: new", "!reset"])(
+  "nested include %s survives source rewriting and aggregation",
+  async (operation) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-nested-tooling-directives-"));
+    try {
+      const canonical = join(root, ".lando.yml");
+      await Bun.write(
+        canonical,
+        "name: directives\nincludes:\n  - source: ./old.yml\n    kind: tooling\n    namespace: old\n",
+      );
+      await Bun.write(join(root, "old.yml"), "tooling:\n  task:\n    cmd: old\n");
+      await Bun.write(join(root, "nested", "tasks.yml"), "tooling:\n  task:\n    cmd: new\n");
+      await Bun.write(join(root, "nested", "fragment.yml"), `includes: ${operation}\n`);
+      await Bun.write(join(root, ".lando.local.yml"), "includes:\n  - ./nested/fragment.yml\n");
+      const result = await Effect.runPromise(
+        loadLandofileLayers(root, canonical, {
+          ports: makeTestLandofilePorts(root),
+          templates: { modules: [] },
+          stateStore: makeTestLandofileStateStore(),
+        }),
+      );
+      expect(Object.keys(result.tooling ?? {})).toEqual(operation.startsWith("!reset") ? [] : ["new:task"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
