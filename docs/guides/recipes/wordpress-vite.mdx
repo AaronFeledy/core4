@@ -9,7 +9,7 @@ tags: [beta, docs, recipes, wordpress, php, node, vite, hmr]
 
 Add a `node:22` service beside WordPress, proxy it on `vite.<app>.lndo.site`, and load theme assets from Vite during local development.
 
-This builds on [Run the WordPress recipe](wordpress-workflow.mdx). The app name below is `wp-vite`.
+Prerequisite: a running, installed WordPress app from [Run the WordPress recipe](wordpress-workflow.mdx), with WordPress 6.5 or newer. The examples use app name `wp-vite`, the default `lndo.site` domain, and WordPress files at the app root.
 
 ## Add Node and npm tooling
 
@@ -39,13 +39,44 @@ lando start
 lando info
 ```
 
-`lando info` lists both `appserver` (`https://wp-vite.lndo.site`) and `node` (`https://vite.wp-vite.lndo.site`). Until Vite listens on `5173`, the Vite URLs return HTTP 502. That is expected.
+`lando info` lists routes for both `appserver` (`https://wp-vite.lndo.site`) and `node` (`https://vite.wp-vite.lndo.site`). The Node service stays idle until you run Vite; its route cannot serve assets yet. `port: 5173` declares the internal HTTP endpoint, not a host port binding.
 
-If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. Match those ports in the Vite and theme config below.
+Use the actual HTTPS URLs from `lando info`. The examples below assume port 443. Lando can use fallback ports, including 8080 for HTTP and 8443 for HTTPS. If info shows `:8443`, include it in both origins below and set `hmr.clientPort` to `8443`; keep the internal `server.port` at `5173`.
 
 ## Scaffold a Vite theme
 
-Create `wp-content/themes/vite-theme/` with a normal theme shell (`style.css`, `functions.php`, `index.php`, `header.php`, `footer.php`) plus a Vite app:
+Create the theme directory from the app root:
+
+```sh
+mkdir -p wp-content/themes/vite-theme/src
+```
+
+Save this as `wp-content/themes/vite-theme/style.css` so WordPress recognizes the theme:
+
+```css
+/*
+Theme Name: Vite Theme
+*/
+```
+
+Save this minimal classic-theme template as `wp-content/themes/vite-theme/index.php`. The `wp_head()` and `wp_footer()` calls let WordPress print the enqueued assets:
+
+```php
+<!doctype html>
+<html <?php language_attributes(); ?>>
+<head>
+	<meta charset="<?php bloginfo( 'charset' ); ?>">
+	<?php wp_head(); ?>
+</head>
+<body <?php body_class(); ?>>
+	<?php wp_body_open(); ?>
+	<p class="vite-banner">Waiting for Vite.</p>
+	<?php wp_footer(); ?>
+</body>
+</html>
+```
+
+Save the following files inside that theme directory. This example targets Vite 6; use the latest patched 6.x release allowed by the package range.
 
 ```json
 {
@@ -62,18 +93,21 @@ Create `wp-content/themes/vite-theme/` with a normal theme shell (`style.css`, `
 }
 ```
 
+Save that JSON as `package.json`.
+
 ```js
 // vite.config.js
 import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: '.',
-  base: '/',
+  base: './',
   publicDir: false,
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     manifest: true,
+    modulePreload: { polyfill: false },
     rollupOptions: {
       input: 'src/main.js',
     },
@@ -83,17 +117,20 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: ['vite.wp-vite.lndo.site'],
-    origin: 'https://vite.wp-vite.lndo.site:8443',
+    origin: 'https://vite.wp-vite.lndo.site',
+    cors: { origin: 'https://wp-vite.lndo.site' },
     hmr: {
       host: 'vite.wp-vite.lndo.site',
       protocol: 'wss',
-      clientPort: 8443,
+      clientPort: 443,
     },
   },
 });
 ```
 
-Swap `wp-vite` for your app name. Drop `:8443` from `origin` and `clientPort` when `lando info` shows plain `443`. `allowedHosts` must match the Vite hostname Traefik sends.
+Swap `wp-vite` for your app name and adjust the domain if you've changed it. `cors.origin` is the WordPress origin, not the Vite origin. Vite's default CORS policy does not allow this cross-origin module load. Keep an explicit origin and hostname allowlist, not `true`.
+
+Lando's proxy terminates HTTPS and forwards HTTP and WebSocket upgrades to Node on `5173`. Vite therefore listens on `0.0.0.0` without `server.https`; the browser connects using `wss` on the proxy's HTTPS port. `strictPort` prevents Vite from silently moving away from the declared endpoint. The relative `base` keeps built asset URLs inside the theme's `dist` directory.
 
 ```js
 // src/main.js
@@ -101,7 +138,7 @@ import './main.css';
 
 const banner = document.querySelector('.vite-banner');
 if (banner) {
-  banner.textContent = 'Vite HMR is connected.';
+  banner.textContent = 'Vite entry loaded.';
 }
 ```
 
@@ -130,12 +167,12 @@ Point the theme at the Vite origin while you develop. Use the HTTPS URL `lando i
 declare(strict_types=1);
 
 const VITE_THEME_DEV = true;
-const VITE_THEME_ORIGIN = 'https://vite.wp-vite.lndo.site:8443';
+const VITE_THEME_ORIGIN = 'https://vite.wp-vite.lndo.site';
 
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( VITE_THEME_DEV ) {
-		wp_enqueue_script( 'vite-client', VITE_THEME_ORIGIN . '/@vite/client', array(), null, true );
-		wp_enqueue_script( 'vite-theme-main', VITE_THEME_ORIGIN . '/src/main.js', array( 'vite-client' ), null, true );
+		wp_enqueue_script_module( 'vite-client', VITE_THEME_ORIGIN . '/@vite/client', array(), null );
+		wp_enqueue_script_module( 'vite-theme-main', VITE_THEME_ORIGIN . '/src/main.js', array(), null );
 		return;
 	}
 
@@ -159,23 +196,18 @@ add_action( 'wp_enqueue_scripts', static function (): void {
 		}
 	}
 	if ( ! empty( $entry['file'] ) ) {
-		wp_enqueue_script(
+		wp_enqueue_script_module(
 			'vite-theme-main',
 			get_stylesheet_directory_uri() . '/dist/' . ltrim( (string) $entry['file'], '/' ),
 			array(),
-			null,
-			true
+			null
 		);
 	}
 } );
 
-add_filter( 'script_loader_tag', static function ( string $tag, string $handle, string $src ): string {
-	if ( VITE_THEME_DEV && in_array( $handle, array( 'vite-client', 'vite-theme-main' ), true ) ) {
-		return '<script type="module" src="' . esc_url( $src ) . '"></script>' . "\n";
-	}
-	return $tag;
-}, 10, 3 );
 ```
+
+Save this as `functions.php`. `wp_enqueue_script_module()` emits `type="module"` in development and production and requires WordPress 6.5+. No `script_loader_tag` filter is needed.
 
 Activate the theme:
 
@@ -189,24 +221,35 @@ lando wp theme activate vite-theme
 lando npm --prefix wp-content/themes/vite-theme run dev
 ```
 
-Leave that running. Open the WordPress HTTPS URL from `lando info`. The page should load `@vite/client` and `src/main.js` from `vite.wp-vite.lndo.site`, and the banner text should flip to `Vite HMR is connected.` Edit `src/main.css` or `src/main.js` and the browser picks up the change without a full reload.
+Leave that running. Open the WordPress HTTPS URL from `lando info`. The page should load `@vite/client` and `src/main.js` from `vite.wp-vite.lndo.site`, and the banner text should flip to `Vite entry loaded.` That text proves the entry ran, not that the HMR socket connected. In browser developer tools, confirm a WebSocket connection to the Vite hostname using `wss` and status `101`.
+
+Edit `src/main.css` to see a CSS hot update without a full reload. This plain JavaScript entry does not accept HMR updates, so edits to `src/main.js` trigger a full page reload. If file changes aren't detected on a mounted filesystem, try `server.watch: { usePolling: true }`; polling uses more CPU.
 
 Confirm the Vite origin serves the entry:
 
 ```sh
-curl -fsS https://vite.wp-vite.lndo.site:8443/src/main.js
-curl -fsS https://vite.wp-vite.lndo.site:8443/@vite/client | head
+curl -fsS https://vite.wp-vite.lndo.site/src/main.js
+curl -fsS -o /dev/null https://vite.wp-vite.lndo.site/@vite/client
 ```
 
 ## Build for production
+
+The build empties the theme's `dist` directory. Keep only generated assets there.
 
 ```sh
 lando npm --prefix wp-content/themes/vite-theme run build
 ```
 
-That writes `dist/.vite/manifest.json` plus hashed assets under `dist/assets/`. Set `VITE_THEME_DEV` to `false` so WordPress enqueues the built files from the theme directory instead of the Vite origin.
+That writes `dist/.vite/manifest.json` plus hashed assets under `dist/assets/`. Set `VITE_THEME_DEV` to `false` so WordPress enqueues the built files from the theme directory instead of the Vite origin. Stop the dev server with Ctrl+C, reload WordPress, and confirm the browser loads the JavaScript and CSS from `/wp-content/themes/vite-theme/dist/assets/` without requests to the Vite hostname.
 
-## Config checks
+The manifest reader covers this single-entry example. If you add code splitting, also follow each manifest entry's `imports` recursively and enqueue those chunks' CSS, as described in [Vite's backend integration guide](https://v6.vite.dev/guide/backend-integration).
+
+## Check the Landofile
+
+```sh
+lando app:config:lint
+lando app:config --format=json
+```
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -221,19 +264,16 @@ That writes `dist/.vite/manifest.json` plus hashed assets under `dist/assets/`. 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"wordpress\"" } }} />
-    </Step>
-    <Step name="start">
-      <Run command="lando start" />
-      <Verify event="post-start" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"npm\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 </Guide>
 
-## Next
+## Continue configuring the app
 
 - [Run the WordPress recipe](wordpress-workflow.mdx)
 - [Add Node.js](../services/node.mdx)
