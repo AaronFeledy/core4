@@ -113,11 +113,21 @@ describe("resolveServiceEnvironmentSecrets", () => {
     // Then
     expect(resolved[serviceName]).toEqual({
       TOKEN: "resolved-canary",
-      EMBEDDED: "prefix-${secret:API_TOKEN}",
-      PLAIN: "visible",
     });
     expect(plan.services[serviceName]?.environment).toEqual(original);
     expect(JSON.stringify(plan)).not.toContain("resolved-canary");
+  });
+
+  test("returns harmless empty overrides when a service has no exact secret references", async () => {
+    // Given
+    const plainPlan = {
+      ...plan,
+      services: { [serviceName]: { ...service, environment: { PLAIN: "visible" } } },
+    };
+    // When
+    const resolved = await Effect.runPromise(resolveServiceEnvironmentSecrets(plainPlan));
+    // Then
+    expect(resolved).toEqual({ [serviceName]: {} });
   });
 
   test("fails with the missing secret identity before provider action", async () => {
