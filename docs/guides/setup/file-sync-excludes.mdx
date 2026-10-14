@@ -18,7 +18,7 @@ If a path must stay synced even when it matches an exclude, add the same pattern
 
 An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it.
 
-Set `appMount: false` when a service does not use your app's code, the way a database doesn't. Lando mounts no app source and sets no `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, or `LANDO_WEBROOT`, and the container starts in the image's own working directory unless you set `workingDirectory`. On webroot-serving types (`php`, `nginx`, `apache`, `static`, `tomcat`) a relative or omitted `webroot` then fails planning with a message telling you to set an absolute container path or remove `appMount: false`; an absolute `webroot` such as `/var/www/html` serves content the image provides. Data stores never mount the app, so they need nothing. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
+Set `appMount: false` when a service does not use your app's code. Lando mounts no app source and sets no `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, or `LANDO_WEBROOT`. The container starts in the image's own working directory unless you set `workingDirectory`. On webroot-serving types (`php`, `nginx`, `apache`, `static`, `tomcat`), a relative or omitted `webroot` fails planning: set an absolute container path or remove `appMount: false`. An absolute `webroot` such as `/var/www/html` serves content the image provides. Data stores already skip the app mount. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
 
 ```yaml
 services:

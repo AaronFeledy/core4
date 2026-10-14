@@ -14,27 +14,28 @@ const translate = (text: string) => {
   return Effect.runPromise(translator.translate(documentSet([document(".lando.yml", text)])));
 };
 
-test.each(["", ', webroot: "."', ', webroot: "/site"'])(
-  "translates the legacy Tomcat ROOT webapp with options %s",
-  async (options) => {
-    // Given / When: a complete Lando 3 document deploys webapps under its source webroot.
-    const result = await translate(`services: {java: {type: "tomcat:10"${options}}}`);
-    // Then: the translated service selects ROOT and flags other webapps for review.
-    expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
-      {
-        services: {
-          java: {
-            type: "tomcat:10",
-            webroot: options.includes("/site") ? "site/webapps/ROOT" : "webapps/ROOT",
-          },
+test.each([
+  ["", "webapps/ROOT"],
+  [', webroot: "."', "webapps/ROOT"],
+  [', webroot: "/site"', "site/webapps/ROOT"],
+])("translates the legacy Tomcat ROOT webapp with options %s", async (options, webroot) => {
+  // Given / When: a complete Lando 3 document deploys webapps under its source webroot.
+  const result = await translate(`services: {java: {type: "tomcat:10"${options}}}`);
+  // Then: the translated service selects ROOT and flags other webapps for review.
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    {
+      services: {
+        java: {
+          type: "tomcat:10",
+          webroot,
         },
       },
-    ]);
-    expect(result.diagnostics).toEqual([
-      expect.objectContaining({ kind: "needs-review", keyPath: ["services", "java", "webroot"] }),
-    ]);
-  },
-);
+    },
+  ]);
+  expect(result.diagnostics).toEqual([
+    expect.objectContaining({ kind: "needs-review", keyPath: ["services", "java", "webroot"] }),
+  ]);
+});
 
 test("lowers catalog services when a document declares database and node", async () => {
   // Given / When

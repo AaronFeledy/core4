@@ -187,7 +187,7 @@ describe("resolved service document roots", () => {
     },
   );
 
-  test("Tomcat normalizes its deploy mount without rewriting the authored path", async () => {
+  test("Tomcat preserves the authored webroot without moving the app mount", async () => {
     // Given: an absolute deployment path containing redundant segments.
     const webroot = "/usr/local/tomcat/webapps/../webapps/ROOT";
     const config = Schema.decodeUnknownSync(LandofileShape)({
@@ -208,7 +208,7 @@ describe("resolved service document roots", () => {
     const resolution = await Effect.runPromise(tomcatServiceType.resolve({ ...input, name: "java" }));
     const plan = await composeServicePlan(input);
 
-    // Then: only the runtime mount is normalized.
+    // Then: the authored webroot is kept and the app mount stays at /app.
     expect(String(resolution.normalizedConfig.webroot)).toBe(webroot);
     expect(String(plan.appMount?.target)).toBe("/app");
   });

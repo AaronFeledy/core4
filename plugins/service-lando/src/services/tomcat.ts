@@ -15,6 +15,7 @@ import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
 const TomcatFeatureConfig = Schema.Struct({ webroot: Schema.String, ownsImageConfig: Schema.Boolean });
+type TomcatFeatureConfig = typeof TomcatFeatureConfig.Type;
 const VERSIONS = ["9", "10", "11"] as const;
 const ARTIFACTS = {
   "9": "tomcat:9-jre21",
@@ -27,7 +28,7 @@ export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
-  const { webroot, ownsImageConfig } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
+  const { webroot, ownsImageConfig } = ctx.config as TomcatFeatureConfig;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
   ctx.addEndpoint({

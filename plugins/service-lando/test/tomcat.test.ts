@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
+import { composeService } from "@lando/engine/services/feature";
+import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
 import {
@@ -65,6 +66,41 @@ const resolveTomcatService = (serviceType: ServiceType, serviceDefinition: Recor
   );
 
 describe("tomcat ServiceType", () => {
+  test.each([
+    { webroot: 42, ownsImageConfig: true },
+    { webroot: "/app", ownsImageConfig: "true" },
+    { webroot: "/app", ownsImageConfig: true, unexpected: true },
+  ])("rejects malformed feature config %j before applying it", async (config) => {
+    // Given: feature config that violates the declared Tomcat schema.
+    // When: it crosses the engine's composition boundary.
+    const result = await Effect.runPromise(
+      Effect.result(
+        composeService({
+          base: {
+            name: ServiceName.make("appserver"),
+            type: "tomcat",
+            provider: ProviderId.make("lando"),
+            primary: true,
+            defaultFeatures: [],
+          },
+          baseKind: "lando",
+          appRoot: "/srv/apps/myapp",
+          normalizedConfig: {},
+          features: [{ id: TOMCAT_FEATURE_ID, definition: tomcatServiceFeature, config }],
+        }),
+      ),
+    );
+    // Then: schema validation rejects it before the feature can configure the image.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ServiceFeatureError",
+        feature: TOMCAT_FEATURE_ID,
+        message: expect.stringContaining("Invalid service feature config"),
+      },
+    });
+  });
+
   for (const [id, image, serviceType] of [
     ["tomcat:9", "tomcat:9-jre21", tomcat9ServiceType],
     ["tomcat:10", "tomcat:10-jre21", tomcat10ServiceType],

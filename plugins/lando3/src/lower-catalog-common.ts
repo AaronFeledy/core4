@@ -174,8 +174,10 @@ export const lowerCatalogCommon = (
     diagnostics.push(rewrittenMeUser({ ctx }));
   }
   if (resolution.id === "tomcat") {
-    const source = typeof service.webroot === "string" ? service.webroot.replace(/^\/+/, "") : ".";
-    const webapps = posix.join(source, "webapps");
+    const webapps = posix.join(
+      typeof service.webroot === "string" ? service.webroot.replace(/^\/+/, "") : ".",
+      "webapps",
+    );
     patch.webroot = posix.join(webapps, "ROOT");
     diagnostics.push(
       needsReviewServiceKey({

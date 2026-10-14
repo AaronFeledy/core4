@@ -46,7 +46,7 @@ describe("lowerCatalogCommon", () => {
   test.each(["/site", "//site//./", "./target/../site/"])(
     "normalizes Tomcat source webroot %s",
     (webroot) => {
-      // Given / When: a legacy source path is lowered, including absolute-looking paths prefixed by /app in Lando 3.
+      // Given / When: a relative or absolute-looking legacy source path is lowered.
       const result = lowerCatalogCommon({ type: "tomcat", webroot }, ctx);
       // Then: the source path remains app-relative and only its ROOT webapp is deployed.
       expect(result.patch).toEqual({ type: "tomcat", webroot: "site/webapps/ROOT" });
