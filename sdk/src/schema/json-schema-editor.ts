@@ -31,9 +31,7 @@ export const getEditorJsonSchema = (name: "LandofileShape" | "GlobalConfig"): Js
     ...document.schema,
     ...(Object.keys(document.definitions).length === 0 ? {} : { definitions: document.definitions }),
   });
-  if (name === "LandofileShape") {
-    repairLandofileExtensions(artifact);
-    artifact["x-lando-yaml-tags"] = LANDOFILE_YAML_TAGS;
-  }
-  return artifact;
+  if (name !== "LandofileShape") return artifact;
+  repairLandofileExtensions(artifact);
+  return { ...artifact, "x-lando-yaml-tags": LANDOFILE_YAML_TAGS };
 };
