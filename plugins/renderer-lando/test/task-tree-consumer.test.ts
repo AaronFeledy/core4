@@ -24,7 +24,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import { RENDERER_CAPABILITIES_TTY_INITIAL, type RendererIO } from "@lando/sdk/renderer";
+import { RENDERER_CAPABILITIES_TTY, type RendererIO } from "@lando/sdk/renderer";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 
@@ -556,7 +556,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              makeLandoService(io, () => RENDERER_CAPABILITIES_TTY_INITIAL),
+              makeLandoService(io, () => RENDERER_CAPABILITIES_TTY),
               Layer.provideMerge(
                 makeLandoEventConsumer(io, {
                   createLiveRegion: () => Promise.resolve(controller),

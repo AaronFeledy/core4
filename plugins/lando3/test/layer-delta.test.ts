@@ -25,6 +25,55 @@ const sorted = (value: unknown): void => {
 };
 
 describe("layer deltas", () => {
+  test("emits complete tooling cmds in the higher layer without relocation", () => {
+    // Given an inherited list and a local list with one changed and one unchanged step.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "old-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    const local = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "new-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    // When translation plans replayable layer deltas.
+    const result = check([prefix("dist", base), prefix("local", local)]);
+    // Then the local list is emitted whole, including the unchanged step.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([base, local]);
+    expect(result.relocations).toEqual([]);
+  });
+
+  test("replaces tooling cmds across layers without relocating the inherited list", () => {
+    // Given an inherited list that the local layer shortens.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "old-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    const local = { tooling: { test: { cmds: [{ service: "a", cmd: "new-a" }] } } };
+    // When translation plans replayable layer deltas.
+    const result = check([prefix("dist", base), prefix("local", local)]);
+    // Then both effective prefixes are preserved without relocation.
+    expect(result.emitted.map(({ fragment }) => fragment)).toEqual([base, local]);
+    expect(result.relocations).toEqual([]);
+  });
+
   test("dist-redis/local-false preserves php in dist", () => {
     const result = check([
       prefix("dist", { services: { redis: { type: "redis" }, php: { type: "php:8.3" } } }),

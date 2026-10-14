@@ -33,16 +33,35 @@ describe("attachToolingHostIo", () => {
     [true, false, true],
     [true, true, false],
     [false, true, true],
+    [false, false, true],
+    [true, false, false],
+    [false, false, false],
   ])("gates keyboard input with enabled=%s stdinTTY=%s stdoutTTY=%s", (enabled, stdinTTY, stdoutTTY) => {
     // Given
     const stdin = Object.assign(new PassThrough(), { isTTY: stdinTTY });
     // When
     const attached = attachToolingHostIo(enabled, stdin, { isTTY: stdoutTTY, columns: 140, rows: 35 });
     // Then
-    expect(attached.tty).toBe(enabled && stdoutTTY);
-    expect(attached.stdinStream !== undefined).toBe(enabled && stdinTTY && stdoutTTY);
+    expect(attached.tty).toBe(enabled && stdinTTY && stdoutTTY);
+    expect(attached.stdinStream !== undefined).toBe(!stdinTTY || (enabled && stdoutTTY));
     expect(attached.terminalResize !== undefined).toBe(enabled && stdinTTY && stdoutTTY);
     stdin.destroy();
+  });
+
+  test.each([true, false])("forwards piped bytes through EOF with keyboard enabled=%s", async (enabled) => {
+    // Given
+    const stdin = Object.assign(new PassThrough(), { isTTY: false });
+    const attached = attachToolingHostIo(enabled, stdin, { isTTY: true });
+    stdin.end("select 42;\n");
+    // When
+    const received: string[] = [];
+    if (attached.stdinStream !== undefined) {
+      for await (const chunk of attached.stdinStream) received.push(new TextDecoder().decode(chunk));
+    }
+    // Then
+    expect(received.join("")).toBe("select 42;\n");
+    expect(attached.tty).toBe(false);
+    expect(attached.terminalResize).toBeUndefined();
   });
 
   test("successive readers receive input with cooked mode between readers", async () => {
