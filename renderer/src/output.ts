@@ -140,32 +140,73 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return out;
 };
 
+const utf8SequenceLength = (lead: number): number => {
+  if (lead <= 0x7f) return 1;
+  if (lead >= 0xc2 && lead <= 0xdf) return 2;
+  if (lead >= 0xe0 && lead <= 0xef) return 3;
+  if (lead >= 0xf0 && lead <= 0xf4) return 4;
+  return 0;
+};
+
+const isUtf8Continuation = (byte: number): boolean => (byte & 0xc0) === 0x80;
+
+const isUtf8SequenceValid = (bytes: Uint8Array, start: number, length: number): boolean => {
+  for (let offset = 1; offset < length; offset += 1) {
+    if (!isUtf8Continuation(bytes[start + offset] ?? 0)) return false;
+  }
+  const lead = bytes[start] ?? 0;
+  const next = bytes[start + 1] ?? 0;
+  if (length === 3 && lead === 0xe0 && next < 0xa0) return false;
+  if (length === 3 && lead === 0xed && next >= 0xa0) return false;
+  if (length === 4 && lead === 0xf0 && next < 0x90) return false;
+  if (length === 4 && lead === 0xf4 && next >= 0x90) return false;
+  return true;
+};
+
+const scanUtf8 = (bytes: Uint8Array): { readonly completeEnd: number; readonly invalid: boolean } => {
+  let index = 0;
+  while (index < bytes.byteLength) {
+    const length = utf8SequenceLength(bytes[index] ?? 0);
+    if (length === 0) return { completeEnd: index, invalid: true };
+    if (index + length > bytes.byteLength) {
+      for (let offset = 1; offset < bytes.byteLength - index; offset += 1) {
+        if (!isUtf8Continuation(bytes[index + offset] ?? 0)) return { completeEnd: index, invalid: true };
+      }
+      return { completeEnd: index, invalid: false };
+    }
+    if (!isUtf8SequenceValid(bytes, index, length)) return { completeEnd: index, invalid: true };
+    index += length;
+  }
+  return { completeEnd: index, invalid: false };
+};
+
 /**
  * Live-frame UTF-8 policy: redact whenever the destination is a TTY or the
  * stream is valid UTF-8. Pass raw provider bytes only when stdout is
- * redirected and the stream is not valid UTF-8 (gzip/tar archives). A
- * streaming decoder keeps a multibyte character that splits across chunks
- * from becoming U+FFFD. Held-back incomplete bytes are written raw when the
- * next chunk is not UTF-8, and again at end of stream.
+ * redirected and the stream is not valid UTF-8 (gzip/tar archives). Held
+ * incomplete bytes are tracked from the input, not by re-encoding decoded
+ * text, so a leading BOM cannot shift the leftover count. Those held bytes
+ * are written raw when the next chunk is not UTF-8, and again at end of
+ * stream on a redirected sink.
  */
 const createStreamingUtf8Decoder = (fatal: boolean) => {
-  const decoder = new TextDecoder("utf-8", { fatal });
-  const encoder = new TextEncoder();
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
   let pending: Uint8Array = new Uint8Array(0);
   let binary = false;
   return {
     decode(chunk: Uint8Array): Utf8Decode {
       if (binary) return { kind: "binary", bytes: chunk };
-      try {
-        const text = decoder.decode(chunk, { stream: true });
-        pending = concatBytes(pending, chunk).subarray(encoder.encode(text).byteLength);
-        return { kind: "text", text };
-      } catch {
-        binary = true;
-        const bytes = concatBytes(pending, chunk);
+      const buf = concatBytes(pending, chunk);
+      const { completeEnd, invalid } = scanUtf8(buf);
+      if (invalid) {
         pending = new Uint8Array(0);
-        return { kind: "binary", bytes };
+        if (!fatal) return { kind: "text", text: decoder.decode(buf) };
+        binary = true;
+        return { kind: "binary", bytes: buf };
       }
+      const complete = buf.subarray(0, completeEnd);
+      pending = buf.subarray(completeEnd).slice();
+      return { kind: "text", text: complete.byteLength === 0 ? "" : decoder.decode(complete) };
     },
     flush(): Uint8Array | undefined {
       if (pending.byteLength === 0) return undefined;
@@ -249,13 +290,16 @@ export const layerStreamFrameSink = (
         yield* renderer.output.stdout(`${text}\n`);
       });
       const flush = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+        // Raw leftover is only for a redirected non-UTF-8 tail. A TTY stays on
+        // the redacting text path; its decoder is non-fatal.
+        if (isTty || format === "yaml") return;
         for (const [tag, decoder] of [
           ["stdout", stdoutUtf8],
           ["stderr", stderrUtf8],
         ] as const) {
           const leftover = decoder.flush();
           if (leftover === undefined) continue;
-          if (!writeRaw(tag, leftover) && format !== "yaml") {
+          if (!writeRaw(tag, leftover)) {
             const fallback = new TextDecoder().decode(leftover);
             yield* tag === "stderr" ? renderer.output.stderr(fallback) : renderer.output.stdout(fallback);
           }

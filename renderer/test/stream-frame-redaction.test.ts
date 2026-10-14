@@ -137,4 +137,48 @@ describe("stream frame redaction", () => {
     // Then
     expect(io.stdoutBytes()).toEqual(input);
   });
+
+  test("preserves a leading UTF-8 BOM through redirected exec output", async () => {
+    // Given: a redirected sink and EF BB BF hello, which used to become hellollo.
+    const io = createBufferedRendererIO();
+    const input = new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x65, 0x6c, 0x6c, 0x6f]);
+    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
+    );
+
+    // When
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: input, raw: true });
+        if (sink.flush !== undefined) yield* sink.flush();
+      }).pipe(Effect.provide(layer)),
+    );
+
+    // Then
+    expect(io.stdoutBytes()).toEqual(input);
+    expect(io.stdoutBytes()).not.toEqual(new TextEncoder().encode("hellollo"));
+  });
+
+  test("does not write raw leftover bytes when flushing a TTY sink", async () => {
+    // Given: a TTY sink whose decoder is non-fatal, plus an unfinished sequence.
+    const io = createBufferedRendererIO({ isTTY: true });
+    const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
+    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
+    );
+
+    // When
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: input, raw: true });
+        if (sink.flush !== undefined) yield* sink.flush();
+      }).pipe(Effect.provide(layer)),
+    );
+
+    // Then: leftover stays off the raw path. Flush must not call writeRaw on a TTY.
+    expect(io.stdout()).toBe("abc");
+    expect(io.stdoutBytes()).toEqual(new TextEncoder().encode("abc"));
+  });
 });
