@@ -1,10 +1,16 @@
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { type ConfigTranslateDiagnostic, type ConfigTranslateOutput, PortablePath } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
+import {
+  type ConfigTranslateDiagnostic,
+  type ConfigTranslateOutput,
+  LandofileOverrideWire,
+  PortablePath,
+} from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import { resolveContainedSourcePath } from "./app-config-translate-sources.ts";
 
 const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
+const isOverrideWire = Schema.is(LandofileOverrideWire(Schema.Unknown));
 
 /**
  * Include targets are app-root relative after `.` and `..` collapse. A `..`
@@ -44,8 +50,10 @@ export const validateTranslatedIncludeTargets: (
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   for (const output of outputs) {
     const sourceId = output.sourceIds[0];
-    if (sourceId === undefined || !Array.isArray(output.fragment.includes)) continue;
-    for (const [index, entry] of output.fragment.includes.entries()) {
+    const authoredIncludes = output.fragment.includes;
+    const includes = isOverrideWire(authoredIncludes) ? authoredIncludes.value : authoredIncludes;
+    if (sourceId === undefined || !Array.isArray(includes)) continue;
+    for (const [index, entry] of includes.entries()) {
       if (
         typeof entry !== "object" ||
         entry === null ||
