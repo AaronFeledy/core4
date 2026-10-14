@@ -64,8 +64,9 @@ lights up red until you register them. Add this to `.vscode/settings.json`:
 
 The editor now parses the directives, but schema validation still checks the
 tagged value against the field: `DEBUG: !reset` can still get flagged for an
-empty payload. That warning is noise. `lando app:config:lint` owns directive
-placement and payload rules. The published schema lists both tags under
+empty payload. That warning is noise. `lando app:config:lint` checks directive
+placement and payload rules in discovered Landofile layers, not included fragment
+contents. The published schema lists both tags under
 `x-lando-yaml-tags` so editor tooling can pick them up.
 
 ## What the schema catches

@@ -168,6 +168,8 @@ Where they go:
 
 - On a mapping key: `services.web: !reset`, `environment.DEBUG: !reset`, or a key inside a list item, such as `filters: !override []` inside a route object.
 - Not at the document root, not directly on a list item (`- !reset`), and not on a field that identifies a list entry: route `hostname`, `scheme`, and `pathPrefix`, dependency `service`, filter `name` and `type`, endpoint and port `name`, log `id` and `path`. To drop one entry from such a list, `!override` the whole list.
+- Inside sequence entries only when the schema declares a keyed collection. Non-keyed sequences, such as tooling `cmds`, event steps, and mounts, do not accept directives inside their entries.
+- Not inside dependency-map entries or on security CA aliases (`cas`, `certificate-authority`, or `certificate-authorities`). CA directives use canonical `ca`.
 - `!reset` ignores a scalar or empty payload, so the Compose spelling `!reset []` works too. `!override` needs a value: a bare `!override` with nothing indented below it fails.
 - `routes: !reset` deletes the key, so generated default hostnames come back. `routes: []` keeps the key and gives the service no hostname at all.
 - `!reset` on a key no lower layer set does nothing. A later plain value puts a reset key back.
