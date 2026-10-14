@@ -194,7 +194,7 @@ export const apacheServiceType: ServiceType = {
             id: "lando.env",
             config: { webroot },
           },
-          { id: "lando.app-mount", config: { target: "/app", realization: "passthrough" } },
+          { id: "lando.app-mount", config: { target: "/app" } },
         ],
       };
     }),

@@ -1,23 +1,27 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
+
+import { composeService } from "@lando/engine/services/feature";
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 describe("lando.app-mount", () => {
   test("leaves the service unchanged when no target opts it in", async () => {
-    // Given a base-default feature with no mount config.
+    // Given
     const { ctx, calls } = recordFeatureContext({ serviceType: "redis", normalizedConfig: {}, config: {} });
 
-    // When the feature applies.
+    // When
     await Effect.runPromise(landoAppMountFeature.apply(ctx));
 
-    // Then no mount, environment, or working directory is contributed.
+    // Then
     expect(calls).toEqual([]);
   });
 
   test("merges authored mount intent when a default target opts it in", async () => {
-    // Given distinct feature defaults and authored overrides.
+    // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType: "python",
       normalizedConfig: {
@@ -28,10 +32,10 @@ describe("lando.app-mount", () => {
           includes: ["src"],
         },
       },
-      config: { target: "/app", readOnly: true, excludes: ["cache", ".venv"], realization: "passthrough" },
+      config: { target: "/app", readOnly: true, excludes: ["cache", ".venv"] },
     });
 
-    // When the feature applies.
+    // When
     await Effect.runPromise(landoAppMountFeature.apply(ctx));
 
     // Then the single app-source intent carries the merged policy, without a mirror bind.
@@ -44,7 +48,6 @@ describe("lando.app-mount", () => {
           readOnly: false,
           excludes: ["cache", ".venv", "vendor"],
           includes: ["src"],
-          realization: "passthrough",
         },
       ],
       ["addEnv", "LANDO_APP_ROOT", "/workspace"],
@@ -54,7 +57,7 @@ describe("lando.app-mount", () => {
   });
 
   test("realizes authored mounts in order when no default target opts it in", async () => {
-    // Given a data store with mixed authored mount syntax and no app-mount config.
+    // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType: "redis",
       normalizedConfig: {
@@ -64,13 +67,55 @@ describe("lando.app-mount", () => {
       config: {},
     });
 
-    // When the feature applies.
+    // When
     await Effect.runPromise(landoAppMountFeature.apply(ctx));
 
-    // Then authored intent is realized once without app-source or process defaults.
+    // Then
     expect(calls).toEqual([
       ["addMount", { type: "bind", source: "/srv/apps/myapp/config", target: "/etc/redis", readOnly: true }],
       ["addMount", { type: "tmpfs", target: "/scratch", readOnly: false }],
     ]);
+  });
+
+  test.each([
+    { target: 42 },
+    { readOnly: "yes" },
+    { excludes: [3] },
+    { unexpected: true },
+    { target: "/app", realization: "passthrough" },
+  ])("rejects malformed feature config %j before applying it", async (config) => {
+    // Given
+    let applied = false;
+    const definition = {
+      ...landoAppMountFeature,
+      apply: () =>
+        Effect.sync(() => {
+          applied = true;
+        }),
+    };
+    // When
+    const exit = await Effect.runPromiseExit(
+      composeService({
+        base: {
+          name: ServiceName.make("web"),
+          type: "test",
+          provider: ProviderId.make("lando"),
+          primary: true,
+          defaultFeatures: [],
+        },
+        baseKind: "lando",
+        appRoot: "/srv/project",
+        normalizedConfig: {},
+        features: [{ id: definition.id, definition, config }],
+      }),
+    );
+    // Then
+    expect(applied).toBe(false);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("Expected feature config validation failure");
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(ServiceFeatureError);
+    if (!(error instanceof ServiceFeatureError)) throw new Error("Expected service feature error");
+    expect(error.feature).toBe(landoAppMountFeature.id);
   });
 });

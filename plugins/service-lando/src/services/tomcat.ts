@@ -84,10 +84,7 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
           webroot,
           certs: input.service.certs ?? true,
         },
-        features: [
-          { id: TOMCAT_FEATURE_ID },
-          { id: "lando.app-mount", config: { target: webroot, realization: "passthrough" } },
-        ],
+        features: [{ id: TOMCAT_FEATURE_ID }, { id: "lando.app-mount", config: { target: webroot } }],
       };
     });
   },

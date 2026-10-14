@@ -34,14 +34,14 @@ const families = [
 describe("app-mount ownership", () => {
   for (const type of families) {
     test(`disables the mount and mount-derived defaults when ${type} opts out`, async () => {
-      // Given an opted-in service family with appMount disabled.
-      const service = {
+      // Given
+      const service: ServiceConfig = {
         appMount: false,
         ...(type === "lando" || type === "compose" ? { image: "alpine:3.21" } : {}),
-      } as const;
-      // When the service is composed.
+      };
+      // When
       const plan = await planService(type, service);
-      // Then neither a synthetic mount nor its process defaults remain.
+      // Then
       expect(plan.appMount).toBeUndefined();
       expect(plan.mounts.some((mount) => mount.type === "bind" && mount.source === "/srv/project")).toBe(
         false,
@@ -52,15 +52,15 @@ describe("app-mount ownership", () => {
     });
     if (type !== "compose") {
       test(`preserves an authored working directory when ${type} opts out`, async () => {
-        // Given a disabled mount and an explicit process directory.
-        const service = {
+        // Given
+        const service: ServiceConfig = {
           appMount: false,
           workingDirectory: PortablePath.make("/custom"),
           ...(type === "lando" ? { image: "alpine:3.21" } : {}),
-        } as const;
-        // When the service is composed.
+        };
+        // When
         const plan = await planService(type, service);
-        // Then the authored directory still owns the process field.
+        // Then
         expect(String(plan.workingDirectory)).toBe("/custom");
       });
     }
@@ -73,7 +73,7 @@ describe("app-mount ownership", () => {
     test(`replaces the synthetic apache mount when an authored ${typeof mounts[0]} mount occupies its target`, async () => {
       // Given an authored mount whose destination has an equivalent spelling.
       const service = { mounts };
-      // When apache is composed.
+      // When
       const plan = await planService("apache", service);
       // Then the authored mount replaces app-source intent while path defaults remain.
       expect(plan.appMount).toBeUndefined();
@@ -86,23 +86,22 @@ describe("app-mount ownership", () => {
 
   test("leaves data stores unmounted when the base feature has no target", async () => {
     // Given a data-store type without app-mount defaults.
-    const type = "redis";
-    // When its base features are composed.
-    const plan = await planService(type);
-    // Then it has no synthetic app-source mount.
+    // When
+    const plan = await planService("redis");
+    // Then
     expect(plan.appMount).toBeUndefined();
   });
 
   for (const type of ["redis", "mariadb", "php:8.3", "compose", "lando"]) {
     test(`realizes authored mounts exactly once and in order for ${type}`, async () => {
-      // Given mixed authored mount syntax independent of the synthetic app mount.
+      // Given
       const service: ServiceConfig = {
         ...(type === "compose" || type === "lando" ? { image: "alpine:3.21" } : {}),
         mounts: ["./config:/etc/service:ro", { type: "tmpfs", target: "/scratch" }],
       };
-      // When the real service features are composed.
+      // When
       const plan = await planService(type, service);
-      // Then both authored mounts are present once, in their authored order.
+      // Then
       expect(plan.mounts).toHaveLength(2);
       expect(plan.mounts).toMatchObject([
         { type: "bind", source: "/srv/project/config", target: "/etc/service", readOnly: true },
@@ -113,15 +112,15 @@ describe("app-mount ownership", () => {
 
   for (const image of ["traefik:v3.6", "axllent/mailpit:v1.29", "lando/ssh-agent:latest"]) {
     test(`preserves authored mounts when global-style compose ${image} disables its app mount`, async () => {
-      // Given a global-service-style config that opts out of app-source mounting.
+      // Given
       const service: ServiceConfig = {
         image,
         appMount: false,
         mounts: ["/var/run/docker.sock:/var/run/docker.sock:ro", "./config:/etc/service:ro"],
       };
-      // When compose runs its configured app-mount feature.
+      // When
       const plan = await planService("compose", service);
-      // Then authored mounts remain exactly once without a synthetic mount.
+      // Then
       expect(plan.appMount).toBeUndefined();
       expect(plan.mounts).toHaveLength(2);
       expect(plan.mounts).toMatchObject([
@@ -132,11 +131,11 @@ describe("app-mount ownership", () => {
   }
 
   test("uses tomcat webroot for its mount, path env, and default cwd", async () => {
-    // Given a custom Tomcat deployment webroot.
+    // Given
     const service = {
       webroot: PortablePath.make("/usr/local/tomcat/webapps/site"),
     };
-    // When Tomcat is composed.
+    // When
     const plan = await planService("tomcat", service);
     // Then the deployment path owns app-source intent and process defaults.
     expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/site");
@@ -152,30 +151,30 @@ describe("app-mount ownership", () => {
       webroot: PortablePath.make("/usr/local/tomcat/webapps/site"),
       appMount: { target: "/usr/local/tomcat/webapps/./site/" },
     };
-    // When Tomcat is composed.
+    // When
     const plan = await planService("tomcat", service);
-    // Then the canonical target is accepted.
+    // Then
     expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/site");
   });
 
   test("rejects a tomcat target when it differs from the deployment webroot", async () => {
-    // Given conflicting deployment and mount targets.
+    // Given
     const service = {
       webroot: PortablePath.make("/usr/local/tomcat/webapps/site"),
       appMount: { target: "/workspace" },
     };
-    // When Tomcat is composed.
+    // When
     const result = planService("tomcat", service);
-    // Then the failure names the deployment path and remediation.
+    // Then
     await expect(result).rejects.toThrow(
       /tomcat.*webroot.*\/usr\/local\/tomcat\/webapps\/site.*webroot.*appMount.target/,
     );
   });
 
   test("moves compose app intent without lando path env or cwd", async () => {
-    // Given a raw Compose service with a moved app-source mount.
+    // Given
     const service = { image: "alpine:3.21", appMount: { target: "/workspace" } };
-    // When its l337-base features are composed.
+    // When
     const plan = await planService("compose", service);
     // Then app-source intent moves without Lando process defaults or a mirror bind.
     expect(String(plan.appMount?.target)).toBe("/workspace");

@@ -13,7 +13,6 @@ const AppMountConfig = Schema.Struct({
   target: Schema.optionalKey(Schema.String),
   readOnly: Schema.optionalKey(Schema.Boolean),
   excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-  realization: Schema.optionalKey(Schema.Literal("passthrough")),
   workingDirectory: Schema.optionalKey(Schema.String),
 });
 
@@ -24,13 +23,7 @@ export const landoAppMountFeature: ServiceFeatureDefinition = {
   apply: (ctx) =>
     Effect.try({
       try: () => {
-        const config = ctx.config;
-        if (!Schema.is(AppMountConfig)(config)) {
-          throw new ServiceFeatureError({
-            feature: LANDO_APP_MOUNT_FEATURE_ID,
-            message: "Invalid app-mount config",
-          });
-        }
+        const config = ctx.config as typeof AppMountConfig.Type;
         const authoredMounts = (ctx.normalizedConfig.mounts ?? []).map((entry) =>
           parseServiceMount(entry, ctx.appRoot),
         );
@@ -63,7 +56,6 @@ export const landoAppMountFeature: ServiceFeatureDefinition = {
               ...(authored?.excludes ?? []).filter((entry) => !excludes.includes(entry)),
             ],
             includes: authored?.includes ?? [],
-            ...(config.realization === undefined ? {} : { realization: config.realization }),
           });
         }
         if (ctx.base === "lando") {

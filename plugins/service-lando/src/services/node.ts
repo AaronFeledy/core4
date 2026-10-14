@@ -318,7 +318,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
           {
             id: "lando.app-mount",
-            config: { target: "/app", realization: "passthrough" },
+            config: { target: "/app" },
           },
         ],
       };
@@ -357,7 +357,7 @@ export const nodeServiceType: ServiceType = {
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-          { id: "lando.app-mount", config: { target: "/app", realization: "passthrough" } },
+          { id: "lando.app-mount", config: { target: "/app" } },
         ],
         metadata: {
           node: {

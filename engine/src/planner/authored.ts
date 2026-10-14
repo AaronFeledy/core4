@@ -28,7 +28,7 @@ import { serviceHomeIntent } from "./home.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { applyAuthoredStorage, plannedContainerDestination } from "./storage.ts";
 
-const validateAuthoredAppMount = (
+export const validateAuthoredAppMount = (
   service: ServiceConfig,
   appRoot: string,
   serviceName: string,
@@ -43,14 +43,6 @@ const validateAuthoredAppMount = (
   ]);
   return target instanceof LandofileValidationError ? target : undefined;
 };
-
-export const applyAuthoredAppMount = (
-  servicePlan: ServicePlan,
-  service: ServiceConfig,
-  appRoot: string,
-  serviceName: string,
-): ServicePlan | LandofileValidationError =>
-  validateAuthoredAppMount(service, appRoot, serviceName) ?? servicePlan;
 
 export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.healthcheck;
@@ -189,9 +181,9 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         features,
       }).pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error)));
     });
-    const withAppMount = mergeDefaultExcludes(rawPlan);
+    const withDefaultExcludes = mergeDefaultExcludes(rawPlan);
     const withStorage = applyAuthoredStorage(
-      applyAuthoredHealthcheck(withAppMount, service),
+      applyAuthoredHealthcheck(withDefaultExcludes, service),
       service,
       input.appRoot,
       name,

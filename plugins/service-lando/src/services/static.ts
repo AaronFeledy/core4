@@ -145,7 +145,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
               id: "lando.env",
               config: { webroot: docRoot },
             },
-            { id: "lando.app-mount", config: { target: "/app", readOnly: true, realization: "passthrough" } },
+            { id: "lando.app-mount", config: { target: "/app", readOnly: true } },
           ],
         };
       }),

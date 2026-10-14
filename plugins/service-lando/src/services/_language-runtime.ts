@@ -38,7 +38,6 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly presets: Readonly<Record<F, LanguageFrameworkPreset>>;
   readonly baseEnv: Readonly<Record<string, string>>;
   readonly mountExcludes: readonly string[];
-  readonly mountRealization?: "passthrough";
   readonly includeWebrootInFeatureConfig: boolean;
   readonly extensionKey: string;
   readonly featureId: string;
@@ -136,7 +135,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
               config: {
                 target: "/app",
                 excludes: spec.mountExcludes,
-                ...(spec.mountRealization === undefined ? {} : { realization: spec.mountRealization }),
               },
             },
           ],

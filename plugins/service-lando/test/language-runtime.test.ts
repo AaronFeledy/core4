@@ -10,8 +10,6 @@ import { python312ServiceType, pythonServiceFeature } from "../src/services/pyth
 import { ruby33ServiceType, rubyServiceFeature } from "../src/services/ruby.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
-// Resolve returns feature references; raw app-mount intents are captured separately
-// because composition would erase the omitted-vs-explicit realization difference.
 const fixtures = [
   {
     language: "go",
@@ -22,7 +20,6 @@ const fixtures = [
     serviceFeature: goServiceFeature,
     baseEnv: { GOPATH: "/go", GOCACHE: "/root/.cache/go-build", CGO_ENABLED: "0" },
     excludes: [],
-    mountRealization: "passthrough",
     includeWebroot: false,
     resolution: {
       base: "lando",
@@ -33,7 +30,7 @@ const fixtures = [
           config: { framework: "none", version: "1.22", port: 8080, defaultCommand: null },
         },
         { id: "lando.env", config: {} },
-        { id: "lando.app-mount", config: { target: "/app", excludes: [], realization: "passthrough" } },
+        { id: "lando.app-mount", config: { target: "/app", excludes: [] } },
       ],
     },
     mounts: [
@@ -45,7 +42,6 @@ const fixtures = [
           readOnly: false,
           excludes: [],
           includes: [],
-          realization: "passthrough",
         },
       ],
     ],
@@ -59,7 +55,6 @@ const fixtures = [
     serviceFeature: pythonServiceFeature,
     baseEnv: { PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
     excludes: ["__pycache__"],
-    mountRealization: "passthrough",
     includeWebroot: false,
     resolution: {
       base: "lando",
@@ -72,7 +67,7 @@ const fixtures = [
         { id: "lando.env", config: {} },
         {
           id: "lando.app-mount",
-          config: { target: "/app", excludes: ["__pycache__"], realization: "passthrough" },
+          config: { target: "/app", excludes: ["__pycache__"] },
         },
       ],
     },
@@ -85,7 +80,6 @@ const fixtures = [
           readOnly: false,
           excludes: ["__pycache__"],
           includes: [],
-          realization: "passthrough",
         },
       ],
     ],
@@ -99,7 +93,6 @@ const fixtures = [
     serviceFeature: rubyServiceFeature,
     baseEnv: { BUNDLE_PATH: "vendor/bundle" },
     excludes: [".bundle"],
-    mountRealization: undefined,
     includeWebroot: true,
     resolution: {
       base: "lando",
@@ -171,7 +164,6 @@ for (const fixture of fixtures) {
     },
     baseEnv: fixture.baseEnv,
     mountExcludes: fixture.excludes,
-    ...(fixture.mountRealization === undefined ? {} : { mountRealization: fixture.mountRealization }),
     includeWebrootInFeatureConfig: fixture.includeWebroot,
     extensionKey: `lando-service-${fixture.language}`,
     featureId: `service-lando.${fixture.language}`,

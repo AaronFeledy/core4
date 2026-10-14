@@ -195,7 +195,7 @@ export const nginxServiceType: ServiceType = {
           },
           {
             id: "lando.app-mount",
-            config: { target: "/app", realization: "passthrough", workingDirectory: webroot },
+            config: { target: "/app", workingDirectory: webroot },
           },
         ],
       };

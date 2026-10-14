@@ -32,7 +32,7 @@ const planExit = (service: typeof ServiceConfig.Encoded) => {
 test("an authored apache mount replaces app-source intent at an equivalent destination", async () => {
   // Given a moved app mount and a differently spelled authored mount at that destination.
   const service = { type: "apache", appMount: { target: "/site" }, mounts: ["./alternate:/site/./"] };
-  // When the full planner composes the service.
+  // When
   const exit = await planExit(service);
   // Then only the authored bind remains, with active mount-derived defaults.
   expect(Exit.isSuccess(exit)).toBe(true);
@@ -47,9 +47,9 @@ test("an authored apache mount replaces app-source intent at an equivalent desti
 test.each(["relative", "/", "/app/.."])(
   'invalid authored appMount target "%s" retains its issue path',
   async (target) => {
-    // Given an opted-in service with an invalid authored destination.
+    // Given
     const service = { type: "apache", appMount: { target } };
-    // When the service is planned.
+    // When
     const exit = await planExit(service);
     // Then validation fails at the authored field before feature finalization can mask it.
     expect(Exit.isFailure(exit)).toBe(true);
@@ -64,15 +64,15 @@ test.each(["relative", "/", "/app/.."])(
 );
 
 test("a mismatched tomcat appMount target becomes actionable LandofileValidationError", async () => {
-  // Given a mount destination different from Tomcat's deployment webroot.
+  // Given
   const service = {
     type: "tomcat",
     webroot: "/usr/local/tomcat/webapps/site",
     appMount: { target: "/workspace" },
   };
-  // When the service type is resolved through the full planner.
+  // When
   const exit = await planExit(service);
-  // Then the typed failure names the deployment path and remediation.
+  // Then
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected planning failure");
   const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));

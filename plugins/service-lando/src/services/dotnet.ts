@@ -65,10 +65,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
         certs: input.service.certs ?? true,
         storage: [...(input.service.storage ?? []), NUGET_CACHE],
       },
-      features: [
-        { id: DOTNET_FEATURE_ID },
-        { id: "lando.app-mount", config: { target: "/app", realization: "passthrough" } },
-      ],
+      features: [{ id: DOTNET_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
     });
   },
 });
