@@ -2410,5 +2410,29 @@
     "changeKind": "property-removed",
     "path": "$.suggestedFix",
     "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Landofile authoring fragments additively accept native merge directive wire envelopes ({_tag: LandofileOverride, value} and {_tag: LandofileReset}) at every mapping member, and service map-input declarations now derive through their JSON codec projection so directives and typed expression slots reach service entries. Every previously valid fragment still decodes to the same value; envelopes decode to branded directives consumed by layer merging. The conservative checker cannot classify the widened anyOf."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragmentWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Landofile authoring fragments additively accept native merge directive wire envelopes ({_tag: LandofileOverride, value} and {_tag: LandofileReset}) at every mapping member, and service map-input declarations now derive through their JSON codec projection so directives and typed expression slots reach service entries. Every previously valid fragment still decodes to the same value; envelopes decode to branded directives consumed by layer merging. The conservative checker cannot classify the widened anyOf."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.anyOf",
+    "justification": "Service map-input declarations (dependsOn maps, Compose scalar maps) inside the authoring shape now derive through their JSON codec projection, which keeps the same record and precheck but admits typed expression slots like the rest of the authoring tree. Previously valid authoring documents still decode unchanged; no directive envelopes are admitted by the complete authoring shape. The conservative checker cannot classify the widened anyOf."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.anyOf",
+    "justification": "Service map-input declarations (dependsOn maps, Compose scalar maps) inside the authoring shape now derive through their JSON codec projection, which keeps the same record and precheck but admits typed expression slots like the rest of the authoring tree. Previously valid authoring documents still decode unchanged; no directive envelopes are admitted by the complete authoring shape. The conservative checker cannot classify the widened anyOf."
   }
 ]
