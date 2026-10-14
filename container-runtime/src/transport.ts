@@ -19,6 +19,7 @@ export interface SocketHttpRequest {
 export interface SocketHttpResponse {
   readonly status: number;
   readonly body: string;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export interface SocketHttpConnection extends AsyncIterable<Bytes> {
@@ -215,6 +216,12 @@ export const parseHttpHead = (bytes: Bytes, operation = "container-transport"): 
 
   return { status, headers, bodyStart: bytes.slice(marker + headerSeparator.length) };
 };
+
+const headersRecord = (headers: ReadonlyMap<string, string>): Readonly<Record<string, string>> =>
+  Object.fromEntries(headers);
+
+const socketResponse = (status: number, body: string, headers?: ReadonlyMap<string, string>): SocketHttpResponse =>
+  headers === undefined ? { status, body } : { status, body, headers: headersRecord(headers) };
 
 export const decodeChunkedBuffer = (
   buffer: Bytes,
@@ -430,7 +437,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
             parsed.status === 205 ||
             parsed.status === 304
           ) {
-            return { status: parsed.status, body: "" };
+            return socketResponse(parsed.status, "", parsed.headers);
           }
           next = parsed.bodyStart;
           chunked = parsed.headers.get("transfer-encoding")?.toLowerCase().includes("chunked") ?? false;
@@ -453,13 +460,17 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           bodyChunks.push(...decoded.chunks);
           bodyBuffer = decoded.remainder;
           if (decoded.complete)
-            return { status: parsed.status, body: textDecoder.decode(concatBytes(bodyChunks)) };
+            return socketResponse(parsed.status, textDecoder.decode(concatBytes(bodyChunks)), parsed.headers);
         } else {
           bodyChunks.push(next);
           receivedBodyBytes += next.length;
           if (contentLength !== undefined && receivedBodyBytes >= contentLength) {
             const body = concatBytes(bodyChunks);
-            return { status: parsed.status, body: textDecoder.decode(body.slice(0, contentLength)) };
+            return socketResponse(
+              parsed.status,
+              textDecoder.decode(body.slice(0, contentLength)),
+              parsed.headers,
+            );
           }
         }
       }
@@ -476,7 +487,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           "Container runtime response ended before Content-Length bytes arrived.",
         );
       }
-      return { status: parsed.status, body: textDecoder.decode(body) };
+      return socketResponse(parsed.status, textDecoder.decode(body), parsed.headers);
     } finally {
       input.signal?.removeEventListener("abort", abort);
       connection.destroy();

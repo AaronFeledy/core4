@@ -2,6 +2,7 @@ import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
+  isDockerApiVersionError,
   makeDockerApiClient as makeRuntimeDockerApiClient,
 } from "@lando/container-runtime/docker/api-client";
 import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
@@ -577,7 +578,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           : {}),
         isAvailable: dockerApi.info.pipe(
           Effect.as(true),
-          Effect.catch(() => Effect.succeed(false)),
+          Effect.catch((error) =>
+            isDockerApiVersionError(error) ? Effect.fail(error) : Effect.succeed(false),
+          ),
         ),
         appliedPlans:
           options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
@@ -587,7 +590,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
         ),
         setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
-        getStatus: Effect.succeed({ running: true, message: "ready" }),
+        getStatus: dockerApi.info.pipe(
+          Effect.as({ running: true, message: "ready" }),
+          Effect.catch((error) =>
+            Effect.succeed({
+              running: false,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Docker Engine is not reachable.",
+            }),
+          ),
+        ),
         getVersions: Effect.succeed({ provider: "0.0.0" }),
         buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
           buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),

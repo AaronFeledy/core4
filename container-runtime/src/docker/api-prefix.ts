@@ -1,0 +1,181 @@
+import { normalizeNamedPipePath } from "../transport.ts";
+import {
+  type DockerApiNegotiationFail,
+  type DockerDaemonApiRange,
+  dockerApiPrefixFor,
+  dockerApiRangeHasEvidence,
+  dockerApiVersionFromPrefix,
+  extractDockerDaemonApiRange,
+  negotiateDockerApiVersion,
+  parseDockerApiVersionOverride,
+} from "./api-version.ts";
+
+export type DockerApiPrefixSource = "explicit" | "env" | "negotiated" | "preferred";
+
+export interface ResolvedDockerApiPrefix {
+  readonly prefix: string;
+  readonly source: DockerApiPrefixSource;
+  readonly version?: string;
+}
+
+export interface DockerApiPrefixLearnResult {
+  readonly prefix: string;
+  readonly retry: boolean;
+  readonly failure?: DockerApiNegotiationFail;
+}
+
+const prefixCache = new Map<string, ResolvedDockerApiPrefix>();
+
+export const resetDockerApiPrefixCache = (): void => {
+  prefixCache.clear();
+};
+
+export const peekDockerApiPrefix = (key: string): ResolvedDockerApiPrefix | undefined => prefixCache.get(key);
+
+export const rememberDockerApiPrefix = (key: string, resolved: ResolvedDockerApiPrefix): void => {
+  prefixCache.set(key, resolved);
+};
+
+const prefixFromPathname = (pathname: string): string | undefined => {
+  const trimmed = pathname.replace(/\/+$/u, "");
+  return trimmed === "" || trimmed === "/" ? undefined : trimmed;
+};
+
+export const explicitDockerApiPrefixFromHost = (dockerHost: string): string | undefined => {
+  if (dockerHost.startsWith("tcp://")) {
+    try {
+      return prefixFromPathname(new URL(`http://${dockerHost.slice("tcp://".length)}`).pathname);
+    } catch {
+      return undefined;
+    }
+  }
+  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
+    try {
+      return prefixFromPathname(new URL(dockerHost).pathname);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
+export const dockerHttpBaseUrl = (dockerHost: string): string => {
+  if (dockerHost.startsWith("tcp://")) return `http://${dockerHost.slice("tcp://".length)}`;
+  return dockerHost;
+};
+
+export const dockerApiEndpointKey = (dockerHost: string): string => {
+  if (dockerHost.startsWith("npipe:") || dockerHost.startsWith("\\\\.\\pipe\\")) {
+    return `npipe:${normalizeNamedPipePath(dockerHost)}`;
+  }
+  if (dockerHost.startsWith("unix://")) return `unix:${dockerHost.slice("unix://".length)}`;
+  if (dockerHost.startsWith("/")) return `unix:${dockerHost}`;
+  if (dockerHost.startsWith("tcp://")) {
+    try {
+      const parsed = new URL(`http://${dockerHost.slice("tcp://".length)}`);
+      return `tcp://${parsed.host}`;
+    } catch {
+      return dockerHost;
+    }
+  }
+  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
+    try {
+      const parsed = new URL(dockerHost);
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      return dockerHost;
+    }
+  }
+  return dockerHost;
+};
+
+export const dockerApiPrefixFromEnv = (
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): DockerApiNegotiationFail | ResolvedDockerApiPrefix | undefined => {
+  const raw = env.DOCKER_API_VERSION;
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const parsed = parseDockerApiVersionOverride(raw);
+  if (!parsed.ok) return parsed;
+  return { prefix: parsed.prefix, source: "env", version: parsed.version };
+};
+
+export const resolveInitialDockerApiPrefix = (input: {
+  readonly endpointKey: string;
+  readonly explicitPrefix?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly preferredPrefix: string;
+}): DockerApiNegotiationFail | ResolvedDockerApiPrefix => {
+  const cached = peekDockerApiPrefix(input.endpointKey);
+  if (cached !== undefined) return cached;
+  if (input.explicitPrefix !== undefined && input.explicitPrefix !== "") {
+    const resolved: ResolvedDockerApiPrefix = {
+      prefix: input.explicitPrefix,
+      source: "explicit",
+      ...(dockerApiVersionFromPrefix(input.explicitPrefix) === undefined
+        ? {}
+        : { version: dockerApiVersionFromPrefix(input.explicitPrefix) }),
+    };
+    rememberDockerApiPrefix(input.endpointKey, resolved);
+    return resolved;
+  }
+  const fromEnv = dockerApiPrefixFromEnv(input.env);
+  if (fromEnv !== undefined) {
+    if ("ok" in fromEnv && fromEnv.ok === false) return fromEnv;
+    rememberDockerApiPrefix(input.endpointKey, fromEnv);
+    return fromEnv;
+  }
+  return {
+    prefix: input.preferredPrefix,
+    source: "preferred",
+    ...(dockerApiVersionFromPrefix(input.preferredPrefix) === undefined
+      ? {}
+      : { version: dockerApiVersionFromPrefix(input.preferredPrefix) }),
+  };
+};
+
+export const learnDockerApiPrefix = (input: {
+  readonly endpointKey: string;
+  readonly usedPrefix: string;
+  readonly usedSource: DockerApiPrefixSource;
+  readonly status: number;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body: string;
+}): DockerApiPrefixLearnResult => {
+  if (input.usedSource === "explicit" || input.usedSource === "env") {
+    return { prefix: input.usedPrefix, retry: false };
+  }
+
+  const range: DockerDaemonApiRange = extractDockerDaemonApiRange({
+    ...(input.headers === undefined ? {} : { headers: input.headers }),
+    body: input.body,
+  });
+  if (!dockerApiRangeHasEvidence(range)) {
+    if (input.status >= 200 && input.status < 300 && input.usedPrefix !== "") {
+      rememberDockerApiPrefix(input.endpointKey, {
+        prefix: input.usedPrefix,
+        source: "negotiated",
+        ...(dockerApiVersionFromPrefix(input.usedPrefix) === undefined
+          ? {}
+          : { version: dockerApiVersionFromPrefix(input.usedPrefix) }),
+      });
+    }
+    const cached = peekDockerApiPrefix(input.endpointKey);
+    return { prefix: cached?.prefix ?? input.usedPrefix, retry: false };
+  }
+
+  const negotiation = negotiateDockerApiVersion(range);
+  if (!negotiation.ok) return { prefix: input.usedPrefix, retry: false, failure: negotiation };
+
+  const resolved: ResolvedDockerApiPrefix = {
+    prefix: negotiation.prefix,
+    source: "negotiated",
+    version: negotiation.version,
+  };
+  rememberDockerApiPrefix(input.endpointKey, resolved);
+  return {
+    prefix: negotiation.prefix,
+    retry: negotiation.prefix !== input.usedPrefix && (input.status < 200 || input.status >= 300),
+  };
+};
+
+export const preferredPrefixFromVersion = dockerApiPrefixFor;
