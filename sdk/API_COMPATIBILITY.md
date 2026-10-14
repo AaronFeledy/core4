@@ -4,7 +4,9 @@
 
 ## Compatibility notes
 
-- `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
+- `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging, except tooling `cmds` in the next note. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
+
+- Pre-ship behavior correction: tooling `cmds` arrays replace wholesale across Landofile layers, includes, and service-type `extends:`, matched by key name like route `filters`. They no longer merge steps by `service`; `dependsOn`, routes, endpoints, and filters keep their existing identity rules. `@lando/sdk/landofile` additively exports `TOOLING_REPLACE_ARRAY_KEYS` so translation deltas share the replacement policy. No signature or JSON Schema changes.
 
 - `@lando/sdk/secrets` additively exports `DEFAULT_PASSWORD` (`lando`), `MINIO_DEFAULT_PASSWORD` (`landolando`), the frozen read-only `PUBLIC_DEFAULT_CREDENTIALS` list, and `isPublicDefaultCredential`. Matching is exact and case-sensitive, without trimming. Only heuristic secret-key collection excludes these published values; explicit tokens, secret-store values, resolved secret references, pattern masking, and deep-key masking remain unchanged. No schema artifacts change.
 

@@ -10,6 +10,76 @@ import {
 } from "@lando/sdk/landofile";
 
 describe("mergeLandofiles", () => {
+  test("replaces tooling cmds when a local layer overrides one of several services", () => {
+    // Given inherited steps targeting different services.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "old-a" },
+            { service: "b", cmd: "b" },
+          ],
+        },
+      },
+    };
+    const local = { tooling: { test: { cmds: [{ service: "a", cmd: "new-a" }] } } };
+    // When a local layer supplies its step list.
+    const result = mergeLandofiles([base, local]);
+    // Then only the local steps remain.
+    expect(result).toEqual(local);
+  });
+
+  test("replaces tooling cmds when inherited steps share a service", () => {
+    // Given two inherited steps targeting the same service.
+    const base = {
+      tooling: {
+        test: {
+          cmds: [
+            { service: "a", cmd: "a1" },
+            { service: "a", cmd: "a2" },
+          ],
+        },
+      },
+    };
+    const local = { tooling: { test: { cmds: [{ service: "a", cmd: "only" }] } } };
+    // When the layers merge.
+    const result = mergeLandofiles([base, local]);
+    // Then the second inherited step is not retained.
+    expect(result).toEqual(local);
+  });
+
+  test.each([{ cmds: ["echo local", { service: "a", cmd: "only" }] }, { cmds: [] }])(
+    "replaces tooling cmds with a mixed or empty local list %j",
+    ({ cmds }) => {
+      // Given inherited object steps and a mixed or empty overlay.
+      const base = {
+        tooling: {
+          test: {
+            cmds: [
+              { service: "a", cmd: "old" },
+              { service: "b", cmd: "b" },
+            ],
+          },
+        },
+      };
+      const local = { tooling: { test: { cmds } } };
+      // When the layers merge.
+      const result = mergeLandofiles<Record<string, unknown>>([base, local]);
+      // Then the overlay replaces the complete list.
+      expect(result).toEqual(local);
+    },
+  );
+
+  test("keeps dependsOn identity merging by service", () => {
+    // Given dependencies with distinct service identities.
+    const base = { dependsOn: [{ service: "a", condition: "started" }, { service: "b" }] };
+    const local = { dependsOn: [{ service: "a", condition: "healthy" }] };
+    // When the dependency lists merge.
+    const result = mergeLandofiles([base, local]);
+    // Then the matching dependency updates while the other remains.
+    expect(result).toEqual({ dependsOn: [{ service: "a", condition: "healthy" }, { service: "b" }] });
+  });
+
   test("clears base object routes when the local layer supplies an empty array", () => {
     // Given base and local layers with an explicitly empty local route list.
     const layers = [
