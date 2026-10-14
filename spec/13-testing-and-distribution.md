@@ -32,11 +32,11 @@ All tests run under `bun test` unless a gate names another tool.
 | Redaction contract | The canonical value and pattern layers produce byte-stable profile output and cannot be weakened by plugins. |
 | Interaction contract | Answer precedence, mode selection, validation, secret handling, cancellation, dynamic choices, and renderer routing are enforced. |
 | Renderer frames | Headless snapshots cover task trees, prompts, narrow terminals, and resize behavior without asserting machine renderers. |
-| Renderer capability contract | Every renderer reports the complete immutable capability shape for TTY, non-TTY, degraded, and promoted states. |
+| Renderer capability contract | Every renderer reports the complete immutable capability shape for its supported run states, including degradation and promotion where applicable. The default renderer publishes fixed TTY/non-TTY snapshots synchronously without loading OpenTUI; third-party promotion remains monotonic (§8.9). |
 | Renderer panel contract | Manifest validation precedes isolated loading; bounded, deterministic rendering fails only the offending panel and preserves last-good output. |
 | Subscriber selector and config-projection contract | Selectors close over the canonical event registry; indexes are prebuilt, factories lazy, and config projections bounded. |
 | Keymap schema and conflict-check split contract | Raw key syntax decodes independently from same-surface collision detection; cross-surface reuse remains legal. |
-| Desktop notification bounds contract | Notification fields validate before publication and sanitization precedes presentation. |
+| Desktop notification bounds contract | Notification fields validate before publication and sanitization precedes capability-gated presentation. Default TTY notifications use query-free OSC 99 without loading OpenTUI (§8.9.7). |
 | HostProxy exact-union contract | `HostProxyRequest` contains exactly `openUrl`, `openPath`, `runLando`, and `runBun`. |
 | OpenTUI native one-of-eight pruning contract | Each release target embeds one matching native package and stubs the other seven without redirecting testing or relative imports. |
 | SDK compatibility/schema-snapshot artifact-set contract | The additive SDK inventory and every schema-backed surface match `sdk/API_COMPATIBILITY.md` and generated artifacts. |
@@ -58,7 +58,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Recipe | Every canonical recipe scaffolds with defaults and representative branches into schema-valid output. |
 | Executable guides | §19 MDX generates source-mapped scenario tests and visibility-separated transcripts for every applicable variant. |
 | Deprecation | Every notice records use, publishes `deprecation-used`, warns once, appears in doctor, and obeys `removeIn`. |
-| Perf budget | Compiled-artifact tests enforce §2.1 end-to-end, first-paint, hot-path, concurrency, and runtime-reuse budgets. |
+| Perf budget | Compiled-artifact tests enforce §2.1 end-to-end, first-paint, hot-path, concurrency, and runtime-reuse budgets, plus the TTY renderer process-exit overhead gate in §13.6. |
 | Compiled decoder parity | Interpreted and compiled decoding of the shared Landofile corpus (guide and recipe fixtures plus curated valid and invalid inputs) run in separate processes and MUST produce identical verdicts, values, and issue paths and messages (§2.5, §12.5.1). |
 | End-to-end | The relocated compiled binary runs against real operating systems, providers, plugins, routes, files, and offline-after-build state. |
 
@@ -136,6 +136,8 @@ Releases include public schema and command-schema artifacts, declaration bundles
 | Weekly | Managed runtime, Docker Desktop/Engine, Podman Desktop/Podman, Lima, OrbStack on applicable hosts | Provider contracts plus full e2e and generated e2e guide scenarios across the provider matrix. |
 
 Scheduled cadences add provider and runtime coverage to the PR gates; a broader compile matrix does not substitute for that live coverage.
+
+The per-PR Linux x64 perf gate MUST also bound TTY renderer process-exit overhead on the compiled artifact: it runs a command that constructs the default renderer both piped and under a PTY, measures whole-process duration through exit, and fails when the TTY median exceeds the piped median by more than 150 ms. This gate adds to the §2.1 startup and first-paint budgets and MUST NOT replace or relax them.
 
 ### 13.7 Release flow
 
