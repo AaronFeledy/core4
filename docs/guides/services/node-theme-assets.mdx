@@ -7,11 +7,14 @@ tags: [beta, docs, node, php, tooling, drupal, wordpress]
 
 # Compile PHP theme assets with Node
 
-Add a `node` service next to `appserver`, point tooling at the theme, then
-install and run whatever the theme's `package.json` already lists. `lando npm
-install` puts those tools in the Node service. `lando npm run <script>` or
-`lando npx <tool>` runs them. Sass is the worked example. Tailwind, Vite,
-PostCSS, and Prettier use the same sidecar and the same two commands.
+Compile your theme's Sass inside a Node sidecar without adding Node to PHP.
+Start with an existing Lando 4 PHP app and a theme already on disk. The example
+uses Drupal Bootstrap 5 under `web/themes/contrib/bootstrap5`.
+
+## Add the Node sidecar
+
+Merge this into your Landofile. Keep the recipe's `appserver`, database, and
+existing tooling:
 
 ```yaml
 services:
@@ -34,17 +37,28 @@ tooling:
       - npx
 ```
 
-Keep the recipe's `appserver`, database, and existing tooling. Rebuild, then:
+`lando npm install` runs in Node but writes dependencies into the theme's
+`node_modules` directory. `lando npm run <script>` or `lando npx <tool>` runs
+them there. Tailwind, Vite, PostCSS, and Prettier can use the same sidecar;
+follow each tool's package and configuration requirements.
+
+Rebuild, install, and compile:
 
 ```sh
 lando rebuild -y
 lando npm install
 lando npm run build:sass
+lando exec node -- test -s /app/web/themes/contrib/bootstrap5/css/style.css
 ```
 
-WordPress themes use the same sidecar. Change both `dir:` values to
-`/app/wp-content/themes/mytheme`. A custom Drupal theme uses
-`/app/web/themes/custom/mytheme`.
+The final command checks that the CSS file exists and is nonempty. Open the
+site and check your changed styles too; an old CSS file alone does not prove
+the new build was loaded.
+
+WordPress themes use the same sidecar. With WordPress at the app root, change
+both `dir:` values to `/app/wp-content/themes/mytheme`. A custom Drupal theme
+under the default `web` webroot uses `/app/web/themes/custom/mytheme`. Adjust
+these paths, and the verification path, if your webroot or app mount differs.
 
 <Guide>
   <Scenario id="sidecar-and-theme-dir" render>
@@ -63,19 +77,22 @@ WordPress themes use the same sidecar. Change both `dir:` values to
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
     </Step>
     <Step name="plan">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: drupal-theme-assets" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"drupal-theme-assets\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\":\\s*[1-9][0-9]*" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
     </Step>
   </Scenario>
 
-## Add the Node sidecar
+## Keep Node available for tooling
 
-`type: "node:22"` pins the image. `primary: false` leaves `appserver` as the
-app you open. `endpoints: []` drops the default Node HTTP endpoint so Lando
-does not publish a URL for a process that is only there to run npm.
+`type: "node:22"` selects the moving Node 22 image channel, not an exact patch
+release. `primary: false` keeps Node from becoming the primary service;
+leave `primary: true` on the PHP `appserver`. `endpoints: []` removes Node's
+default internal HTTP endpoint. Do not add Node routes or published ports
+for a service that is only there to run npm.
 
 Omit `command:`. The Node service keeps an idle process so the container
 stays up for tooling. The [Laravel recipe](../recipes/laravel-workflow.mdx)
@@ -88,8 +105,9 @@ Node does not register `lando npm` or `lando npx` by itself. Author the tasks
 and set `dir:` to the theme path inside the container. `/app` is the
 bind-mounted app root.
 
-A task `dir` is the working directory inside that service. Lando does not
-resolve it against the host checkout. Set it on `npm` and `npx` only. An
+A task `dir` supplies the working directory for the command. Use the absolute
+container path shown here; Lando can also remap absolute host paths beneath a
+bind mount. Set it on `npm` and `npx` only. An
 app-wide `toolingDefaults.dir` would also move `lando drush` and
 `lando composer`.
 
@@ -103,22 +121,26 @@ lando npm install
 lando npm run build:sass
 ```
 
-Use the script name the theme already lists. Drupal Bootstrap 5 calls its Sass
-build `build:sass`. Other themes use `build`, `build:css`, or `sass`.
+Use `lando npm run` to list the theme's scripts, then use its build script.
+[Drupal Bootstrap 5's package.json](https://git.drupalcode.org/project/bootstrap5/-/blob/4.0.x/package.json)
+calls its Sass build `build:sass`. Other themes may use `build`, `build:css`, or
+`sass`.
 
-`lando npx sass scss/style.scss css/style.css` is the same compiler without a
-script. Tailwind, Vite, PostCSS, and Prettier swap the binary and the script
-name. The sidecar does not change.
+`lando npx sass scss/style.scss css/style.css` compiles that entry point without
+a script. It is not a replacement for every build script: Bootstrap 5's
+`build:sass` also compiles its editor and alternate-version stylesheets.
 
-Compiled CSS writes into the theme on the shared `/app` mount, so Apache or
-nginx serves it without a copy step.
+Compiled CSS writes into the theme on the shared `/app` mount, so the PHP
+web service can serve it without a copy step. Your theme still has to load
+that CSS: attach it through a Drupal library or enqueue it in WordPress.
+This recipe builds files, not a Vite dev server or hot-reload proxy.
 
 Do not put `sass` on service `globals` unless you want a global CLI for the
 whole image. Theme `devDependencies` belong in the theme's `package.json`.
 `globals` is for tools such as `gulp-cli`; see [Add Node.js](./node.mdx#install-global-npm-packages).
 
-Skip `node-sass`. That binding is obsolete. The Dart Sass package name is
-`sass`.
+Skip `node-sass`, which is [end-of-life](https://sass-lang.com/blog/node-sass-is-end-of-life/).
+The Dart Sass npm package name is [`sass`](https://sass-lang.com/install/).
 
 ## Watch Sass while you edit
 
@@ -132,8 +154,8 @@ The idle Node command holds the container open. Stop the watch with Ctrl+C.
 
 ## Init a child theme package
 
-A generated sub-theme often has no `package.json`. Point `dir:` at that folder,
-then create the package there:
+If your child theme has no `package.json`, point `dir:` at its existing folder,
+then create the package there. This does not create or register the theme:
 
 ```yaml
 tooling:
@@ -152,21 +174,44 @@ tooling:
 ```sh
 lando npm init -y
 lando npm install --save-dev sass
+lando npx sass --version
+```
+
+Use your theme's existing `scss/style.scss` entry point. If it has no SCSS yet,
+create `web/themes/custom/mytheme/scss/style.scss` in your editor:
+
+```scss
+body {
+  color: #333;
+}
+```
+
+Compile it, then check the generated file:
+
+```sh
 lando npx sass scss/style.scss css/style.css
+lando exec node -- test -s /app/web/themes/custom/mytheme/css/style.css
 ```
 
 `dir:` keeps every command in the child theme. You do not cd. Add a
 `build:sass` script when you want `lando npm run build:sass` instead of raw
-`npx`. A WordPress child theme is the same path under `wp-content/themes/`.
+`npx`. A WordPress child theme uses its own folder under `wp-content/themes/`
+when WordPress is installed at the app root. Keep its required `style.css`
+theme header and enqueue the compiled CSS; creating an npm package does
+neither.
 
 ## Pin the toolchain
 
-Bare `lando npx sass` with no local install fetches whatever version is
-current. Fine for a one-off. For a theme you keep, pin `sass` as a
-`devDependency` and commit `package-lock.json` so `lando npm install` and
-`lando npm run build:sass` replay the same toolchain.
+Without a local install, `lando npx sass` can download Sass into npm's cache
+and prompt for permission. It does not record a theme dependency. For a theme
+you keep, save `sass` as a `devDependency` and commit `package.json` and
+`package-lock.json`. Once they agree, use `lando npm ci` for a frozen install,
+then `lando npm run build:sass`. Unlike `npm ci`, `npm install` can update the
+lockfile when the package requirements change.
 
-Dart Sass is dropping `@import`. Prefer `@use` and `@forward` in new files.
+Dart Sass [deprecated Sass `@import` in 1.80.0](https://sass-lang.com/documentation/breaking-changes/import/).
+Prefer `@use` and `@forward` in new files; follow your theme's migration
+instructions for existing imports.
 
   <Scenario id="child-theme-dir" render>
     <Step name="scaffold-child">
@@ -179,8 +224,9 @@ Dart Sass is dropping `@import`. Prefer `@use` and `@forward` in new files.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/custom/mytheme\"" } }} />
     </Step>
     <Step name="plan-child">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: drupal-theme-child" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"drupal-theme-child\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\":\\s*[1-9][0-9]*" } }} />
     </Step>
     <Step name="cleanup-child">
       <Cleanup />
@@ -210,7 +256,13 @@ should own the version. Combining `packageRoot` with `type: "node:22"` fails
 at plan time.
 
 Service `workingDirectory` sets the container process cwd. It does not set
-the cwd for `lando npm`. Tooling `dir:` does.
+the theme directory for `lando npm` when Lando maps your shell's current
+directory through the app mount. Set tooling `dir:` explicitly instead.
+
+Lando reads `.nvmrc` first and checks it against `package.json` `engines.node`
+when present. An exact `.nvmrc` value of `22.11.0` with `engines.node: ">=22"`
+selects `node:22.11.0`. Without `.nvmrc`, that engine range selects the Node 22
+channel, not the newest matching Node major.
 
   <Scenario id="infer-from-theme" render>
     <Step name="scaffold-infer">
@@ -218,13 +270,15 @@ the cwd for `lando npm`. Tooling `dir:` does.
     </Step>
     <Step name="confirm-package-root">
       <Verify file="php-theme-infer/web/themes/contrib/bootstrap5/.nvmrc" expect={{ regex: "^22[.]11[.]0\\s*$" }} />
+      <Verify file="php-theme-infer/web/themes/contrib/bootstrap5/package.json" expect={{ regex: "\"node\":\\s*\">=22\"" }} />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"packageRoot\":\\s*\"web/themes/contrib/bootstrap5\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/contrib/bootstrap5\"" } }} />
     </Step>
     <Step name="plan-infer">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: drupal-theme-infer" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"drupal-theme-infer\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\":\\s*[1-9][0-9]*" } }} />
     </Step>
     <Step name="cleanup-infer">
       <Cleanup />
