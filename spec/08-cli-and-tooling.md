@@ -597,7 +597,9 @@ The Effect service tag `Renderer` has `id`, current `RendererCapabilities`, `ren
 
 Named renderer contracts include `Renderer`, `RendererCapabilities`, `RenderEvent`, `ImmediateLine`, and `RenderError`.
 
-Capabilities default false. The default TTY renderer starts with `interactive` and `animation` true and MAY monotonically promote `color` and `notifications` once after a nonblocking substrate probe. Callers MUST reread capabilities at use time; pre-promotion events are not replayed. Degraded, non-TTY, `plain`, and `json` runs expose no interactive capabilities; TTY `verbose` exposes color only. Third-party renderers MUST use immutable capability snapshots and monotonic promotion.
+The default `lando` renderer MUST publish a fixed immutable capability snapshot synchronously at construction: `RENDERER_CAPABILITIES_TTY` (all four fields true) when `RendererIO.isTTY` is true, otherwise `RENDERER_CAPABILITIES_NONE` (all four false). Capability resolution MUST NOT import OpenTUI, probe the substrate or terminal, delay first output, or keep the process alive after command completion. OpenTUI presentation failure falls back to line mode (§8.9.3) without changing this snapshot. `plain` and `json` expose all four fields false; TTY `verbose` exposes color only.
+
+Third-party renderers MUST use immutable capability snapshots and MAY replace them only by monotonic promotion. Callers MUST reread capabilities at use time to support those renderers; events dropped before promotion MUST NOT be replayed. Third-party capability resolution MUST NOT delay first output or process exit.
 
 Built-in `RenderEvent` names are:
 
@@ -692,7 +694,9 @@ Same-surface chord collisions fail after schema decode with `KeymapConflictError
 
 #### 8.9.7 Desktop notifications
 
-`NotifyDesktopEvent` (`notify.desktop`) carries nonempty `title`, optional `body`, and optional urgency `info|success|failure`. Publishers MUST redact content. The renderer sanitizes line/control and bidi characters, normalizes Unicode NFC, drops empty results, and realizes notifications only when current `RendererCapabilities.notifications` is true. JSON passes the structured event; plain/non-TTY drops it. Lando MUST NOT hand-frame terminal notification protocols.
+`NotifyDesktopEvent` (`notify.desktop`) carries nonempty `title`, optional `body`, and optional urgency `info|success|failure`. Publishers MUST redact content. The renderer sanitizes line/control and bidi characters, normalizes Unicode NFC, drops empty results, and realizes notifications only when current `RendererCapabilities.notifications` is true. JSON passes the structured event; plain/non-TTY drops it.
+
+The default TTY renderer MUST emit sanitized OSC 99 frames through `RendererIO` without importing OpenTUI, constructing a `CliRenderer`, querying the terminal, or waiting for a terminal response. Its `notifications` capability declares an available emission path, not detected terminal support; unsupported terminals ignore the frames. Notification presentation MUST NOT depend on OpenTUI availability.
 
 Bundled plugin `@lando/notify-lando` owns policy through `NotifyConfig` at global `notify:` with `enabled` default true, `thresholdMs` default 15000, and bounded additional canonical `commands`. The default eligible family is ordered: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. Config ids validate against the cwd-independent global registry, then deduplicate in first-occurrence order. Unknown ids return `ConfigError`.
 
