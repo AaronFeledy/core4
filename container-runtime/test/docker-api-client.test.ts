@@ -152,8 +152,10 @@ describe("Docker API client", () => {
     expect(router).toContain('dockerHost.startsWith("unix://")');
     expect(router).toContain("dockerHttpBaseUrl(dockerHost)");
     expect(router).toContain("makeHttpDockerApiClient");
-    expect(unix.slice(0, unix.indexOf("request:"))).toContain("streamUnixSocketRequest(socketPath, input)");
-    expect(unix.slice(unix.indexOf("stream: (input)"), unix.indexOf("request:"))).not.toContain("spawn");
+    expect(unix).toContain("streamUnixSocketRequest(socketPath, input, used.prefix)");
+    expect(unix.slice(unix.indexOf("stream: (input)"), unix.indexOf("request: Effect.fn"))).not.toContain(
+      "spawnCurl",
+    );
   });
 
   test("parses the curl trailer when a Unix request uses injected spawn", async () => {

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { dockerApiVersionUnavailable, negotiateDockerApiVersion } from "@lando/container-runtime/docker/api-version";
+import {
+  dockerApiVersionUnavailable,
+  negotiateDockerApiVersion,
+} from "@lando/container-runtime/docker/api-version";
 import { layer as makeProviderLayer } from "@lando/provider-docker";
 import { RuntimeProvider } from "@lando/sdk/services";
 
@@ -29,18 +32,21 @@ describe("provider-docker isAvailable", () => {
   test("fails with both version ranges when the daemon API is incompatible", async () => {
     const negotiation = negotiateDockerApiVersion({ minApiVersion: "1.50", apiVersion: "1.55" });
     if (negotiation.ok) throw new Error("expected incompatible daemon range");
+    const versionError = dockerApiVersionUnavailable(
+      { providerId: "docker", remediation: "Start Docker." },
+      negotiation,
+    );
+    let infoCalls = 0;
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
             platform: "linux",
             dockerApi: {
-              info: Effect.fail(
-                dockerApiVersionUnavailable(
-                  { providerId: "docker", remediation: "Start Docker." },
-                  negotiation,
-                ),
-              ),
+              info: Effect.suspend(() => {
+                infoCalls += 1;
+                return infoCalls === 1 ? Effect.succeed({}) : Effect.fail(versionError);
+              }),
             },
           }),
         ),

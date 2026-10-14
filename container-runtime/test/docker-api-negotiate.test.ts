@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createServer, type Server, type Socket } from "node:net";
+import { type Server, type Socket, createServer } from "node:net";
 import { Effect } from "effect";
 
-import {
-  makeDockerApiClient,
-  resetDockerApiPrefixCache,
-} from "../src/docker/api-client.ts";
+import { makeDockerApiClient, resetDockerApiPrefixCache } from "../src/docker/api-client.ts";
 import { isDockerApiVersionError } from "../src/docker/api-version.ts";
 
 const ctx = { providerId: "docker", remediation: "Start Docker." } as const;
@@ -59,7 +56,12 @@ const responseFor = (policy: DaemonPolicy, requestPath: string): string => {
   }
   const version = versionFromPath(requestPath);
   const min = policy.minApiVersion;
-  if (policy.rejectBelowMin === true && min !== undefined && version !== undefined && compare(version, min) < 0) {
+  if (
+    policy.rejectBelowMin === true &&
+    min !== undefined &&
+    version !== undefined &&
+    compare(version, min) < 0
+  ) {
     return httpResponse(
       400,
       JSON.stringify({

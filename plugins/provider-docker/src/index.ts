@@ -595,10 +595,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           Effect.catch((error) =>
             Effect.succeed({
               running: false,
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "Docker Engine is not reachable.",
+              message: error instanceof Error ? error.message : "Docker Engine is not reachable.",
             }),
           ),
         ),

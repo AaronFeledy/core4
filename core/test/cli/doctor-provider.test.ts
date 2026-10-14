@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { diagnosePrimaryProvider } from "../../src/cli/commands/doctor-provider.ts";
 import { linuxDockerCapabilities } from "@lando/provider-docker";
+import { diagnosePrimaryProvider } from "../../src/cli/commands/doctor-provider.ts";
 
 describe("diagnosePrimaryProvider Docker API versions", () => {
   test("keeps both Lando and daemon API ranges in the selected-provider check", () => {

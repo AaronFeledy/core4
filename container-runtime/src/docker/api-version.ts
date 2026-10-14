@@ -98,10 +98,7 @@ export const landoDockerApiRangeLabel = (): string =>
 export const daemonDockerApiRangeLabel = (range: DockerDaemonApiRange): string =>
   formatDockerApiRange(range.minApiVersion, range.apiVersion);
 
-const negotiationFailure = (
-  message: string,
-  range: DockerDaemonApiRange,
-): DockerApiNegotiationFail => {
+const negotiationFailure = (message: string, range: DockerDaemonApiRange): DockerApiNegotiationFail => {
   const ourRange = landoDockerApiRangeLabel();
   const daemonRange = daemonDockerApiRangeLabel(range);
   return {
@@ -121,9 +118,7 @@ const negotiationFailure = (
   };
 };
 
-export const negotiateDockerApiVersion = (
-  range: DockerDaemonApiRange = {},
-): DockerApiNegotiation => {
+export const negotiateDockerApiVersion = (range: DockerDaemonApiRange = {}): DockerApiNegotiation => {
   const minApiVersion =
     range.minApiVersion === undefined ? undefined : formatDockerApiVersion(range.minApiVersion);
   const apiVersion = range.apiVersion === undefined ? undefined : formatDockerApiVersion(range.apiVersion);

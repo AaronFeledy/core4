@@ -36,6 +36,15 @@ export const rememberDockerApiPrefix = (key: string, resolved: ResolvedDockerApi
   prefixCache.set(key, resolved);
 };
 
+const resolvedPrefix = (prefix: string, source: DockerApiPrefixSource): ResolvedDockerApiPrefix => {
+  const version = dockerApiVersionFromPrefix(prefix);
+  return version === undefined ? { prefix, source } : { prefix, source, version };
+};
+
+export const isDockerApiPrefixFailure = (
+  value: ResolvedDockerApiPrefix | DockerApiNegotiationFail,
+): value is DockerApiNegotiationFail => "ok" in value && value.ok === false;
+
 const prefixFromPathname = (pathname: string): string | undefined => {
   const trimmed = pathname.replace(/\/+$/u, "");
   return trimmed === "" || trimmed === "/" ? undefined : trimmed;
@@ -108,29 +117,17 @@ export const resolveInitialDockerApiPrefix = (input: {
   const cached = peekDockerApiPrefix(input.endpointKey);
   if (cached !== undefined) return cached;
   if (input.explicitPrefix !== undefined && input.explicitPrefix !== "") {
-    const resolved: ResolvedDockerApiPrefix = {
-      prefix: input.explicitPrefix,
-      source: "explicit",
-      ...(dockerApiVersionFromPrefix(input.explicitPrefix) === undefined
-        ? {}
-        : { version: dockerApiVersionFromPrefix(input.explicitPrefix) }),
-    };
+    const resolved = resolvedPrefix(input.explicitPrefix, "explicit");
     rememberDockerApiPrefix(input.endpointKey, resolved);
     return resolved;
   }
   const fromEnv = dockerApiPrefixFromEnv(input.env);
   if (fromEnv !== undefined) {
-    if ("ok" in fromEnv && fromEnv.ok === false) return fromEnv;
+    if (isDockerApiPrefixFailure(fromEnv)) return fromEnv;
     rememberDockerApiPrefix(input.endpointKey, fromEnv);
     return fromEnv;
   }
-  return {
-    prefix: input.preferredPrefix,
-    source: "preferred",
-    ...(dockerApiVersionFromPrefix(input.preferredPrefix) === undefined
-      ? {}
-      : { version: dockerApiVersionFromPrefix(input.preferredPrefix) }),
-  };
+  return resolvedPrefix(input.preferredPrefix, "preferred");
 };
 
 export const learnDockerApiPrefix = (input: {
@@ -151,13 +148,7 @@ export const learnDockerApiPrefix = (input: {
   });
   if (!dockerApiRangeHasEvidence(range)) {
     if (input.status >= 200 && input.status < 300 && input.usedPrefix !== "") {
-      rememberDockerApiPrefix(input.endpointKey, {
-        prefix: input.usedPrefix,
-        source: "negotiated",
-        ...(dockerApiVersionFromPrefix(input.usedPrefix) === undefined
-          ? {}
-          : { version: dockerApiVersionFromPrefix(input.usedPrefix) }),
-      });
+      rememberDockerApiPrefix(input.endpointKey, resolvedPrefix(input.usedPrefix, "negotiated"));
     }
     const cached = peekDockerApiPrefix(input.endpointKey);
     return { prefix: cached?.prefix ?? input.usedPrefix, retry: false };

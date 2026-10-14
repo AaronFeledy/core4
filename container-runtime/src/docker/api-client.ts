@@ -25,6 +25,7 @@ import {
   dockerApiEndpointKey,
   dockerHttpBaseUrl,
   explicitDockerApiPrefixFromHost,
+  isDockerApiPrefixFailure,
   learnDockerApiPrefix,
   resolveInitialDockerApiPrefix,
 } from "./api-prefix.ts";
@@ -139,7 +140,7 @@ const throwIfNegotiationFailed = (
   ctx: ProviderErrorContext,
   resolved: ResolvedDockerApiPrefix | DockerApiNegotiationFail,
 ): ResolvedDockerApiPrefix => {
-  if ("ok" in resolved && resolved.ok === false) throw dockerApiVersionUnavailable(ctx, resolved);
+  if (isDockerApiPrefixFailure(resolved)) throw dockerApiVersionUnavailable(ctx, resolved);
   return resolved;
 };
 
@@ -230,12 +231,16 @@ export const makeTcpTransportClient = (
 
 const parseCurlHttp = (
   stdout: string,
-): { readonly status: number; readonly body: string; readonly headers: Readonly<Record<string, string>> } => {
+): {
+  readonly status: number;
+  readonly body: string;
+  readonly headers?: Readonly<Record<string, string>>;
+} => {
   const marker = stdout.lastIndexOf("\n");
   const statusText = marker === -1 ? stdout : stdout.slice(marker + 1);
   const status = Number.parseInt(statusText, 10);
   const raw = marker === -1 ? "" : stdout.slice(0, marker);
-  if (!raw.startsWith("HTTP/")) return { status, body: raw, headers: {} };
+  if (!raw.startsWith("HTTP/")) return { status, body: raw };
 
   const separator = raw.includes("\r\n\r\n") ? "\r\n\r\n" : "\n\n";
   const split = raw.lastIndexOf(separator);
@@ -247,14 +252,10 @@ const parseCurlHttp = (
     if (index === -1) continue;
     headers[line.slice(0, index).trim().toLowerCase()] = line.slice(index + 1).trim();
   }
-  return { status, body, headers };
+  return Object.keys(headers).length === 0 ? { status, body } : { status, body, headers };
 };
 
-const curlRequestArgs = (
-  socketPath: string,
-  prefix: string,
-  input: DockerHttpRequest,
-): string[] => {
+const curlRequestArgs = (socketPath: string, prefix: string, input: DockerHttpRequest): string[] => {
   const args = [
     "--silent",
     "--show-error",
@@ -346,7 +347,10 @@ export const makeUnixDockerApiClient = (
   ctx: ProviderErrorContext,
   options?: DockerApiClientOptions,
 ): DockerApiClient => {
-  const session = prefixSessionForHost(socketPath.startsWith("/") ? socketPath : `unix://${socketPath}`, options);
+  const session = prefixSessionForHost(
+    socketPath.startsWith("/") ? socketPath : `unix://${socketPath}`,
+    options,
+  );
   const spawnCurl = async (prefix: string, input: DockerHttpRequest) => {
     const payload = await collectRequestStdin(input.stdin);
     const proc = (options?.spawn ?? Bun.spawn)(["curl", ...curlRequestArgs(socketPath, prefix, input)], {
@@ -432,7 +436,9 @@ export const makeUnixDockerApiClient = (
       }
       return retried;
     }),
-    info: Effect.suspend(() => fetchDockerInfo(makeUnixDockerApiClient(socketPath, ctx, options).request, ctx)),
+    info: Effect.suspend(() =>
+      fetchDockerInfo(makeUnixDockerApiClient(socketPath, ctx, options).request, ctx),
+    ),
   };
 };
 

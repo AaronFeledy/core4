@@ -220,8 +220,14 @@ export const parseHttpHead = (bytes: Bytes, operation = "container-transport"): 
 const headersRecord = (headers: ReadonlyMap<string, string>): Readonly<Record<string, string>> =>
   Object.fromEntries(headers);
 
-const socketResponse = (status: number, body: string, headers?: ReadonlyMap<string, string>): SocketHttpResponse =>
-  headers === undefined ? { status, body } : { status, body, headers: headersRecord(headers) };
+const socketResponse = (
+  status: number,
+  body: string,
+  headers?: ReadonlyMap<string, string>,
+): SocketHttpResponse =>
+  headers === undefined || headers.size === 0
+    ? { status, body }
+    : { status, body, headers: headersRecord(headers) };
 
 export const decodeChunkedBuffer = (
   buffer: Bytes,
