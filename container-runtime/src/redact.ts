@@ -15,6 +15,19 @@ export const redactString = (value: string): string => secretsRedactor.redactStr
 
 export const redactDetails = (value: unknown): unknown => secretsRedactor.redactValue(value);
 
+export const httpResponseDetails = (response: {
+  readonly status: number;
+  readonly body: string;
+}): { readonly status: number; readonly body: string } => ({
+  status: response.status,
+  body: response.body,
+});
+
+export const redactResponseDetails = (response: {
+  readonly status: number;
+  readonly body: string;
+}): unknown => redactDetails(httpResponseDetails(response));
+
 const apiReasonFromBody = (details: unknown): string | undefined => {
   if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
   const body = details.body;

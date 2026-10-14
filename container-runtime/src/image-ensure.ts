@@ -13,7 +13,7 @@ import type {
 } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { type PullImageOptions, inspectRequest, pullImage } from "./image-pull.ts";
-import { redactDetails } from "./redact.ts";
+import { redactDetails, redactResponseDetails } from "./redact.ts";
 
 export interface EnsureImageOptions<E = never> {
   readonly ctx: ProviderErrorContext;
@@ -104,7 +104,7 @@ const inspectFailure = (ctx: ProviderErrorContext, response: EngineHttpResponse)
     providerId: ctx.providerId,
     operation: "apply",
     message: `Image inspect failed with HTTP ${response.status}.`,
-    details: redactDetails(response),
+    details: redactResponseDetails(response),
     remediation: ctx.remediation,
   });
 
@@ -140,7 +140,7 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
   if (platform === undefined || pin === undefined) return;
   const decoded = yield* parseEngineJson(inspectResponse, options.ctx, "apply", {
     message: "Container engine API returned malformed JSON.",
-    details: redactDetails(inspectResponse),
+    details: redactResponseDetails(inspectResponse),
   });
   if (inspectMatchesPlatform(decoded, pin)) return;
   if (inspectRepoDigests(decoded).length > 0) {
