@@ -248,8 +248,9 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         ...lowered.prefixes,
       ];
       for (const { fragment } of serviceHolders) {
-        if (!isPlainRecord(fragment.services)) continue;
-        for (const [name, service] of Object.entries(fragment.services)) {
+        const services = mergeLandofiles([fragment]).services;
+        if (!isPlainRecord(services)) continue;
+        for (const [name, service] of Object.entries(services)) {
           if (!isPlainRecord(service)) continue;
           const current = recipeServiceWires.get(name);
           if (
@@ -263,7 +264,10 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
       }
       const authored = lowerServiceViews(folded, {
         tools: new Set(
-          recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
+          recipeFragments.flatMap((fragment) => {
+            const tooling = mergeLandofiles([fragment]).tooling;
+            return isPlainRecord(tooling) ? Object.keys(tooling) : [];
+          }),
         ),
         recipeServices: [...recipeServiceWires.keys()],
         recipeServiceWires,
