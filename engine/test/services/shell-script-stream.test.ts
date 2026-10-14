@@ -76,6 +76,41 @@ test.skipIf(process.platform === "win32").each([
   },
 );
 
+test("forwards flush from the live stream sink after script output", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-shell-flush-"));
+  let flushed = 0;
+  const shellLayer = BunShellRunner.layer(() => {
+    throw new TypeError("unused interactive IO");
+  });
+  try {
+    const script = join(root, "flush.bun.sh");
+    await writeFile(script, "echo -n abc\n");
+    // When
+    await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shell) =>
+        shell.runScript(script, { cwd: root, env: { PATH: root } }),
+      ).pipe(
+        Effect.provide(shellLayer),
+        Effect.provideService(
+          StreamFrameSink,
+          StreamFrameSink.of({
+            emit: () => Effect.void,
+            flush: () =>
+              Effect.sync(() => {
+                flushed += 1;
+              }),
+          }),
+        ),
+      ),
+    );
+    // Then
+    expect(flushed).toBe(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("leaves PATH unchanged when source mode has no lando delegate", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-shell-no-delegate-"));
