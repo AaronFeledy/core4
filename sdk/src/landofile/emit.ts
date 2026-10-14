@@ -235,10 +235,10 @@ const emitArrayItems = (
  * Serialize a canonical Landofile object (or a `Partial<LandofileShape>`
  * fragment) to the block-style YAML subset that `parseLandofile` round-trips.
  *
- * The input is the **encoded (wire) form** of a Landofile — the merged tree of
- * plain records, arrays, strings, finite numbers, booleans, and `null`, i.e.
- * `LandofileShape.Encoded`, not a decoded runtime `LandofileShape.Type` whose
- * leaves may be branded or `DateTime` values. Strings are quoted according to
+ * The input is native YAML authoring data: ordinary encoded field values with
+ * branded merge directives. Decode transport wire envelopes to that native
+ * representation before emission. This is not a decoded runtime tree whose
+ * leaves may contain `DateTime` values. Strings are quoted according to
  * the shared `@lando/sdk/yaml` scalar policy so the emitted text re-parses to
  * the exact same value.
  *
@@ -248,7 +248,7 @@ const emitArrayItems = (
  * instance, or any other non-plain object), a symbol key, a cyclic structure, or
  * a nested array list item.
  *
- * @param value - the encoded Landofile object to serialize.
+ * @param value - the native authoring Landofile object to serialize.
  * @param options - optional emit controls; see {@link EmitLandofileOptions}.
  */
 export const emitLandofileYaml = (value: Record<string, unknown>, options?: EmitLandofileOptions): string => {
@@ -271,7 +271,7 @@ export const emitLandofileYaml = (value: Record<string, unknown>, options?: Emit
  * callers that prefer typed handling over a throw. A non-emittable input yields
  * `Result.fail(LandofileEmitError)`. The exported function name is retained.
  *
- * @param value - the encoded Landofile object to serialize.
+ * @param value - the native authoring Landofile object to serialize.
  * @param options - optional emit controls; see {@link EmitLandofileOptions}.
  */
 export const emitLandofileYamlEither = (

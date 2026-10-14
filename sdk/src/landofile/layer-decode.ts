@@ -30,6 +30,7 @@ const strictValidator =
       ),
     );
 
+/** Validate one native layer, canonicalize field aliases, and retain legal merge operations. */
 export const decodeLandofileLayer: (
   file: string,
   input: unknown,

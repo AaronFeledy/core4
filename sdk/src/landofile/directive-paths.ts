@@ -36,12 +36,14 @@ const childAsts = (node: AST.AST, key: string | number): ReadonlyArray<AST.AST> 
   }
 };
 
+/** Whether a path addresses a member of the canonical authored schema. */
 export const isAuthoredKey = (path: DirectivePath): boolean => {
   let nodes: ReadonlyArray<AST.AST> = [LandofileShape.ast];
   for (const segment of path) nodes = nodes.flatMap((node) => childAsts(node, segment));
   return nodes.length > 0;
 };
 
+/** Rewrite service aliases to the paths retained by native layer decoding. */
 export const canonicalDirectivePath = (path: DirectivePath): DirectivePath =>
   path.map((segment, index) =>
     index === 2 && path[0] === "services" && typeof segment === "string"
@@ -49,6 +51,7 @@ export const canonicalDirectivePath = (path: DirectivePath): DirectivePath =>
       : segment,
   );
 
+/** Explain an unsupported directive placement, or return undefined for a stable member path. */
 export const directivePathProblem = (input: unknown, path: DirectivePath): string | undefined => {
   if (!isAuthoredKey(path)) return "Unknown authored target key.";
   let current = input;

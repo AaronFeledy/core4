@@ -50,6 +50,7 @@ const opaque = Schema.Union([LandofileLiteralWire, Schema.Unknown]).pipe(
   ),
 );
 
+/** Derive a member codec for native directives or collision-safe JSON transport envelopes. */
 export const directiveMember = (value: Schema.Top, native: boolean): Schema.Top => {
   if (native) return Schema.Union([LandofileOverride(value), LandofileReset, value]);
   if (value.ast._tag === "Unknown" || value.ast._tag === "Any") return opaque;

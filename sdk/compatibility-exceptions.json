@@ -9,49 +9,49 @@
     "surface": "schema:ConfigTranslateDocumentSetInput",
     "changeKind": "unsupported-construct",
     "path": "$.currentLowerV4Fragments.items.fragment.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.context.services.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.fragment.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:ConfigTranslateInput",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:ConfigTranslateLayerFragment",
     "changeKind": "unsupported-construct",
     "path": "$.fragment.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:ConfigTranslateOutput",
     "changeKind": "unsupported-construct",
     "path": "$.fragment.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:ConfigTranslateResult",
     "changeKind": "unsupported-construct",
     "path": "$.outputs.items.fragment.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:RecipeDecomposeResult",
     "changeKind": "unsupported-construct",
     "path": "$.fragment.anyOf",
-    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+    "justification": "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment."
   },
   {
     "surface": "schema:StreamFrame",
