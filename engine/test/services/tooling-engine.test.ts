@@ -570,7 +570,11 @@ describe("ProviderExecToolingEngine.layer", () => {
     };
     const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
     const sink = {
-      emit: (frame: { readonly chunk: string }) => Effect.sync(() => order.push(`sink:${frame.chunk}`)),
+      emit: (frame: { readonly chunk: string | Uint8Array }) =>
+        Effect.sync(() => {
+          const chunk = typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+          order.push(`sink:${chunk}`);
+        }),
     };
 
     // When: provider-exec tooling runs with a live stream sink.

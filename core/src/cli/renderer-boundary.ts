@@ -223,7 +223,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
-  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format).pipe(
+  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format, io).pipe(
     Layer.provide(
       Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
     ),

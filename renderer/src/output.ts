@@ -16,7 +16,7 @@ import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
-import { type RendererIO, createStdioRendererIO } from "./io.ts";
+import { type BinaryRendererIO, type RendererIO, createStdioRendererIO } from "./io.ts";
 import * as RendererRuntime from "./runtime.ts";
 
 type RendererMode = "lando" | "json" | "plain" | "verbose";
@@ -121,6 +121,7 @@ export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
 
 export const layerStreamFrameSink = (
   format: CommandResultFormat,
+  io?: Pick<BinaryRendererIO, "writeStdoutBytes" | "writeStderrBytes">,
 ): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
   Layer.effect(
     StreamFrameSink,
@@ -129,8 +130,9 @@ export const layerStreamFrameSink = (
       const redaction = yield* RedactionService;
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
       const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
+        const textChunk = typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
         const streamFrameOptions = {
-          chunk: frame.chunk,
+          chunk: textChunk,
           ...(frame.service === undefined ? {} : { service: frame.service }),
           ...(frame.source === undefined ? {} : { source: frame.source }),
           redactor,
@@ -146,7 +148,14 @@ export const layerStreamFrameSink = (
         // A YAML run emits one envelope document, so a raw chunk would
         // corrupt it. Frame transport belongs to the framed JSON stream.
         if (format === "yaml") return;
-        const chunk = redactor.redactString(frame.chunk);
+        if (frame.raw === true && typeof frame.chunk !== "string") {
+          const writeBytes = frame._tag === "stderr" ? io?.writeStderrBytes : io?.writeStdoutBytes;
+          if (writeBytes !== undefined) {
+            writeBytes(frame.chunk);
+            return;
+          }
+        }
+        const chunk = redactor.redactString(textChunk);
         if (frame.raw === true) {
           yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
           return;

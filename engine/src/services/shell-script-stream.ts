@@ -38,7 +38,7 @@ export const streamBunScript = Effect.fnUntraced(
       output.sink?.emit({ _tag: kind, chunk: output.redact(chunk), raw: true }) ?? Effect.void;
     const lineSink: StreamFrameSinkShape = {
       emit: Effect.fnUntraced(function* (frame) {
-        pending[frame._tag] += frame.chunk;
+        pending[frame._tag] += typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
         let newline = pending[frame._tag].indexOf("\n");
         while (newline !== -1) {
           const line = pending[frame._tag].slice(0, newline + 1);

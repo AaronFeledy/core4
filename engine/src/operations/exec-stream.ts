@@ -7,10 +7,11 @@ import type { StreamFrameSinkShape } from "./stream-frame-sink.ts";
 export const emitRaw = (
   sink: Option.Option<StreamFrameSinkShape>,
   kind: "stdout" | "stderr",
-  text: string,
+  chunk: string | Uint8Array,
 ): Effect.Effect<void> => {
-  if (text.length === 0 || Option.isNone(sink)) return Effect.void;
-  return sink.value.emit({ _tag: kind, chunk: text, raw: true });
+  const empty = typeof chunk === "string" ? chunk.length === 0 : chunk.byteLength === 0;
+  if (empty || Option.isNone(sink)) return Effect.void;
+  return sink.value.emit({ _tag: kind, chunk, raw: true });
 };
 
 export const collectExecStream = Effect.fnUntraced(function* <E, R>(
@@ -32,14 +33,11 @@ export const collectExecStream = Effect.fnUntraced(function* <E, R>(
       const text = decoder.decode(chunk.chunk, { stream: true });
       if (chunk.kind === "stdout") stdout += text;
       else stderr += text;
-      return emitRaw(sink, chunk.kind, text);
+      // Live frames keep the provider bytes so a redirected archive stays intact.
+      return emitRaw(sink, chunk.kind, chunk.chunk);
     }),
   );
-  const stdoutTail = stdoutDecoder.decode();
-  const stderrTail = stderrDecoder.decode();
-  stdout += stdoutTail;
-  stderr += stderrTail;
-  yield* emitRaw(sink, "stdout", stdoutTail);
-  yield* emitRaw(sink, "stderr", stderrTail);
+  stdout += stdoutDecoder.decode();
+  stderr += stderrDecoder.decode();
   return { exitCode, stdout, stderr };
 }, Effect.scoped);

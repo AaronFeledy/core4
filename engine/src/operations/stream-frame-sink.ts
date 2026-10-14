@@ -2,7 +2,7 @@ import { Context, type Effect } from "effect";
 
 export interface StreamFrameSinkFrame {
   readonly _tag: "stdout" | "stderr";
-  readonly chunk: string;
+  readonly chunk: string | Uint8Array;
   readonly service?: string;
   readonly source?: string;
   /** When true, emit the chunk as-is (no extra newline or service prefix). */

@@ -42,5 +42,8 @@ export const makeStreamFrameSink = (
 ): Context.Service.Shape<typeof StreamFrameSink> =>
   StreamFrameSink.of({
     emit: (frame: StreamFrameSinkFrame) =>
-      encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
+      encodeProgressFrame(
+        typeof frame.chunk === "string" ? frame : { ...frame, chunk: new TextDecoder().decode(frame.chunk) },
+        redactorForFrame,
+      ).pipe(Effect.flatMap(notify), Effect.orDie),
   });
