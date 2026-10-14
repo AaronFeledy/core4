@@ -56,11 +56,29 @@ const credsFor = (input: {
   });
 };
 
+// Authored PGPORT reaches the server, so it must agree with the endpoint and healthcheck port.
+const listenPort = (service: ServiceConfig, serviceName: string): number => {
+  const authored = service.environment?.PGPORT;
+  if (authored === undefined) return service.port ?? DEFAULT_PORT;
+  const parsed = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error(
+      `services.${serviceName}.environment.PGPORT must be a TCP port number, got ${JSON.stringify(authored)}. Set port: instead, or fix PGPORT.`,
+    );
+  }
+  if (service.port !== undefined && service.port !== parsed) {
+    throw new Error(
+      `services.${serviceName} sets port: ${service.port} and environment.PGPORT: ${authored}. Postgres listens on PGPORT, so remove one or make them match.`,
+    );
+  }
+  return parsed;
+};
+
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
-  const port = service.port ?? DEFAULT_PORT;
+  const port = listenPort(service, ctx.serviceName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("postgres", creds));
