@@ -111,6 +111,32 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["build", "publish", "serve"]);
   });
 
+  test.each(["!override\n  task:\n    cmd: override", "!reset"])(
+    "applies tooling %s before namespacing",
+    async (directive) => {
+      await writeFile(
+        join(appRoot, "docs", "nested.yml"),
+        "tooling:\n  inherited:\n    cmd: inherited\n",
+        "utf8",
+      );
+      await writeFile(
+        join(appRoot, "docs", ".lando.tasks.yml"),
+        `toolingIncludes:\n  nested:\n    file: ./nested.yml\n    flatten: true\ntooling: ${directive}\n`,
+        "utf8",
+      );
+      const resolved = await resolve(
+        {
+          includes: [{ source: "./docs/.lando.tasks.yml", kind: "tooling", namespace: "docs" }],
+          tooling: { local: { cmd: "local" } },
+        },
+        appRoot,
+      );
+      expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(
+        directive.startsWith("!override") ? ["docs:task", "local"] : ["local"],
+      );
+    },
+  );
+
   test("flatten combined with aliases fails closed instead of dropping the aliases", async () => {
     // Given a flattened include that also declares namespace aliases
     const landofile: LandofileShape = {

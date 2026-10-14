@@ -10,6 +10,13 @@ import {
   ToolingIncludeCycleError,
   causeMessage,
 } from "@lando/sdk/errors";
+import {
+  type LandofileDecodedOverlay,
+  decodeLandofileLayer,
+  isMergeDirective,
+  mergeLandofiles,
+  override,
+} from "@lando/sdk/landofile";
 import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
 import { rejectComposeKeys } from "./compose/rejections.ts";
@@ -56,7 +63,7 @@ interface Contribution {
 
 interface Fragment {
   readonly filePath: string;
-  readonly tooling: Readonly<Record<string, unknown>>;
+  readonly tooling: LandofileDecodedOverlay["tooling"];
   readonly nested: Pick<LandofileShape, "includes" | "toolingIncludes">;
 }
 
@@ -121,13 +128,25 @@ const loadFragment = (
 ): Effect.Effect<Fragment, ToolingIncludeError> =>
   readFragmentText(filePath, entry.source).pipe(
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-    Effect.flatMap((parsed) => assertToolingFragment(parsed, entry.source, filePath)),
+    Effect.tap((parsed) => assertToolingFragment(mergeLandofiles([parsed]), entry.source, filePath)),
     Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
     Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
+    Effect.flatMap((parsed) =>
+      decodeLandofileLayer(filePath, parsed).pipe(
+        Effect.mapError((cause) =>
+          includeError({
+            source: entry.source,
+            kind: "forbidden-field",
+            message: causeMessage(cause),
+            remediation: "Use valid native tooling values and place directives on stable mapping members.",
+          }),
+        ),
+      ),
+    ),
     Effect.map((parsed) => ({
       filePath,
-      tooling: Predicate.isObject(parsed.tooling) ? parsed.tooling : {},
-      nested: parsed as Pick<LandofileShape, "includes" | "toolingIncludes">,
+      tooling: parsed.tooling,
+      nested: mergeLandofiles([parsed]),
     })),
   );
 
@@ -185,7 +204,17 @@ const resolveEntries = Effect.fnUntraced(function* (
     paths.push(filePath, ...nested.paths);
 
     const excluded = new Set(entry.excludes);
-    const contributed = new Map<string, unknown>([...nested.tasks, ...Object.entries(fragment.tooling)]);
+    const overlay = isMergeDirective(fragment.tooling)
+      ? fragment.tooling
+      : Object.fromEntries(
+          Object.entries(fragment.tooling ?? {}).map(([name, task]) => [
+            name,
+            isMergeDirective(task) ? task : override(task),
+          ]),
+        );
+    const local = mergeLandofiles([{ tooling: Object.fromEntries(nested.tasks) }, { tooling: overlay }]);
+    const localNames = mergeLandofiles([{ tooling: overlay }]).tooling ?? {};
+    const contributed = new Map<string, unknown>(Object.entries(local.tooling ?? {}));
     for (const name of excluded) contributed.delete(name);
 
     for (const [name, task] of contributed) {
@@ -201,7 +230,7 @@ const resolveEntries = Effect.fnUntraced(function* (
           );
         }
         tasks.set(id, withIncludeVars(task, entry.vars));
-        if (entry.internal || (!Object.hasOwn(fragment.tooling, name) && nested.internal.has(name))) {
+        if (entry.internal || (!Object.hasOwn(localNames, name) && nested.internal.has(name))) {
           internal.add(id);
         }
       }
