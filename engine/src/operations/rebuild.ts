@@ -108,7 +108,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   );
   yield* stopSelected;
   const builtPlan = yield* withBuildProvider(builds.build(plan, { refresh: true }), provider);
-  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
   const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
   const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
   yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
@@ -118,8 +117,9 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
       withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
         platform: provider.platform,
         ...(managed === undefined ? {} : { managed }),
-        use: (applyPlan) =>
-          Effect.scoped(
+        use: Effect.fnUntraced(function* (applyPlan) {
+          const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(applyPlan);
+          yield* Effect.scoped(
             provider
               .apply(applyPlan, {
                 reconcile: true,
@@ -131,7 +131,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
                 serviceEnvironment,
               })
               .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
-          ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected))),
+          ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected)));
+        }),
       }),
   });
   yield* withBuildProvider(

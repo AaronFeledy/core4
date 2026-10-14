@@ -510,7 +510,6 @@ describe("scratchRun", () => {
         );
 
         expect(applyOptions[0]?.serviceEnvironment?.[ServiceName.make("web")]).toEqual({
-          LANDO_HOST_IP: "host.lando.internal",
           TOKEN: "resolved-scratch-token",
         });
         expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.environment).toEqual({

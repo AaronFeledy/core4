@@ -77,7 +77,7 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
   const existing = new Set<string>();
   const running = new Set<string>();
   let createIndex = 0;
-  const api: PodmanApiClient = {
+  const api = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.void,
     request: (request: EngineHttpRequest) => {
@@ -124,7 +124,7 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
       };
       return Effect.succeed(responseFor());
     },
-  };
+  } satisfies PodmanApiClient;
   return { api, requests };
 };
 
@@ -153,6 +153,49 @@ const applyFailure = async (plan: AppPlan, api: PodmanApiClient) => {
 };
 
 describe("provider-podman apply image pull", () => {
+  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+    // Given
+    const service = {
+      ...makeService("mailpit", mailpitRef),
+      environment: {
+        PLAIN: "visible",
+        TOKEN: "${secret:API_TOKEN}",
+        SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
+      },
+    };
+    const fake = makeFakeApi();
+    const creates: unknown[] = [];
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        conflictDetector: () => Effect.void,
+        podmanApi: {
+          ...fake.api,
+          request: (request) => {
+            if (request.path.startsWith("/containers/create?")) creates.push(request.body);
+            return fake.api.request(request);
+          },
+        },
+      }),
+    );
+    // When
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.apply(makePlan([service]), {
+          reconcile: false,
+          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+        }),
+      ),
+    );
+    // Then
+    expect(creates).toEqual([
+      expect.objectContaining({
+        Env: ["PLAIN=visible", "TOKEN=resolved-canary", "SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock"],
+      }),
+    ]);
+  });
+
   test("pre-pulls a missing image through the same ensure path", async () => {
     const fake = makeFakeApi();
     const plan = makePlan([makeService("mailpit", mailpitRef)]);
