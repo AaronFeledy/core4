@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- Native Landofile layers add branded `LandofileOverride`/`LandofileReset` schemas and `override(value)`/`reset()` helpers through the Landofile, schema, SDK root, and core forwarding surfaces. `defineLandofile` accepts the schema-derived `LandofileOverlayInput`, not only effective values. `decodeLandofileLayer` validates and canonicalizes directives before merging; effective schemas remain directive-free.
+
 - `ServiceNotReadyError.reason` adds `inspect-failed` for provider observation failures. This is never a supervised restart verdict; remediation targets `lando doctor` rather than service logs.
 
 - `ServiceRuntimeInfo.exitCode` is evidence from terminal `exited` or `dead` containers only; running and never-started `created` containers omit the engine's placeholder zero.
@@ -395,6 +397,15 @@ unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
 ## Additive schema exports
+
+- `LANDOFILE_MERGE_DIRECTIVE`
+- `LandofileOverride`
+- `LandofileReset`
+- `LandofileOverrideWire`
+- `LandofileResetWire`
+- `SERVICE_CONFIG_ALIASES`
+- `override`
+- `reset`
 
 - `LayerMergeRule`
 - `SchemaLayerMergeAnnotationId`

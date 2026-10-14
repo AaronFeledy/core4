@@ -14,6 +14,20 @@ export {
   validateConfigTranslateResult,
 } from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
+export { decodeLandofileLayer } from "./layer-decode.ts";
+export {
+  override,
+  reset,
+  isLandofileOverride,
+  isLandofileReset,
+  isMergeDirective,
+} from "./merge-directives.ts";
+export {
+  LandofileOverride,
+  LandofileReset,
+  LANDOFILE_MERGE_DIRECTIVE,
+} from "../schema/landofile-directive.ts";
+export type { LandofileOverlayInput, LandofileDecodedOverlay } from "../schema/landofile-overlay.ts";
 export { splitComposeCommand, type SplitCommand } from "./compose-command.ts";
 export { LANDOFILE_LAYER_ORDER, landofileLayerRank } from "./layer-order.ts";
 export {
