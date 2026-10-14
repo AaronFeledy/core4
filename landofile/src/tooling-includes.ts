@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
-import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
+import { rejectComposeKeys } from "./compose/rejections.ts";
 import { hasIncludeCycle } from "./include-graph.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { parseLandofile } from "./parser.ts";
@@ -120,7 +120,6 @@ const loadFragment = (
   filePath: string,
 ): Effect.Effect<Fragment, ToolingIncludeError> =>
   readFragmentText(filePath, entry.source).pipe(
-    Effect.flatMap((content) => rejectComposeTags(entry.source, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
     Effect.flatMap((parsed) => assertToolingFragment(parsed, entry.source, filePath)),
     Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),

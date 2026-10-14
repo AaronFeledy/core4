@@ -297,33 +297,25 @@ describe("lintLandofile", () => {
     }
   });
 
-  test("a rejected Compose tag uses the matrix remediation", async () => {
+  test("a native reset tag is valid", async () => {
     await write("name: myapp\nservices:\n  web:\n    image: !reset node:20\n");
 
     const exit = await lint(dir);
 
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
-      expect(
-        exit.value.violations.some(
-          (entry) => entry.suggestion === composeTagDispositions["!reset"].remediation,
-        ),
-      ).toBe(true);
+      expect(exit.value).toMatchObject({ valid: true, violations: [] });
     }
   });
 
-  test("an anchored Compose tag is still rejected with the matrix remediation", async () => {
+  test("an anchored native reset tag is valid", async () => {
     await write("name: myapp\nservices:\n  web:\n    image: &shared !reset node:20\n");
 
     const exit = await lint(dir);
 
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
-      expect(
-        exit.value.violations.some(
-          (entry) => entry.suggestion === composeTagDispositions["!reset"].remediation,
-        ),
-      ).toBe(true);
+      expect(exit.value).toMatchObject({ valid: true, violations: [] });
     }
   });
 

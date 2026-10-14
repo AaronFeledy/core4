@@ -13,10 +13,8 @@ import { compileDispositionTrie, matchDispositionPath } from "../src/compose/rej
 import {
   analyzeComposeRejections,
   composeKeyRejectedError,
-  composeTagRejection,
   firstComposeRejection,
   rejectComposeKeys,
-  rejectComposeTags,
 } from "../src/compose/rejections.ts";
 
 const preserved = { disposition: "preserved", rationale: "Preserved for testing." } as const;
@@ -201,18 +199,16 @@ describe("Compose rejection analysis", () => {
     expect(error.message).toContain(match.rationale);
   });
 
-  test("maps Compose tags to their separate matrix", () => {
+  test("maps native tags to normalized dispositions", () => {
     // Given
     const occurrence = { tag: "!reset", line: 4, column: 12 } as const;
 
     // When
-    const match = composeTagRejection(occurrence);
+    const match = composeTagDispositions[occurrence.tag];
 
     // Then
-    expect(match.matrixPath).toBe("!reset");
-    expect(match.documentPath).toBe("!reset");
-    expect(match).not.toHaveProperty("service");
-    expect(composeTagDispositions["!reset"].remediation).toBe(match.remediation);
+    expect(match.disposition).toBe("normalized");
+    expect(match.remediation).toBeUndefined();
   });
 
   test("covers every section 7.4 rejected service key with exact matrix remediation", () => {
@@ -274,28 +270,26 @@ describe("Compose rejection analysis", () => {
     expect(error.keyPath).toBe("container_name");
   });
 
-  test("rejectComposeTags passes clean content through and rejects the first tag", () => {
+  test("native parsing accepts reset tags", () => {
     // Given
     const clean = "services:\n  web:\n    type: php\n";
     const tagged = "services:\n  web:\n    ports: !reset []\n";
 
     // When
-    const result = Effect.runSync(rejectComposeTags("/clean.yml", clean));
-    const error = Effect.runSync(Effect.flip(rejectComposeTags("/tagged.yml", tagged)));
+    const result = Effect.runSync(parseLandofile({ file: "/clean.yml", content: clean, cwd: "/" }));
+    const parsed = Effect.runSync(parseLandofile({ file: "/tagged.yml", content: tagged, cwd: "/" }));
 
     // Then
-    expect(result).toBe(clean);
-    expect(error).toBeInstanceOf(ComposeKeyRejectedError);
-    if (!(error instanceof ComposeKeyRejectedError)) return;
-    expect(error.keyPath).toBe("!reset");
+    expect(result).toEqual({ services: { web: { type: "php" } } });
+    expect(parsed).toEqual({ services: { web: { ports: reset() } } });
   });
 
-  test("rejectComposeTags preserves parser failures in its error channel", () => {
+  test("native parsing preserves syntax failures in its error channel", () => {
     // Given
     const content = "services:\t!reset";
 
     // When
-    const error = Effect.runSync(Effect.flip(rejectComposeTags("/tabs.yml", content)));
+    const error = Effect.runSync(Effect.flip(parseLandofile({ file: "/tabs.yml", content, cwd: "/" })));
 
     // Then
     expect(error).toBeInstanceOf(LandofileParseError);
@@ -304,3 +298,4 @@ describe("Compose rejection analysis", () => {
     expect(error.filePath).toBe("/tabs.yml");
   });
 });
+import { parseLandofile, reset } from "@lando/sdk/landofile";

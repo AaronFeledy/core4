@@ -3,8 +3,9 @@ import { isAbsolute, resolve } from "node:path";
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 
-import { mergeValues } from "@lando/sdk/landofile";
+import { type LandofileDecodedOverlay, isMergeDirective, mergeValues } from "@lando/sdk/landofile";
 import { includeError } from "./include-guard.ts";
+import { includeAcquisitionView } from "./include-layer-overlays.ts";
 
 type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 
@@ -121,11 +122,12 @@ const groupByNamespace = (
  * a higher layer that only redirects its source.
  */
 export const composeToolingIncludeEntries = (
-  sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
+  sources: ReadonlyArray<Pick<LandofileDecodedOverlay, "includes">>,
 ): ReadonlyArray<ObjectIncludeEntry> => {
   const composed = new Map<string, ReadonlyArray<ObjectIncludeEntry>>();
   for (const source of sources) {
-    for (const [key, declared] of groupByNamespace(source)) {
+    if (isMergeDirective(source.includes)) composed.clear();
+    for (const [key, declared] of groupByNamespace(includeAcquisitionView(source))) {
       const existing = composed.get(key);
       const overridden = existing?.length === 1 && declared.length === 1 ? existing[0] : undefined;
       const override = declared[0];

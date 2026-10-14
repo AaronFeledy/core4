@@ -108,6 +108,23 @@ test("preserves nested generated maps when the canonical overlay replaces a comm
   });
 });
 
+test("global directives are consumed before the managed-provider plan", async () => {
+  await withGlobalFiles(async ({ root, load }) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      "provider: docker\nservices:\n  mailpit:\n    environment:\n      CHANGE: !reset\n    routes: !override\n      - global.test\n",
+    );
+    const loaded = await load();
+    expect(loaded.materialized).toBe(true);
+    if (!loaded.materialized) throw new Error("Expected a global plan.");
+    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
+      KEEP: "generated",
+    });
+    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.routes).toEqual(["global.test"]);
+    expect(loaded.plan.provider).toBe("lando");
+  });
+});
+
 test("merges all six global YAML layers in low-to-high precedence", async () => {
   // Given each layer overrides the keys introduced by its predecessors.
   await withGlobalFiles(async ({ root, load }) => {

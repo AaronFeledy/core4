@@ -1,14 +1,12 @@
 import { Effect, Predicate } from "effect";
 
-import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
+import { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   composeServiceDispositions,
-  composeTagDispositions,
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
-import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import { type DispositionTrieNode, compileDispositionTrie, matchDispositionChild } from "./rejection-trie.ts";
 
 export interface ComposeRejectionMatch {
@@ -37,24 +35,6 @@ class ComposeRejectionMatrixInvariantError extends Error {
 }
 
 let serviceDispositionTrie: DispositionTrieNode | undefined;
-
-const rejectedEntry = (
-  entry: ComposeDispositionEntry,
-  matrixPath: string,
-): (ComposeDispositionEntry & { readonly remediation: string }) | undefined => {
-  switch (entry.disposition) {
-    case "normalized":
-    case "preserved":
-      return undefined;
-    case "rejected":
-      if (entry.remediation === undefined) throw new ComposeRejectionMatrixInvariantError(matrixPath);
-      return { ...entry, remediation: entry.remediation };
-    default: {
-      const exhaustive: never = entry.disposition;
-      throw new ComposeRejectionMatrixInvariantError(String(exhaustive));
-    }
-  }
-};
 
 interface MatchLocation {
   readonly matrixPath: string;
@@ -212,18 +192,6 @@ export const analyzeComposeRejections = (parsed: unknown): ReadonlyArray<Compose
 export const firstComposeRejection = (parsed: unknown): ComposeRejectionMatch | undefined =>
   analyzeComposeRejections(parsed)[0];
 
-export const composeTagRejection = (occurrence: LandofileTagOccurrence): ComposeRejectionMatch => {
-  const entry = composeTagDispositions[occurrence.tag];
-  const rejection = rejectedEntry(entry, occurrence.tag);
-  if (rejection === undefined) throw new ComposeRejectionMatrixInvariantError(occurrence.tag);
-  return {
-    matrixPath: occurrence.tag,
-    documentPath: occurrence.tag,
-    rationale: rejection.rationale,
-    remediation: rejection.remediation,
-  };
-};
-
 export const composeKeyRejectedError = (args: {
   readonly source: string;
   readonly match: ComposeRejectionMatch;
@@ -235,25 +203,6 @@ export const composeKeyRejectedError = (args: {
     keyPath: args.match.matrixPath,
     remediation: args.match.remediation,
   });
-
-export const rejectComposeTags = (
-  source: string,
-  content: string,
-): Effect.Effect<string, ComposeKeyRejectedError | LandofileParseError> =>
-  Effect.try({
-    try: () => detectLandofileTags({ content, file: source }),
-    catch: (cause) => {
-      if (cause instanceof LandofileParseError) return cause;
-      throw cause;
-    },
-  }).pipe(
-    Effect.flatMap((occurrences) => {
-      const first = occurrences[0];
-      return first === undefined
-        ? Effect.succeed(content)
-        : Effect.fail(composeKeyRejectedError({ source, match: composeTagRejection(first) }));
-    }),
-  );
 
 export const rejectComposeKeys = (
   source: string,

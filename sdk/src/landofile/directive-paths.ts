@@ -16,6 +16,8 @@ const childAsts = (node: AST.AST, key: string | number): ReadonlyArray<AST.AST> 
       return ast.types.flatMap((member) => childAsts(member, key));
     case "Suspend":
       return childAsts(ast.thunk(), key);
+    case "Declaration":
+      return ast.typeParameters.flatMap((parameter) => childAsts(parameter, key));
     case "Arrays":
       return typeof key === "number"
         ? [ast.elements[key] ?? ast.rest[0]].filter((value) => value !== undefined)

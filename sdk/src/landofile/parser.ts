@@ -832,7 +832,15 @@ const parseMember = (context: MemberContext, entry: MappingEntry): readonly [unk
       fail("!reset does not accept a populated collection payload.");
     value = undefined;
   } else {
-    value = parseScalar(raw, filePath, line.line, location.column, depth, maxDepth, references);
+    value = parseScalar(
+      raw,
+      filePath,
+      line.line,
+      location.column + Math.max(entry.rawValue.indexOf(raw), 0),
+      depth,
+      maxDepth,
+      references,
+    );
   }
   if (
     tag === "reset" &&

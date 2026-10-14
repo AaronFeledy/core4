@@ -35,9 +35,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { type LandofileDecodedOverlay, decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
-import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
+import { rejectComposeKeys } from "./compose/rejections.ts";
 import { decodeOrFail } from "./decode.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import {
@@ -46,7 +46,11 @@ import {
   rememberLandofileIncludeSources,
   rememberLocalIncludePaths,
 } from "./include-provenance.ts";
-import { type LandofileRelaxedRead, resolveLandofileIncludes } from "./includes.ts";
+import {
+  type LandofileRelaxedRead,
+  resolveLandofileIncludeLayers,
+  resolveLandofileIncludes,
+} from "./includes.ts";
 import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { type LegacyFailureSource, legacyLoadFailure } from "./legacy-load-failure.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
@@ -343,11 +347,11 @@ const loadContext = Effect.fnUntraced(function* (
   return { appRoot, policy, ...(logger._tag === "Some" ? { logger: logger.value } : {}) };
 });
 
-export const loadLandofileFile = Effect.fn("Landofile.loadFile")(function* (
+const loadLandofileLayer = Effect.fn("Landofile.loadLayer")(function* (
   filePath: string,
   context?: LandofileLoadContext,
   inputs?: LandofileRuntimeInputs,
-): Effect.fn.Return<typeof LandofileShape.Type, LandofileLoadError> {
+): Effect.fn.Return<LandofileDecodedOverlay, LandofileLoadError> {
   const resolvedContext = context ?? {
     appRoot: dirname(filePath),
     layer: "canonical" as const,
@@ -385,18 +389,28 @@ export const loadLandofileFile = Effect.fn("Landofile.loadFile")(function* (
         .pipe(Effect.catch(() => Effect.void)),
     );
   }
-  const materialized =
-    context === undefined && Predicate.isObject(resolved.value)
-      ? yield* materializeLoadExpressions(
-          resolved.value,
-          filePath,
-          inputs?.templates.context?.env ?? hostExpressionEnvironment(),
-        )
-      : resolved.value;
-  const landofile = yield* validateLandofile(filePath, materialized).pipe(Effect.catch(onNativeFailure));
+  const landofile = yield* decodeLandofileLayer(filePath, resolved.value).pipe(Effect.catch(onNativeFailure));
   return rememberLandofileAppRoot(
     rememberLandofileReferencedFiles(landofile, resolved.dependencies),
     resolvedContext.appRoot,
+  );
+});
+
+export const loadLandofileFile = Effect.fn("Landofile.loadFile")(function* (
+  filePath: string,
+  context?: LandofileLoadContext,
+  inputs?: LandofileRuntimeInputs,
+): Effect.fn.Return<typeof LandofileShape.Type, LandofileLoadError> {
+  const overlay = yield* loadLandofileLayer(filePath, context, inputs);
+  const materialized = yield* materializeLoadExpressions(
+    mergeLandofiles([overlay]),
+    filePath,
+    inputs?.templates.context?.env ?? hostExpressionEnvironment(),
+  );
+  const decoded = yield* validateLandofile(filePath, materialized);
+  return rememberLandofileAppRoot(
+    rememberLandofileReferencedFiles(decoded, getLandofileReferencedFiles(overlay)),
+    context?.appRoot ?? dirname(filePath),
   );
 });
 
@@ -437,7 +451,6 @@ const loadYamlLandofile = (
       }),
     ),
     Effect.flatMap((content) => scanContentForUnsupportedExpressions(filePath, content)),
-    Effect.flatMap((content) => rejectComposeTags(filePath, content)),
     Effect.flatMap((rendered) =>
       parseLandofile({ file: filePath, content: rendered, cwd: dirname(filePath) }).pipe(
         Effect.catchTag("LandofileParseError", (error) => legacyLoadFailure(error, content, source)),
@@ -505,7 +518,7 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(function* (
           canonical === undefined
             ? undefined
             : yield* Effect.result(
-                loadLandofileFile(canonical.filePath, { ...runtime, layer: canonical.layer }, inputs),
+                loadLandofileLayer(canonical.filePath, { ...runtime, layer: canonical.layer }, inputs),
               );
         const validCanonicalFile =
           canonicalResult !== undefined && Result.isSuccess(canonicalResult)
@@ -514,7 +527,7 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(function* (
         return yield* Effect.forEach(layers, (layer) =>
           (layer === canonical && canonicalResult !== undefined
             ? Effect.fromResult(canonicalResult)
-            : loadLandofileFile(
+            : loadLandofileLayer(
                 layer.filePath,
                 {
                   ...runtime,
@@ -525,7 +538,7 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(function* (
               )
           ).pipe(
             Effect.flatMap((landofile) =>
-              resolveLandofileIncludes({
+              resolveLandofileIncludeLayers({
                 landofile,
                 appRoot,
                 sourcePath: layer.filePath,
@@ -538,15 +551,19 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(function* (
                 ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
-            Effect.map((landofile) => ({ layer, landofile })),
+            Effect.map((resolved) => ({
+              layer,
+              landofile: resolved.provenance,
+              overlays: resolved.overlays,
+            })),
           ),
         );
       }),
     ),
     Effect.flatMap((loaded) => {
-      const composedTooling = composeToolingIncludeEntries(loaded.map(({ landofile }) => landofile));
+      const composedTooling = composeToolingIncludeEntries(loaded.flatMap(({ overlays }) => overlays));
       const merged = {
-        ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
+        ...mergeLandofiles(loaded.flatMap(({ overlays }) => overlays)),
         ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
       };
       return materializeLoadExpressions(
