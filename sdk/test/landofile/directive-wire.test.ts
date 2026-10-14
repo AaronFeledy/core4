@@ -27,5 +27,28 @@ test("native authored mappings that resemble wire envelopes stay ordinary data",
     onExcessProperty: "error",
   });
   expect(decoded).toEqual(value);
-  expect(Schema.encodeUnknownResult(LandofileAuthoringFragment)(decoded)._tag).toBe("Failure");
+  const wire = Schema.encodeSync(LandofileAuthoringFragment)(decoded);
+  expect(wire).toEqual({ "x-data": { _tag: "LandofileLiteral", value: value["x-data"] } });
+  expect(Schema.decodeUnknownSync(LandofileAuthoringFragment)(JSON.parse(JSON.stringify(wire)))).toEqual(
+    value,
+  );
+});
+
+test("opaque nested directives survive JSON transport without consuming literal lookalikes", () => {
+  // Given native operations and reserved-looking ordinary mappings below an opaque key.
+  const native = {
+    "x-data": {
+      nested: reset(),
+      list: [override({ old: reset() })],
+      literal: {
+        _tag: "LandofileLiteral",
+        value: { _tag: "LandofileOverride", value: "ordinary" },
+      },
+    },
+  };
+  // When the authoring codec crosses a JSON boundary.
+  const wire = Schema.encodeUnknownSync(LandofileAuthoringFragment)(native);
+  const decoded = Schema.decodeUnknownSync(LandofileAuthoringFragment)(JSON.parse(JSON.stringify(wire)));
+  // Then both branded operations and literal data retain their meaning.
+  expect(decoded).toEqual(native);
 });

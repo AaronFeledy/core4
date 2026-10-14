@@ -403,6 +403,7 @@ It registers no JSON Schema.
 - `LandofileReset`
 - `LandofileOverrideWire`
 - `LandofileResetWire`
+- `LandofileLiteralWire`
 - `LandofileAuthoringFragmentNative`
 - `SERVICE_CONFIG_ALIASES`
 - `override`

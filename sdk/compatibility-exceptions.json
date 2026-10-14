@@ -2415,13 +2415,13 @@
     "surface": "schema:LandofileAuthoringFragment",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Landofile authoring fragments additively accept native merge directive wire envelopes ({_tag: LandofileOverride, value} and {_tag: LandofileReset}) at every mapping member, and service map-input declarations now derive through their JSON codec projection so directives and typed expression slots reach service entries. Every previously valid fragment still decodes to the same value; envelopes decode to branded directives consumed by layer merging. The conservative checker cannot classify the widened anyOf."
+    "justification": "Pre-release authoring fragments accept override/reset transport envelopes and derive service map inputs through their JSON codec projection. Reserved envelope-shaped mappings now decode as directives, not ordinary opaque data. Native literal lookalikes encode through LandofileLiteral escape envelopes, including recursively inside opaque subtrees, so native data round-trips without collisions. The conservative checker cannot classify the widened anyOf."
   },
   {
     "surface": "schema:LandofileAuthoringFragmentWire",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Landofile authoring fragments additively accept native merge directive wire envelopes ({_tag: LandofileOverride, value} and {_tag: LandofileReset}) at every mapping member, and service map-input declarations now derive through their JSON codec projection so directives and typed expression slots reach service entries. Every previously valid fragment still decodes to the same value; envelopes decode to branded directives consumed by layer merging. The conservative checker cannot classify the widened anyOf."
+    "justification": "Pre-release authoring fragments accept override/reset transport envelopes and derive service map inputs through their JSON codec projection. Reserved envelope-shaped mappings now decode as directives, not ordinary opaque data. Native literal lookalikes encode through LandofileLiteral escape envelopes, including recursively inside opaque subtrees, so native data round-trips without collisions. The conservative checker cannot classify the widened anyOf."
   },
   {
     "surface": "schema:LandofileAuthoringShape",

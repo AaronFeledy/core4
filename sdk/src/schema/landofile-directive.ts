@@ -12,3 +12,12 @@ export type LandofileReset = typeof LandofileReset.Type;
 export const LandofileOverrideWire = <S extends Schema.Top>(value: S) =>
   Schema.Struct({ _tag: Schema.Literal("LandofileOverride"), value });
 export const LandofileResetWire = Schema.Struct({ _tag: Schema.Literal("LandofileReset") });
+
+export const LandofileLiteralWire = Schema.Struct({
+  _tag: Schema.Literal("LandofileLiteral"),
+  value: Schema.Record(Schema.String, Schema.Unknown),
+}).annotate({
+  identifier: "LandofileLiteralWire",
+  title: "Literal Landofile mapping",
+  description: "Escapes opaque mappings that resemble reserved transport envelopes.",
+});
