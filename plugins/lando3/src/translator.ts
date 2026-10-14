@@ -18,6 +18,7 @@ import { Effect, Schema } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import {
+  decodeLandofileAuthoringLayer,
   isPlainRecord,
   landofileLayerRank,
   mergeLandofiles,
@@ -218,6 +219,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           Effect.flatMap((value) =>
             Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
           ),
+          Effect.tap((value) => decodeLandofileAuthoringLayer(entry.layerId, value)),
           Effect.map((fragment) => ({ layerId: entry.layerId, fragment })),
           Effect.mapError(
             (cause) =>

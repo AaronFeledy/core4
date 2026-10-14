@@ -1,5 +1,11 @@
 import { ConfigTranslateError } from "@lando/sdk/errors";
-import { decodeLandofileLayer, isPlainRecord, mergeLandofiles, override, reset } from "@lando/sdk/landofile";
+import {
+  decodeLandofileAuthoringLayer,
+  isPlainRecord,
+  mergeLandofiles,
+  override,
+  reset,
+} from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
 import { equal } from "./layer-delta-values.ts";
 import type { DesiredPrefix } from "./layer-delta.ts";
@@ -42,20 +48,20 @@ export const replayDecodedDeltas = Effect.fnUntraced(function* (
   const result: EmittedLayer[] = [];
   for (const [index, prefix] of prefixes.entries()) {
     let candidate = emitted[index]?.fragment ?? {};
-    const expectedOverlay = yield* Effect.result(decodeLandofileLayer(prefix.layer, prefix.desired));
-    // A prefix that is not a loadable layer on its own (for example partial
-    // credentials completed by a type default) has no decoded oracle; the raw
-    // replay in planLayerDeltas already proved the emitted fragment for it.
-    if (Result.isFailure(expectedOverlay)) {
-      const decoded = yield* Effect.result(decodeLandofileLayer(prefix.layer, candidate));
-      accumulated = mergeLandofiles([accumulated, Result.isSuccess(decoded) ? decoded.success : candidate]);
-      result.push({ layer: prefix.layer, fragment: candidate });
-      continue;
-    }
-    const expected = mergeLandofiles([expectedOverlay.success]);
+    const expectedOverlay = yield* decodeLandofileAuthoringLayer(prefix.layer, prefix.desired).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigTranslateError({
+            message: `Invalid desired ${prefix.layer} prefix.`,
+            cause,
+            remediation: "Provide complete independently valid layer values before translating.",
+          }),
+      ),
+    );
+    const expected = mergeLandofiles([expectedOverlay]);
     const replaced = new Set<string>();
     for (;;) {
-      const decoded = yield* Effect.result(decodeLandofileLayer(prefix.layer, candidate));
+      const decoded = yield* Effect.result(decodeLandofileAuthoringLayer(prefix.layer, candidate));
       if (Result.isSuccess(decoded)) {
         const merged = mergeLandofiles([accumulated, decoded.success]);
         if (equal(merged, expected)) {

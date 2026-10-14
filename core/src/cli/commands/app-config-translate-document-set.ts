@@ -2,6 +2,7 @@ import { basename, relative } from "node:path";
 import { LANDOFILE_LAYER_POSITIONS, presentLandofileLayers } from "@lando/landofile/layers";
 import { parseLandofile } from "@lando/landofile/parser";
 import { ConfigTranslateError, LandofileFormConflictError } from "@lando/sdk/errors";
+import { decodeLandofileAuthoringLayer } from "@lando/sdk/landofile";
 import type {
   ConfigTranslateDocument,
   ConfigTranslateLayerFragment,
@@ -139,6 +140,7 @@ export const lowerV4LayerFragments: (
       );
     const content = new TextDecoder().decode(document.bytes);
     return parseLandofile({ file: filePath, content, cwd: args.appRoot }).pipe(
+      Effect.tap((value) => decodeLandofileAuthoringLayer(filePath, value)),
       Effect.flatMap((value) =>
         Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
       ),

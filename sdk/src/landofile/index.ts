@@ -15,6 +15,7 @@ export {
 } from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
 export { decodeLandofileLayer, type LandofileLayerValidator } from "./layer-decode.ts";
+export { decodeLandofileAuthoringLayer } from "./authoring-layer-decode.ts";
 export {
   override,
   reset,

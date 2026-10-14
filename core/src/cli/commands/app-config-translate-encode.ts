@@ -1,7 +1,7 @@
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 import { ConfigTranslateError } from "@lando/sdk/errors";
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { decodeLandofileAuthoringLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
   type ConfigTranslateLayerFragment,
   type ConfigTranslateOutput,
@@ -41,6 +41,7 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
     const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
       native,
     ).pipe(Effect.mapError(invalidPrefix));
+    yield* decodeLandofileAuthoringLayer(entry.layer, mapping).pipe(Effect.mapError(invalidPrefix));
     merged = mergeLandofiles([merged, mapping]);
     yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(merged, {
       onExcessProperty: "error",

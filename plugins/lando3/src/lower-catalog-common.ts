@@ -165,8 +165,26 @@ export const lowerCatalogCommon = (
     );
   }
 
-  for (const key of ["command", "creds", "user"] as const) {
+  for (const key of ["command", "user"] as const) {
     if (service[key] !== undefined) patch[key] = service[key];
+  }
+  if (service.creds !== undefined) {
+    const creds = service.creds;
+    if (
+      hasPlainObjectPrototype(creds) &&
+      ["user", "password", "database"].every((key) => typeof creds[key] === "string")
+    ) {
+      patch.creds = creds;
+    } else {
+      diagnostics.push(
+        unsupportedServiceKey({
+          ctx,
+          relative: ["creds"],
+          message: "Partial legacy credentials cannot form an independently valid native layer.",
+          remediation: "Supply user, password, and database together before converting this layer.",
+        }),
+      );
+    }
   }
   if (typeof service.meUser === "string") {
     patch.user = service.meUser;
