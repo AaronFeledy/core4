@@ -33,6 +33,7 @@ import {
   AmbiguousCertificateAuthoritiesError,
   InteractionCancelledError,
   InteractionUnavailableError,
+  ProviderUnavailableError,
   ProxySetupError,
   SshError,
 } from "@lando/sdk/errors";
@@ -2857,6 +2858,30 @@ describe("meta:setup command", () => {
         expect(error.remediation).not.toContain("`lando setup` (the default)");
         expect(error.remediation).not.toMatch(/lando setup(?! --provider)/u);
       }
+    });
+
+    test("setup --provider=docker surfaces Docker API version ranges", async () => {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "docker",
+        isAvailable: Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "docker",
+            operation: "docker-api",
+            message:
+              "Cannot negotiate a Docker Engine API version. Lando supports 1.43-1.44; this daemon reports 1.50-1.55.",
+            details: { kind: "docker-api-version", ourRange: "1.43-1.44", daemonRange: "1.50-1.55" },
+          }),
+        ),
+      };
+      const { registry } = buildRegistryThatCapturesPlan(provider);
+      const failure = await Effect.runPromise(
+        setupSpec
+          .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
+          .pipe(Effect.provide(buildSetupLayers(registry)), Effect.flip),
+      );
+      expect(failure.message).toContain("1.43-1.44");
+      expect(failure.message).toContain("1.50-1.55");
     });
 
     for (const id of ["docker", "podman"] as const) {

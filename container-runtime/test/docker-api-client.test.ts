@@ -7,7 +7,9 @@ import {
   makeDockerApiClient,
   makeNamedPipeTransportClient,
   makeTcpTransportClient,
+  resetDockerApiPrefixCache,
 } from "../src/docker/api-client.ts";
+import { DOCKER_API_PREFERRED_VERSION } from "../src/docker/api-version.ts";
 import {
   ContainerTransportError,
   type SocketHttpConnection,
@@ -16,8 +18,14 @@ import {
 
 const ctx = { providerId: "custom-docker", remediation: "Start the custom engine." } as const;
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+beforeEach(() => {
+  resetRegisteredRedactionValuesForTesting();
+  resetDockerApiPrefixCache();
+});
+afterEach(() => {
+  resetRegisteredRedactionValuesForTesting();
+  resetDockerApiPrefixCache();
+});
 
 const connection = (writes: Array<string | Uint8Array>): SocketHttpConnection => ({
   async *[Symbol.asyncIterator]() {
@@ -105,9 +113,9 @@ describe("Docker API client", () => {
     const response = await client.request({ method: "GET", path: "/info" });
     // Then
     expect(paths).toEqual(["\\\\.\\pipe\\docker_engine"]);
-    expect(writes[0]).toStartWith("GET /v1.43/info HTTP/1.1\r\n");
-    expect(response).toEqual({ status: 200, body: "{}" });
-    expect(DOCKER_API_PREFIX).toBe("/v1.43");
+    expect(writes[0]).toStartWith(`GET ${DOCKER_API_PREFIX}/info HTTP/1.1\r\n`);
+    expect(response).toMatchObject({ status: 200, body: "{}" });
+    expect(DOCKER_API_PREFIX).toBe(`/v${DOCKER_API_PREFERRED_VERSION}`);
   });
 
   test.each([
@@ -126,7 +134,7 @@ describe("Docker API client", () => {
     await client.request({ method: "GET", path: "/info" });
     // Then
     expect(targets).toEqual([expect.objectContaining({ host, port })]);
-    expect(writes[0]).toStartWith("GET /v1.43/info HTTP/1.1\r\n");
+    expect(writes[0]).toStartWith(`GET ${DOCKER_API_PREFIX}/info HTTP/1.1\r\n`);
   });
 
   test("preserves host routing and socket-only streaming without opening sockets", async () => {
@@ -142,7 +150,8 @@ describe("Docker API client", () => {
     expect(router).toContain('dockerHost.startsWith("npipe:")');
     expect(router).toContain("normalizeNamedPipePath(dockerHost)");
     expect(router).toContain('dockerHost.startsWith("unix://")');
-    expect(router).toContain('`http://${dockerHost.slice("tcp://".length)}${DOCKER_API_PREFIX}`');
+    expect(router).toContain("dockerHttpBaseUrl(dockerHost)");
+    expect(router).toContain("makeHttpDockerApiClient");
     expect(unix.slice(0, unix.indexOf("request:"))).toContain("streamUnixSocketRequest(socketPath, input)");
     expect(unix.slice(unix.indexOf("stream: (input)"), unix.indexOf("request:"))).not.toContain("spawn");
   });
@@ -175,6 +184,7 @@ describe("Docker API client", () => {
           "curl",
           "--silent",
           "--show-error",
+          "--include",
           "--unix-socket",
           "/var/run/docker.sock",
           "--request",
@@ -185,7 +195,7 @@ describe("Docker API client", () => {
           "Content-Type: application/json",
           "--data",
           '{"Image":"test"}',
-          "http://localhost/v1.43/containers/create",
+          `http://localhost${DOCKER_API_PREFIX}/containers/create`,
         ],
         { stderr: "pipe", stdin: "ignore", stdout: "pipe" },
       ],
