@@ -23,7 +23,7 @@ const translate = (text: string) =>
   );
 
 describe("Tomcat legacy webroot lowering", () => {
-  test.each([undefined, null, 42, taggedRoot])("preserves an authored non-string webroot %j", (webroot) => {
+  test.each([undefined, null, 42])("preserves an authored non-string webroot %j", (webroot) => {
     // Given: an authored value that cannot be joined as a literal path.
     const service = { type: "tomcat", webroot };
     // When: the service is lowered.
@@ -62,26 +62,28 @@ describe("Tomcat legacy webroot lowering", () => {
     );
   }
 
-  test.each(["!load", "!import"])("preserves a parsed %s webroot through translation", async (tag) => {
-    // Given: a tagged webroot referring to a file that conversion must not read.
-    const text = `services:\n  java:\n    type: tomcat:10\n    webroot: ${tag} deploy-root.txt\n`;
-    // When: a complete legacy document is translated.
-    const result = await translate(text);
-    // Then: the marker survives instead of being silently replaced by webapps/ROOT.
-    expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
-      {
-        services: {
-          java: {
-            type: "tomcat:10",
-            webroot: expect.objectContaining({ tag, value: "deploy-root.txt" }),
+  test.each(["!load", "!import"])(
+    "reports a parsed %s webroot as unsupported without emitting its marker",
+    async (tag) => {
+      // Given: a tagged webroot referring to a file that conversion must not read.
+      const text = `services:\n  java:\n    type: tomcat:10\n    webroot: ${tag} deploy-root.txt\n`;
+      // When: a complete legacy document is translated.
+      const result = await translate(text);
+      // Then: unsupported references cannot enter native authoring schemas.
+      expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+        {
+          services: {
+            java: {
+              type: "tomcat:10",
+            },
           },
         },
-      },
-    ]);
-    expect(result.diagnostics).toEqual([
-      expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "webroot"] }),
-    ]);
-  });
+      ]);
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "unsupported", keyPath: [...ctx.keyPath, "webroot"] }),
+      ]);
+    },
+  );
 
   test.each([false, "disabled", "off"])(
     "translates app_mount %s without a relative webroot",
