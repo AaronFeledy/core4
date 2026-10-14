@@ -174,18 +174,17 @@ export const readWindowsPeResources = (
     const size = resources.u32(language.target + 4);
     return view.slice(rvaOffset(rva, size), size);
   };
+  // Windows displays the first RT_GROUP_ICON in directory order, where named entries precede ids.
+  // Bun only replaces id-named groups, so its named default group stays first and still lists its
+  // old image size for RT_ICON 1, which Bun overwrites with the first lando.ico image. That is why
+  // dwBytesInRes is not checked against the RT_ICON data.
   const group = binaryView(resource(14));
   if (group.u16(0) !== 0 || group.u16(2) !== 1 || group.u16(4) === 0) {
     throw new Error("Invalid PE group icon header.");
   }
   const count = group.u16(4);
   group.slice(6, count * 14);
-  const images = Array.from({ length: count }, (_, index) => {
-    const entry = 6 + index * 14;
-    const image = resource(3, group.u16(entry + 12));
-    if (image.length !== group.u32(entry + 8)) throw new Error("PE group icon image size mismatch.");
-    return image;
-  });
+  const images = Array.from({ length: count }, (_, index) => resource(3, group.u16(6 + index * 14 + 12)));
   return { images, strings: readVersionStrings(resource(16)) };
 };
 
@@ -193,16 +192,9 @@ export const assertWindowsBranding = (exeBytes: Uint8Array, icoBytes: Uint8Array
   const { images, strings } = readWindowsPeResources(exeBytes);
   const expectedImages = readIcoImages(icoBytes);
   const mismatches: string[] = [];
-  if (
-    images.length !== expectedImages.length ||
-    images.some((image, index) => {
-      const expected = expectedImages[index];
-      return expected === undefined || Buffer.compare(image, expected) !== 0;
-    })
-  )
-    mismatches.push(
-      "Lando icon mismatch: group icon images differ from lando.ico in count, bytes, or order.",
-    );
+  if (!images.every((image) => expectedImages.some((expected) => Buffer.compare(image, expected) === 0))) {
+    mismatches.push("Lando icon mismatch: the displayed icon group references images not in lando.ico.");
+  }
   for (const [key, expected] of Object.entries({
     ProductName: WINDOWS_BRANDING.title,
     CompanyName: WINDOWS_BRANDING.publisher,

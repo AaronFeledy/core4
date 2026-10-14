@@ -10,7 +10,7 @@ import {
   readWindowsPeResources,
 } from "../../../scripts/windows-branding.ts";
 
-const images = [Buffer.from([1, 2, 3]), Buffer.from([4, 5])];
+const images = [Buffer.from([1, 2, 3]), Buffer.from([4, 5])] as const;
 const landoStrings = {
   ProductName: "Lando",
   CompanyName: "Lando Alliance",
@@ -35,28 +35,51 @@ const versionBlock = (key: string, value: string | Buffer, children: readonly Bu
   return block;
 };
 
-const ico = (orderedImages: readonly Buffer[] = images): Buffer => {
-  const directory = Buffer.alloc(6 + orderedImages.length * 16);
+const ico = (): Buffer => {
+  const directory = Buffer.alloc(6 + images.length * 16);
   directory.writeUInt16LE(1, 2);
-  directory.writeUInt16LE(orderedImages.length, 4);
+  directory.writeUInt16LE(images.length, 4);
   let offset = directory.length;
-  orderedImages.forEach((image, index) => {
+  images.forEach((image, index) => {
     directory.writeUInt32LE(image.length, 6 + index * 16 + 8);
     directory.writeUInt32LE(offset, 6 + index * 16 + 12);
     offset += image.length;
   });
-  return Buffer.concat([directory, ...orderedImages]);
+  return Buffer.concat([directory, ...images]);
 };
 
-const peFixture = (strings: Readonly<Record<string, string>> = landoStrings, pe32 = false): Buffer => {
-  const group = Buffer.alloc(6 + images.length * 14);
+type Resource = { readonly id: number | string; readonly data: Buffer };
+
+const groupIcon = (refs: readonly { readonly id: number; readonly size: number }[]): Buffer => {
+  const group = Buffer.alloc(6 + refs.length * 14);
   group.writeUInt16LE(1, 2);
-  group.writeUInt16LE(images.length, 4);
-  images.forEach((image, index) => {
-    group.writeUInt32LE(image.length, 6 + index * 14 + 8);
-    // Reverse ids to distinguish group order from resource directory order.
-    group.writeUInt16LE(images.length - index, 6 + index * 14 + 12);
+  group.writeUInt16LE(refs.length, 4);
+  refs.forEach(({ id, size }, index) => {
+    group.writeUInt32LE(size, 6 + index * 14 + 8);
+    group.writeUInt16LE(id, 6 + index * 14 + 12);
   });
+  return group;
+};
+
+// Reverse ids to distinguish group order from resource directory order.
+const reversedIcons = {
+  icons: images.toReversed().map((data, index) => ({ id: index + 1, data })),
+  groups: [
+    {
+      id: 1,
+      data: groupIcon(images.map((image, index) => ({ id: images.length - index, size: image.length }))),
+    },
+  ],
+};
+
+const peFixture = (
+  strings: Readonly<Record<string, string>> = landoStrings,
+  pe32 = false,
+  {
+    icons,
+    groups,
+  }: { readonly icons: readonly Resource[]; readonly groups: readonly Resource[] } = reversedIcons,
+): Buffer => {
   const version = versionBlock("VS_VERSION_INFO", Buffer.alloc(52), [
     versionBlock("StringFileInfo", Buffer.alloc(0), [
       versionBlock(
@@ -68,8 +91,8 @@ const peFixture = (strings: Readonly<Record<string, string>> = landoStrings, pe3
     versionBlock("VarFileInfo", Buffer.alloc(0), [versionBlock("Translation", Buffer.from([9, 4, 0xb0, 4]))]),
   ]);
   const resources = [
-    { type: 3, entries: images.toReversed().map((data, index) => ({ id: index + 1, data })) },
-    { type: 14, entries: [{ id: 1, data: group }] },
+    { type: 3, entries: icons },
+    { type: 14, entries: groups },
     { type: 16, entries: [{ id: 1, data: version }] },
   ];
   const section = Buffer.alloc(4096);
@@ -84,12 +107,21 @@ const peFixture = (strings: Readonly<Record<string, string>> = landoStrings, pe3
     const typeDir = allocate(16 + entries.length * 8);
     section.writeUInt32LE(type, 16 + index * 8);
     section.writeUInt32LE(typeDir + 0x80000000, 20 + index * 8);
-    section.writeUInt16LE(entries.length, typeDir + 14);
+    const named = entries.filter((entry) => typeof entry.id === "string").length;
+    section.writeUInt16LE(named, typeDir + 12);
+    section.writeUInt16LE(entries.length - named, typeDir + 14);
     entries.forEach(({ id, data }, entryIndex) => {
       const languageDir = allocate(24);
       const dataEntry = allocate(16);
       const payload = allocate(data.length);
-      section.writeUInt32LE(id, typeDir + 16 + entryIndex * 8);
+      if (typeof id === "string") {
+        const name = allocate(2 + id.length * 2);
+        section.writeUInt16LE(id.length, name);
+        section.write(id, name + 2, "utf16le");
+        section.writeUInt32LE(name + 0x80000000, typeDir + 16 + entryIndex * 8);
+      } else {
+        section.writeUInt32LE(id, typeDir + 16 + entryIndex * 8);
+      }
       section.writeUInt32LE(languageDir + 0x80000000, typeDir + 20 + entryIndex * 8);
       section.writeUInt16LE(1, languageDir + 14);
       section.writeUInt32LE(1033, languageDir + 16);
@@ -157,11 +189,25 @@ describe("Windows PE branding resources", () => {
     // When / Then: byte-level mismatch fails branding verification.
     expect(() => assertWindowsBranding(peFixture(), reference)).toThrow("Lando icon mismatch");
   });
-  test("rejects reordered icon images", () => {
-    // Given: an ICO with its two images in reverse order.
-    const reference = ico(images.toReversed());
-    // When / Then: group ordering remains part of the assertion.
-    expect(() => assertWindowsBranding(peFixture(), reference)).toThrow("Lando icon mismatch");
+  test.each([
+    ["accepts", images[0], true],
+    ["rejects", Buffer.from([9, 9, 9]), false],
+  ] as const)("%s Bun's real icon layout by what icon 1 holds", (_, iconOne, branded) => {
+    // Given: Bun's named default group listed first with its stale size for icon 1, plus the
+    // id-0 group Bun adds for the full lando.ico.
+    const exe = peFixture(landoStrings, false, {
+      icons: [iconOne, ...images.slice(1)].map((data, index) => ({ id: index + 1, data })),
+      groups: [
+        { id: "IDI_MYICON", data: groupIcon([{ id: 1, size: 270600 }]) },
+        { id: 0, data: groupIcon(images.map((image, index) => ({ id: index + 1, size: image.length }))) },
+      ],
+    });
+    // When: branding is read and asserted.
+    const check = () => assertWindowsBranding(exe, ico());
+    // Then: the displayed named group decides, so only a Lando image in icon 1 passes.
+    expect(readWindowsPeResources(exe).images).toEqual([iconOne]);
+    if (branded) expect(check).not.toThrow();
+    else expect(check).toThrow("Lando icon mismatch");
   });
   test.each([Buffer.alloc(0), Buffer.from("not a PE"), Buffer.from("MZ")])(
     "rejects invalid or truncated input %j",
