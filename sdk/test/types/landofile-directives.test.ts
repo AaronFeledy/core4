@@ -5,6 +5,7 @@ import * as landofile from "@lando/sdk/landofile";
 import type { LandofileOverlayInput } from "@lando/sdk/landofile";
 import * as schema from "@lando/sdk/schema";
 import type { LandofileOverride, LandofileReset, LandofileShape } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const assertType = <T extends true>(value: T): T => value;
@@ -45,9 +46,10 @@ describe("Landofile merge directive typing", () => {
     assertType<Rejects<{ services: { web: { routes: LandofileOverride<number> } } }>>(true);
     assertType<Rejects<{ name: LandofileOverride<number> }>>(true);
     assertType<Rejects<{ services: { web: { image: LandofileOverride<ReadonlyArray<string>> } } }>>(true);
-    // Then a document-root directive is not an authored layer either.
-    assertType<Rejects<LandofileReset>>(true);
-    expect(true).toBe(true);
+    // Then a document-root directive, which the all-optional layer type cannot exclude, fails layer decoding.
+    expect(Effect.runSyncExit(landofile.decodeLandofileLayer(".lando.yml", landofile.reset()))._tag).toBe(
+      "Failure",
+    );
   });
 
   test("effective Landofile types stay marker-free", () => {
