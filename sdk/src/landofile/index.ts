@@ -17,16 +17,22 @@ export { LandofileEmitError } from "./errors.ts";
 export { splitComposeCommand, type SplitCommand } from "./compose-command.ts";
 export { LANDOFILE_LAYER_ORDER, landofileLayerRank } from "./layer-order.ts";
 export {
-  ARRAY_IDENTITY_KEYS,
-  TOOLING_REPLACE_ARRAY_KEYS,
   type RouteFilterIdentity,
-  identityKeyFor,
   isPlainRecord,
   mergeLandofiles,
   mergeValues,
   routeFilterIdentity,
   routeFilterMatches,
 } from "./overlay-merge.ts";
+export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
+export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
+export {
+  parseRouteShorthand,
+  routeMatchKey,
+  routeInputObject,
+  routeInputKey,
+  expandRouteSchemes,
+} from "./route-input.ts";
 export {
   type ComposeDisposition,
   type ComposeDispositionEntry,

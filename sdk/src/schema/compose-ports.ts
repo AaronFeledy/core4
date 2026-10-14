@@ -3,9 +3,16 @@ import { Effect } from "effect";
 import { Result, Schema } from "effect";
 
 import { BindAddress } from "./endpoint.ts";
+import { layerMerge } from "./layer-merge.ts";
 import { PortNumber } from "./primitives.ts";
 
 const PortProtocol = Schema.Literals(["tcp", "udp"]);
+const PORT_MERGE = {
+  kind: "keyed",
+  identity: "port-name",
+  whenUnkeyed: "replace",
+  onMatch: "merge",
+} as const;
 const Forbidden = Schema.optionalKey(Schema.Never);
 const DecimalPortToken = /^[0-9]{1,5}$/;
 
@@ -139,11 +146,11 @@ const ComposePortInput = Schema.Union([
 const COMPOSE_PORTS_DESCRIPTION =
   'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.';
 
-export const ComposePortsField = Schema.Array(ComposePortInput)
+export const ComposePortsField = layerMerge(Schema.Array(ComposePortInput), PORT_MERGE)
   .annotate({ description: COMPOSE_PORTS_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
-      Schema.Array(ComposePortEntry),
+      layerMerge(Schema.Array(ComposePortEntry), PORT_MERGE),
       SchemaTransformation.transformEffect<
         ReadonlyArray<typeof ComposePortEntry.Encoded>,
         ReadonlyArray<typeof ComposePortInput.Type>
@@ -204,6 +211,7 @@ export const ComposePortsField = Schema.Array(ComposePortInput)
       }),
     ),
   )
+  .pipe((schema) => layerMerge(schema, PORT_MERGE))
   .annotate({ description: COMPOSE_PORTS_DESCRIPTION });
 
 const COMPOSE_EXPOSE_DESCRIPTION =

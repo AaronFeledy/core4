@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- Layer identities containing template expressions now match their non-empty literal text before materialization; templated route hostnames retain case, and shorthand promotion preserves original template slices. Matching projections no longer rewrite untouched `both` routes: unmatched inherited and overlay entries retain their authored spelling, while matched entries use atomic scheme parts and partially matched overlays append only unmatched parts.
+
+- Part A of #1368 changes the pre-ship merge API to `mergeValues(root: Schema.Top, left, right, path?: ReadonlyArray<string | number>): unknown` and non-generic `mergeLandofiles(layers): Record<string, unknown>` rooted at `LandofileShape`; callers validate their results. It removes `ARRAY_IDENTITY_KEYS`, `identityKeyFor`, and `TOOLING_REPLACE_ARRAY_KEYS`. New schema exports are `SchemaLayerMergeAnnotationId`, the inferred `LayerMergeRule` descriptor schema, `layerMerge`, and `getLayerMergeRule`; Landofile exports add `resolveLayerMergeRule`, `assertLayerMergeCompleteness`, `listLayerMergeRules`, `parseRouteShorthand`, `routeMatchKey`, `routeInputObject`, `routeInputKey`, and `expandRouteSchemes`. Published and editor JSON Schema carry `x-lando-merge`, and generated references list recursive policies. Routes now match by scheme, case-insensitive hostname, and path prefix regardless of spelling, defaulting to HTTPS and `/`; `both` participates in each scheme independently, without using backend or filters as identity. Parsed shorthand is sparse, with no injected filters. Dependencies match by service in every authored form, logs by explicit/default basename id, filters by name or unnamed type (type changes replace), and endpoints/ports by exact name only when all entries are named. Event steps, tooling commands, and opaque arrays replace; `[]` clears. No directive APIs or tag support are introduced.
+
 - Pre-release rename: `RENDERER_CAPABILITIES_TTY_INITIAL` is now `RENDERER_CAPABILITIES_TTY`, with `color`, `interactive`, `animation`, and `notifications` all true. The default TTY renderer publishes this immutable snapshot synchronously at construction instead of probing OpenTUI and promoting capabilities asynchronously. Non-TTY capabilities remain all false; third-party capability promotion remains monotonic.
 
 - `mergeValues` and `mergeLandofiles` now replace an inherited array of any kind when a higher-precedence overlay explicitly supplies `[]`, including identity-keyed object arrays and route `filters`. Non-empty object overlays keep identity merging, except tooling `cmds` in the next note. Service-type `extends:` applies the same rule to child config. No export, signature, or JSON Schema changes.
@@ -383,6 +387,11 @@ unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
 ## Additive schema exports
+
+- `LayerMergeRule`
+- `SchemaLayerMergeAnnotationId`
+- `layerMerge`
+- `getLayerMergeRule`
 
 - `ROUTER_LAST_RESORT_HTTP_PORT`
 - `ROUTER_LAST_RESORT_HTTPS_PORT`

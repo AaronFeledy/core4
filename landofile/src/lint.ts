@@ -340,7 +340,10 @@ export const lintLandofile = Effect.fn("Landofile.lint")(function* (
     ]);
   }
 
-  const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
+  const parsed = parsedLayers.reduce<unknown>(
+    (merged, layer) => mergeValues(LandofileShape, merged, layer),
+    {},
+  );
   const rejections = layerRejections.flat();
   const rejectionViolations = rejections.map(rejectionViolation);
   const mergedViolations = violationsFor(parsed, rejections);
