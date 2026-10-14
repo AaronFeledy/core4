@@ -6,8 +6,9 @@
  * matching `--skip-*` flag. They are pulled out of the command orchestration so
  * each service concern reads as one unit.
  */
-import { type Context, DateTime, Effect, Result } from "effect";
+import { type Context, DateTime, Duration, Effect, Result } from "effect";
 
+import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
   CertificateAuthority,
@@ -21,6 +22,10 @@ import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-do
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import {
+  SSH_SIDECAR_READINESS_POLICY,
+  awaitRuntimeSshAgent,
+} from "@lando/engine/subsystems/ssh-agent/session";
 import { redactString } from "../../redact";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
@@ -169,7 +174,27 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
   }
   const ssh = yield* Effect.serviceOption(SshService);
   if (ssh._tag === "Some") {
-    const setup = yield* Effect.result(ssh.value.setup({ force: false }));
+    const setup = yield* Effect.result(
+      Effect.gen(function* () {
+        yield* ssh.value.setup({ force: false });
+        if (ssh.value.id !== "sidecar") return;
+        const state = yield* awaitRuntimeSshAgent();
+        if (state !== "ready") {
+          return yield* Effect.fail(
+            new SshAgentUnavailableError({
+              mode: "sidecar",
+              reason: "sidecar-not-running",
+              message:
+                state === "stopped"
+                  ? "The SSH agent sidecar stopped before its agent answered."
+                  : `The SSH agent sidecar started, but its agent did not answer within ${Duration.toSeconds(SSH_SIDECAR_READINESS_POLICY.timeout)} seconds.`,
+              remediation:
+                "Run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando setup`.",
+            }),
+          );
+        }
+      }),
+    );
     if (Result.isFailure(setup)) {
       const evidence = redactString(setup.failure.message);
       const setupCommand =

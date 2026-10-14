@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type AppPlan, PortablePath, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
@@ -31,10 +31,12 @@ test.each(["sidecar", "host"] as const)(
       },
     };
     const applied: AppPlan[] = [];
+    const applyOptions: (ApplyOptions | undefined)[] = [];
     const harness = makeHarness({
       plannedApp: selected,
-      onApply: (value) => {
+      onApply: (value, options) => {
         applied.push(value);
+        applyOptions.push(options);
       },
     });
     const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
@@ -100,6 +102,10 @@ test.each(["sidecar", "host"] as const)(
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
+      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBe(
+        "/run/lando/ssh-agent/agent.sock",
+      );
+      expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
         source: AbsolutePath.make(join(root, "relay")),
