@@ -85,7 +85,9 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
             id: TOMCAT_FEATURE_ID,
             config: {
               webroot,
-              ownsImageConfig: input.service.image === undefined || input.service.image === image,
+              ownsImageConfig:
+                !(input.service.build !== undefined && "context" in input.service.build) &&
+                (input.service.image === undefined || input.service.image === image),
             },
           },
           { id: "lando.env", config: { webroot } },

@@ -1,10 +1,10 @@
-import { posix } from "node:path";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { CATALOG, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostIpVariable } from "./host-reachability.ts";
 import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
 import { lowerServiceMemory } from "./lower-service-memory.ts";
+import { lowerTomcatWebroot } from "./lower-tomcat-webroot.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -16,7 +16,6 @@ import { serviceConfigMount } from "./service-config-mount.ts";
 import {
   droppedMoreHttpPorts,
   droppedServiceKey,
-  needsReviewServiceKey,
   rewrittenMeUser,
   rewrittenServiceKey,
   unsupportedServiceKey,
@@ -173,26 +172,17 @@ export const lowerCatalogCommon = (
     patch.user = service.meUser;
     diagnostics.push(rewrittenMeUser({ ctx }));
   }
+  const appMountDisabled =
+    service.app_mount === false || service.app_mount === "disabled" || service.app_mount === "off";
   if (resolution.id === "tomcat") {
-    const webapps = posix.join(
-      typeof service.webroot === "string" ? service.webroot.replace(/^\/+/, "") : ".",
-      "webapps",
-    );
-    patch.webroot = posix.join(webapps, "ROOT");
-    diagnostics.push(
-      needsReviewServiceKey({
-        ctx,
-        relative: ["webroot"],
-        message: `Lando 4 serves only the ROOT webapp at /; other webapps or WAR files under ${webapps} are not deployed.`,
-        remediation:
-          "Review the generated webroot and configure any other webapps or WAR deployments by hand.",
-      }),
-    );
+    const webroot = lowerTomcatWebroot(service, ctx, appMountDisabled);
+    Object.assign(patch, webroot.patch);
+    diagnostics.push(...webroot.diagnostics);
   } else if (service.webroot !== undefined) patch.webroot = service.webroot;
   const port = numericPort(service.port);
   if (port !== undefined) patch.port = port;
 
-  if (service.app_mount === false || service.app_mount === "disabled" || service.app_mount === "off") {
+  if (appMountDisabled) {
     patch.appMount = false;
     rewrite(["app_mount"], "Rewrote disabled app_mount as appMount: false.");
   } else if (["cached", "delegated", "consistent"].includes(String(service.app_mount))) {

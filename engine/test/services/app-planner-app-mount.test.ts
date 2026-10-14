@@ -16,7 +16,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const APP_ROOT = process.cwd();
-const planExit = (service: typeof ServiceConfig.Encoded) => {
+const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRuntimeProvider.capabilities) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "mount-test",
     runtime: 4,
@@ -24,7 +24,7 @@ const planExit = (service: typeof ServiceConfig.Encoded) => {
   });
   return Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
+      planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), capabilities),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 };
@@ -81,6 +81,26 @@ test("a moved tomcat appMount resolves its relative webroot", async () => {
   expect(web?.environment.LANDO_WEBROOT).toBe("/workspace/target/myapp");
   expect(String(web?.workingDirectory)).toBe("/workspace");
 });
+
+test.each(["tomcat", "tomcat:10"])(
+  "%s leaves an authored Compose build's configuration untouched",
+  async (type) => {
+    // Given: a Compose build that replaces the catalog image.
+    const service = { type, certs: false, build: { context: "." } };
+    // When: the full planner selects the authored artifact.
+    const exit = await planExit(service, { ...TestRuntimeProvider.capabilities, artifactBuild: true });
+    // Then: the build artifact is retained without a Lando-owned ROOT context.
+    if (!Exit.isSuccess(exit)) throw new Error(Cause.pretty(exit.cause));
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const web = exit.value.services[ServiceName.make("web")];
+    expect(web?.artifact).toMatchObject({ kind: "build", context: APP_ROOT });
+    expect(web?.extensions["@lando/core/service-features"]).not.toMatchObject({
+      buildSteps: expect.arrayContaining([
+        expect.objectContaining({ id: "service-lando.tomcat:root-context" }),
+      ]),
+    });
+  },
+);
 
 for (const type of ["php:8.3", "nginx", "apache", "static:nginx", "tomcat"]) {
   test.each([undefined, "public"])(

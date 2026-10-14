@@ -52,6 +52,7 @@ describe("app-mount ownership", () => {
       );
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
+      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
       expect(plan.workingDirectory).toBeUndefined();
     });
     if (type !== "compose") {

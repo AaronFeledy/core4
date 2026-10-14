@@ -249,7 +249,7 @@ describe("resolved service document roots", () => {
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
       expect(plan.workingDirectory).toBeUndefined();
-      expect(plan.environment.LANDO_WEBROOT).toBe("/srv/www");
+      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
     });
   }
 });

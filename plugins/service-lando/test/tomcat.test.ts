@@ -198,7 +198,11 @@ describe("tomcat ServiceType", () => {
     expect(command).toContain("/conf/Catalina/localhost");
     expect(command).toContain("ROOT.xml");
     expect(command).not.toContain("server.xml");
-    expect(plan.environment.LANDO_WEBROOT).toBe(docBase);
+    if ("appMount" in definition && definition.appMount === false) {
+      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+    } else {
+      expect(plan.environment.LANDO_WEBROOT).toBe(docBase);
+    }
     if ("command" in definition) expect(plan.command).toEqual(definition.command);
   });
 

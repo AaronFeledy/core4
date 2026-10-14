@@ -48,7 +48,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("LANDO_SERVICE_TYPE", ctx.serviceType);
 
   const { webroot } = ctx.config as LandoEnvFeatureConfig;
-  if (webroot !== undefined) ctx.addEnv("LANDO_WEBROOT", webroot);
+  if (ctx.normalizedConfig.appMount !== false && webroot !== undefined) ctx.addEnv("LANDO_WEBROOT", webroot);
 
   if (appKind !== "global") {
     ctx.addEnv("LANDO_MAIL_HOST", MAILPIT_SHARED_NETWORK_HOST);

@@ -15,7 +15,7 @@ describe("lowerCatalogCommon", () => {
     "translates Tomcat webroot %s to the ROOT webapp",
     (webroot) => {
       // Given: a versioned Tomcat service using an app-root source directory.
-      const service = { type: "tomcat:10", webroot };
+      const service = { type: "tomcat:10", ...(webroot === undefined ? {} : { webroot }) };
       // When: the service is lowered.
       const result = lowerCatalogCommon(service, ctx);
       // Then: only the legacy ROOT webapp is selected, with review required for other deployments.
