@@ -18,7 +18,7 @@ If a path must stay synced even when it matches an exclude, add the same pattern
 
 An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, and `LANDO_PROJECT_MOUNT` follow it. Tomcat is the exception: it mounts the app at its `webroot`, so set `webroot` instead of `appMount.target` (a different `appMount.target` fails planning).
 
-Set `appMount: false` on any service type to skip the app mount entirely. The container gets no app source, no `LANDO_APP_ROOT` or `LANDO_PROJECT_MOUNT`, and starts in the image's own working directory unless you set `workingDirectory`. Use it when the image bakes the code in, for example through `build:`. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
+Set `appMount: false` on any service type to skip the app mount entirely. The container gets no app source, no `LANDO_APP_ROOT` or `LANDO_PROJECT_MOUNT`, and starts in the image's own working directory unless you set `workingDirectory`. Use it when the image bakes the code in, for example through `build:`. On `php`, `nginx`, `apache`, and `static`, `webroot` still resolves against `/app`, so put the code there or set an absolute `webroot` such as `/var/www/html`. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
 
 ```yaml
 services:
