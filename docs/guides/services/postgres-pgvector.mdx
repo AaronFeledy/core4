@@ -7,7 +7,11 @@ tags: [beta, docs, postgres, pgvector, python, service, database]
 
 # Run vector search on Postgres with pgvector
 
-Keep `type: postgres`, swap in the pgvector image for Postgres 18, and point `PGDATA` at Lando's data volume. You keep the `psql` tooling, generated creds, and healthcheck, and you get the `vector` type for embeddings:
+Run vector search with `type: postgres` and the pgvector image for Postgres 18. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
+
+## Configure Postgres and Python
+
+Save this as `.lando.yml`. Keep the Postgres tooling, generated creds, and healthcheck while changing the image:
 
 ```yaml
 name: pgvector-demo
@@ -37,19 +41,29 @@ Each `db` line has a job:
 | Key | Why |
 | --- | --- |
 | `image: pgvector/pgvector:pg18` | Postgres 18 with the `vector` extension already compiled in |
-| `home: false` | Landofile-supplied images need `home: false` or `home.path`, or start refuses with `HomePathCapabilityError` |
+| `home: false` | Disable home-directory persistence for this custom image. Without this or an explicit `home.path`, planning fails with `HomePathCapabilityError` because Lando cannot infer the image user's home |
 | `PGDATA: /var/lib/postgresql/data` | `type: postgres` keeps data in the `<app>-postgresql-data` volume at that path. Postgres 18 images default to `/var/lib/postgresql/18/docker` and refuse to start when that old path is a mount, so tell them to use it |
 
-Leave `PGDATA` out and the 18 image prints `Error: in 18+, these Docker images are configured to store database data in a format which is compatible with "pg_ctlcluster"` and exits. `lando info` then shows `db` as `stopped`, and `lando logs -s db` prints that message.
+The [official Postgres 18 image](https://hub.docker.com/_/postgres) declares its volume at `/var/lib/postgresql`, but Lando currently mounts its named data volume at `/var/lib/postgresql/data`. Setting `PGDATA` to Lando's mount keeps the database files there. Without the override, the image's entrypoint rejects that unused old-path mount. Inspect a failed start with `lando logs -s db`.
+
+Use a fresh app for this example. Changing an existing database's image from another Postgres major does not upgrade its files. Export the data before changing the major, then restore into a fresh volume.
+
+## Start and check the server
 
 Start it and check the server:
 
 ```sh
 lando start
+lando exec db -- pg_isready -h 127.0.0.1 -p 5432 -U lando -d pgvector-demo
+```
+
+On a fresh volume, `lando start` can return before Postgres finishes initialization. Repeat the readiness command until it succeeds, then check the server version:
+
+```sh
 lando psql -c 'SELECT version();'
 ```
 
-On a live start that prints `PostgreSQL 18.6`. `db` has no endpoints in `lando info`; `app` reaches it at host `db` on `5432`, which is what `DATABASE_URL` points at. `lando info` redacts the password, so build the URL from `{{ services.db.creds.* }}` as above instead of copying it.
+The `pg18` tag tracks Postgres 18; patch and extension versions can change. `db` has an internal TCP endpoint, not a published host endpoint, so `lando info` lists no endpoint URL for it. `app` reaches it at `db:5432`, which is what `DATABASE_URL` points at. `lando info` redacts the password, so build the URL from the resolved credential expressions above instead of copying it.
 
 ## Enable the extension
 
@@ -60,7 +74,7 @@ lando psql -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 lando psql -Atc "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
 ```
 
-The second command prints the installed pgvector version (`0.8.7` when this page was checked). Lando passes its `lando` user to the image as `POSTGRES_USER`, which makes it the server's superuser, so `lando psql` can create the extension.
+The second command reports the installed pgvector version. On a fresh volume, the image initializes the user named by `POSTGRES_USER` as a superuser. Lando defaults that user to `lando`, so this example's `lando psql` can create the extension.
 
 ## Store embeddings and search them
 
@@ -78,29 +92,23 @@ CREATE INDEX IF NOT EXISTS items_embedding_hnsw ON items USING hnsw (embedding v
 Pipe it into the client, then ask for the two nearest rows by cosine distance:
 
 ```sh
-lando psql < seed.sql
+lando psql -v ON_ERROR_STOP=1 < seed.sql
 lando psql -c "SELECT body, embedding <=> '[1,0,0]' AS distance FROM items ORDER BY embedding <=> '[1,0,0]' LIMIT 2;"
 ```
 
-```text
-    body    |       distance
-------------+----------------------
- cloud city |                    0
- sabacc     | 0.006116251198662548
-(2 rows)
-```
+With these three rows, the nearest matches are `cloud city` and `sabacc`, in that order. Running the seed file again inserts duplicate rows.
 
-`<=>` is cosine distance and pairs with `vector_cosine_ops`. `<->` is Euclidean (L2) distance; build the index with `vector_l2_ops` if that's the one you query. Three rows is a sequential scan, which is correct. To see the planner take the index anyway:
+[`<=>` is cosine distance](https://github.com/pgvector/pgvector#querying) and pairs with `vector_cosine_ops`. `<->` is Euclidean (L2) distance; build the index with `vector_l2_ops` if that's the one you query. HNSW is approximate nearest-neighbor search, trading recall for speed. A tiny table may use a sequential scan instead. To encourage an index scan for inspection:
 
 ```sh
 lando psql -c "SET enable_seqscan = off;" -c "EXPLAIN (COSTS OFF) SELECT body FROM items ORDER BY embedding <=> '[1,0,0]' LIMIT 2;"
 ```
 
-The plan shows `Index Scan using items_embedding_hnsw on items`.
+Check the plan for an index scan on `items_embedding_hnsw`. HNSW indexes on `vector` support at most 2,000 dimensions; use pgvector's half-precision or other indexing options for larger embeddings.
 
 ## Query from Python
 
-Most RAG stacks talk to pgvector through `psycopg` and the `pgvector` package. Add `requirements.txt`:
+Use Psycopg 3 and [pgvector-python](https://github.com/pgvector/pgvector-python#psycopg-3) to query from Python. Add `requirements.txt` next to the Landofile:
 
 ```text
 psycopg[binary]
@@ -141,10 +149,7 @@ for (body,) in rows:
 lando exec app -- /app/.venv/bin/python search.py
 ```
 
-```text
-cloud city
-sabacc
-```
+The script prints the two matching bodies, one per line.
 
 If `register_vector` raises `vector type not found in the database`, the extension isn't enabled in that database yet. Run the `CREATE EXTENSION` step again.
 
@@ -156,27 +161,40 @@ If `register_vector` raises `vector type not found in the database`, the extensi
 lando db:export vectors.sql
 ```
 
-The file carries `CREATE EXTENSION IF NOT EXISTS vector`, the `vector(3)` column, and the `hnsw` index. Restore it into an empty database with:
+The dump includes the extension declaration, table data, `vector(3)` column, and HNSW index, not the extension's installed binaries. Restore into an empty, running database on an image that also ships pgvector. Imports execute the dump's SQL and can change existing data; `--yes` skips confirmation even for an empty database:
 
 ```sh
 lando db:import vectors.sql --yes
 ```
 
-On an empty volume the import has to initialize the database, so it asks for `--yes` first. See [Import and export app databases](../tooling/db-import-export.mdx) for snapshots and resets.
+Verify the restored rows:
+
+```sh
+lando psql -c 'SELECT count(*) FROM items;'
+```
+
+Don't import this dump back into the populated sample database unless you've cleared it first. Import does not automatically drop existing tables. See [Import and export app databases](../tooling/db-import-export.mdx) for snapshots and resets.
 
 ## Rebuild without losing rows
 
-With `PGDATA` pointed at the Lando volume, `lando rebuild -y` and `lando destroy -y` followed by `lando start` keep the table and the extension. The venv stays too, because it lives on the app mount.
+With the same app and Postgres major, `lando rebuild -y` and `lando destroy -y` followed by `lando start` preserve the named database volume. The venv stays too, because it lives on the app mount. Check the table after rebuilding:
 
-Wipe everything when you want a clean slate. This deletes the database volume:
+```sh
+lando rebuild -y
+lando psql -c 'SELECT count(*) FROM items;'
+```
+
+Repeat the TCP readiness check first if the server is still starting.
+
+Delete the app's service-scoped volumes when you want a clean database. This deletes the database volume and any persisted service homes, but not the source files or `/app/.venv`:
 
 ```sh
 lando destroy -y --volumes
 ```
 
-## Check the planned config
+## Check the Landofile config
 
-`lando app:config --format=json` confirms the image, `home`, and `PGDATA` before anything boots:
+`lando app:config --format=json` shows the Landofile's image, `home`, and `PGDATA` before anything boots. It does not inspect the image or prove database readiness:
 
 <Guide>
   <Scenario id="reader-path" render>

@@ -109,7 +109,7 @@ If you also set `command:` or `entrypoint:` on the service, yours wins. Lando wo
 
 ## Pin a version
 
-Set `image:` when `postgres:16` isn't the version you want. Landofile-supplied images need `home: false` or `home.path`, or start refuses with `HomePathCapabilityError`:
+Set `image:` when `postgres:16` isn't the version you want. For this `postgres:15` override, set `home: false` to disable home persistence, or provide `home.path` explicitly. Without either, planning fails with `HomePathCapabilityError` because Lando cannot infer the custom image user's home:
 
 ```yaml
 services:
