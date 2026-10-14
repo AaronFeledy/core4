@@ -151,7 +151,7 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
 const createStreamingUtf8Decoder = (fatal: boolean) => {
   const decoder = new TextDecoder("utf-8", { fatal });
   const encoder = new TextEncoder();
-  let pending = new Uint8Array(0);
+  let pending: Uint8Array = new Uint8Array(0);
   let binary = false;
   return {
     decode(chunk: Uint8Array): Utf8Decode {
