@@ -65,7 +65,7 @@ Maps deep-merge and scalars use the later value. Collection rules come from each
 
 Route identities with template expressions match by their literal text, including case. Untouched `both` entries stay authored; matching one of their schemes splits only that entry.
 
-An explicitly empty array (`[]`) clears any inherited list. Omit a key to leave its inherited value alone. Mapping keys themselves cannot be deleted by an overlay. See the generated [Landofile schema reference](../../reference/schemas/landofile-shape.mdx#layer-merge-rules) for per-field rules.
+An explicitly empty array (`[]`) clears any inherited list. Omit a key to leave its inherited value alone. To replace a value whole or delete a key, use `!override` or `!reset` ([below](#replace-or-remove-a-value-with-override-and-reset)). See the generated [Landofile schema reference](../../reference/schemas/landofile-shape.mdx#layer-merge-rules) for per-field rules.
 
 For example, start with this `.lando.yml`:
 
@@ -106,6 +106,74 @@ lando app:config --format=json
 
 `services.web.routes` is now `[]`, not the inherited object route. `tooling.test.cmds` contains only `echo local-only`; neither base step remains. Event step lists replace the same way. To add a route rather than clear the list, set a distinct path such as `{hostname: web.example.test, pathPrefix: /api}`; the inherited root route stays, even if it was a shorthand string.
 
+## Replace or remove a value with `!override` and `!reset`
+
+A higher layer has four moves at any mapping key:
+
+| You write | Result |
+| --- | --- |
+| A plain value | Merges. Maps deep-merge, lists follow their schema rule, scalars win. |
+| `[]` | Clears the inherited list. The key stays, holding an empty list. |
+| `!override` and a value | Replaces the inherited value whole. No deep merge, no list identity matching. |
+| `!reset` | Deletes the key, as if no lower layer ever set it. |
+
+Say `.lando.yml` sets two routes and a `DEBUG` variable:
+
+```yaml
+name: merge-directives
+services:
+  web:
+    type: nginx
+    environment:
+      APP_ENV: dev
+      DEBUG: "true"
+    routes:
+      - web.a.test
+      - web.b.test
+```
+
+Drop `DEBUG` and swap in one local hostname from `.lando.local.yml`:
+
+```yaml
+services:
+  web:
+    environment:
+      DEBUG: !reset
+    routes: !override
+      - web.local.test
+```
+
+```sh
+lando app:config --format=json
+```
+
+`services.web.routes` is exactly `["web.local.test"]`, and `environment` holds only `APP_ENV`. A plain `routes:` list would have merged by hostname and kept both inherited routes. The directives themselves never show up in `app:config`, plans, or containers; layer merging consumes them.
+
+A `.lando.*.ts` layer uses the same operations through helpers:
+
+```ts
+import { defineLandofile, override, reset } from "@lando/sdk";
+
+export default defineLandofile({
+  services: {
+    web: {
+      environment: { DEBUG: reset() },
+      routes: override(["web.local.test"]),
+    },
+  },
+});
+```
+
+Where they go:
+
+- On a mapping key: `services.web: !reset`, `environment.DEBUG: !reset`, or a key inside a list item, such as `filters: !override []` inside a route object.
+- Not at the document root, not directly on a list item (`- !reset`), and not on a field that identifies a list entry: route `hostname`, `scheme`, and `pathPrefix`, dependency `service`, filter `name` and `type`, endpoint and port `name`, log `id` and `path`. To drop one entry from such a list, `!override` the whole list.
+- `!reset` ignores a scalar or empty payload, so the Compose spelling `!reset []` works too. `!override` needs a value: a bare `!override` with nothing indented below it fails.
+- `routes: !reset` deletes the key, so generated default hostnames come back. `routes: []` keeps the key and gives the service no hostname at all.
+- `!reset` on a key no lower layer set does nothing. A later plain value puts a reset key back.
+
+Run `lando app:config:lint` to check directive placement before you start the app.
+
 ## Reach for other keys
 
 | Key | What it does |
@@ -133,6 +201,21 @@ lando info
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"your-landofile-demo\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"tooling\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="merge-directives" render>
+    <Step name="scaffold-directive-layers">
+      <UseFixture name="merge-directives" />
+    </Step>
+    <Step name="inspect-directive-merge">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"routes\":\\s*\\[\\s*\"web\\.local\\.test\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "web\\.(a|b)\\.test" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"environment\":\\s*\\{\\s*\"APP_ENV\":\\s*\"dev\"\\s*\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "DEBUG" } } }} />
+    </Step>
+    <Step name="cleanup-directive-layers">
+      <Cleanup />
     </Step>
   </Scenario>
   <Scenario id="empty-routes-overlay" render={false} reason="Regression coverage: a local empty list clears inherited object routes">

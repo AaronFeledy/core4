@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- Native Landofile layers add branded `LandofileOverride`/`LandofileReset` schemas and `override(value)`/`reset()` helpers through the Landofile, schema, SDK root, and core forwarding surfaces. `defineLandofile` accepts the schema-derived `LandofileOverlayInput`, not only effective values. `decodeLandofileLayer` validates and canonicalizes directives before merging; effective schemas remain directive-free.
+- Native Landofile merge directives (pre-ship): `override(value)`/`reset()` and the branded `LandofileOverride`/`LandofileReset` schemas ship through `@lando/sdk`, `@lando/sdk/schema`, `@lando/sdk/landofile`, `@lando/core/schema`, and `@lando/core/landofile`. `defineLandofile` now accepts the schema-derived, directive-capable `LandofileOverlayInput`; effective schemas stay directive-free, and `decodeLandofileLayer` validates and canonicalizes directive placement before merging. `composeTagDispositions` marks `!override` and `!reset` as `normalized` instead of `rejected`. The Landofile editor schema publishes informational `x-lando-yaml-tags`. `LandofileAuthoringFragment` (and the config-translate and recipe-decompose fragments derived from it) accepts `{ _tag: "LandofileOverride", value }` and `{ _tag: "LandofileReset" }` wire envelopes that decode to branded directives; `LandofileAuthoringFragmentNative` is the in-memory counterpart. The Lando 3 translator expresses removals with `!reset`/`!override` and no longer emits relocation `needs-review` diagnostics.
 
 - `ServiceNotReadyError.reason` adds `inspect-failed` for provider observation failures. This is never a supervised restart verdict; remediation targets `lando doctor` rather than service logs.
 

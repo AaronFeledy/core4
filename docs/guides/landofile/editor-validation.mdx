@@ -43,6 +43,31 @@ in `.vscode/settings.json` instead:
 The modeline wins when both are present, which is what you want: the file
 names the contract it was written against.
 
+## Teach the editor `!override` and `!reset`
+
+The YAML language server rejects tags it does not know, so a layer that uses
+[`!override` or `!reset`](./your-landofile.mdx#replace-or-remove-a-value-with-override-and-reset)
+lights up red until you register them. Add this to `.vscode/settings.json`:
+
+```json
+{
+  "yaml.customTags": [
+    "!override scalar",
+    "!override sequence",
+    "!override mapping",
+    "!reset scalar",
+    "!reset sequence",
+    "!reset mapping"
+  ]
+}
+```
+
+The editor now parses the directives, but schema validation still checks the
+tagged value against the field: `DEBUG: !reset` can still get flagged for an
+empty payload. That warning is noise. `lando app:config:lint` owns directive
+placement and payload rules. The published schema lists both tags under
+`x-lando-yaml-tags` so editor tooling can pick them up.
+
 ## What the schema catches
 
 The editor schema is a draft-07 closed object generated from the same Effect
@@ -55,6 +80,7 @@ Schema cannot express them:
 | Event names match tasks your services actually contribute | `lando app:config:lint` |
 | A versioned service type names a version Lando ships | `lando app:config:lint` |
 | Includes resolve and their lockfile is current | `lando app:config` |
+| `!override` and `!reset` sit on a mapping key and carry a valid payload | `lando app:config:lint` |
 
 So keep running lint in CI. The editor handles the typo before you save; lint
 handles the rest before you push.

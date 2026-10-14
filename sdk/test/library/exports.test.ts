@@ -36,6 +36,22 @@ describe("@lando/sdk package exports", () => {
     expect(landofile.composeServiceDispositions).toBeDefined();
     expect(typeof landofile.compareKeyPaths).toBe("function");
   });
+  test("merge directive helpers are forwarded by every Landofile authoring surface", async () => {
+    const landofile = await import("@lando/sdk/landofile");
+    const surfaces = await Promise.all([
+      import("@lando/sdk"),
+      import("@lando/sdk/schema"),
+      import("@lando/core/schema"),
+      import("@lando/core/landofile"),
+    ]);
+
+    // Core may load a built SDK copy, so compare the shared brand rather than function identity.
+    for (const surface of surfaces) {
+      expect(landofile.isLandofileOverride(surface.override(["web.test"]))).toBe(true);
+      expect(landofile.isLandofileReset(surface.reset())).toBe(true);
+    }
+    expect(typeof landofile.decodeLandofileLayer).toBe("function");
+  });
   test("root entry point resolves the public namespaces", async () => {
     const sdk = await import("@lando/sdk");
 
