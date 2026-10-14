@@ -7,10 +7,11 @@ tags: [beta, docs, node, php, tooling, drupal, wordpress]
 
 # Compile PHP theme assets with Node
 
-Add a `node` service next to `appserver`, point `lando npm` at the theme, then
-install and run the theme's build script. Nothing else is required. Dart Sass
-is the `sass` npm package; it installs like any other `devDependency` on
-arm64 and amd64.
+Add a `node` service next to `appserver`, point tooling at the theme, then
+install and run whatever the theme's `package.json` already lists. `lando npm
+install` puts those tools in the Node service. `lando npm run <script>` or
+`lando npx <tool>` runs them. Sass is the worked example. Tailwind, Vite,
+PostCSS, and Prettier use the same sidecar and the same two commands.
 
 ```yaml
 services:
@@ -25,6 +26,12 @@ tooling:
     description: Run npm inside the theme.
     cmds:
       - npm
+  npx:
+    service: node
+    dir: /app/web/themes/contrib/bootstrap5
+    description: Run npx inside the theme.
+    cmds:
+      - npx
 ```
 
 Keep the recipe's `appserver`, database, and existing tooling. Rebuild, then:
@@ -35,7 +42,7 @@ lando npm install
 lando npm run build:sass
 ```
 
-WordPress themes use the same sidecar. Change `dir:` to
+WordPress themes use the same sidecar. Change both `dir:` values to
 `/app/wp-content/themes/mytheme`. A custom Drupal theme uses
 `/app/web/themes/custom/mytheme`.
 
@@ -51,6 +58,8 @@ WordPress themes use the same sidecar. Change `dir:` to
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"endpoints\":\\s*\\[\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/contrib/bootstrap5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/contrib/bootstrap5\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
     </Step>
     <Step name="plan">
@@ -73,14 +82,16 @@ stays up for tooling. The [Laravel recipe](../recipes/laravel-workflow.mdx)
 ships this sidecar already; its `package.json` lives at the app root, so it
 skips `dir:`.
 
-## Point lando npm at the theme
+## Point tooling at the theme
 
-Node does not register `lando npm` by itself. Author the task and set `dir:`
-to the theme path inside the container. `/app` is the bind-mounted app root.
+Node does not register `lando npm` or `lando npx` by itself. Author the tasks
+and set `dir:` to the theme path inside the container. `/app` is the
+bind-mounted app root.
 
 A task `dir` is the working directory inside that service. Lando does not
-resolve it against the host checkout. Set it on `npm` only. An app-wide
-`toolingDefaults.dir` would also move `lando drush` and `lando composer`.
+resolve it against the host checkout. Set it on `npm` and `npx` only. An
+app-wide `toolingDefaults.dir` would also move `lando drush` and
+`lando composer`.
 
 `lando npm install --save-dev sass` still forwards the extra argv to `npm`.
 See [Declare flags and args on a tooling task](../tooling/flags-and-args.mdx).
@@ -94,6 +105,10 @@ lando npm run build:sass
 
 Use the script name the theme already lists. Drupal Bootstrap 5 calls its Sass
 build `build:sass`. Other themes use `build`, `build:css`, or `sass`.
+
+`lando npx sass scss/style.scss css/style.css` is the same compiler without a
+script. Tailwind, Vite, PostCSS, and Prettier swap the binary and the script
+name. The sidecar does not change.
 
 Compiled CSS writes into the theme on the shared `/app` mount, so Apache or
 nginx serves it without a copy step.
@@ -114,6 +129,63 @@ lando npm run watch:sass
 ```
 
 The idle Node command holds the container open. Stop the watch with Ctrl+C.
+
+## Init a child theme package
+
+A generated sub-theme often has no `package.json`. Point `dir:` at that folder,
+then create the package there:
+
+```yaml
+tooling:
+  npm:
+    service: node
+    dir: /app/web/themes/custom/mytheme
+    cmds:
+      - npm
+  npx:
+    service: node
+    dir: /app/web/themes/custom/mytheme
+    cmds:
+      - npx
+```
+
+```sh
+lando npm init -y
+lando npm install --save-dev sass
+lando npx sass scss/style.scss css/style.css
+```
+
+`dir:` keeps every command in the child theme. You do not cd. Add a
+`build:sass` script when you want `lando npm run build:sass` instead of raw
+`npx`. A WordPress child theme is the same path under `wp-content/themes/`.
+
+## Pin the toolchain
+
+Bare `lando npx sass` with no local install fetches whatever version is
+current. Fine for a one-off. For a theme you keep, pin `sass` as a
+`devDependency` and commit `package-lock.json` so `lando npm install` and
+`lando npm run build:sass` replay the same toolchain.
+
+Dart Sass is dropping `@import`. Prefer `@use` and `@forward` in new files.
+
+  <Scenario id="child-theme-dir" render>
+    <Step name="scaffold-child">
+      <UseFixture name="php-theme-child" />
+    </Step>
+    <Step name="confirm-child-dir">
+      <Verify file="php-theme-child/web/themes/custom/mytheme/mytheme.info.yml" expect={{ regex: "base theme" }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/custom/mytheme\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"dir\":\\s*\"/app/web/themes/custom/mytheme\"" } }} />
+    </Step>
+    <Step name="plan-child">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: drupal-theme-child" } }} />
+    </Step>
+    <Step name="cleanup-child">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## Infer Node from the theme package
 
