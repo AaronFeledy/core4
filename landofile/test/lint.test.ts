@@ -14,6 +14,7 @@ import {
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
 import { lintLandofile } from "../src/lint.ts";
+import { loadLandofileFile } from "../src/service.ts";
 
 describe("lintLandofile", () => {
   let dir: string;
@@ -305,6 +306,27 @@ describe("lintLandofile", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
       expect(exit.value).toMatchObject({ valid: true, violations: [] });
+    }
+  });
+
+  test.each([
+    ["an identity field", "    routes:\n      - hostname: !override web.test\n"],
+    ["an unknown key", "    environmnt: !reset\n"],
+  ])("lint and load agree that a directive on %s is invalid", async (_label, member) => {
+    // Given a directive that cannot survive layer decoding.
+    await write(`name: myapp\nservices:\n  web:\n${member}`);
+
+    // When linted and loaded.
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    const loaded = await Effect.runPromiseExit(loadLandofileFile(join(dir, ".lando.yml")));
+
+    // Then both reject it, and lint names the containing-value remediation.
+    expect(result.valid).toBe(false);
+    expect(result.violations.map(({ suggestion }) => suggestion).join(" ")).toContain("containing");
+    expect(Exit.isFailure(loaded)).toBe(true);
+    if (Exit.isFailure(loaded)) {
+      const error = Cause.findErrorOption(loaded.cause);
+      expect(error._tag === "Some" ? error.value._tag : undefined).toBe("LandofileValidationError");
     }
   });
 

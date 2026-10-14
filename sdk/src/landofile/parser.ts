@@ -177,7 +177,7 @@ const stripComment = (line: string): string => {
   // `/\s+#.*$/` fallback below cannot match. Detect this explicitly and drop the
   // comment so `parseMap` sees an empty value and can look for a nested block.
   if (valuePart.startsWith("#")) {
-    return beforeColon;
+    return beforeColon + valuePrefix.trimEnd();
   }
 
   if (valuePart.startsWith('"')) {

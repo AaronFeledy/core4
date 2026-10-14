@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { decodeLandofileLayer, mergeLandofiles, override, reset } from "@lando/sdk/landofile";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 const decode = (value: unknown) => Effect.runSync(decodeLandofileLayer(".lando.local.yml", value));
 
@@ -62,4 +62,40 @@ test("reset suppresses a decode-synthesized default", () => {
   expect(mergeLandofiles([result])).toEqual({
     tooling: { check: { cmd: "true", deprecated: { since: "4.2.0", note: "Use another task." } } },
   });
+});
+
+test("an authored canonical key wins without promoting the losing alias", () => {
+  // Given both spellings, with the canonical spelling reset.
+  const result = decode({ services: { web: { working_dir: "/alias", workingDirectory: reset() } } });
+  // Then only the canonical reset remains.
+  expect(result).toHaveProperty(["services", "web"], { workingDirectory: reset() });
+});
+
+test("an alias-only reset maps to the canonical member", () => {
+  // Given resets authored with Compose spellings; when decoded.
+  const result = decode({ services: { web: { env_file: reset(), depends_on: reset() } } });
+  // Then the directives land on canonical members.
+  expect(result).toHaveProperty(["services", "web"], { envFile: reset(), dependsOn: reset() });
+});
+
+test.each([
+  { services: { web: { environment: [reset()] } } },
+  { services: { web: { dependsOn: [{ service: reset() }] } } },
+  {
+    services: {
+      web: {
+        routes: [{ hostname: "web.test", filters: [{ name: override("f"), type: "redirect", to: "/" }] }],
+      },
+    },
+  },
+  { services: override({ web: reset() }), name: override(reset()) },
+])("rejects sequence-element, identity, and nested-wrapper directives %j", (value) => {
+  // Given a placement that cannot survive layer decoding; when decoded.
+  const exit = Effect.runSyncExit(decodeLandofileLayer(".lando.local.yml", value));
+  // Then the layer fails as a tagged validation error with remediation.
+  expect(exit._tag).toBe("Failure");
+  if (exit._tag !== "Failure") return;
+  const error = Cause.findErrorOption(exit.cause);
+  expect(error._tag === "Some" ? error.value._tag : undefined).toBe("LandofileValidationError");
+  expect(error._tag === "Some" ? error.value.message : "").toContain("!override the containing value");
 });
