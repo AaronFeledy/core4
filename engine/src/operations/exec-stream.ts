@@ -37,11 +37,15 @@ export const collectExecStream = Effect.fnUntraced(function* <E, R>(
       // Live frames keep the provider bytes so a redirected archive stays intact.
       return emitRaw(sink, chunk.kind, chunk.chunk);
     }),
+    Effect.ensuring(
+      Effect.gen(function* () {
+        stdout += stdoutDecoder.decode();
+        stderr += stderrDecoder.decode();
+        if (Option.isSome(sink) && sink.value.flush !== undefined) {
+          yield* sink.value.flush();
+        }
+      }),
+    ),
   );
-  stdout += stdoutDecoder.decode();
-  stderr += stderrDecoder.decode();
-  if (Option.isSome(sink) && sink.value.flush !== undefined) {
-    yield* sink.value.flush();
-  }
   return { exitCode, stdout, stderr };
 }, Effect.scoped);

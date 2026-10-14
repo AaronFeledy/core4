@@ -1,8 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Option, Stream } from "effect";
+import { Effect, Exit, Layer, Option, Stream } from "effect";
+
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererOutput from "@lando/renderer/output";
+import * as RendererRuntime from "@lando/renderer/runtime";
 
 import { collectExecStream } from "../../src/operations/exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
+
+const identityRedaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
+  }),
+);
 
 const concat = (chunks: ReadonlyArray<string | Uint8Array>): Uint8Array => {
   const encoded = chunks.map((chunk) =>
@@ -66,5 +83,52 @@ describe("collectExecStream binary frames", () => {
 
     // Then
     expect(flushed).toBe(1);
+  });
+
+  test("flushes the sink when the provider stream fails", async () => {
+    // Given
+    let flushed = 0;
+    const sink = StreamFrameSink.of({
+      emit: () => Effect.void,
+      flush: () =>
+        Effect.sync(() => {
+          flushed += 1;
+        }),
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      collectExecStream(Stream.fail("injected-stream-failure"), Option.some(sink)),
+    );
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(flushed).toBe(1);
+  });
+
+  test("writes held UTF-8 bytes when the provider stream fails", async () => {
+    // Given: abc plus an unfinished 3-byte sequence, then the stream fails.
+    const io = createBufferedRendererIO();
+    const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
+    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), identityRedaction)),
+    );
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        return yield* collectExecStream(
+          Stream.make({ kind: "stdout" as const, chunk: input }).pipe(
+            Stream.concat(Stream.fail("injected-stream-failure")),
+          ),
+          Option.some(sink),
+        );
+      }).pipe(Effect.provide(layer)),
+    );
+
+    // Then: flush still writes the held tail so abc E2 82 is not truncated to abc.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(io.stdoutBytes()).toEqual(input);
   });
 });
