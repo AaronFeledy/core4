@@ -11,7 +11,7 @@ import { landoLauncher } from "../../src/services/bun-command-env.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
 
 test.each([true, false])(
-  "reads inherited piped stdin through EOF when inheritStdin=%s",
+  "reads inherited piped stdin through EOF when hostIo stdin is %s",
   async (inheritStdin) => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-script-stdin-"));
@@ -24,7 +24,7 @@ test.each([true, false])(
       import { ShellRunner } from "@lando/sdk/services";
       import { layer } from ${JSON.stringify(runnerPath)};
       const result = await Effect.runPromise(Effect.flatMap(ShellRunner, shell =>
-        shell.runScript(${JSON.stringify(scriptPath)}, { inheritStdin: ${inheritStdin} })
+        shell.runScript(${JSON.stringify(scriptPath)}, ${inheritStdin ? '{ hostIo: "stdin" }' : "{}"})
       ).pipe(Effect.provide(layer(() => { throw new TypeError("unused interactive IO"); }))));
       process.stdout.write(result.stdout);
     `;
@@ -49,6 +49,44 @@ test.each([true, false])(
     }
   },
 );
+
+test("terminal host IO hands the script Lando's own stdout and stderr", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-terminal-"));
+  const scriptPath = join(root, "prompt.bun.sh");
+  const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+  try {
+    await writeFile(scriptPath, "echo -n 'name? '\necho to-stderr 1>&2\ncat\n");
+    const helper = `
+      import { Effect } from "effect";
+      import { ShellRunner } from "@lando/sdk/services";
+      import { layer } from ${JSON.stringify(runnerPath)};
+      const result = await Effect.runPromise(Effect.flatMap(ShellRunner, shell =>
+        shell.runScript(${JSON.stringify(scriptPath)}, { hostIo: "terminal" })
+      ).pipe(Effect.provide(layer(() => { throw new TypeError("unused interactive IO"); }))));
+      process.stdout.write(JSON.stringify({ exitCode: result.exitCode, captured: result.stdout + result.stderr }));
+    `;
+    // When
+    const child = Bun.spawn([process.execPath, "-e", helper], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    child.stdin.write("typed\n");
+    await child.stdin.end();
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    // Then: the partial prompt and input echo reach the real stdout before the runner's summary.
+    expect(code, stderr).toBe(0);
+    expect(stdout).toBe('name? typed\n{"exitCode":0,"captured":""}');
+    expect(stderr).toContain("to-stderr");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("kills a running script promptly when its signal aborts", async () => {
   // Given

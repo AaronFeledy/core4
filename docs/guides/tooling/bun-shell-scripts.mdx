@@ -28,7 +28,7 @@ lando app:cache:refresh
 lando build
 ```
 
-The script prints `built dist/ from src/` inside Lando's task tree and `lando build` exits with the script's own exit code.
+The script prints `built dist/ from src/` and `lando build` exits with the script's own exit code.
 
 ## Write the front matter
 
@@ -120,7 +120,7 @@ lando count < src/index.html
 
 The first prints `3`. Commands inside the script share that input, so a `seed` script can take `lando seed < dump.sql` and hand the dump to whatever client it runs.
 
-Run it from a terminal with nothing piped in and the script gets your keyboard. A prompt, a nested `lando psql`, or anything else that reads the terminal works the way it does when you type the command yourself, and Lando skips its task tree for that run so nothing draws over the prompt. Ctrl+C stops the script and `lando` exits `130`.
+Run it from a terminal with nothing piped in and the script gets your terminal: keyboard, screen, and all. Prompts, colors, a nested `lando psql`, or anything else that expects a terminal works the way it does when you type the command yourself. Ctrl+C stops the script and `lando` exits `130`.
 
 With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not. A script that waits for typed input reads end of input instead of hanging your agent or CI job.
 

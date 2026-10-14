@@ -3,15 +3,15 @@ import { resolve } from "node:path";
 import { Schema } from "effect";
 
 test.each([
-  { stdinTTY: true, stdoutTTY: true, renderer: "lando", format: "text", inherit: true, progress: false },
-  { stdinTTY: true, stdoutTTY: false, renderer: "lando", format: "text", inherit: false, progress: true },
-  { stdinTTY: false, stdoutTTY: false, renderer: "lando", format: "text", inherit: true, progress: true },
-  { stdinTTY: true, stdoutTTY: true, renderer: "json", format: "text", inherit: false, progress: true },
-  { stdinTTY: false, stdoutTTY: true, renderer: "json", format: "text", inherit: true, progress: true },
-  { stdinTTY: true, stdoutTTY: true, renderer: "lando", format: "json", inherit: false, progress: true },
-  { stdinTTY: false, stdoutTTY: true, renderer: "lando", format: "json", inherit: true, progress: true },
-  { stdinTTY: true, stdoutTTY: true, renderer: "lando", format: "yaml", inherit: false, progress: true },
-  { stdinTTY: false, stdoutTTY: true, renderer: "lando", format: "yaml", inherit: true, progress: true },
+  { stdinTTY: true, stdoutTTY: true, renderer: "lando", format: "text", hostIo: "terminal", progress: false },
+  { stdinTTY: true, stdoutTTY: false, renderer: "lando", format: "text", hostIo: undefined, progress: true },
+  { stdinTTY: false, stdoutTTY: false, renderer: "lando", format: "text", hostIo: "stdin", progress: true },
+  { stdinTTY: true, stdoutTTY: true, renderer: "json", format: "text", hostIo: undefined, progress: true },
+  { stdinTTY: false, stdoutTTY: true, renderer: "json", format: "text", hostIo: "stdin", progress: true },
+  { stdinTTY: true, stdoutTTY: true, renderer: "lando", format: "json", hostIo: undefined, progress: true },
+  { stdinTTY: false, stdoutTTY: true, renderer: "lando", format: "json", hostIo: "stdin", progress: true },
+  { stdinTTY: true, stdoutTTY: true, renderer: "lando", format: "yaml", hostIo: undefined, progress: true },
+  { stdinTTY: false, stdoutTTY: true, renderer: "lando", format: "yaml", hostIo: "stdin", progress: true },
 ])("script tooling host wiring %j", async (scenario) => {
   // Given
   const cliRoot = resolve(import.meta.dirname, "../../src/cli");
@@ -32,7 +32,7 @@ test.each([
     }));
     mock.module("@lando/engine/operations/tooling-bun-script", () => ({
       runBunShellTooling: (options, root) => Effect.sync(() => {
-        observed = { inherit: options.inheritStdin, progress: options.renderProgress,
+        observed = { hostIo: options.hostIo, progress: options.renderProgress,
           signal: options.signal === controller.signal, args: options.args, root };
         return { tool: "app:scount", service: ":host", exitCode: 0, stdout: "", stderr: "" };
       }),
@@ -59,7 +59,7 @@ test.each([
   // Then
   expect(code, stderr).toBe(0);
   expect(JSON.parse(stdout)).toEqual({
-    inherit: scenario.inherit,
+    ...(scenario.hostIo === undefined ? {} : { hostIo: scenario.hostIo }),
     progress: scenario.progress,
     signal: true,
     args: ["argument"],

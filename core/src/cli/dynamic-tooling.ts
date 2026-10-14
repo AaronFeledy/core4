@@ -111,7 +111,9 @@ const runDynamicBunShellTooling = (
       {
         name,
         args: commandArgv,
-        inheritStdin: mode !== "none",
+        ...(mode === "none"
+          ? {}
+          : { hostIo: mode === "keyboard" ? ("terminal" as const) : ("stdin" as const) }),
         renderProgress: mode !== "keyboard",
         signal,
         relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,

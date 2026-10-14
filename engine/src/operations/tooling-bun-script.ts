@@ -30,7 +30,7 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
-    readonly inheritStdin?: boolean;
+    readonly hostIo?: "stdin" | "terminal";
     readonly signal?: AbortSignal;
   },
 ): Effect.fn.Return<
@@ -54,7 +54,7 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     cwd,
     ...(options.args === undefined ? {} : { argv: options.args }),
     ...(env === undefined ? {} : { env }),
-    ...(options.inheritStdin === undefined ? {} : { inheritStdin: options.inheritStdin }),
+    ...(options.hostIo === undefined ? {} : { hostIo: options.hostIo }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   }).pipe(
     Effect.catchTag("ShellExecError", (shellError) =>
@@ -91,7 +91,7 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
     readonly renderProgress?: boolean;
-    readonly inheritStdin?: boolean;
+    readonly hostIo?: "stdin" | "terminal";
     readonly signal?: AbortSignal;
     readonly relativePath?: string;
   },

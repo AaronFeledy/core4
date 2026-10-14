@@ -14,8 +14,16 @@ export interface ShellCommandOptions {
   readonly argv?: ReadonlyArray<string>;
 }
 
+/** Options for running a host script file through `ShellRunner.runScript`. */
 export interface ShellScriptOptions extends ShellCommandOptions {
-  readonly inheritStdin?: boolean;
+  /**
+   * How the script reaches the host terminal. Omitted, the script's stdin is ignored.
+   * `stdin` inherits Lando's stdin descriptor (pipe, file, or terminal) and still captures
+   * and streams output. `terminal` inherits stdin, stdout, and stderr, so the script owns
+   * the terminal and its output is not captured.
+   */
+  readonly hostIo?: "stdin" | "terminal";
+  /** Aborting kills the script process. */
   readonly signal?: AbortSignal;
 }
 
@@ -31,6 +39,11 @@ export interface ProcessSpawnOptions {
    * instead of a runner-written pipe. Only applies without stdin or stdinStream.
    */
   readonly inheritStdin?: boolean;
+  /**
+   * Let the child write straight to this process's stdout and stderr. The runner then
+   * captures and streams nothing for them.
+   */
+  readonly inheritOutput?: boolean;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   /**
