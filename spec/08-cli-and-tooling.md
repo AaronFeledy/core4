@@ -76,7 +76,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:share` | `share` | `app` | Start tunnel; `--target`, `--provider`, `--detach`, `--format json` |
 | `app:share:list` | none | `app` | List tunnel sessions |
 | `app:share:stop` | none | `app` | Stop a detached tunnel session |
-| `app:ssh` | `ssh` | `app` | `app:exec` with `--interactive --tty` defaults |
+| `app:ssh` | `ssh` | `app` | Login shell (`sh -l`) or supplied command in a service; stdin and PTY follow the command-wide host-stdin rule |
 | `app:start` | `start` | `app` | Start current app |
 | `app:stop` | `stop` | `app` | Stop current app |
 | `apps:init` | `init` | `plugins` | Scaffold an app (§8.8) |
@@ -134,6 +134,7 @@ Command-wide rules:
 - `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
+- For CLI `app:exec`, `app:ssh`, and `providerExec` tooling, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and its end MUST close the command's stdin in every output format. A PTY requires terminal stdin; `app:exec` and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML result formats disable PTYs and keyboard attachment, and tooling also disables them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, for `app:ssh` with terminal stdin, and for tooling with terminal stdin and stdout. Dispatched event, MCP, and library command invocations MUST NOT consume process stdin.
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
 - `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched. Stopping the managed runtime service before its recorded runtime directory is removed follows §5.8.1.
 - `--clear` is universal and purges relevant caches.

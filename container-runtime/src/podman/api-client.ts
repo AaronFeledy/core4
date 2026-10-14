@@ -18,6 +18,7 @@ import {
   connectSocket,
   makeSocketHttpClient,
   normalizeNamedPipePath,
+  socketHttpConnection,
 } from "../transport.ts";
 
 export const LIBPOD_API_PREFIX = "/v6.0.0" as const;
@@ -28,18 +29,7 @@ export const isNamedPipeEndpoint = (endpoint: string): boolean =>
 const connect = async (endpoint: string, signal?: AbortSignal): Promise<SocketHttpConnection> => {
   const socket = createConnection({ path: normalizeNamedPipePath(endpoint) });
   await connectSocket(socket, signal);
-  return {
-    [Symbol.asyncIterator]: () => socket[Symbol.asyncIterator](),
-    write: (data) => {
-      socket.write(data);
-    },
-    end: () => {
-      socket.end();
-    },
-    destroy: () => {
-      socket.destroy();
-    },
-  };
+  return socketHttpConnection(socket);
 };
 
 const unavailableStatus = (
