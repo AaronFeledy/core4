@@ -7,7 +7,7 @@ tags: [beta, docs, tomcat, service]
 
 # Add Tomcat
 
-Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Put your exploded webapp in the app root. Lando mounts it as the ROOT webapp:
+Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Lando mounts your app at `/app` and serves the webroot (the project root by default) as the ROOT webapp:
 
 ```yaml
 name: tomcat-demo
@@ -44,9 +44,20 @@ services:
 
 ## Deploy the webapp
 
-Tomcat serves `/usr/local/tomcat/webapps/ROOT` by default. The app root is
-mounted there, so a `WEB-INF` directory in your project is enough. Set
-`webroot:` when you want a different deploy path inside the container. Unlike PHP, static, nginx, and Apache services, Tomcat requires an absolute container deploy path: this is where Lando mounts your app, not a path relative to `/app`.
+The app mounts at `/app` (or `appMount.target`). `webroot` is relative to that mount and defaults to `.`, so a `WEB-INF` directory at the project root is enough. Point `webroot` at an exploded build when the webapp lives deeper, for example a Maven output directory:
+
+```yaml
+services:
+  appserver:
+    type: tomcat
+    webroot: target/myapp
+```
+
+An absolute container path works too. Lando writes a ROOT context (`conf/Catalina/localhost/ROOT.xml`) during the image build to serve the webroot at `/`. The image's `server.xml` stays untouched, and a custom `command:` such as `catalina.sh jpda run` still serves the same webroot. Only one webapp is served; other webapps and WAR drop-ins are not deployed.
+
+With your own `image:`, Lando leaves the image's Tomcat configuration alone and writes no ROOT context, so `webroot` only sets `LANDO_WEBROOT`.
+
+`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount.target` moves the mount. Set `appMount: false` when the service should not mount app code, and set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning.
 
 ## TLS and the default route
 

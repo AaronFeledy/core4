@@ -14,15 +14,26 @@ const translate = (text: string) => {
   return Effect.runPromise(translator.translate(documentSet([document(".lando.yml", text)])));
 };
 
-test("omits the source webroot when translating a Tomcat app-root deployment", async () => {
-  // Given / When: a complete Lando 3 document deploys the app root.
-  const result = await translate('services: {java: {type: "tomcat:10", webroot: "."}}');
-  // Then: the translated service can use Tomcat's default absolute deploy path.
+test.each([
+  ["", "webapps/ROOT"],
+  [', webroot: "."', "webapps/ROOT"],
+  [', webroot: "/site"', "site/webapps/ROOT"],
+])("translates the legacy Tomcat ROOT webapp with options %s", async (options, webroot) => {
+  // Given / When: a complete Lando 3 document deploys webapps under its source webroot.
+  const result = await translate(`services: {java: {type: "tomcat:10"${options}}}`);
+  // Then: the translated service selects ROOT and flags other webapps for review.
   expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
-    { services: { java: { type: "tomcat:10" } } },
+    {
+      services: {
+        java: {
+          type: "tomcat:10",
+          webroot,
+        },
+      },
+    },
   ]);
   expect(result.diagnostics).toEqual([
-    expect.objectContaining({ kind: "rewritten", keyPath: ["services", "java", "webroot"] }),
+    expect.objectContaining({ kind: "needs-review", keyPath: ["services", "java", "webroot"] }),
   ]);
 });
 

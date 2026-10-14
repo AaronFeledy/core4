@@ -5,10 +5,10 @@ const EXPECTED_RUNTIME_EXPORTS = [
   "layer",
   "DEFAULT_PROXY_DOMAIN",
   "FILE_SYNC_DEFAULT_EXCLUDES",
-  "applyAuthoredAppMount",
   "applyAuthoredDependencies",
   "applyAuthoredHealthcheck",
   "mergeDefaultExcludes",
+  "validateAuthoredAppMount",
 ] as const;
 
 const REQUIRED_MODULES = [
