@@ -915,11 +915,9 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply[0]?.plan.root).toBe(AbsolutePath.make(join(harness.dataRoot, "global")));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
       expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
-        LANDO_HOST_IP: "host.lando.internal",
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
-        LANDO_HOST_IP: "host.lando.internal",
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
@@ -1611,11 +1609,9 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply).toHaveLength(2);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
       expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
-        LANDO_HOST_IP: "host.lando.internal",
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
-        LANDO_HOST_IP: "host.lando.internal",
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({

@@ -31,11 +31,16 @@ describe("ssh-agent global service ServiceConfig", () => {
     expect(config.image).toBe("alpine:3.20");
   });
 
-  test("installs openssh-client and runs real ssh-agent", async () => {
+  test("bakes agent tools at build time and starts without package downloads", async () => {
+    // Given
     const config = await decodeConfig();
+    // When
     const text = commandText(config);
-    // Proves openssh-client is installed (not a no-op alpine sleep container)
-    expect(text).toContain("apk add --no-cache openssh-client");
+    // Then
+    expect(config.build).toEqual({
+      artifact: [{ run: "apk add --no-cache openssh-client socat", user: "root" }],
+    });
+    expect(text).not.toContain("apk");
     // Proves ssh-agent is actually started
     expect(text).toContain("eval $(ssh-agent -s -a /tmp/ssh-agent.sock)");
     // Proves socket permissions are set
@@ -53,7 +58,6 @@ describe("ssh-agent global service ServiceConfig", () => {
     // The old stub just ran "tail -f /dev/null" with no ssh-agent
     // Prove we're not that stub by checking for actual ssh-agent work
     expect(text).toContain("ssh-agent");
-    expect(text).toContain("openssh-client");
     expect(text).toContain(
       "exec socat UNIX-LISTEN:/ssh-auth/ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock",
     );

@@ -348,9 +348,7 @@ const createContainerRequest = (
           details: { artifact },
         });
       },
-      ...(deps.options.serviceEnvironment?.[service.name] === undefined
-        ? {}
-        : { environment: deps.options.serviceEnvironment[service.name] }),
+      environment: { ...service.environment, ...deps.options.serviceEnvironment?.[service.name] },
     }),
     ...knobs.topLevel,
   };

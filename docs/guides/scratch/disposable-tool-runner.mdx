@@ -39,6 +39,25 @@ lando run --no-mount -- composer --version
 
 `--no-mount` keeps `$PWD` out of the disposable app.
 
+## Pipe input or work interactively
+
+Output streams as the tool writes it. Pipe or redirect into `lando run` and the tool reads that input to the end:
+
+```sh
+printf 'hello\n' | lando run --no-mount -- cat
+lando run -- wc -l < composer.json
+```
+
+From a terminal with nothing piped in, the tool gets your keyboard and a real terminal, so prompts, editors, and shells work:
+
+```sh
+lando run --no-mount -- bash
+```
+
+Lando paints the scratch's build and start progress first, then hands the terminal over. From there Ctrl+C goes to the tool, the same as in any shell.
+
+With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not, so a tool that waits for typed input reads end of input instead of hanging an agent.
+
 ## Keep the scratch
 
 ```sh
@@ -46,7 +65,7 @@ lando run --keep -- composer --version
 lando scratch:list
 ```
 
-`--keep` detaches the scratch after the command exits and prints the id. Reap leftovers with [Reap orphaned scratch apps](./scratch-gc.mdx).
+`--keep` detaches the scratch after the command exits and prints its id on stderr, away from the tool's own output. With `--format=json`, the id is `result.scratchId`. Reap leftovers with [Reap orphaned scratch apps](./scratch-gc.mdx).
 
 Normal exit, a non-zero tool exit, and Ctrl+C all run the destroy finalizer unless you passed `--keep`.
 

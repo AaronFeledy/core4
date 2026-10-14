@@ -205,7 +205,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(whoami.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
     expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
-    expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
+    expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
 
     expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
   });

@@ -303,7 +303,7 @@ export const recipeLayerOutputs = (
               case "key":
                 return segment.key;
               case "item":
-                return `${segment.key}[${segment.identityKey}=${segment.identity}]`;
+                return `${segment.key}[identity=${segment.identity}]`;
               default:
                 return segment satisfies never;
             }

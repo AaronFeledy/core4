@@ -67,6 +67,17 @@ describe("ruby ServiceType — supported versions and frameworks", () => {
 });
 
 describe("ruby:3.3 ServiceType", () => {
+  test("omits the Rails preset webroot when appMount is false", async () => {
+    // Given: a Rails service that does not use app code.
+    const definition = { type: "ruby:3.3", framework: "rails", appMount: false };
+    // When: the preset is resolved and composed.
+    const plan = await composeRubyPlan(ruby33ServiceType, definition);
+    // Then: the image supplies cwd and there is no app-relative webroot.
+    expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+    expect(plan.workingDirectory).toBeUndefined();
+    expect(plan.appMount).toBeUndefined();
+    expect(plan.extensions["lando-service-ruby"]).not.toHaveProperty("webroot");
+  });
   test("plans a default Ruby 3.3 web service with framework=none defaults", async () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3" });
 
@@ -79,10 +90,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts).toEqual([]);
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
 

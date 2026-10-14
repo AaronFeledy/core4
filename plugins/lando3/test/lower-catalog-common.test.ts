@@ -11,46 +11,50 @@ const ctx: ServiceLoweringContext = {
 };
 
 describe("lowerCatalogCommon", () => {
-  test.each([".", "./", "", "././", ".///"])(
-    "omits Tomcat webroot %s when it names the app root",
+  test.each([undefined, ".", "./", "", "././", ".///"])(
+    "translates Tomcat webroot %s to the ROOT webapp",
     (webroot) => {
       // Given: a versioned Tomcat service using an app-root source directory.
-      const service = { type: "tomcat:10", webroot };
+      const service = { type: "tomcat:10", ...(webroot === undefined ? {} : { webroot }) };
       // When: the service is lowered.
       const result = lowerCatalogCommon(service, ctx);
-      // Then: the native default deploy path remains available with one rewrite diagnostic.
-      expect(result.patch).toEqual({ type: "tomcat:10" });
+      // Then: only the legacy ROOT webapp is selected, with review required for other deployments.
+      expect(result.patch).toEqual({ type: "tomcat:10", webroot: "webapps/ROOT" });
       expect(result.blocked).toBeUndefined();
       expect(result.diagnostics).toEqual([
-        expect.objectContaining({ kind: "rewritten", keyPath: [...ctx.keyPath, "webroot"] }),
+        expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "webroot"] }),
       ]);
     },
   );
 
-  test("drops Tomcat webroot when it names a relative build directory", () => {
-    // Given / When: Lando 3 deploys only the build output directory.
+  test("translates Tomcat webroot when it names a relative build directory", () => {
+    // Given / When: Lando 3 uses a build directory as its webroot base.
     const result = lowerCatalogCommon({ type: "tomcat", webroot: "target/app" }, ctx);
-    // Then: translation omits the incompatible path and explains how to migrate it.
-    expect(result.patch).toEqual({ type: "tomcat" });
+    // Then: translation selects its ROOT webapp and reports lost multi-webapp deployment.
+    expect(result.patch).toEqual({ type: "tomcat", webroot: "target/app/webapps/ROOT" });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics).toEqual([
       expect.objectContaining({
-        kind: "dropped",
+        kind: "needs-review",
         keyPath: [...ctx.keyPath, "webroot"],
-        remediation:
-          "Set webroot to an absolute container deploy path, or serve the build output from the app root.",
+        message:
+          "Lando 4 serves only the ROOT webapp at /; other webapps or WAR files under target/app/webapps are not deployed.",
       }),
     ]);
   });
 
-  test("preserves Tomcat webroot when it names an absolute deploy path", () => {
-    // Given / When: an explicit container destination is lowered.
-    const webroot = "/usr/local/tomcat/webapps/app";
-    const result = lowerCatalogCommon({ type: "tomcat", webroot }, ctx);
-    // Then: the path passes through without diagnostics.
-    expect(result.patch).toEqual({ type: "tomcat", webroot });
-    expect(result.diagnostics).toEqual([]);
-  });
+  test.each(["/site", "//site//./", "./target/../site/"])(
+    "normalizes Tomcat source webroot %s",
+    (webroot) => {
+      // Given / When: a relative or absolute-looking legacy source path is lowered.
+      const result = lowerCatalogCommon({ type: "tomcat", webroot }, ctx);
+      // Then: the source path remains app-relative and only its ROOT webapp is deployed.
+      expect(result.patch).toEqual({ type: "tomcat", webroot: "site/webapps/ROOT" });
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "webroot"] }),
+      ]);
+    },
+  );
 
   const cases: ReadonlyArray<{
     readonly name: string;

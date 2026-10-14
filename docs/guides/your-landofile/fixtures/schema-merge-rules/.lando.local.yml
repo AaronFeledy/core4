@@ -1,0 +1,9 @@
+services:
+  web:
+    routes:
+      - hostname: web.a.test
+        pathPrefix: /api
+events:
+  post-start:
+    - service: web
+      cmd: echo local

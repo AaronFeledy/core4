@@ -123,7 +123,7 @@ The §10.4 SSH sidecar is not declared through `requires.globalServices`. The SS
 
 #### 20.6.4 Standard event sequence
 
-The global start event pair for required services is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. The SSH sidecar's best-effort start pair (§20.6.3) fires at start-time overlay resolution, only when the sidecar needed starting: in start and restart that is after the required-service pair and before the user-app build; in a service-scoped rebuild it follows the user-app build. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
+The global start event pair for required services is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. The SSH sidecar's best-effort start pair (§20.6.3) fires at start-time overlay resolution, only when the sidecar needed starting: in start and restart that is after the required-service pair and before the user-app build; in a service-scoped rebuild it follows the selected services' artifact build and precedes their provider apply. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
 
 #### 20.6.5 Restart, rebuild, and router revalidation
 

@@ -39,6 +39,8 @@ By default the orchestrator targets every CI platform (`darwin-arm64`, `darwin-x
 LANDO_RELEASE_PLATFORM=windows-x64 bun run release -- --binary
 ```
 
+Run Windows targets (`windows-x64` or `windows-arm64`) on Windows: `7-compile` refuses them on other hosts before installing dependencies or compiling. Bun embeds the Lando icon and Windows version info only when compiling on Windows. `LOCAL_REHEARSAL=1` does not bypass the host requirement.
+
 `windows-x64` is the CI/release artifact vocabulary. The `win32-x64` runtime host key is a separate domain (runtime bundle and mutagen host keys) and must not be used here.
 
 ### Rehearsal without credentials

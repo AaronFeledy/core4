@@ -106,7 +106,8 @@ export const attachExecHostIo = (
   stdin: InheritedStdin = process.stdin,
   output: TerminalOutput = process.stdout,
 ): ExecAppHostOptions => {
-  const tty = options.tty === true;
+  // A PTY needs terminal stdin; closing a pipe into a PTY does not deliver EOF.
+  const tty = options.tty === true && stdin.isTTY === true;
   const hostTerminal = attachedHostTerminal(output);
   const inheritStdin = options.interactive === true || stdin.isTTY !== true;
   const terminalEnvironment = tty
@@ -133,6 +134,13 @@ export const attachExecHostIo = (
   };
 };
 
+export const toolingHostStdin = (
+  enabled: boolean,
+  stdin: Pick<RawModeStdin, "isTTY"> = process.stdin,
+  output: Pick<TerminalOutput, "isTTY"> = process.stdout,
+): "piped" | "keyboard" | "none" =>
+  stdin.isTTY !== true ? "piped" : enabled && output.isTTY === true ? "keyboard" : "none";
+
 export const attachToolingHostIo = (
   enabled: boolean,
   stdin: InheritedStdin = process.stdin,
@@ -144,9 +152,17 @@ export const attachToolingHostIo = (
   const restore = (): void => {
     for (const release of readers) release();
   };
-  const hostTerminal = enabled ? attachedHostTerminal(output) : undefined;
+  const mode = toolingHostStdin(enabled, stdin, output);
+  if (mode === "piped") {
+    const attached = attachExecHostIo({ command: [], tty: false }, stdin, output);
+    return {
+      tty: false,
+      ...(attached.stdinStream === undefined ? {} : { stdinStream: attached.stdinStream }),
+      restore,
+    };
+  }
+  const hostTerminal = mode === "keyboard" ? attachedHostTerminal(output) : undefined;
   if (hostTerminal === undefined) return { tty: false, restore };
-  if (stdin.isTTY !== true) return { tty: true, hostTerminal, restore };
   const attached = attachExecHostIo({ command: [], tty: true, interactive: true }, stdin, output);
   const input = attached.stdinStream;
   return {

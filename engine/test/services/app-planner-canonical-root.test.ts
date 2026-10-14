@@ -98,12 +98,8 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
     }
     const web = plan.services[ServiceName.make("web")];
     expect(web?.appMount?.source).toBe(plan.root);
-    expect(
-      web?.mounts.some(
-        (mount) =>
-          mount.type === "bind" && mount.source === plan.root && mount.target === PortablePath.make("/app"),
-      ),
-    ).toBe(true);
+    expect(web?.appMount?.target).toBe(PortablePath.make("/app"));
+    expect(web?.mounts.some((mount) => mount.type === "bind" && mount.source === plan.root)).toBe(false);
   } finally {
     realpath.mockRestore();
     await rm(canonicalRoot, { recursive: true, force: true });

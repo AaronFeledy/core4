@@ -82,7 +82,7 @@ Every meaningful core operation returns `Effect.Effect<A, E, R>`.
 - A service not always needed at its declared level MUST use `Layer.suspend`; always-required services MAY initialize eagerly. `Logger` and `Renderer` are lazy, with only the first-paint and level-`none` direct-write carve-outs below.
 - Fiber-local state uses `Context.Reference` values bound with `Effect.provideService`; there is no `FiberRef`.
 - Shells run effects with `Effect.runPromiseExit` (or `runPromiseExitWith`) and inspect the `Exit`, rendering its `Cause`; they never catch rejected promises.
-- Errors are `Schema.TaggedError` values. `throw` is forbidden except inside adapter `Effect.try` boundaries.
+- Errors are `Schema.TaggedError` values. `throw` is forbidden except inside adapter `Effect.try` boundaries, and in pure synchronous helpers that detect a violated program or schema-declaration invariant; such a throw is a defect, never a user-configuration failure.
 - Trust-boundary data MUST be decoded by Effect Schema before business logic.
 - Long-running output uses `Stream`; public core APIs MUST NOT expose plain async iterators.
 - Concurrency uses Effect primitives. Manual concurrency control with `Promise.all` is forbidden. Bootstrap levels are sequential, but independent IO within a level MUST run concurrently; sequential work requires a data dependency.

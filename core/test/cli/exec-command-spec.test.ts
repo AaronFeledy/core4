@@ -52,9 +52,21 @@ const plan: AppPlan = {
 };
 
 describe("exec command spec", () => {
-  test("ssh preserves PTY intent on piped output without borrowing terminal identity", async () => {
+  test.each([
+    { command: "ssh", stdinTTY: true, stdoutTTY: false, tty: true },
+    { command: "ssh", stdinTTY: false, stdoutTTY: true, tty: false },
+    { command: "ssh", stdinTTY: false, stdoutTTY: true, tty: false, format: "json" },
+    { command: "exec", stdinTTY: false, stdoutTTY: true, tty: false },
+    { command: "exec", stdinTTY: false, stdoutTTY: true, tty: false, format: "json" },
+    { command: "exec", stdinTTY: true, stdoutTTY: true, tty: true },
+    { command: "exec", stdinTTY: true, stdoutTTY: false, tty: false },
+  ])("applies CLI terminal rules for %j", async (scenario) => {
     // Given
-    const commands: Array<{ readonly tty?: boolean; readonly env?: Readonly<Record<string, string>> }> = [];
+    const commands: Array<{
+      readonly tty?: boolean;
+      readonly stdin?: string;
+      readonly env?: Readonly<Record<string, string>>;
+    }> = [];
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       execStream: (_target, command) => {
@@ -63,11 +75,25 @@ describe("exec command spec", () => {
       },
     };
     const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
-    const entry: BuiltInCommandEntry = { spec: sshSpec, status: { kind: "implemented" } };
+    const spec = scenario.command === "ssh" ? sshSpec : execSpec;
+    const entry: BuiltInCommandEntry = {
+      spec: {
+        ...spec,
+        run: () =>
+          spec.run({
+            hostIo: "cli",
+            parsedArgv: ["cat"],
+            flags: { interactive: true, format: scenario.format },
+          }),
+      },
+      status: { kind: "implemented" },
+    };
+    const stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
     const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
     const savedTerm = process.env.TERM;
     const savedColorterm = process.env.COLORTERM;
-    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: false });
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: scenario.stdinTTY });
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: scenario.stdoutTTY });
     process.env.TERM = "xterm-host";
     process.env.COLORTERM = "truecolor";
 
@@ -85,7 +111,7 @@ describe("exec command spec", () => {
             ),
             Effect.flatMap((context) =>
               makeEventCommandExecutor(context, [entry]).run({
-                command: sshSpec.id,
+                command: spec.id,
                 flags: {},
                 args: {},
                 argv: [],
@@ -96,6 +122,8 @@ describe("exec command spec", () => {
         ),
       );
     } finally {
+      if (stdinIsTTY === undefined) Reflect.deleteProperty(process.stdin, "isTTY");
+      else Object.defineProperty(process.stdin, "isTTY", stdinIsTTY);
       if (stdoutIsTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
       else Object.defineProperty(process.stdout, "isTTY", stdoutIsTTY);
       if (savedTerm === undefined) Reflect.deleteProperty(process.env, "TERM");
@@ -105,10 +133,16 @@ describe("exec command spec", () => {
     }
 
     // Then
-    expect(commands[0]?.tty).toBe(true);
-    expect(commands[0]?.env).toMatchObject({ COLUMNS: "80", LINES: "24" });
-    expect(commands[0]?.env).not.toHaveProperty("TERM");
-    expect(commands[0]?.env).not.toHaveProperty("COLORTERM");
+    expect(commands[0]?.tty === true).toBe(scenario.tty);
+    expect(commands[0]?.stdin).toBe("inherit");
+    if (!scenario.tty) {
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("COLUMNS");
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("LINES");
+    }
+    if (!scenario.stdoutTTY) {
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("TERM");
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("COLORTERM");
+    }
   });
 
   test.each(["explicit non-interactive", "default event", "exec json", "exec yaml", "ssh json", "ssh yaml"])(
@@ -129,9 +163,11 @@ describe("exec command spec", () => {
       };
       const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
       const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+      const stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
       const savedTerm = process.env.TERM;
       const savedColorterm = process.env.COLORTERM;
       Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+      Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
       process.env.TERM = "xterm-host";
       process.env.COLORTERM = "truecolor";
 
@@ -166,6 +202,8 @@ describe("exec command spec", () => {
           ),
         );
       } finally {
+        if (stdinIsTTY === undefined) Reflect.deleteProperty(process.stdin, "isTTY");
+        else Object.defineProperty(process.stdin, "isTTY", stdinIsTTY);
         if (stdoutIsTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
         else Object.defineProperty(process.stdout, "isTTY", stdoutIsTTY);
         if (savedTerm === undefined) Reflect.deleteProperty(process.env, "TERM");
@@ -186,9 +224,10 @@ describe("exec command spec", () => {
   );
 
   test.each([
-    { name: "one-shot default", interactive: false, expectedStdin: undefined },
-    { name: "explicit interactive event input", interactive: true, expectedStdin: undefined },
-  ] as const)("routes $name to provider exec without host stdin", async ({ interactive, expectedStdin }) => {
+    { name: "one-shot default", interactive: false, spec: execSpec },
+    { name: "explicit interactive event input", interactive: true, spec: execSpec },
+    { name: "ssh event input", interactive: true, spec: sshSpec },
+  ] as const)("routes $name to provider exec without host stdin", async ({ interactive, spec }) => {
     // Given
     const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
     const provider: RuntimeProviderShape = {
@@ -199,7 +238,7 @@ describe("exec command spec", () => {
       },
     };
     const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
-    const entry: BuiltInCommandEntry = { spec: execSpec, status: { kind: "implemented" } };
+    const entry: BuiltInCommandEntry = { spec, status: { kind: "implemented" } };
 
     // When
     await Effect.runPromise(
@@ -214,8 +253,8 @@ describe("exec command spec", () => {
           ),
           Effect.flatMap((context) =>
             makeEventCommandExecutor(context, [entry]).run({
-              command: execSpec.id,
-              flags: { interactive },
+              command: spec.id,
+              flags: spec === sshSpec ? {} : { interactive },
               args: { command: "cat" },
               argv: [],
               cwd: process.cwd(),
@@ -226,6 +265,6 @@ describe("exec command spec", () => {
     );
 
     // Then
-    expect(stdinModes).toEqual([expectedStdin]);
+    expect(stdinModes).toEqual([undefined]);
   });
 });
