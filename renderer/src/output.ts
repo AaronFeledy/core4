@@ -127,33 +127,61 @@ const byteWriter = (
   return typeof write === "function" ? write : undefined;
 };
 
+type Utf8Decode =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "binary"; readonly bytes: Uint8Array };
+
+const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
+  if (left.byteLength === 0) return right;
+  if (right.byteLength === 0) return left;
+  const out = new Uint8Array(left.byteLength + right.byteLength);
+  out.set(left);
+  out.set(right, left.byteLength);
+  return out;
+};
+
 /**
  * Live-frame UTF-8 policy: redact whenever the destination is a TTY or the
  * stream is valid UTF-8. Pass raw provider bytes only when stdout is
  * redirected and the stream is not valid UTF-8 (gzip/tar archives). A
  * streaming decoder keeps a multibyte character that splits across chunks
- * from becoming U+FFFD.
+ * from becoming U+FFFD. Held-back incomplete bytes are written raw when the
+ * next chunk is not UTF-8, and again at end of stream.
  */
 const createStreamingUtf8Decoder = (fatal: boolean) => {
   const decoder = new TextDecoder("utf-8", { fatal });
+  const encoder = new TextEncoder();
+  let pending = new Uint8Array(0);
   let binary = false;
   return {
-    decode(chunk: Uint8Array): string | undefined {
-      if (binary) return undefined;
+    decode(chunk: Uint8Array): Utf8Decode {
+      if (binary) return { kind: "binary", bytes: chunk };
       try {
-        return decoder.decode(chunk, { stream: true });
+        const text = decoder.decode(chunk, { stream: true });
+        pending = concatBytes(pending, chunk).subarray(encoder.encode(text).byteLength);
+        return { kind: "text", text };
       } catch {
         binary = true;
-        return undefined;
+        const bytes = concatBytes(pending, chunk);
+        pending = new Uint8Array(0);
+        return { kind: "binary", bytes };
       }
+    },
+    flush(): Uint8Array | undefined {
+      if (pending.byteLength === 0) return undefined;
+      const leftover = pending;
+      pending = new Uint8Array(0);
+      binary = true;
+      return leftover;
     },
   };
 };
 
-const frameText = (
+const frameDecode = (
   frame: StreamFrameSinkFrame,
-  decoder: { decode: (chunk: Uint8Array) => string | undefined },
-): string | undefined => (typeof frame.chunk === "string" ? frame.chunk : decoder.decode(frame.chunk));
+  decoder: { decode: (chunk: Uint8Array) => Utf8Decode },
+): Utf8Decode =>
+  typeof frame.chunk === "string" ? { kind: "text", text: frame.chunk } : decoder.decode(frame.chunk);
 
 export const layerStreamFrameSink = (
   format: CommandResultFormat,
@@ -170,9 +198,16 @@ export const layerStreamFrameSink = (
       const stderrUtf8 = createStreamingUtf8Decoder(!isTty);
       const jsonStdout = createStreamingUtf8Decoder(false);
       const jsonStderr = createStreamingUtf8Decoder(false);
+      const writeRaw = (tag: "stdout" | "stderr", bytes: Uint8Array): boolean => {
+        const writeBytes = byteWriter(io, tag === "stderr" ? "writeStderrBytes" : "writeStdoutBytes");
+        if (writeBytes === undefined) return false;
+        writeBytes(bytes);
+        return true;
+      };
       const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
         if (format === "json") {
-          const textChunk = frameText(frame, frame._tag === "stdout" ? jsonStdout : jsonStderr) ?? "";
+          const decoded = frameDecode(frame, frame._tag === "stdout" ? jsonStdout : jsonStderr);
+          const textChunk = decoded.kind === "text" ? decoded.text : new TextDecoder().decode(decoded.bytes);
           const streamFrameOptions = {
             chunk: textChunk,
             ...(frame.service === undefined ? {} : { service: frame.service }),
@@ -190,20 +225,17 @@ export const layerStreamFrameSink = (
         // corrupt it. Frame transport belongs to the framed JSON stream.
         if (format === "yaml") return;
         const decoder = frame._tag === "stdout" ? stdoutUtf8 : stderrUtf8;
-        const textChunk = frameText(frame, decoder);
-        if (frame.raw === true && !isTty && textChunk === undefined && typeof frame.chunk !== "string") {
-          const writeBytes = byteWriter(
-            io,
-            frame._tag === "stderr" ? "writeStderrBytes" : "writeStdoutBytes",
-          );
-          if (writeBytes !== undefined) {
-            writeBytes(frame.chunk);
-            return;
-          }
+        const decoded = frameDecode(frame, decoder);
+        if (
+          frame.raw === true &&
+          !isTty &&
+          decoded.kind === "binary" &&
+          writeRaw(frame._tag, decoded.bytes)
+        ) {
+          return;
         }
-        const fallbackText =
-          typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
-        const chunk = redactor.redactString(textChunk ?? fallbackText);
+        const fallbackText = decoded.kind === "text" ? decoded.text : new TextDecoder().decode(decoded.bytes);
+        const chunk = redactor.redactString(fallbackText);
         if (frame.raw === true) {
           yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
           return;
@@ -216,6 +248,19 @@ export const layerStreamFrameSink = (
               : `${frame.service} ${frame._tag} [${frame.source}]: ${chunk}`;
         yield* renderer.output.stdout(`${text}\n`);
       });
-      return StreamFrameSink.of({ emit });
+      const flush = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+        for (const [tag, decoder] of [
+          ["stdout", stdoutUtf8],
+          ["stderr", stderrUtf8],
+        ] as const) {
+          const leftover = decoder.flush();
+          if (leftover === undefined) continue;
+          if (!writeRaw(tag, leftover) && format !== "yaml") {
+            const fallback = new TextDecoder().decode(leftover);
+            yield* tag === "stderr" ? renderer.output.stderr(fallback) : renderer.output.stdout(fallback);
+          }
+        }
+      });
+      return StreamFrameSink.of({ emit, flush });
     }),
   );

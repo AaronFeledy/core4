@@ -11,6 +11,8 @@ export interface StreamFrameSinkFrame {
 
 export interface StreamFrameSinkShape {
   readonly emit: (frame: StreamFrameSinkFrame) => Effect.Effect<void>;
+  /** Write leftover held UTF-8 bytes after the last frame. */
+  readonly flush?: () => Effect.Effect<void>;
 }
 
 export class StreamFrameSink extends Context.Service<StreamFrameSink, StreamFrameSinkShape>()(

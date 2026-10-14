@@ -49,4 +49,22 @@ describe("collectExecStream binary frames", () => {
     );
     expect(frames.every((frame) => frame.raw === true)).toBe(true);
   });
+
+  test("flushes the sink after the provider stream ends", async () => {
+    // Given
+    let flushed = 0;
+    const sink = StreamFrameSink.of({
+      emit: () => Effect.void,
+      flush: () =>
+        Effect.sync(() => {
+          flushed += 1;
+        }),
+    });
+
+    // When
+    await Effect.runPromise(collectExecStream(Stream.fromIterable([{ exitCode: 0 }]), Option.some(sink)));
+
+    // Then
+    expect(flushed).toBe(1);
+  });
 });

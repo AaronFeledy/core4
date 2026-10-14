@@ -95,4 +95,46 @@ describe("stream frame redaction", () => {
     // Then
     expect(io.stdout()).toBe("pay-€-now");
   });
+
+  test("writes held UTF-8 bytes when a redirected stream turns binary", async () => {
+    // Given: abc plus a held 0xe2, then invalid bytes.
+    const io = createBufferedRendererIO();
+    const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0xff, 0x00, 0x01]);
+    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
+    );
+
+    // When
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: input.subarray(0, 4), raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: input.subarray(4), raw: true });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    // Then
+    expect(io.stdoutBytes()).toEqual(input);
+  });
+
+  test("flushes a trailing incomplete UTF-8 sequence as raw bytes", async () => {
+    // Given: abc plus an unfinished 3-byte sequence at end of stream.
+    const io = createBufferedRendererIO();
+    const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
+    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
+    );
+
+    // When
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: input, raw: true });
+        if (sink.flush !== undefined) yield* sink.flush();
+      }).pipe(Effect.provide(layer)),
+    );
+
+    // Then
+    expect(io.stdoutBytes()).toEqual(input);
+  });
 });

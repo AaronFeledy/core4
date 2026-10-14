@@ -40,5 +40,8 @@ export const collectExecStream = Effect.fnUntraced(function* <E, R>(
   );
   stdout += stdoutDecoder.decode();
   stderr += stderrDecoder.decode();
+  if (Option.isSome(sink) && sink.value.flush !== undefined) {
+    yield* sink.value.flush();
+  }
   return { exitCode, stdout, stderr };
 }, Effect.scoped);
