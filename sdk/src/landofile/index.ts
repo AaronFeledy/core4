@@ -14,7 +14,7 @@ export {
   validateConfigTranslateResult,
 } from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
-export { decodeLandofileLayer } from "./layer-decode.ts";
+export { decodeLandofileLayer, type LandofileLayerValidator } from "./layer-decode.ts";
 export {
   override,
   reset,

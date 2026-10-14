@@ -11,13 +11,34 @@ const REMEDIATION =
   "Apply !reset to the containing mapping key, or !override the containing value with a complete valid replacement.";
 const ABSENT = Symbol("absent");
 
+/** Strictly decodes the directive-free tree; callers may substitute their own diagnostics. */
+export type LandofileLayerValidator = (
+  plain: unknown,
+) => Effect.Effect<typeof LandofileShape.Type, LandofileValidationError | LandofileParseError>;
+
+const strictValidator =
+  (file: string): LandofileLayerValidator =>
+  (plain) =>
+    Schema.decodeUnknownEffect(LandofileShape)(plain, { onExcessProperty: "error", errors: "all" }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new LandofileValidationError({
+            file,
+            message: "Invalid Landofile layer.",
+            issues: validationIssuesFromCause(cause),
+          }),
+      ),
+    );
+
 export const decodeLandofileLayer: (
   file: string,
   input: unknown,
+  validate?: LandofileLayerValidator,
 ) => Effect.Effect<LandofileDecodedOverlay, LandofileValidationError | LandofileParseError> =
   Effect.fnUntraced(function* (
     file: string,
     input: unknown,
+    validate: LandofileLayerValidator = strictValidator(file),
   ): Effect.fn.Return<LandofileDecodedOverlay, LandofileValidationError | LandofileParseError> {
     const directives: { readonly path: DirectivePath; readonly kind: "override" | "reset" }[] = [];
     const fail = (path: DirectivePath, reason: string): never => {
@@ -73,17 +94,16 @@ export const decodeLandofileLayer: (
               issues: validationIssuesFromCause(cause),
             }),
     });
-    const decoded = yield* Schema.decodeUnknownEffect(LandofileShape)(stripped, {
-      onExcessProperty: "error",
-      errors: "all",
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new LandofileValidationError({
-            file,
-            message: `Invalid Landofile layer. ${REMEDIATION}`,
-            issues: validationIssuesFromCause(cause),
-          }),
+    // A directive may have stripped a required member, so failures name the containing-value remediation.
+    const decoded = yield* validate(stripped).pipe(
+      Effect.mapError((error) =>
+        directives.length === 0 || error._tag !== "LandofileValidationError"
+          ? error
+          : new LandofileValidationError({
+              file: error.file,
+              issues: error.issues,
+              message: `${error.message} ${REMEDIATION}`,
+            }),
       ),
     );
     const reinsert = (value: unknown, path: DirectivePath, kind: "override" | "reset"): unknown => {

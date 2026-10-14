@@ -413,7 +413,9 @@ const loadLandofileLayer = Effect.fn("Landofile.loadLayer")(function* (
         .pipe(Effect.catch(() => Effect.void)),
     );
   }
-  const landofile = yield* decodeLandofileLayer(filePath, resolved.value).pipe(Effect.catch(onNativeFailure));
+  const landofile = yield* decodeLandofileLayer(filePath, resolved.value, (plain) =>
+    validateLandofile(filePath, plain),
+  ).pipe(Effect.catch(onNativeFailure));
   return rememberLandofileAppRoot(
     rememberLandofileReferencedFiles(landofile, resolved.dependencies),
     resolvedContext.appRoot,
