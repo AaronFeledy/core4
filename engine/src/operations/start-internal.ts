@@ -552,19 +552,17 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
           }),
       }),
   }).pipe(
-    Effect.onExit((exit) =>
-      Exit.isSuccess(exit) || !Cause.hasInterrupts(exit.cause)
-        ? Effect.void
-        : isReadinessInterruptCause(exit.cause)
-          ? completeAppliedJournal
-          : Effect.all([Ref.get(applyStarted), Ref.get(routesApplied), Ref.get(leaseCleanupDone)]).pipe(
-              Effect.flatMap(([started, routed, cleaned]) => {
-                if (cleaned) return Effect.void;
-                if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
-                return Effect.void;
-              }),
-              Effect.orDie,
-            ),
-    ),
+    Effect.onExit((exit) => {
+      if (Exit.isSuccess(exit) || !Cause.hasInterrupts(exit.cause)) return Effect.void;
+      if (isReadinessInterruptCause(exit.cause)) return completeAppliedJournal;
+      return Effect.all([Ref.get(applyStarted), Ref.get(routesApplied), Ref.get(leaseCleanupDone)]).pipe(
+        Effect.flatMap(([started, routed, cleaned]) => {
+          if (cleaned) return Effect.void;
+          if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
+          return Effect.void;
+        }),
+        Effect.orDie,
+      );
+    }),
   );
 });

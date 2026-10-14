@@ -202,7 +202,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const ready = yield* waitForServiceReadiness({
     provider,
     plan: target.plan,
-    services: services.map((service) => service.name),
+    services: selected,
     initial: new Map(initial),
     ...(signal === undefined ? {} : { signal }),
   });

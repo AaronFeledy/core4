@@ -79,12 +79,10 @@ export const makeReadinessProgress = Effect.fnUntraced(function* (
             Option.isSome(primary) && primary.value instanceof ServiceNotReadyError
               ? primary.value
               : undefined;
-          summary =
-            error === undefined
-              ? Cause.hasInterruptsOnly(exit.cause)
-                ? `${plan.name} readiness interrupted; applied app retained`
-                : `${plan.name} readiness failed`
-              : `${error.service}: ${error.reason}`;
+          if (error !== undefined) summary = `${error.service}: ${error.reason}`;
+          else if (Cause.hasInterruptsOnly(exit.cause))
+            summary = `${plan.name} readiness interrupted; applied app retained`;
+          else summary = `${plan.name} readiness failed`;
           if (error !== undefined) {
             if (!visible.has(error.service)) {
               visible.add(error.service);

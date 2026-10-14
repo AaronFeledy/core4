@@ -36,11 +36,10 @@ export const retainReadinessOnInterrupt = <A, E, R>(effect: Effect.Effect<A, E, 
       const exit = yield* Effect.exit(restore(effect));
       if (Exit.isSuccess(exit)) return exit.value;
       const signal = yield* ReadinessInterruptSignal;
-      if (Cause.hasInterruptsOnly(exit.cause) && signal !== undefined) yield* Ref.set(signal, true);
+      const interrupted = Cause.hasInterruptsOnly(exit.cause);
+      if (interrupted && signal !== undefined) yield* Ref.set(signal, true);
       return yield* Effect.failCause(
-        Cause.hasInterruptsOnly(exit.cause)
-          ? Cause.annotate(exit.cause, Context.make(RetainedReadinessInterrupt, true))
-          : exit.cause,
+        interrupted ? Cause.annotate(exit.cause, Context.make(RetainedReadinessInterrupt, true)) : exit.cause,
       );
     }),
   );
@@ -51,7 +50,6 @@ export const isReadinessFailure = (error: unknown): error is ServiceNotReadyErro
 export const isReadinessFailureCause = (cause: Cause.Cause<unknown>): boolean =>
   !Cause.hasInterrupts(cause) &&
   !Cause.hasDies(cause) &&
-  cause.reasons.length > 0 &&
   cause.reasons.some((reason) => Cause.isFailReason(reason) && isReadinessFailure(reason.error));
 
 export const shouldRetainReadinessResources = (cause: Cause.Cause<unknown>): boolean =>

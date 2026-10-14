@@ -126,12 +126,11 @@ const probeHealthy = Effect.fnUntraced(function* <E, R>(
   let timedOut = false;
   const attempt = Effect.gen(function* () {
     const result = yield* Effect.result(handlers.execHealthcheck(service, command));
+    timedOut = false;
     if (result._tag === "Success") {
       lastExitCode = result.success.exitCode;
-      timedOut = false;
       return result.success.exitCode === 0 ? "green" : "red";
     }
-    timedOut = false;
     return "red";
   });
   const ok = yield* runHealthcheckProbe(
