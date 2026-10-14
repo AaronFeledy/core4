@@ -186,7 +186,7 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const output = translated.outputs[0];
   if (translated.outputs.length !== 1 || output?.targetLayer !== "canonical")
     return yield* Effect.fail(blocked("validate"));
-  const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
+  const mapping = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(
     output.fragment,
   ).pipe(Effect.mapError(() => blocked("validate")));
   const context = mergeLandofiles([mapping, { name: request.appName }]);
