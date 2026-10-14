@@ -8,7 +8,7 @@ import type {
   LandofileLayer,
   PortablePath,
 } from "@lando/sdk/schema";
-import { LandofileAuthoringFragment } from "@lando/sdk/schema";
+import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
 const longestBasenamesFirst = LANDOFILE_LAYER_POSITIONS.toSorted(
@@ -83,11 +83,20 @@ export const buildDocumentSetShape = (args: {
   };
 };
 
-export const lowerV4LayerFragments = Effect.fnUntraced(function* (args: {
+interface LowerV4LayerFragmentsOptions {
   readonly appRoot: string;
   readonly selectedSourceIds: ReadonlyArray<string>;
   readonly documents: ReadonlyArray<ConfigTranslateDocument>;
-}): Effect.fn.Return<
+}
+
+export const lowerV4LayerFragments: (
+  args: LowerV4LayerFragmentsOptions,
+) => Effect.Effect<
+  ReadonlyArray<ConfigTranslateLayerFragment>,
+  ConfigTranslateError | LandofileFormConflictError
+> = Effect.fnUntraced(function* (
+  args: LowerV4LayerFragmentsOptions,
+): Effect.fn.Return<
   ReadonlyArray<ConfigTranslateLayerFragment>,
   ConfigTranslateError | LandofileFormConflictError
 > {
@@ -131,9 +140,11 @@ export const lowerV4LayerFragments = Effect.fnUntraced(function* (args: {
     const content = new TextDecoder().decode(document.bytes);
     return parseLandofile({ file: filePath, content, cwd: args.appRoot }).pipe(
       Effect.flatMap((value) =>
-        Schema.decodeUnknownEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+        Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
       ),
-      Effect.flatMap(Schema.encodeEffect(LandofileAuthoringFragment)),
+      Effect.flatMap((value) =>
+        Schema.encodeEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+      ),
       Effect.mapError(invalidFragment),
       Effect.map((fragment): ConfigTranslateLayerFragment => ({ layerId: layer, fragment })),
     );

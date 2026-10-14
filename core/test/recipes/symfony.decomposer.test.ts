@@ -78,7 +78,7 @@ describe("symfony decomposition", () => {
     expect<unknown>(result).toEqual({ fragment: { ...expected, recipe: provenance }, provenance });
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
     const services = result.fragment.services;
-    if (services === undefined || typeof services === "string")
+    if (services === undefined || typeof services === "string" || "_tag" in services)
       throw new TypeError("Expected an object service map.");
     const appserver = services.appserver;
     if (appserver === undefined || typeof appserver === "string")

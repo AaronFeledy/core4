@@ -15,7 +15,7 @@ test("canonical authored resets beat service aliases", () => {
       },
     },
   });
-  expect(result.services?.web).toEqual({
+  expect(result).toHaveProperty(["services", "web"], {
     workingDirectory: override("/app"),
     envFile: override([".env"]),
     dependsOn: reset(),
@@ -26,7 +26,7 @@ test("whole-field overrides wrap decoded transformed values", () => {
   const result = decode({
     services: { web: { environment: override(["FOO=bar"]), depends_on: override(["db"]) } },
   });
-  expect(result.services?.web).toEqual({
+  expect(result).toHaveProperty(["services", "web"], {
     environment: override({ FOO: "bar" }),
     dependsOn: override([{ service: "db" }]),
   });
@@ -34,7 +34,9 @@ test("whole-field overrides wrap decoded transformed values", () => {
 
 test("stable list-item members retain operations", () => {
   const result = decode({ services: { web: { routes: [{ hostname: "web.test", filters: override([]) }] } } });
-  expect(result.services?.web).toEqual({ routes: [{ hostname: "web.test", filters: override([]) }] });
+  expect(result).toHaveProperty(["services", "web"], {
+    routes: [{ hostname: "web.test", filters: override([]) }],
+  });
 });
 
 test.each([

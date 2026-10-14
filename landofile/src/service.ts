@@ -35,7 +35,12 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { type LandofileDecodedOverlay, decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
+import {
+  type LandofileDecodedOverlay,
+  decodeLandofileLayer,
+  isPlainRecord,
+  mergeLandofiles,
+} from "@lando/sdk/landofile";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { decodeOrFail } from "./decode.ts";
@@ -267,13 +272,32 @@ const scanContentForUnsupportedExpressions = (
   const match = scanForConfigExpression(content);
   if (match === undefined) return Effect.succeed(content);
   if (content.includes("load(") || content.includes("import(")) return Effect.succeed(content);
-  return Effect.fail(
+  const unsupported = Effect.fail(
     new NotImplementedError({
       message: `${match.description} are not supported at ${filePath}.`,
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     }),
   );
+  if (!content.includes("!reset")) return unsupported;
+  // The parser discards `!reset` payloads unread, so an expression that only
+  // appears there is never evaluated and must not reject the file.
+  return parseLandofile({ file: filePath, content, cwd: dirname(filePath) }).pipe(
+    Effect.matchEffect({
+      onFailure: () => unsupported,
+      onSuccess: (parsed) =>
+        parsedStrings(parsed).some((value) => scanForConfigExpression(JSON.stringify(value)) !== undefined)
+          ? unsupported
+          : Effect.succeed(content),
+    }),
+  );
+};
+
+const parsedStrings = (value: unknown): ReadonlyArray<string> => {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(parsedStrings);
+  if (!isPlainRecord(value)) return [];
+  return Object.entries(value).flatMap(([key, entry]) => [key, ...parsedStrings(entry)]);
 };
 
 type LandofileLoadError =

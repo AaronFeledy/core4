@@ -86,7 +86,7 @@ test("standalone file loading consumes lowest-layer directives", async () => {
     const file = join(root, ".lando.yml");
     await Bun.write(
       file,
-      "name: directives\nservices:\n  web:\n    environment: !override\n      OLD: !reset\n      KEEP: yes\n",
+      'name: directives\nservices:\n  web:\n    environment: !override\n      OLD: !reset "{{ missing.value }}"\n      KEEP: yes\n',
     );
     const result = await Effect.runPromise(loadLandofileFile(file));
     expect(result.services?.[ServiceName.make("web")]?.environment).toEqual({ KEEP: "yes" });

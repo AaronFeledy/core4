@@ -34,7 +34,10 @@ const containedIncludePath = (source: string): PortablePath | undefined => {
   return segments.length === 0 ? undefined : PortablePath.make(segments.join("/"));
 };
 
-export const validateTranslatedIncludeTargets = Effect.fnUntraced(function* (
+export const validateTranslatedIncludeTargets: (
+  appRoot: string,
+  outputs: ReadonlyArray<ConfigTranslateOutput>,
+) => Effect.Effect<ReadonlyArray<ConfigTranslateDiagnostic>> = Effect.fnUntraced(function* (
   appRoot: string,
   outputs: ReadonlyArray<ConfigTranslateOutput>,
 ): Effect.fn.Return<ReadonlyArray<ConfigTranslateDiagnostic>, never> {

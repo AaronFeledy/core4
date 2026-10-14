@@ -121,7 +121,7 @@ test("global directives are consumed before the managed-provider plan", async ()
       KEEP: "generated",
     });
     expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.routes).toEqual(["global.test"]);
-    expect(loaded.plan.provider).toBe("lando");
+    expect(loaded.plan.provider).toBe(ProviderId.make("lando"));
   });
 });
 
