@@ -15,6 +15,7 @@ interface DaemonPolicy {
   readonly apiVersion?: string;
   readonly infoBody?: string;
   readonly rejectBelowMin?: boolean;
+  readonly omitMinHeaderOnSuccess?: boolean;
 }
 
 interface RecordedRequest {
@@ -22,9 +23,12 @@ interface RecordedRequest {
   readonly path: string;
 }
 
-const versionHeaders = (policy: DaemonPolicy): string[] => [
+const versionHeaders = (policy: DaemonPolicy, status: number): string[] => [
   ...(policy.apiVersion === undefined ? [] : [`Api-Version: ${policy.apiVersion}`]),
-  ...(policy.minApiVersion === undefined ? [] : [`Min-API-Version: ${policy.minApiVersion}`]),
+  ...(policy.minApiVersion === undefined ||
+  (status >= 200 && status < 300 && policy.omitMinHeaderOnSuccess === true)
+    ? []
+    : [`Min-API-Version: ${policy.minApiVersion}`]),
 ];
 
 const httpResponse = (status: number, body: string, policy: DaemonPolicy): string => {
@@ -33,7 +37,7 @@ const httpResponse = (status: number, body: string, policy: DaemonPolicy): strin
     "Content-Type: application/json",
     `Content-Length: ${Buffer.byteLength(body)}`,
     "Connection: close",
-    ...versionHeaders(policy),
+    ...versionHeaders(policy, status),
   ];
   return `${headers.join("\r\n")}\r\n\r\n${body}`;
 };
@@ -160,23 +164,34 @@ describe("Docker API fake-daemon negotiation", () => {
     });
   });
 
-  test("fails a Podman-style response whose ApiVersion is below 1.43", async () => {
+  test("stays on 1.43 for a Podman-style 200 that advertises ApiVersion 1.41", async () => {
     await withFakeDaemon(
       {
         apiVersion: "1.41",
+        minApiVersion: "1.24",
         infoBody: JSON.stringify({
-          ApiVersion: "1.41",
-          Version: "5.2.0",
-          Components: [{ Name: "Podman Engine", Version: "5.2.0" }],
+          Architecture: "amd64",
+          ServerVersion: "4.9.3",
         }),
       },
       async ({ host, requests }) => {
         const client = makeDockerApiClient(host, ctx);
-        const failure = await Effect.runPromise(client.info.pipe(Effect.flip));
-        expect(isDockerApiVersionError(failure)).toBe(true);
-        expect(failure.message).toContain("1.43-1.44");
-        expect(failure.message).toContain("up to 1.41");
-        expect(requests.map((entry) => entry.path)).toEqual(["/v1.43/info"]);
+        const info = await Effect.runPromise(client.info);
+        await Effect.runPromise(client.info);
+        expect(info).toEqual({ Architecture: "amd64", ServerVersion: "4.9.3" });
+        expect(requests.map((entry) => entry.path)).toEqual(["/v1.43/info", "/v1.43/info"]);
+      },
+    );
+  });
+
+  test("keeps the raised 1.44 prefix when the successful retry omits MinAPIVersion", async () => {
+    await withFakeDaemon(
+      { minApiVersion: "1.44", apiVersion: "1.52", rejectBelowMin: true, omitMinHeaderOnSuccess: true },
+      async ({ host, requests }) => {
+        const client = makeDockerApiClient(host, ctx);
+        await Effect.runPromise(client.info);
+        await Effect.runPromise(client.info);
+        expect(requests.map((entry) => entry.path)).toEqual(["/v1.43/info", "/v1.44/info", "/v1.44/info"]);
       },
     );
   });

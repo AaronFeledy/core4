@@ -146,10 +146,15 @@ export const learnDockerApiPrefix = (input: {
     ...(input.headers === undefined ? {} : { headers: input.headers }),
     body: input.body,
   });
+  const success = input.status >= 200 && input.status < 300;
+  if (success && input.usedPrefix !== "") {
+    // A 2xx proves this prefix. Keep it even when the daemon advertises a lower
+    // ApiVersion (Podman compat) or omits MinAPIVersion on the successful retry.
+    rememberDockerApiPrefix(input.endpointKey, resolvedPrefix(input.usedPrefix, "negotiated"));
+    return { prefix: input.usedPrefix, retry: false };
+  }
+
   if (!dockerApiRangeHasEvidence(range)) {
-    if (input.status >= 200 && input.status < 300 && input.usedPrefix !== "") {
-      rememberDockerApiPrefix(input.endpointKey, resolvedPrefix(input.usedPrefix, "negotiated"));
-    }
     const cached = peekDockerApiPrefix(input.endpointKey);
     return { prefix: cached?.prefix ?? input.usedPrefix, retry: false };
   }
@@ -165,7 +170,7 @@ export const learnDockerApiPrefix = (input: {
   rememberDockerApiPrefix(input.endpointKey, resolved);
   return {
     prefix: negotiation.prefix,
-    retry: negotiation.prefix !== input.usedPrefix && (input.status < 200 || input.status >= 300),
+    retry: negotiation.prefix !== input.usedPrefix,
   };
 };
 
