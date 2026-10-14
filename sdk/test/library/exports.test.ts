@@ -29,6 +29,9 @@ describe("@lando/sdk package exports", () => {
   test("landofile entry point exports overlay merge, layer order, and compose dispositions", async () => {
     const landofile = await import("@lando/sdk/landofile");
     expect(typeof landofile.mergeLandofiles).toBe("function");
+    expect(typeof landofile.resolveLayerMergeRule).toBe("function");
+    expect(typeof landofile.routeMatchKey).toBe("function");
+    expect(typeof landofile.parseRouteShorthand).toBe("function");
     expect(typeof landofile.landofileLayerRank).toBe("function");
     expect(landofile.composeServiceDispositions).toBeDefined();
     expect(typeof landofile.compareKeyPaths).toBe("function");
@@ -49,6 +52,8 @@ describe("@lando/sdk package exports", () => {
     expect(schema.BootstrapLevel).toBeDefined();
     expect(schema.DeprecationNotice).toBeDefined();
     expect(schema.SchemaDeprecationAnnotationId).toBeDefined();
+    expect(schema.LayerMergeRule).toBeDefined();
+    expect(schema.SchemaLayerMergeAnnotationId).toBe("lando/schema/LayerMerge");
     expect(schema.DeprecationSurfaceKind).toBeDefined();
     expect(schema.DeprecationUse).toBeDefined();
     expect(schema.deprecateField).toBeDefined();

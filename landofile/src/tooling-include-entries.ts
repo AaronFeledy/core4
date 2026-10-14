@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 
 import type { LandofileIncludeError } from "@lando/sdk/errors";
-import type { IncludeEntry, LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
+import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 
 import { mergeValues } from "@lando/sdk/landofile";
 import { includeError } from "./include-guard.ts";
@@ -133,7 +133,7 @@ export const composeToolingIncludeEntries = (
         key,
         overridden === undefined || override === undefined
           ? declared
-          : [mergeValues(overridden, override) as ObjectIncludeEntry],
+          : [mergeValues(IncludeEntry, overridden, override) as ObjectIncludeEntry],
       );
     }
   }
