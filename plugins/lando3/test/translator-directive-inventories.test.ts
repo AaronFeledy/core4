@@ -67,6 +67,7 @@ test.each(["events", "endpoints", "member endpoints"])(
     );
     // Then events name the real service and routes retain its existing endpoint.
     const fragment = result.outputs.find(({ targetLayer }) => targetLayer === "local")?.fragment;
+    if (!isPlainRecord(fragment)) throw new Error("Expected a local mapping fragment");
     if (inventory === "events") {
       expect(fragment?.events).toEqual({
         "post-start": [{ cmd: "echo ready", service: "appserver" }],
@@ -74,7 +75,7 @@ test.each(["events", "endpoints", "member endpoints"])(
       });
       return;
     }
-    const services = fragment?.services;
+    const services: unknown = fragment.services;
     const appserver = isPlainRecord(services) ? services.appserver : undefined;
     expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
       { _tag: "internal", protocol: "http", port: 80 },
@@ -103,7 +104,10 @@ test("reset established inventories contribute no service or tooling names", asy
   );
   // Then no event is retained for a nonexistent wrapper-derived tool.
   expect(
-    result.outputs.some(({ fragment }) => isPlainRecord(fragment.events) && "post-value" in fragment.events),
+    result.outputs.some(
+      ({ fragment }) =>
+        isPlainRecord(fragment) && isPlainRecord(fragment.events) && "post-value" in fragment.events,
+    ),
   ).toBe(false);
   expect(result.diagnostics).toContainEqual(
     expect.objectContaining({ kind: "dropped", keyPath: ["events", "post-value"] }),

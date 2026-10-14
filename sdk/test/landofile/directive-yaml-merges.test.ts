@@ -28,6 +28,9 @@ describe("directives in YAML merge sources", () => {
     // When the mapping is used as a merge source.
     const result = Effect.runSync(parseLandofile({ file: ".lando.yml", cwd: "/app", content }));
     // Then the target retains the member operations.
-    expect(result.target).toEqual({ image: override("nginx"), environment: reset() });
+    expect(result).toEqual({
+      base: { image: override("nginx"), environment: reset() },
+      target: { image: override("nginx"), environment: reset() },
+    });
   });
 });
