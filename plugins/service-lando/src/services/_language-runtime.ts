@@ -87,7 +87,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
       version,
       defaultCommand: defaultCommand ?? null,
       port,
-      ...(spec.includeWebrootInFeatureConfig ? { webroot } : {}),
+      ...(webroot === undefined ? {} : { webroot }),
     });
   };
 
@@ -112,9 +112,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const framework = validateFramework(input.service.framework);
         const preset = spec.presets[framework];
         const endpointPort = input.service.port ?? preset.port;
-        const webroot = spec.includeWebrootInFeatureConfig
-          ? { webroot: resolveWebroot(spec.displayName, preset.webroot, input.service.appMount) }
-          : {};
+        const webroot =
+          spec.includeWebrootInFeatureConfig && input.service.appMount !== false
+            ? { webroot: resolveWebroot(spec.displayName, preset.webroot, input.service.appMount) }
+            : {};
         return {
           base: "lando" as const,
           normalizedConfig: { ...input.service, type: `${spec.language}:${resolvedVersion}` },

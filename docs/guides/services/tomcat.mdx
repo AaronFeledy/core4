@@ -7,7 +7,7 @@ tags: [beta, docs, tomcat, service]
 
 # Add Tomcat
 
-Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Put your exploded webapp in the app root. Lando mounts it as the ROOT webapp:
+Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Lando mounts your app at `/app` and serves the webroot (the project root by default) as the ROOT webapp:
 
 ```yaml
 name: tomcat-demo
@@ -44,11 +44,18 @@ services:
 
 ## Deploy the webapp
 
-Tomcat serves `/usr/local/tomcat/webapps/ROOT` by default. The app root is
-mounted there, so a `WEB-INF` directory in your project is enough. Set
-`webroot:` when you want a different deploy path inside the container. Unlike PHP, static, nginx, and Apache services, Tomcat requires an absolute container deploy path: this is where Lando mounts your app, not a path relative to `/app`.
+Tomcat follows the same rules as the other web types. The app mounts at `/app` (or `appMount.target`), and `webroot` is relative to that mount. The default is `.`, the project root, so a `WEB-INF` directory at the top of your project is enough. Point `webroot` at an exploded build when the webapp lives deeper, for example a Maven output directory:
 
-`webroot` is the app mount. `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT` report it, and `lando exec` starts there. Don't move the mount with `appMount.target`: a value that differs from `webroot` fails planning with a message pointing you back to `webroot` (an equal value is accepted). Set `appMount: false` when the image already contains the webapp and Lando should not mount anything.
+```yaml
+services:
+  appserver:
+    type: tomcat
+    webroot: target/myapp
+```
+
+An absolute container path is also accepted. Lando points Tomcat at the webroot by writing a ROOT context (`conf/Catalina/localhost/ROOT.xml`) during the image build, so the webroot is served at `/`. The image's own `server.xml` stays as is, and a custom `command:` such as `catalina.sh jpda run` still serves the same webroot. One webapp is served; other webapps and WAR drop-ins are not deployed. With your own `image:`, Lando leaves the image's Tomcat configuration alone and writes no ROOT context, so `webroot` only sets `LANDO_WEBROOT`.
+
+`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. Moving the mount with `appMount.target` works like any other type. If the service does not use your app's code, set `appMount: false` and give `webroot` an absolute container path to content the image provides; a relative or omitted `webroot` fails planning in that case.
 
 ## TLS and the default route
 

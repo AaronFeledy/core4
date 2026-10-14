@@ -11,6 +11,11 @@ export const resolveWebroot = (
   authored: string | undefined,
   appMount?: ServiceConfig["appMount"],
 ): string => {
+  if (appMount === false && !(authored ?? ".").startsWith("/")) {
+    throw new Error(
+      `${typeLabel} webroot "${authored ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
+    );
+  }
   const mount = appMountTarget(appMount);
   const path = Schema.decodeUnknownSync(
     Schema.String.pipe(

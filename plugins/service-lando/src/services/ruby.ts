@@ -38,7 +38,7 @@ const RubyFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_RUBY_FRAMEWORKS]),
   version: Schema.Literals([...SUPPORTED_RUBY_VERSIONS]),
   port: Schema.Number,
-  webroot: Schema.String,
+  webroot: Schema.optionalKey(Schema.String),
   defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type RubyFeatureConfig = typeof RubyFeatureConfigSchema.Type;

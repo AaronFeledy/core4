@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, PortablePath, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
 import {
@@ -21,6 +21,16 @@ const metadata = {
 };
 
 const featureOverrides = new Map([[TOMCAT_FEATURE_ID, tomcatServiceFeature]]);
+const BuildSteps = Schema.Struct({
+  buildSteps: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      phase: Schema.String,
+      user: Schema.optionalKey(Schema.String),
+      command: Schema.Unknown,
+    }),
+  ),
+});
 
 const serviceConfig = (serviceDefinition: Record<string, unknown>) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -72,11 +82,12 @@ describe("tomcat ServiceType", () => {
         expect(plan.endpoints).toEqual([
           { _tag: "internal", port: 8080, protocol: "http", name: "appserver" },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/ROOT");
+        expect(String(plan.appMount?.target)).toBe("/app");
         expect(plan.mounts).toEqual([]);
-        expect(plan.environment.LANDO_APP_ROOT).toBe("/usr/local/tomcat/webapps/ROOT");
-        expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/usr/local/tomcat/webapps/ROOT");
-        expect(String(plan.workingDirectory)).toBe("/usr/local/tomcat/webapps/ROOT");
+        expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
+        expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
+        expect(plan.environment.LANDO_WEBROOT).toBe("/app");
+        expect(String(plan.workingDirectory)).toBe("/app");
         expect(plan.healthcheck).toEqual({
           kind: "command",
           command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],
@@ -91,9 +102,7 @@ describe("tomcat ServiceType", () => {
         const resolution = await resolveTomcatService(serviceType, { type: id });
 
         expect(resolution.normalizedConfig.certs).toBe(true);
-        expect(resolution.normalizedConfig.webroot).toEqual(
-          PortablePath.make("/usr/local/tomcat/webapps/ROOT"),
-        );
+        expect(resolution.normalizedConfig.webroot).toBeUndefined();
       });
 
       test("preserves authored routes", async () => {
@@ -117,7 +126,7 @@ describe("tomcat ServiceType", () => {
         expect(plan.endpoints).toEqual([
           { _tag: "internal", port: 8888, protocol: "http", name: "appserver" },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/app");
+        expect(String(plan.appMount?.target)).toBe("/app");
         expect(plan.command).toEqual(["catalina.sh", "run"]);
         expect(plan.user).toBe("1000:1000");
       });
@@ -130,6 +139,74 @@ describe("tomcat ServiceType", () => {
       "9": "tomcat:9-jre21",
       "10": "tomcat:10-jre21",
       "11": "tomcat:11-jre21",
+    });
+  });
+
+  test.each([
+    [{}, "/app"],
+    [{ webroot: "target/myapp" }, "/app/target/myapp"],
+    [{ appMount: { target: "/site" } }, "/site"],
+    [{ webroot: "/srv/www" }, "/srv/www"],
+    [{ command: ["catalina.sh", "jpda", "run"] }, "/app"],
+    [{ appMount: false, webroot: "/srv/www" }, "/srv/www"],
+  ])("writes the ROOT context for %j", async (definition, docBase) => {
+    // Given: a Tomcat service using the catalog image.
+    // When: its runtime plan is composed.
+    const plan = await planTomcatService(tomcatServiceType, { type: "tomcat", ...definition });
+    // Then: the build configures ROOT without replacing the server configuration or command.
+    const features = Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]);
+    const step = features.buildSteps.find(({ id }) => id === "service-lando.tomcat:root-context");
+    const command = Schema.decodeUnknownSync(Schema.Array(Schema.String))(step?.command).join(" ");
+    expect(step).toMatchObject({ phase: "build", user: "root" });
+    expect(command).toContain(`<Context docBase="${docBase}"/>`);
+    expect(command).toContain("/conf/Catalina/localhost");
+    expect(command).toContain("ROOT.xml");
+    expect(command).not.toContain("server.xml");
+    expect(plan.environment.LANDO_WEBROOT).toBe(docBase);
+    if ("command" in definition) expect(plan.command).toEqual(definition.command);
+  });
+
+  test("leaves configuration in an authored custom image untouched", async () => {
+    // Given: an image outside the catalog.
+    // When: its Tomcat service is planned.
+    const plan = await planTomcatService(tomcatServiceType, { type: "tomcat", image: "acme/tomcat:custom" });
+    // Then: Lando does not assume ownership of the image's configuration.
+    expect(plan.extensions["@lando/core/service-features"]).not.toMatchObject({
+      buildSteps: expect.arrayContaining([
+        expect.objectContaining({ id: "service-lando.tomcat:root-context" }),
+      ]),
+    });
+  });
+
+  test.each([undefined, "public"])("rejects appMount false with webroot %s", async (webroot) => {
+    // Given: a webroot requiring app code on a service that disables it.
+    const definition = { type: "tomcat", appMount: false, ...(webroot === undefined ? {} : { webroot }) };
+    // When / Then: planning rejects the contradictory settings with remediation.
+    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toThrow(
+      `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
+    );
+  });
+
+  test("rejects a relative webroot outside the app mount", async () => {
+    // Given / When / Then: an escaping document root fails type resolution.
+    await expect(
+      resolveTomcatService(tomcatServiceType, { type: "tomcat", webroot: "../x" }),
+    ).rejects.toThrow(
+      "tomcat webroot ../x leaves the app mount (/app); use an absolute container path instead.",
+    );
+  });
+
+  test("configures ROOT when the catalog image is explicitly authored", async () => {
+    // Given / When: an explicitly authored image equal to the selected catalog image.
+    const plan = await planTomcatService(tomcat10ServiceType, {
+      type: "tomcat:10",
+      image: "tomcat:10-jre21",
+    });
+    // Then: the image retains Lando-owned configuration.
+    expect(plan.extensions["@lando/core/service-features"]).toMatchObject({
+      buildSteps: expect.arrayContaining([
+        expect.objectContaining({ id: "service-lando.tomcat:root-context" }),
+      ]),
     });
   });
 });

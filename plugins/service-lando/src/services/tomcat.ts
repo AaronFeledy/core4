@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { PortNumber, PortablePath } from "@lando/sdk/schema";
+import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -11,18 +11,10 @@ import {
 } from "./_feature-helpers.ts";
 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { canonicalTarget } from "./_volume-helpers.ts";
+import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
-const DEFAULT_WEBROOT = PortablePath.make("/usr/local/tomcat/webapps/ROOT");
-const TomcatDeployPath = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
-      message:
-        "tomcat webroot is the container path the app is deployed to and must be absolute, such as /usr/local/tomcat/webapps/ROOT.",
-    }),
-  ),
-);
+const TomcatFeatureConfig = Schema.Struct({ webroot: Schema.String, ownsImageConfig: Schema.Boolean });
 const VERSIONS = ["9", "10", "11"] as const;
 const ARTIFACTS = {
   "9": "tomcat:9-jre21",
@@ -35,6 +27,7 @@ export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
+  const { webroot, ownsImageConfig } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
   ctx.addEndpoint({
@@ -44,13 +37,25 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
     name: ctx.serviceName,
   });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
+  if (ownsImageConfig) {
+    ctx.addBuildStep({
+      id: "service-lando.tomcat:root-context",
+      phase: "build",
+      user: "root",
+      command: [
+        "sh",
+        "-c",
+        `set -eu; context_dir="\${CATALINA_HOME:-/usr/local/tomcat}/conf/Catalina/localhost"; mkdir -p "$context_dir"; printf '%s\\n' '<Context docBase="${webroot}"/>' > "$context_dir/ROOT.xml"`,
+      ],
+    });
+  }
 
   applyAuthoredProcessFields(ctx);
 };
 
 export const tomcatServiceFeature: ServiceFeatureDefinition = {
   id: TOMCAT_FEATURE_ID,
-  schema: Schema.Unknown,
+  schema: TomcatFeatureConfig,
   priority: 600,
   apply: serviceFeatureApply(TOMCAT_FEATURE_ID, "tomcat service feature failed to apply", applyTomcatFeature),
 };
@@ -65,26 +70,26 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
   schema: TomcatServiceConfig,
   resolve: (input) => {
     return serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
-      const webroot = input.service.webroot ?? DEFAULT_WEBROOT;
-      Schema.decodeUnknownSync(TomcatDeployPath)(webroot);
-      if (
-        typeof input.service.appMount === "object" &&
-        canonicalTarget(input.service.appMount.target) !== canonicalTarget(webroot)
-      ) {
-        throw new Error(
-          `tomcat deploys the app at its webroot "${webroot}". Set webroot instead of appMount.target, or make them equal.`,
-        );
-      }
+      const webroot = resolveWebroot("tomcat", input.service.webroot, input.service.appMount);
       return {
         base: "lando",
         normalizedConfig: {
           ...input.service,
           type: "tomcat",
           image: input.service.image ?? image,
-          webroot,
           certs: input.service.certs ?? true,
         },
-        features: [{ id: TOMCAT_FEATURE_ID }, { id: "lando.app-mount", config: { target: webroot } }],
+        features: [
+          {
+            id: TOMCAT_FEATURE_ID,
+            config: {
+              webroot,
+              ownsImageConfig: input.service.image === undefined || input.service.image === image,
+            },
+          },
+          { id: "lando.env", config: { webroot } },
+          { id: "lando.app-mount", config: { target: "/app" } },
+        ],
       };
     });
   },

@@ -621,7 +621,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:
-        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. Tomcat uses it as the absolute deploy path.',
+        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. With appMount: false it must be absolute.',
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",

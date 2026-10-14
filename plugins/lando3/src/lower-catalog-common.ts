@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { CATALOG, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
@@ -15,6 +16,7 @@ import { serviceConfigMount } from "./service-config-mount.ts";
 import {
   droppedMoreHttpPorts,
   droppedServiceKey,
+  needsReviewServiceKey,
   rewrittenMeUser,
   rewrittenServiceKey,
   unsupportedServiceKey,
@@ -171,20 +173,19 @@ export const lowerCatalogCommon = (
     patch.user = service.meUser;
     diagnostics.push(rewrittenMeUser({ ctx }));
   }
-  if (resolution.id === "tomcat" && typeof service.webroot === "string" && !service.webroot.startsWith("/")) {
-    const source = service.webroot.replace(/^(?:\.\/)+/u, "").replace(/\/+$/u, "");
-    if (source === "" || source === ".") {
-      rewrite(
-        ["webroot"],
-        "Omitted webroot: Lando 4 Tomcat deploys the app root to /usr/local/tomcat/webapps/ROOT by default.",
-      );
-    } else {
-      drop(
-        ["webroot"],
-        "Lando 4 Tomcat deploys the whole app root; a relative source webroot has no equivalent deploy path.",
-        "Set webroot to an absolute container deploy path, or serve the build output from the app root.",
-      );
-    }
+  if (resolution.id === "tomcat") {
+    const source = typeof service.webroot === "string" ? service.webroot.replace(/^\/+/, "") : ".";
+    const webapps = posix.join(source, "webapps");
+    patch.webroot = posix.join(webapps, "ROOT");
+    diagnostics.push(
+      needsReviewServiceKey({
+        ctx,
+        relative: ["webroot"],
+        message: `Lando 4 serves only the ROOT webapp at /; other webapps or WAR files under ${webapps} are not deployed.`,
+        remediation:
+          "Review the generated webroot and configure any other webapps or WAR deployments by hand.",
+      }),
+    );
   } else if (service.webroot !== undefined) patch.webroot = service.webroot;
   const port = numericPort(service.port);
   if (port !== undefined) patch.port = port;

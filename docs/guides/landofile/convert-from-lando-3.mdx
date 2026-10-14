@@ -70,7 +70,7 @@ A Lando 3 `recipe:` with its `config:` map becomes the matching bundled Lando 4 
 
 Relative Lando 3 webroots carry over unchanged: `webroot: web` stays `web`. Lando 4 resolves that path against the service's app mount, `/app` unless `appMount.target` moves it, when planning the service. Omit `webroot` or use `.` for the app root. Absolute container paths remain available for a specific layout; relative paths that escape the app mount are rejected during planning.
 
-Tomcat is the exception. A Lando 4 Tomcat `webroot` is the absolute container path the whole app is deployed to, so a Lando 3 `webroot: .` is omitted and reported as `rewritten`, and any other relative Tomcat webroot is reported as `dropped` with a remediation.
+Tomcat gets one adjustment. A Lando 3 tomcat service served `<webroot>/webapps/ROOT` at `/`, so conversion sets the Lando 4 `webroot` to `<webroot>/webapps/ROOT` (`webapps/ROOT` when Lando 3 used the default) and flags that other webapps or WAR files under `webapps/` are not deployed.
 
 Hosting-platform recipes (`pantheon`, `platformsh`, `lagoon`, `acquia`), `drupal7` through `drupal9`, and any recipe Lando 4 does not bundle are rejected. The preview is empty, `--write` refuses, and your files do not change. Keep those apps on Lando 3 or replace the recipe with explicit v4 services first.
 

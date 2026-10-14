@@ -63,21 +63,39 @@ test.each(["relative", "/", "/app/.."])(
   },
 );
 
-test("a mismatched tomcat appMount target becomes actionable LandofileValidationError", async () => {
+test("a moved tomcat appMount resolves its relative webroot", async () => {
   // Given
   const service = {
     type: "tomcat",
-    webroot: "/usr/local/tomcat/webapps/site",
+    certs: false,
+    webroot: "target/myapp",
     appMount: { target: "/workspace" },
   };
   // When
   const exit = await planExit(service);
   // Then
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (!Exit.isFailure(exit)) throw new Error("Expected planning failure");
-  const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-  expect(error).toBeInstanceOf(LandofileValidationError);
-  expect(error?.message).toMatch(
-    /tomcat.*webroot.*\/usr\/local\/tomcat\/webapps\/site.*webroot.*appMount.target/,
-  );
+  expect(Exit.isSuccess(exit)).toBe(true);
+  if (!Exit.isSuccess(exit)) throw new Error("Expected planning success");
+  const web = exit.value.services[ServiceName.make("web")];
+  expect(String(web?.appMount?.target)).toBe("/workspace");
+  expect(web?.environment.LANDO_WEBROOT).toBe("/workspace/target/myapp");
+  expect(String(web?.workingDirectory)).toBe("/workspace");
 });
+
+for (const type of ["php:8.3", "nginx", "apache", "static:nginx", "tomcat"]) {
+  test.each([undefined, "public"])(
+    `${type} with appMount false rejects webroot %s at planning`,
+    async (webroot) => {
+      // Given: a web service without app code but with an app-relative root.
+      const service = { type, appMount: false as const, ...(webroot === undefined ? {} : { webroot }) };
+      // When: the complete app is planned.
+      const exit = await planExit(service);
+      // Then: the service-type rejection becomes a Landofile validation error.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("Expected planning failure");
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(LandofileValidationError);
+      expect(error?.message).toContain("is relative to the app mount, but appMount is false");
+    },
+  );
+}

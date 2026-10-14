@@ -33,10 +33,14 @@ const families = [
 
 describe("app-mount ownership", () => {
   for (const type of families) {
+    const webroot = ["php:8.3", "nginx", "apache", "static:nginx", "tomcat"].includes(type)
+      ? { webroot: PortablePath.make("/srv/www") }
+      : {};
     test(`disables the mount and mount-derived defaults when ${type} opts out`, async () => {
       // Given
       const service: ServiceConfig = {
         appMount: false,
+        ...webroot,
         ...(type === "lando" || type === "compose" ? { image: "alpine:3.21" } : {}),
       };
       // When
@@ -55,6 +59,7 @@ describe("app-mount ownership", () => {
         // Given
         const service: ServiceConfig = {
           appMount: false,
+          ...webroot,
           workingDirectory: PortablePath.make("/custom"),
           ...(type === "lando" ? { image: "alpine:3.21" } : {}),
         };
@@ -130,45 +135,34 @@ describe("app-mount ownership", () => {
     });
   }
 
-  test("uses tomcat webroot for its mount, path env, and default cwd", async () => {
+  test("keeps the tomcat app mount independent of an absolute webroot", async () => {
     // Given
     const service = {
       webroot: PortablePath.make("/usr/local/tomcat/webapps/site"),
     };
     // When
     const plan = await planService("tomcat", service);
-    // Then the deployment path owns app-source intent and process defaults.
-    expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/site");
-    expect(plan.environment.LANDO_APP_ROOT).toBe("/usr/local/tomcat/webapps/site");
-    expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/usr/local/tomcat/webapps/site");
-    expect(String(plan.workingDirectory)).toBe("/usr/local/tomcat/webapps/site");
+    // Then the app mount owns path env and cwd, independently of the document root.
+    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
+    expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
+    expect(plan.environment.LANDO_WEBROOT).toBe("/usr/local/tomcat/webapps/site");
+    expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.mounts.some((mount) => mount.source === "/srv/project")).toBe(false);
   });
 
-  test("accepts a tomcat target when its canonical destination matches webroot", async () => {
-    // Given equivalent spellings of the deployment path and authored mount target.
+  test("moves tomcat app intent and resolves its relative webroot", async () => {
+    // Given a moved mount and a relative document root.
     const service = {
-      webroot: PortablePath.make("/usr/local/tomcat/webapps/site"),
-      appMount: { target: "/usr/local/tomcat/webapps/./site/" },
+      webroot: PortablePath.make("public"),
+      appMount: { target: "/workspace" },
     };
     // When
     const plan = await planService("tomcat", service);
     // Then
-    expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/site");
-  });
-
-  test("rejects a tomcat target when it differs from the deployment webroot", async () => {
-    // Given
-    const service = {
-      webroot: PortablePath.make("/usr/local/tomcat/webapps/site"),
-      appMount: { target: "/workspace" },
-    };
-    // When
-    const result = planService("tomcat", service);
-    // Then
-    await expect(result).rejects.toThrow(
-      /tomcat.*webroot.*\/usr\/local\/tomcat\/webapps\/site.*webroot.*appMount.target/,
-    );
+    expect(String(plan.appMount?.target)).toBe("/workspace");
+    expect(plan.environment.LANDO_WEBROOT).toBe("/workspace/public");
+    expect(String(plan.workingDirectory)).toBe("/workspace");
   });
 
   test("moves compose app intent without lando path env or cwd", async () => {
