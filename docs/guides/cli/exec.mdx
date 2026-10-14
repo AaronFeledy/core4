@@ -35,7 +35,7 @@ The command gets a terminal only when your stdin and stdout are both terminals. 
 
 ## Back up and restore service files
 
-Redirected stdout is not a terminal, so `lando exec` allocates no PTY and writes raw bytes. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. The command still buffers the archive in memory for its result, so keep very large trees off this path.
+Redirected stdout is not a terminal, so `lando exec` allocates no PTY and writes raw bytes. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. The command still buffers the archive in memory for its result, so keep very large trees off this path. Binary output that is not valid UTF-8 is passed through unredacted. Always compress the archive (gzip or zstd): a plain `tar -cf -` of all-text files is valid UTF-8, so Lando redacts it and the archive is corrupt.
 
 These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
 
