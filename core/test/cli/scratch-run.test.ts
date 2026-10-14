@@ -45,8 +45,9 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -1251,6 +1252,31 @@ describe("scratch run agent env forwarding", () => {
       );
       expect(recorded.execCalls).toHaveLength(1);
       expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: "1" });
+    });
+  });
+
+  test("redacts forwarded agent env values from live tool output", async () => {
+    await withTempProject(async () => {
+      const secret = "opencode-forwarded-secret";
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      try {
+        await withHostEnv({ OPENCODE: secret }, () =>
+          Effect.runPromise(
+            scratchRun(baseOptions).pipe(
+              Effect.provide(makeHarnessLayer(recorded, { execStdout: `OPENCODE=${secret}\n` })),
+              Effect.provide(RendererOutput.layerStreamFrameSink("text")),
+              Effect.provide(testSupportLayer()),
+              Effect.provide(RendererRuntime.layerPlainService(io)),
+            ),
+          ),
+        );
+      } finally {
+        resetRegisteredRedactionValuesForTesting();
+      }
+      expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: secret });
+      expect(io.stdout()).not.toContain(secret);
+      expect(io.stdout()).toContain("OPENCODE=[redacted]");
     });
   });
 

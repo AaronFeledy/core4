@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import {
   type ConfigError,
@@ -27,6 +27,7 @@ import {
   findPrimaryServiceName,
   readScratchLandofile,
 } from "@lando/engine/scratch-app/service";
+import { RedactionService } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { finishCommandProgress } from "../command-progress";
@@ -183,6 +184,9 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         allowlist,
         lowerThanEnv: service.environment,
       });
+      // Chunks stream before the result exists, so forwarded values must reach sinks already built.
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokensFromEnv(env));
       const cliTextOutput = options.hostIo === "cli" && options.envelopeFormat !== true;
       if (cliTextOutput) yield* finishCommandProgress();
       const sink = yield* Effect.serviceOption(StreamFrameSink);

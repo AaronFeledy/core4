@@ -120,7 +120,6 @@ test.each(["in-flight acquisition", "active input", "disposal failure"] as const
           const consumerScope = yield* Scope.fork(yield* Effect.scope);
           yield* Layer.buildWithScope(
             makeLandoEventConsumer(ttyIo, {
-              getCapabilities: () => ({ notifications: false }),
               raiseInterrupt: () => {
                 interruptions++;
               },
