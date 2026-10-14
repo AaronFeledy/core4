@@ -5,7 +5,8 @@ services:
     primary: true
     build:
       artifact:
+        - "apt-get update && apt-get install -y --no-install-recommends $PHPIZE_DEPS automake libtool git libmagickwand-dev && rm -rf /var/lib/apt/lists/*"
         - "curl -fL --output /usr/local/bin/pie https://github.com/php/pie/releases/latest/download/pie.phar"
         - "chmod +x /usr/local/bin/pie"
         - "pie self-verify"
-        - "pie install imagick/imagick"
+        - "pie install --no-interaction imagick/imagick"

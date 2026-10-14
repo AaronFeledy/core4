@@ -94,11 +94,16 @@ services:
         - "docker-php-ext-enable imagick"
 ```
 
-PECL still takes the short name (`imagick`). PIE needs PHP 8.1 or newer and
-Packagist names, so the same extension is `imagick/imagick`. Fetch `pie.phar`
-into `/usr/local/bin/pie`, run `pie self-verify`, then `pie install`. PIE
-enables the extension itself, so skip `docker-php-ext-enable`. Keep PECL for
-older PHP.
+To use [PIE](https://github.com/php/pie/blob/1.5.2/docs/usage.md) instead,
+install ImageMagick's development libraries and the build tools first.
+This example uses the stock Debian Bookworm PHP image, not a custom image.
+Its artifact commands run as root unless you override the service's `user`.
+They need network access to Debian, GitHub, and Packagist.
+
+PIE needs PHP 8.1 or newer to run, which all supported Lando PHP types satisfy.
+PECL takes the short name (`imagick`); PIE takes the Packagist name
+`imagick/imagick`. Fetch `pie.phar` into `/usr/local/bin/pie`, make it executable,
+then run `pie self-verify` and `pie install`:
 
 ```yaml
 services:
@@ -106,10 +111,30 @@ services:
     type: "php:8.3"
     build:
       artifact:
+        - "apt-get update && apt-get install -y --no-install-recommends $PHPIZE_DEPS automake libtool git libmagickwand-dev && rm -rf /var/lib/apt/lists/*"
         - "curl -fL --output /usr/local/bin/pie https://github.com/php/pie/releases/latest/download/pie.phar"
         - "chmod +x /usr/local/bin/pie"
         - "pie self-verify"
-        - "pie install imagick/imagick"
+        - "pie install --no-interaction imagick/imagick"
+```
+
+The stock image supplies `curl`, `phpize`, PHP headers, and `$PHPIZE_DEPS`;
+Lando adds `unzip` and PHP's `zip` extension. The explicit tool install also
+restores `$PHPIZE_DEPS` if an earlier Xdebug build step removed them. Don't
+install Debian's `php-dev`: these tools must match the image's PHP installation.
+PIE won't automatically install missing tools or libraries in a non-interactive
+build without its opt-in flags.
+
+`pie self-verify` checks GitHub release attestations. Without the `gh` CLI,
+it uses PHP's OpenSSL extension, which the stock image includes. PIE enables
+Imagick through the image's `docker-php-ext-enable` helper, so you don't need
+a second enable command.
+
+Rebuild, then check that PHP loads the extension:
+
+```sh
+lando rebuild -y
+lando exec app -- php --ri imagick
 ```
 
 An artifact step runs after Lando's own PHP prerequisite build steps, in
@@ -203,7 +228,7 @@ healthcheck, working directory, and `LANDO_*` environment.
     </Step>
     <Step name="confirm-build-step">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "usr/local/bin/pie.*pie self-verify.*pie install imagick/imagick" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"artifact\":\\s*\\[\\s*\"apt-get update && apt-get install -y --no-install-recommends \\$PHPIZE_DEPS automake libtool git libmagickwand-dev && rm -rf /var/lib/apt/lists/\\*\",\\s*\"curl -fL --output /usr/local/bin/pie https://github\\.com/php/pie/releases/latest/download/pie\\.phar\",\\s*\"chmod \\+x /usr/local/bin/pie\",\\s*\"pie self-verify\",\\s*\"pie install --no-interaction imagick/imagick\"\\s*\\]" } }} />
     </Step>
   </Scenario>
 
