@@ -1,8 +1,10 @@
 import { Predicate, Result } from "effect";
 
 import { LANDOFILE_EDITOR_SCHEMA_URL } from "../schema/editor.ts";
+import { LANDOFILE_MERGE_DIRECTIVE } from "../schema/landofile-directive.ts";
 import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
+import { isLandofileOverride, isLandofileReset, isMergeDirective } from "./merge-directives.ts";
 
 const INDENT = "  ";
 
@@ -128,26 +130,7 @@ const emitMapEntries = (
   for (const [key, value] of entriesOf(object, path, state)) {
     const keyPath = childPath(path, key);
     const keyText = yamlMappingKeyText(key);
-    if (Array.isArray(value)) {
-      if (value.length === 0) {
-        lines.push(`${pad}${keyText}: []`);
-        continue;
-      }
-      lines.push(`${pad}${keyText}:`);
-      emitArrayItems(value, indent + 1, lines, keyPath, state);
-      continue;
-    }
-    if (isPlainObject(value)) {
-      if (Object.keys(value).length === 0) {
-        assertEmptyMapIsEmittable(value, keyPath, state);
-        lines.push(`${pad}${keyText}: {}`);
-        continue;
-      }
-      lines.push(`${pad}${keyText}:`);
-      emitMapEntries(value, indent + 1, lines, keyPath, state);
-      continue;
-    }
-    lines.push(`${pad}${keyText}: ${emitScalar(value, keyPath)}`);
+    emitMember(value, { prefix: `${pad}${keyText}:`, indent: indent + 1, path: keyPath, lines, state });
   }
   state.seen.delete(object);
 };
@@ -172,29 +155,57 @@ const emitListItemMap = (
   const firstPath = childPath(path, firstKey);
   const firstKeyText = yamlMappingKeyText(firstKey);
 
-  if (Array.isArray(firstValue)) {
-    if (firstValue.length === 0) {
-      lines.push(`${pad}- ${firstKeyText}: []`);
-    } else {
-      lines.push(`${pad}- ${firstKeyText}:`);
-      emitArrayItems(firstValue, itemIndent + 2, lines, firstPath, state);
-    }
-  } else if (isPlainObject(firstValue)) {
-    if (Object.keys(firstValue).length === 0) {
-      assertEmptyMapIsEmittable(firstValue, firstPath, state);
-      lines.push(`${pad}- ${firstKeyText}: {}`);
-    } else {
-      lines.push(`${pad}- ${firstKeyText}:`);
-      emitMapEntries(firstValue, itemIndent + 2, lines, firstPath, state);
-    }
-  } else {
-    lines.push(`${pad}- ${firstKeyText}: ${emitScalar(firstValue, firstPath)}`);
-  }
+  emitMember(firstValue, {
+    prefix: `${pad}- ${firstKeyText}:`,
+    indent: itemIndent + 2,
+    path: firstPath,
+    lines,
+    state,
+  });
 
   for (const [key, value] of remainingEntries) {
     emitMapEntries({ [key]: value }, itemIndent + 1, lines, path, state);
   }
   state.seen.delete(item);
+};
+
+const emitMember = (
+  value: unknown,
+  context: {
+    readonly prefix: string;
+    readonly indent: number;
+    readonly path: string;
+    readonly lines: string[];
+    readonly state: EmitState;
+  },
+): void => {
+  const { prefix, indent, path, lines, state } = context;
+  if (isMergeDirective(value)) {
+    const keys = Reflect.ownKeys(value);
+    const expected = isLandofileReset(value)
+      ? [LANDOFILE_MERGE_DIRECTIVE]
+      : [LANDOFILE_MERGE_DIRECTIVE, "value"];
+    if (keys.length !== expected.length || keys.some((key) => !expected.includes(key)))
+      throw new LandofileEmitError({ message: `Malformed merge directive at ${path}.` });
+    enterObject(value, path, state);
+    if (isLandofileOverride(value)) {
+      if (isMergeDirective(value.value))
+        throw new LandofileEmitError({ message: `Nested merge directive at ${path}.` });
+      emitMember(value.value, { ...context, prefix: `${prefix} !override` });
+    } else lines.push(`${prefix} !reset`);
+    state.seen.delete(value);
+  } else if (Array.isArray(value)) {
+    lines.push(value.length === 0 ? `${prefix} []` : prefix);
+    if (value.length > 0) emitArrayItems(value, indent, lines, path, state);
+  } else if (isPlainObject(value)) {
+    if (Object.keys(value).length === 0) {
+      assertEmptyMapIsEmittable(value, path, state);
+      lines.push(`${prefix} {}`);
+    } else {
+      lines.push(prefix);
+      emitMapEntries(value, indent, lines, path, state);
+    }
+  } else lines.push(`${prefix} ${emitScalar(value, path)}`);
 };
 
 const emitArrayItems = (

@@ -22,6 +22,7 @@ import { Effect } from "effect";
 
 import type { LandofileParseError } from "../errors/index.ts";
 import { LandofileParseError as LandofileParseErrorClass } from "../errors/index.ts";
+import { isLandofileOverride, isMergeDirective, override, reset } from "./merge-directives.ts";
 import {
   YAML_REFERENCE_NAME_PATTERN,
   type YamlReferenceState,
@@ -167,8 +168,9 @@ const stripComment = (line: string): string => {
 
   const rawValue = afterColon.slice(valueIdx);
   const anchorPrefix = rawValue.match(ANCHOR_PREFIX_PATTERN)?.[0] ?? "";
-  const valuePrefix = afterColon.slice(0, valueIdx) + anchorPrefix;
-  const valuePart = rawValue.slice(anchorPrefix.length);
+  const tagPrefix = rawValue.slice(anchorPrefix.length).match(/^!(?:override|reset)\s+/)?.[0] ?? "";
+  const valuePrefix = afterColon.slice(0, valueIdx) + anchorPrefix + tagPrefix;
+  const valuePart = rawValue.slice(anchorPrefix.length + tagPrefix.length);
 
   // A comment can start immediately after the colon, e.g. `services: # services`.
   // Once `valuePrefix` is split off the leading whitespace is gone, so the
@@ -303,6 +305,16 @@ const parseScalar = (
   }
   if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
     return trimmed.slice(1, -1);
+  }
+  if (trimmed.startsWith("!")) {
+    throw new LandofileParseErrorClass({
+      filePath,
+      line,
+      column,
+      message: "YAML tags are supported only as !override or !reset on mapping member values.",
+      remediation:
+        "Apply !reset to a mapping key, or !override the containing value with a complete valid replacement.",
+    });
   }
 
   const reference = parseYamlReferenceSyntax(value, { line, column });
@@ -603,57 +615,19 @@ const parseMap = (
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
 
-    const { rawValue } = entry;
-    const valueColumn = line.indent + entry.rawKey.length + 2;
-    if (BLOCK_SCALAR_HEADER.test(rawValue.trim())) {
-      const [value, nextIndex] = parseBlockScalar(lines, filePath, index, line, rawValue.trim());
-      assignKeyedValue(references, result, entry, value, { line: line.line, column: valueColumn }, undefined);
-      index = nextIndex;
-      continue;
-    }
-    const reference = parseYamlReferenceSyntax(rawValue, { line: line.line, column: valueColumn });
-    const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
-    if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
-
-    if (rawValue.trim() === "" || blockAnchor !== undefined) {
-      const next = lines[index + 1];
-      const location = { line: line.line, column: valueColumn };
-      if (next === undefined || next.indent <= line.indent) {
-        assignKeyedValue(references, result, entry, {}, location, blockAnchor?.name);
-        index += 1;
-        continue;
-      }
-      if (next.text.startsWith("- ")) {
-        const [items, nextIndex] = parseList(
-          lines,
-          filePath,
-          index + 1,
-          next.indent,
-          depth + 1,
-          maxDepth,
-          references,
-        );
-        assignKeyedValue(references, result, entry, items, location, blockAnchor?.name);
-        index = nextIndex;
-        continue;
-      }
-      const [nested, nextIndex] = parseMap(
-        lines,
-        filePath,
-        index + 1,
-        next.indent,
-        depth + 1,
-        maxDepth,
-        references,
-      );
-      assignKeyedValue(references, result, entry, nested, location, blockAnchor?.name);
-      index = nextIndex;
-      continue;
-    }
-
-    const value = parseScalar(rawValue, filePath, line.line, valueColumn, depth, maxDepth, references);
-    assignKeyedValue(references, result, entry, value, { line: line.line, column: valueColumn }, undefined);
-    index += 1;
+    const [value, nextIndex] = parseMember(
+      { lines, filePath, index, indent: line.indent, depth, maxDepth, references },
+      entry,
+    );
+    assignKeyedValue(
+      references,
+      result,
+      entry,
+      value,
+      { line: line.line, column: line.indent + entry.rawKey.length + 2 },
+      undefined,
+    );
+    index = nextIndex;
   }
 
   return [result, index];
@@ -767,63 +741,19 @@ const parseListItemMap = (
   let index = startIndex + 1;
 
   const consumeKey = (entry: MappingEntry, keyLine: number, keyIndent: number): void => {
-    const { rawValue } = entry;
-    const valueColumn = keyIndent + entry.rawKey.length + 2;
-    const location = { line: keyLine, column: valueColumn };
-    if (BLOCK_SCALAR_HEADER.test(rawValue.trim())) {
-      // Both consumeKey call sites have already stepped index past the key's own line.
-      const headerIndex = index - 1;
-      const header = lines[headerIndex];
-      if (header === undefined) throw parseError(filePath, `Malformed YAML at line ${keyLine}`, keyLine);
-      const [value, nextIndex] = parseBlockScalar(
-        lines,
-        filePath,
-        headerIndex,
-        { ...header, indent: keyIndent },
-        rawValue.trim(),
-      );
-      assignKeyedValue(references, item, entry, value, location, undefined);
-      index = nextIndex;
-      return;
-    }
-    const reference = parseYamlReferenceSyntax(rawValue, location);
-    const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
-    if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
-    if (rawValue.trim() === "" || blockAnchor !== undefined) {
-      const next = lines[index];
-      if (next === undefined || next.indent <= keyIndent) {
-        assignKeyedValue(references, item, entry, {}, location, blockAnchor?.name);
-        return;
-      }
-      if (next.text.startsWith("- ")) {
-        const [items, nextIndex] = parseList(
-          lines,
-          filePath,
-          index,
-          next.indent,
-          depth + 1,
-          maxDepth,
-          references,
-        );
-        assignKeyedValue(references, item, entry, items, location, blockAnchor?.name);
-        index = nextIndex;
-        return;
-      }
-      const [nested, nextIndex] = parseMap(
-        lines,
-        filePath,
-        index,
-        next.indent,
-        depth + 1,
-        maxDepth,
-        references,
-      );
-      assignKeyedValue(references, item, entry, nested, location, blockAnchor?.name);
-      index = nextIndex;
-      return;
-    }
-    const value = parseScalar(rawValue, filePath, keyLine, valueColumn, depth, maxDepth, references);
-    assignKeyedValue(references, item, entry, value, location, undefined);
+    const [value, nextIndex] = parseMember(
+      { lines, filePath, index: index - 1, indent: keyIndent, depth, maxDepth, references },
+      entry,
+    );
+    assignKeyedValue(
+      references,
+      item,
+      entry,
+      value,
+      { line: keyLine, column: keyIndent + entry.rawKey.length + 2 },
+      undefined,
+    );
+    index = nextIndex;
   };
 
   consumeKey(firstEntry, startLine.line, childIndent);
@@ -852,6 +782,70 @@ const parseListItemMap = (
   return [item, index];
 };
 
+interface MemberContext {
+  readonly lines: ReadonlyArray<ParsedLine>;
+  readonly filePath: string;
+  readonly index: number;
+  readonly indent: number;
+  readonly depth: number;
+  readonly maxDepth: number;
+  readonly references: YamlReferenceState;
+}
+
+const parseMember = (context: MemberContext, entry: MappingEntry): readonly [unknown, number] => {
+  const { lines, filePath, index, indent, depth, maxDepth, references } = context;
+  const line = lines[index];
+  if (line === undefined) throw parseError(filePath, "Missing mapping member.");
+  const location = { line: line.line, column: indent + entry.rawKey.length + 2 };
+  const reference = parseYamlReferenceSyntax(entry.rawValue, location);
+  const anchor = reference.kind === "anchor" ? reference : undefined;
+  if (anchor !== undefined) reserveYamlAnchor(references, anchor);
+  let raw = anchor?.value ?? entry.rawValue.trim();
+  const tag = raw.match(/^!(override|reset)(?=$|\s)/)?.[1];
+  if (tag !== undefined) raw = raw.slice(tag.length + 1).trim();
+  const fail = (message: string): never => {
+    throw new LandofileParseErrorClass({
+      filePath,
+      ...location,
+      message,
+      remediation:
+        "Use !override with an explicit value, or !reset with an ignored scalar or empty collection, on a mapping member.",
+    });
+  };
+  if (tag !== undefined && raw.startsWith("!")) fail("A merge directive cannot carry a second YAML tag.");
+  let value: unknown;
+  let nextIndex = index + 1;
+  if (BLOCK_SCALAR_HEADER.test(raw)) {
+    [value, nextIndex] = parseBlockScalar(lines, filePath, index, { ...line, indent }, raw);
+  } else if (raw === "") {
+    const next = lines[index + 1];
+    if (next !== undefined && next.indent > indent) {
+      [value, nextIndex] = next.text.startsWith("- ")
+        ? parseList(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references)
+        : parseMap(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references);
+    } else {
+      if (tag === "override") fail("!override requires an explicit value or an indented payload.");
+      value = {};
+    }
+  } else if (tag === "reset") {
+    if ((raw.startsWith("[") && !/^\[\s*\]$/.test(raw)) || (raw.startsWith("{") && !/^\{\s*\}$/.test(raw)))
+      fail("!reset does not accept a populated collection payload.");
+    value = undefined;
+  } else {
+    value = parseScalar(raw, filePath, line.line, location.column, depth, maxDepth, references);
+  }
+  if (
+    tag === "reset" &&
+    ((Array.isArray(value) && value.length > 0) ||
+      (typeof value === "object" && value !== null && Object.keys(value).length > 0))
+  )
+    fail("!reset does not accept a populated collection payload.");
+  if (tag === "override" && isMergeDirective(value)) fail("Merge directives cannot be nested directly.");
+  const result = tag === "override" ? override(value) : tag === "reset" ? reset() : value;
+  if (anchor !== undefined) bindYamlAnchor(references, anchor.name, result);
+  return [result, nextIndex];
+};
+
 const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
   const maxContentBytes = limits?.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
   assertContentSize(content, file, maxContentBytes);
@@ -859,6 +853,14 @@ const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
   const maxDepth = limits?.maxDepth ?? DEFAULT_MAX_DEPTH;
   const lines = toLines(content, file);
   const references = makeYamlReferenceState(file);
+  if (lines[0]?.text.startsWith("!"))
+    throw new LandofileParseErrorClass({
+      filePath: file,
+      line: lines[0].line,
+      column: 1,
+      message: "Merge directives are not supported at document roots.",
+      remediation: "Apply the directive to a mapping member, or override the containing collection.",
+    });
   const [parsed, index] = parseMap(lines, file, 0, 0, 1, maxDepth, references);
   if (index < lines.length) {
     const line = lines[index];
@@ -866,7 +868,27 @@ const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
       throw parseError(file, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
   }
-  return resolveYamlReferences(references, parsed, content.length, maxDepth);
+  const resolved = resolveYamlReferences(references, parsed, content.length, maxDepth);
+  const check = (value: unknown, member: boolean): void => {
+    if (isMergeDirective(value)) {
+      if (!member)
+        throw new LandofileParseErrorClass({
+          filePath: file,
+          line: undefined,
+          column: undefined,
+          message:
+            "Merge directives require a mapping member, not a document root, sequence element, or another directive.",
+          remediation: "Override the containing collection or apply !reset to a mapping key.",
+        });
+      if (isLandofileOverride(value)) check(value.value, false);
+    } else if (Array.isArray(value)) {
+      for (const entry of value) check(entry, false);
+    } else if (typeof value === "object" && value !== null) {
+      for (const entry of Object.values(value)) check(entry, true);
+    }
+  };
+  check(resolved, false);
+  return resolved;
 };
 
 export const parseLandofile = (options: ParseOptions): Effect.Effect<unknown, LandofileParseError> =>

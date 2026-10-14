@@ -179,6 +179,8 @@ export const resolveYamlReferences = (
       }
       return resolve(anchor.value, [...stack, value.name], value);
     }
+    if (isLandofileReset(value)) return value;
+    if (isLandofileOverride(value)) return override(resolve(value.value, stack, origin));
     if (Array.isArray(value)) return value.map((entry) => resolve(entry, stack, origin));
     if (!isMapping(value)) return value;
 
@@ -209,3 +211,4 @@ export const resolveYamlReferences = (
 
   return resolve(root, [], { line: 1, column: 1 });
 };
+import { isLandofileOverride, isLandofileReset, override } from "./merge-directives.ts";
