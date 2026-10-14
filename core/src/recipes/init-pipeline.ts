@@ -187,9 +187,7 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const output = translated.outputs[0];
   if (translated.outputs.length !== 1 || output?.targetLayer !== "canonical")
     return yield* Effect.fail(blocked("validate"));
-  const mapping = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(
-    output.fragment,
-  ).pipe(
+  const mapping = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(output.fragment).pipe(
     Effect.flatMap((value) => Schema.encodeEffect(LandofileAuthoringFragmentNative)(value)),
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
     Effect.mapError(() => blocked("validate")),
