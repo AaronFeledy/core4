@@ -119,7 +119,7 @@ Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<d
 
 `hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2).
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2). Layered route matching uses the same scheme, case-insensitive hostname, and path-prefix identity as planning (§7.2), regardless of shorthand or object spelling.
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 

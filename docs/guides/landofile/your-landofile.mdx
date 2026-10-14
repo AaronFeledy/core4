@@ -55,9 +55,17 @@ Top-level `proxy:` is the other spelling: a map of service name to the same rout
 
 Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
 
-Maps deep-merge. Scalars and scalar arrays replace. A tooling task's `cmds` list also replaces: when a higher layer sets `cmds`, it becomes the task's whole step list, even when its steps name the same services as the inherited ones. Included Landofiles follow the same rule.
+Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
-Other object arrays, including routes, endpoints, and `dependsOn`, merge by recognized identity keys such as `name`, `id`, `hostname`, or `service`. Route filters match by `name`, or by `type` when unnamed. An explicitly empty array (`[]`) replaces the inherited array of any kind. Omit a key to leave its inherited value alone; use `[]` to clear its list. Mapping keys themselves cannot be deleted by an overlay.
+- Routes match by scheme, case-insensitive hostname, and path prefix in either shorthand or object spelling. Omitted scheme means HTTPS and omitted path means `/`. A `both` route participates in both scheme identities; an HTTPS-only overlay leaves its HTTP route alone. Backends and filters are not route identity.
+- `dependsOn` matches by service, in list, map, or object-entry form. Logs match by `id`, which defaults to the path basename.
+- Route filters match by `name`, otherwise by `type`. Named filters never match unnamed ones. Changing a matched filter's type replaces that entry.
+- Endpoints and ports match by exact, case-sensitive `name` only when every entry on both sides is named. Otherwise the list replaces.
+- Every other list replaces, including scalar arrays, tooling `cmds`, event step lists, and opaque extension arrays. A step's `service` is where it runs, not a merge identity.
+
+Route identities with template expressions match by their literal text, including case. Untouched `both` entries stay authored; matching one of their schemes splits only that entry.
+
+An explicitly empty array (`[]`) clears any inherited list. Omit a key to leave its inherited value alone. Mapping keys themselves cannot be deleted by an overlay. See the generated [Landofile schema reference](../../reference/schemas/landofile-shape.mdx#layer-merge-rules) for per-field rules.
 
 For example, start with this `.lando.yml`:
 
@@ -96,7 +104,7 @@ Inspect the merged config without starting containers:
 lando app:config --format=json
 ```
 
-`services.web.routes` is now `[]`, not the inherited object route. `tooling.test.cmds` contains only `echo local-only`; neither base step remains. Non-empty route, endpoint, filter, and `dependsOn` object overlays still merge matching entries rather than replacing the whole list.
+`services.web.routes` is now `[]`, not the inherited object route. `tooling.test.cmds` contains only `echo local-only`; neither base step remains. Event step lists replace the same way. To add a route rather than clear the list, set a distinct path such as `{hostname: web.example.test, pathPrefix: /api}`; the inherited root route stays, even if it was a shorthand string.
 
 ## Reach for other keys
 
@@ -139,6 +147,20 @@ lando info
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "echo base-(first|second)" } } }} />
     </Step>
     <Step name="cleanup-layers">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="schema-merge-rules" render={false} reason="Regression coverage: shorthand routes retain distinct paths and event lists replace">
+    <Step name="scaffold-schema-layers">
+      <UseFixture name="schema-merge-rules" />
+    </Step>
+    <Step name="inspect-route-and-event-merging">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"routes\":\\s*\\[\\s*\"web\\.a\\.test\",\\s*\"web\\.b\\.test\",\\s*\\{[^}]*\"pathPrefix\":\\s*\"/api\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"post-start\":\\s*\\[\\s*\\{[^}]*\"cmd\":\\s*\"echo local\"[^}]*\\}\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "composer install|seed" } } }} />
+    </Step>
+    <Step name="cleanup-schema-layers">
       <Cleanup />
     </Step>
   </Scenario>
