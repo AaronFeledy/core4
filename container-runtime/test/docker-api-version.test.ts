@@ -6,6 +6,7 @@ import {
   DOCKER_API_PREFIX,
   extractDockerDaemonApiRange,
   formatDockerApiRange,
+  isDockerApiVersionRejection,
   negotiateDockerApiVersion,
   parseDockerApiVersionOverride,
 } from "../src/docker/api-version.ts";
@@ -102,6 +103,23 @@ describe("Docker API version negotiation", () => {
         body: '{"message":"client version 1.43 is too old. Minimum supported API version is 1.44"}',
       }),
     ).toEqual({ minApiVersion: "1.44" });
+  });
+
+  test("recognizes only version-shaped 400 bodies as API version rejections", () => {
+    expect(
+      isDockerApiVersionRejection(
+        400,
+        '{"message":"client version 1.43 is too old. Minimum supported API version is 1.44"}',
+      ),
+    ).toBe(true);
+    expect(isDockerApiVersionRejection(400, "client version 1.52 is too new")).toBe(true);
+    expect(isDockerApiVersionRejection(400, "No such container: missing")).toBe(false);
+    expect(
+      isDockerApiVersionRejection(
+        404,
+        '{"message":"client version 1.43 is too old. Minimum supported API version is 1.44"}',
+      ),
+    ).toBe(false);
   });
 
   test("formats open and closed ranges for error text", () => {

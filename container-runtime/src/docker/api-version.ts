@@ -51,6 +51,8 @@ export interface DockerApiVersionErrorDetails {
 
 const VERSION_PATTERN = /^v?(\d+)\.(\d+)$/u;
 const MIN_VERSION_MESSAGE_PATTERN = /minimum supported API version is\s+v?(\d+\.\d+)/iu;
+const VERSION_REJECTION_PATTERN =
+  /minimum supported API version is|client version\s+\S+\s+is too (?:old|new)/iu;
 
 export const parseDockerApiVersion = (value: string): DockerApiVersionComponents | undefined => {
   const match = VERSION_PATTERN.exec(value.trim());
@@ -197,6 +199,9 @@ export const minApiVersionFromMessage = (message: string): string | undefined =>
   const match = MIN_VERSION_MESSAGE_PATTERN.exec(message);
   return match?.[1] === undefined ? undefined : formatDockerApiVersion(match[1]);
 };
+
+export const isDockerApiVersionRejection = (status: number, body: string): boolean =>
+  status === 400 && VERSION_REJECTION_PATTERN.test(body);
 
 export const extractDockerDaemonApiRange = (input: {
   readonly headers?: Readonly<Record<string, string>>;

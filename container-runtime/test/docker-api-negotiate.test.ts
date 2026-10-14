@@ -3,6 +3,7 @@ import { type Server, type Socket, createServer } from "node:net";
 import { Effect } from "effect";
 
 import { makeDockerApiClient, resetDockerApiPrefixCache } from "../src/docker/api-client.ts";
+import { dockerApiEndpointKey, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
 import { isDockerApiVersionError } from "../src/docker/api-version.ts";
 
 const ctx = { providerId: "docker", remediation: "Start Docker." } as const;
@@ -24,7 +25,7 @@ interface RecordedRequest {
 }
 
 const versionHeaders = (policy: DaemonPolicy, status: number): string[] => [
-  ...(policy.apiVersion === undefined ? [] : [`Api-Version: ${policy.apiVersion}`]),
+  `Api-Version: ${policy.apiVersion ?? "1.43"}`,
   ...(policy.minApiVersion === undefined ||
   (status >= 200 && status < 300 && policy.omitMinHeaderOnSuccess === true)
     ? []
@@ -77,7 +78,7 @@ const responseFor = (policy: DaemonPolicy, requestPath: string): string => {
   if (requestPath.endsWith("/info")) {
     return httpResponse(200, policy.infoBody ?? JSON.stringify({ Architecture: "x86_64" }), policy);
   }
-  return httpResponse(200, "{}", policy);
+  return httpResponse(404, JSON.stringify({ message: "No such container: missing" }), policy);
 };
 
 const listen = (server: Server): Promise<number> =>
@@ -244,6 +245,89 @@ describe("Docker API fake-daemon negotiation", () => {
         }
       },
     );
+  });
+
+  test("keeps a Docker 29 prefix when a later request 404s", async () => {
+    await withFakeDaemon(
+      { minApiVersion: "1.44", apiVersion: "1.52", rejectBelowMin: true, omitMinHeaderOnSuccess: true },
+      async ({ host, requests }) => {
+        const client = makeDockerApiClient(host, ctx);
+        const request = client.request;
+        if (request === undefined) throw new Error("expected request client");
+        await Effect.runPromise(client.info);
+        const missing = await Effect.runPromise(request({ method: "GET", path: "/containers/missing/json" }));
+        await Effect.runPromise(client.info);
+        expect(missing.status).toBe(404);
+        expect(missing.body).toContain("No such container");
+        expect(isDockerApiVersionError(missing)).toBe(false);
+        expect(peekDockerApiPrefix(dockerApiEndpointKey(host))).toMatchObject({
+          prefix: "/v1.44",
+          source: "negotiated",
+        });
+        expect(requests.map((entry) => entry.path)).toEqual([
+          "/v1.43/info",
+          "/v1.44/info",
+          "/v1.44/containers/missing/json",
+          "/v1.44/info",
+        ]);
+      },
+    );
+  });
+
+  test("does not turn a Podman-style 404 into a version error", async () => {
+    await withFakeDaemon(
+      {
+        apiVersion: "1.41",
+        minApiVersion: "1.24",
+        infoBody: JSON.stringify({ Architecture: "amd64", ServerVersion: "4.9.3" }),
+      },
+      async ({ host, requests }) => {
+        const client = makeDockerApiClient(host, ctx);
+        const request = client.request;
+        if (request === undefined) throw new Error("expected request client");
+        await Effect.runPromise(client.info);
+        const missing = await Effect.runPromise(request({ method: "GET", path: "/containers/missing/json" }));
+        expect(missing.status).toBe(404);
+        expect(isDockerApiVersionError(missing)).toBe(false);
+        expect(peekDockerApiPrefix(dockerApiEndpointKey(host))).toMatchObject({
+          prefix: "/v1.43",
+          source: "negotiated",
+        });
+        expect(requests.map((entry) => entry.path)).toEqual([
+          "/v1.43/info",
+          "/v1.43/containers/missing/json",
+        ]);
+      },
+    );
+  });
+
+  test("single-flights cold-start negotiation across parallel requests", async () => {
+    await withFakeDaemon(
+      { minApiVersion: "1.44", apiVersion: "1.52", rejectBelowMin: true },
+      async ({ host, requests }) => {
+        const client = makeDockerApiClient(host, ctx);
+        await Promise.all([
+          Effect.runPromise(client.info),
+          Effect.runPromise(client.info),
+          Effect.runPromise(client.info),
+        ]);
+        expect(requests.filter((entry) => entry.path === "/v1.43/info")).toHaveLength(1);
+        expect(requests.filter((entry) => entry.path === "/v1.44/info")).toHaveLength(3);
+      },
+    );
+  });
+
+  test("clears a cached prefix on a later version-shaped 400", async () => {
+    const policy: DaemonPolicy = { apiVersion: "1.43" };
+    await withFakeDaemon(policy, async ({ host, requests }) => {
+      const client = makeDockerApiClient(host, ctx);
+      await Effect.runPromise(client.info);
+      expect(peekDockerApiPrefix(dockerApiEndpointKey(host))?.prefix).toBe("/v1.43");
+      Object.assign(policy, { minApiVersion: "1.44", apiVersion: "1.52", rejectBelowMin: true });
+      await Effect.runPromise(client.info);
+      expect(peekDockerApiPrefix(dockerApiEndpointKey(host))?.prefix).toBe("/v1.44");
+      expect(requests.map((entry) => entry.path)).toEqual(["/v1.43/info", "/v1.43/info", "/v1.44/info"]);
+    });
   });
 
   test("fails closed when DOCKER_API_VERSION is above the tested maximum", async () => {

@@ -1,11 +1,10 @@
 import { normalizeNamedPipePath } from "../transport.ts";
 import {
   type DockerApiNegotiationFail,
-  type DockerDaemonApiRange,
   dockerApiPrefixFor,
-  dockerApiRangeHasEvidence,
   dockerApiVersionFromPrefix,
   extractDockerDaemonApiRange,
+  isDockerApiVersionRejection,
   negotiateDockerApiVersion,
   parseDockerApiVersionOverride,
 } from "./api-version.ts";
@@ -25,9 +24,11 @@ export interface DockerApiPrefixLearnResult {
 }
 
 const prefixCache = new Map<string, ResolvedDockerApiPrefix>();
+const prefixFlights = new Map<string, Promise<void>>();
 
 export const resetDockerApiPrefixCache = (): void => {
   prefixCache.clear();
+  prefixFlights.clear();
 };
 
 export const peekDockerApiPrefix = (key: string): ResolvedDockerApiPrefix | undefined => prefixCache.get(key);
@@ -36,9 +37,36 @@ export const rememberDockerApiPrefix = (key: string, resolved: ResolvedDockerApi
   prefixCache.set(key, resolved);
 };
 
-const resolvedPrefix = (prefix: string, source: DockerApiPrefixSource): ResolvedDockerApiPrefix => {
+export const forgetDockerApiPrefix = (key: string): void => {
+  prefixCache.delete(key);
+};
+
+export const resolvedPrefix = (prefix: string, source: DockerApiPrefixSource): ResolvedDockerApiPrefix => {
   const version = dockerApiVersionFromPrefix(prefix);
   return version === undefined ? { prefix, source } : { prefix, source, version };
+};
+
+export const runDockerApiPrefixFlight = async <A>(
+  key: string,
+  owner: () => Promise<A>,
+  waiter: () => Promise<A>,
+): Promise<A> => {
+  const existing = prefixFlights.get(key);
+  if (existing !== undefined) {
+    await existing;
+    return waiter();
+  }
+  let release = (): void => undefined;
+  const flight = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  prefixFlights.set(key, flight);
+  try {
+    return await owner();
+  } finally {
+    if (prefixFlights.get(key) === flight) prefixFlights.delete(key);
+    release();
+  }
 };
 
 export const isDockerApiPrefixFailure = (
@@ -142,10 +170,6 @@ export const learnDockerApiPrefix = (input: {
     return { prefix: input.usedPrefix, retry: false };
   }
 
-  const range: DockerDaemonApiRange = extractDockerDaemonApiRange({
-    ...(input.headers === undefined ? {} : { headers: input.headers }),
-    body: input.body,
-  });
   const success = input.status >= 200 && input.status < 300;
   if (success && input.usedPrefix !== "") {
     // A 2xx proves this prefix. Keep it even when the daemon advertises a lower
@@ -154,9 +178,17 @@ export const learnDockerApiPrefix = (input: {
     return { prefix: input.usedPrefix, retry: false };
   }
 
-  if (!dockerApiRangeHasEvidence(range)) {
-    const cached = peekDockerApiPrefix(input.endpointKey);
-    return { prefix: cached?.prefix ?? input.usedPrefix, retry: false };
+  if (!isDockerApiVersionRejection(input.status, input.body)) {
+    return { prefix: peekDockerApiPrefix(input.endpointKey)?.prefix ?? input.usedPrefix, retry: false };
+  }
+
+  forgetDockerApiPrefix(input.endpointKey);
+  const range = extractDockerDaemonApiRange({
+    ...(input.headers === undefined ? {} : { headers: input.headers }),
+    body: input.body,
+  });
+  if (range.minApiVersion === undefined) {
+    return { prefix: input.usedPrefix, retry: false };
   }
 
   const negotiation = negotiateDockerApiVersion(range);

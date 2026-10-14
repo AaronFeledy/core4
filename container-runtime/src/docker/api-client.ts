@@ -11,9 +11,8 @@ import type {
 } from "../engine-api.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
-import { redactDetails, redactString, withApiReason } from "../redact.ts";
+import { httpResponseDetails, redactDetails, redactString, withApiReason } from "../redact.ts";
 import {
-  type SocketHttpClient,
   type SocketHttpConnection,
   connectSocket,
   makeSocketHttpClient,
@@ -28,6 +27,8 @@ import {
   isDockerApiPrefixFailure,
   learnDockerApiPrefix,
   resolveInitialDockerApiPrefix,
+  resolvedPrefix,
+  runDockerApiPrefixFlight,
 } from "./api-prefix.ts";
 import {
   DOCKER_API_PREFIX,
@@ -92,7 +93,11 @@ const fetchDockerInfo = Effect.fnUntraced(function* (
     Effect.fail(unavailable(ctx)("capabilities", "Docker API request client is missing."));
   if (response.status < 200 || response.status >= 300) {
     yield* Effect.fail(
-      unavailable(ctx)("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
+      unavailable(ctx)(
+        "capabilities",
+        `Docker info failed with HTTP ${response.status}.`,
+        httpResponseDetails(response),
+      ),
     );
   }
   return yield* parseInfoJson(response, ctx);
@@ -328,18 +333,33 @@ async function* streamHttpRequest(
   });
 }
 
-const requestThroughClient = async (
-  client: SocketHttpClient,
-  input: DockerHttpRequest,
+const sendAndLearn = async (
   session: DockerPrefixSession,
   used: ResolvedDockerApiPrefix,
   ctx: ProviderErrorContext,
-  retryClient: (prefix: string) => SocketHttpClient,
+  send: (prefix: string) => Promise<DockerHttpResponse>,
 ): Promise<DockerHttpResponse> => {
-  const response = await client.request(input);
+  const response = await send(used.prefix);
   const learned = learnFromResponse(session, used, response, ctx);
   if (!learned.retry) return response;
-  return retryClient(learned.prefix).request(input);
+  const retriedUsed = resolvedPrefix(learned.prefix, "negotiated");
+  const retried = await send(learned.prefix);
+  learnFromResponse(session, retriedUsed, retried, ctx);
+  return retried;
+};
+
+const requestWithNegotiatedPrefix = async (
+  session: DockerPrefixSession,
+  ctx: ProviderErrorContext,
+  send: (prefix: string) => Promise<DockerHttpResponse>,
+): Promise<DockerHttpResponse> => {
+  const used = initialPrefix(session, ctx);
+  if (used.source !== "preferred") return sendAndLearn(session, used, ctx, send);
+  return runDockerApiPrefixFlight(
+    session.endpointKey,
+    () => sendAndLearn(session, used, ctx, send),
+    () => sendAndLearn(session, initialPrefix(session, ctx), ctx, send),
+  );
 };
 
 export const makeUnixDockerApiClient = (
@@ -377,64 +397,34 @@ export const makeUnixDockerApiClient = (
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: Effect.fn("DockerApiClient.request")(function* (input) {
-      const used = yield* Effect.try({
-        try: () => initialPrefix(session, ctx),
+      return yield* Effect.tryPromise({
+        try: () =>
+          requestWithNegotiatedPrefix(session, ctx, async (prefix) => {
+            const spawned = await spawnCurl(prefix, input);
+            if (spawned.exitCode !== 0) {
+              throw unavailable(ctx)(
+                "docker-api",
+                `Docker API request failed with exit code ${spawned.exitCode}.`,
+                {
+                  method: input.method,
+                  path: input.path,
+                  stderr: spawned.stderr,
+                },
+              );
+            }
+            const parsed = parseCurlHttp(spawned.stdout);
+            if (!Number.isInteger(parsed.status)) {
+              throw new ProviderInternalError({
+                providerId: ctx.providerId,
+                operation: "docker-api",
+                message: "Docker API response did not include an HTTP status code.",
+                details: redactString(spawned.stdout),
+              });
+            }
+            return parsed;
+          }),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       });
-      const first = yield* Effect.tryPromise({
-        try: () => spawnCurl(used.prefix, input),
-        catch: (cause) => dockerApiFailure(ctx)(input, cause),
-      });
-      if (first.exitCode !== 0) {
-        yield* Effect.fail(
-          unavailable(ctx)("docker-api", `Docker API request failed with exit code ${first.exitCode}.`, {
-            method: input.method,
-            path: input.path,
-            stderr: first.stderr,
-          }),
-        );
-      }
-      const parsed = parseCurlHttp(first.stdout);
-      if (!Number.isInteger(parsed.status)) {
-        yield* Effect.fail(
-          new ProviderInternalError({
-            providerId: ctx.providerId,
-            operation: "docker-api",
-            message: "Docker API response did not include an HTTP status code.",
-            details: redactString(first.stdout),
-          }),
-        );
-      }
-      const learned = yield* Effect.try({
-        try: () => learnFromResponse(session, used, parsed, ctx),
-        catch: (cause) => dockerApiFailure(ctx)(input, cause),
-      });
-      if (!learned.retry) return parsed;
-      const retry = yield* Effect.tryPromise({
-        try: () => spawnCurl(learned.prefix, input),
-        catch: (cause) => dockerApiFailure(ctx)(input, cause),
-      });
-      if (retry.exitCode !== 0) {
-        yield* Effect.fail(
-          unavailable(ctx)("docker-api", `Docker API request failed with exit code ${retry.exitCode}.`, {
-            method: input.method,
-            path: input.path,
-            stderr: retry.stderr,
-          }),
-        );
-      }
-      const retried = parseCurlHttp(retry.stdout);
-      if (!Number.isInteger(retried.status)) {
-        yield* Effect.fail(
-          new ProviderInternalError({
-            providerId: ctx.providerId,
-            operation: "docker-api",
-            message: "Docker API response did not include an HTTP status code.",
-            details: redactString(retry.stdout),
-          }),
-        );
-      }
-      return retried;
     }),
     info: Effect.suspend(() =>
       fetchDockerInfo(makeUnixDockerApiClient(socketPath, ctx, options).request, ctx),
@@ -461,22 +451,11 @@ export const makeNamedPipeDockerApiClient = (
       ),
     request: (input) =>
       Effect.tryPromise({
-        try: () => {
-          const used = initialPrefix(session, ctx);
-          return requestThroughClient(clientFor(used.prefix), input, session, used, ctx, clientFor);
-        },
+        try: () => requestWithNegotiatedPrefix(session, ctx, (prefix) => clientFor(prefix).request(input)),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
-    info: fetchDockerInfo(
-      (input) =>
-        Effect.tryPromise({
-          try: () => {
-            const used = initialPrefix(session, ctx);
-            return requestThroughClient(clientFor(used.prefix), input, session, used, ctx, clientFor);
-          },
-          catch: (cause) => dockerApiFailure(ctx)(input, cause),
-        }),
-      ctx,
+    info: Effect.suspend(() =>
+      fetchDockerInfo(makeNamedPipeDockerApiClient(pipePath, ctx, options, connect).request, ctx),
     ),
   };
 };
@@ -499,10 +478,7 @@ export const makeHttpDockerApiClient = (
       ),
     request: (input) =>
       Effect.tryPromise({
-        try: () => {
-          const used = initialPrefix(session, ctx);
-          return requestThroughClient(clientFor(used.prefix), input, session, used, ctx, clientFor);
-        },
+        try: () => requestWithNegotiatedPrefix(session, ctx, (prefix) => clientFor(prefix).request(input)),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
     info: Effect.suspend(() => fetchDockerInfo(makeHttpDockerApiClient(baseUrl, ctx, options).request, ctx)),
