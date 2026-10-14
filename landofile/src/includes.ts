@@ -19,14 +19,12 @@ import {
   AbsolutePath,
   type IncludeEntry,
   LandofileShape,
-  ToolingTaskShape,
   formatValidationIssueLine,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
 import { mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
-const ToolingRecord = Schema.Record(Schema.String, ToolingTaskShape);
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
@@ -689,7 +687,7 @@ const withResolvedTooling = (
 ): Record<string, unknown> => {
   const inline = inlineWithoutIncludes(landofile);
   const own = Predicate.isObject(inline.tooling) ? inline.tooling : {};
-  const merged = mergeValues(ToolingRecord, included, own);
+  const merged = mergeValues(LandofileShape, included, own, ["tooling"]);
   if (!Predicate.isObject(merged) || Object.keys(merged).length === 0) return inline;
   return { ...inline, tooling: merged };
 };

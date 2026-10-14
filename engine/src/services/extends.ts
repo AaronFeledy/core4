@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
-import { ServiceConfig, ToolingTaskShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import type {
   FeatureRef,
   ServiceImageIdentity,
@@ -14,7 +14,6 @@ import { mergeValues } from "@lando/sdk/landofile";
 
 /** Single inheritance chain, depth-limited to at most four `extends` hops. */
 export const MAX_SERVICE_TYPE_EXTENDS_DEPTH = 4;
-const ToolingRecord = Schema.Record(Schema.String, ToolingTaskShape);
 
 const mergeServiceConfig = (parent: ServiceConfig, child: ServiceConfig): ServiceConfig =>
   mergeValues(ServiceConfig, parent, child) as ServiceConfig;
@@ -57,10 +56,11 @@ const mergeOptionalRecord = <T>(
   root: Schema.Top,
   parent: Readonly<Record<string, T>> | undefined,
   child: Readonly<Record<string, T>> | undefined,
+  path: ReadonlyArray<string> = [],
 ): Readonly<Record<string, T>> | undefined => {
   if (parent === undefined) return child;
   if (child === undefined) return parent;
-  return mergeValues(root, parent, child) as Record<string, T>;
+  return mergeValues(root, parent, child, path) as Record<string, T>;
 };
 
 /**
@@ -102,7 +102,7 @@ export const mergeResolutionOverParent = (
   parent: ServiceTypeResolution,
   child: ServiceTypeResolution,
 ): ServiceTypeResolution => {
-  const tooling = mergeOptionalRecord(ToolingRecord, parent.tooling, child.tooling);
+  const tooling = mergeOptionalRecord(LandofileShape, parent.tooling, child.tooling, ["tooling"]);
   const metadata = mergeOptionalRecord(Schema.Unknown, parent.metadata, child.metadata) as
     | Record<string, unknown>
     | undefined;
