@@ -173,6 +173,7 @@ describe("Landofile package seam", () => {
         "composeTagDispositions",
         "composeTopLevelDispositions",
         "declaredConfigTranslateSourceIds",
+        "decodeLandofileAuthoringLayer",
         "decodeLandofileLayer",
         "detectLandofileTags",
         "emitLandofileYaml",

@@ -60,6 +60,6 @@ test("decoded replay widens a partial credential delta to its nearest valid cont
       effective,
       Effect.runSync(decodeLandofileLayer(layer.layer, layer.fragment)),
     ]);
-    expect(effective).toEqual(prefixes[index]?.desired);
+    expect<unknown>(effective).toEqual(prefixes[index]?.desired);
   }
 });

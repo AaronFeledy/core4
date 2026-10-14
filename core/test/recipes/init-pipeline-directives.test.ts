@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { plugin } from "@lando/lando4";
+import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { previewRecipeLandofile } from "../../src/recipes/init-pipeline.ts";
 import { isolatedInitDecomposer, isolatedInitManifest } from "./fixtures/isolated-init-recipe/index.ts";
@@ -15,13 +16,16 @@ test("recipe preview consumes wire resets before encoding its effective context"
         return {
           ...base,
           decompose: (input) =>
-            Effect.map(base.decompose(input), (result) => ({
-              ...result,
-              fragment: {
-                ...result.fragment,
-                services: { web: { image: "nginx", environment: { OLD: { _tag: "LandofileReset" } } } },
-              },
-            })),
+            Effect.map(base.decompose(input), (result) => {
+              if (!isPlainRecord(result.fragment)) throw new Error("Expected fixture mapping");
+              return {
+                ...result,
+                fragment: {
+                  ...result.fragment,
+                  services: { web: { image: "nginx", environment: { OLD: { _tag: "LandofileReset" } } } },
+                },
+              };
+            }),
         };
       },
       answers: { php: "8.3", webroot: "web" },

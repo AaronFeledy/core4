@@ -14,6 +14,7 @@ import {
   type LandofileDecodedOverlay,
   decodeLandofileLayer,
   isMergeDirective,
+  isPlainRecord,
   mergeLandofiles,
   override,
 } from "@lando/sdk/landofile";
@@ -128,7 +129,13 @@ const loadFragment = (
 ): Effect.Effect<Fragment, ToolingIncludeError> =>
   readFragmentText(filePath, entry.source).pipe(
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-    Effect.tap((parsed) => assertToolingFragment(mergeLandofiles([parsed]), entry.source, filePath)),
+    Effect.tap((parsed) =>
+      assertToolingFragment(
+        isPlainRecord(parsed) ? mergeLandofiles([parsed]) : parsed,
+        entry.source,
+        filePath,
+      ),
+    ),
     Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
     Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) =>
