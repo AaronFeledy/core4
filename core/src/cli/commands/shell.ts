@@ -311,7 +311,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       app: plan.name,
       service: String(service.name),
       shell: "sh",
-      cwd: options.cwd ?? "/app",
+      cwd: options.cwd ?? service.workingDirectory ?? "/app",
       exitCode,
     };
   }

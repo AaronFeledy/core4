@@ -1,6 +1,7 @@
 import { SchemaIssue, SchemaTransformation } from "effect";
 import { Effect } from "effect";
 import { Schema } from "effect";
+import { layerMerge } from "./layer-merge.ts";
 
 const DRIVE_LETTER_PATH = /^[A-Za-z]:[\\/]/;
 
@@ -230,4 +231,4 @@ export const ComposeVolumesField = Schema.Array(
       }),
     ),
   ),
-);
+).pipe((schema) => layerMerge(schema, { kind: "replace" }));

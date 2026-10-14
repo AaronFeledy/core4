@@ -15,9 +15,9 @@ import {
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
 import {
-  applyAuthoredAppMount,
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
+  validateAuthoredAppMount,
 } from "../planner/authored.ts";
 import { attachEffectiveEvents, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
@@ -29,12 +29,12 @@ import { CertificateAuthorityResolver } from "../plugins/certificate-authority-r
 
 export { AppPlanner } from "@lando/sdk/services";
 export {
-  applyAuthoredAppMount,
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
   DEFAULT_PROXY_DOMAIN,
   FILE_SYNC_DEFAULT_EXCLUDES,
   mergeDefaultExcludes,
+  validateAuthoredAppMount,
 };
 
 export const layer = Layer.effect(

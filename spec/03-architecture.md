@@ -152,7 +152,7 @@ CLI payloads carry `CommandInvocationCorrelation`: an outer invocation has a uni
 
 | Shell | Responsibilities |
 |---|---|
-| CLI | Native dispatch, argv/help, lifecycle hooks, `SIGINT` to `Effect.interrupt`, rendering, and exit status (§8) |
+| CLI | Native dispatch, argv/help, lifecycle hooks, `SIGINT` to scoped cancellation (`Effect.interrupt` or an abort signal for a foreground child, §8.4.1), rendering, and exit status (§8) |
 | Embedding host | Host-defined input, output, and signal policy over `@lando/core` (§16) |
 
 Both shells MUST provide the generated layer for the resolved level, run with scoped Effect ownership, and honor the same levels, lifecycle sequence, and plugin graph. They are the only production boundaries where Effect crosses into Promise or forked execution. CLI requirements apply symmetrically unless §16 states otherwise. Tests use the embedding surface rather than a third runtime architecture.

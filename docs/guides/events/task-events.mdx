@@ -39,6 +39,8 @@ lando build
 
 The order is fixed: `pre-build`, then the task's own steps in the order you wrote them, then `post-build`. No config knob reorders that.
 
+Each `events.<name>` step list replaces its inherited list across Landofile layers, just like tooling `cmds`. A step's `service` is an execution target, not a merge identity. Set `[]` to clear inherited steps. See [Override a list in a local layer](../landofile/your-landofile.mdx#override-a-list-in-a-local-layer).
+
 Only tasks that show up in `lando --help` get brackets. Tasks pulled in with `internal: true` from a tooling include stay callable but do not grow `pre-` or `post-` names.
 
 Service types bring tasks of their own, and those get brackets too. Add a `mysql:8.0` service and you can hook `pre-mysql` without writing the `mysql` task yourself:

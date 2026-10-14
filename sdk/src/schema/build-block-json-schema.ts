@@ -16,7 +16,14 @@ const buildScriptStepJsonSchema = {
 } as const;
 
 const buildScriptJsonSchema = {
-  oneOf: [buildScriptStepJsonSchema, { type: "array", items: buildScriptStepJsonSchema }],
+  oneOf: [
+    buildScriptStepJsonSchema,
+    {
+      type: "array",
+      items: buildScriptStepJsonSchema,
+      "x-lando-merge": getLayerMergeRule(BuildScript.members[1].ast),
+    },
+  ],
 } as const;
 
 export const buildBlockJsonSchema = {
@@ -63,3 +70,5 @@ export const buildBlockJsonSchema = {
     },
   ],
 } as const;
+import { BuildScript } from "./artifacts.ts";
+import { getLayerMergeRule } from "./layer-merge.ts";

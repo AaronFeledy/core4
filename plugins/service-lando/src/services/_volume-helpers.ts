@@ -1,43 +1,22 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve as resolvePath, win32 } from "node:path";
+import { isAbsolute, posix, resolve as resolvePath, win32 } from "node:path";
 
 import {
-  AbsolutePath,
   type ComposeVolumeEntry,
   type MountInput,
   PortablePath,
   type ServiceConfig,
   parseShortVolume,
 } from "@lando/sdk/schema";
-import type { ServiceAppMountIntent, ServiceFeatureContext } from "@lando/sdk/services";
+import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
-export const mountAppRoot = (
-  ctx: ServiceFeatureContext,
-  options: Partial<Pick<ServiceAppMountIntent, "target" | "excludes" | "readOnly">> & {
-    readonly realization?: "passthrough";
-  } = {},
-): void => {
-  const target = options.target ?? PortablePath.make("/app");
-  const readOnly = options.readOnly ?? false;
-  const realization = options.realization === undefined ? {} : { realization: options.realization };
-  ctx.setAppMount({
-    source: AbsolutePath.make(ctx.appRoot),
-    target,
-    readOnly,
-    excludes: [...(options.excludes ?? [])],
-    includes: [],
-    ...realization,
-  });
-  ctx.addMount({
-    type: "bind",
-    source: ctx.appRoot,
-    target,
-    readOnly,
-    ...realization,
-  });
-};
+/** Canonical spelling of a container destination, so equivalent spellings compare equal. */
+export const canonicalTarget = (target: string): string => posix.resolve("/", target);
+
+export const appMountTarget = (appMount: ServiceConfig["appMount"]): PortablePath =>
+  PortablePath.make(canonicalTarget(typeof appMount === "object" ? appMount.target : "/app"));
 
 interface ComposeTmpfsEntry {
   readonly target: string;
@@ -144,16 +123,16 @@ const kebabTarget = (target: string): string =>
     .filter((segment) => segment.length > 0)
     .join("-");
 
-export const occupiedTargets = (service: ServiceConfig, appMountTarget: string): ReadonlySet<string> => {
+export const occupiedTargets = (service: ServiceConfig): ReadonlySet<string> => {
   const targets = new Set<string>();
   if (service.appMount !== false) {
-    targets.add(typeof service.appMount === "object" ? service.appMount.target : appMountTarget);
+    targets.add(appMountTarget(service.appMount));
   }
   for (const mount of service.mounts ?? []) {
-    targets.add(typeof mount === "string" ? parseShortVolume(mount).target : mount.target);
+    targets.add(canonicalTarget(typeof mount === "string" ? parseShortVolume(mount).target : mount.target));
   }
   for (const storage of service.storage ?? []) {
-    targets.add(typeof storage === "string" ? storage : storage.target);
+    targets.add(canonicalTarget(typeof storage === "string" ? storage : storage.target));
   }
   return targets;
 };

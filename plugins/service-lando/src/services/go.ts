@@ -35,7 +35,6 @@ const runtime = makeLanguageRuntime({
   presets: { none: { port: 8080, defaultCommand: null } },
   baseEnv: { GOPATH: "/go", GOCACHE: "/root/.cache/go-build", CGO_ENABLED: "0" },
   mountExcludes: [],
-  mountRealization: "passthrough",
   includeWebrootInFeatureConfig: false,
   extensionKey: "lando-service-go",
   featureId: GO_FEATURE_ID,

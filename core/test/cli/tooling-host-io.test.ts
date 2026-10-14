@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 
 import { cancellableTerminalStdin } from "../../src/cli/commands/terminal-stdin";
-import { attachToolingHostIo } from "../../src/cli/exec-host-io";
+import { attachToolingHostIo, toolingHostStdin } from "../../src/cli/exec-host-io";
 
 class TerminalInput extends EventEmitter {
   readonly isTTY = true;
@@ -26,6 +26,27 @@ class TerminalInput extends EventEmitter {
     return this[Symbol.asyncIterator]();
   }
 }
+
+describe("toolingHostStdin", () => {
+  test.each([
+    [true, true, true, "keyboard"],
+    [true, true, false, "none"],
+    [true, false, true, "piped"],
+    [true, false, false, "piped"],
+    [false, true, true, "none"],
+    [false, true, false, "none"],
+    [false, false, true, "piped"],
+    [false, false, false, "piped"],
+  ] as const)("classifies enabled=%s stdinTTY=%s stdoutTTY=%s", (enabled, stdinTTY, stdoutTTY, expected) => {
+    // Given
+    const stdin = { isTTY: stdinTTY };
+    const output = { isTTY: stdoutTTY };
+    // When
+    const mode = toolingHostStdin(enabled, stdin, output);
+    // Then
+    expect(mode).toBe(expected);
+  });
+});
 
 describe("attachToolingHostIo", () => {
   test.each([
