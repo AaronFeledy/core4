@@ -6,17 +6,17 @@ services:
     port: 3000
 tooling:
   npm:
-    cmds:
-      - npm
+    cmd: [npm]
     description: Run npm inside the app service.
     service: app
+    dir: /app
   node:
-    cmds:
-      - node
+    cmd: [node]
     description: Run Node inside the app service.
     service: app
+    dir: /app
   npx:
-    cmds:
-      - npx
+    cmd: [npx]
     description: Run npx inside the app service.
     service: app
+    dir: /app
