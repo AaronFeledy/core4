@@ -139,4 +139,6 @@ Changing the major doesn't upgrade an existing database. Postgres refuses to sta
 3. Change `type:` to the new major, then start: `lando start`
 4. Load the dump: `lando db:import dump.sql.gz --yes`
 
+For vector search on Postgres 18, [use a pgvector image](./postgres-pgvector.mdx).
+
 </Guide>

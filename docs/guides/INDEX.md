@@ -149,6 +149,7 @@ the Beta guides above.
 | - | - | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |
 | - | - | mariadb service type | `docs/guides/services/mariadb.mdx` | Shipped |
 | - | - | postgres service type | `docs/guides/services/postgres.mdx` | Shipped |
+| - | - | pgvector vector search on Postgres 18 | `docs/guides/services/postgres-pgvector.mdx` | Shipped |
 | - | - | redis service type | `docs/guides/services/redis.mdx` | Shipped |
 | - | - | nginx service type | `docs/guides/services/nginx.mdx` | Shipped |
 | - | - | apache service type | `docs/guides/services/apache.mdx` | Shipped |
