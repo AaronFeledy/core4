@@ -25,6 +25,7 @@ export interface EngineHttpRequest {
 export interface EngineHttpResponse {
   readonly status: number;
   readonly body: string;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export interface EngineHttpApi {

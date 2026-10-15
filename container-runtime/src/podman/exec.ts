@@ -18,7 +18,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
-import { redactDetails } from "../redact.ts";
+import { httpResponseDetails, redactDetails } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 import { ContainerTransportError } from "../transport.ts";
 
@@ -140,7 +140,7 @@ const createExec = Effect.fnUntraced(function* (
     yield* Effect.fail(
       execFailure(session, {
         message: `provider-${session.ctx.providerId} failed to create an exec session.`,
-        details: response,
+        details: httpResponseDetails(response),
       }),
     );
   }
@@ -151,7 +151,7 @@ const createExec = Effect.fnUntraced(function* (
     yield* Effect.fail(
       execFailure(session, {
         message: `provider-${session.ctx.providerId} exec create response did not include an exec id.`,
-        details: response,
+        details: httpResponseDetails(response),
       }),
     );
     return "";
@@ -172,7 +172,7 @@ const inspectExecState = Effect.fnUntraced(function* (
     yield* Effect.fail(
       execFailure(session, {
         message: `provider-${session.ctx.providerId} failed to inspect an exec session.`,
-        details: response,
+        details: httpResponseDetails(response),
       }),
     );
   }
@@ -184,7 +184,7 @@ const inspectExecState = Effect.fnUntraced(function* (
     yield* Effect.fail(
       execFailure(session, {
         message: `provider-${session.ctx.providerId} exec inspect response did not include an exit code.`,
-        details: response,
+        details: httpResponseDetails(response),
       }),
     );
     return 1;
@@ -297,7 +297,7 @@ const resizeExec = Effect.fnUntraced(function* (
     yield* Effect.fail(
       execFailure(session, {
         message: `provider-${session.ctx.providerId} failed to resize an exec session.`,
-        details: response,
+        details: httpResponseDetails(response),
       }),
     );
   }

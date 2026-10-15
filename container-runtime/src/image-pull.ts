@@ -8,7 +8,13 @@ import type { PullDialect } from "./dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { parseJsonOrUndefined } from "./engine-json.ts";
-import { redactDetails, redactString, withApiReason } from "./redact.ts";
+import {
+  httpResponseDetails,
+  redactDetails,
+  redactResponseDetails,
+  redactString,
+  withApiReason,
+} from "./redact.ts";
 
 const REGISTRY_AUTH_REMEDIATION =
   "The container engine may be using stale registry credentials from ${XDG_RUNTIME_DIR}/containers/auth.json, $REGISTRY_AUTH_FILE, $DOCKER_CONFIG, or ~/.docker/config.json. Run `podman logout --all` or `docker logout`, or remove the stale `auths` entry for the affected registry, then retry the pull.";
@@ -239,7 +245,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
       if (inspect === undefined) return { ref: reference };
       const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
         message: "Container engine API returned malformed JSON.",
-        details: redactDetails(response),
+        details: redactResponseDetails(response),
       });
       const digest = inspect.decodeDigest(decoded);
       return { ref: reference, ...(digest === undefined ? {} : { digest }) };
@@ -250,7 +256,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
           ctx: options.ctx,
           reference,
           message: withApiReason(`pre-pull inspect HTTP ${response.status}.`, response),
-          details: response,
+          details: httpResponseDetails(response),
         }),
       );
     }
@@ -321,7 +327,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
           ctx: options.ctx,
           reference,
           message: withApiReason(`HTTP ${response.status}.`, response),
-          details: response,
+          details: httpResponseDetails(response),
         }),
       );
     }
@@ -355,13 +361,13 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
         ctx: options.ctx,
         reference,
         message: `post-pull inspect HTTP ${response.status}.`,
-        details: response,
+        details: httpResponseDetails(response),
       }),
     );
   }
   const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
     message: "Container engine API returned malformed JSON.",
-    details: redactDetails(response),
+    details: redactResponseDetails(response),
   });
   const digest = inspect.decodeDigest(decoded);
   return { ref: reference, ...(digest === undefined ? {} : { digest }) };

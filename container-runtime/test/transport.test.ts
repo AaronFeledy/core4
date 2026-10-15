@@ -157,7 +157,7 @@ describe("socket HTTP transport", () => {
 
     const response = await client.request({ method: "POST", path: "/libpod/info", body: { ok: true } });
 
-    expect(response).toEqual({ status: 200, body: "{}" });
+    expect(response).toMatchObject({ status: 200, body: "{}" });
     expect(connection.writes[0]).toStartWith("POST /v6.0.0/libpod/info HTTP/1.1\r\n");
     expect(connection.writes[0]).toContain("Host: localhost\r\n");
     expect(connection.writes[0]).toContain("Content-Type: application/json\r\n");
@@ -176,7 +176,7 @@ describe("socket HTTP transport", () => {
 
     const response = await client.request({ method: "GET", path: "/info" });
 
-    expect(response).toEqual({ status: 200, body: "hello world" });
+    expect(response).toMatchObject({ status: 200, body: "hello world" });
   });
 
   test("returns a Content-Length response without waiting for named-pipe EOF", async () => {
@@ -187,7 +187,7 @@ describe("socket HTTP transport", () => {
         client.request({ method: "GET", path: "/libpod/_ping" }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("request waited for EOF")), 500)),
       ]);
-      expect(response).toEqual({ status: 200, body: "{}" });
+      expect(response).toMatchObject({ status: 200, body: "{}" });
       expect(connection.destroyed).toBe(true);
     } finally {
       connection.destroy();
@@ -205,7 +205,7 @@ describe("socket HTTP transport", () => {
         client.request({ method: "GET", path: "/libpod/info" }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("request waited for EOF")), 500)),
       ]);
-      expect(response).toEqual({ status: 200, body: "{}" });
+      expect(response).toMatchObject({ status: 200, body: "{}" });
       expect(connection.destroyed).toBe(true);
     } finally {
       connection.destroy();
@@ -393,7 +393,7 @@ describe("socket HTTP transport", () => {
       stdin: stdinBytes("tar", "ball"),
     });
 
-    expect(response).toEqual({ status: 200, body: "{}" });
+    expect(response).toMatchObject({ status: 200, body: "{}" });
     expect(connection.writes[0]).toContain("POST /v1.43/images/load HTTP/1.1\r\n");
     expect(connection.writes[0]).toContain("Content-Length: 7\r\n");
     expect(connection.writes.at(-1)).toBe("tarball");
