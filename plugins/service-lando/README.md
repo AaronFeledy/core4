@@ -11,8 +11,8 @@ must explicitly opt in or contribute their own service-type Layers.
 ## Framework presets
 
 Language-runtime `ServiceType`s accept an optional `framework:` field that
-selects opinionated defaults (webserver config, URL rewrites, env defaults,
-common build steps, tooling additions). Framework presets are pure config:
+selects port, environment, and supported root-context defaults. It does not
+start an application server. Framework presets are pure config:
 they emit the same fields a user would write by hand and any value can be
 overridden in the Landofile.
 
@@ -26,8 +26,8 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI, sets `WP_CLI_ALLOW_ROOT=1`, and writes `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`, CLI and web). Uses `webroot:` (relative to the app mount, default `.`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
-| `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints. |
-| `ruby`     | `rails`, `none`                      | `rails` defaults to `webroot: public`; `none` defaults to `.`. Set `webroot:` directly to override either default. Rails also supplies a `bundle exec rails server -b 0.0.0.0 -p 3000` command hint. |
+| `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets set port (django/fastapi 8000, flask 5000) and environment defaults. |
+| `ruby`     | `rails`, `none`                      | `rails` defaults to `webroot: public`; `none` defaults to `.`. Set `webroot:` directly to override either context default. Rails also supplies development environment defaults. |
 | `go`       | `none`                               | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
 | `mssql`    | n/a                                  | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
@@ -40,9 +40,13 @@ The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 
 ## Authored web settings
 
-Ruby resolves `webroot:` relative to `appMount.target` (default `/app`) or accepts an absolute container path. For example, `framework: rails` with `webroot: frontend/public` sets `LANDO_WEBROOT` and the Ruby extension webroot to `/app/frontend/public`. This does not change the working directory or start Rails; author `workingDirectory:` and `command:` as needed. With `appMount: false`, Ruby omits both webroot projections.
+Ruby resolves `webroot:` relative to `appMount.target` (default `/app`) or accepts an absolute container path. For example, `framework: rails` with `webroot: frontend/public` sets `LANDO_WEBROOT` and the Ruby extension webroot to `/app/frontend/public`. This does not change the working directory or start Rails; author `workingDirectory:` and `command:` as needed. With `appMount: false`, Ruby omits implicit context defaults. An explicit relative or absolute `webroot:` then fails planning unless another composed feature declares and handles it. Remove the authored root or enable the mount to use built-in Ruby context.
+
+Explicit `webroot:` requires a final feature with a non-empty string `config.webroot`, declaring that the feature handles the effective root. Plugins own that meaning and path validation; the declaration does not promise HTTP serving. Python, Go, and data stores do not declare built-in root support, so an authored root fails planning unless a supporting feature is composed. Ruby, Python, and Go retain the keep-alive command `sh -c 'tail -f /dev/null'` until you author `command:`; authored `entrypoint:` is preserved too.
 
 Apache serves the app root by default. Set `webroot:` to a path relative to it, such as `public`, or to an absolute container path to change the generated httpd document root. `APACHE_DOCUMENT_ROOT` and `LANDO_WEBROOT` get the resolved absolute path. An authored `APACHE_DOCUMENT_ROOT` environment value wins; an authored `command:` or `entrypoint:` owns its own Apache startup config.
+
+With `appMount: false`, PHP, nginx, Apache, static, and Tomcat still accept an absolute document root for image-provided content, but suppress `LANDO_WEBROOT` app context. Their relative roots require an active mount.
 
 A generated start command runs as the service's planned `user:`. [Default start commands and the planned service user](./DEFAULT_COMMAND_AUDIT.md) records what each bundled default writes and which ones still assume root.
 
