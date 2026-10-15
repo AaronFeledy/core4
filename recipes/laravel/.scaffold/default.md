@@ -47,11 +47,9 @@ lando npm run build
 The default app keeps `vendor` in an appserver volume.
 With `--answer=worker=true`, the recipe automatically shares the host `vendor`
 directory between appserver and worker. No manual mount overrides are needed.
-The worker needs a Laravel application and dependencies before it can run
-`php artisan queue:work`. If you started it before installation, restart it afterward:
+The worker uses `restart: unless-stopped`. Before Laravel and its dependencies are installed, its process exits: `lando start` warns and reports it as `restarting`. The worker retries automatically and starts on its own once installation finishes. An exhausted healthcheck still fails start, even with this restart policy:
 
 ```sh
-lando restart
 lando logs --service=worker
 ```
 

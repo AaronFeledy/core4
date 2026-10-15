@@ -159,6 +159,81 @@ test("starts a service_healthy dependency and probes it before starting the depe
   expect(webStart).toBeGreaterThan(dbExec);
 });
 
+test("selected apply accepts a fast exit-0 job identified by the full completion plan", async () => {
+  const original = planWithDependency(dependentNames.web, true);
+  const dependent = original.services[dependentNames.web];
+  const db = original.services[dbName];
+  if (dependent === undefined || db === undefined) throw new TypeError("Expected services");
+  const full = {
+    ...original,
+    services: {
+      [dbName]: db,
+      [dependentNames.web]: {
+        ...dependent,
+        dependsOn: [
+          { service: dbName, condition: "service_completed_successfully" as const, required: true },
+        ],
+      },
+    },
+  };
+  const selected = { ...full, services: { [dbName]: db } };
+  const fake = makePodmanApi(0);
+  const request = fake.api.request;
+  if (request === undefined) throw new TypeError("Expected request transport");
+  let started = false;
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (input) =>
+      request(input).pipe(
+        Effect.map((response) => {
+          if (input.path.endsWith("/start")) started = true;
+          return started && input.path.endsWith("/json")
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Id: "job-container",
+                  State: { Running: false, Status: "exited", ExitCode: 0 },
+                }),
+              }
+            : response;
+        }),
+      ),
+  };
+  const result = await Effect.runPromise(bringUp(selected, { api, ctx, completionPlan: full }));
+  expect(result.changed).toBe(true);
+  expect(fake.requests.some((path) => path.endsWith("/stop"))).toBe(false);
+});
+
+test("apply retains a supervised worker that exits before the immediate running check", async () => {
+  const worker = { ...servicePlan(dbName, false), extensions: { compose: { restart: "unless-stopped" } } };
+  const plan = { ...planWithDependency(dependentNames.web, true), services: { [dbName]: worker } };
+  const fake = makePodmanApi(0);
+  const request = fake.api.request;
+  if (request === undefined) throw new TypeError("Expected request transport");
+  let started = false;
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (input) =>
+      request(input).pipe(
+        Effect.map((response) => {
+          if (input.path.endsWith("/start")) started = true;
+          return started && input.path.endsWith("/json")
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Id: "supervised-worker",
+                  State: { Running: false, Status: "exited", ExitCode: 7 },
+                }),
+              }
+            : response;
+        }),
+      ),
+  };
+  const result = await Effect.runPromise(bringUp(plan, { api, ctx }));
+  expect(result.changed).toBe(true);
+  expect(fake.requests.some((path) => path.endsWith("/stop"))).toBe(false);
+});
+
 test("does not delete a pre-existing stopped container during rollback", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);

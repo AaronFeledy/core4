@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   AbsolutePath,
@@ -155,6 +156,75 @@ describe("buildServiceStartGraph", () => {
 });
 
 describe("runServiceStartSchedule", () => {
+  test.each([
+    { exits: [0], period: 30, interval: 10, elapsed: 0 },
+    { exits: [1, 1, 0], period: 90, interval: 10, elapsed: 2_000 },
+    { exits: [1, 1, 1, 0], period: 3, interval: 10, elapsed: 3_000 },
+    { exits: [1, 0], period: 30, interval: 0.25, elapsed: 250 },
+  ])(
+    "probes immediately through start-period grace ($elapsed ms)",
+    async ({ exits, period, interval, elapsed }) => {
+      const plan = planOf([
+        service("db", {
+          healthcheck: { ...commandHealthcheck, startPeriodSeconds: period, intervalSeconds: interval },
+        }),
+        service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+      ]);
+      let attempts = 0;
+      const timed = await Effect.runPromise(
+        Effect.gen(function* () {
+          const start = yield* Clock.currentTimeMillis;
+          const fiber = yield* Effect.forkChild(
+            runServiceStartSchedule(plan, {
+              ...recordingHandlers([]),
+              execHealthcheck: () => Effect.sync(() => ({ exitCode: exits[attempts++] ?? 1 })),
+            }).pipe(
+              Effect.map((result) => ({ result, elapsed: 0 })),
+              Effect.flatMap(({ result }) =>
+                Effect.map(Clock.currentTimeMillis, (now) => ({ result, elapsed: now - start })),
+              ),
+            ),
+          );
+          yield* TestClock.adjust(elapsed);
+          return yield* Fiber.join(fiber);
+        }).pipe(Effect.provide(TestClock.layer())),
+      );
+      expect(timed.result).toEqual({ _tag: "Settled", changed: true, blocked: [] });
+      expect(timed.elapsed).toBe(elapsed);
+      expect(attempts).toBe(exits.length);
+    },
+  );
+
+  test("bounds each gate attempt after grace and retains its timeout evidence", async () => {
+    const plan = planOf([
+      service("db", {
+        healthcheck: {
+          ...commandHealthcheck,
+          startPeriodSeconds: 1,
+          timeoutSeconds: 1,
+          retries: 2,
+          intervalSeconds: 1,
+        },
+      }),
+      service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+    ]);
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(
+          runServiceStartSchedule(plan, {
+            ...recordingHandlers([]),
+            execHealthcheck: () => Effect.never,
+          }),
+        );
+        yield* TestClock.adjust("4 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+    expect(result).toMatchObject({
+      _tag: "Settled",
+      blocked: [{ service: "web", dependency: "db", timedOut: true }],
+    });
+  });
   test("starts a dependency before its dependent regardless of declaration order", async () => {
     // Given
     const forward = planOf([

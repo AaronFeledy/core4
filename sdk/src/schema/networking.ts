@@ -102,9 +102,9 @@ export const HealthcheckPlan = Schema.Struct({
   intervalSeconds: Schema.Number,
   /** Per-attempt timeout, seconds. */
   timeoutSeconds: Schema.Number,
-  /** Number of consecutive successful attempts before "healthy". */
+  /** Maximum attempts after the start period (at least one); first success is healthy. */
   retries: Schema.Number,
-  /** Optional grace period before first probe, seconds. */
+  /** Probing starts immediately; failures during this grace period do not count against retries, seconds. */
   startPeriodSeconds: Schema.optionalKey(Schema.Number),
 });
 export type HealthcheckPlan = typeof HealthcheckPlan.Type;

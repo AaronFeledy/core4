@@ -82,6 +82,7 @@ const inspectBody = (health?: string): string =>
     State: {
       Running: true,
       Status: "running",
+      ExitCode: 0,
       StartedAt: "2026-05-14T00:00:01Z",
       ...(health === undefined ? {} : { Health: { Status: health } }),
     },
@@ -93,6 +94,7 @@ const stoppedInspectBody = (health?: string): string =>
     State: {
       Running: false,
       Status: "exited",
+      ExitCode: 17,
       StartedAt: "2026-05-14T00:00:01Z",
       ...(health === undefined ? {} : { Health: { Status: health } }),
     },
@@ -128,6 +130,47 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test("preserves an engine restart observation without a placeholder exit code", async () => {
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: false, Status: "restarting", ExitCode: 0 },
+        }),
+      },
+    ]);
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed.state).toBe("restarting");
+    expect(observed).not.toHaveProperty("exitCode");
+  });
+  test("omits placeholder exit zero for a never-started created container", async () => {
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: false, Status: "created", ExitCode: 0 },
+        }),
+      },
+    ]);
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed.status).not.toBe("running");
+    expect(observed).not.toHaveProperty("exitCode");
+  });
+  test("omits the engine's placeholder exit code for a running unhealthy container", async () => {
+    const fake = apiWithHealth("unhealthy");
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed).toMatchObject({ status: "running", health: "unhealthy" });
+    expect(observed).not.toHaveProperty("exitCode");
+  });
+  test("preserves the exited container process code", async () => {
+    const fake = apiFromResponses([{ status: 200, body: stoppedInspectBody() }]);
+    const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    expect(observed).toMatchObject({
+      status: "stopped",
+      exitCode: 17,
+      containerId: "lando-healthapp-web-id",
+    });
+  });
   test("redacts runtime-registered values in a failed inspect response", async () => {
     // Given
     const canary = "opaque-inspect-canary-1261";
