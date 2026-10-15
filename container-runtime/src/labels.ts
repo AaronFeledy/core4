@@ -13,7 +13,7 @@ export const SERVICE_LABEL = "dev.lando.service" as const;
 export const PROVIDER_LABEL = "dev.lando.provider" as const;
 export const ROLE_LABEL = "dev.lando.role" as const;
 export const STORE_LABEL = "dev.lando.store" as const;
-export const EPHEMERAL_DATA_ROLE = "ephemeral=data" as const;
+export const DATA_HELPER_ROLE = "data-helper" as const;
 export const VOLUME_INSTANCE_LABEL = "dev.lando.volume-instance" as const;
 export const SCRATCH_LABEL = "dev.lando.scratch" as const;
 export const SCRATCH_ID_LABEL = "dev.lando.scratch-id" as const;

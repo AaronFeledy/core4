@@ -4,7 +4,7 @@ import {
   AGENT_SESSION_LABEL,
   APP_LABEL,
   APP_ROOT_LABEL,
-  EPHEMERAL_DATA_ROLE,
+  DATA_HELPER_ROLE,
   PROVIDER_LABEL,
   ROLE_LABEL,
   SCRATCH_ID_LABEL,
@@ -33,7 +33,7 @@ describe("container runtime label constants", () => {
     expect(SERVICE_LABEL).toBe("dev.lando.service");
     expect(PROVIDER_LABEL).toBe("dev.lando.provider");
     expect(ROLE_LABEL).toBe("dev.lando.role");
-    expect(EPHEMERAL_DATA_ROLE).toBe("ephemeral=data");
+    expect(DATA_HELPER_ROLE).toBe("data-helper");
     expect(STORE_LABEL).toBe("dev.lando.store");
     expect(VOLUME_INSTANCE_LABEL).toBe("dev.lando.volume-instance");
     expect(SCRATCH_LABEL).toBe("dev.lando.scratch");

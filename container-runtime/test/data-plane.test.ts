@@ -564,7 +564,7 @@ describe("provider data plane", () => {
     });
     expect(requests[containerCreateIndex]?.body).toMatchObject({
       Labels: {
-        "dev.lando.role": "ephemeral=data",
+        "dev.lando.role": "data-helper",
         "dev.lando.app": "app-id",
         "dev.lando.store": "data",
         "dev.lando.provider": "test",
@@ -1246,7 +1246,7 @@ describe("provider data plane", () => {
     } else {
       expect(result.failure.message).toContain(reason);
       expect(result.failure.remediation).toContain("lando destroy --volumes");
-      expect(result.failure.remediation).toContain("cannot see these helpers");
+      expect(result.failure.remediation).not.toContain("lando doctor");
       expect(result.failure.remediation).not.toContain("lists leftovers");
     }
   });
@@ -1256,8 +1256,9 @@ describe("provider data plane", () => {
       {
         Id: "helper-1",
         Names: ["/lando-test-data-aaaa"],
+        State: "exited",
         Labels: {
-          "dev.lando.role": "ephemeral=data",
+          "dev.lando.role": "data-helper",
           "dev.lando.app": "app-id",
           "dev.lando.provider": "test",
         },

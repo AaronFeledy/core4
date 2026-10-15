@@ -2,32 +2,38 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import {
+  classifyVolumeHolder,
   ephemeralDataHelperLabels,
   ephemeralDataHelperNamePrefix,
   isEphemeralDataHelperName,
   isVolumeInUse,
+  namedHolders,
   releaseVolumeHolders,
   removeEphemeralDataHelpers,
   removeUnlabeledEphemeralDataHolders,
   volumeInUseRemediation,
 } from "../src/ephemeral-data-helpers.ts";
-import type { HelperHttpRequest, HelperHttpResponse } from "../src/ephemeral-data-helpers.ts";
+import type { HelperHttpRequest, HelperHttpResponse, VolumeHolder } from "../src/ephemeral-data-helpers.ts";
+
+const helperLabels = {
+  "dev.lando.role": "data-helper",
+  "dev.lando.app": "app-id",
+  "dev.lando.provider": "test",
+  "dev.lando.store": "data",
+} as const;
 
 const helper = {
   Id: "helper-1",
   Names: ["/lando-test-data-11111111-1111-4111-8111-111111111111"],
-  Labels: {
-    "dev.lando.role": "ephemeral=data",
-    "dev.lando.app": "app-id",
-    "dev.lando.provider": "test",
-    "dev.lando.store": "data",
-  },
+  State: "exited",
+  Labels: helperLabels,
   Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
 };
 
 const unlabeled = {
   Id: "unlabeled-1",
   Names: ["/lando-test-data-22222222-2222-4222-8222-222222222222"],
+  State: "exited",
   Labels: {},
   Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
 };
@@ -35,39 +41,99 @@ const unlabeled = {
 const foreign = {
   Id: "foreign-1",
   Names: ["/manual-db"],
+  State: "running",
   Labels: {},
   Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
 };
 
 const otherApp = {
-  Id: "other-1",
-  Names: ["/lando-test-data-33333333-3333-4333-8333-333333333333"],
+  Id: "other-app",
+  Names: ["/lando-test-data-other-app"],
+  State: "exited",
+  Labels: {
+    "dev.lando.role": "data-helper",
+    "dev.lando.app": "other-app",
+    "dev.lando.provider": "test",
+    "dev.lando.store": "data",
+  },
+  Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
+};
+
+const otherProvider = {
+  Id: "other-provider",
+  Names: ["/lando-docker-data-other-provider"],
+  State: "exited",
+  Labels: {
+    "dev.lando.role": "data-helper",
+    "dev.lando.app": "app-id",
+    "dev.lando.provider": "docker",
+    "dev.lando.store": "data",
+  },
+  Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
+};
+
+const noRole = {
+  Id: "no-role",
+  Names: ["/lando-test-data-no-role"],
+  State: "exited",
+  Labels: {
+    "dev.lando.app": "app-id",
+    "dev.lando.provider": "test",
+    "dev.lando.store": "data",
+  },
+  Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
+};
+
+const prefixMount = {
+  Id: "prefix-mount",
+  Names: ["/lando-test-data-prefix"],
+  State: "exited",
   Labels: {},
-  Mounts: [{ Type: "volume", Name: "other", Source: "other" }],
+  Mounts: [{ Type: "volume", Name: "data-extra", Source: "data-extra" }],
 };
 
-const filtersOf = (path: string): Readonly<Record<string, ReadonlyArray<string>>> => {
-  const query = new URL(`http://localhost${path}`).searchParams.get("filters");
-  return query === null
-    ? {}
-    : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
+const emptyMounts = {
+  Id: "empty-mounts",
+  Names: ["/lando-test-data-empty"],
+  State: "exited",
+  Labels: {},
+  Mounts: [],
 };
 
-const makeApi = (containers: Array<typeof helper>) => {
+const runningHelper = {
+  Id: "running-1",
+  Names: ["/lando-test-data-running"],
+  State: "running",
+  Labels: helperLabels,
+  Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
+};
+
+type Listed = typeof helper;
+
+const makeApi = (containers: Array<Listed>, options: { readonly honorFilters?: boolean } = {}) => {
+  const honorFilters = options.honorFilters === true;
   const removed: string[] = [];
+  const calls: string[] = [];
   const request = (input: HelperHttpRequest): Effect.Effect<HelperHttpResponse, never> =>
     Effect.sync(() => {
+      calls.push(`${input.method} ${input.path}`);
       if (input.method === "GET" && input.path.startsWith("/containers/json?")) {
-        const filters = filtersOf(input.path);
+        if (!honorFilters) return { status: 200, body: JSON.stringify(containers) };
+        const query = new URL(`http://localhost${input.path}`).searchParams.get("filters");
+        const filters =
+          query === null
+            ? {}
+            : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
         const labels = filters.label ?? [];
         const volumes = filters.volume ?? [];
         const listed = containers.filter((container) => {
           if (labels.length > 0) {
             return labels.every((criterion) => {
               const eq = criterion.indexOf("=");
-              const key = criterion.slice(0, eq);
-              const value = criterion.slice(eq + 1);
-              return container.Labels[key as keyof typeof container.Labels] === value;
+              return (
+                container.Labels[criterion.slice(0, eq) as keyof typeof container.Labels] ===
+                criterion.slice(eq + 1)
+              );
             });
           }
           if (volumes.length > 0) {
@@ -95,7 +161,7 @@ const makeApi = (containers: Array<typeof helper>) => {
       }
       return { status: 500, body: `unexpected ${input.method} ${input.path}` };
     });
-  return { request, removed, containers };
+  return { request, removed, containers, calls };
 };
 
 describe("ephemeral data helpers", () => {
@@ -104,39 +170,75 @@ describe("ephemeral data helpers", () => {
     expect(isEphemeralDataHelperName("lando-test-data-aaaa", "test")).toBe(true);
     expect(isEphemeralDataHelperName("manual-db", "test")).toBe(false);
     expect(ephemeralDataHelperLabels({ providerId: "test", app: "app-id", store: "data" })).toEqual({
-      "dev.lando.role": "ephemeral=data",
+      "dev.lando.role": "data-helper",
       "dev.lando.provider": "test",
       "dev.lando.app": "app-id",
       "dev.lando.store": "data",
     });
   });
 
-  test("volume-in-use remediations names the holder and does not claim doctor lists leftovers", () => {
+  test("volume-in-use remediations names helpers and service containers differently", () => {
     expect(isVolumeInUse({ status: 409, body: "volume is in use" })).toBe(true);
-    const remediations = volumeInUseRemediation(["lando-test-data-aaaa"]);
-    expect(remediations).toContain("lando-test-data-aaaa");
-    expect(remediations).toContain("lando destroy --volumes");
-    expect(remediations).toContain("cannot see these helpers");
-    expect(remediations).not.toContain("lists leftovers");
+    expect(volumeInUseRemediation([{ name: "lando-test-data-aaaa", kind: "data-helper" }])).toContain(
+      "leftover data helper",
+    );
+    expect(volumeInUseRemediation([{ name: "manual-db", kind: "container" }])).toContain(
+      "Stop or remove that container",
+    );
+    expect(volumeInUseRemediation([{ name: "manual-db", kind: "container" }])).not.toContain(
+      "leftover data helper",
+    );
+    expect(volumeInUseRemediation([{ name: "manual-db", kind: "container" }])).not.toContain("lando doctor");
   });
 
   test("force-removes labeled leftovers for this app", async () => {
     const fake = makeApi([helper, { ...foreign }]);
-    const removed = await Effect.runPromise(
+    const result = await Effect.runPromise(
       removeEphemeralDataHelpers(fake.request, { appId: "app-id", providerId: "test" }),
     );
-    expect(removed).toEqual(["lando-test-data-11111111-1111-4111-8111-111111111111"]);
+    expect(result.removed).toEqual(["lando-test-data-11111111-1111-4111-8111-111111111111"]);
     expect(fake.containers.map((container) => container.Id)).toEqual(["foreign-1"]);
   });
 
-  test("unlabeled backstop removes only name-matched helpers that mount this volume", async () => {
-    const fake = makeApi([unlabeled, otherApp, foreign]);
+  test("safety filters keep another app, another provider, and a container without the role", async () => {
+    const fake = makeApi([otherApp, otherProvider, noRole, helper]);
+    const result = await Effect.runPromise(
+      removeEphemeralDataHelpers(fake.request, { appId: "app-id", providerId: "test" }),
+    );
+    expect(result.removed).toEqual(["lando-test-data-11111111-1111-4111-8111-111111111111"]);
+    expect(fake.containers.map((container) => container.Id)).toEqual([
+      "other-app",
+      "other-provider",
+      "no-role",
+    ]);
+  });
+
+  test("unlabeled backstop removes only name-matched helpers that mount this volume exactly", async () => {
+    const fake = makeApi([unlabeled, prefixMount, emptyMounts, foreign]);
     const result = await Effect.runPromise(
       removeUnlabeledEphemeralDataHolders(fake.request, { providerId: "test", volumeName: "data" }),
     );
     expect(result.removed).toEqual(["lando-test-data-22222222-2222-4222-8222-222222222222"]);
-    expect(result.remaining.map((holder) => holder.name)).toEqual(["manual-db"]);
-    expect(fake.containers.map((container) => container.Id)).toEqual(["other-1", "foreign-1"]);
+    expect(result.remaining.map((holder) => holder.name)).toEqual([
+      "lando-test-data-prefix",
+      "lando-test-data-empty",
+      "manual-db",
+    ]);
+    expect(fake.containers.map((container) => container.Id)).toEqual([
+      "prefix-mount",
+      "empty-mounts",
+      "foreign-1",
+    ]);
+  });
+
+  test("does not force-remove a running helper", async () => {
+    const fake = makeApi([runningHelper]);
+    const result = await Effect.runPromise(
+      removeEphemeralDataHelpers(fake.request, { appId: "app-id", providerId: "test" }),
+    );
+    expect(result.removed).toEqual([]);
+    expect(result.remaining.map((holder) => holder.name)).toEqual(["lando-test-data-running"]);
+    expect(fake.removed).toEqual([]);
   });
 
   test("held-volume sweep removes labeled leftovers before callers delete the volume", async () => {
@@ -146,6 +248,8 @@ describe("ephemeral data helpers", () => {
     );
     expect(remaining).toEqual([]);
     expect(fake.removed).toEqual(["/lando-test-data-11111111-1111-4111-8111-111111111111"]);
+    const helperDelete = fake.calls.findIndex((call) => call.startsWith("DELETE /containers/"));
+    expect(helperDelete).toBeGreaterThanOrEqual(0);
   });
 
   test("fail-clearly names a foreign holder that still mounts the volume", async () => {
@@ -154,7 +258,19 @@ describe("ephemeral data helpers", () => {
       releaseVolumeHolders(fake.request, { appId: "app-id", providerId: "test", volumeName: "data" }),
     );
     expect(remaining.map((holder) => holder.name)).toEqual(["manual-db"]);
-    expect(volumeInUseRemediation(remaining.map((holder) => holder.name))).toContain("manual-db");
+    expect(classifyVolumeHolder(remaining[0] as VolumeHolder, "test")).toBe("container");
+    expect(volumeInUseRemediation(namedHolders(remaining, "test"))).toContain("manual-db");
+    expect(volumeInUseRemediation(namedHolders(remaining, "test"))).toContain(
+      "Stop or remove that container",
+    );
     expect(fake.removed).toEqual([]);
+  });
+
+  test("a list error skips cleanup instead of failing the caller", async () => {
+    const request = () => Effect.fail(new Error("list exploded"));
+    const remaining = await Effect.runPromise(
+      releaseVolumeHolders(request, { appId: "app-id", providerId: "test", volumeName: "data" }),
+    );
+    expect(remaining).toEqual([]);
   });
 });

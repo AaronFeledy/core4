@@ -33,26 +33,24 @@ const plan = {
 
 const volumeLabels = volumeOwnershipLabels(plan, dataStore);
 
-const filtersOf = (path: string): Readonly<Record<string, ReadonlyArray<string>>> => {
-  const query = new URL(`http://localhost${path}`).searchParams.get("filters");
-  return query === null
-    ? {}
-    : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
-};
-
 const makeApi = (input: {
   readonly helpers: Array<{
     readonly Id: string;
     readonly Names: ReadonlyArray<string>;
+    readonly State?: string;
     readonly Labels: Readonly<Record<string, string>>;
     readonly Mounts: ReadonlyArray<{ readonly Name: string }>;
   }>;
   readonly holdUntilRemoved?: boolean;
+  readonly honorFilters?: boolean;
 }) => {
   const helpers = [...input.helpers];
   const removed: string[] = [];
+  const calls: string[] = [];
+  const honorFilters = input.honorFilters === true;
   const request = (request: EngineHttpRequest): Effect.Effect<EngineHttpResponse, never> =>
     Effect.sync(() => {
+      calls.push(`${request.method} ${request.path}`);
       if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
         return { status: 204, body: "" };
       }
@@ -60,7 +58,12 @@ const makeApi = (input: {
         return { status: 200, body: JSON.stringify({ Labels: volumeLabels }) };
       }
       if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
-        const filters = filtersOf(request.path);
+        if (!honorFilters) return { status: 200, body: JSON.stringify(helpers) };
+        const query = new URL(`http://localhost${request.path}`).searchParams.get("filters");
+        const filters =
+          query === null
+            ? {}
+            : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
         const labels = filters.label ?? [];
         const volumes = filters.volume ?? [];
         const listed = helpers.filter((container) => {
@@ -93,7 +96,7 @@ const makeApi = (input: {
       }
       return { status: 500, body: `unexpected ${request.method} ${request.path}` };
     });
-  return { request, removed, helpers };
+  return { request, removed, helpers, calls };
 };
 
 const down = (api: { request: typeof makeApi extends (...args: never) => infer R ? R["request"] : never }) =>
@@ -104,23 +107,33 @@ const down = (api: { request: typeof makeApi extends (...args: never) => infer R
     dialect: dockerLifecycleDialect,
   });
 
+const labeledHelper = (
+  overrides: {
+    readonly Id?: string;
+    readonly Names?: ReadonlyArray<string>;
+    readonly State?: string;
+    readonly Labels?: Readonly<Record<string, string>>;
+    readonly Mounts?: ReadonlyArray<{ readonly Name: string }>;
+  } = {},
+) => ({
+  Id: "helper-1",
+  Names: ["/lando-test-data-aaaa"],
+  State: "exited",
+  Labels: {
+    "dev.lando.role": "data-helper",
+    "dev.lando.app": "app-id",
+    "dev.lando.provider": "test",
+    "dev.lando.store": "data",
+  },
+  Mounts: [{ Name: "data" }],
+  ...overrides,
+});
+
 describe("bringDown leftover data helpers", () => {
   test("destroys a held volume after sweeping a labeled leftover helper", async () => {
     const fake = makeApi({
       holdUntilRemoved: true,
-      helpers: [
-        {
-          Id: "helper-1",
-          Names: ["/lando-test-data-aaaa"],
-          Labels: {
-            "dev.lando.role": "ephemeral=data",
-            "dev.lando.app": "app-id",
-            "dev.lando.provider": "test",
-            "dev.lando.store": "data",
-          },
-          Mounts: [{ Name: "data" }],
-        },
-      ],
+      helpers: [labeledHelper()],
     });
 
     const result = await Effect.runPromise(down(fake));
@@ -130,6 +143,26 @@ describe("bringDown leftover data helpers", () => {
     expect(fake.helpers).toEqual([]);
   });
 
+  test("deletes the leftover helper before inspecting or deleting the volume", async () => {
+    const fake = makeApi({
+      holdUntilRemoved: true,
+      helpers: [labeledHelper()],
+    });
+
+    await Effect.runPromise(down(fake));
+
+    const helperList = fake.calls.findIndex(
+      (call) => call.startsWith("GET /containers/json?") && call.includes("dev.lando.role"),
+    );
+    const helperDelete = fake.calls.findIndex((call) => call.startsWith("DELETE /containers/"));
+    const volumeInspect = fake.calls.findIndex((call) => call === "GET /volumes/data");
+    const volumeDelete = fake.calls.findIndex((call) => call === "DELETE /volumes/data");
+    expect(helperList).toBeGreaterThanOrEqual(0);
+    expect(helperDelete).toBeGreaterThan(helperList);
+    expect(volumeInspect).toBeGreaterThan(helperDelete);
+    expect(volumeDelete).toBeGreaterThan(volumeInspect);
+  });
+
   test("unlabeled backstop removes a leftover helper that mounts this app volume", async () => {
     const fake = makeApi({
       holdUntilRemoved: true,
@@ -137,6 +170,7 @@ describe("bringDown leftover data helpers", () => {
         {
           Id: "helper-2",
           Names: ["/lando-test-data-bbbb"],
+          State: "exited",
           Labels: {},
           Mounts: [{ Name: "data" }],
         },
@@ -156,6 +190,7 @@ describe("bringDown leftover data helpers", () => {
         {
           Id: "foreign-1",
           Names: ["/manual-db"],
+          State: "running",
           Labels: {},
           Mounts: [{ Name: "data" }],
         },
@@ -167,8 +202,87 @@ describe("bringDown leftover data helpers", () => {
     expect(error._tag).toBe("ProviderUnavailableError");
     expect(error.message).toContain("manual-db");
     expect(error.remediation).toContain("manual-db");
-    expect(error.remediation).toContain("cannot see these helpers");
-    expect(error.remediation).not.toContain("lists leftovers");
+    expect(error.remediation).toContain("Stop or remove that container");
+    expect(error.remediation).not.toContain("leftover data helper");
+    expect(error.remediation).not.toContain("lando doctor");
     expect(fake.removed).toEqual([]);
+  });
+
+  test("does not kill a running data helper and names it as the holder", async () => {
+    const fake = makeApi({
+      holdUntilRemoved: true,
+      helpers: [labeledHelper({ Id: "running-1", Names: ["/lando-test-data-running"], State: "running" })],
+    });
+
+    const error = await Effect.runPromise(down(fake).pipe(Effect.flip));
+
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.message).toContain("lando-test-data-running");
+    expect(error.remediation).toContain("lando-test-data-running");
+    expect(error.remediation).toContain("leftover data helper");
+    expect(fake.removed).toEqual([]);
+  });
+
+  test("safety filters keep another app, another provider, a container without the role, a prefix mount, and an empty mount", async () => {
+    const fake = makeApi({
+      holdUntilRemoved: true,
+      helpers: [
+        labeledHelper({
+          Id: "other-app",
+          Names: ["/lando-test-data-other-app"],
+          Labels: {
+            "dev.lando.role": "data-helper",
+            "dev.lando.app": "other-app",
+            "dev.lando.provider": "test",
+            "dev.lando.store": "data",
+          },
+        }),
+        labeledHelper({
+          Id: "other-provider",
+          Names: ["/lando-test-data-other-provider"],
+          Labels: {
+            "dev.lando.role": "data-helper",
+            "dev.lando.app": "app-id",
+            "dev.lando.provider": "docker",
+            "dev.lando.store": "data",
+          },
+        }),
+        labeledHelper({
+          Id: "no-role",
+          Names: ["/lando-myapp-web"],
+          Labels: {
+            "dev.lando.app": "app-id",
+            "dev.lando.provider": "test",
+            "dev.lando.service": "web",
+          },
+        }),
+        {
+          Id: "prefix-mount",
+          Names: ["/lando-test-data-prefix"],
+          State: "exited",
+          Labels: {},
+          Mounts: [{ Name: "data-extra" }],
+        },
+        {
+          Id: "empty-mounts",
+          Names: ["/lando-test-data-empty"],
+          State: "exited",
+          Labels: {},
+          Mounts: [],
+        },
+      ],
+    });
+
+    const error = await Effect.runPromise(down(fake).pipe(Effect.flip));
+
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(fake.removed).toEqual([]);
+    expect(fake.helpers.map((helper) => helper.Id)).toEqual([
+      "other-app",
+      "other-provider",
+      "no-role",
+      "prefix-mount",
+      "empty-mounts",
+    ]);
   });
 });

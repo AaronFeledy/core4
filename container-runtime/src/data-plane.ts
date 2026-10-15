@@ -5,6 +5,7 @@ import {
   ephemeralDataHelperLabels,
   isVolumeInUse,
   listVolumeHolders,
+  namedHolders,
   releaseVolumeHolders,
   volumeInUseMessage,
   volumeInUseRemediation,
@@ -522,9 +523,10 @@ const createEphemeralContainer = (
 ) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
+  const app = spec.owner === undefined ? undefined : String(spec.owner.app);
   const labels = ephemeralDataHelperLabels({
     providerId: options.providerId,
-    ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
+    ...(app === undefined ? {} : { app }),
     ...(mount === undefined ? {} : { store: mount.store }),
   });
   const binds = dataStoreMounts(spec).flatMap((mount) =>
@@ -788,9 +790,15 @@ const commitNativeSnapshot = (
   );
 };
 
-const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: string, snapshotId: string) =>
+const snapshotVolumeWithCommit = (
+  options: ProviderDataPlaneOptions,
+  store: string,
+  snapshotId: string,
+  owner?: { readonly app: AppId; readonly plan?: AppPlan },
+) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
+      ...(owner === undefined ? {} : { owner }),
       image: copyModeHelperImage,
       command: [
         "sh",
@@ -942,7 +950,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const name = volumeName(store);
       const id = spec.snapshotId ?? `${name}-snapshot-${randomUUID()}`;
       if (options.snapshotMode === "native") {
-        return snapshotVolumeWithCommit(options, store, id).pipe(
+        return snapshotVolumeWithCommit(options, store, id, { app: spec.volume.app }).pipe(
           Effect.flatMap((snapshot) =>
             request(options, "snapshotVolume", {
               method: "GET",
@@ -997,6 +1005,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const snapshotStore = copyModeSnapshotStore(options.providerId);
       const snapshotFile = copyModeSnapshotFile(id);
       return runBytes(options, {
+        owner: { app: spec.volume.app },
         image: copyModeHelperImage,
         command: [
           "sh",
@@ -1080,6 +1089,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           ),
           Effect.andThen(
             runBytes(options, {
+              owner: { app: spec.target.app },
               image: nativeSnapshotImage(spec.snapshot.id),
               command: ["sh", "-c", command],
               mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
@@ -1119,6 +1129,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       }).pipe(
         Effect.andThen(
           runBytes(options, {
+            owner: { app: spec.target.app },
             image: copyModeHelperImage,
             command: [
               "sh",
@@ -1226,7 +1237,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                   operation: "removeVolume",
                   store: ref.store,
                   message: volumeInUseMessage("Provider volume remove failed.", names, response),
-                  remediation: volumeInUseRemediation(names),
+                  remediation: volumeInUseRemediation(namedHolders(holders, options.providerId)),
                   details: options.redactDetails(response),
                 }),
               );

@@ -1,11 +1,11 @@
 /**
- * Label, discover, and force-remove leftover ephemeral data helpers so volume
- * teardown does not loop on a 409 from a helper left by SIGKILL or a crash.
+ * Label, discover, and remove leftover data helpers so volume teardown does not
+ * loop on a 409 from a helper left by SIGKILL or a crash.
  */
 import { Effect } from "effect";
 
 import { encodeEngineFilters, parseJsonOrUndefined } from "./engine-json.ts";
-import { APP_LABEL, EPHEMERAL_DATA_ROLE, PROVIDER_LABEL, ROLE_LABEL, STORE_LABEL } from "./labels.ts";
+import { APP_LABEL, DATA_HELPER_ROLE, PROVIDER_LABEL, ROLE_LABEL, STORE_LABEL } from "./labels.ts";
 import { redactString, withApiReason } from "./redact.ts";
 
 export interface HelperHttpRequest {
@@ -20,12 +20,22 @@ export interface HelperHttpResponse {
 
 export type HelperRequester = (request: HelperHttpRequest) => Effect.Effect<HelperHttpResponse, unknown>;
 
+export type VolumeHolderKind = "data-helper" | "container";
+
 export interface VolumeHolder {
   readonly id: string;
   readonly name: string;
+  readonly state: string;
   readonly labels: Readonly<Record<string, string>>;
   readonly mountNames: ReadonlyArray<string>;
 }
+
+export interface NamedVolumeHolder {
+  readonly name: string;
+  readonly kind: VolumeHolderKind;
+}
+
+const REMOVABLE_HELPER_STATES = new Set(["exited", "created", "dead"]);
 
 const sanitize = (value: string): string => value.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
@@ -40,7 +50,7 @@ export const ephemeralDataHelperLabels = (input: {
   readonly app?: string;
   readonly store?: string;
 }): Readonly<Record<string, string>> => ({
-  [ROLE_LABEL]: EPHEMERAL_DATA_ROLE,
+  [ROLE_LABEL]: DATA_HELPER_ROLE,
   [PROVIDER_LABEL]: input.providerId,
   ...(input.app === undefined ? {} : { [APP_LABEL]: input.app }),
   ...(input.store === undefined ? {} : { [STORE_LABEL]: input.store }),
@@ -48,11 +58,21 @@ export const ephemeralDataHelperLabels = (input: {
 
 export const isLabeledEphemeralDataHelper = (
   labels: Readonly<Record<string, string>>,
-  input: { readonly appId: string; readonly providerId: string },
+  input: { readonly appId: string; readonly providerId: string; readonly stores?: ReadonlyArray<string> },
 ): boolean =>
-  labels[ROLE_LABEL] === EPHEMERAL_DATA_ROLE &&
+  labels[ROLE_LABEL] === DATA_HELPER_ROLE &&
   labels[APP_LABEL] === input.appId &&
-  labels[PROVIDER_LABEL] === input.providerId;
+  labels[PROVIDER_LABEL] === input.providerId &&
+  (input.stores === undefined ||
+    labels[STORE_LABEL] === undefined ||
+    input.stores.includes(labels[STORE_LABEL]));
+
+export const isRemovableHelperState = (state: string): boolean => REMOVABLE_HELPER_STATES.has(state);
+
+export const classifyVolumeHolder = (holder: VolumeHolder, providerId: string): VolumeHolderKind =>
+  holder.labels[ROLE_LABEL] === DATA_HELPER_ROLE || isEphemeralDataHelperName(holder.name, providerId)
+    ? "data-helper"
+    : "container";
 
 export const isVolumeInUse = (details: unknown): details is { readonly body: string } => {
   if (typeof details !== "object" || details === null) return false;
@@ -62,15 +82,27 @@ export const isVolumeInUse = (details: unknown): details is { readonly body: str
   );
 };
 
-export const volumeInUseRemediation = (holders: ReadonlyArray<string> = []): string => {
-  const named =
-    holders.length === 0
-      ? "A leftover container still uses this volume."
-      : holders.length === 1
-        ? `Container ${holders[0]} still uses this volume.`
-        : `Containers ${holders.join(", ")} still use this volume.`;
-  return `${named} Remove that leftover data helper, then retry \`lando destroy --volumes\`. \`lando doctor\` cannot see these helpers.`;
+const holderPhrase = (holders: ReadonlyArray<NamedVolumeHolder>): string => {
+  if (holders.length === 0) return "A container still uses this volume.";
+  if (holders.length === 1) return `Container ${holders[0]?.name} still uses this volume.`;
+  return `Containers ${holders.map((holder) => holder.name).join(", ")} still use this volume.`;
 };
+
+const holderAction = (holders: ReadonlyArray<NamedVolumeHolder>): string => {
+  if (holders.length === 0) return "Remove it";
+  const helpers = holders.every((holder) => holder.kind === "data-helper");
+  const containers = holders.every((holder) => holder.kind === "container");
+  if (helpers) {
+    return holders.length === 1 ? "Remove that leftover data helper" : "Remove those leftover data helpers";
+  }
+  if (containers) {
+    return holders.length === 1 ? "Stop or remove that container" : "Stop or remove those containers";
+  }
+  return "Stop or remove those containers";
+};
+
+export const volumeInUseRemediation = (holders: ReadonlyArray<NamedVolumeHolder> = []): string =>
+  `${holderPhrase(holders)} ${holderAction(holders)}, then retry \`lando destroy --volumes\`.`;
 
 export const volumeInUseMessage = (
   base: string,
@@ -110,6 +142,16 @@ const listedName = (value: unknown): string | undefined => {
   return undefined;
 };
 
+const listedState = (value: unknown): string => {
+  if (typeof value === "string") return value.toLowerCase();
+  if (typeof value !== "object" || value === null) return "";
+  const status = Reflect.get(value, "Status");
+  if (typeof status === "string") return status.toLowerCase();
+  const state = Reflect.get(value, "State");
+  if (typeof state === "string") return state.toLowerCase();
+  return "";
+};
+
 const parseListedContainers = (body: string): ReadonlyArray<VolumeHolder> => {
   const parsed = parseJsonOrUndefined(body);
   const items = Array.isArray(parsed) ? parsed : undefined;
@@ -123,6 +165,7 @@ const parseListedContainers = (body: string): ReadonlyArray<VolumeHolder> => {
       {
         id,
         name: name ?? id,
+        state: listedState(Reflect.get(item, "State")) || listedState(Reflect.get(item, "Status")),
         labels: stringRecord(Reflect.get(item, "Labels")),
         mountNames: mountNamesFrom(Reflect.get(item, "Mounts")),
       },
@@ -147,11 +190,25 @@ const mountsNamedVolume = (container: unknown, volumeName: string): boolean => {
   return mountNamesFrom(mounts).includes(volumeName);
 };
 
+const skipCleanupLog = (details: Readonly<Record<string, unknown>>) =>
+  Effect.logDebug("Skipped leftover data-helper cleanup after a container list error.").pipe(
+    Effect.annotateLogs(details),
+  );
+
 const listContainers = (request: HelperRequester, filters: Readonly<Record<string, ReadonlyArray<string>>>) =>
   request({
     method: "GET",
     path: `/containers/json?all=true&filters=${encodeEngineFilters(filters)}`,
-  });
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.status >= 200 && response.status < 300
+        ? Effect.succeed(parseListedContainers(response.body))
+        : skipCleanupLog({ status: response.status }).pipe(Effect.as<ReadonlyArray<VolumeHolder>>([])),
+    ),
+    Effect.catch((cause) =>
+      skipCleanupLog({ cause: String(cause) }).pipe(Effect.as<ReadonlyArray<VolumeHolder>>([])),
+    ),
+  );
 
 const forceRemoveContainer = (request: HelperRequester, id: string) =>
   request({
@@ -164,34 +221,22 @@ const forceRemoveContainer = (request: HelperRequester, id: string) =>
 
 export const listLabeledEphemeralDataHelpers = (
   request: HelperRequester,
-  input: { readonly appId: string; readonly providerId: string },
-): Effect.Effect<ReadonlyArray<VolumeHolder>, unknown> =>
+  input: { readonly appId: string; readonly providerId: string; readonly stores?: ReadonlyArray<string> },
+): Effect.Effect<ReadonlyArray<VolumeHolder>, never> =>
   listContainers(request, {
     label: [
-      `${ROLE_LABEL}=${EPHEMERAL_DATA_ROLE}`,
+      `${ROLE_LABEL}=${DATA_HELPER_ROLE}`,
       `${APP_LABEL}=${input.appId}`,
       `${PROVIDER_LABEL}=${input.providerId}`,
     ],
   }).pipe(
-    Effect.map((response) =>
-      response.status >= 200 && response.status < 300
-        ? parseListedContainers(response.body).filter((holder) =>
-            isLabeledEphemeralDataHelper(holder.labels, input),
-          )
-        : [],
-    ),
+    Effect.map((holders) => holders.filter((holder) => isLabeledEphemeralDataHelper(holder.labels, input))),
   );
 
 export const listVolumeHolders = (
   request: HelperRequester,
   volumeName: string,
-): Effect.Effect<ReadonlyArray<VolumeHolder>, unknown> =>
-  listContainers(request, { volume: [volumeName] }).pipe(
-    Effect.map((response) =>
-      response.status >= 200 && response.status < 300 ? parseListedContainers(response.body) : [],
-    ),
-    Effect.catch(() => Effect.succeed<ReadonlyArray<VolumeHolder>>([])),
-  );
+): Effect.Effect<ReadonlyArray<VolumeHolder>, never> => listContainers(request, { volume: [volumeName] });
 
 const inspectMountsVolume = (request: HelperRequester, holder: VolumeHolder, volumeName: string) =>
   request({
@@ -205,16 +250,31 @@ const inspectMountsVolume = (request: HelperRequester, holder: VolumeHolder, vol
     Effect.catch(() => Effect.succeed(false)),
   );
 
+export const namedHolders = (
+  holders: ReadonlyArray<VolumeHolder>,
+  providerId: string,
+): ReadonlyArray<NamedVolumeHolder> =>
+  holders.map((holder) => ({ name: holder.name, kind: classifyVolumeHolder(holder, providerId) }));
+
 export const removeEphemeralDataHelpers = Effect.fnUntraced(function* (
   request: HelperRequester,
-  input: { readonly appId: string; readonly providerId: string },
-): Effect.fn.Return<ReadonlyArray<string>, unknown> {
+  input: { readonly appId: string; readonly providerId: string; readonly stores?: ReadonlyArray<string> },
+): Effect.fn.Return<
+  { readonly removed: ReadonlyArray<string>; readonly remaining: ReadonlyArray<VolumeHolder> },
+  never
+> {
   const helpers = yield* listLabeledEphemeralDataHelpers(request, input);
   const removed: string[] = [];
+  const remaining: VolumeHolder[] = [];
   for (const helper of helpers) {
+    if (!isRemovableHelperState(helper.state)) {
+      remaining.push(helper);
+      continue;
+    }
     if (yield* forceRemoveContainer(request, helper.id)) removed.push(helper.name);
+    else remaining.push(helper);
   }
-  return removed;
+  return { removed, remaining };
 });
 
 export const removeUnlabeledEphemeralDataHolders = Effect.fnUntraced(function* (
@@ -222,20 +282,23 @@ export const removeUnlabeledEphemeralDataHolders = Effect.fnUntraced(function* (
   input: { readonly providerId: string; readonly volumeName: string },
 ): Effect.fn.Return<
   { readonly removed: ReadonlyArray<string>; readonly remaining: ReadonlyArray<VolumeHolder> },
-  unknown
+  never
 > {
   const holders = yield* listVolumeHolders(request, input.volumeName);
   const remaining: VolumeHolder[] = [];
   const removed: string[] = [];
   for (const holder of holders) {
-    if (!isEphemeralDataHelperName(holder.name, input.providerId)) {
+    if (
+      holder.labels[ROLE_LABEL] !== undefined ||
+      !isEphemeralDataHelperName(holder.name, input.providerId)
+    ) {
       remaining.push(holder);
       continue;
     }
     const listedMounts =
       holder.mountNames.includes(input.volumeName) ||
       (holder.mountNames.length === 0 && (yield* inspectMountsVolume(request, holder, input.volumeName)));
-    if (!listedMounts) {
+    if (!listedMounts || !isRemovableHelperState(holder.state)) {
       remaining.push(holder);
       continue;
     }
@@ -248,8 +311,8 @@ export const removeUnlabeledEphemeralDataHolders = Effect.fnUntraced(function* (
 export const releaseVolumeHolders = Effect.fnUntraced(function* (
   request: HelperRequester,
   input: { readonly appId: string; readonly providerId: string; readonly volumeName: string },
-): Effect.fn.Return<ReadonlyArray<VolumeHolder>, unknown> {
-  yield* removeEphemeralDataHelpers(request, input);
+): Effect.fn.Return<ReadonlyArray<VolumeHolder>, never> {
+  yield* removeEphemeralDataHelpers(request, { ...input, stores: [input.volumeName] });
   const unlabeled = yield* removeUnlabeledEphemeralDataHolders(request, input);
   return unlabeled.remaining;
 });

@@ -24,6 +24,7 @@ import { parseJsonOrUndefined } from "../engine-json.ts";
 import {
   isVolumeInUse,
   listVolumeHolders,
+  namedHolders,
   releaseVolumeHolders,
   removeEphemeralDataHelpers,
   volumeInUseMessage,
@@ -241,7 +242,7 @@ const removeVolume = Effect.fnUntraced(function* (
           names,
           response,
         ),
-        remediation: volumeInUseRemediation(names),
+        remediation: volumeInUseRemediation(namedHolders(holders, deps.options.ctx.providerId)),
         details: redactDetails({ name, body, status }),
       }),
     );
@@ -343,10 +344,15 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   if (options.volumes === true || options.purgeCaches === true) {
     const requester = api.request;
     if (requester !== undefined) {
+      const stores = plan.stores.flatMap((store) => {
+        if (store.kind === "cache") return options.purgeCaches === true ? [store.name] : [];
+        return store.scope === "global" || options.volumes !== true ? [] : [store.name];
+      });
       yield* removeEphemeralDataHelpers((input) => requester(input), {
         appId: String(plan.id),
         providerId: options.ctx.providerId,
-      }).pipe(Effect.catch(() => Effect.succeed([])));
+        ...(stores.length === 0 ? {} : { stores }),
+      }).pipe(Effect.catch(() => Effect.succeed({ removed: [], remaining: [] })));
     }
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan);
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
