@@ -25,10 +25,21 @@ test("firstSecretReference returns the first exact or embedded ${secret:...} spa
   expect(references.firstSecretReference("no secret here")).toBeUndefined();
 });
 
+test("firstSecretReference skips the $${ escape", () => {
+  expect(references.firstSecretReference("$${secret:TOKEN}")).toBeUndefined();
+  expect(references.firstSecretReference("prefix-$${secret:TOKEN}")).toBeUndefined();
+  expect(references.firstSecretReference("$${secret:ESCAPED} ${secret:REAL}")).toBe("${secret:REAL}");
+});
+
 test("isServiceBuildArgSecretReference matches compose object and array arg paths", () => {
   expect(references.isServiceBuildArgPath(["services", "web", "build", "args", "TOKEN"])).toBe(true);
   expect(references.isServiceBuildArgPath(["services", "web", "build", "args", 0])).toBe(true);
   expect(references.isServiceBuildArgPath(["services", "web", "environment", "TOKEN"])).toBe(false);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "target"])).toBe(false);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "dockerfile"])).toBe(false);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "args", "nested", "TOKEN"])).toBe(
+    false,
+  );
   expect(
     references.isServiceBuildArgSecretReference("${secret:TOKEN}", [
       "services",
@@ -47,6 +58,15 @@ test("isServiceBuildArgSecretReference matches compose object and array arg path
       0,
     ]),
   ).toBe(true);
+  expect(
+    references.isServiceBuildArgSecretReference("$${secret:TOKEN}", [
+      "services",
+      "web",
+      "build",
+      "args",
+      "TOKEN",
+    ]),
+  ).toBe(false);
   expect(
     references.isServiceBuildArgSecretReference("production", [
       "services",

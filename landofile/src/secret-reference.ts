@@ -3,7 +3,7 @@ import { type ParsedSecretReference, parseSecretReference } from "@lando/sdk/sec
 import { Result } from "effect";
 
 const EXACT_SECRET_REFERENCE = /^\$\{secret:([^}]+)\}$/u;
-const SECRET_REFERENCE = /\$\{secret:[^}\r\n]+\}/u;
+const SECRET_REFERENCE = /\$\{secret:[^}\r\n]+\}/gu;
 
 export const exactSecretReferenceId = (value: string): string | undefined =>
   EXACT_SECRET_REFERENCE.exec(value)?.[1];
@@ -15,7 +15,14 @@ export const exactSecretReference = (
   return raw === undefined ? undefined : Result.merge(parseSecretReference(raw));
 };
 
-export const firstSecretReference = (value: string): string | undefined => SECRET_REFERENCE.exec(value)?.[0];
+export const firstSecretReference = (value: string): string | undefined => {
+  for (const match of value.matchAll(SECRET_REFERENCE)) {
+    const index = match.index ?? 0;
+    if (index > 0 && value[index - 1] === "$") continue;
+    return match[0];
+  }
+  return undefined;
+};
 
 export const withoutSecretReferences = (value: string): string =>
   value.replace(/\$\{secret:[^}\r\n]+\}/gu, "");
