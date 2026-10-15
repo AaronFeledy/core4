@@ -12,6 +12,7 @@ const annotations = new Set([
   "readOnly",
   "writeOnly",
   "x-deprecation",
+  "x-lando-merge",
 ]);
 const schemaMaps = new Set(["properties", "patternProperties", "dependentSchemas"]);
 const schemaArrays = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);

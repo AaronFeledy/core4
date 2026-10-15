@@ -14,7 +14,8 @@ import {
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { exec } from "../src/podman/exec.ts";
+import { exec, execStream } from "../src/podman/exec.ts";
+import { ContainerTransportError } from "../src/transport.ts";
 
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 
@@ -226,6 +227,147 @@ describe("podman exec start errors", () => {
 
     expect(error).toBe(transportError);
   });
+});
+
+describe("podman exec early stdin exit", () => {
+  const diagnostic = "Error: read unixpacket @->/proc/self/fd/15/attach: read: connection reset by peer\n";
+  const failure = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "podman-api",
+    message: "attach reset",
+    cause: new ContainerTransportError({
+      kind: "read",
+      operation: "podman-api",
+      message: "attach reset",
+      systemCode: "ECONNRESET",
+    }),
+  });
+  const makeResetApi = (options: {
+    readonly head?: boolean;
+    readonly inspect?: "finished" | "running" | "failed";
+    readonly frames?: readonly Uint8Array[];
+    readonly reset?: boolean;
+    readonly error?: ProviderUnavailableError;
+    readonly exitCode?: number;
+  }): EngineHttpApi => ({
+    request: (input) =>
+      input.path === createPath
+        ? Effect.succeed({ status: 201, body: JSON.stringify({ Id: "exec-1" }) })
+        : options.inspect === "failed"
+          ? Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "exec",
+                message: "inspect failed",
+              }),
+            )
+          : Effect.succeed({
+              status: 200,
+              body: JSON.stringify({
+                Running: options.inspect === "running",
+                ExitCode: options.exitCode ?? 1,
+              }),
+            }),
+    stream: (input) =>
+      Stream.suspend(() => {
+        if (options.head !== false) input.onResponseHead?.();
+        return Stream.fromIterable(
+          options.frames ?? [attachFrame(1, "1\n"), attachFrame(2, diagnostic)],
+        ).pipe(Stream.concat(options.reset === false ? Stream.empty : Stream.fail(options.error ?? failure)));
+      }),
+  });
+
+  test.each(["ECONNRESET", "EPIPE"] as const)(
+    "returns the command exit and drops the final diagnostic after %s",
+    async (systemCode) => {
+      // Given
+      const error = new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "podman-api",
+        message: "attach closed",
+        cause: new ContainerTransportError({
+          kind: "read",
+          operation: "podman-api",
+          message: "attach closed",
+          systemCode,
+        }),
+      });
+      const api = makeResetApi({ error });
+      // When
+      const result = await runExec(api, { command: ["head"], stdinStream: oneChunkStdin() });
+      // Then
+      expect(result).toEqual({ stdout: "1\n", stderr: "", exitCode: 1 });
+    },
+  );
+
+  test.each([0, 1])("returns exit %s after a trailing write/broken-pipe diagnostic", async (exitCode) => {
+    // Given
+    const api = makeResetApi({
+      exitCode,
+      frames: [attachFrame(2, "Error: write unixpacket @->/proc/self/fd/15/attach: write: broken pipe\n")],
+    });
+    // When
+    const result = await runExec(api, { command: ["head"], stdinStream: oneChunkStdin() });
+    // Then
+    expect(result).toEqual({ stdout: "", stderr: "", exitCode });
+  });
+
+  test.each([{ inspect: "running" as const }, { inspect: "failed" as const }, { head: false }])(
+    "preserves the original error and diagnostic when completion is unproven: %j",
+    async (options) => {
+      // Given
+      const output: string[] = [];
+      const attached = execStream(
+        plan,
+        target,
+        { command: ["head"], stdinStream: oneChunkStdin() },
+        { api: makeResetApi(options), ctx },
+      );
+      // When
+      const error = await Effect.runPromise(
+        Stream.runForEach(attached, (chunk) =>
+          Effect.sync(() => {
+            if ("kind" in chunk) output.push(new TextDecoder().decode(chunk.chunk));
+          }),
+        ).pipe(Effect.scoped, Effect.flip),
+      );
+      // Then
+      expect(error).toBe(failure);
+      expect(output).toEqual(["1\n", diagnostic]);
+    },
+  );
+
+  test("preserves resets without attached stdin", async () => {
+    // Given
+    const api = makeResetApi({});
+    // When
+    const error = await Effect.runPromise(
+      exec(plan, target, { command: ["head"] }, { api, ctx }).pipe(Effect.flip),
+    );
+    // Then
+    expect(error).toBe(failure);
+  });
+
+  test.each([
+    {
+      frames: [attachFrame(2, "mysql: SQL syntax error\n")],
+      stderr: "mysql: SQL syntax error\n",
+      stdout: "",
+    },
+    { frames: [attachFrame(2, diagnostic), attachFrame(1, "later")], stderr: diagnostic, stdout: "later" },
+    { frames: [attachFrame(2, `${diagnostic}\n`)], stderr: `${diagnostic}\n`, stdout: "" },
+    { frames: [attachFrame(2, diagnostic)], stderr: diagnostic, stdout: "", reset: false },
+  ])(
+    "preserves stderr outside the proven trailing diagnostic case: %j",
+    async ({ frames, stderr, stdout, ...options }) => {
+      // Given
+      const api = makeResetApi({ frames, ...options });
+      // When
+      const result = await runExec(api, { command: ["head"], stdinStream: oneChunkStdin() });
+      // Then
+      expect(result).toEqual({ stdout, stderr, exitCode: 1 });
+    },
+  );
 });
 
 describe("podman exec AttachStdin", () => {

@@ -80,22 +80,11 @@ describe("go:1.22 ServiceType", () => {
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
-    expect(plan.mounts[0]?.readOnly).toBe(false);
+    expect(plan.mounts).toEqual([]);
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
 
-    expect(plan.healthcheck).toEqual({
-      kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 10,
-    });
+    expect(plan.healthcheck).toBeUndefined();
 
     expect(plan.environment).toMatchObject({
       LANDO: "ON",
@@ -156,7 +145,7 @@ describe("go:1.22 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/golang:1.22-custom" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9090, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9090"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-go"]).toMatchObject({ port: 9090 });
   });
 
@@ -167,7 +156,7 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.artifact?.kind).toBe("ref");
     expect(plan.endpoints[0]?.protocol).toBe("http");
     expect(plan.endpoints[0]?.name).toBe("web");
-    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck).toBeUndefined();
     expect(Object.keys(plan)).not.toContain("providers");
     expect(Object.keys(plan)).not.toContain("providerInfo");
   });

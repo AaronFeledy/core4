@@ -30,6 +30,7 @@ test("bundled Traefik satisfies the RouterService contract suite", async () => {
       remove: (path) => Effect.sync(() => void files.delete(path)),
     },
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
+    probeForward: () => Effect.succeed({ kind: "success" }),
     globalApp: {
       ensureRunning: () =>
         Effect.succeed([
@@ -79,6 +80,7 @@ test("real filesystem status sees configured routing and stop removes route and 
       certificateAuthority,
       fileSystem: proxyFileSystem,
       paths: { platform: "linux", globalAppRoot: root },
+      probeForward: () => Effect.succeed({ kind: "success" }),
       globalApp: {
         ensureRunning: () =>
           Effect.succeed([

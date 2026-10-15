@@ -168,7 +168,10 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const plan = await planFor(composeLandofile, "lando");
     const worker = plan.services[ServiceName.make("worker")];
     expect(worker?.extensions).toEqual({
-      "@lando/core/service-features": { featureIds: ["service-lando.compose"], buildSteps: [] },
+      "@lando/core/service-features": {
+        featureIds: ["service-lando.compose", "lando.app-mount"],
+        buildSteps: [],
+      },
       lando: { labels: { "com.example.team": "platform" } },
       docker: { restart: "unless-stopped" },
     });
@@ -179,7 +182,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const worker = plan.services[ServiceName.make("worker")];
 
     expect(worker?.appMount).toMatchObject({ target: "/app", readOnly: false });
-    expect(worker?.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
+    expect(worker?.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
     // compose is an l337 service and must not inject the LANDO_* env layer.
     expect(
       Object.keys(worker?.environment ?? {}).filter(

@@ -50,16 +50,15 @@ describe("landoEnvFeature", () => {
     expect(env.LANDO_WEBROOT).toBeUndefined();
   });
 
-  test("emits optional app path and webroot env from decoded feature config", async () => {
+  test("emits webroot env without owning app paths", async () => {
     const { ctx, env } = featureContext({
-      appPaths: { appRoot: "/app", projectMount: "/app" },
       webroot: "/app/web",
     });
 
     await Effect.runPromise(landoEnvFeature.apply(ctx));
 
-    expect(env.LANDO_APP_ROOT).toBe("/app");
-    expect(env.LANDO_PROJECT_MOUNT).toBe("/app");
+    expect(env.LANDO_APP_ROOT).toBeUndefined();
+    expect(env.LANDO_PROJECT_MOUNT).toBeUndefined();
     expect(env.LANDO_WEBROOT).toBe("/app/web");
   });
 });

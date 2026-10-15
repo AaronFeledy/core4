@@ -161,3 +161,28 @@ test.each(["direct", "fallback"] as const)(
     }
   },
 );
+
+test("reports an interrupted script as exit 130 instead of a tooling failure", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-interrupt-"));
+  const controller = new AbortController();
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    await writeFile(
+      join(root, ".lando/scripts/slow.bun.sh"),
+      ["# ---", "# desc: Sleep until interrupted", "# ---", "sleep 30", ""].join("\n"),
+    );
+    setTimeout(() => controller.abort(), 200);
+    // When
+    const result = await Effect.runPromise(
+      runBunShellTooling({ name: "slow", signal: controller.signal }, root).pipe(
+        Effect.provide(PrivateFileAccessService.layer),
+        Effect.timeout("5 seconds"),
+      ),
+    );
+    // Then
+    expect(result).toMatchObject({ tool: "app:slow", exitCode: 130 });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

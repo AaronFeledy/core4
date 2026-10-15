@@ -743,37 +743,52 @@ describe("ProviderExecToolingEngine.layer", () => {
     await expect(pending).resolves.toMatchObject({ done: true });
   });
 
-  test("uses forwarded keyboard input for every container command without forcing a pager", async () => {
-    // Given
-    const plan = makePlan([baseServicePlan("database", true)]);
-    const stdinStream: AsyncIterable<Uint8Array> = {
-      async *[Symbol.asyncIterator]() {
-        yield new TextEncoder().encode("select 42;\r");
-      },
-    };
-    const received: string[] = [];
-    const specs: CommandSpec[] = [];
-    const provider: RuntimeProviderShape = {
-      ...makeFakeProvider([]),
-      execStream: (_target, command) =>
-        Stream.fromEffect(
-          Effect.promise(async () => {
-            specs.push(command);
-            if (command.stdinStream !== undefined) {
-              for await (const chunk of command.stdinStream) received.push(new TextDecoder().decode(chunk));
-            }
-            return { exitCode: 0 };
-          }),
+  test.each([true, false, undefined])(
+    "uses forwarded input for every container command with tty=%s",
+    async (tty) => {
+      // Given
+      const plan = makePlan([baseServicePlan("database", true)]);
+      const stdinStream: AsyncIterable<Uint8Array> = {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode("select 42;\r");
+        },
+      };
+      const received: string[] = [];
+      const specs: CommandSpec[] = [];
+      const provider: RuntimeProviderShape = {
+        ...makeFakeProvider([]),
+        execStream: (_target, command) =>
+          Stream.fromEffect(
+            Effect.promise(async () => {
+              specs.push(command);
+              if (command.stdinStream !== undefined) {
+                for await (const chunk of command.stdinStream) received.push(new TextDecoder().decode(chunk));
+              }
+              return { exitCode: 0 };
+            }),
+          ),
+      };
+      // When
+      await Effect.runPromise(
+        runEngine(
+          {
+            tool: "psql",
+            ...(tty === undefined ? {} : { tty }),
+            stdinStream,
+            commands: [["first"], ["second"]],
+          },
+          plan,
+          provider,
         ),
-    };
-    // When
-    await Effect.runPromise(
-      runEngine({ tool: "psql", tty: true, stdinStream, commands: [["first"], ["second"]] }, plan, provider),
-    );
-    // Then
-    expect(received).toEqual(["select 42;\r", "select 42;\r"]);
-    expect(specs.map((spec) => spec.env?.PAGER)).toEqual([undefined, undefined]);
-  });
+      );
+      // Then
+      expect(received).toEqual(["select 42;\r", "select 42;\r"]);
+      expect(specs.map((spec) => spec.env?.PAGER)).toEqual([undefined, undefined]);
+      expect(specs.map((spec) => spec.stdin)).toEqual(["inherit", "inherit"]);
+      expect(specs.map((spec) => spec.stdinStream)).toEqual([stdinStream, stdinStream]);
+      expect(specs.map((spec) => spec.tty === true)).toEqual([tty === true, tty === true]);
+    },
+  );
 
   test("forwards cancellation and resize independently of keyboard attachment", async () => {
     // Given

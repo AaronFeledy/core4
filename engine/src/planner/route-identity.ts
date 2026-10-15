@@ -1,4 +1,5 @@
 import { RouteInputError } from "@lando/sdk/errors";
+import { routeMatchKey } from "@lando/sdk/landofile";
 import {
   ROUTE_PATH_WEIGHT_CAP,
   ROUTE_PRIORITY_EXACT_BASE,
@@ -58,7 +59,7 @@ export const makeRouteAccumulator = () => {
       const uncovered: ("http" | "https")[] = [];
       for (const scheme of schemes(route.scheme)) {
         // The router owns one listener per scheme. :port selects a backend, not a listener.
-        const key = JSON.stringify([scheme, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]);
+        const key = routeMatchKey({ ...route, scheme });
         const existing = matches.get(key);
         if (existing === undefined) {
           uncovered.push(scheme);
@@ -80,7 +81,7 @@ export const makeRouteAccumulator = () => {
         const index = routes.length;
         routes.push({ ...route, hostname: route.hostname.toLowerCase(), scheme });
         for (const protocol of uncovered) {
-          matches.set(JSON.stringify([protocol, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]), {
+          matches.set(routeMatchKey({ ...route, scheme: protocol }), {
             index,
             semantics: execution,
             source,

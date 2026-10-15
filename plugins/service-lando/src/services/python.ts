@@ -59,7 +59,6 @@ const runtime = makeLanguageRuntime({
   presets: FRAMEWORK_PRESETS,
   baseEnv: { PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
   mountExcludes: ["__pycache__"],
-  mountRealization: "passthrough",
   includeWebrootInFeatureConfig: false,
   extensionKey: "lando-service-python",
   featureId: PYTHON_FEATURE_ID,

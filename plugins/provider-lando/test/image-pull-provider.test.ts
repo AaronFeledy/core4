@@ -217,7 +217,7 @@ const makeApplyPlan = (service: ServicePlan): AppPlan => ({
 const makeApplyApi = (inspectStatus = 404) => {
   const requests: string[] = [];
   const existing = new Set<string>();
-  const api: PodmanApiClient = {
+  const api = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.void,
     request: (request: EngineHttpRequest) => {
@@ -252,7 +252,7 @@ const makeApplyApi = (inspectStatus = 404) => {
       })();
       return Effect.succeed(response);
     },
-  };
+  } satisfies PodmanApiClient;
   return { api, requests };
 };
 
@@ -272,6 +272,52 @@ const applyPlan = async (plan: AppPlan, api: PodmanApiClient) => {
 };
 
 describe("provider-lando apply image pull", () => {
+  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+    // Given
+    const service = {
+      ...makeApplyService(),
+      environment: {
+        PLAIN: "visible",
+        TOKEN: "${secret:API_TOKEN}",
+        SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
+      },
+    };
+    const fake = makeApplyApi();
+    const creates: unknown[] = [];
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            podmanApi: {
+              ...fake.api,
+              request: (request) => {
+                if (request.path.startsWith("/containers/create?")) creates.push(request.body);
+                return fake.api.request(request);
+              },
+            },
+          }),
+        ),
+      ),
+    );
+    // When
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.apply(makeApplyPlan(service), {
+          reconcile: false,
+          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+        }),
+      ),
+    );
+    // Then
+    expect(creates).toEqual([
+      expect.objectContaining({
+        Env: ["PLAIN=visible", "TOKEN=resolved-canary", "SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock"],
+      }),
+    ]);
+  });
+
   test("pre-pulls a missing image through the same ensure path", async () => {
     const fake = makeApplyApi();
     await applyPlan(makeApplyPlan(makeApplyService()), fake.api);

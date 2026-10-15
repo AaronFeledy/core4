@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { PortablePath } from "@lando/sdk/schema";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -25,15 +26,13 @@ export const MEILISEARCH_FEATURE_ID = "service-lando.meilisearch";
  * Dev-environment default master key, deterministic so users can hit
  * `MEILI_MASTER_KEY=lando` in shell snippets and scenario tooling.
  *
- * This is a dev default, not a real
- * secret; it is redacted in `lando info` / event surfaces
- * when the publishing layer adds it to the `redact:` token set. Users
- * who need a non-default key set `environment.MEILI_MASTER_KEY` in their
- * Landofile.
+ * It is Lando's published default credential, not a secret, so output prints
+ * it as-is. Users who need a private key set `environment.MEILI_MASTER_KEY`
+ * in their Landofile.
  */
-export const MEILISEARCH_DEFAULT_MASTER_KEY = "lando" as const;
+export const MEILISEARCH_DEFAULT_MASTER_KEY = DEFAULT_PASSWORD;
 
-export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds a deterministic master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}) that is redacted from event surfaces. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
+export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds Lando's published default master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}), which output prints as-is. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
 
 const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;

@@ -1,0 +1,13 @@
+{
+  "name": "bootstrap5",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:sass": "sass scss/style.scss css/style.css"
+  },
+  "devDependencies": {
+    "sass": "^1.85.0"
+  }
+}

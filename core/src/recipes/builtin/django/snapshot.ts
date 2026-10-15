@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const DJANGO_RECIPE_VERSION = "0.1.0";
 export const DJANGO_CONTENT_DIGEST =
-  "sha256:46eac49a45db7bbf238b378c14360ab79ee06f0f7a98a84a320b7894f7ac27a7";
+  "sha256:4b7dd06177a1404c4043991a8956ce7465d45e7b24197982fcc4169ca7bd70fb";
 export const djangoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-django",
@@ -44,6 +44,7 @@ const worker = (): ExpressionNode =>
     ["type", lit("python:3.12")],
     ["framework", lit("django")],
     ["command", lit("celery -A app worker --loglevel=info")],
+    ["restart", lit("unless-stopped")],
     ["environment", environment()],
     ["dependsOn", backingDependencies()],
   ]);

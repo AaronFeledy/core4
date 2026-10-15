@@ -202,7 +202,7 @@ export const appFeatureError = (appRoot: string, cause: unknown) =>
   });
 
 export interface ResolvedService {
-  readonly routes: ReadonlyArray<NormalizedRoute>;
+  readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
   readonly name: string;
   readonly service: ServiceConfig;
   readonly authored: {
@@ -257,7 +257,7 @@ export type PlannedServiceDraft = {
   readonly homeIntent: ServiceHomeIntent;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
-  readonly routes: ReadonlyArray<NormalizedRoute>;
+  readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
   readonly extensions: ServicePlan["extensions"];
 };
 

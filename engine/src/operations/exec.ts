@@ -1,4 +1,4 @@
-import { Effect, type Stream } from "effect";
+import { Effect, type Option, type Stream } from "effect";
 
 import type { ExecAppOptions, ExecAppResult, ExecAppError as SdkExecAppError } from "@lando/sdk/app";
 import {
@@ -14,6 +14,7 @@ import {
   type ExecTarget,
   LandofileService,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
@@ -26,7 +27,7 @@ import {
 } from "../services/app-plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
-import { StreamFrameSink } from "./stream-frame-sink.ts";
+import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { availableServiceList, unknownPlanServiceError } from "./unknown-service.ts";
 
 export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -36,6 +37,7 @@ export type ExecAppRuntimeOptions = ExecAppOptions & {
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
   readonly hostTerminal?: HostTerminal;
+  readonly signal?: AbortSignal;
 };
 
 export type ExecAppResultWithTokens = ExecAppResult & {
@@ -109,6 +111,44 @@ const inheritTty = (options: ExecAppRuntimeOptions): boolean => options.tty === 
 
 const inheritStdin = (options: ExecAppRuntimeOptions): boolean => options.stdinStream !== undefined;
 
+export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(function* (
+  input: {
+    readonly provider: RuntimeProviderShape;
+    readonly target: ExecTarget;
+    readonly service: ServicePlan;
+    readonly options: ExecAppRuntimeOptions;
+  },
+  sink: Option.Option<StreamFrameSinkShape>,
+) {
+  const { provider, target, service, options } = input;
+  const tty = inheritTty(options);
+  const mergedEnv = withTerminalEnv({
+    tty,
+    hostEnv: process.env,
+    ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
+    serviceEnv: service.environment,
+    ...(options.env === undefined ? {} : { env: options.env }),
+  });
+  const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
+  const spec: CommandSpec = {
+    command: options.command,
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(mergedEnv === undefined || Object.keys(mergedEnv).length === 0 ? {} : { env: mergedEnv }),
+    ...(tty
+      ? {
+          tty: true,
+          ...(options.hostTerminal?.columns !== undefined && options.hostTerminal.rows !== undefined
+            ? { terminalSize: { columns: options.hostTerminal.columns, rows: options.hostTerminal.rows } }
+            : {}),
+          ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
+        }
+      : {}),
+    ...(inheritStdin(options) ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  };
+  return yield* collectExecStream(provider.execStream(target, spec), sink);
+});
+
 export const execApp = Effect.fn("AppOperation.exec")(function* (
   options: ExecAppRuntimeOptions,
   appTarget?: ResolvedAppTarget,
@@ -153,35 +193,17 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     allowlist,
     lowerThanEnv: service.environment,
   });
-  const tty = inheritTty(options);
-  const attachStdin = inheritStdin(options);
-  const mergedEnv = withTerminalEnv({
-    tty,
-    hostEnv: process.env,
-    ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
-    serviceEnv: service.environment,
-    ...(env === undefined ? {} : { env }),
-  });
-  const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
-  const spec: CommandSpec = {
-    command: split.command,
-    ...(cwd === undefined ? {} : { cwd }),
-    ...(mergedEnv === undefined || Object.keys(mergedEnv).length === 0 ? {} : { env: mergedEnv }),
-    ...(tty
-      ? {
-          tty: true,
-          ...(options.hostTerminal?.columns !== undefined && options.hostTerminal.rows !== undefined
-            ? { terminalSize: { columns: options.hostTerminal.columns, rows: options.hostTerminal.rows } }
-            : {}),
-          ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
-        }
-      : {}),
-    ...(attachStdin ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
-  };
-
   yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
-  const result = yield* collectExecStream(provider.execStream(target, spec), sink);
+  const result = yield* execServiceCommand(
+    {
+      provider,
+      target,
+      service,
+      options: { ...options, command: split.command, ...(env === undefined ? {} : { env }) },
+    },
+    sink,
+  );
 
   const withTokens: ExecAppResultWithTokens = {
     app: plan.name,

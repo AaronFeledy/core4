@@ -2,11 +2,15 @@ import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { GlobalAppError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
+import { LandofileShape, type PluginManifest, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { AppPlanner } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
   bundledFirstGlobalServiceLoader,
@@ -53,6 +57,39 @@ const serviceConfig = (type: "compose" | "lando", image?: string): ServiceConfig
   }) as ServiceConfig;
 
 describe("bundled-first global service loader", () => {
+  test("plans the bundled SSH sidecar as a ref image with root artifact build steps", async () => {
+    // Given
+    const config = await Effect.runPromise(
+      bundledFirstGlobalServiceLoader.load(entry("@lando/ssh-agent", "ssh-agent", "./src/global-service.ts")),
+    );
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "global",
+      runtime: 4,
+      services: { "ssh-agent": config },
+    });
+    // When
+    const plan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
+        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(PluginRegistryLayer.layer),
+      ),
+    );
+    const sidecar = plan.services[ServiceName.make("ssh-agent")];
+    // Then
+    expect(sidecar?.artifact).toEqual({ kind: "ref", ref: "alpine:3.20" });
+    expect(sidecar?.extensions["@lando/core/service-features"]).toMatchObject({
+      buildSteps: [
+        {
+          id: "authored-artifact:1",
+          phase: "build",
+          command: ["sh", "-lc", "apk add --no-cache openssh-client socat"],
+          user: "root",
+        },
+      ],
+    });
+    expect(JSON.stringify(sidecar?.command)).not.toContain("apk");
+  });
+
   test("resolves a bundled plugin's global service from the static map (no dynamic import)", async () => {
     const config = await Effect.runPromise(
       bundledFirstGlobalServiceLoader.load(

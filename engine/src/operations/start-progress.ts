@@ -1,6 +1,8 @@
 export const applyTreeId = (planId: string): string => `apply-${planId}`;
 export const startGlobalTreeId = (planId: string): string => `start-global-${planId}`;
+export const startReadinessTreeId = (planId: string): string => `start-readiness-${planId}`;
 export const startHostProxyTreeId = (planId: string): string => `start-host-proxy-${planId}`;
 export const startSshAgentTreeId = (planId: string): string => `start-ssh-agent-${planId}`;
+export const startSshSidecarTreeId = (planId: string): string => `start-ssh-sidecar-${planId}`;
 export const startFileSyncTreeId = (planId: string): string => `start-file-sync-${planId}`;
 export const startRoutesTreeId = (planId: string): string => `start-routes-${planId}`;

@@ -14,12 +14,6 @@ export const LANDO_ENV_FEATURE_ID = "lando.env" as const;
 export const LANDO_ENV_FEATURE_PRIORITY = 700;
 
 const LandoEnvFeatureConfigSchema = Schema.Struct({
-  appPaths: Schema.optionalKey(
-    Schema.Struct({
-      appRoot: Schema.String,
-      projectMount: Schema.String,
-    }),
-  ),
   webroot: Schema.optionalKey(Schema.String),
 });
 type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
@@ -53,12 +47,8 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("LANDO_SERVICE_NAME", ctx.serviceName);
   ctx.addEnv("LANDO_SERVICE_TYPE", ctx.serviceType);
 
-  const { appPaths, webroot } = ctx.config as LandoEnvFeatureConfig;
-  if (appPaths !== undefined) {
-    ctx.addEnv("LANDO_APP_ROOT", appPaths.appRoot);
-    ctx.addEnv("LANDO_PROJECT_MOUNT", appPaths.projectMount);
-  }
-  if (webroot !== undefined) ctx.addEnv("LANDO_WEBROOT", webroot);
+  const { webroot } = ctx.config as LandoEnvFeatureConfig;
+  if (ctx.normalizedConfig.appMount !== false && webroot !== undefined) ctx.addEnv("LANDO_WEBROOT", webroot);
 
   if (appKind !== "global") {
     ctx.addEnv("LANDO_MAIL_HOST", MAILPIT_SHARED_NETWORK_HOST);

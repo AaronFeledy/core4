@@ -38,7 +38,7 @@ const requireConfigExpressionError = (failure: unknown): ConfigExpressionError =
   return failure;
 };
 
-const phpishDraft = (routes: ReadonlyArray<NormalizedRoute>): PlannedServiceDraft => ({
+const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): PlannedServiceDraft => ({
   name: "appserver",
   hostnames: [],
   authoredArtifact: undefined,
@@ -128,7 +128,7 @@ describe("resolveRoute hostname expressions", () => {
 describe("finalizeServices auto-generated hostnames", () => {
   test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
     // Given
-    const draft = phpishDraft([]);
+    const draft = phpishDraft(undefined);
     const plannedServiceDraft: PlannedServiceDraft = {
       ...draft,
       draft: {
@@ -171,7 +171,7 @@ describe("finalizeServices auto-generated hostnames", () => {
     // Given / When
     const finalized = await Effect.runPromise(
       finalizeServices({
-        plannedServiceDrafts: [phpishDraft([])],
+        plannedServiceDrafts: [phpishDraft(undefined)],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,

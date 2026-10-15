@@ -17,6 +17,13 @@ use native YAML anchors, aliases, and merge keys (`&node-service`,
 `*node-service`, `<<:`); explicit mapping keys override merged defaults
 before the fragment is layered into the app.
 
+Fragments can use [`!override` and `!reset`](./your-landofile.mdx#replace-or-remove-a-value-with-override-and-reset).
+They apply at the including file's layer, in order: a fragment's own nested
+includes, then the fragment's inline keys, then the including file's inline
+keys. So a fragment in `.lando.local.yml` can `!reset` a variable that
+`.lando.yml` set. Overriding or resetting `includes:` in a higher layer does
+not undo what a lower layer's includes already applied.
+
 The Landofile parser preserves
 encoded map order for round trips and fails closed on invalid map keys or
 non-serializable values before lockfile state is written. Command-index
