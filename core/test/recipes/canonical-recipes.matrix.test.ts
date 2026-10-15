@@ -121,6 +121,7 @@ const providerCapabilities = {
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native" as const,
+  composeKnobs: { supported: ["restart", "extra_hosts"] as const },
   providerExtensions: ["compose"],
 };
 

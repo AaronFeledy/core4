@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { mergeLandofiles } from "@lando/sdk/landofile";
+import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
@@ -11,10 +12,14 @@ import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decompos
  * is not a mapping is a bug, and failing loudly beats widening the type.
  */
 const asRecord = (value: unknown): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const native = Schema.encodeSync(LandofileAuthoringFragmentNative)(
+    Schema.decodeUnknownSync(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+    { onExcessProperty: "error" },
+  );
+  if (typeof native !== "object" || native === null || Array.isArray(native)) {
     throw new Error(`Expected an authoring mapping, received ${JSON.stringify(value)}.`);
   }
-  return Object.fromEntries(Object.entries(value));
+  return Object.fromEntries(Object.entries(native));
 };
 
 const setup = (nested = false) => {
@@ -38,12 +43,16 @@ test("removes redis across layers while preserving appserver and final equivalen
   expect(result.outputs.find(({ targetLayer }) => targetLayer === "dist")?.fragment).toMatchObject({
     services: { appserver: { image: "php:8.3" } },
   });
-  for (const output of result.outputs) expect(output.fragment).not.toHaveProperty("services.redis");
+  expect(result.outputs.find(({ targetLayer }) => targetLayer === "dist")?.fragment).toHaveProperty(
+    "services.redis.image",
+    "redis:7",
+  );
+  expect(result.outputs.find(({ targetLayer }) => targetLayer === "local")?.fragment).toHaveProperty(
+    "services.redis._tag",
+    "LandofileReset",
+  );
   const relocations = result.diagnostics.filter(({ kind }) => kind === "needs-review");
-  expect(relocations).toHaveLength(1);
-  expect(relocations[0]?.message).toContain(".lando.dist.yml");
-  expect(relocations[0]?.message).toContain(".lando.local.yml");
-  expect(relocations[0]?.message).toContain("dist prefix");
+  expect(relocations).toEqual([]);
   expect(fake.calls).toHaveLength(2);
   expect(fake.calls.map(({ secrets }) => secrets)).toEqual([{}, {}]);
   const final = fake.results.at(-1);
@@ -53,21 +62,22 @@ test("removes redis across layers while preserving appserver and final equivalen
   });
 });
 
-test("relocates only the nearest nested map and retains its sibling", async () => {
+test("resets the removed nested key and retains its earlier prefix", async () => {
   const { translator } = setup(true);
   const result = await Effect.runPromise(translator.translate(documentSet(redisDocuments())));
   expect(result.outputs.find(({ targetLayer }) => targetLayer === "dist")?.fragment).toMatchObject({
     services: { appserver: { image: "php:8.3" } },
   });
-  expect(result.outputs.find(({ targetLayer }) => targetLayer === "dist")?.fragment).not.toHaveProperty(
+  expect(result.outputs.find(({ targetLayer }) => targetLayer === "dist")?.fragment).toHaveProperty(
     "services.appserver.environment",
+    { KEEP: "yes", REMOVE: "yes" },
   );
   expect(result.outputs.find(({ targetLayer }) => targetLayer === "local")?.fragment).toMatchObject({
-    services: { appserver: { environment: { KEEP: "yes" } } },
+    services: { appserver: { environment: { REMOVE: { _tag: "LandofileReset" } } } },
   });
   expect(
     result.diagnostics.filter(({ kind }) => kind === "needs-review").map(({ keyPath }) => keyPath),
-  ).toEqual([["services", "appserver", "environment"]]);
+  ).toEqual([]);
 });
 
 test("folds the legacy recipe interval into dist", async () => {
@@ -161,10 +171,13 @@ test("a later option change still emits a complete recipe object", async () => {
   const local = result.outputs.find(({ targetLayer }) => targetLayer === "local");
   expect(local?.fragment).toMatchObject({
     recipe: {
-      id: "wordpress",
-      version: "1.0.0",
-      producer: { recipeId: "wordpress", sourceKind: "bundled" },
-      options: { php: "8.4", redis: false },
+      _tag: "LandofileOverride",
+      value: {
+        id: "wordpress",
+        version: "1.0.0",
+        producer: { recipeId: "wordpress", sourceKind: "bundled" },
+        options: { php: "8.4", redis: false },
+      },
     },
   });
 });
@@ -236,7 +249,7 @@ test("single-layer conversion keeps an already lowered recipe and applies a late
   });
 });
 
-test("single-layer conversion still refuses a hoist into an already lowered layer", async () => {
+test("single-layer conversion resets a service without rewriting its established layer", async () => {
   const { translator } = setup();
   const first = await Effect.runPromise(
     translator.translate(
@@ -260,8 +273,10 @@ test("single-layer conversion still refuses a hoist into an already lowered laye
       }),
     ),
   );
-  expect(result._tag).toBe("Failure");
-  if (result._tag === "Failure") expect(result.failure.remediation).toContain("dist");
+  expect(result._tag).toBe("Success");
+  if (result._tag !== "Success") throw result.failure;
+  expect(result.success.outputs.map(({ targetLayer }) => targetLayer)).toEqual(["local"]);
+  expect(result.success.outputs[0]?.fragment).toHaveProperty("services.redis._tag", "LandofileReset");
 });
 
 test("reports config that has no recipe", async () => {

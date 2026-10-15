@@ -1,0 +1,236 @@
+---
+id: node-typescript
+provider: test
+timeout: 90000
+tags: [beta, docs, node, typescript, tooling, service]
+---
+
+# Run TypeScript on a Node service
+
+Pin `node:22`, add `npm` / `node` / `npx` tooling, then typecheck, test, and serve with the same CLIs you use on a laptop.
+
+You need Lando 4 with a ready runtime. Save this as `.lando.yml` in your app directory:
+
+```yaml
+name: node-typescript-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    port: 3000
+tooling:
+  npm:
+    cmd: [npm]
+    description: Run npm inside the app service.
+    service: app
+    dir: /app
+  node:
+    cmd: [node]
+    description: Run Node inside the app service.
+    service: app
+    dir: /app
+  npx:
+    cmd: [npx]
+    description: Run npx inside the app service.
+    service: app
+    dir: /app
+```
+
+```sh
+lando start
+lando info
+```
+
+With the default proxy domain, `lando info` lists `app` at `https://app.node-typescript-demo.lndo.site`. The default Node command keeps the container running without starting a server. The URL won't serve your app until something listens on `3000`.
+
+The image has Node, npm, and npx, but the Node service type doesn't add their Lando tooling aliases. Declare them as above. `service: app` selects the container; `dir: /app` runs at the mounted app root even when you invoke tooling from a subdirectory. `cmd: [npm]` executes npm directly, with caller arguments appended. `primary: true` makes `app` the default service for tasks without `service:`; it doesn't start a server or choose the proxy hostname.
+
+If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
+
+## Drop a tiny TypeScript app
+
+Create `package.json`, `tsconfig.json`, and `src/` next to the Landofile:
+
+```json
+{
+  "name": "node-typescript-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0"
+  }
+}
+```
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+```ts
+// src/greet.ts
+export function greet(name: string): string {
+  return `hello ${name}`;
+}
+```
+
+```ts
+// src/server.ts
+import { createServer } from "node:http";
+import { greet } from "./greet.ts";
+
+const port = Number(process.env.PORT ?? 3000);
+const server = createServer((_req, res) => {
+  res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+  res.end(`${greet("lando")}\n`);
+});
+server.listen(port, "0.0.0.0", () => {
+  console.log(`listening on ${port}`);
+});
+process.on("SIGTERM", () => {
+  server.close(() => process.exit(0));
+});
+```
+
+```ts
+// src/greet.test.ts
+import { describe, expect, it } from "vitest";
+import { greet } from "./greet.ts";
+
+describe("greet", () => {
+  it("names the caller", () => {
+    expect(greet("lando")).toBe("hello lando");
+  });
+});
+```
+
+`allowImportingTsExtensions` matches the `.ts` imports that `tsx` and Vitest already run. Keep `noEmit: true` when you typecheck with `tsc --noEmit`.
+
+## Install and run the toolchain
+
+```sh
+lando npm install
+lando node -v
+lando npm run typecheck
+lando npm test
+lando npx tsx -e 'import { greet } from "./src/greet.ts"; console.log(greet("tsx"))'
+```
+
+`lando node -v` checks the installed Node version. The `node:22` image tag tracks the major release, not a fixed patch. `typecheck` checks the source without writing JavaScript; `test` runs the one test above without watch mode. `tsx` runs TypeScript but doesn't typecheck it. From the app root, `lando exec app -- npx tsc --noEmit` runs the same typecheck without the tooling aliases.
+
+## Serve TypeScript without a build step
+
+After installing dependencies, replace the `app` service block with this one. Load `tsx` directly in Node so the server runs without an npm wrapper or a `sh -lc` shell:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    port: 3000
+    command:
+      - node
+      - --import
+      - tsx
+      - src/server.ts
+```
+
+The sample handles SIGTERM so the server can stop cleanly when it runs as the container's main process.
+
+Rebuild after you change `command:`:
+
+```sh
+lando rebuild -y
+lando info
+```
+
+Open the `app` URL from `lando info`. The sample server answers `hello lando` with HTTP 200. Lando sets `PORT` from `port:` (default `3000`); an explicit `environment.PORT` overrides that environment value but doesn't change the endpoint. Keep the listener and `port:` aligned. You don't need `ports:` or `proxy:` for the generated URL: the Node service contributes an internal HTTP endpoint and Lando routes it automatically.
+
+For watch mode during edits, keep the original idle service block and run `lando npm run dev` in a second terminal. `tsx watch` reruns the server when imported files change. Stop that foreground process before starting the service-managed server, or both will try to bind port `3000`.
+
+## Prefer pnpm
+
+Node 22 bundles [Corepack](https://nodejs.org/docs/latest-v22.x/api/corepack.html), but pnpm isn't installed as a ready-to-use command in the official image. Use Corepack directly so you don't need to enable shims:
+
+```sh
+lando exec app -- corepack pnpm@9.15.0 --version
+lando exec app -- corepack pnpm@9.15.0 install
+lando exec app -- corepack pnpm@9.15.0 test
+```
+
+Run those commands from the app root. Corepack downloads and caches the selected pnpm release, so the first invocation needs network access. Use this as an alternative to the npm install path, not a second package manager for the same lockfile. If your project sets `packageManager`, keep it aligned with `pnpm@9.15.0`.
+
+For `lando pnpm`, add a tooling entry with `service: app`, `dir: /app`, and `cmd: [corepack, pnpm@9.15.0]`.
+
+`corepack enable pnpm` is another option, but it writes shims beside the Node binaries. The default Node service runs as root, so it can write there; an authored `user: node` cannot. Those container changes are lost on rebuild. Corepack is no longer bundled in Node 25 and later, so don't assume it exists if you override the image.
+
+## Check the config and tear down
+
+`lando app:config --format=json` prints the resolved Landofile without starting containers. It doesn't build an app plan or prove that TypeScript tools run. The checks below validate the two Landofiles and their tooling and server declarations:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="node-typescript-demo" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*3000" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"primary\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"npm\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dir\":\\s*\"/app\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tsx-server-command" render>
+    <Step name="scaffold-server">
+      <UseFixture name="node-typescript-server" />
+    </Step>
+    <Step name="confirm-command">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"node\"\\s*,\\s*\"--import\"\\s*,\\s*\"tsx\"\\s*,\\s*\"src/server\\.ts\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`; `--purge-caches` removes cache volumes. None of those flags deletes your source files.
+
+```sh
+lando destroy -y
+```
+
+## Keep developing with Node
+
+- [Add Node.js](./node.mdx) for version inference, `globals`, and `packageRoot`
+- [Run the Node API recipe](../recipes/node-api-workflow.mdx) when you want Express, Fastify, or Hono with an optional database
+- [Start a Node app with environment expressions](/recipes/node-ts/) for a Landofile that reads `LANDO_NODE_VERSION` and `NODE_ENV`

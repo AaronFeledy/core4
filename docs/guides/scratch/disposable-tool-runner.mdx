@@ -8,7 +8,7 @@ tags: [beta, docs, scratch, run]
 
 # Run a command in a disposable scratch
 
-`lando run` boots a throwaway scratch app, runs the argv after `--`, then destroys the scratch.
+`lando run` boots a throwaway scratch app, waits for startup readiness, runs the argv after `--`, then destroys the scratch. An exhausted healthcheck or unsupervised startup exit fails acquisition before the tool runs; interrupted acquisition also cleans up. User-app readiness retention does not apply here.
 
 ```sh
 lando run -- composer --version
@@ -39,6 +39,25 @@ lando run --no-mount -- composer --version
 
 `--no-mount` keeps `$PWD` out of the disposable app.
 
+## Pipe input or work interactively
+
+Output streams as the tool writes it. Pipe or redirect into `lando run` and the tool reads that input to the end:
+
+```sh
+printf 'hello\n' | lando run --no-mount -- cat
+lando run -- wc -l < composer.json
+```
+
+From a terminal with nothing piped in, the tool gets your keyboard and a real terminal, so prompts, editors, and shells work:
+
+```sh
+lando run --no-mount -- bash
+```
+
+Lando paints the scratch's build and start progress first, then hands the terminal over. From there Ctrl+C goes to the tool, the same as in any shell.
+
+With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not, so a tool that waits for typed input reads end of input instead of hanging an agent.
+
 ## Keep the scratch
 
 ```sh
@@ -46,7 +65,7 @@ lando run --keep -- composer --version
 lando scratch:list
 ```
 
-`--keep` detaches the scratch after the command exits and prints the id. Reap leftovers with [Reap orphaned scratch apps](./scratch-gc.mdx).
+`--keep` detaches the scratch after the command exits and prints its id on stderr, away from the tool's own output. With `--format=json`, the id is `result.scratchId`. Reap leftovers with [Reap orphaned scratch apps](./scratch-gc.mdx).
 
 Normal exit, a non-zero tool exit, and Ctrl+C all run the destroy finalizer unless you passed `--keep`.
 
@@ -64,3 +83,13 @@ lando run -- sh -c 'exit 7'
 
 - [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
 - [List scratch apps](./list-and-info.mdx)
+
+<Guide>
+  <Scenario id="disposable-run-flags" tags={["scenario"]} render={false} reason="Verify disposable tool options without starting a container">
+    <Step name="check-run-flags">
+      <Run command="lando run --help" />
+      <Verify command="lando run --help" expect={{ stdout: { regex: "--service" } }} />
+      <Verify command="lando run --help" expect={{ stdout: { regex: "--keep" } }} />
+    </Step>
+  </Scenario>
+</Guide>

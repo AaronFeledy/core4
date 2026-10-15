@@ -1,3 +1,4 @@
+import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 /**
  * The `lando3` config translator.
  *
@@ -13,10 +14,11 @@
  * explicit dispositions, and unknown keys are dropped by the model. Diagnostic
  * kind determines whether conversion is blocked.
  */
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import {
+  decodeLandofileAuthoringLayer,
   isPlainRecord,
   landofileLayerRank,
   mergeLandofiles,
@@ -149,17 +151,17 @@ const persistedOptions = (value: unknown): Readonly<Record<string, string | bool
  */
 const establishedRecipe = (layers: ReadonlyArray<EstablishedLayer>): EstablishedRecipe | undefined => {
   let recipeId: string | undefined;
-  const options: Record<string, string | boolean> = {};
+  let options: Record<string, string | boolean> = {};
   let fragment: Readonly<Record<string, unknown>> = {};
   let sawRecipe = false;
   for (const layer of layers) {
     fragment = mergeLandofiles([fragment, layer.fragment]);
-    const recipe = layer.fragment.recipe;
+    const recipe = fragment.recipe;
     if (!isPlainRecord(recipe)) continue;
     sawRecipe = true;
     if (typeof recipe.id === "string") recipeId = recipe.id;
     const next = persistedOptions(recipe.options);
-    if (next !== undefined) Object.assign(options, next);
+    if (next !== undefined) options = { ...next };
   }
   if (!sawRecipe || recipeId === undefined) return undefined;
   return { recipeId, options, fragment };
@@ -210,7 +212,22 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
       }
 
       const layers = input.documents.filter(isAppRootLando3Layer);
-      const established = establishedLayers(input.currentLowerV4Fragments, layers);
+      const lowerFragments = yield* Effect.forEach(input.currentLowerV4Fragments, (entry) =>
+        Schema.decodeUnknownEffect(LandofileAuthoringFragment)(entry.fragment, {
+          onExcessProperty: "error",
+        }).pipe(
+          Effect.flatMap((value) =>
+            Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
+          ),
+          Effect.tap((value) => decodeLandofileAuthoringLayer(entry.layerId, value)),
+          Effect.map((fragment) => ({ layerId: entry.layerId, fragment })),
+          Effect.mapError(
+            (cause) =>
+              new ConfigTranslateError({ message: "Invalid established Landofile fragment.", cause }),
+          ),
+        ),
+      );
+      const established = establishedLayers(lowerFragments, layers);
       const establishedTargets = new Set(established.map((layer) => layer.layer));
       const legacyLayers = layers.filter(
         (document) => !establishedTargets.has(lando3TargetLayer(sourceLayerForDocument(document))),
@@ -231,8 +248,9 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         ...lowered.prefixes,
       ];
       for (const { fragment } of serviceHolders) {
-        if (!isPlainRecord(fragment.services)) continue;
-        for (const [name, service] of Object.entries(fragment.services)) {
+        const services = mergeLandofiles([fragment]).services;
+        if (!isPlainRecord(services)) continue;
+        for (const [name, service] of Object.entries(services)) {
           if (!isPlainRecord(service)) continue;
           const current = recipeServiceWires.get(name);
           if (
@@ -246,7 +264,10 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
       }
       const authored = lowerServiceViews(folded, {
         tools: new Set(
-          recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
+          recipeFragments.flatMap((fragment) => {
+            const tooling = mergeLandofiles([fragment]).tooling;
+            return isPlainRecord(tooling) ? Object.keys(tooling) : [];
+          }),
         ),
         recipeServices: [...recipeServiceWires.keys()],
         recipeServiceWires,
@@ -254,7 +275,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
       const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
       const writable = new Set<LandofileLayer>(input.writableLayerIds);
-      const planned = recipeLayerOutputs(
+      const planned = yield* recipeLayerOutputs(
         folded,
         lowered,
         lowerAppNames(sources, writable),

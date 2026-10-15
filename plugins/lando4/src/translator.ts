@@ -23,7 +23,12 @@ import type {
   ConfigTranslateResult,
   LandofileLayer as LandofileLayerId,
 } from "@lando/sdk/schema";
-import { LandofileAuthoringFragment, LandofileAuthoringShape, LandofileLayer } from "@lando/sdk/schema";
+import {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentNative,
+  LandofileAuthoringShape,
+  LandofileLayer,
+} from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 
 /** Translator id; must match the `configTranslators` contribution id. */
@@ -44,7 +49,8 @@ type AuthoringFragmentWire = ConfigTranslateOutput["fragment"];
 const isLandofileLayer = Schema.is(LandofileLayer);
 const decodeFragment = Schema.decodeUnknownEffect(LandofileAuthoringFragment);
 const decodeShape = Schema.decodeUnknownEffect(LandofileAuthoringShape);
-const encodeFragment = Schema.encodeEffect(LandofileAuthoringFragment);
+const encodeFragment = (value: typeof LandofileAuthoringFragment.Type) =>
+  Schema.encodeEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" });
 const encodeShape = Schema.encodeEffect(LandofileAuthoringShape);
 const decodeRecord = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown));
 
@@ -104,7 +110,9 @@ const parseDocument = (
   const text = readText(document);
   if (Result.isFailure(text)) return Effect.succeed(Result.fail(text.failure));
   return parseLandofile({ file: describe(document), content: text.success, cwd: "." }).pipe(
-    Effect.flatMap((value) => decodeFragment(value, { onExcessProperty: "error" })),
+    Effect.flatMap((value) =>
+      Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
+    ),
     Effect.flatMap(encodeFragment),
     Effect.match({
       onSuccess: (wire): Result.Result<AuthoringFragmentWire, string> => Result.succeed(wire),
@@ -247,11 +255,12 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
   yield* decodeRecord(contextWire).pipe(
     Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
   );
-  const wire = yield* (
-    input.fragment === undefined
-      ? Effect.succeed(contextWire)
-      : decodeFragment(input.fragment, { onExcessProperty: "error" }).pipe(Effect.flatMap(encodeFragment))
-  ).pipe(Effect.mapError(asTranslateError("The lando4 encoder received a non-authoring value:")));
+  const wire = yield* decodeFragment(input.fragment ?? contextWire, { onExcessProperty: "error" }).pipe(
+    Effect.flatMap((value) =>
+      Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
+    ),
+    Effect.mapError(asTranslateError("The lando4 encoder received a non-authoring value:")),
+  );
   const record = yield* decodeRecord(wire).pipe(
     Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
   );

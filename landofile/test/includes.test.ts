@@ -293,6 +293,58 @@ describe("resolveLandofileIncludes", () => {
     expect(includeErrorKind(error)).toBe("source-unresolved");
   });
 
+  test("resolves load expressions inside an included override payload", async () => {
+    // Given: a lower environment and a local include that replaces it with a loaded value.
+    await writeFile(join(appRoot, "value.txt"), "loaded", "utf8");
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      "name: demo\nservices:\n  api:\n    type: node\n    environment:\n      OLD: old\n",
+      "utf8",
+    );
+    await writeFile(join(appRoot, ".lando.local.yml"), "includes:\n  - ./fragment.yml\n", "utf8");
+    await writeFile(
+      join(appRoot, "fragment.yml"),
+      "services:\n  api:\n    environment: !override\n      VALUE: \"{{ load('./value.txt') }}\"\n",
+      "utf8",
+    );
+
+    // When: the complete layered loader resolves the app.
+    const landofile = await Effect.runPromise(
+      loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"), {
+        ports: makeTestLandofilePorts(cacheRoot, userIncludesDir),
+        stateStore: makeTestLandofileStateStore(),
+        templates: { modules: [] },
+      }),
+    );
+
+    // Then: the payload expression resolved and the inherited key is gone.
+    expect(landofile.services?.[ServiceName.make("api")]?.environment).toEqual({ VALUE: "loaded" });
+  });
+
+  test("an overridden includes list acquires its payload without undoing lower includes", async () => {
+    // Given: a canonical include and a local override of the includes list.
+    await writeFile(join(appRoot, "a.yml"), "services:\n  api:\n    environment:\n      A: a\n", "utf8");
+    await writeFile(join(appRoot, "b.yml"), "services:\n  api:\n    environment:\n      B: b\n", "utf8");
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      "name: demo\nincludes:\n  - ./a.yml\nservices:\n  api:\n    type: node\n",
+      "utf8",
+    );
+    await writeFile(join(appRoot, ".lando.local.yml"), "includes: !override\n  - ./b.yml\n", "utf8");
+
+    // When: the complete layered loader resolves the app.
+    const landofile = await Effect.runPromise(
+      loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"), {
+        ports: makeTestLandofilePorts(cacheRoot, userIncludesDir),
+        stateStore: makeTestLandofileStateStore(),
+        templates: { modules: [] },
+      }),
+    );
+
+    // Then: both fragments applied at their own layer precedence.
+    expect(landofile.services?.[ServiceName.make("api")]?.environment).toEqual({ A: "a", B: "b" });
+  });
+
   test("rejects file-access expressions declared by a user profile", async () => {
     // Given: a user profile tries to read an adjacent host file through load().
     await writeFile(join(userIncludesDir, "corp.pem"), "private material", "utf8");

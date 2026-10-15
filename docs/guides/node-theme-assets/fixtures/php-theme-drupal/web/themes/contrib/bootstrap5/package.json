@@ -1,0 +1,11 @@
+{
+  "name": "bootstrap5",
+  "private": true,
+  "scripts": {
+    "build:sass": "sass scss/style.scss css/style.css",
+    "watch:sass": "sass --watch scss/style.scss css/style.css"
+  },
+  "devDependencies": {
+    "sass": "^1.85.0"
+  }
+}

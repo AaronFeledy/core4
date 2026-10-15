@@ -152,7 +152,7 @@ CLI payloads carry `CommandInvocationCorrelation`: an outer invocation has a uni
 
 | Shell | Responsibilities |
 |---|---|
-| CLI | Native dispatch, argv/help, lifecycle hooks, `SIGINT` to `Effect.interrupt`, rendering, and exit status (§8) |
+| CLI | Native dispatch, argv/help, lifecycle hooks, `SIGINT` to scoped cancellation (`Effect.interrupt` or an abort signal for a foreground child, §8.4.1), rendering, and exit status (§8) |
 | Embedding host | Host-defined input, output, and signal policy over `@lando/core` (§16) |
 
 Both shells MUST provide the generated layer for the resolved level, run with scoped Effect ownership, and honor the same levels, lifecycle sequence, and plugin graph. They are the only production boundaries where Effect crosses into Promise or forked execution. CLI requirements apply symmetrically unless §16 states otherwise. Tests use the embedding surface rather than a third runtime architecture.
@@ -232,7 +232,7 @@ A cold `app:start` follows this canonical order; optional global and build detai
 7. `cli-app:start-init`
 8. `pre-init`, `post-init`
 9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
-10. `post-start` (running-state check, healthchecks, url scan by priority), `ready-app`
+10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and warn-only URL scan, `ready-app`
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
 

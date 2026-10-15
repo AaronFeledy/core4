@@ -43,7 +43,7 @@ const mixedResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
     { name: "web", state: "running", endpoints: ["http://localhost:3000"] },
-    { name: "database", state: "stopped", endpoints: ["tcp://localhost:5432"] },
+    { name: "database", state: "completed", endpoints: ["tcp://localhost:5432"] },
   ],
 };
 
@@ -68,16 +68,6 @@ const cjkResult: StartAppResult = {
 const oneReadyResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [{ name: "web", state: "running", endpoints: ["http://localhost:3000"] }],
-};
-
-const failedResult: StartAppResult = {
-  app: "my-app",
-  servicesStarted: [{ name: "web", state: "failed", endpoints: [] }],
-};
-
-const unknownResult: StartAppResult = {
-  app: "my-app",
-  servicesStarted: [{ name: "web", state: "created", endpoints: [] }],
 };
 
 describe("renderStartAppResult decorated ready", () => {
@@ -134,16 +124,16 @@ describe("renderStartAppResult decorated ready", () => {
   });
 });
 
-describe("renderStartAppResult decorated degraded", () => {
-  test("renders a quiet partial summary when any service is not ready", () => {
+describe("renderStartAppResult completed jobs", () => {
+  test("renders completed jobs as a successful quiet summary", () => {
     const out = renderStartAppResult(mixedResult, decorated());
     expectQuiet(out, 80);
     const plain = visible(out);
     expect(plain).toBe(
       [
         "",
-        "Not fully ready",
-        "  my-app is not fully ready",
+        "Started",
+        "  my-app is ready",
         "",
         "URLs",
         "  http://localhost:3000",
@@ -151,48 +141,36 @@ describe("renderStartAppResult decorated degraded", () => {
         "",
         "Services",
         "  web  running",
-        "  [SKIP] database  stopped",
+        "  database  completed",
         "",
         "Next",
         "  lando info",
         "  lando logs",
+        "  lando exec <service> -- <command>",
         "",
-        "1 of 2 services ready",
+        "2 services ready",
       ].join("\n"),
     );
-    expect(plain).not.toContain("lando exec <service> -- <command>");
+    expect(buildStartSummary(mixedResult).sections[1]?.rows[1]?.tone).toBe("ok");
     expect(out).not.toContain("[OK]");
   });
 
-  test("notes an empty service list instead of celebrating", () => {
+  test("notes an empty service list in a successful empty app", () => {
     const out = renderStartAppResult(emptyResult, decorated());
     expectQuiet(out, 80);
     const plain = visible(out);
-    expect(plain).toContain("Not fully ready");
-    expect(plain).toContain("my-app is not fully ready");
-    expect(plain).not.toContain("Started");
+    expect(plain).toContain("my-app is ready");
+    expect(plain).toContain("Started");
     expect(plain).toContain("No services were started.");
     expect(plain).toContain("No published endpoints.");
-    expect(plain).toContain("0 of 0 services ready");
+    expect(plain).toContain("0 services ready");
   });
 
-  test("maps failed service state to error tone and singular degraded footer", () => {
-    const summary = buildStartSummary(failedResult);
-    expect(summary.tone).toBe("error");
-    expect(summary.sections[1]?.rows[0]?.tone).toBe("error");
-    expect(summary.footer).toBe("0 of 1 service ready");
-    const plain = visible(renderStartAppResult(failedResult, decorated()));
-    expect(plain).toContain("[FAIL]");
-    expect(plain).toContain("0 of 1 service ready");
-  });
-
-  test("maps unknown non-ready state to warn so it cannot look neutral", () => {
-    const summary = buildStartSummary(unknownResult);
-    expect(summary.tone).toBe("warn");
-    expect(summary.sections[1]?.rows[0]?.tone).toBe("warn");
-    const plain = visible(renderStartAppResult(unknownResult, decorated()));
-    expect(plain).toContain("[WARN]");
-    expect(plain).not.toContain("[INFO]");
+  test("uses successful rebuild output for completed jobs", () => {
+    const summary = buildStartSummary(mixedResult, "rebuild");
+    expect(summary.title).toBe("Rebuilt");
+    expect(summary.tone).toBe("ok");
+    expect(summary.footer).toBe("2 services ready");
   });
 });
 
@@ -212,10 +190,10 @@ describe("buildStartSummary service rows", () => {
     expect(summary.sections.map((section) => section.title)).toEqual(["URLs", "Services"]);
   });
 
-  test("uses Not fully ready when any service is not ready", () => {
+  test("uses Started when a job completed successfully", () => {
     const summary = buildStartSummary(mixedResult);
-    expect(summary.title).toBe("Not fully ready");
-    expect(summary.subtitle).toBe("my-app is not fully ready");
+    expect(summary.title).toBe("Started");
+    expect(summary.subtitle).toBe("my-app is ready");
   });
 });
 
@@ -226,14 +204,14 @@ describe("renderStartAppResult non-decorated compatibility", () => {
     );
   });
 
-  test("keeps the starting: one-liner for mixed states", () => {
+  test("uses ready: for running services and completed jobs", () => {
     expect(renderStartAppResult(mixedResult)).toBe(
-      "starting: my-app - web (running) http://localhost:3000; database (stopped) tcp://localhost:5432",
+      "ready: my-app - web (running) http://localhost:3000; database (completed) tcp://localhost:5432",
     );
   });
 
-  test("keeps the starting: one-liner when no services started", () => {
-    expect(renderStartAppResult(emptyResult)).toBe("starting: my-app");
+  test("uses ready: when an empty app succeeds", () => {
+    expect(renderStartAppResult(emptyResult)).toBe("ready: my-app");
   });
 
   test("stays a plain line in non-TTY lando mode", () => {

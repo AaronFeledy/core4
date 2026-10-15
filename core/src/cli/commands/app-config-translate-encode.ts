@@ -1,11 +1,12 @@
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 import { ConfigTranslateError } from "@lando/sdk/errors";
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { decodeLandofileAuthoringLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
   type ConfigTranslateLayerFragment,
   type ConfigTranslateOutput,
   LandofileAuthoringFragment,
+  LandofileAuthoringFragmentNative,
   LandofileAuthoringShape,
 } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
@@ -29,9 +30,18 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
   for (const entry of ordered) {
     const invalidPrefix = (cause: unknown) =>
       new ConfigTranslateError({ message: `Invalid merge prefix at layer ${entry.layer}.`, cause });
+    const native = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(entry.fragment, {
+      onExcessProperty: "error",
+    }).pipe(
+      Effect.flatMap((value) =>
+        Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
+      ),
+      Effect.mapError(invalidPrefix),
+    );
     const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
-      entry.fragment,
+      native,
     ).pipe(Effect.mapError(invalidPrefix));
+    yield* decodeLandofileAuthoringLayer(entry.layer, mapping).pipe(Effect.mapError(invalidPrefix));
     merged = mergeLandofiles([merged, mapping]);
     yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(merged, {
       onExcessProperty: "error",

@@ -1,5 +1,6 @@
 import { Effect, SchemaTransformation } from "effect";
 import { Schema } from "effect";
+import { layerMerge } from "./layer-merge.ts";
 
 import { ComposeScalarMap, ComposeScalarMapField } from "./compose-knob-maps.ts";
 import { ComposeByteSizeField } from "./compose-knob-scalars.ts";
@@ -24,7 +25,7 @@ export type ComposeGpuRequest = typeof ComposeGpuRequest.Type;
 
 export const ComposeGpusField = Schema.Union([
   Schema.Literal("all"),
-  Schema.Array(ComposeGpuRequest),
+  layerMerge(Schema.Array(ComposeGpuRequest), { kind: "replace" }),
 ]).annotate({
   description:
     'GPU access as the Compose literal "all" or a device-request list; canonical output preserves "all" or uses device objects with options canonicalized to maps.',
@@ -78,16 +79,20 @@ export type ComposeGenericResource = typeof ComposeGenericResource.Type;
 export const ComposeResourceReservations = Schema.Struct({
   cpus: Schema.optionalKey(ResourceCpu),
   memory: Schema.optionalKey(Schema.Int),
-  devices: Schema.optionalKey(Schema.Array(ComposeDeploymentDevice)),
-  generic_resources: Schema.optionalKey(Schema.Array(ComposeGenericResource)),
+  devices: Schema.optionalKey(layerMerge(Schema.Array(ComposeDeploymentDevice), { kind: "replace" })),
+  generic_resources: Schema.optionalKey(
+    layerMerge(Schema.Array(ComposeGenericResource), { kind: "replace" }),
+  ),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeResourceReservations = typeof ComposeResourceReservations.Type;
 
 const ComposeResourceReservationsInput = Schema.Struct({
   cpus: Schema.optionalKey(ResourceCpu),
   memory: Schema.optionalKey(ComposeByteSizeField),
-  devices: Schema.optionalKey(Schema.Array(ComposeDeploymentDeviceInput)),
-  generic_resources: Schema.optionalKey(Schema.Array(ComposeGenericResource)),
+  devices: Schema.optionalKey(layerMerge(Schema.Array(ComposeDeploymentDeviceInput), { kind: "replace" })),
+  generic_resources: Schema.optionalKey(
+    layerMerge(Schema.Array(ComposeGenericResource), { kind: "replace" }),
+  ),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 
 export const ComposeDeployResources = Schema.Struct({
