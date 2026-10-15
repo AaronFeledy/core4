@@ -273,6 +273,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   PluginContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PluginDoctorReport: "sdk/test/schema/plugin-doctor.test.ts",
   PluginManifest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PluginStateLockOptions: "sdk/test/schema/plugin-state-lock-options.test.ts",
   RouterServiceContribution: "sdk/test/contract/router-service.test.ts",
   PluginTrustState: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   GlobalServiceContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

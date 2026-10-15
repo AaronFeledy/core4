@@ -7,13 +7,14 @@ import type * as HttpClient from "effect/http/HttpClient";
 
 import type { EventError, StateStoreError } from "../errors/index.ts";
 import type { LandoEvent, RenderEvent } from "../events/index.ts";
-import type { PluginManifest } from "../schema/plugin.ts";
+import type { PluginManifest, PluginStateLockOptions } from "../schema/plugin.ts";
 import type { SubscriberManifestEntry } from "../schema/subscriber.ts";
 import type { StateBucket, StateBucketSpec } from "../services/state-store.ts";
 
 export type {
   PluginContribution,
   PluginManifest,
+  PluginStateLockOptions,
   PluginSetupContribution,
   PluginSetupFlagContribution,
 } from "../schema/plugin.ts";
@@ -53,7 +54,11 @@ export type PluginStateBucketSpec<A, I> = Omit<StateBucketSpec<A, I>, "root">;
 
 export interface PluginStateStore {
   readonly open: <A, I>(spec: PluginStateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
-  readonly withLock: <A, E>(key: string, body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
+  readonly withLock: <A, E>(
+    key: string,
+    body: Effect.Effect<A, E>,
+    options?: PluginStateLockOptions,
+  ) => Effect.Effect<A, E | StateStoreError>;
 }
 
 /**

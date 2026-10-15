@@ -12,6 +12,21 @@ import { RendererPanelManifestEntry } from "./renderer-panel.ts";
 import { SubscriberManifestEntry } from "./subscriber.ts";
 import { TunnelServiceContribution } from "./tunnel.ts";
 
+// ==== Plugin-scoped durable-state lock acquisition.
+
+/** A finite wait for a plugin state lock; live owners are never expired. */
+export const PluginStateLockOptions = Schema.Struct({
+  timeoutMs: Schema.optionalKey(
+    Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 600_000 }))),
+  ).annotate({
+    description: "Maximum time in milliseconds to wait for an owned plugin state lock (0–600000).",
+  }),
+}).annotate({
+  identifier: "PluginStateLockOptions",
+  description: "Bounded acquisition options for a plugin-scoped durable-state lock.",
+});
+export type PluginStateLockOptions = typeof PluginStateLockOptions.Type;
+
 export const DeprecatedContributionRef = Schema.Struct({
   id: Schema.String,
   deprecated: Schema.optionalKey(DeprecationNotice),
