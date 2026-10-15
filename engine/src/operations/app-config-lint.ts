@@ -16,6 +16,7 @@ import type {
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import type { LintLandofileOptions } from "@lando/landofile/lint";
+import { buildArgSecretReferenceErrors } from "../services/compose-build-artifact.ts";
 import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
@@ -45,6 +46,11 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   if (Result.isFailure(loaded)) {
     return { ...result, valid: false, violations: [{ path: [], message: loaded.failure.message }] };
   }
+  const secretArgViolations = buildArgSecretReferenceErrors(loaded.success).map((error) => ({
+    path: ["services", error.service, "build", "args", error.arg],
+    message: error.message,
+    suggestion: error.remediation,
+  }));
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
@@ -63,11 +69,15 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         ...result,
         valid: false,
         violations: [
+          ...secretArgViolations,
           { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
         ],
       };
     }
     return yield* Effect.fail(resolved.failure);
+  }
+  if (secretArgViolations.length > 0) {
+    return { ...result, valid: false, violations: secretArgViolations };
   }
   return result;
 });

@@ -18,3 +18,62 @@ test("exactSecretReference preserves scheme paths with spaces and ignores embedd
   });
   expect(references.exactSecretReference("prefix-${secret:TOKEN}")).toBeUndefined();
 });
+
+test("firstSecretReference returns the first exact or embedded ${secret:...} span", () => {
+  expect(references.firstSecretReference("${secret:TOKEN}")).toBe("${secret:TOKEN}");
+  expect(references.firstSecretReference("prefix-${secret:TOKEN}-suffix")).toBe("${secret:TOKEN}");
+  expect(references.firstSecretReference("no secret here")).toBeUndefined();
+});
+
+test("firstSecretReference skips the $${ escape", () => {
+  expect(references.firstSecretReference("$${secret:TOKEN}")).toBeUndefined();
+  expect(references.firstSecretReference("prefix-$${secret:TOKEN}")).toBeUndefined();
+  expect(references.firstSecretReference("$${secret:ESCAPED} ${secret:REAL}")).toBe("${secret:REAL}");
+});
+
+test("isServiceBuildArgSecretReference matches compose object and array arg paths", () => {
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "args", "TOKEN"])).toBe(true);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "args", 0])).toBe(true);
+  expect(references.isServiceBuildArgPath(["services", "web", "environment", "TOKEN"])).toBe(false);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "target"])).toBe(false);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "dockerfile"])).toBe(false);
+  expect(references.isServiceBuildArgPath(["services", "web", "build", "args", "nested", "TOKEN"])).toBe(
+    false,
+  );
+  expect(
+    references.isServiceBuildArgSecretReference("${secret:TOKEN}", [
+      "services",
+      "web",
+      "build",
+      "args",
+      "TOKEN",
+    ]),
+  ).toBe(true);
+  expect(
+    references.isServiceBuildArgSecretReference("prefix-${secret:TOKEN}", [
+      "services",
+      "web",
+      "build",
+      "args",
+      0,
+    ]),
+  ).toBe(true);
+  expect(
+    references.isServiceBuildArgSecretReference("$${secret:TOKEN}", [
+      "services",
+      "web",
+      "build",
+      "args",
+      "TOKEN",
+    ]),
+  ).toBe(false);
+  expect(
+    references.isServiceBuildArgSecretReference("production", [
+      "services",
+      "web",
+      "build",
+      "args",
+      "NODE_ENV",
+    ]),
+  ).toBe(false);
+});

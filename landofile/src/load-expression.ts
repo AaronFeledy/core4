@@ -26,7 +26,7 @@ import {
 } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES, sourceHasUnescapedBracedForm } from "./recipe-expressions.ts";
-import { isServiceEnvironmentSecretReference } from "./secret-reference.ts";
+import { isServiceBuildArgSecretReference, isServiceEnvironmentSecretReference } from "./secret-reference.ts";
 
 export interface ResolveLandofileLoadExpressionsOptions {
   readonly value: unknown;
@@ -144,7 +144,12 @@ export const resolveLandofileLoadExpressions = (
       const session = new LandofileFileSession(options.source, options.policy);
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
         if (typeof value === "string" && (value.includes("{{") || value.includes("${"))) {
-          if (isServiceEnvironmentSecretReference(value, path)) return value;
+          if (
+            isServiceEnvironmentSecretReference(value, path) ||
+            isServiceBuildArgSecretReference(value, path)
+          ) {
+            return value;
+          }
           session.beginExpression();
           const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
           if (Result.isFailure(parsed)) throw parsed.failure;

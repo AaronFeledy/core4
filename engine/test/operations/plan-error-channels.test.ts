@@ -4,6 +4,7 @@ import type { Effect } from "effect";
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  BuildArgSecretReferenceError,
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
@@ -75,7 +76,8 @@ type LegacyLoadGlobalPlanError =
   | NotImplementedError
   | ProviderConfigError
   | PublicationUnsupportedError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | BuildArgSecretReferenceError;
 
 type LegacyPlanAppChannel =
   | LandofileValidationError
@@ -87,7 +89,8 @@ type LegacyPlanAppChannel =
   | PublicationUnsupportedError
   | CommandAliasConflictError
   | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | LandofileUnknownEventError
+  | BuildArgSecretReferenceError;
 
 type LegacyOrphanTeardownError =
   | ProviderError
@@ -114,6 +117,7 @@ type LegacyEnsureGlobalServicesError =
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | EventError
   | FileSystemError
   | GlobalAppError
@@ -148,7 +152,8 @@ type LegacyRemoteSyncCommandError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderUnavailableError
-  | PublicationUnsupportedError;
+  | PublicationUnsupportedError
+  | BuildArgSecretReferenceError;
 
 type LegacyShareListCommandError =
   | UserLandofileError
@@ -162,6 +167,7 @@ type LegacyShareListCommandError =
   | ProviderConfigError
   | ProviderUnavailableError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | TunnelError
   | TunnelProviderUnavailableError
   | StateStoreError;

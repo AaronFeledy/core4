@@ -120,6 +120,79 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
+  test("keeps an exact and embedded service build arg secret reference for plan rejection", async () => {
+    await withApp(async (appRoot) => {
+      // Given
+      const value = {
+        services: {
+          appserver: {
+            build: {
+              context: ".",
+              args: {
+                TOKEN: "${secret:TOKEN}",
+                MIXED: "prefix-${secret:TOKEN}",
+              },
+            },
+          },
+        },
+      };
+
+      // When
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+
+      // Then
+      expect(resolved.value).toEqual(value);
+    });
+  });
+
+  test("keeps an array-form service build arg secret reference for plan rejection", async () => {
+    await withApp(async (appRoot) => {
+      // Given
+      const value = {
+        services: { appserver: { build: { context: ".", args: ["TOKEN=${secret:TOKEN}"] } } },
+      };
+
+      // When
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+
+      // Then
+      expect(resolved.value).toEqual(value);
+    });
+  });
+
+  test("rejects a secret reference in build.target", async () => {
+    await withApp(async (appRoot) => {
+      const value = { services: { appserver: { build: { context: ".", target: "${secret:TOKEN}" } } } };
+      const exit = await Effect.runPromiseExit(resolveValue(appRoot, value));
+      if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(NotImplementedError);
+    });
+  });
+
+  test("rejects a secret reference in build.dockerfile", async () => {
+    await withApp(async (appRoot) => {
+      const value = {
+        services: { appserver: { build: { context: ".", dockerfile: "${secret:TOKEN}" } } },
+      };
+      const exit = await Effect.runPromiseExit(resolveValue(appRoot, value));
+      if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(NotImplementedError);
+    });
+  });
+
+  test("rejects a secret reference under a nested build.args key", async () => {
+    await withApp(async (appRoot) => {
+      const value = {
+        services: {
+          appserver: { build: { context: ".", args: { nested: { TOKEN: "${secret:TOKEN}" } } } },
+        },
+      };
+      const exit = await Effect.runPromiseExit(resolveValue(appRoot, value));
+      if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(NotImplementedError);
+    });
+  });
+
   test("rejects secret references outside a service environment value", async () => {
     await withApp(async (appRoot) => {
       // Given
