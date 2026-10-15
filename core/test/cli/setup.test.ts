@@ -2880,6 +2880,7 @@ describe("meta:setup command", () => {
           .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
           .pipe(Effect.provide(buildSetupLayers(registry)), Effect.flip),
       );
+      if (!(failure instanceof ProviderUnavailableError)) throw failure;
       expect(failure.message).toContain("1.43-1.44");
       expect(failure.message).toContain("1.50-1.55");
     });
