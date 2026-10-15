@@ -1,6 +1,8 @@
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import type { LandofileDecodedOverlay, LandofileShape } from "@lando/sdk/schema";
 
+import { copyLandofileProvenance } from "./copy-provenance.ts";
+
 const overlaysByResolution = new WeakMap<object, ReadonlyArray<LandofileDecodedOverlay>>();
 
 export const rememberIncludeOverlays = <T extends object>(
@@ -15,4 +17,4 @@ export const getIncludeOverlays = (value: LandofileShape): ReadonlyArray<Landofi
   overlaysByResolution.get(value) ?? [value];
 
 export const includeAcquisitionView = (overlay: LandofileDecodedOverlay): LandofileShape =>
-  mergeLandofiles([overlay]) as LandofileShape;
+  copyLandofileProvenance(overlay, mergeLandofiles([overlay])) as LandofileShape;
