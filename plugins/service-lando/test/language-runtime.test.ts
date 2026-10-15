@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
@@ -8,6 +9,7 @@ import { makeLanguageRuntime } from "../src/services/_language-runtime.ts";
 import { go122ServiceType, goServiceFeature } from "../src/services/go.ts";
 import { python312ServiceType, pythonServiceFeature } from "../src/services/python.ts";
 import { ruby33ServiceType, rubyServiceFeature } from "../src/services/ruby.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 const fixtures = [
@@ -196,6 +198,26 @@ for (const fixture of fixtures) {
       // Then
       expect(mounts).toEqual(fixture.mounts);
       expect(JSON.stringify(mounts)).toBe(JSON.stringify(fixture.mounts));
+    });
+
+    test(`${fixture.language} ${source} projects authored webroot only when enabled`, async () => {
+      // Given: an authored webroot on each shared-runtime consumer.
+      const input = inputFor(serviceType);
+      const service = { ...input.service, webroot: PortablePath.make("frontend/public") };
+      // When: the real service features compose the plan.
+      const plan = await composeServicePlan({
+        serviceType,
+        service,
+        appRoot: input.appRoot,
+        metadata: input.metadata,
+      });
+      // Then: only webroot-enabled consumers project it into env and extension metadata.
+      const expected = fixture.includeWebroot ? { webroot: "/app/frontend/public" } : {};
+      expect<string | undefined>(plan.environment.LANDO_WEBROOT).toBe(expected.webroot);
+      expect(plan.extensions[`lando-service-${fixture.language}`]).toEqual({
+        ...fixture.resolution.features[0].config,
+        ...expected,
+      });
     });
   }
 

@@ -107,7 +107,13 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const endpointPort = input.service.port ?? preset.port;
         const webroot =
           spec.includeWebrootInFeatureConfig && input.service.appMount !== false
-            ? { webroot: resolveWebroot(spec.displayName, preset.webroot, input.service.appMount) }
+            ? {
+                webroot: resolveWebroot(
+                  spec.displayName,
+                  input.service.webroot ?? preset.webroot,
+                  input.service.appMount,
+                ),
+              }
             : {};
         return {
           base: "lando" as const,
