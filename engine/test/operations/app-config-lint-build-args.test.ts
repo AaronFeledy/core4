@@ -37,17 +37,57 @@ test("reports a secret reference in compose build.args as a lint violation", asy
         appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
       );
       expect(result.valid).toBe(false);
-      expect(result.violations).toMatchObject([
-        {
-          path: ["services", "web", "build", "args", "TOKEN"],
-          message: expect.stringContaining("${secret:TOKEN}"),
-          suggestion: expect.stringContaining("environment"),
-        },
-        {
-          path: ["services", "web", "build", "args", "MIXED"],
-          message: expect.stringContaining("${secret:OTHER}"),
-        },
+      expect(result.violations.map((violation) => violation.path)).toEqual([
+        ["services", "web", "build", "args", "TOKEN"],
+        ["services", "web", "build", "args", "MIXED"],
       ]);
+      expect(result.violations[0]?.suggestion).toContain("environment");
+      expect(result.violations[0]?.message).toContain("TOKEN");
+      expect(result.violations[1]?.message).toContain("MIXED");
+      expect(result.violations[0]?.message).not.toMatch(/\$\{secret:/);
+      expect(result.violations[1]?.message).not.toContain("prefix-");
+    },
+  );
+});
+
+test("still reports a build-arg violation when another expression in the file fails", async () => {
+  await withApp(
+    [
+      "name: secret-lint-build-args-and-expression",
+      "runtime: 4",
+      "services:",
+      "  database:",
+      "    type: mariadb",
+      '    database: "{{ app.nope }}"',
+      "  web:",
+      "    type: node:22",
+      "    primary: true",
+      "    build:",
+      "      context: .",
+      "      args:",
+      "        TOKEN: 'visible-leak-${secret:op://vault/item/field}'",
+      "",
+    ].join("\n"),
+    async (root) => {
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.violations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["services", "web", "build", "args", "TOKEN"],
+            suggestion: expect.stringContaining("environment"),
+          }),
+          expect.objectContaining({ path: ["services", "database", "database"] }),
+        ]),
+      );
+      const buildArg = result.violations.find(
+        (violation) =>
+          violation.path[0] === "services" && violation.path[1] === "web" && violation.path[3] === "args",
+      );
+      expect(buildArg?.message).not.toContain("visible-leak");
+      expect(buildArg?.message).not.toContain("op://");
     },
   );
 });
