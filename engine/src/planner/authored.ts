@@ -1,7 +1,11 @@
 import { type Context, Effect, Result } from "effect";
 
 import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
-import { LandofileValidationError, type RouteInputError } from "@lando/sdk/errors";
+import {
+  type BuildArgSecretReferenceError,
+  LandofileValidationError,
+  type RouteInputError,
+} from "@lando/sdk/errors";
 import {
   type LandofileShape,
   type ProviderId,
@@ -11,7 +15,11 @@ import {
 } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 
-import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
+import {
+  composeBuildToArtifact,
+  firstBuildArgSecretReferenceError,
+  isComposeBuild,
+} from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
 import { type ComposeServiceFeature, composeService } from "../services/feature.ts";
 import { planServicePrimary } from "./effective-events.ts";
@@ -121,7 +129,10 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
   readonly appName: string;
   readonly appRoot: string;
   readonly host: ServiceTypeHostFacts | undefined;
-}): Effect.fn.Return<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> {
+}): Effect.fn.Return<
+  ReadonlyArray<PlannedServiceDraft>,
+  LandofileValidationError | BuildArgSecretReferenceError
+> {
   const plannedServiceDrafts: PlannedServiceDraft[] = [];
   for (const {
     name,
@@ -195,6 +206,10 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       service,
     );
     const build = service.build;
+    if (build !== undefined && isComposeBuild(build)) {
+      const secretArgError = firstBuildArgSecretReferenceError(name, build.args);
+      if (secretArgError !== undefined) return yield* Effect.fail(secretArgError);
+    }
     const authoredArtifact =
       build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
     const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];

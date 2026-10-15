@@ -120,6 +120,46 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
+  test("keeps an exact and embedded service build arg secret reference for plan rejection", async () => {
+    await withApp(async (appRoot) => {
+      // Given
+      const value = {
+        services: {
+          appserver: {
+            build: {
+              context: ".",
+              args: {
+                TOKEN: "${secret:TOKEN}",
+                MIXED: "prefix-${secret:TOKEN}",
+              },
+            },
+          },
+        },
+      };
+
+      // When
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+
+      // Then
+      expect(resolved.value).toEqual(value);
+    });
+  });
+
+  test("keeps an array-form service build arg secret reference for plan rejection", async () => {
+    await withApp(async (appRoot) => {
+      // Given
+      const value = {
+        services: { appserver: { build: { context: ".", args: ["TOKEN=${secret:TOKEN}"] } } },
+      };
+
+      // When
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+
+      // Then
+      expect(resolved.value).toEqual(value);
+    });
+  });
+
   test("rejects secret references outside a service environment value", async () => {
     await withApp(async (appRoot) => {
       // Given
