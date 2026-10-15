@@ -256,8 +256,9 @@ describe("lando renderer visual language", () => {
 
     const plain = createBufferedRendererIO();
     renderPlain(plain, events);
-    expect(plain.stdout()).not.toContain("LANDO OPS");
-    expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+    expect(plain.stderr()).not.toContain("LANDO OPS");
+    expect(plain.stderr()).not.toContain(`${escapeChar}[`);
+    expect(plain.stdout()).toBe("");
   });
 
   test("renders an all-online success summary with text status, never color alone", () => {
@@ -300,8 +301,9 @@ describe("lando renderer visual language", () => {
 
     const plain = createBufferedRendererIO();
     renderPlain(plain, events);
-    expect(plain.stdout()).toContain("⚠ runtime bundle checksum is using a placeholder");
-    expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+    expect(plain.stderr()).toContain("⚠ runtime bundle checksum is using a placeholder");
+    expect(plain.stderr()).not.toContain(`${escapeChar}[`);
+    expect(plain.stdout()).toBe("");
   });
 
   test("json renderer stays undecorated NDJSON with no spaceship styling", async () => {

@@ -189,14 +189,14 @@ describe("lando renderer: routine image pull frames", () => {
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    expect(io.stdoutLines()).toEqual([
+    expect(io.stderrLines()).toEqual([
       "↓ Pulling traefik:v3.3: Copying blob sha256:abc123 failed: disk full",
     ]);
   });
 });
 
 describe("lando renderer: message events (currently plain-aliased)", () => {
-  test("lando renderer renders message events to stdout via the plain formatter", async () => {
+  test("lando renderer renders message events to stderr via the plain formatter", async () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const events = yield* EventService;
@@ -208,19 +208,19 @@ describe("lando renderer: message events (currently plain-aliased)", () => {
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines).toEqual([
       "ℹ fetched 3 plugins",
       "⚠ Deprecated: services.web.via (since 4.0.0; remove in 5.0.0). Use services.web.runtime.",
       "✗ Failed to load Landofile",
       "  ↳ Run `lando config` to see the parsed config.",
     ]);
-    expect(io.stderr()).toBe("");
+    expect(io.stdout()).toBe("");
   });
 });
 
 describe("plain renderer Layer: message events through EventService", () => {
-  test("publish/subscribe path writes one stdout line per message event", async () => {
+  test("publish/subscribe path writes one stderr line per message event", async () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const events = yield* EventService;
@@ -232,7 +232,7 @@ describe("plain renderer Layer: message events through EventService", () => {
     const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines).toEqual([
       "ℹ fetched 3 plugins",
       "⚠ Deprecated: services.web.via (since 4.0.0; remove in 5.0.0). Use services.web.runtime.",

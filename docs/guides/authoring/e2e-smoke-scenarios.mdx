@@ -27,7 +27,7 @@ on the page needs a real provider:
 <Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
   <Step name="start">
     <UseFixture name="app-lifecycle-demo" />
-    <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: "" }} />
+    <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
   </Step>
   <Step name="cleanup">
     <Cleanup />

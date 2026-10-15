@@ -35,7 +35,8 @@ test.each(["lando", "plain", "verbose"] as const)(
           timestamp: "2026-10-13T00:00:00Z",
         });
         yield* finishCommandProgress();
-        expect(io.stdout()).toContain("before-retirement");
+        expect(io.stderr()).toContain("before-retirement");
+        expect(io.stdout()).toBe("");
         expect(runtimeOpen).toBe(true);
         yield* finishCommandProgress();
         const before = io.stdout();
@@ -55,8 +56,8 @@ test.each(["lando", "plain", "verbose"] as const)(
     expect(continued).toBe(true);
     expect(runtimeOpen).toBe(false);
     expect(io.stdout()).not.toContain("after-retirement");
-    expect(io.stdout().endsWith(`${prompt}done\n`)).toBe(true);
-    expect(io.stderr()).toBe("");
+    expect(io.stdout()).toBe(`${prompt}done\n`);
+    expect(io.stderr()).not.toContain("after-retirement");
   },
 );
 
@@ -84,5 +85,6 @@ test("progress still drains at command end when no early retirement is requested
     },
   );
   // Then
-  expect(io.stdout()).toBe("ℹ queued-at-exit\ndone\n");
+  expect(io.stdout()).toBe("done\n");
+  expect(io.stderr()).toBe("ℹ queued-at-exit\n");
 });

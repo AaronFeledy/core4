@@ -54,7 +54,7 @@ export const layer = (
 
       const line = (event: LandoEvent): void => {
         const text = renderPlainLine(event);
-        if (text !== null) journal.writeStdout(`${text}\n`);
+        if (text !== null) journal.writeStderr(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {
         const cause = claimOpenTuiDegradationNotice();

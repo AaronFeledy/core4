@@ -46,7 +46,7 @@ describe("renderer.init-progress fixture", () => {
   test("plain renderer formats render + postinit tasks", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, rawEvents);
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines[0]).toBe("▼ Initialize mvp (2 steps)");
     expect(lines[1]).toContain("[render] start: Render recipe files (4)");
     expect(lines[2]).toContain("[render] ✓ complete: Rendered 4 files");
@@ -58,7 +58,7 @@ describe("renderer.init-progress fixture", () => {
   test("plain renderer snapshot is stable", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, decodeFixtureEvents());
-    expect(io.stdout()).toMatchSnapshot();
+    expect(io.stderr()).toMatchSnapshot();
   });
 
   test("json renderer snapshot is stable on stderr", () => {
@@ -72,10 +72,11 @@ describe("renderer.init-progress fixture", () => {
     renderPlain(plainIo, decodeFixtureEvents());
 
     const landoIo = createBufferedRendererIO();
-    drainRendererSync(renderPlainLine, landoIo, "stdout", decodeFixtureEvents());
+    drainRendererSync(renderPlainLine, landoIo, decodeFixtureEvents());
 
-    expect(landoIo.stdout()).toBe(plainIo.stdout());
-    expect(landoIo.stdout()).toMatchSnapshot();
+    expect(landoIo.stderr()).toBe(plainIo.stderr());
+    expect(landoIo.stderr()).toMatchSnapshot();
+    expect(landoIo.stdout()).toBe("");
   });
 
   test("init progress event order is tree.start → render → postinit → tree.complete", () => {

@@ -392,8 +392,9 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
     ];
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
-    const out = io.stdout();
-    expect(io.stdoutLines()).toHaveLength(events.length);
+    const out = io.stderr();
+    expect(io.stderrLines()).toHaveLength(events.length);
+    expect(io.stdout()).toBe("");
     expect(out).toContain("[a] start");
     expect(out).toContain("[a] hello");
   });
@@ -409,8 +410,9 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
     ];
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
-    const out = buffered.stdout();
+    const out = buffered.stderr();
     expect(stripCsi(out)).toContain("[a] hello");
-    expect(buffered.stdoutLines()).toHaveLength(events.length);
+    expect(buffered.stderrLines()).toHaveLength(events.length);
+    expect(buffered.stdout()).toBe("");
   });
 });

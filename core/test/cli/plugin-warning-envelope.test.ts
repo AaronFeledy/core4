@@ -191,7 +191,7 @@ test("keeps human warning rendering when using a retained plugin publisher", asy
     formatError: String,
     setExitCode: () => undefined,
   });
-  // Then: the existing human renderer still prints the warning before the result.
-  expect(io.stdout()).toBe("⚠ human warning\ndone\n");
-  expect(io.stderr()).toBe("");
+  // Then: the warning and result use separate streams.
+  expect(io.stdout()).toBe("done\n");
+  expect(io.stderr()).toBe("⚠ human warning\n");
 });

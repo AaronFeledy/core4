@@ -80,10 +80,10 @@ not converted or copied. `lando db:export` and `lando db:import` move dumps for 
 Always export your data from the old engine before you change `type:` and
 rebuild, or you'll be staring at an empty database.
 
-Dump from MySQL using the native client inside the `db` service:
+Export a plain SQL file from MySQL before changing the service type:
 
 ```sh
-lando exec db -- mysqldump -u lando -plando switching-databases-demo > dump.sql
+lando db:export dump.sql
 ```
 
 MySQL and PostgreSQL speak different SQL dialects. A raw `mysqldump` file

@@ -43,12 +43,12 @@ describe("renderer raw output channel", () => {
     expect(io.stdout()).toBe('{"ok":true}');
   });
 
-  test("message.* contract unchanged after output added: plain info -> stdout", () => {
+  test("message.info uses stderr without changing the raw output channels", () => {
     const io = createBufferedRendererIO();
     const renderer = makePlainRenderer(io);
     Effect.runSync(renderer.message.info("hello"));
-    expect(io.stdout()).toContain("hello");
-    expect(io.stderr()).toBe("");
+    expect(io.stderr()).toContain("hello");
+    expect(io.stdout()).toBe("");
   });
 
   test("message.* contract unchanged after output added: json info -> stderr", () => {

@@ -154,7 +154,7 @@ describe("renderVerboseLine — human line + full event payload", () => {
 });
 
 describe("RendererRuntime.layerVerbose — Layer through EventService", () => {
-  test("publishes verbose lines to stdout including the full payload trace", async () => {
+  test("publishes verbose lines to stderr including the full payload trace", async () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const events = yield* EventService;
@@ -164,10 +164,10 @@ describe("RendererRuntime.layerVerbose — Layer through EventService", () => {
     const layer = Layer.provideMerge(RendererRuntime.layerVerbose(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    const stdout = io.stdout();
+    const stdout = io.stderr();
+    expect(io.stdout()).toBe("");
     expect(stdout).toContain("ℹ fetched 3 plugins");
     expect(stdout).toContain('"_tag":"message.info"');
-    expect(io.stderr()).toBe("");
   });
 
   test("TTY mode emits the flat non-interactive payload trace with no live-frame cursor bytes", async () => {
@@ -182,7 +182,8 @@ describe("RendererRuntime.layerVerbose — Layer through EventService", () => {
     const layer = Layer.provideMerge(RendererRuntime.layerVerbose(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    const stdout = io.stdout();
+    const stdout = io.stderr();
+    expect(io.stdout()).toBe("");
     expect(stdout).toContain('"_tag":"task.tree.start"');
     expect(stdout).toContain('"_tag":"task.start"');
     expect(stdout).toContain('"_tag":"task.detail"');
@@ -213,7 +214,8 @@ describe("RendererRuntime.layerVerbose — Layer through EventService", () => {
     const layer = Layer.provideMerge(RendererRuntime.layerVerbose(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    const stdout = io.stdout();
+    const stdout = io.stderr();
+    expect(io.stdout()).toBe("");
     expect(stdout).toContain("· cli-start-init");
     expect(stdout).toContain('"_tag":"cli-start-init"');
     expect(stdout).toContain("ℹ fetched 3 plugins");

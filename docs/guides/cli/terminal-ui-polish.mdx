@@ -12,7 +12,7 @@ This page is a contributor design-token dump for the bundled `lando` renderer. I
 
 Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat the TTY rail, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
 
-The default TTY path can draw a compact task tree. plain, json, non-TTY, and CI output stay undecorated. A missing native binding never fails the command. The process falls back to line input.
+The default TTY path can draw a compact task tree on terminal stdout. plain, json, non-TTY, and CI output stay undecorated. Line-mode narration and renderer messages go to stderr, leaving stdout for command results and output. A missing native binding never fails the command. The process falls back to line input.
 
 If you are changing renderer goldens, start from the contributing visual-QA page, not this dump.
 
