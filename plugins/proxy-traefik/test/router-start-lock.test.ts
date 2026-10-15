@@ -163,6 +163,7 @@ const makeHarness = () => {
       globalApp,
       socketProxy,
       stateStore,
+      probeForward: () => Effect.succeed({ kind: "success" }),
     });
   return {
     files,
