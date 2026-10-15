@@ -1,11 +1,9 @@
 name: pgvector-demo
 services:
   db:
-    type: postgres
+    type: postgres:18
     image: pgvector/pgvector:pg18
     home: false
-    environment:
-      PGDATA: /var/lib/postgresql/data
   app:
     type: "python:3.12"
     primary: true

@@ -7,7 +7,7 @@ tags: [beta, docs, postgres, pgvector, python, service, database]
 
 # Run vector search on Postgres with pgvector
 
-Run vector search with `type: postgres` and the pgvector image for Postgres 18. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
+Run vector search with `type: postgres:18` and the pgvector image for Postgres 18. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
 
 ## Configure Postgres and Python
 
@@ -17,11 +17,9 @@ Save this as `.lando.yml`. Keep the Postgres tooling, generated creds, and healt
 name: pgvector-demo
 services:
   db:
-    type: postgres
+    type: postgres:18
     image: pgvector/pgvector:pg18
     home: false
-    environment:
-      PGDATA: /var/lib/postgresql/data
   app:
     type: "python:3.12"
     primary: true
@@ -40,26 +38,20 @@ Each `db` line has a job:
 
 | Key | Why |
 | --- | --- |
+| `type: postgres:18` | Select Lando's Postgres 18 service type while keeping the custom image below |
 | `image: pgvector/pgvector:pg18` | Postgres 18 with the `vector` extension already compiled in |
 | `home: false` | Disable home-directory persistence for this custom image. Without this or an explicit `home.path`, planning fails with `HomePathCapabilityError` because Lando cannot infer the image user's home |
-| `PGDATA: /var/lib/postgresql/data` | `type: postgres` keeps data in the `<app>-postgresql-data` volume at that path. Postgres 18 images default to `/var/lib/postgresql/18/docker` and refuse to start when that old path is a mount, so tell them to use it |
 
-The [official Postgres 18 image](https://hub.docker.com/_/postgres) declares its volume at `/var/lib/postgresql`, but Lando currently mounts its named data volume at `/var/lib/postgresql/data`. Setting `PGDATA` to Lando's mount keeps the database files there. Without the override, the image's entrypoint rejects that unused old-path mount. Inspect a failed start with `lando logs -s db`.
+Lando sets `PGDATA` to `/var/lib/postgresql/data` and mounts the `<app>-postgresql-data` volume there for every supported Postgres major, including 18. You don't need an environment override for this image.
 
 Use a fresh app for this example. Changing an existing database's image from another Postgres major does not upgrade its files. Export the data before changing the major, then restore into a fresh volume.
 
 ## Start and check the server
 
-Start it and check the server:
+Start it and check the server version. `lando start` waits until Postgres accepts TCP connections, including on a fresh volume:
 
 ```sh
 lando start
-lando exec db -- pg_isready -h 127.0.0.1 -p 5432 -U lando -d pgvector-demo
-```
-
-On a fresh volume, `lando start` can return before Postgres finishes initialization. Repeat the readiness command until it succeeds, then check the server version:
-
-```sh
 lando psql -c 'SELECT version();'
 ```
 
@@ -184,8 +176,6 @@ lando rebuild -y
 lando psql -c 'SELECT count(*) FROM items;'
 ```
 
-Repeat the TCP readiness check first if the server is still starting.
-
 Delete the app's service-scoped volumes when you want a clean database. This deletes the database volume and any persisted service homes, but not the source files or `/app/.venv`:
 
 ```sh
@@ -194,7 +184,7 @@ lando destroy -y --volumes
 
 ## Check the Landofile config
 
-`lando app:config --format=json` shows the Landofile's image, `home`, and `PGDATA` before anything boots. It does not inspect the image or prove database readiness:
+`lando app:config --format=json` shows the Landofile's type, image, and `home` before anything boots. It does not show the planned `PGDATA`, inspect the image, or prove database readiness:
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -203,10 +193,9 @@ lando destroy -y --volumes
     </Step>
     <Step name="confirm-config">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:18\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"pgvector/pgvector:pg18\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"home\":\\s*false" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"PGDATA\":\\s*\"/var/lib/postgresql/data\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uv\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
     </Step>
     <Step name="cleanup">
