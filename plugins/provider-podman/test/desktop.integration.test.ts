@@ -93,6 +93,16 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/libpod/images/") &&
+          request.path.endsWith("/json")
+        ) {
+          return {
+            status: 200,
+            body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: [] }),
+          };
+        }
         if (request.path === "/networks/create") return { status: 201, body: "{}" };
         if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
           return { status: 200, body: "[]" };
