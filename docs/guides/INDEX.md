@@ -200,11 +200,11 @@ outside `docs/guides/` so they are not gate-validated here.
 
 ## Lando 3 compatibility
 
-Run Lando 4 as `lando4` beside Lando 3's `lando`, then convert an app explicitly when you're ready. Each row maps a LANDO3-COMPAT-01 story to the guide that exercises it. Supported conversions and intentional rejections are both covered; a rejection scenario proves the input is refused, not that it converts.
+Run Lando 4 as `lando` and keep an explicit executable path for Lando 3, then convert an app when you're ready. Each row maps a LANDO3-COMPAT-01 story to the guide that exercises it. Supported conversions and intentional rejections are both covered; a rejection scenario proves the input is refused, not that it converts.
 
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
-| LANDO3-COMPAT-01 | US-619B1 | `lando4` executable, installer, and shellenv coexistence with Lando 3 | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-619B1 | canonical `lando` executable, installer ownership, and shellenv with existing Lando 3 installs | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | LANDO3-COMPAT-01 | US-619B3 | update and uninstall that touch only Lando 4 artifacts | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | LANDO3-COMPAT-01 | US-621D | explicit layered Lando 3 conversion with immutable backups | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
 | LANDO3-COMPAT-01 | US-622A | read-only Lando 3 leftovers and PATH shadow doctor checks | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |

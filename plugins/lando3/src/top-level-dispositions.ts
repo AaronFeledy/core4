@@ -80,7 +80,7 @@ export const TOP_LEVEL_DISPOSITIONS: Readonly<Record<string, Disposition>> = {
   experimental: managed,
   alliance: managed,
   setup: managed,
-  channel: equivalent("lando4 update --channel stable|next|dev"),
+  channel: equivalent("lando update --channel stable|next|dev"),
   stats: equivalent("Lando 4 global config telemetry.enabled"),
   logLevel: equivalent("Lando 4 global config logLevel"),
   logLevelConsole: equivalent("Lando 4 logLevel or --log-level"),
