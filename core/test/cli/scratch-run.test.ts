@@ -1088,7 +1088,9 @@ describe("scratch run rendering", () => {
           Effect.provideService(StreamFrameSink, {
             emit: (frame) =>
               Effect.sync(() => {
-                chunks.push(frame.chunk);
+                chunks.push(
+                  typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+                );
               }),
           }),
         ),
@@ -1139,7 +1141,11 @@ describe("scratch run rendering", () => {
           Effect.provideService(StreamFrameSink, {
             emit: (frame) =>
               Effect.sync(() => {
-                frames.push(frame);
+                frames.push({
+                  ...frame,
+                  chunk:
+                    typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+                });
               }),
           }),
         ),
@@ -1462,7 +1468,9 @@ describe("scratch run streaming spec", () => {
         Effect.provideService(StreamFrameSink, {
           emit: (frame) =>
             Effect.sync(() => {
-              chunks.push(frame.chunk);
+              chunks.push(
+                typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+              );
               firstChunk.resolve();
             }),
         }),
