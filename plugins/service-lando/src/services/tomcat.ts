@@ -27,18 +27,61 @@ export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
 
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const port = Schema.decodeUnknownSync(PortNumber)(service.port ?? DEFAULT_PORT);
   const { webroot, ownsImageConfig } = ctx.config as TomcatFeatureConfig;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
   ctx.addEndpoint({
     _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(port),
+    port,
     protocol: "http",
     name: ctx.serviceName,
   });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
   if (ownsImageConfig) {
+    if (service.port !== undefined) {
+      ctx.addBuildStep({
+        id: "service-lando.tomcat:http-port",
+        phase: "build",
+        user: "root",
+        command: [
+          "sh",
+          "-c",
+          String.raw`set -eu;
+config="${"${CATALINA_HOME:-/usr/local/tomcat}"}/conf/server.xml";
+test -f "$config";
+trap 'rm -f "$config.lando-port"' EXIT;
+awk '
+function rewrite(text) {
+  if (text ~ /^[[:space:]]*<Connector[[:space:]]+port="8080"[[:space:]]+protocol="HTTP\/1\.1"([[:space:]]|\/?>|$)/) {
+    count++;
+    sub(/port="8080"/, "port=\"${port}\"", text);
+  }
+  return text;
+}
+{
+  rest = $0; line = "";
+  while (length(rest)) {
+    delimiter = comment ? "-->" : "<!--";
+    start = index(rest, delimiter);
+    if (!start) { line = line (comment ? rest : rewrite(rest)); break }
+    prefix = substr(rest, 1, start - 1);
+    line = line (comment ? prefix : rewrite(prefix)) delimiter;
+    rest = substr(rest, start + length(delimiter));
+    comment = !comment;
+  }
+  print line;
+}
+END {
+  if (count != 1) {
+    print "lando: expected one active stock HTTP Connector on port 8080 in " FILENAME ", found " count + 0 > "/dev/stderr";
+    exit 1;
+  }
+}' "$config" > "$config.lando-port";
+mv "$config.lando-port" "$config"`.replaceAll("\n", " "),
+        ],
+      });
+    }
     ctx.addBuildStep({
       id: "service-lando.tomcat:root-context",
       phase: "build",
