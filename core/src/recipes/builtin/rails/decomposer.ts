@@ -9,8 +9,11 @@ export const railsDecomposer = makeZeroOptionDecomposer({
       web: {
         type: "ruby:3.3",
         framework: "rails",
+        webroot: "public",
         port: 3000,
         environment: {
+          RAILS_ENV: "development",
+          RAILS_LOG_TO_STDOUT: "true",
           DATABASE_URL:
             "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
           REDIS_URL: "redis://cache:6379",
