@@ -69,7 +69,7 @@ services:
 
 ## Open the client
 
-The `postgres` type ships the `psql` client task. After start:
+The `postgres` type ships the `psql` client task. `lando start` returns only after Postgres accepts TCP connections, so the client works as soon as start finishes, even on a fresh volume that is still running its first-boot setup:
 
 ```sh
 lando psql
@@ -107,15 +107,36 @@ The path has to stay inside the app root. Absolute paths, paths that climb out o
 
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append the `-c config_file=...` flag to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
 
-## Pin a version
+## Change the port
 
-Set `image:` when `postgres:16` isn't the version you want:
+Set `port:` when something else needs `5432`. Lando moves the server's listener, the healthcheck, and the endpoint together:
 
 ```yaml
 services:
   db:
     type: postgres
-    image: postgres:15
+    port: 5433
 ```
+
+Other services then connect to `db:5433`. Lando passes the port to the server as `PGPORT`. Setting `PGPORT` under `environment:` works the same way; if you set both, they have to match or planning fails. An authored port also beats a `port` line in a custom `postgresql.conf`.
+
+## Pin a version
+
+Put the major in `type:` when `16` isn't the one you want. Lando ships Postgres 15, 16, 17, and 18:
+
+```yaml
+services:
+  db:
+    type: postgres:18
+```
+
+Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the `<app>-postgresql-data` volume.
+
+Changing the major doesn't upgrade an existing database. Postgres refuses to start on files from another major, so the `lando rebuild` that applies the change fails with the server's own error. Move the data through a dump:
+
+1. Export it while the old major still runs: `lando db:export dump.sql.gz`
+2. Delete the old data volume: `lando destroy -y --volumes`
+3. Change `type:` to the new major, then start: `lando start`
+4. Load the dump: `lando db:import dump.sql.gz --yes`
 
 </Guide>

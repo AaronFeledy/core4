@@ -29,6 +29,7 @@ export const djangoDecomposer = makeOptionBearingDecomposer({
                 type: "python:3.12",
                 framework: "django",
                 command: "celery -A app worker --loglevel=info",
+                restart: "unless-stopped",
                 environment: {
                   DATABASE_URL:
                     "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",

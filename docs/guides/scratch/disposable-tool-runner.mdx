@@ -8,7 +8,7 @@ tags: [beta, docs, scratch, run]
 
 # Run a command in a disposable scratch
 
-`lando run` boots a throwaway scratch app, runs the argv after `--`, then destroys the scratch.
+`lando run` boots a throwaway scratch app, waits for startup readiness, runs the argv after `--`, then destroys the scratch. An exhausted healthcheck or unsupervised startup exit fails acquisition before the tool runs; interrupted acquisition also cleans up. User-app readiness retention does not apply here.
 
 ```sh
 lando run -- composer --version
@@ -83,3 +83,13 @@ lando run -- sh -c 'exit 7'
 
 - [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
 - [List scratch apps](./list-and-info.mdx)
+
+<Guide>
+  <Scenario id="disposable-run-flags" tags={["scenario"]} render={false} reason="Verify disposable tool options without starting a container">
+    <Step name="check-run-flags">
+      <Run command="lando run --help" />
+      <Verify command="lando run --help" expect={{ stdout: { regex: "--service" } }} />
+      <Verify command="lando run --help" expect={{ stdout: { regex: "--keep" } }} />
+    </Step>
+  </Scenario>
+</Guide>

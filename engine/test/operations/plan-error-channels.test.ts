@@ -30,6 +30,7 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceNotReadyError,
   StateStoreError,
   ToolingExecError,
   TunnelProviderUnavailableError,
@@ -212,10 +213,13 @@ describe("Engine plan-carrying error channels", () => {
   });
 
   test("EnsureGlobalServicesError retains its pre-refactor members", () => {
-    assertType<Equal<EnsureGlobalServicesError, LegacyEnsureGlobalServicesError>>(true);
+    assertType<Equal<EnsureGlobalServicesError, LegacyEnsureGlobalServicesError | ServiceNotReadyError>>(
+      true,
+    );
     assertType<
       Equal<
         EnsureGlobalServicesError,
+        | ServiceNotReadyError
         | LoadGlobalPlanError
         | BuildError
         | GlobalDistConflictError

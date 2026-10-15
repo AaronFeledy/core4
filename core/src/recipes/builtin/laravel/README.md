@@ -13,7 +13,7 @@ PostgreSQL, Redis, and an optional `via: cli` queue worker.
   `public/build`) with the PHP services; the planner's default excludes put its
   `node_modules` in a service-private named volume.
 - `worker`: additional `php:<version>` with `via: cli` running
-  `php artisan queue:work` when prompt `worker` answers `true`.
+  `php artisan queue:work` with `restart: unless-stopped` when prompt `worker` answers `true`.
 
 ## Generated tooling
 
@@ -33,8 +33,9 @@ stays in the `node` service's volume; `public/build` lands in the shared `/app`.
 When `worker` is true, both PHP services author
 `appMount: { target: "/app", includes: ["vendor"] }`, sharing host dependencies
 instead of creating separate vendor shadows. The default keeps its vendor shadow.
-The queue worker needs the application and dependencies first. Run `lando restart`
-after installation if the worker was started before they existed.
+The queue worker needs the application and dependencies first. Start warns about a
+`restarting` worker while they are missing. The engine retries the worker automatically
+and it starts on its own once installation finishes. Check `lando logs --service=worker`.
 
 ## Host prerequisites
 

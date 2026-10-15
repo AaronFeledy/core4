@@ -4,7 +4,7 @@ This matrix maps each user-facing Beta PRD feature to the executable guide(s) th
 exercise it. The first table is the union of every PRD's `## Guide Coverage` section;
 internal/infra PRD 13 declares no guides and is intentionally absent. The
 supplementary sections at the end list capability guides that are **not owned by a Beta
-PRD** (core service types and end-to-end tutorials that predate the Beta milestone); they
+PRD** (core service types and end-to-end tutorials that predate the Beta milestone). They
 carry no PRD or User Story and exist purely as capability documentation plus tests.
 
 `Status` is `Shipped` when the guide file exists on disk and `Planned` when the owning
@@ -142,6 +142,7 @@ the Beta guides above.
 |---|---|---|---|---|
 | - | - | php service type (runtime + framework presets) | `docs/guides/services/php.mdx` | Shipped |
 | - | - | node service type | `docs/guides/services/node.mdx` | Shipped |
+| - | - | TypeScript toolchain on a Node service | `docs/guides/services/node-typescript.mdx` | Shipped |
 | - | - | python service type | `docs/guides/services/python.mdx` | Shipped |
 | - | - | ruby service type | `docs/guides/services/ruby.mdx` | Shipped |
 | - | - | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |

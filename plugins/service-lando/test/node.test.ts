@@ -113,7 +113,7 @@ describe("node:lts ServiceType", () => {
     ]);
   });
 
-  test("uses the authored service port for endpoint, PORT, and generated healthcheck", async () => {
+  test("uses the authored service port for endpoint and PORT without inferring a healthcheck", async () => {
     // Given / When
     const plan = await composeNodePlan(nodeLtsServiceType, {
       type: "node:lts",
@@ -125,17 +125,10 @@ describe("node:lts ServiceType", () => {
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5173, protocol: "http", name: "web" }]);
     expect(plan.environment.PORT).toBe("5173");
     expect(plan.command).toEqual(["npm", "run", "dev"]);
-    expect(plan.healthcheck).toEqual({
-      kind: "command",
-      command: ["node", "-e", expect.stringContaining("net.connect"), "5173"],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 10,
-    });
+    expect(plan.healthcheck).toBeUndefined();
   });
 
-  test("preserves an authored PORT override while health targets the authored service port", async () => {
+  test("preserves an authored PORT override without assuming the command serves a port", async () => {
     // Given / When
     const plan = await composeNodePlan(nodeLtsServiceType, {
       type: "node:lts",
@@ -147,8 +140,7 @@ describe("node:lts ServiceType", () => {
     // Then
     expect(plan.environment.PORT).toBe("9000");
     expect(plan.command).toBe("npm start");
-    expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["node", "-e", expect.stringContaining("net.connect"), "5173"]);
+    expect(plan.healthcheck).toBeUndefined();
   });
 
   test("ServiceConfig schema accepts the framework field", () => {

@@ -2,13 +2,7 @@ import { Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import {
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
+import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
@@ -80,7 +74,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     applyAuthoredProcessFields(ctx, ["user"]);
     addServicePortEndpoints(ctx, { port, protocol: "http" });
-    ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
     applyAuthoredProcessFields(ctx, ["entrypoint"]);
     ctx.addExtension(spec.extensionKey, {
       framework,

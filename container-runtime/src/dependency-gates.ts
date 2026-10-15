@@ -1,4 +1,13 @@
-import type { ServiceDependencyCondition } from "@lando/sdk/schema";
+import type { AppPlan, ServiceDependencyCondition } from "@lando/sdk/schema";
+
+export const completionIntentServices = (plan: Pick<AppPlan, "services">): ReadonlySet<string> =>
+  new Set(
+    Object.values(plan.services).flatMap((service) =>
+      service.dependsOn
+        .filter((dependency) => dependency.condition === "service_completed_successfully")
+        .map((dependency) => String(dependency.service)),
+    ),
+  );
 
 /**
  * The single source of the synthetic dependency-gate id vocabulary.

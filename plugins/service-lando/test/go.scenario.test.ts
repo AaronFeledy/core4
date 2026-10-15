@@ -184,8 +184,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
 
     expect(web.type).toBe("go:1.22");
     expect(web.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
-    expect(web.healthcheck?.kind).toBe("command");
-    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(web.healthcheck).toBeUndefined();
     expect(String(web.workingDirectory)).toBe("/app");
     expect(String(web.appMount?.target)).toBe("/app");
     expect(web.mounts).toEqual([]);
