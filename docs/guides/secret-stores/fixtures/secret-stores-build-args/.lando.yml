@@ -1,0 +1,9 @@
+name: secret-stores-build-args
+services:
+  app:
+    type: "node:22"
+    primary: true
+    build:
+      context: .
+      args:
+        TOKEN: '${secret:TOKEN}'
