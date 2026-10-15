@@ -41,7 +41,7 @@ lando run --no-mount -- composer --version
 
 ## Pipe input or work interactively
 
-Output streams as the tool writes it. Pipe or redirect into `lando run` and the tool reads that input to the end:
+Output streams as the tool writes it. Redirect stdout and you get only the tool's output; build and start progress goes to stderr. Pipe or redirect into `lando run` and the tool reads that input to the end:
 
 ```sh
 printf 'hello\n' | lando run --no-mount -- cat

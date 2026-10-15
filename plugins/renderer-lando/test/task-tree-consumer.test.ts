@@ -250,7 +250,8 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     );
 
     expect(acquisitions).toBe(0);
-    expect(stdout()).toContain("prompt-only output");
+    expect(io.stderr()).toContain("prompt-only output");
+    expect(stdout()).toBe("");
   });
 
   test("renderer callbacks retained past scope close cannot mutate the live region", async () => {
@@ -1177,7 +1178,8 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
       ),
     );
     expect(created).toBe(false);
-    expect(stdout.join("")).toContain("web");
+    expect(base.stderr()).toContain("web");
+    expect(stdout.join("")).toBe("");
   });
 
   test("a controller load failure falls back to line output without crashing", async () => {
@@ -1195,7 +1197,8 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
         Effect.provideService(References.MinimumLogLevel, "Debug"),
       ),
     );
-    expect(stdout()).toContain("web");
+    expect(io.stderr()).toContain("web");
+    expect(stdout()).toBe("");
     expect(debugMessages).toContain("OpenTUI live region unavailable; degrading to line rendering.");
   });
 
@@ -1223,7 +1226,9 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
 
     expect(attempts).toBe(2);
     expect(debugMessages).toEqual(["OpenTUI live region unavailable; degrading to line rendering."]);
-    expect(first.stdout()).toContain("web");
-    expect(second.stdout()).toContain("web");
+    expect(first.io.stderr()).toContain("web");
+    expect(second.io.stderr()).toContain("web");
+    expect(first.stdout()).toBe("");
+    expect(second.stdout()).toBe("");
   });
 });

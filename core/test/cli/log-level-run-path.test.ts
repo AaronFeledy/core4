@@ -184,10 +184,12 @@ describe("host-safe debug machine output", () => {
     // When the native CLI runs.
     const result = await runSourceCli(args);
 
-    // Then the verbose dump includes a payload _tag and no live-frame bytes.
+    // Then stderr includes the verbose payload, leaving only the version on stdout.
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('"_tag"');
+    expect(result.stderr).toContain('"_tag"');
+    expect(result.stdout).toBe("0.0.0\n");
     expect(result.stdout).not.toContain("LANDO OPS");
+    expect(result.stderr).not.toContain("LANDO OPS");
     expect(hasCursorUpOrErase(result.stdout)).toBe(false);
     expect(hasCursorUpOrErase(result.stderr)).toBe(false);
   }, 60_000);
@@ -195,8 +197,10 @@ describe("host-safe debug machine output", () => {
   test("default --verbose uses verbose payload traces", async () => {
     const result = await runSourceCli(["version", "--verbose"]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('"_tag"');
+    expect(result.stderr).toContain('"_tag"');
+    expect(result.stdout).toBe("0.0.0\n");
     expect(hasCursorUpOrErase(result.stdout)).toBe(false);
+    expect(hasCursorUpOrErase(result.stderr)).toBe(false);
   }, 60_000);
 
   test("--log-level=debug does not flip the default renderer", async () => {

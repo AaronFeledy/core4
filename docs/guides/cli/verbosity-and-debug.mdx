@@ -21,10 +21,10 @@ lando version --debug
 
 | Mode | What you get |
 | --- | --- |
-| `lando` (default) | Bundled TTY task tree and summaries. |
-| `plain` | One human line per renderable event on stdout. No tree, no spinners. |
+| `lando` (default) | Live tree on terminal stdout; line-mode narration on stderr. |
+| `plain` | One human line per renderable event on stderr. No live tree, no spinners. Tooling shows detail-only events. |
 | `json` | Structured `{_tag:"event", ...}` lines on stderr. The command result still prints on stdout as a JSON envelope. |
-| `verbose` | The human line plus the full event payload for every event. This is the dump, not the task tree. |
+| `verbose` | The human line plus the full event payload for every event on stderr. This is the dump, not the task tree. |
 
 Set the mode three ways. First match wins:
 
