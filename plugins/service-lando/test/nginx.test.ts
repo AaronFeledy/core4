@@ -196,11 +196,7 @@ describe("nginx ServiceType", () => {
     expect(String(plan.appMount?.source)).toBe(APP_ROOT);
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
-    expect(plan.mounts[0]?.readOnly).toBe(false);
+    expect(plan.mounts).toEqual([]);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);

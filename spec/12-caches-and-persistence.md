@@ -113,7 +113,7 @@ Schema decoding on the CLI hot path uses ahead-of-time compiled decoders under t
 
 ### 12.6 Disconnectable local-dev state
 
-After successful materialization/build, resolved plugins and includes, provider metadata and artifacts, app-plan/tooling caches, and service information required for routine development MUST be local. `start`, `stop`, `restart`, `info`, `logs`, and cached tooling MUST work without network access when state is complete. `app:rebuild` and `meta:global:rebuild` refresh referenced artifacts with local fallback and a warning (§6.13.3); acquisition needs network only for referenced artifacts with no local copy. Build steps that download packages still need network access.
+After successful materialization/build, resolved plugins and includes, provider metadata and artifacts, app-plan/tooling caches, and service information required for routine development MUST be local. `start`, `stop`, `restart`, `info`, `logs`, and cached tooling MUST work without network access when state is complete. `app:rebuild` and `meta:global:rebuild` refresh referenced artifacts with local fallback and a warning (§6.13.3); acquisition needs network only for referenced artifacts with no local copy. Build steps that download packages still need network access when they execute rather than reuse a cached build layer.
 
 Missing managed dependencies fail with a tagged error naming the missing artifact and online repair command. Routine offline-capable commands MUST NOT silently retry the network. Telemetry and update checks are best-effort and MUST NOT invalidate caches or alter local-command exit status.
 

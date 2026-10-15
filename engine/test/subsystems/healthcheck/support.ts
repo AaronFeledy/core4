@@ -37,6 +37,7 @@ type TimedExit<A, E> = { readonly exit: Exit.Exit<A, E>; readonly elapsedMs: num
 export const runExitUnderClock = <A, E>(
   effect: Effect.Effect<A, E, never>,
   advance: Duration.Input,
+  ready: Effect.Effect<void> = Effect.void,
 ): Promise<TimedExit<A, E>> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -46,6 +47,7 @@ export const runExitUnderClock = <A, E>(
         return { exit, elapsedMs: (yield* Clock.currentTimeMillis) - started };
       });
       const fiber = yield* Effect.forkChild(measured);
+      yield* ready;
       yield* TestClock.adjust(advance);
       return yield* Fiber.join(fiber);
     }).pipe(Effect.provide(TestClock.layer())),

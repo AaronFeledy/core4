@@ -1,4 +1,4 @@
-import { ProcessRunner, type ShellCommandOptions } from "@lando/sdk/services";
+import { ProcessRunner, type ShellScriptOptions } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import type { StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
@@ -9,7 +9,7 @@ import * as BunProcessRunner from "./process-runner.ts";
 // no-orphans flag to every command with no way to unset them. A nested `lando` would run
 // as Bun and reap its own detached workers, so only `lando` goes through a launcher that
 // clears both. Other commands keep them: Bun Shell's `bun` fallback needs BUN_BE_BUN.
-const scriptEnv = Effect.fnUntraced(function* (options: ShellCommandOptions | undefined) {
+const scriptEnv = Effect.fnUntraced(function* (options: ShellScriptOptions | undefined) {
   const env: Record<string, string> = { ...options?.env, BUN_BE_BUN: "1" };
   const launcher = yield* Effect.acquireRelease(
     Effect.tryPromise(() =>
@@ -27,7 +27,7 @@ const scriptEnv = Effect.fnUntraced(function* (options: ShellCommandOptions | un
 export const streamBunScript = Effect.fnUntraced(
   function* (
     path: string,
-    options: ShellCommandOptions | undefined,
+    options: ShellScriptOptions | undefined,
     output: {
       readonly sink: StreamFrameSinkShape | undefined;
       readonly redact: (text: string) => string;
@@ -55,6 +55,9 @@ export const streamBunScript = Effect.fnUntraced(
         args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), path, ...(options?.argv ?? [])],
         ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
         env: yield* scriptEnv(options),
+        ...(options?.hostIo === undefined ? {} : { inheritStdin: true }),
+        ...(options?.hostIo === "terminal" ? { inheritOutput: true } : {}),
+        ...(options?.signal === undefined ? {} : { signal: options.signal }),
       }),
       output.sink === undefined ? Option.none() : Option.some(lineSink),
     );

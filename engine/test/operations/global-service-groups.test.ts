@@ -243,6 +243,7 @@ describe("global service groups", () => {
     );
     // Then the provider receives no unbuilt full-plan override.
     expect(optionsSeen[0]).not.toHaveProperty("recordedPlan");
+    expect(optionsSeen[0]?.completionPlan).toBe(plan);
     expect(refs(recorded)).toEqual([
       { kind: "ref", ref: "built:mailpit" },
       { kind: "ref", ref: "built:traefik" },

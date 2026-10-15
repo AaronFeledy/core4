@@ -7,6 +7,7 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/src/schema/generated/core-service-env.ts");
 const SOURCES = [
   "plugins/service-lando/src/features/env.ts",
+  "plugins/service-lando/src/features/app-mount.ts",
   "plugins/service-lando/src/features/certs.ts",
   "plugins/service-lando/src/features/security.ts",
   "plugins/service-lando/src/app-features/mailpit.ts",

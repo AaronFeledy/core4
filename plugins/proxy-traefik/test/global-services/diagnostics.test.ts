@@ -23,6 +23,7 @@ test("global diagnostic contribution prepares assets before the service can star
     }
     expect(config.healthcheck).toMatchObject({ kind: "command" });
     expect(config.home).toBe(false);
+    expect(config.routes).toEqual([]);
     expect(buildTraefikServiceConfig({ http: 8080, https: 8443 }).dependsOn).toEqual([
       { service: "traefik-diagnostics", condition: "service_healthy", required: true },
     ]);

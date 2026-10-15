@@ -3,15 +3,30 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer, Queue, Stream } from "effect";
+import { afterEach, describe, expect, test } from "bun:test";
+import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { type Context, Effect, Layer, Option, Queue, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { Downloader, EventService, type LandoEvent } from "@lando/sdk/services";
 
+import { makeDownloaderEvents } from "../src/downloader-events.ts";
 import { layer as DownloaderLayer } from "../src/downloader.ts";
+
+afterEach(resetRegisteredRedactionValuesForTesting);
+
+test("downloader event text masks values registered after event seam construction", async () => {
+  // Given
+  const events = makeDownloaderEvents(Option.none());
+  const secret = "downloader-registered-canary";
+  await Effect.runPromise(registerRedactionValues([secret]));
+  // When
+  const text = events.redactText(`download failed with ${secret}`);
+  // Then
+  expect(text).toBe("download failed with [redacted]");
+});
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);

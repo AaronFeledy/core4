@@ -2,14 +2,12 @@ import { createServer } from "node:net";
 
 import { Duration, Effect } from "effect";
 
+import { redactDetails } from "@lando/container-runtime/redact";
 import { errnoCode } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
-import { createRedactor } from "@lando/sdk/secrets";
 
 import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import type { BindOutcome, ForwardOutcome } from "./port-acquisition.ts";
-
-const secretsRedactor = createRedactor("secrets");
 
 const classifyBindError = (error: unknown): BindOutcome => {
   const code = errnoCode(error);
@@ -59,7 +57,7 @@ export const probeBind = Effect.fn("TraefikRouter.probeBind")(function* (
           return last.kind === "other-error" ? "yellow" : "green";
         },
         failure: (error) => {
-          last = classifyBindError(secretsRedactor.redactValue(error));
+          last = classifyBindError(redactDetails(error));
           return last.kind === "other-error" ? "yellow" : "green";
         },
       },

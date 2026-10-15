@@ -83,9 +83,13 @@ test("suppresses a Compose volume at the active app mount target", async () => {
   const plan = await planService(service);
 
   // Then
-  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
-    { type: "bind", source: appRoot, target: "/app", readOnly: false, realization: "passthrough" },
-  ]);
+  expect(plan.appMount).toMatchObject({
+    source: appRoot,
+    target: "/app",
+    readOnly: false,
+    realization: "passthrough",
+  });
+  expect(plan.mounts).toEqual([]);
 });
 
 test("applies a Compose volume when the app mount is disabled", async () => {
@@ -124,15 +128,15 @@ test("keeps exact-target precedence from suppressing descendant targets", async 
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
     {
       type: "bind",
-      source: resolve(appRoot, "a"),
-      target: "/app",
+      source: resolve(appRoot, "w"),
+      target: "/app/web",
       readOnly: false,
       realization: "passthrough",
     },
     {
       type: "bind",
-      source: resolve(appRoot, "w"),
-      target: "/app/web",
+      source: resolve(appRoot, "a"),
+      target: "/app",
       readOnly: false,
       realization: "passthrough",
     },

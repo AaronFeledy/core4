@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { LandofileParseError, SshError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, GlobalConfig, LandofileShape } from "@lando/sdk/schema";
-import { ConfigService, LandofileService } from "@lando/sdk/services";
-import { makeTestSshService } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import {
+  AbsolutePath,
+  AppId,
+  GlobalConfig,
+  LandofileShape,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
+import { ConfigService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
+import { Effect, Fiber, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import {
@@ -234,11 +242,71 @@ describe("SSH agent doctor posture", () => {
       },
     };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(sshAgentPostureCheck(input));
+        yield* TestClock.adjust("30 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
     // Then
     expect(check.status).toBe("warn");
     expect(check.context.fixOutcome).toBe("failed");
     expect(check.context.fixError).toBe("SSH agent forwarding remains degraded after setup.");
+  });
+
+  test("runtime-volume fix waits for the agent after setup before reporting recovered", async () => {
+    // Given
+    let started = false;
+    let probes = 0;
+    const input = inputs();
+    const provider = {
+      ...TestRuntimeProvider,
+      id: ProviderId.make("lando"),
+      inspect: () =>
+        Effect.sync(() => ({
+          app: AppId.make("global"),
+          service: ServiceName.make("ssh-agent"),
+          providerId: ProviderId.make("lando"),
+          status: started ? "running" : "exited",
+        })),
+      exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
+    };
+    // When
+    const check = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(
+          sshAgentPostureCheck({
+            ...input,
+            fix: true,
+            sshService: {
+              ...input.sshService,
+              setup: () =>
+                Effect.sync(() => {
+                  started = true;
+                }),
+              getAgentSocket: (appId) =>
+                Effect.succeed({ appId, socketPath: "/missing.sock", runtimeVolume: "agent-volume" }),
+            },
+          }),
+        );
+        yield* TestClock.adjust("2 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(
+        Effect.provideService(RuntimeProviderRegistry, {
+          list: Effect.succeed([provider.id]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        }),
+        Effect.provide(TestClock.layer()),
+      ),
+    );
+    // Then
+    expect(check).toMatchObject({
+      status: "pass",
+      context: { fixOutcome: "recovered" },
+      details: { delivery: "runtime-volume", upstream: { reachable: true } },
+    });
   });
 
   test("sidecar fix reports the redacted setup failure cause", async () => {

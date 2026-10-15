@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
@@ -167,11 +167,18 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => die("destroy"),
-    exec: () => die("exec"),
+    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("scratch recipe test provider should not call execStream"),
     run: () => die("run"),
     logs: () => Stream.empty,
-    inspect: () => die("inspect"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+      }),
     list: () => Effect.succeed([]),
   });
 

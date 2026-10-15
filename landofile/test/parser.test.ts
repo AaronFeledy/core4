@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
+import { override, reset } from "@lando/sdk/landofile";
 import { parseLandofile } from "../src/parser.ts";
 
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
@@ -461,5 +462,92 @@ describe("package-map keys", () => {
 
     expect(parsed.services?.app?.volumes).toEqual(["./src:/app"]);
     expect(parsed.services?.app?.ports).toEqual(["8080:80"]);
+  });
+});
+
+describe("parseLandofile — native merge directives", () => {
+  test("wraps tagged scalars, block maps, block lists, and flow empties", async () => {
+    // Given every supported payload shape on mapping members.
+    const parsed = await parse(
+      [
+        "image: !override nginx:stable",
+        "environment: !override",
+        "  FOO: bar",
+        "routes: !override",
+        "  - a.test",
+        "  - b.test",
+        "filters: !override []",
+        "labels: !override {}",
+        "",
+      ].join("\n"),
+    );
+    // Then each value is a branded override around its decoded payload.
+    expect(parsed).toEqual({
+      image: override("nginx:stable"),
+      environment: override({ FOO: "bar" }),
+      routes: override(["a.test", "b.test"]),
+      filters: override([]),
+      labels: override({}),
+    });
+  });
+
+  test.each([
+    "!reset",
+    "!reset ~",
+    "!reset ignored",
+    "!reset 42",
+    "!reset []",
+    "!reset {}",
+    '!reset "{{ x }}"',
+  ])("normalizes the ignored reset payload in %s", async (tag) => {
+    // Given a reset spelling with or without a discarded payload; when parsed.
+    const parsed = await parse(`environment:\n  FOO: ${tag}\n`);
+    // Then the reset carries no payload.
+    expect(parsed).toEqual({ environment: { FOO: reset() } });
+  });
+
+  test("keeps quoted tag text literal", async () => {
+    // Given tag text inside quoted scalars; when parsed.
+    const parsed = await parse("a: \"!reset\"\nb: '!override x'\n");
+    // Then the values stay ordinary strings.
+    expect(parsed).toEqual({ a: "!reset", b: "!override x" });
+  });
+
+  test("ignores trailing comments after a directive", async () => {
+    // Given directives followed by comments; when parsed.
+    const parsed = await parse("a: !reset # gone\nb: !override # replace\n  c: d\n");
+    // Then the comments do not become payloads.
+    expect(parsed).toEqual({ a: reset(), b: override({ c: "d" }) });
+  });
+
+  test("resolves aliases and merge keys inside an override payload", async () => {
+    // Given an anchored mapping reused under an override.
+    const parsed = await parse("x-env: &env\n  A: a\nenvironment: !override\n  <<: *env\n  B: b\n");
+    // Then the payload is the resolved mapping.
+    expect(parsed).toEqual({ "x-env": { A: "a" }, environment: override({ A: "a", B: "b" }) });
+  });
+
+  test.each([
+    ["an unknown tag", "name: !unknown value\n"],
+    ["a bare override", "name: !override\n"],
+    ["a populated reset collection", "name: !reset [one]\n"],
+    ["a second tag", "name: !override !reset\n"],
+    ["a sequence element", "routes:\n  - !reset\n"],
+    ["a document root", "!override\nname: demo\n"],
+  ])("rejects %s with LandofileParseError", async (_label, content) => {
+    // Given an invalid directive placement or spelling; when parsed.
+    const failure = await parseFailure(content);
+    // Then the typed failure carries remediation.
+    expect(failure.message.length).toBeGreaterThan(0);
+  });
+
+  test("applies the existing depth cap inside an override payload", async () => {
+    // Given an override payload deeper than the configured limit.
+    const content = `root: !override\n${nestedMap(4)
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n")}\n    leaf: value\n`;
+    // When parsed with a small depth cap, then the cap still applies.
+    await expectParseError(content, /depth/u, { maxDepth: 3 });
   });
 });

@@ -24,7 +24,11 @@ const makeApp = async () => {
   return cwd;
 };
 
-type IncludeEntries = ReadonlyArray<string | { readonly source: string; readonly kind?: string }>;
+type IncludeList = ReadonlyArray<string | { readonly source: string; readonly kind?: string }>;
+type IncludeEntries =
+  | IncludeList
+  | { readonly _tag: "LandofileOverride"; readonly value: IncludeList }
+  | { readonly _tag: "LandofileReset" };
 
 const makeTranslators = (includes: IncludeEntries): readonly ConfigTranslatorShape[] => [
   {
@@ -173,4 +177,60 @@ test.each([
   expect(result.mode).toBe("preview");
   if (result.mode !== "preview") throw new Error("Expected preview");
   expect(result.diagnostics).toEqual([]);
+});
+
+test.each([
+  ["../outside.yml", "relative path inside the app root"],
+  ["missing.yml", "target does not exist"],
+])("checks Compose targets inside a wire override: %s", async (source, message) => {
+  // Given a wire override containing an unsafe or missing Compose target.
+  const cwd = await makeApp();
+  const translators = makeTranslators({
+    _tag: "LandofileOverride",
+    value: [{ source, kind: "compose" }],
+  });
+  // When translation is previewed.
+  const result = await Effect.runPromise(appConfigTranslate({ cwd, translators }));
+  // Then the same containment diagnostic is emitted as for a plain include list.
+  expect(result.mode).toBe("preview");
+  if (result.mode !== "preview") throw new Error("Expected preview");
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]).toMatchObject({ kind: "unsupported", sourceId, keyPath: ["includes", 0] });
+  expect(result.diagnostics[0]?.message).toContain(message);
+});
+
+test("reset includes contribute no Compose targets", async () => {
+  // Given a removal operation with no payload.
+  const cwd = await makeApp();
+  // When translation is previewed.
+  const result = await Effect.runPromise(
+    appConfigTranslate({ cwd, translators: makeTranslators({ _tag: "LandofileReset" }) }),
+  );
+  // Then no include path is checked.
+  expect(result.mode).toBe("preview");
+  if (result.mode !== "preview") throw new Error("Expected preview");
+  expect(result.diagnostics).toEqual([]);
+});
+
+test("wire override with a missing Compose target blocks writes", async () => {
+  // Given a missing target inside an override.
+  const cwd = await makeApp();
+  // When write is requested.
+  const result = await Effect.runPromise(
+    Effect.result(
+      appConfigTranslate({
+        cwd,
+        write: true,
+        translators: makeTranslators({
+          _tag: "LandofileOverride",
+          value: [{ source: "missing.yml", kind: "compose" }],
+        }),
+      }),
+    ),
+  );
+  // Then no transaction or backup changes the original file.
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure._tag).toBe("ConfigTranslateError");
+  expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(original);
+  expect(await readdir(cwd)).toEqual([".lando.yml"]);
 });

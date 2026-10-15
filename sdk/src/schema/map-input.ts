@@ -15,6 +15,7 @@ export const mapInputWithPrecheck = <S extends Schema.Top>(
           Effect.flatMap(() => SchemaParser.decodeUnknownEffect(record)(input, options)),
         ),
     {
+      "lando/map-input": true,
       toCodecJson: () => new SchemaAST.Link(jsonSchema.check(check).ast, SchemaTransformation.passthrough()),
     },
   );

@@ -1,6 +1,7 @@
 import { SchemaIssue } from "effect";
 import { Effect, SchemaTransformation } from "effect";
 import { Schema } from "effect";
+import { layerMerge } from "./layer-merge.ts";
 
 const ExtensionFields = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown);
 
@@ -67,7 +68,9 @@ const ComposeDeviceEntryField = Schema.Union([Schema.String, ComposeDevice]).pip
   ),
 );
 
-export const ComposeDevicesField = Schema.Array(ComposeDeviceEntryField).annotate({
+export const ComposeDevicesField = layerMerge(Schema.Array(ComposeDeviceEntryField), {
+  kind: "replace",
+}).annotate({
   description:
     "Device mappings as source:target[:permissions] strings or long source, target, and permissions objects; canonicalized to a list of long objects.",
 });

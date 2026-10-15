@@ -138,9 +138,9 @@ describe("meilisearch ServiceType", () => {
     });
   }
 
-  test("service description documents MIT licensing, analytics opt-out, and master key redaction", () => {
+  test("service description documents MIT licensing, analytics opt-out, and the published default master key", () => {
     expect(MEILISEARCH_SERVICE_DESCRIPTION).toMatch(/MIT/);
     expect(MEILISEARCH_SERVICE_DESCRIPTION).toMatch(/MEILI_NO_ANALYTICS=true/);
-    expect(MEILISEARCH_SERVICE_DESCRIPTION).toMatch(/redacted/i);
+    expect(MEILISEARCH_SERVICE_DESCRIPTION).toMatch(/MEILI_MASTER_KEY=lando\), which output prints as-is/);
   });
 });

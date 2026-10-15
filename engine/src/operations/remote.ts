@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
   LandofileNotFoundError,
@@ -27,7 +28,6 @@ import {
   type SyncResult as SyncResultType,
   type VolumeRef,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   DataMover,
@@ -135,8 +135,8 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
       "Install a RemoteSource plugin for this remote, then rerun the command. Bundled remotes ship in Lando 4.1.",
   });
 
-const secretOutputRedactor = createRedactor("secrets");
-const telemetryOutputRedactor = createRedactor("telemetry");
+const secretOutputRedactor = createStandaloneRedactor("secrets");
+const telemetryOutputRedactor = createStandaloneRedactor("telemetry");
 
 const redactConfig = (config: RemoteConfigType): RemoteConfigType =>
   secretOutputRedactor.redactValue(config) as RemoteConfigType;
