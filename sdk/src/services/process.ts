@@ -46,6 +46,8 @@ export interface ProcessSpawnOptions {
   readonly inheritOutput?: boolean;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
+  /** Hide a child console window on Windows. Defaults to true; ignored on other platforms. */
+  readonly windowsHide?: boolean;
   /**
    * Linux cgroup path passed through to `Bun.spawn`. Ignored on non-Linux so
    * callers can set `cgroup?: string` unconditionally.

@@ -4,6 +4,7 @@ import {
   type AppPlan,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
+  type FileSyncSessionSpec,
   PortablePath,
 } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
@@ -48,6 +49,8 @@ export const recoveryHarness = Effect.fnUntraced(function* (
     readonly phase?: "retained" | "preparing";
     readonly appliedState?: "unknown";
     readonly changedVolume?: boolean;
+    readonly preparedVolumeNames?: readonly string[];
+    readonly cleanupHooks?: boolean;
   } = {},
 ) {
   const calls: string[] = [];
@@ -69,6 +72,83 @@ export const recoveryHarness = Effect.fnUntraced(function* (
       status: "running",
       lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
     });
+  let phase: "active" | "drained" | "disposing" | "completed" = "active";
+  const fileSync = {
+    ...TestFileSyncEngine,
+    id: "mutagen",
+    isAvailable: Effect.succeed(true),
+    sessionsPersistAcrossProcesses: true,
+    capabilities: {
+      ...TestFileSyncEngine.capabilities,
+      modes:
+        options.replica === false
+          ? (["two-way-safe"] as const)
+          : (["two-way-safe", "one-way-replica"] as const),
+    },
+    appLifecycle: {
+      invalidateDrain: () => Effect.sync(() => calls.push("invalidate")),
+      drain: () =>
+        Effect.sync(() => {
+          calls.push("drain");
+          phase = "drained";
+        }),
+      dispose: () =>
+        Effect.sync(() => {
+          calls.push("dispose");
+          sessions.splice(0);
+          phase = "disposing";
+        }),
+      completeDisposal: () =>
+        Effect.sync(() => {
+          calls.push("complete");
+          phase = "completed";
+        }),
+      disposalPhase: () =>
+        Effect.sync(() => (phase === "active" && sessions.length === 0 ? ("absent" as const) : phase)),
+    },
+    listSessions: () => Effect.sync(() => [...sessions]),
+    createSession: (spec: FileSyncSessionSpec) =>
+      Effect.sync(() => {
+        calls.push(`create:${spec.mode}`);
+        const ref = FileSyncSessionRef.make(spec.mode);
+        sessions.push({
+          ...spec,
+          ref,
+          spec,
+          status: "running",
+          lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
+        });
+        return ref;
+      }),
+    flushSession: (ref: FileSyncSessionRef) =>
+      Effect.sync(() => {
+        calls.push(`flush:${ref}`);
+      }).pipe(
+        Effect.andThen(
+          options.failFlush
+            ? Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "flush failed" }))
+            : Effect.void,
+        ),
+      ),
+    pauseSession: (ref: FileSyncSessionRef) =>
+      Effect.sync(() => {
+        calls.push(`pause:${ref}`);
+      }),
+    resumeSession: (ref: FileSyncSessionRef) =>
+      Effect.sync(() => {
+        calls.push(`resume:${ref}`);
+      }),
+    terminateSession: (ref: FileSyncSessionRef) =>
+      Effect.sync(() => {
+        calls.push(`terminate:${ref}`);
+        const index = sessions.findIndex((entry) => entry.ref === ref);
+        if (index >= 0) sessions.splice(index, 1);
+      }),
+  };
+  const durableEngine = {
+    ...fileSync,
+    bindPreparedTargets: () => Effect.succeed({ ...fileSync, boundApp: app }),
+  };
   const harness = makeHarness({
     plannedApp: acceleratedPlan,
     providerHasFileSyncRollback: false,
@@ -94,46 +174,20 @@ export const recoveryHarness = Effect.fnUntraced(function* (
     onDestroy: (_target, opts) => {
       calls.push(`destroy:${opts?.volumes}`);
     },
-    fileSync: {
-      ...TestFileSyncEngine,
-      id: "mutagen",
-      isAvailable: Effect.succeed(true),
-      sessionsPersistAcrossProcesses: true,
-      capabilities: {
-        ...TestFileSyncEngine.capabilities,
-        modes: options.replica === false ? ["two-way-safe"] : ["two-way-safe", "one-way-replica"],
-      },
-      listSessions: () => Effect.sync(() => [...sessions]),
-      createSession: (spec) =>
-        Effect.sync(() => {
-          calls.push(`create:${spec.mode}`);
-          const ref = FileSyncSessionRef.make(spec.mode);
-          sessions.push({
-            ...spec,
-            ref,
-            spec,
-            status: "running",
-            lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
-          });
-          return ref;
+    ...(options.cleanupHooks === false
+      ? {}
+      : {
+          quiesceRetainedFileSync: () =>
+            Effect.sync(() => {
+              calls.push("quiesce-retained");
+              return { preparedVolumeNames: options.preparedVolumeNames ?? [session.target.name] };
+            }),
+          disposeFileSyncTargets: () =>
+            Effect.sync(() => {
+              calls.push("dispose-targets");
+            }),
         }),
-      flushSession: (ref) =>
-        Effect.sync(() => {
-          calls.push(`flush:${ref}`);
-        }).pipe(
-          Effect.andThen(
-            options.failFlush
-              ? Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "reseed failed" }))
-              : Effect.void,
-          ),
-        ),
-      terminateSession: (ref) =>
-        Effect.sync(() => {
-          calls.push(`terminate:${ref}`);
-          const index = sessions.findIndex((entry) => entry.ref === ref);
-          if (index >= 0) sessions.splice(index, 1);
-        }),
-    },
+    fileSync: durableEngine,
   });
   yield* beginAcceleratedStart(acceleratedPlan, app).pipe(
     Effect.flatMap((pending) =>

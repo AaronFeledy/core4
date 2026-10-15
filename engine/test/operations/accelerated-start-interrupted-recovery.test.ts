@@ -69,33 +69,51 @@ test.each(
       ["start", "destroy"].map((operation) => ({ phase, mode, operation })),
     ),
   ),
-)("interrupted recovery resumes or disposes recorded leftovers: %j", async ({ phase, mode, operation }) => {
-  // Given an interrupted recovery and a surviving reseed or planned-mode session.
-  const harness = await Effect.runPromise(interruptedRecovery(phase));
-  const previous = harness.sessions[0];
-  if (previous === undefined) throw new Error("Expected surviving session");
-  const spec = { ...previous.spec, mode };
-  harness.sessions.splice(0, 1, { ...previous, ref: FileSyncSessionRef.make("interrupted"), spec });
-  // When the user retries start or explicitly destroys the interrupted attempt.
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      if (operation === "start") yield* startApp({}, target);
-      else yield* destroyApp({}, target);
-    }).pipe(Effect.provide(harness.layer)),
-  );
-  // Then the leftover is terminated without flushing, and the journal is completed.
-  expect(harness.calls[0]).toBe("terminate:interrupted");
-  expect(harness.calls).not.toContain("flush:interrupted");
-  if (operation === "start") expect(harness.calls).toContain("create:one-way-replica");
-  else expect(harness.calls).toEqual(["terminate:interrupted", "destroy:false"]);
-  const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("completed");
-  expect(
-    await Effect.runPromise(
-      requireNoPendingAcceleratedStart(app, acceleratedPlan, true).pipe(Effect.provide(harness.layer)),
-    ),
-  ).toBeUndefined();
-});
+)(
+  "interrupted recovery preserves exact session history or fails closed: %j",
+  async ({ phase, mode, operation }) => {
+    const harness = await Effect.runPromise(interruptedRecovery(phase));
+    const previous = harness.sessions[0];
+    if (previous === undefined) throw new Error("Expected surviving session");
+    const spec = { ...previous.spec, mode };
+    harness.sessions.splice(0, 1, { ...previous, ref: FileSyncSessionRef.make("interrupted"), spec });
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        return operation === "start"
+          ? yield* Effect.exit(startApp({}, target))
+          : yield* Effect.exit(destroyApp({}, target));
+      }).pipe(Effect.provide(harness.layer)),
+    );
+    const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
+    if (mode === "one-way-replica") {
+      expect(result._tag).toBe("Failure");
+      expect(harness.calls).not.toContain("terminate:interrupted");
+      expect(harness.calls).not.toContain("flush:interrupted");
+      expect(harness.sessions).toHaveLength(1);
+      expect(pending?.phase).not.toBe("completed");
+      return;
+    }
+    expect(result._tag).toBe("Success");
+    expect(harness.calls).not.toContain("terminate:interrupted");
+    if (operation === "start") {
+      expect(harness.calls).not.toContain("create:one-way-replica");
+      expect(harness.calls).toContain("flush:interrupted");
+      expect(harness.sessions).toHaveLength(1);
+    } else {
+      expect(harness.calls).toContain("quiesce-retained");
+      expect(harness.calls).toContain("drain");
+      expect(harness.calls).toContain("dispose");
+      expect(harness.calls).toContain("dispose-targets");
+      expect(harness.sessions).toHaveLength(0);
+    }
+    expect(pending?.phase).toBe("completed");
+    expect(
+      await Effect.runPromise(
+        requireNoPendingAcceleratedStart(app, acceleratedPlan, true).pipe(Effect.provide(harness.layer)),
+      ),
+    ).toBeUndefined();
+  },
+);
 
 test("a fresh attempt does not inherit a completed recovery marker", async () => {
   // Given a completed recovery record.
@@ -130,6 +148,15 @@ test.each([...phases])("unmarked %s journals still block start and destroy", asy
   );
   // Then neither operation mutates sessions or provider resources.
   expect(results.every((result) => result._tag === "Failure")).toBe(true);
+  const startResult = results[0];
+  if (startResult?._tag === "Failure") {
+    const failure = Cause.findErrorOption(startResult.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag === "Some")
+      expect(failure.value).toMatchObject({
+        remediation: expect.stringContaining("Start and destroy remain blocked"),
+      });
+  }
   expect(harness.calls).toEqual([]);
 });
 

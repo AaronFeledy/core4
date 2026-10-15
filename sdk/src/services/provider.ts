@@ -43,6 +43,7 @@ import type {
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
+  RetainedFileSyncQuiescence,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
@@ -384,6 +385,12 @@ export class RuntimeProvider extends Context.Service<
       },
       ProviderError
     >;
+    /** Stop and prove absence of writers on retained sync targets when no applied plan receipt exists. */
+    readonly quiesceRetainedFileSync?: (
+      plan: AppPlan,
+    ) => Effect.Effect<RetainedFileSyncQuiescence, ProviderError>;
+    /** Remove verified prepared sync resources after durable sessions are disposed. */
+    readonly disposeFileSyncTargets?: (plan: AppPlan) => Effect.Effect<void, ProviderError>;
 
     readonly apply: (
       plan: AppPlan,

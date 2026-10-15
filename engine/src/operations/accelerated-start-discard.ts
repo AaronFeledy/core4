@@ -38,6 +38,8 @@ export const retainedStartDisposal = Effect.fnUntraced(function* (app: AppRef, p
       failure("Retained start identity or provider differs from the destroy target."),
     );
   }
+  if (pending.mountPlanDigest !== digest(plan.fileSync))
+    return yield* Effect.fail(failure("Retained start mount plan differs from the destroy target."));
   const bucket = yield* openJournal(app).pipe(Effect.mapError((cause) => failure(cause.message, cause)));
   return {
     terminate: terminateRetainedSessions(app, pending).pipe(

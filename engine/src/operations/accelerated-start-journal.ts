@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Cause, Effect, Exit } from "effect";
 
-import { FileSyncStartError, FileSyncStopError, causeMessage } from "@lando/sdk/errors";
+import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 
@@ -17,12 +17,11 @@ import {
 import { appRootIdentityKey, canonicalAppRoot } from "./app-root-identity.ts";
 type PendingPhase = PendingStart["phase"];
 
-const journalError = (message: string, cause?: unknown) =>
+const journalError = (message: string, cause?: unknown, journalPath?: string) =>
   new FileSyncStartError({
     engineId: "mutagen",
     message,
-    remediation:
-      "A prior accelerated start may have left sessions or sync targets. Inspect the saved start journal, provider resources, and Mutagen ownership receipts before retrying.",
+    remediation: `A prior accelerated start may have left sessions or sync targets. Inspect the saved start journal${journalPath === undefined ? "" : ` at "${journalPath}"`}, provider resources, and Mutagen ownership receipts before retrying.`,
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -92,7 +91,10 @@ export const requireNoPendingAcceleratedStart = Effect.fnUntraced(function* (
             : pending.phase === "retained"
               ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
               : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
-        remediation: journalRecovery(path),
+        remediation:
+          pending.phase === "retained" || pending.recoveredFrom !== undefined
+            ? journalRecovery(path)
+            : `Inspect the saved journal \`${path}\`, provider targets, and session ledger before repairing this interrupted first attempt. Start and destroy remain blocked until its ownership state is verified; preserve volumes and session history.`,
       }),
     );
   }
@@ -204,7 +206,9 @@ export const beginAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan,
           : ([false, current] as const);
       })
       .pipe(
-        Effect.mapError((cause) => journalError("Unable to advance accelerated-start intent.", cause)),
+        Effect.mapError((cause) =>
+          journalError("Unable to advance accelerated-start intent.", cause, bucket.path),
+        ),
         Effect.flatMap((advanced) =>
           advanced
             ? Effect.void
@@ -215,16 +219,8 @@ export const beginAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan,
   const retainTargets = Effect.fnUntraced(function* <E>(
     original: Cause.Cause<E>,
   ): Effect.fn.Return<Cause.Cause<E | FileSyncStartError>> {
-    const cause = Cause.squash(original);
-    const retained = new FileSyncStartError({
-      engineId: first.engineId,
-      message: `The provider cannot roll back prepared accelerated sync targets after startup failed: ${causeMessage(cause)}`,
-      remediation: journalRecovery(bucket.path),
-      cause,
-    });
     const saved = yield* Effect.exit(phase("retained"));
-    const failure = Cause.combine(Cause.fail(retained), original);
-    return Exit.isFailure(saved) ? Cause.combine(failure, saved.cause) : failure;
+    return Exit.isFailure(saved) ? Cause.combine(original, saved.cause) : original;
   }, Effect.uninterruptible);
   return {
     phase,

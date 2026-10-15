@@ -60,6 +60,10 @@ const fake = (
   options: {
     mismatch?: boolean;
     unhealthy?: boolean;
+    conflicts?: ReadonlyArray<unknown>;
+    alphaTransitionProblems?: ReadonlyArray<unknown>;
+    betaTransitionProblems?: ReadonlyArray<unknown>;
+    excludedAlphaTransitionProblems?: number;
     preexisting?: boolean;
     failTerminate?: boolean;
     ambiguousId?: boolean;
@@ -67,6 +71,12 @@ const fake = (
     failPauseOnce?: boolean;
     failTerminateOnce?: boolean;
     failTerminateAfterDeleteOnce?: boolean;
+    transientScanningLists?: number;
+    flushGate?: {
+      readonly identifier: string;
+      readonly entered: () => void;
+      readonly release: Promise<void>;
+    };
     betaEnvironment?: Readonly<Record<string, string>>;
     stateStore?: PluginStateStore;
   } = {},
@@ -78,6 +88,7 @@ const fake = (
   let failTerminateOnce = options.failTerminateOnce === true;
   let failTerminateAfterDeleteOnce = options.failTerminateAfterDeleteOnce === true;
   let targetResolutions = 0;
+  let scanningRemaining = 0;
   const stateStore =
     options.stateStore ??
     makePluginStateStore(
@@ -95,73 +106,113 @@ const fake = (
       platform: "win32",
       arch: "x64",
       verifyInstalled: async () => true,
-      resolveTarget: () =>
+      resolveTarget: (requested) =>
         Effect.sync(() => {
           targetResolutions += 1;
-          return { containerId: helper, path: "/lando-data" };
+          return {
+            containerId: requested.service === spec.service ? helper : `${helper}-api`,
+            path: "/lando-data",
+          };
         }),
       runner: {
         run: ({ args, env }) =>
-          Effect.sync(() => {
-            calls.push({ args, env: env ?? {} });
-            if (args[0] === "version") return { exitCode: 0, stdout: "Mutagen version 0.18.1", stderr: "" };
-            if (args[1] === "list") return { exitCode: 0, stdout: JSON.stringify(sessions), stderr: "" };
-            if (args[1] === "create") {
-              if (failCreateOnce) {
-                failCreateOnce = false;
-                return { exitCode: 1, stdout: "", stderr: "create failed before session creation" };
-              }
-              const createdName = args[args.indexOf("--name") + 1] ?? name;
-              const createdId = createdName === name ? id : "sync_New456";
-              sessions = [
-                session({
-                  name: createdName,
-                  identifier: createdId,
-                  ...(options.mismatch
-                    ? { beta: { protocol: "docker", host: "other", path: "/lando-data", connected: true } }
-                    : options.betaEnvironment === undefined
-                      ? {}
-                      : {
-                          beta: {
-                            protocol: "docker",
-                            host: helper,
-                            path: "/lando-data",
-                            connected: true,
-                            environment: options.betaEnvironment,
-                          },
-                        }),
-                }),
-              ];
-              return {
-                exitCode: 0,
-                stdout: options.ambiguousId
-                  ? "Created session, ID unavailable\n"
-                  : `Created session ${createdId}\n`,
-                stderr: "",
-              };
+          Effect.gen(function* () {
+            const gate = options.flushGate;
+            if (args[1] === "flush" && gate !== undefined && args[2] === gate.identifier) {
+              gate.entered();
+              yield* Effect.promise(() => gate.release);
             }
-            if (args[1] === "flush" && options.unhealthy)
-              sessions = [session({ conflicts: [{ path: "README.md" }] })];
-            if (args[1] === "pause") {
-              sessions = sessions.map((entry) => ({ ...entry, paused: true }));
-              if (failPauseOnce) {
-                failPauseOnce = false;
-                return { exitCode: 1, stdout: "", stderr: "pause interrupted" };
+            return yield* Effect.sync(() => {
+              calls.push({ args, env: env ?? {} });
+              if (args[0] === "version") return { exitCode: 0, stdout: "Mutagen version 0.18.1", stderr: "" };
+              if (args[1] === "list") {
+                const listed =
+                  scanningRemaining > 0
+                    ? sessions.map((entry) => ({ ...entry, status: "scanning" }))
+                    : sessions;
+                if (scanningRemaining > 0) scanningRemaining -= 1;
+                return { exitCode: 0, stdout: JSON.stringify(listed), stderr: "" };
               }
-            }
-            if (args[1] === "resume") sessions = sessions.map((entry) => ({ ...entry, paused: false }));
-            if (args[1] === "terminate") {
-              if (options.failTerminate || failTerminateOnce) {
-                failTerminateOnce = false;
-                return { exitCode: 1, stdout: "", stderr: "sensitive target details" };
+              if (args[1] === "create") {
+                if (failCreateOnce) {
+                  failCreateOnce = false;
+                  return { exitCode: 1, stdout: "", stderr: "create failed before session creation" };
+                }
+                const createdName = args[args.indexOf("--name") + 1] ?? name;
+                const createdId = createdName === name ? id : "sync_New456";
+                const beta = options.mismatch
+                  ? { protocol: "docker", host: "other", path: "/lando-data", connected: true }
+                  : {
+                      protocol: "docker",
+                      host: createdName.startsWith("cms-api") ? `${helper}-api` : helper,
+                      path: "/lando-data",
+                      environment: options.betaEnvironment ?? {
+                        DOCKER_HOST: "npipe:////./pipe/podman-lando",
+                        DOCKER_CONTEXT: "",
+                      },
+                      connected: true,
+                    };
+                sessions = [
+                  ...sessions,
+                  session({
+                    name: createdName,
+                    identifier: createdId,
+                    alpha: { protocol: "local", path: args[args.length - 2], connected: true },
+                    beta,
+                  }),
+                ];
+                return {
+                  exitCode: 0,
+                  stdout: options.ambiguousId
+                    ? "Created session, ID unavailable\n"
+                    : `Created session ${createdId}\n`,
+                  stderr: "",
+                };
               }
-              sessions = [];
-              if (failTerminateAfterDeleteOnce) {
-                failTerminateAfterDeleteOnce = false;
-                return { exitCode: 1, stdout: "", stderr: "connection closed" };
+              if (args[1] === "flush" && options.unhealthy)
+                sessions = sessions.map((entry) => ({
+                  ...entry,
+                  conflicts: options.conflicts ?? [{ root: "README.md" }],
+                }));
+              if (
+                args[1] === "flush" &&
+                (options.alphaTransitionProblems !== undefined ||
+                  options.betaTransitionProblems !== undefined)
+              )
+                sessions = sessions.map((entry) => ({
+                  ...entry,
+                  alpha: {
+                    ...(entry.alpha as Record<string, unknown>),
+                    transitionProblems: options.alphaTransitionProblems ?? [],
+                    excludedTransitionProblems: options.excludedAlphaTransitionProblems ?? 0,
+                  },
+                  beta: {
+                    ...(entry.beta as Record<string, unknown>),
+                    transitionProblems: options.betaTransitionProblems ?? [],
+                  },
+                }));
+              if (args[1] === "flush") scanningRemaining = options.transientScanningLists ?? 0;
+              if (args[1] === "pause") {
+                sessions = sessions.map((entry) => ({ ...entry, paused: true }));
+                if (failPauseOnce) {
+                  failPauseOnce = false;
+                  return { exitCode: 1, stdout: "", stderr: "pause interrupted" };
+                }
               }
-            }
-            return { exitCode: 0, stdout: "", stderr: "" };
+              if (args[1] === "resume") sessions = sessions.map((entry) => ({ ...entry, paused: false }));
+              if (args[1] === "terminate") {
+                if (options.failTerminate || failTerminateOnce) {
+                  failTerminateOnce = false;
+                  return { exitCode: 1, stdout: "", stderr: "sensitive target details" };
+                }
+                sessions = sessions.filter((entry) => entry.identifier !== args[2]);
+                if (failTerminateAfterDeleteOnce) {
+                  failTerminateAfterDeleteOnce = false;
+                  return { exitCode: 1, stdout: "", stderr: "connection closed" };
+                }
+              }
+              return { exitCode: 0, stdout: "", stderr: "" };
+            });
           }),
       },
     });
@@ -184,6 +235,7 @@ describe("Mutagen process client", () => {
     const { client, calls } = fake();
     await Effect.runPromise(client.create({ name, spec }));
     expect(calls.map((call) => call.args.slice(0, 2))).toEqual([
+      ["sync", "list"],
       ["sync", "list"],
       ["sync", "create"],
       ["sync", "list"],
@@ -227,17 +279,18 @@ describe("Mutagen process client", () => {
     expect(current()).toHaveLength(1);
   });
 
-  test("fails readiness on conflicts and cleans up the exact new session", async () => {
-    const { client, calls } = fake({ unhealthy: true });
+  test("retains a committed session and its history when readiness detects a conflict", async () => {
+    const { client, calls, current, stateStore } = fake({ unhealthy: true });
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
-    expect(exit._tag).toBe("Failure");
-    expect(calls.map((call) => call.args[1]).slice(-2)).toEqual(["list", "terminate"]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls.some((call) => call.args[1] === "terminate")).toBe(false);
+    expect(current()).toHaveLength(1);
+    expect(await Effect.runPromise(hasDurableMutagenOwnership(stateStore, spec.app))).toBe(true);
   });
   test("rejects a persisted Docker host or context that points away from the selected runtime", async () => {
     const environments: ReadonlyArray<Readonly<Record<string, string>>> = [
       { DOCKER_HOST: "npipe:////./pipe/another-engine", DOCKER_CONTEXT: "" },
       { DOCKER_HOST: "npipe:////./pipe/podman-lando", DOCKER_CONTEXT: "remote" },
-      { DOCKER_HOST: "npipe:////./pipe/podman-lando" },
     ];
     for (const betaEnvironment of environments) {
       const { client, calls } = fake({ betaEnvironment });
@@ -248,20 +301,147 @@ describe("Mutagen process client", () => {
     }
   });
 
-  test("reports the exact ID when readiness cleanup fails, without leaking daemon stderr", async () => {
-    const { client, current } = fake({ unhealthy: true, failTerminate: true });
+  test("reports the conflicted session without deleting its durable receipt", async () => {
+    const { client, current, calls, stateStore } = fake({ unhealthy: true });
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
-        expect(failure.value.message).toContain(id);
-        expect(failure.value.message).toContain("cleanup failed");
+        expect(failure.value).toMatchObject({
+          _tag: "FileSyncDriftError",
+          sessionRef: id,
+          conflictedPaths: ["README.md"],
+        });
+        expect(failure.value.message).toContain(name);
+        expect(failure.value.message).toContain("README.md");
         expect(failure.value.message).not.toContain("sensitive target details");
+        expect(failure.value.remediation).toContain("C:\\lando\\cache\\file-sync\\sessions");
       }
     }
+    const listed = await Effect.runPromise(client.list);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.conflictedPaths).toEqual(["README.md"]);
+    expect(listed[0]?.detail).toContain(id);
+    expect(listed[0]?.detail).toContain("C:\\lando\\cache\\file-sync\\sessions");
+    expect(calls.some((call) => call.args[1] === "terminate")).toBe(false);
     expect(current()).toHaveLength(1);
+    expect(await Effect.runPromise(hasDurableMutagenOwnership(stateStore, spec.app))).toBe(true);
+  });
+
+  test("keeps a durable session and reports bounded Windows host transition paths through drain", async () => {
+    const { client, calls, current, stateStore } = fake({
+      alphaTransitionProblems: [
+        { path: "../escape", error: "password=do-not-show" },
+        { path: "C:/private", error: "password=do-not-show" },
+        { path: "badpath", error: "password=do-not-show" },
+        {
+          path: "web/sites/default/files/php/twig/cache/.htaccess",
+          error: "unable to remove file: Access is denied.",
+        },
+      ],
+      excludedAlphaTransitionProblems: 56,
+    });
+    const create = await Effect.runPromiseExit(client.create({ name, spec }));
+    expect(Exit.isFailure(create)).toBe(true);
+    if (Exit.isFailure(create)) {
+      const failure = Cause.findErrorOption(create.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toMatchObject({ _tag: "FileSyncStartError" });
+        expect(failure.value.message).toContain(
+          "60 Windows host (alpha) file update problems (access denied)",
+        );
+        expect(failure.value.message).toContain("web/sites/default/files/php/twig/cache/.htaccess");
+        expect(failure.value.message).not.toContain("../escape");
+        expect(failure.value.message).not.toContain("C:/private");
+        expect(failure.value.message).not.toContain("password=do-not-show");
+        expect(failure.value.remediation).toContain("read-only attributes");
+      }
+    }
+    const drain = await Effect.runPromiseExit(client.drainApp(spec.app));
+    expect(Exit.isFailure(drain)).toBe(true);
+    if (Exit.isFailure(drain)) {
+      const failure = Cause.findErrorOption(drain.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toMatchObject({ _tag: "FileSyncStopError", sessionRef: id });
+        expect(failure.value.message).toContain("Windows host (alpha)");
+        expect(failure.value.remediation).toContain("read-only attributes");
+      }
+    }
+    expect(calls.some((call) => call.args[1] === "terminate")).toBe(false);
+    expect(current()).toHaveLength(1);
+    expect(await Effect.runPromise(hasDurableMutagenOwnership(stateStore, spec.app))).toBe(true);
+  }, 15_000);
+  test("identifies container helper transition failures without quoting daemon error text", async () => {
+    const { client } = fake({
+      betaTransitionProblems: [{ path: "public/files/image.png", error: "credential=do-not-show" }],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value.message).toContain("container helper (beta) file update problem");
+        expect(failure.value.message).toContain("public/files/image.png");
+        expect(failure.value.message).not.toContain("do-not-show");
+        expect(failure.value.remediation).toContain(helper);
+        expect(failure.value.remediation).not.toContain("attributes and access permissions");
+      }
+    }
+  });
+
+  test("classifies disk-full transition failures without exposing raw daemon text", async () => {
+    const { client } = fake({
+      betaTransitionProblems: [
+        { path: "public/files/image.png", error: "no space left on device; token=secret" },
+      ],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value.message).toContain("insufficient disk space");
+        expect(failure.value.message).not.toContain("token=secret");
+        expect(failure.value.remediation).toContain("Free space on the affected container volume");
+        expect(failure.value.remediation).not.toContain("access permissions");
+      }
+    }
+  });
+
+  test("omits unsafe daemon conflict roots from structured diagnostics", async () => {
+    const { client } = fake({
+      unhealthy: true,
+      conflicts: [
+        { root: "../escape" },
+        { root: "C:\\private" },
+        { root: "C:/private" },
+        { root: "bad\npath" },
+        { root: "safe/file.txt" },
+      ],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toMatchObject({
+          _tag: "FileSyncDriftError",
+          sessionRef: id,
+          conflictedPaths: ["safe/file.txt"],
+        });
+        expect(failure.value.message).not.toContain("../escape");
+        expect(failure.value.message).not.toContain("C:\\private");
+        expect(failure.value.message).not.toContain("C:/private");
+        expect(failure.value.message).not.toContain("bad\npath");
+      }
+    }
   });
 
   test("recovers a committed session across clients and removes its receipt after verified termination", async () => {
@@ -774,6 +954,81 @@ describe("Mutagen process client", () => {
     setCurrent([session()]);
     expect(Exit.isFailure(await Effect.runPromiseExit(reopen().completeAppDisposal(spec.app)))).toBe(true);
     expect(await Effect.runPromise(hasDurableMutagenOwnership(stateStore, spec.app))).toBe(true);
+  });
+
+  test("one app disposal tombstone does not block another app's session inventory or creation", async () => {
+    const { client, setCurrent } = fake();
+    await Effect.runPromise(client.create({ name, spec }));
+    await Effect.runPromise(client.drainApp(spec.app));
+    await Effect.runPromise(client.disposeApp(spec.app));
+    expect(await Effect.runPromise(client.list)).toEqual([]);
+    const otherSpec: FileSyncSessionSpec = {
+      ...spec,
+      app: { ...spec.app, id: AppId.make("api"), root: AbsolutePath.make("C:\\Users\\me\\API Project") },
+      service: ServiceName.make("api"),
+      source: AbsolutePath.make("C:\\Users\\me\\API Project"),
+      target: { _tag: "volume", name: "lando-sync-api", path: PortablePath.make("/app") },
+    };
+    await Effect.runPromise(client.create({ name: "cms-api-app-root", spec: otherSpec }));
+    expect((await Effect.runPromise(client.list)).map((entry) => entry.name)).toEqual(["cms-api-app-root"]);
+    await Effect.runPromise(client.drainApp(otherSpec.app));
+    await Effect.runPromise(client.disposeApp(otherSpec.app));
+    expect(await Effect.runPromise(client.list)).toEqual([]);
+    await Effect.runPromise(client.completeAppDisposal(spec.app));
+    await Effect.runPromise(client.completeAppDisposal(otherSpec.app));
+    expect(await Effect.runPromise(client.list)).toEqual([]);
+    setCurrent([session()]);
+    expect(Exit.isFailure(await Effect.runPromiseExit(client.list))).toBe(true);
+  });
+
+  test("a slow app flush leaves the ledger available to another app while same-app mutation waits", async () => {
+    let releaseFlush: () => void = () => undefined;
+    let enteredFlush: () => void = () => undefined;
+    const release = new Promise<void>((resolve) => {
+      releaseFlush = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      enteredFlush = resolve;
+    });
+    const { client, calls } = fake({
+      flushGate: { identifier: id, entered: enteredFlush, release },
+    });
+    const otherSpec: FileSyncSessionSpec = {
+      ...spec,
+      app: { ...spec.app, id: AppId.make("api"), root: AbsolutePath.make("C:\\Users\\me\\API Project") },
+      service: ServiceName.make("api"),
+      source: AbsolutePath.make("C:\\Users\\me\\API Project"),
+      target: { _tag: "volume", name: "lando-sync-api", path: PortablePath.make("/app") },
+    };
+    const first = Effect.runPromise(client.create({ name, spec }));
+    await entered;
+    const sameAppPause = Effect.runPromise(client.pause(name));
+    try {
+      await Promise.race([
+        Effect.runPromise(client.create({ name: "cms-api-app-root", spec: otherSpec })),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Other app waited on slow flush.")), 1_000),
+        ),
+      ]);
+      expect(calls.some((call) => call.args[1] === "pause")).toBe(false);
+    } finally {
+      releaseFlush();
+    }
+    await first;
+    await sameAppPause;
+    expect(calls.some((call) => call.args[1] === "pause")).toBe(true);
+  });
+
+  test("a failed drain can be invalidated after conflict repair and reused without losing history", async () => {
+    const { client, setCurrent, calls } = fake();
+    await Effect.runPromise(client.create({ name, spec }));
+    setCurrent([session({ conflicts: [{ root: "conflict.txt" }] })]);
+    expect(Exit.isFailure(await Effect.runPromiseExit(client.drainApp(spec.app)))).toBe(true);
+    setCurrent([session()]);
+    await Effect.runPromise(client.invalidateAppDrain(spec.app));
+    await Effect.runPromise(client.create({ name, spec }));
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    await Effect.runPromise(client.drainApp(spec.app));
   });
 
   test("neutralizes a daemon error before returning session detail", async () => {

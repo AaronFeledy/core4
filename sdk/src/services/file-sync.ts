@@ -42,6 +42,9 @@ export interface FileSyncEngineShape {
     readonly drain: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
     readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
     readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+    readonly disposalPhase: (
+      app: AppRef,
+    ) => Effect.Effect<"absent" | "active" | "drained" | "disposing" | "completed", FileSyncStopError>;
   };
 
   /**

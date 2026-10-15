@@ -17,6 +17,7 @@ const EXPECTED_CATALOG_PATHS = [
   "docs/reference/compose-key-matrix.mdx",
   "images/php",
   "plugins/file-sync-mutagen/mutagen-versions.json",
+  "plugins/file-sync-mutagen/docker-cli-versions.json",
   "plugins/service-lando/src/services/php-msmtp-pins.json",
   "recipes/*/.scaffold/*",
   "sdk/src/schema/generated/core-service-env.ts",
@@ -41,6 +42,7 @@ const TRACKED_CATALOG_SENTINELS = [
   "docs/reference/commands.mdx",
   "images/php/8.4/Dockerfile",
   "plugins/file-sync-mutagen/mutagen-versions.json",
+  "plugins/file-sync-mutagen/docker-cli-versions.json",
   "recipes/drupal/.scaffold/default.md",
   "sdk/test/fixtures/bundled-plugin-manifests.json",
 ] as const;

@@ -137,7 +137,7 @@ describe("doctor() file-sync plugin contribution", () => {
       expect(check.status).toBe("warn");
       expect(check.runtimeStatus).toBe("installed");
       expect(check.runtime.running).toBe(false);
-      expect(check.runtime.version).toBe("v0.0.0-stale");
+      expect(check.context.mutagenVersion).toBe("v0.0.0-stale");
       expect(check.context.mutagenVersion).toBe("v0.0.0-stale");
       expect(check.context.expectedVersion).toBe(MUTAGEN_TOOL_VERSION);
       expect(check.solutions).toHaveLength(1);
@@ -146,7 +146,7 @@ describe("doctor() file-sync plugin contribution", () => {
     }
   });
 
-  test("installed-matching: the correct version PLUS a valid fingerprint for every current-host artifact warns when no live session client is available", async () => {
+  test("installed-matching: the correct version PLUS a valid fingerprint for every current-host artifact warns when native Windows transport is unsupported", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-file-sync-current-"));
     try {
       const binDir = makeLandoPaths({ userDataRoot: dataRoot }).binDir;
@@ -169,14 +169,14 @@ describe("doctor() file-sync plugin contribution", () => {
       expect(check.severity).toBe("warn");
       expect(check.runtimeStatus).toBe("installed-client-unavailable");
       expect(check.runtime.running).toBe(false);
-      expect(check.runtime.version).toBe(MUTAGEN_TOOL_VERSION);
+      expect(check.context.mutagenVersion).toBe(MUTAGEN_TOOL_VERSION);
       expect(check.context.mutagenVersion).toBe(MUTAGEN_TOOL_VERSION);
       expect(check.context.clientStatus).toBe("unavailable");
       expect(check.solutions).toEqual([
         {
           kind: "manual",
           description:
-            "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
+            "Accelerated Mutagen sync is currently supported by the Lando-managed provider on native Windows.",
         },
       ]);
     } finally {

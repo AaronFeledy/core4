@@ -95,6 +95,7 @@ export type TeardownResolution =
       readonly kind: "orphans";
       readonly root: AbsolutePath;
       readonly groups: ReadonlyArray<AppliedOrphanGroup>;
+      readonly landofilePresent: boolean;
     }
   | { readonly kind: "absent"; readonly root: AbsolutePath; readonly landofilePresent: boolean };
 
@@ -124,7 +125,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
     case "applied":
       return { kind: "applied", target: yield* targetFor(evidence.plan) };
     case "orphans":
-      return { kind: "orphans", root, groups: evidence.groups };
+      return { kind: "orphans", root, groups: evidence.groups, landofilePresent };
     case "absent":
       return { kind: "absent", root, landofilePresent };
   }
