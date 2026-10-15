@@ -113,7 +113,7 @@ lando exec app -- node server.js
 
 The default HTTP port is `3000`. Lando sets `PORT=3000` but keeps the default command idle, so it does not probe a server you have not started.
 
-Set `port:` when your app listens somewhere else. Lando uses it for the internal endpoint, the default `PORT` value, and the generated healthcheck when you also author a server `command:`:
+Set `port:` when your app listens somewhere else. Lando uses it for the internal endpoint and the default `PORT` value:
 
 ```yaml
 services:
@@ -123,7 +123,9 @@ services:
     command: node server.mjs
 ```
 
-An explicit `environment.PORT` still wins for the process environment. The endpoint and generated healthcheck continue to use `port:`, so keep those values aligned unless your command intentionally translates between them.
+An explicit `environment.PORT` still wins for the process environment. The endpoint continues to use `port:`, so keep those values aligned unless your command intentionally translates between them.
+
+Node has no default healthcheck, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
 
 Lando stops a service with SIGTERM. A string `command:` runs under `sh -lc`, and that shell does not pass the signal on. Write the command as a list, such as `["node", "server.mjs"]`, and handle SIGTERM in your app so it stops before the runtime's timeout.
 

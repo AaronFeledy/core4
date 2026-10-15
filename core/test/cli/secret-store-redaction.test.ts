@@ -177,7 +177,7 @@ test.each([false, true])(
             command: "app:start",
             ok: true,
             result: {
-              servicesStarted: [{ name: "web", state: "Provider observed [redacted]", endpoints: [] }],
+              servicesStarted: [{ name: "web", state: "running", endpoints: [] }],
             },
           },
     );

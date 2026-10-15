@@ -9,9 +9,7 @@ services:
     dependsOn:
       - database
   database:
-    type: mysql
-    image: mysql:8.4
-    home: false
+    type: mysql:8.4
 tooling:
   composer:
     service: appserver

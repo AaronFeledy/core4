@@ -87,6 +87,7 @@
     "./operations/remote": "./src/operations/remote.ts",
     "./operations/reserved-aliases": "./src/operations/reserved-aliases.ts",
     "./operations/restart": "./src/operations/restart.ts",
+    "./operations/service-readiness": "./src/operations/service-readiness.ts",
     "./operations/share": "./src/operations/share.ts",
     "./operations/start": "./src/operations/start.ts",
     "./operations/stop": "./src/operations/stop.ts",

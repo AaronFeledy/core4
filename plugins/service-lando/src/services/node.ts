@@ -9,12 +9,7 @@ import type {
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
-import {
-  commandHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -37,8 +32,6 @@ const DEFAULT_COMMAND = [
   'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
 ] as const;
 const DEFAULT_PORT = 3000;
-const NODE_HEALTHCHECK_SCRIPT =
-  'const net=require("node:net");const socket=net.connect(Number(process.argv[1]),"127.0.0.1");socket.once("connect",()=>socket.end());socket.once("error",()=>process.exit(1));';
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
@@ -269,9 +262,6 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   applyAuthoredProcessFields(ctx, ["user"]);
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  if (service.command !== undefined) {
-    ctx.setHealthcheck(commandHealthcheck(["node", "-e", NODE_HEALTHCHECK_SCRIPT, String(port)], 10));
-  }
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
   const globals = normalizeNpmGlobals(service.globals);

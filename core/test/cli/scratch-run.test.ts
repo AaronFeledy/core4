@@ -25,7 +25,7 @@ import {
   ScratchAppService,
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
@@ -244,7 +244,14 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     run: () => die("run"),
     runStream: () => Stream.die("scratch run test provider should not call runStream"),
     logs: () => Stream.empty,
-    inspect: () => die("inspect"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+      }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
     restoreVolume: () => die("restoreVolume"),
