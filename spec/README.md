@@ -91,6 +91,7 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo` schema | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
+| Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Service log-source contracts | 06 | §6.14 |
