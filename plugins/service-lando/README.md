@@ -5,14 +5,14 @@ data-store `ServiceType` implementations for the Beta cut of the v4 service
 catalog.
 
 This package is bundled into the `lando` binary; library consumers opt in via
-`bundled discovery` — they do not receive the canonical catalog by default and
+`bundled discovery`; they do not receive the canonical catalog by default and
 must explicitly opt in or contribute their own service-type Layers.
 
 ## Framework presets
 
 Language-runtime `ServiceType`s accept an optional `framework:` field that
 selects opinionated defaults (webserver config, URL rewrites, env defaults,
-common build steps, tooling additions). Framework presets are pure config —
+common build steps, tooling additions). Framework presets are pure config:
 they emit the same fields a user would write by hand and any value can be
 overridden in the Landofile.
 
@@ -27,7 +27,7 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 | `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI, sets `WP_CLI_ALLOW_ROOT=1`, and writes `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`, CLI and web). Uses `webroot:` (relative to the app mount, default `.`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
 | `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints. |
-| `ruby`     | `rails`, `none`                      | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
+| `ruby`     | `rails`, `none`                      | `rails` defaults to `webroot: public`; `none` defaults to `.`. Set `webroot:` directly to override either default. Rails also supplies a `bundle exec rails server -b 0.0.0.0 -p 3000` command hint. |
 | `go`       | `none`                               | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
 | `mssql`    | n/a                                  | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
@@ -39,6 +39,8 @@ The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 `phpmyadmin`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Authored web settings
+
+Ruby resolves `webroot:` relative to `appMount.target` (default `/app`) or accepts an absolute container path. For example, `framework: rails` with `webroot: frontend/public` sets `LANDO_WEBROOT` and the Ruby extension webroot to `/app/frontend/public`. This does not change the working directory or start Rails; author `workingDirectory:` and `command:` as needed. With `appMount: false`, Ruby omits both webroot projections.
 
 Apache serves the app root by default. Set `webroot:` to a path relative to it, such as `public`, or to an absolute container path to change the generated httpd document root. `APACHE_DOCUMENT_ROOT` and `LANDO_WEBROOT` get the resolved absolute path. An authored `APACHE_DOCUMENT_ROOT` environment value wins; an authored `command:` or `entrypoint:` owns its own Apache startup config.
 
@@ -60,7 +62,7 @@ existing entry (e.g. adding PHP 8.5) can follow upstream releases without one.
 - PHP ships 8.1-8.6. Official Hub currently publishes 8.6 as RC bookworm tags.
   PHP uses explicit `webroot:` and `allowOverride:` parameters. Its WordPress
   preset installs WP-CLI on stock images without changing the webroot.
-- Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA —
+- Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA;
   `go:<version>` accepts only `framework: none` today.
 - New canonical service types (Drupal/Laravel/Symfony framework presets
   outside `php:*`) are not added in Beta beyond what Alpha already shipped.
