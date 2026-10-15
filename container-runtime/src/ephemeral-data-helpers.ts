@@ -4,8 +4,8 @@
  */
 import { Effect } from "effect";
 
-import { APP_LABEL, EPHEMERAL_DATA_ROLE, PROVIDER_LABEL, ROLE_LABEL, STORE_LABEL } from "./labels.ts";
 import { encodeEngineFilters, parseJsonOrUndefined } from "./engine-json.ts";
+import { APP_LABEL, EPHEMERAL_DATA_ROLE, PROVIDER_LABEL, ROLE_LABEL, STORE_LABEL } from "./labels.ts";
 import { redactString, withApiReason } from "./redact.ts";
 
 export interface HelperHttpRequest {
@@ -18,9 +18,7 @@ export interface HelperHttpResponse {
   readonly body: string;
 }
 
-export type HelperRequester = (
-  request: HelperHttpRequest,
-) => Effect.Effect<HelperHttpResponse, unknown>;
+export type HelperRequester = (request: HelperHttpRequest) => Effect.Effect<HelperHttpResponse, unknown>;
 
 export interface VolumeHolder {
   readonly id: string;

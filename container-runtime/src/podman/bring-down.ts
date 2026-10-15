@@ -220,8 +220,10 @@ const removeVolume = Effect.fnUntraced(function* (
     method: "DELETE",
     path: `/volumes/${encodeURIComponent(name)}`,
   });
-  if (response.status === 200 || response.status === 204) return true;
-  if (response.status === 404) return false;
+  const status = response.status;
+  const body = response.body;
+  if (status === 200 || status === 204) return true;
+  if (status === 404) return false;
   if (isVolumeInUse(response)) {
     const holders =
       requester === undefined
@@ -235,12 +237,12 @@ const removeVolume = Effect.fnUntraced(function* (
         providerId: deps.options.ctx.providerId,
         operation: "bringDown.volume",
         message: volumeInUseMessage(
-          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
+          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${status}.`,
           names,
           response,
         ),
         remediation: volumeInUseRemediation(names),
-        details: redactDetails({ name, body: response.body, status: response.status }),
+        details: redactDetails({ name, body, status }),
       }),
     );
   }
@@ -248,8 +250,8 @@ const removeVolume = Effect.fnUntraced(function* (
     podmanFailure(
       deps,
       "bringDown.volume",
-      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
-      { name, body: response.body },
+      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${status}.`,
+      { name, body },
     ),
   );
 });
@@ -339,10 +341,13 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   const networkRemoved = yield* removeNetwork(deps, plan);
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
-    yield* removeEphemeralDataHelpers((input) => api.request(input), {
-      appId: String(plan.id),
-      providerId: options.ctx.providerId,
-    }).pipe(Effect.catch(() => Effect.succeed([])));
+    const requester = api.request;
+    if (requester !== undefined) {
+      yield* removeEphemeralDataHelpers((input) => requester(input), {
+        appId: String(plan.id),
+        providerId: options.ctx.providerId,
+      }).pipe(Effect.catch(() => Effect.succeed([])));
+    }
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan);
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
       const pruned = yield* pruneAppScopedVolumes(deps, plan);

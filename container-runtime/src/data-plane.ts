@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { tryParseJson } from "./engine-json.ts";
 import {
-  isVolumeInUse,
   ephemeralDataHelperLabels,
-  releaseVolumeHolders,
+  isVolumeInUse,
   listVolumeHolders,
+  releaseVolumeHolders,
   volumeInUseMessage,
   volumeInUseRemediation,
 } from "./ephemeral-data-helpers.ts";
@@ -1231,7 +1231,16 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 }),
               );
             }
-            yield* ensure2xx(options, "removeVolume", response, ref.store);
+            return yield* Effect.fail(
+              volumeError(
+                options,
+                "removeVolume",
+                "Provider volume remove failed.",
+                response,
+                undefined,
+                ref.store,
+              ),
+            );
           }),
         ),
         Effect.asVoid,

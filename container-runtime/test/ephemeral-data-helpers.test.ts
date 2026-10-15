@@ -48,7 +48,9 @@ const otherApp = {
 
 const filtersOf = (path: string): Readonly<Record<string, ReadonlyArray<string>>> => {
   const query = new URL(`http://localhost${path}`).searchParams.get("filters");
-  return query === null ? {} : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
+  return query === null
+    ? {}
+    : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
 };
 
 const makeApi = (containers: Array<typeof helper>) => {
@@ -143,7 +145,7 @@ describe("ephemeral data helpers", () => {
       releaseVolumeHolders(fake.request, { appId: "app-id", providerId: "test", volumeName: "data" }),
     );
     expect(remaining).toEqual([]);
-    expect(fake.removed).toEqual(["lando-test-data-11111111-1111-4111-8111-111111111111"]);
+    expect(fake.removed).toEqual(["/lando-test-data-11111111-1111-4111-8111-111111111111"]);
   });
 
   test("fail-clearly names a foreign holder that still mounts the volume", async () => {

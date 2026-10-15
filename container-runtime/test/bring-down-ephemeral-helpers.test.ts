@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 const appId = AppId.make("app-id");
 const providerId = ProviderId.make("test");
 const appRoot = AbsolutePath.make("/tmp/app");
+const dataStore = { name: "data", scope: "app", kind: "data" } as const;
 const plan = {
   id: appId,
   name: "App",
@@ -20,7 +21,7 @@ const plan = {
   services: {},
   routes: [],
   networks: [],
-  stores: [{ name: "data", scope: "app", kind: "data" }],
+  stores: [dataStore],
   fileSync: [],
   metadata: {
     resolvedAt: DateTime.makeUnsafe("2026-06-30T00:00:00Z"),
@@ -30,11 +31,13 @@ const plan = {
   extensions: {},
 } satisfies AppPlan;
 
-const volumeLabels = volumeOwnershipLabels(plan, plan.stores[0]!);
+const volumeLabels = volumeOwnershipLabels(plan, dataStore);
 
 const filtersOf = (path: string): Readonly<Record<string, ReadonlyArray<string>>> => {
   const query = new URL(`http://localhost${path}`).searchParams.get("filters");
-  return query === null ? {} : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
+  return query === null
+    ? {}
+    : (JSON.parse(decodeURIComponent(query)) as Record<string, ReadonlyArray<string>>);
 };
 
 const makeApi = (input: {
