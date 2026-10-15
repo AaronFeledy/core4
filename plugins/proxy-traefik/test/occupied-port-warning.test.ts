@@ -112,6 +112,8 @@ describe("occupiedHopNotices", () => {
     expect(notices).toHaveLength(2);
     expect(notices[0]).toContain("8080");
     expect(notices[1]).toContain("8443");
+    expect(notices.join("\n").match(/alternate URL is available/gu)).toHaveLength(1);
+    expect(notices[1]).toContain("\nThe alternate URL");
   });
 
   test("omits a protocol that stayed on the preferred port", () => {

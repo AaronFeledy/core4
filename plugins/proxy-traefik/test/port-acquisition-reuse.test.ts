@@ -480,8 +480,8 @@ describe("fallback notice", () => {
     expect(decision.notices[0]).toContain("80");
     expect(decision.notices[0]).toContain("8080");
     expect(decision.notices[0]).toContain("nginx");
-    expect(decision.notices[0]).toContain("alternate URL is available");
-    expect(decision.notices[0]).toContain("lando info");
+    expect(decision.notices.join("\n").match(/alternate URL is available/gu)).toHaveLength(1);
+    expect(decision.notices[1]).toContain("lando info");
     expect(decision.notices[1]).toContain("443");
     expect(decision.notices[1]).toContain("8443");
   });
@@ -518,6 +518,7 @@ describe("fallback notice", () => {
     expect(joined).toContain("8080");
     expect(joined).toContain("nginx");
     expect(joined).toContain("lando info");
+    expect(joined.match(/alternate URL is available/gu)).toHaveLength(1);
   });
 });
 

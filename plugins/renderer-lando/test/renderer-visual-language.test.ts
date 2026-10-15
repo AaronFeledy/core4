@@ -6,6 +6,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import {
   type LandoEvent,
+  MessageInfoEvent,
   MessageWarnEvent,
   TaskCompleteEvent,
   TaskDetailEvent,
@@ -14,14 +15,15 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import { EventService } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { renderPlain } from "@lando/renderer/runtime";
 
-import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
+import { renderLandoLine } from "../src/format.ts";
+import { makeLandoEventConsumer, makeLandoService } from "../src/renderer-runtime.ts";
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 
 class RecordingLiveRegion {
@@ -166,6 +168,9 @@ const longLabelEvents = (): ReadonlyArray<LandoEvent> => [
   taskTreeComplete("Lando runtime ready after validating proxy and CA configuration", 1, 0),
 ];
 
+const messageInfo = (body: string): LandoEvent =>
+  Schema.decodeUnknownSync(MessageInfoEvent)({ _tag: "message.info", body, timestamp: ts });
+
 const messageWarn = (body: string): LandoEvent =>
   Schema.decodeUnknownSync(MessageWarnEvent)({ _tag: "message.warn", body, timestamp: ts });
 
@@ -273,41 +278,118 @@ describe("lando renderer visual language", () => {
     }
   });
 
-  test("warnings carry a text glyph in TTY output and stay plain in non-TTY fallback", async () => {
-    const events = [...successEvents(), messageWarn("runtime bundle checksum is using a placeholder")];
+  test.each([
+    ["info", messageInfo, "INFO", "ℹ"],
+    ["warn", messageWarn, "WARNING", "⚠"],
+  ] as const)(
+    "%s messages keep labeled panels before and after live acquisition",
+    async (_severity, message, ttyPrefix, plainPrefix) => {
+      const events = [message("before the tree"), ...successEvents(), message("after the tree")];
 
-    const controller = new RecordingLiveRegion();
-    const tty = substrateIo(createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }));
-    const program = Effect.gen(function* () {
-      const service = yield* EventService;
-      for (const event of events) yield* service.publish(event);
-      yield* Effect.sleep("20 millis");
-    });
-    await Effect.runPromise(
-      Effect.scoped(
-        program.pipe(
-          Effect.provide(
-            Layer.provideMerge(
-              makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
-              LandoEventService.layer,
+      const controller = new RecordingLiveRegion();
+      const tty = substrateIo(createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }));
+      const program = Effect.gen(function* () {
+        const service = yield* EventService;
+        for (const event of events) yield* service.publish(event);
+        yield* Effect.sleep("20 millis");
+      });
+      await Effect.runPromise(
+        Effect.scoped(
+          program.pipe(
+            Effect.provide(
+              Layer.provideMerge(
+                makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
+                LandoEventService.layer,
+              ),
             ),
           ),
         ),
-      ),
-    );
-    expect(controller.scrollback.map(stripAnsi).join("\n")).toContain(
-      "⚠ runtime bundle checksum is using a placeholder",
-    );
+      );
+      expect(controller.scrollback.map(stripAnsi).join("\n")).toContain(`╭─ ${ttyPrefix}`);
+      expect(controller.scrollback.map(stripAnsi).join("\n")).toContain("│ after the tree");
+      expect(stripAnsi(tty.stderr())).toContain(`╭─ ${ttyPrefix}`);
+      expect(stripAnsi(tty.stderr())).toContain("│ before the tree");
 
-    const plain = createBufferedRendererIO();
-    renderPlain(plain, events);
-    expect(plain.stderr()).toContain("⚠ runtime bundle checksum is using a placeholder");
-    expect(plain.stderr()).not.toContain(`${escapeChar}[`);
-    expect(plain.stdout()).toBe("");
+      const plain = createBufferedRendererIO();
+      renderPlain(plain, events);
+      expect(plain.stderr()).toContain(`${plainPrefix} before the tree`);
+      expect(plain.stderr()).toContain(`${plainPrefix} after the tree`);
+      expect(plain.stderr()).not.toContain(`${escapeChar}[`);
+      expect(plain.stdout()).toBe("");
+    },
+  );
+
+  test.each([
+    ["info", "INFO", "ℹ"],
+    ["warn", "WARNING", "⚠"],
+  ] as const)(
+    "imperative %s renders a labeled TTY panel and plain piped output",
+    async (severity, ttyPrefix, plainPrefix) => {
+      for (const isTTY of [true, false]) {
+        const io = createBufferedRendererIO({ isTTY });
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const renderer = yield* Renderer;
+            yield* renderer.message[severity]("Installing local certificate trust");
+          }).pipe(Effect.provide(makeLandoService(io))),
+        );
+        if (isTTY) {
+          const lines = stripAnsi(io.stderr()).trimEnd().split("\n");
+          expect(lines[0]).toContain(`╭─ ${ttyPrefix}`);
+          expect(lines[1]).toContain("│ Installing local certificate trust");
+          expect(lines[2]).toStartWith("╰");
+          expect(lines.every((line) => Bun.stringWidth(line) < 80)).toBe(true);
+        } else {
+          expect(io.stderr()).toBe(`${plainPrefix} Installing local certificate trust\n`);
+        }
+        expect(io.stdout()).toBe("");
+      }
+    },
+  );
+
+  test("wraps multiline notices within the terminal width while retaining semantic lines", () => {
+    const event = messageInfo(
+      "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
+    );
+    const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 38 });
+    const line = renderLandoLine(event, true, io.terminalColumns);
+    expect(line).not.toBeNull();
+    const lines = stripAnsi(line ?? "").split("\n");
+    expect(lines[0]).toContain("INFO");
+    expect(lines.some((part) => part.includes("Security"))).toBe(true);
+    expect(lines.some((part) => part.includes("Warning"))).toBe(true);
+    expect(lines.some((part) => part === "│ ")).toBe(false);
+    expect(lines.join("\n")).toContain("--yes cannot answer");
+    expect(lines.every((part) => Bun.stringWidth(part) < 38)).toBe(true);
+  });
+
+  test("keeps warning rows clear of the right edge on narrow terminals", () => {
+    const body =
+      "Port 80 is in use; using 8000.\nPort 443 is in use; using 4443.\n\nRun lando info to see the alternate URL.";
+    for (const columns of [3, 8, 12, 38, 80]) {
+      const output = renderLandoLine(messageWarn(body), true, columns);
+      const lines = stripAnsi(output ?? "").split("\n");
+      expect(lines.every((line) => Bun.stringWidth(line) < columns)).toBe(true);
+      if (columns >= 12) {
+        expect(lines[0]).toContain("WARNING");
+        expect(lines).toContain("│ ");
+      }
+    }
+
+    const unicode = renderLandoLine(messageWarn("占用端口 🐉 測試 443 → 4443"), true, 12);
+    const unicodeLines = stripAnsi(unicode ?? "").split("\n");
+    expect(unicodeLines.every((line) => Bun.stringWidth(line) < 12)).toBe(true);
+    expect(unicodeLines.join("\n")).toContain("占用端口");
+    expect(unicodeLines.join("\n")).toContain("🐉");
+    expect(unicodeLines.join("\n")).not.toContain("�");
   });
 
   test("json renderer stays undecorated NDJSON with no spaceship styling", async () => {
-    const events = failureEvents();
+    const events = [
+      ...failureEvents(),
+      messageInfo("Certificate trust\nmay need approval"),
+      messageWarn("Port 80 is in use"),
+    ];
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const service = yield* EventService;
@@ -326,6 +408,8 @@ describe("lando renderer visual language", () => {
     for (const line of lines) {
       expect(() => JSON.parse(line)).not.toThrow();
       expect(line).not.toContain("LANDO OPS");
+      expect(line).not.toContain("╭─ INFO");
+      expect(line).not.toContain("╭─ WARNING");
       expect(line).not.toContain("╭─");
       expect(line).not.toContain(escapeChar);
     }

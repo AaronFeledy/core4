@@ -53,7 +53,7 @@ export interface ResolveTarballRecipeSourceOptions {
   readonly fetcher?: TarballRecipeFetcher;
   readonly extractor?: TarballRecipeExtractor;
   // Emitted once with the computed SHA-256 when no `--checksum` was supplied.
-  readonly onWarn?: (message: string) => void;
+  readonly onWarn?: (message: string) => void | Promise<void>;
   // Interactive confirmation seam for the unverified-checksum case. Returning
   // `false` aborts the init. Absent ⇒ warn-only (i.e. `--yes`/non-interactive).
   readonly confirmUnverified?: (sha256: string) => Promise<boolean>;
@@ -294,7 +294,7 @@ export const resolveTarballRecipeSource = async (
       });
     }
   } else {
-    options.onWarn?.(
+    await options.onWarn?.(
       `No --checksum supplied for tarball recipe ${options.url}; downloaded SHA-256 is ${sha256}. Pass --checksum=<sha256> to verify the archive on future runs.`,
     );
     if (options.confirmUnverified !== undefined) {

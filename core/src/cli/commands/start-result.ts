@@ -70,7 +70,7 @@ export const buildStartSummary = (
         ...(rows.length === 0 ? { notes: ["No services were started."] } : {}),
       },
     ],
-    nextSteps: ["lando info", "lando logs", "lando exec <service> -- <command>"],
+    nextCommands: ["info", "logs", "exec"],
     footer:
       restarting === 0
         ? `${total} ${noun} ready`

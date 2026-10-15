@@ -4,7 +4,7 @@ import { Effect, Fiber, Layer, Option, Queue } from "effect";
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
-import { renderPlainLine } from "./format.ts";
+import { renderLandoLine } from "./format.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import {
@@ -53,7 +53,7 @@ export const layer = (
         | undefined;
 
       const line = (event: LandoEvent): void => {
-        const text = renderPlainLine(event);
+        const text = renderLandoLine(event, true, io.terminalColumns);
         if (text !== null) journal.writeStderr(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {

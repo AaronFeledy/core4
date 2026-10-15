@@ -4,7 +4,7 @@ import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sd
 import type { RendererCapabilities, RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
-import { renderPlainLine } from "./format.ts";
+import { renderLandoLine } from "./format.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 
 const layerEventConsumer = (handle: (event: LandoEvent) => void): Layer.Layer<never, never, EventService> =>
@@ -35,7 +35,7 @@ const makeMessageContract = (io: RendererIO) => {
   const output = outputJournalFor(io);
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
-      const line = renderPlainLine(event);
+      const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
       if (line !== null) output.writeStderr(`${line}\n`);
     });
   return {
@@ -78,6 +78,6 @@ export const makeLandoService = (
 
 export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
-    const line = renderPlainLine(event);
+    const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
     if (line !== null) io.writeStderr(`${line}\n`);
   });

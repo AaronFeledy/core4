@@ -46,7 +46,7 @@ export const publishFallbackWarn = Effect.fnUntraced(function* (
   dependencies: TraefikProxyDependencies,
   decision: AcquisitionDecision,
 ) {
-  const body = decision.notices.join(" ");
+  const body = decision.notices.join("\n");
   const fromContext = yield* Effect.serviceOption(EventService);
   const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
   if (events === undefined) return;

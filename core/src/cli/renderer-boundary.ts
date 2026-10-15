@@ -23,7 +23,12 @@ import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
-import { type RendererIO, createStdioRendererIO, onStdioBrokenPipe } from "@lando/renderer/io";
+import {
+  type RendererIO,
+  createStdioRendererIO,
+  onStdioBrokenPipe,
+  withStdioTerminalNewlines,
+} from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
@@ -203,7 +208,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   // which is the bug-report renderer for pre-command failures.
   const reporter = ErrorReporter.make(() => undefined);
   const { landoRenderer } = await import("./renderer/bundled-renderers");
-  const io = options.io ?? createStdioRendererIO();
+  const io = withStdioTerminalNewlines(
+    options.io ?? createStdioRendererIO(),
+    options.rendererMode !== "json" &&
+      options.resultFormat !== "ndjson" &&
+      !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT),
+  );
   let brokenPipe = false;
   const brokenPipeSignal = Effect.callback<never>((resume) => {
     const unsubscribe = onStdioBrokenPipe((destination) => {

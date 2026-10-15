@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { collectAppPlanRedactionTokens } from "@lando/engine/services/app-plan-redaction";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import {
+  RedactionService,
+  registerRedactionValues,
+  resetRegisteredRedactionValuesForTesting,
+} from "@lando/redaction/service";
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { formatSummary } from "@lando/renderer/summary";
 import { createRedactor } from "@lando/sdk/secrets";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
+import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
 const redactionLayer = Layer.succeed(
@@ -164,4 +172,49 @@ describe("runWithRendererHandling redaction", () => {
     expect(out.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")).not.toContain("]m");
     expect(out).not.toContain("[redacted]m");
   });
+});
+
+test("start command hints remain usable when a secret explicitly matches the CLI name", async () => {
+  resetRegisteredRedactionValuesForTesting();
+  const customSecret = "private-start-canary";
+  const tokens = collectAppPlanRedactionTokens({
+    services: {
+      database: { environment: { MARIADB_PASSWORD: "lando", API_TOKEN: customSecret } },
+    },
+  });
+  expect(tokens).not.toContain("lando");
+  expect(tokens).toContain(customSecret);
+  const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+  try {
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        yield* registerRedactionValues([...tokens, "lando"]);
+        return {
+          app: customSecret,
+          servicesStarted: [{ name: "lando", state: "running", endpoints: [`https://${customSecret}.test`] }],
+        };
+      }),
+      {
+        runtime: RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer)),
+        rendererMode: "lando",
+        io,
+        command: "app:start",
+        render: renderStartAppResult,
+        formatError: String,
+        setExitCode: () => undefined,
+      },
+    );
+    const output = stripAnsi(io.stdout());
+    expect(output).toContain("lando info");
+    expect(output).toContain("lando logs");
+    expect(output).toContain("lando exec <service> -- <command>");
+    expect(output).toContain("[redacted] is ready");
+    expect(output).toContain("[redacted]  running");
+    expect(output).not.toContain(customSecret);
+    expect(output).not.toContain("[redacted] info");
+    expect(io.stderr()).toBe("");
+    for (const line of io.stdout().split("\n")) expect(displayWidth(line)).toBeLessThanOrEqual(100);
+  } finally {
+    resetRegisteredRedactionValuesForTesting();
+  }
 });

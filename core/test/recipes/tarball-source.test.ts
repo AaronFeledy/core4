@@ -479,7 +479,10 @@ describe("resolveTarballRecipeSource", () => {
         url: "https://example.test/recipe.tar.gz",
         userDataRoot: join(dir, "data"),
         fetcher: fetcherFor(bytes),
-        onWarn: (message) => warnings.push(message),
+        onWarn: async (message) => {
+          await Bun.sleep(10);
+          warnings.push(message);
+        },
       });
       expect(result.sha256).toBe(sha256(bytes));
       expect(warnings).toHaveLength(1);
@@ -726,7 +729,9 @@ describe("initApp tarball source boundary", () => {
           userDataRoot: join(dir, "data"),
           tarballRecipeFetcher: fetcherFor(bytes),
           nonInteractive: true,
-          onWarn: (message) => warnings.push(message),
+          onWarn: (message) => {
+            warnings.push(message);
+          },
         });
       } catch (error) {
         caught = error;

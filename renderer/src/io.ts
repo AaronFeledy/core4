@@ -108,37 +108,72 @@ interface RendererInputStream {
   off(event: "data", listener: (chunk: Buffer | string) => void): void;
 }
 
+export interface StdioRendererIOOptions {
+  readonly platform?: NodeJS.Platform;
+  /** Text-only native TTY translation. Machine writers disable this. */
+  readonly terminalNewlines?: boolean;
+}
+
+const stdioFactories = new WeakMap<RendererIO, (terminalNewlines: boolean) => RendererIO>();
+
+const terminalNewlineNormalizer = (enabled: boolean): ((chunk: string) => string) => {
+  let previousCarriageReturn = false;
+  return (chunk) => {
+    if (!enabled || chunk.length === 0) return chunk;
+    const normalized = chunk.replace(/\n/g, (_newline, offset: number) =>
+      (offset === 0 ? previousCarriageReturn : chunk[offset - 1] === "\r") ? "\n" : "\r\n",
+    );
+    previousCarriageReturn = chunk.endsWith("\r");
+    return normalized;
+  };
+};
+
+/** Select text translation only for native streams; injected transports own their bytes. */
+export const withStdioTerminalNewlines = (io: RendererIO, terminalNewlines: boolean): RendererIO =>
+  stdioFactories.get(io)?.(terminalNewlines) ?? io;
+
 export const createStdioRendererIO = (
   stdout: NodeJS.WriteStream = process.stdout,
   stderr: NodeJS.WriteStream = process.stderr,
   stdin: RendererInputStream = process.stdin,
-): BinaryRendererIO => ({
-  writeStdout: (chunk) => guardedWrite("stdout", stdout, chunk),
-  writeStderr: (chunk) => guardedWrite("stderr", stderr, chunk),
-  writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
-  writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
-  externalOutputStream: stdout,
-  isTTY: stdout.isTTY === true,
-  get terminalColumns() {
-    return typeof stdout.columns === "number" ? stdout.columns : undefined;
-  },
-  get terminalRows() {
-    return typeof stdout.rows === "number" ? stdout.rows : undefined;
-  },
-  subscribeInput: (onKey) => {
-    if (stdin.isTTY !== true) return () => {};
-    const listener = (chunk: Buffer | string): void => onKey(chunk.toString("utf8"));
-    const previousRaw = stdin.isRaw === true;
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.on("data", listener);
-    return () => {
-      stdin.off("data", listener);
-      stdin.setRawMode(previousRaw);
-      stdin.pause();
-    };
-  },
-});
+  options: StdioRendererIOOptions = {},
+): BinaryRendererIO => {
+  const platform = options.platform ?? process.platform;
+  const terminalNewlines = options.terminalNewlines !== false && platform === "win32";
+  const stdoutNewlines = terminalNewlineNormalizer(terminalNewlines && stdout.isTTY === true);
+  const stderrNewlines = terminalNewlineNormalizer(terminalNewlines && stderr.isTTY === true);
+  const io: BinaryRendererIO = {
+    writeStdout: (chunk) => guardedWrite("stdout", stdout, stdoutNewlines(chunk)),
+    writeStderr: (chunk) => guardedWrite("stderr", stderr, stderrNewlines(chunk)),
+    writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
+    writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
+    externalOutputStream: stdout,
+    isTTY: stdout.isTTY === true,
+    get terminalColumns() {
+      return typeof stdout.columns === "number" ? stdout.columns : undefined;
+    },
+    get terminalRows() {
+      return typeof stdout.rows === "number" ? stdout.rows : undefined;
+    },
+    subscribeInput: (onKey) => {
+      if (stdin.isTTY !== true) return () => {};
+      const listener = (chunk: Buffer | string): void => onKey(chunk.toString("utf8"));
+      const previousRaw = stdin.isRaw === true;
+      stdin.setRawMode(true);
+      stdin.resume();
+      stdin.on("data", listener);
+      return () => {
+        stdin.off("data", listener);
+        stdin.setRawMode(previousRaw);
+        stdin.pause();
+      };
+    },
+  };
+  stdioFactories.set(io, (translate) =>
+    createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate }),
+  );
+  return io;
+};
 
 export const writeStdioLine = (
   destination: "stdout" | "stderr",
