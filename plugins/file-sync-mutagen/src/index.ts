@@ -1,15 +1,7 @@
 /**
- * `@lando/file-sync-mutagen` bundles the Mutagen-backed `FileSyncEngine` for
- * slow bind-mount providers (`provider-lando` on macOS, `provider-docker` on
- * macOS / Windows, `provider-podman` on macOS / Windows).
- *
- * It exports the engine layer, deterministic session naming, and the
- * `MutagenClient` seam used by the in-memory fake.
- *
- * Capability matrix is fixed:
- *   `modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]`,
- *   `remoteAgentDeployment: "auto"`, `exclusionPatterns: true`,
- *   `conflictReporting: true`, `progressReporting: true`.
+ * Mutagen-backed accelerated file sync for the managed Lando provider on
+ * native Windows. The production contribution binds verified provider targets
+ * before creating durable sessions; in-memory clients support contract tests.
  */
 
 import path from "node:path";
@@ -17,12 +9,14 @@ import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
 import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
+import type { LandoPluginContext } from "@lando/sdk/plugins";
 import {
   type PluginDoctorCheckContribution,
   type PluginDoctorReport,
   definePlugin,
 } from "@lando/sdk/plugins";
 import {
+  type AppPlan,
   type FileSyncEngineCapabilities as FileSyncEngineCapabilitiesType,
   type FileSyncEventChunk,
   type FileSyncSessionFilter,
@@ -31,6 +25,7 @@ import {
   type FileSyncSessionSpec,
   type FileSyncSetupOptions,
   PluginManifest,
+  type PreparedFileSyncTarget,
 } from "@lando/sdk/schema";
 import {
   Downloader,
@@ -38,12 +33,21 @@ import {
   type FileSyncEngineShape,
   type FileSyncError,
   PathsService,
+  ProcessRunner,
 } from "@lando/sdk/services";
 import type { ToolError } from "@lando/sdk/tool-provisioning";
 
+import {
+  dockerCliConfigDir,
+  dockerCliInstallPath,
+  provisionDockerCli,
+  readInstalledDockerCliStatus,
+} from "./docker-cli-provision.ts";
 import { type MutagenClient, makeUnavailableMutagenClient, toFileSyncSessionInfo } from "./mutagen-client.ts";
+import { WINDOWS_LANDO_DOCKER_HOST, makeMutagenProcessClient } from "./mutagen-process-client.ts";
 import { MUTAGEN_TOOL_VERSION, provisionMutagen, readInstalledMutagenStatus } from "./provision.ts";
 import { mutagenSessionName, mutagenSessionRef } from "./session-name.ts";
+import { makePreparedWindowsMutagenAppClient } from "./windows-app-client.ts";
 
 export const PLUGIN_NAME = "@lando/file-sync-mutagen" as const;
 export const ENGINE_ID = "mutagen" as const;
@@ -87,12 +91,20 @@ const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter)
 
 export interface MakeFileSyncEngineOptions {
   /** Override the underlying Mutagen transport. Tests can pass
-   *  `makeFakeMutagenClient()`; the default client fails closed until the
-   *  host-CLI-backed client is available. */
+   *  `makeFakeMutagenClient()`; the unbound default fails closed until
+   *  verified provider targets are bound. */
   readonly client?: MutagenClient;
   readonly setup?:
     | ((options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>)
     | undefined;
+  readonly availability?: Effect.Effect<boolean, FileSyncError>;
+  readonly bindPreparedTargets?: (
+    plan: AppPlan,
+    targets: ReadonlyArray<PreparedFileSyncTarget>,
+  ) => Effect.Effect<
+    FileSyncEngineShape & { readonly boundApp: FileSyncSessionSpec["app"] },
+    FileSyncStartError
+  >;
 }
 
 /**
@@ -132,26 +144,36 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
   return FileSyncEngine.of({
     id: ENGINE_ID,
     displayName: ENGINE_DISPLAY_NAME,
-    capabilities: mutagenCapabilities,
+    capabilities:
+      client.persistsAcrossProcesses === true
+        ? { ...mutagenCapabilities, conflictReporting: false, progressReporting: false }
+        : mutagenCapabilities,
     sessionsPersistAcrossProcesses: client.persistsAcrossProcesses === true,
     ...(client.invalidateAppDrain !== undefined &&
     client.drainApp !== undefined &&
     client.disposeApp !== undefined &&
-    client.completeAppDisposal !== undefined
+    client.completeAppDisposal !== undefined &&
+    client.disposalPhase !== undefined
       ? {
           appLifecycle: {
             invalidateDrain: client.invalidateAppDrain,
             drain: client.drainApp,
             dispose: client.disposeApp,
             completeDisposal: client.completeAppDisposal,
+            disposalPhase: client.disposalPhase,
           },
         }
       : {}),
 
-    isAvailable: client.version.pipe(
-      Effect.as(true),
-      Effect.catch(() => Effect.succeed(false)),
-    ),
+    ...(options.bindPreparedTargets === undefined
+      ? {}
+      : { bindPreparedTargets: options.bindPreparedTargets }),
+    isAvailable:
+      options.availability ??
+      client.version.pipe(
+        Effect.as(true),
+        Effect.catch(() => Effect.succeed(false)),
+      ),
     setup: Effect.fn("FileSyncEngine.setup")(options.setup ?? (() => Effect.void)),
 
     createSession,
@@ -179,9 +201,8 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 };
 
 /**
- * Bundled engine layer for consumers that include the plugin before running
- * `lando setup`. The default client fails closed until a real Mutagen client
- * is supplied by a later layer.
+ * Test layer without a provider-bound target. Production uses the contextual
+ * contribution, which binds verified managed Windows targets before create.
  */
 const provisionError = (cause: ToolError): FileSyncStartError =>
   new FileSyncStartError({
@@ -207,20 +228,129 @@ export const layer = Layer.effect(
   }),
 );
 
+export const layerForContext = (ctx: LandoPluginContext) =>
+  Layer.effect(
+    FileSyncEngine,
+    Effect.gen(function* () {
+      const paths = yield* PathsService;
+      const downloader = yield* Downloader;
+      const runner = yield* ProcessRunner;
+      const setup: MakeFileSyncEngineOptions["setup"] = (options) =>
+        provisionMutagen({
+          binDir: paths.binDir,
+          toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
+          force: options.force,
+        }).pipe(
+          Effect.andThen(
+            paths.platform === "win32"
+              ? provisionDockerCli({
+                  binDir: paths.binDir,
+                  toolDownloadsDir: paths.toolDownloadsDir("mutagen-docker"),
+                  force: options.force,
+                })
+              : Effect.void,
+          ),
+          Effect.provideService(Downloader, downloader),
+          Effect.provideService(ProcessRunner, runner),
+          Effect.mapError(provisionError),
+        );
+      if (paths.platform !== "win32") return makeFileSyncEngine({ setup });
+
+      const dockerCliPath = dockerCliInstallPath(paths.binDir);
+      const verifyDockerCli = () =>
+        Effect.tryPromise({
+          try: () => readInstalledDockerCliStatus(paths.binDir),
+          catch: () =>
+            new FileSyncStartError({
+              engineId: ENGINE_ID,
+              message: "Could not verify Lando-managed Docker CLI for Mutagen.",
+              remediation: "Run lando setup and retry file sync.",
+            }),
+        }).pipe(
+          Effect.flatMap((status) =>
+            status.isCurrent
+              ? Effect.succeed(dockerCliPath)
+              : Effect.fail(
+                  new FileSyncStartError({
+                    engineId: ENGINE_ID,
+                    message: "Lando-managed Docker CLI for Mutagen is missing or has changed.",
+                    remediation: "Run lando setup and retry file sync.",
+                  }),
+                ),
+          ),
+        );
+      const availability = Effect.all([
+        Effect.promise(() => readInstalledMutagenStatus(paths.binDir)),
+        Effect.promise(() => readInstalledDockerCliStatus(paths.binDir)),
+      ]).pipe(Effect.map(([mutagen, docker]) => mutagen.isCurrent && docker.isCurrent));
+      const common = {
+        binDir: paths.binDir,
+        dataDir: paths.fileSyncSessionsDir,
+        dockerCliPath,
+        dockerConfigDir: dockerCliConfigDir(paths.binDir),
+        dockerHost: WINDOWS_LANDO_DOCKER_HOST,
+        runner,
+        stateStore: ctx.stateStore,
+        verifyDockerCli,
+      };
+      const client = makeMutagenProcessClient({
+        ...common,
+        resolveTarget: () =>
+          Effect.fail(
+            new FileSyncStartError({
+              engineId: ENGINE_ID,
+              message: "File-sync session creation requires verified provider targets.",
+              remediation: "Retry app start after preparing the complete accelerated mount target set.",
+            }),
+          ),
+      });
+      const bindPreparedTargets: NonNullable<MakeFileSyncEngineOptions["bindPreparedTargets"]> = (
+        plan,
+        targets,
+      ) => {
+        const first = plan.fileSync[0];
+        if (first === undefined)
+          return Effect.fail(
+            new FileSyncStartError({
+              engineId: ENGINE_ID,
+              message: "The app plan has no accelerated sessions to bind.",
+              remediation: "Prepare a nonempty accelerated mount plan before binding Mutagen.",
+            }),
+          );
+        return makePreparedWindowsMutagenAppClient({
+          ...common,
+          plan,
+          preparedTargets: { targets },
+          prepareDockerCli: verifyDockerCli,
+          deferPreparation: true,
+        }).pipe(
+          Effect.map((boundClient) => ({
+            ...makeFileSyncEngine({ client: boundClient, setup, availability }),
+            boundApp: first.session.app,
+          })),
+        );
+      };
+      return makeFileSyncEngine({ client, setup, availability, bindPreparedTargets });
+    }),
+  );
+
 export const fileSyncCheck: PluginDoctorCheckContribution = {
   id: "file-sync",
   relevant: (capabilities) => capabilities.bindMountPerformance === "slow",
-  run: Effect.fn("MutagenDoctorCheck.run")(function* ({ binDir }) {
+  run: Effect.fn("MutagenDoctorCheck.run")(function* ({ binDir, platform, providerId }) {
     const installStatus =
       binDir === undefined ? undefined : yield* Effect.promise(() => readInstalledMutagenStatus(binDir));
     const installedVersion = installStatus?.installedVersion;
     const isCurrent = installStatus?.isCurrent === true;
-    const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
-    const clientReady =
-      selectedEngine._tag === "Some" && selectedEngine.value.id === ENGINE_ID
-        ? yield* selectedEngine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false)))
-        : false;
-    const ready = isCurrent && clientReady;
+    const supported = platform === "win32" && providerId === "lando";
+    const dockerStatus =
+      supported && binDir !== undefined
+        ? yield* Effect.promise(() => readInstalledDockerCliStatus(binDir))
+        : undefined;
+    // Doctor is composed beside, not inside, the engine layer. Verified tool
+    // fingerprints and supported provider/host identify the installed adapter.
+    const clientReady = supported && isCurrent && dockerStatus?.isCurrent === true;
+    const ready = clientReady;
 
     return [
       {
@@ -233,10 +363,6 @@ export const fileSyncCheck: PluginDoctorCheckContribution = {
             : isCurrent && !clientReady
               ? "installed-client-unavailable"
               : "installed",
-        runtime: {
-          running: ready,
-          ...(installedVersion === undefined ? {} : { version: installedVersion }),
-        },
         context: {
           engineId: ENGINE_ID,
           mutagenVersion: installedVersion ?? "not-installed",
@@ -245,21 +371,30 @@ export const fileSyncCheck: PluginDoctorCheckContribution = {
         },
         solutions: ready
           ? []
-          : isCurrent
+          : !isCurrent
             ? [
-                {
-                  kind: "manual",
-                  description:
-                    "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
-                },
-              ]
-            : [
                 {
                   kind: "manual",
                   description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
                   command: "lando setup",
                 },
-              ],
+              ]
+            : supported && dockerStatus?.isCurrent !== true
+              ? [
+                  {
+                    kind: "manual",
+                    description: "Run `lando setup` to install the verified Docker CLI for Mutagen.",
+                    command: "lando setup",
+                  },
+                ]
+              : [
+                  {
+                    kind: "manual",
+                    description: supported
+                      ? "Retry `lando setup` and check the selected file-sync engine."
+                      : "Accelerated Mutagen sync is currently supported by the Lando-managed provider on native Windows.",
+                  },
+                ],
       },
     ] satisfies ReadonlyArray<PluginDoctorReport>;
   }),
@@ -283,7 +418,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  fileSyncEngines: new Map([[ENGINE_ID, layer]]),
+  fileSyncEngines: new Map([[ENGINE_ID, { make: layerForContext }]]),
   doctorChecks: [fileSyncCheck],
 });
 

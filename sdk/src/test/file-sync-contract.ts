@@ -81,7 +81,7 @@ const requireFileSyncTaggedFailure = <A>(
  * Run the `FileSyncEngine` contract assertions. Validates identity,
  * capability decode, lifecycle method types, the create/pause/resume/
  * terminate session round-trip, status reporting through `listSessions`,
- * idempotent pause + terminate, and that the engine surfaces tagged
+ * idempotent pause + terminate, declared session scope lifetime, and tagged
  * `FileSyncStartError` / `FileSyncDriftError` / `FileSyncStopError` for
  * the documented failure modes.
  */
@@ -297,11 +297,40 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
         fileSyncContractFailure("listSessions resolves after scope finalization", details as unknown),
       ),
     );
-  yield* requireFileSyncContract(
-    afterScope.find((info: FileSyncSessionInfo) => info.ref === scopeFinalizedRef) === undefined,
-    "session is removed after createSession scope finalizes",
-    { listed: afterScope, ref: scopeFinalizedRef },
-  );
+  if (engine.sessionsPersistAcrossProcesses === true) {
+    const retained = afterScope.find((info) => info.ref === scopeFinalizedRef);
+    yield* requireFileSyncContract(
+      retained?.status === "running" &&
+        isDeepStrictEqual(retained.spec, buildFileSyncContractSpec("scope-finalizer")),
+      "persistent session survives createSession scope finalization",
+      { listed: afterScope, ref: scopeFinalizedRef },
+    );
+    yield* engine
+      .terminateSession(scopeFinalizedRef)
+      .pipe(
+        Effect.mapError((details: FileSyncError) =>
+          fileSyncContractFailure("persistent session explicit teardown resolves", details),
+        ),
+      );
+    const afterTeardown = yield* engine
+      .listSessions({})
+      .pipe(
+        Effect.mapError((details: FileSyncError) =>
+          fileSyncContractFailure("listSessions resolves after persistent session teardown", details),
+        ),
+      );
+    yield* requireFileSyncContract(
+      afterTeardown.every((info) => info.ref !== scopeFinalizedRef),
+      "persistent session is removed after explicit teardown",
+      { listed: afterTeardown, ref: scopeFinalizedRef },
+    );
+  } else {
+    yield* requireFileSyncContract(
+      afterScope.find((info: FileSyncSessionInfo) => info.ref === scopeFinalizedRef) === undefined,
+      "session is removed after createSession scope finalizes",
+      { listed: afterScope, ref: scopeFinalizedRef },
+    );
+  }
 
   yield* requireFileSyncTaggedFailure(
     Effect.scoped(engine.createSession(buildOutsideRootFileSyncContractSpec())),
@@ -479,7 +508,7 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
   setup: (_options: FileSyncSetupOptions) => Effect.void,
 
   createSession: Effect.fnUntraced(function* (
-    this: TestFileSyncEngineStateCarrier,
+    this: TestFileSyncEngineStateCarrier & Pick<FileSyncEngineShape, "sessionsPersistAcrossProcesses">,
     spec: FileSyncSessionSpec,
   ) {
     const state = testFileSyncEngineState(this);
@@ -513,11 +542,13 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
       lastUpdatedAt: DateTime.makeUnsafe("2026-05-28T00:00:00Z"),
     };
     state.sessions.set(ref, info);
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        state.sessions.delete(ref);
-      }),
-    );
+    if (this.sessionsPersistAcrossProcesses !== true) {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          state.sessions.delete(ref);
+        }),
+      );
+    }
     return ref;
   }),
 

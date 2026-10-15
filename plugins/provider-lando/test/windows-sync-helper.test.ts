@@ -127,6 +127,18 @@ const makeFakeApi = () => {
           container = undefined;
           return response(204);
         }
+        if (method === "POST" && path.startsWith("/libpod/volumes/prune?")) {
+          const params = new URL(`http://podman.test${path}`).searchParams;
+          const filters = JSON.parse(params.get("filters") ?? "{}") as { label?: string[] };
+          const wanted = filters.label?.[0];
+          const actual = (volume?.Labels as JsonRecord | undefined)?.["dev.lando.sync.nonce"];
+          if (container === undefined && wanted === `dev.lando.sync.nonce=${actual}`) {
+            const removed = volume?.Name;
+            volume = undefined;
+            return response(200, { VolumesDeleted: [removed], SpaceReclaimed: 0 });
+          }
+          return response(200, { VolumesDeleted: [], SpaceReclaimed: 0 });
+        }
         if (method === "DELETE" && path.startsWith("/volumes/")) {
           if (volume === undefined) return response(404);
           volume = undefined;
@@ -370,11 +382,12 @@ describe("Windows named-volume sync helper", () => {
     expect(fake.container).toBeUndefined();
     expect(fake.volume).toBeDefined();
     expect(await Effect.runPromise(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))).toBe(false);
-    const removal = await Effect.runPromise(
-      Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
-    );
-    expect(removal._tag).toBe("Failure");
-    expect(fake.volume).toBeDefined();
+    expect(
+      await Effect.runPromise(
+        removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true }),
+      ),
+    ).toBe(true);
+    expect(fake.volume).toBeUndefined();
   });
 
   test("recreates a helper with a fresh nonce after recorded cleanup", async () => {

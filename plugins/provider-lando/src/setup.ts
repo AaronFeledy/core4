@@ -325,7 +325,7 @@ const readText = (stream: ReadableStream<Uint8Array> | null) =>
 export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommandRunner => ({
   version: Effect.tryPromise({
     try: async () => {
-      const proc = Bun.spawn([command, "--version"], { stderr: "pipe", stdout: "pipe" });
+      const proc = Bun.spawn([command, "--version"], { stderr: "pipe", stdout: "pipe", windowsHide: true });
       const [stdout, stderr, exitCode] = await Promise.all([
         readText(proc.stdout),
         readText(proc.stderr),
@@ -416,7 +416,8 @@ interface MachineProcess {
 
 export type MachineSpawn = (argv: ReadonlyArray<string>) => MachineProcess;
 
-const defaultMachineSpawn: MachineSpawn = (argv) => Bun.spawn([...argv], { stderr: "pipe", stdout: "pipe" });
+const defaultMachineSpawn: MachineSpawn = (argv) =>
+  Bun.spawn([...argv], { stderr: "pipe", stdout: "pipe", windowsHide: true });
 
 const readProcess = async (proc: MachineProcess) => {
   const stdoutStream = proc.stdout instanceof ReadableStream ? proc.stdout : null;

@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.
+
 - `@lando/sdk/landofile` adds `decodeLandofileAuthoringLayer`: the native layer placement decoder with complete expression-aware authoring validation. `LandofileLayerValidator` is generic in its validated output so custom validation preserves its inferred overlay type.
 
 - Native Landofile merge directives (pre-ship): `override(value)`/`reset()` and the branded `LandofileOverride`/`LandofileReset` schemas ship through `@lando/sdk`, `@lando/sdk/schema`, `@lando/sdk/landofile`, `@lando/core/schema`, and `@lando/core/landofile`. `defineLandofile` now accepts the schema-derived, directive-capable `LandofileOverlayInput`; effective schemas stay directive-free, and `decodeLandofileLayer` validates and canonicalizes directive placement before merging. `composeTagDispositions` marks `!override` and `!reset` as `normalized` instead of `rejected`. The Landofile editor schema publishes informational `x-lando-yaml-tags`. `LandofileAuthoringFragment` (and the config-translate and recipe-decompose fragments derived from it) accepts `{ _tag: "LandofileOverride", value }` and `{ _tag: "LandofileReset" }` wire envelopes that decode to branded directives; `LandofileAuthoringFragmentNative` is the in-memory counterpart. The Lando 3 translator expresses removals with `!reset`/`!override` and no longer emits relocation `needs-review` diagnostics.
@@ -648,6 +650,7 @@ It registers no JSON Schema.
 - `FileSyncSessionRef`
 - `FileSyncSessionSpec`
 - `PreparedFileSyncTarget`
+- `RetainedFileSyncQuiescence`
 - `FileSyncSessionStatus`
 - `FileSyncSessionTarget`
 - `FileSyncSetupOptions`
@@ -1372,3 +1375,5 @@ It registers no JSON Schema.
 - `SqlRecoveryOperationError`
 - `SqlSeedSourceError`
 - `SqlSeedStateError`
+
+- The pre-release file-sync contribution now builds its engine from `LandoPluginContext` so durable session receipts use the plugin state store. `FileSyncEngineShape.appLifecycle` adds `disposalPhase(app)` to resume interrupted disposal, and `RuntimeProviderShape` adds optional `disposeFileSyncTargets(plan)` for verified helper/cache cleanup and `quiesceRetainedFileSync(plan)` for exact writer teardown and an Effect Schema-derived proof of which prepared volumes still exist after a retained start without an applied receipt. `PreparedFileSyncTarget.endpoint` accepts optional numeric beta owner/group and file/directory modes, verified by the Windows Mutagen binder. `ProcessSpawnOptions.windowsHide` allows background Windows child processes without a console window.

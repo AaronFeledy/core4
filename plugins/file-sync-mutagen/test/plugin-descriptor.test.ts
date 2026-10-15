@@ -14,7 +14,6 @@ import {
   ENGINE_ID,
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
-  layer as engine,
   makeFakeMutagenClient,
   makeFileSyncEngine,
   manifest,
@@ -69,9 +68,9 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
     expect(plugin.name).toBe(manifest.name);
   });
 
-  test("contributes the manifest engine id using the existing engine layer", () => {
+  test("contributes the contextual engine factory", () => {
     expect(manifest.contributes?.fileSyncEngines).toEqual([...(plugin.fileSyncEngines?.keys() ?? [])]);
-    expect(plugin.fileSyncEngines?.get(ENGINE_ID)).toBe(engine);
+    expect(plugin.fileSyncEngines?.get(ENGINE_ID)?.make).toBeFunction();
   });
 
   test("reports missing Mutagen as not installed with setup remediation", async () => {
@@ -84,7 +83,6 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
         status: "warn",
         severity: "warn",
         runtimeStatus: "not-installed",
-        runtime: { running: false },
         context: {
           engineId: "mutagen",
           mutagenVersion: "not-installed",
@@ -118,7 +116,6 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
         status: "warn",
         severity: "warn",
         runtimeStatus: "installed",
-        runtime: { running: false, version: "v0.0.0-stale" },
         context: {
           engineId: "mutagen",
           mutagenVersion: "v0.0.0-stale",
@@ -158,7 +155,6 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
         status: "warn",
         severity: "warn",
         runtimeStatus: "installed-client-unavailable",
-        runtime: { running: false, version: MUTAGEN_TOOL_VERSION },
         context: {
           engineId: "mutagen",
           mutagenVersion: MUTAGEN_TOOL_VERSION,
@@ -169,7 +165,7 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
           {
             kind: "manual",
             description:
-              "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
+              "Accelerated Mutagen sync is currently supported by the Lando-managed provider on native Windows.",
           },
         ],
       });
@@ -179,12 +175,9 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
         makeFileSyncEngine({ client: makeFakeMutagenClient() }),
       );
       expect(working).toMatchObject({
-        status: "pass",
-        severity: "info",
-        runtimeStatus: "installed",
-        runtime: { running: true, version: MUTAGEN_TOOL_VERSION },
-        context: { clientStatus: "available" },
-        solutions: [],
+        status: "warn",
+        runtimeStatus: "installed-client-unavailable",
+        context: { clientStatus: "unavailable" },
       });
     } finally {
       await rm(dataRoot, { recursive: true, force: true });

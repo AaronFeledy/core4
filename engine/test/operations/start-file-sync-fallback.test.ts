@@ -9,6 +9,7 @@ import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Scope } from "eff
 import { containerHostConfigFragment } from "@lando/container-runtime/plan";
 import {
   EventError,
+  FileSyncDriftError,
   FileSyncStartError,
   FileSyncStopError,
   ProviderUnavailableError,
@@ -29,7 +30,10 @@ import { FileSyncEngine } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
-import { requireNoPendingAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
+import {
+  readJournal,
+  requireNoPendingAcceleratedStart,
+} from "../../src/operations/accelerated-start-journal.ts";
 import { resolveFileSyncMountPlan } from "../../src/operations/file-sync-plan.ts";
 import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -88,15 +92,15 @@ const acceleratedPlan: AppPlan = {
 };
 
 const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, cause: Cause.Cause<unknown>) => {
-  const retained = Option.getOrThrow(Cause.findErrorOption(cause));
-  expect(retained).toBeInstanceOf(FileSyncStartError);
-  if (!(retained instanceof FileSyncStartError)) throw new Error("Expected retained-start failure");
-  expect(retained.message).toContain("cannot roll back prepared accelerated sync targets");
-  const original = Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))[1];
-  expect(original).toBeInstanceOf(Error);
-  if (!(original instanceof Error)) throw new Error("Expected original failure");
-  expect(retained.cause).toBe(original);
-  expect(retained.message).toContain(original.message);
+  const failures = Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
+  expect(failures.length).toBeGreaterThan(0);
+  expect(
+    failures.some(
+      (failure) =>
+        failure instanceof FileSyncStartError &&
+        failure.message.includes("cannot roll back prepared accelerated sync targets"),
+    ),
+  ).toBe(false);
   const journals = Array.from(harness.stateStore.snapshot()).filter(
     ([path]) => basename(dirname(path)) === "accelerated-starts",
   );
@@ -109,7 +113,6 @@ const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, caus
     Schema.fromJsonString(Schema.Struct({ data: Schema.Struct({ phase: Schema.String }) })),
   )(new TextDecoder().decode(bytes));
   expect(saved.data.phase).toBe("retained");
-  expect(retained.remediation).toContain(path);
   const pending = await Effect.runPromiseExit(
     requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
       Effect.provide(harness.stateStore.layer),
@@ -580,6 +583,32 @@ describe("file-sync session reconciliation", () => {
     expect(calls).toEqual([]);
   });
 
+  test("reports existing conflicted sessions as drift without changing them", async () => {
+    const calls: string[] = [];
+    const conflictedPaths = ["/app/sites/default/settings.php"];
+    const engine = {
+      ...TestFileSyncEngine,
+      id: "mutagen",
+      listSessions: () => Effect.succeed([{ ...listed(entry.session, "errored"), conflictedPaths }]),
+      resumeSession: () => Effect.sync(() => calls.push("resume")),
+      flushSession: () => Effect.sync(() => calls.push("flush")),
+      terminateSession: () => Effect.sync(() => calls.push("terminate")),
+    };
+    const result = await Effect.runPromise(
+      Effect.result(
+        startFileSyncSessions(singleSessionPlan, events).pipe(Effect.provideService(FileSyncEngine, engine)),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toBeInstanceOf(FileSyncDriftError);
+      if (!(result.failure instanceof FileSyncDriftError)) throw new Error("Expected drift");
+      expect(result.failure.sessionRef).toBe(ref);
+      expect(result.failure.conflictedPaths).toEqual(conflictedPaths);
+      expect(result.failure.remediation).toContain(String(ref));
+    }
+    expect(calls).toEqual([]);
+  });
   test("terminates a newly created session when blocking flush fails", async () => {
     const calls: string[] = [];
     const failure = new FileSyncStartError({ engineId: "mutagen", message: "initial flush failed" });
@@ -1230,7 +1259,7 @@ describe("pre-apply accelerated mount preparation", () => {
     if (Exit.isFailure(exit)) {
       await expectRetainedStart(harness, exit.cause);
       expect(
-        Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))[1],
+        Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))[0],
       ).toMatchObject({
         _tag: "FileSyncStartError",
         message: expect.stringContaining("target"),
@@ -1345,7 +1374,7 @@ describe("pre-apply accelerated mount preparation", () => {
       if (Exit.isFailure(exit)) {
         expect(
           Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)),
-        ).toEqual([expect.objectContaining({ _tag: "FileSyncStartError", engineId: "mutagen" })]);
+        ).toContainEqual(expect.objectContaining({ _tag: "FileSyncStartError", engineId: "mutagen" }));
       }
       expect(actions).toEqual(owned ? ["inventory"] : ["inventory", "rollback"]);
       const journal = await Effect.runPromiseExit(
@@ -1695,6 +1724,80 @@ describe("pre-apply accelerated mount preparation", () => {
     },
   );
 
+  test("retains a fresh durable start when the session ledger is unavailable, then retries", async () => {
+    const actions: string[] = [];
+    const app = { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root } as const;
+    let ledgerAvailable = false;
+    const unavailable = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "The session ledger is locked by another app.",
+      remediation: "Retry start once the other sync operation finishes.",
+    });
+    const lifecycle = {
+      invalidateDrain: () => Effect.sync(() => actions.push("invalidate")),
+      drain: () => Effect.sync(() => actions.push("drain")),
+      dispose: () => Effect.void,
+      completeDisposal: () => Effect.void,
+      disposalPhase: () => Effect.succeed("active" as const),
+    };
+    const bound = {
+      ...TestFileSyncEngine,
+      id: "mutagen",
+      boundApp: app,
+      sessionsPersistAcrossProcesses: true,
+      isAvailable: Effect.succeed(true),
+      appLifecycle: lifecycle,
+      listSessions: () =>
+        Effect.sync(() => {
+          actions.push("inventory");
+        }).pipe(Effect.andThen(ledgerAvailable ? Effect.succeed([]) : Effect.fail(unavailable))),
+      createSession: (spec: (typeof acceleratedPlan.fileSync)[number]["session"]) =>
+        Effect.sync(() => {
+          actions.push(`create:${spec.mountKey}`);
+          return FileSyncSessionRef.make(`sync-${spec.mountKey}`);
+        }),
+      flushSession: (ref: FileSyncSessionRef) =>
+        Effect.sync(() => {
+          actions.push(`flush:${ref}`);
+        }),
+    };
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      providerHasFileSyncRollback: false,
+      onPrepareFileSync: () => actions.push("prepare"),
+      onApply: () => actions.push("apply"),
+      fileSync: {
+        ...bound,
+        bindPreparedTargets: () =>
+          Effect.sync(() => {
+            actions.push("bind");
+            return bound;
+          }),
+      },
+    });
+    const target = { plan: acceleratedPlan, root: acceleratedPlan.root, app };
+    const first = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
+    expect(Exit.isFailure(first)).toBe(true);
+    expect(actions.slice(0, 2)).toEqual(["prepare", "bind"]);
+    expect(actions.filter((action) => action === "inventory").length).toBeGreaterThanOrEqual(2);
+    expect(actions).not.toContain("apply");
+    expect(actions.some((action) => action.startsWith("create:"))).toBe(false);
+    const failedJournal = await Effect.runPromise(
+      readJournal(app).pipe(Effect.provide(harness.stateStore.layer)),
+    );
+    expect(failedJournal.pending?.phase).toBe("retained");
+
+    ledgerAvailable = true;
+    await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
+    expect(actions).toContain("invalidate");
+    expect(actions).toContain("apply");
+    expect(actions.filter((action) => action.startsWith("create:"))).toHaveLength(2);
+    const completedJournal = await Effect.runPromise(
+      readJournal(app).pipe(Effect.provide(harness.stateStore.layer)),
+    );
+    expect(completedJournal.pending?.phase).toBe("completed");
+  });
+
   test("retains the accelerated-start journal if rejected-target rollback fails", async () => {
     const actions: string[] = [];
     const harness = makeHarness({
@@ -1742,6 +1845,7 @@ describe("pre-apply accelerated mount preparation", () => {
           drain: () => Effect.void,
           dispose: () => Effect.void,
           completeDisposal: () => Effect.void,
+          disposalPhase: () => Effect.succeed("active" as const),
         },
       },
     });
@@ -1787,6 +1891,7 @@ describe("pre-apply accelerated mount preparation", () => {
           drain: () => Effect.void,
           dispose: () => Effect.void,
           completeDisposal: () => Effect.void,
+          disposalPhase: () => Effect.succeed("active" as const),
         },
       },
     });
@@ -2262,6 +2367,98 @@ describe("pre-apply accelerated mount preparation", () => {
     expect(Exit.isFailure(pending)).toBe(true);
   });
 
+  test("retained sync conflict preserves its tagged paths and remediation", async () => {
+    const drift = new FileSyncDriftError({
+      engineId: "mutagen",
+      sessionRef: "sync-app-mount",
+      conflictedPaths: ["/app/sites/default/settings.php"],
+      message: "File sync has conflicting changes",
+      remediation: "Resolve the conflict in Mutagen, then retry lando start.",
+    });
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      providerHasFileSyncRollback: false,
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        sessionsPersistAcrossProcesses: true,
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+        createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
+        flushSession: () => Effect.fail(drift),
+      },
+    });
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const exit = await Effect.runPromiseExit(
+      startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
+        [drift],
+      );
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(failure).toBe(drift);
+      expect(failure._tag).toBe("FileSyncDriftError");
+      if (failure._tag !== "FileSyncDriftError") throw new Error("Expected sync drift");
+      expect(failure.conflictedPaths).toEqual(["/app/sites/default/settings.php"]);
+      expect(failure.remediation).toBe("Resolve the conflict in Mutagen, then retry lando start.");
+      await expectRetainedStart(harness, exit.cause);
+    }
+  });
+
+  test("retained existing conflict reaches start as tagged drift", async () => {
+    const first = acceleratedPlan.fileSync[0];
+    if (first === undefined) throw new Error("Missing planned session");
+    const sessionRef = FileSyncSessionRef.make("prior-app-mount");
+    const conflictedPaths = ["/app/sites/default/settings.php"];
+    const detail =
+      'Mutagen session "prior-app-mount" (sync_native123) has 1 conflict. Preserve both versions. Inspect with the verified Mutagen CLI at "C:/Lando/mutagen.exe", isolated session data at "C:/Lando/session-data", helper "container-123", Docker CLI "C:/Lando/docker.exe", and Docker config "C:/Lando/docker-config".';
+    const existing: FileSyncSessionInfo = {
+      ref: sessionRef,
+      app: first.session.app,
+      service: first.session.service,
+      mountKey: first.session.mountKey,
+      spec: first.session,
+      status: "errored",
+      conflictedPaths,
+      detail,
+      lastUpdatedAt: DateTime.makeUnsafe("2026-09-23T00:00:00Z"),
+    };
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      providerHasFileSyncRollback: false,
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        sessionsPersistAcrossProcesses: true,
+        isAvailable: Effect.succeed(true),
+        listSessions: ({ mountKey }) =>
+          Effect.succeed(mountKey === undefined || mountKey === first.session.mountKey ? [existing] : []),
+      },
+    });
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const exit = await Effect.runPromiseExit(
+      startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failures = Array.from(
+        exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+      );
+      expect(failures).toHaveLength(1);
+      const failure = failures[0];
+      expect(failure).toBeInstanceOf(FileSyncDriftError);
+      if (!(failure instanceof FileSyncDriftError)) throw new Error("Expected drift");
+      expect(failure.sessionRef).toBe(sessionRef);
+      expect(failure.conflictedPaths).toEqual(conflictedPaths);
+      expect(failure.remediation).toContain(detail);
+      expect(failure.remediation).toContain("Retry start after the session is healthy.");
+      await expectRetainedStart(harness, exit.cause);
+    }
+  });
   test("a later unvisited existing session prevents target rollback after an earlier flush fails", async () => {
     const order: string[] = [];
     const later = acceleratedPlan.fileSync[1];

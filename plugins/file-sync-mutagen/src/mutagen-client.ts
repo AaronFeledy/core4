@@ -1,9 +1,8 @@
 /**
  * `MutagenClient` is the narrow transport surface consumed by the
- * file-sync-mutagen `FileSyncEngine`. The concrete implementation will
- * spawn the installed Mutagen host CLI. The bundled engine still defaults
- * to the unavailable client until the provider can guarantee a populated
- * target volume before starting application containers.
+ * file-sync-mutagen `FileSyncEngine`. The managed Windows implementation
+ * spawns the installed Mutagen host CLI after the provider has prepared and
+ * verified its target volume.
  */
 
 import { DateTime, Effect, Stream } from "effect";
@@ -19,7 +18,7 @@ import type {
 
 const ENGINE_ID = "mutagen" as const;
 const UNAVAILABLE_CLIENT_REMEDIATION =
-  "Continue with ordinary mounts; this build does not include a live Mutagen session client.";
+  "Run lando setup and select a provider with a verified accelerated sync target.";
 
 /**
  * Snapshot of a Mutagen session as reported by the daemon. The fields
@@ -33,6 +32,7 @@ export interface MutagenSessionRecord {
   readonly lastUpdatedAt: DateTime.Utc;
   readonly spec: FileSyncSessionSpec;
   readonly detail?: string;
+  readonly conflictedPaths?: ReadonlyArray<string>;
 }
 
 /** Argument shape for `MutagenClient.create`. */
@@ -64,10 +64,13 @@ export interface MutagenClient {
   readonly drainApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly disposeApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly completeAppDisposal?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+  readonly disposalPhase?: (
+    app: AppRef,
+  ) => Effect.Effect<"absent" | "active" | "drained" | "disposing" | "completed", FileSyncStopError>;
   readonly version: Effect.Effect<string, FileSyncStartError>;
-  readonly create: (args: MutagenCreateArgs) => Effect.Effect<void, FileSyncStartError>;
+  readonly create: (args: MutagenCreateArgs) => Effect.Effect<void, FileSyncStartError | FileSyncDriftError>;
   /** Block until an inspected, conflict-free synchronization cycle completes. */
-  readonly flush: (name: string) => Effect.Effect<void, FileSyncStartError>;
+  readonly flush: (name: string) => Effect.Effect<void, FileSyncStartError | FileSyncDriftError>;
   readonly pause: (name: string) => Effect.Effect<void, FileSyncStopError>;
   readonly resume: (name: string) => Effect.Effect<void, FileSyncStartError>;
   readonly terminate: (name: string) => Effect.Effect<void, FileSyncStopError>;
@@ -94,11 +97,10 @@ const unavailableStop = (message: string, sessionRef: string): FileSyncStopError
   });
 
 /**
- * Default client used by the bundled Live Layer until a live Mutagen
- * session adapter ships. Provisioned binaries alone do not make it available.
+ * Unbound test client. Production creates a provider-bound process client.
  */
 export const makeUnavailableMutagenClient = (
-  reason = "This build has no live Mutagen session client.",
+  reason = "Mutagen has no verified provider target for this session.",
 ): MutagenClient => ({
   version: Effect.fail(unavailableStart(reason)),
   create: (args) => Effect.fail(unavailableStart(reason, args.spec)),
@@ -283,4 +285,5 @@ export const toFileSyncSessionInfo = (record: MutagenSessionRecord): FileSyncSes
   status: record.status,
   lastUpdatedAt: record.lastUpdatedAt,
   ...(record.detail === undefined ? {} : { detail: record.detail }),
+  ...(record.conflictedPaths === undefined ? {} : { conflictedPaths: [...record.conflictedPaths] }),
 });

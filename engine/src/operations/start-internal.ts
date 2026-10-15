@@ -64,11 +64,12 @@ import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
-import { isRecoverableStart } from "./accelerated-start-record.ts";
-import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
+import { digest, isRecoverableStart } from "./accelerated-start-record.ts";
+import { recordedSessionInventory, terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 import { startedServiceRow } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
+import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import {
   guardOrdinaryFileSyncFallback,
   resolveFileSyncMountPlan,
@@ -138,7 +139,49 @@ export const preflightStartAppDrain = Effect.fnUntraced(function* (
   allowRetained = false,
 ) {
   const retained = yield* requireNoPendingAcceleratedStart(target.app, target.plan, allowRetained);
-  if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained, target.plan);
+  if (retained !== undefined) {
+    const selected = yield* Effect.serviceOption(FileSyncEngine);
+    if (Option.isSome(selected) && selected.value.sessionsPersistAcrossProcesses === true) {
+      if (retained.mountPlanDigest !== digest(target.plan.fileSync))
+        return yield* Effect.fail(
+          new FileSyncStartError({
+            engineId: retained.engineId,
+            message: "Retained sync mount plan differs from the planned app mounts.",
+            remediation:
+              "Restore the recorded mount plan before retrying start. Sessions and targets remain untouched.",
+          }),
+        );
+      const engine = selected.value;
+      if (
+        engine.id !== retained.engineId ||
+        engine.appLifecycle === undefined ||
+        engine.bindPreparedTargets === undefined
+      )
+        return yield* Effect.fail(
+          new FileSyncStartError({
+            engineId: retained.engineId,
+            message: "Retained durable sync sessions cannot be verified for reuse.",
+            remediation: "Restore the recorded provider-bound file-sync engine before retrying start.",
+          }),
+        );
+      const inventory = yield* recordedSessionInventory(target.app, retained);
+      if (
+        inventory.sessions.some(
+          ({ spec }) => !target.plan.fileSync.some(({ session }) => sameFileSyncSessionSpec(session, spec)),
+        )
+      )
+        return yield* Effect.fail(
+          new FileSyncStartError({
+            engineId: retained.engineId,
+            message: "Retained sync sessions differ from the planned app mounts.",
+            remediation: "Restore the original mount plan before retrying start.",
+          }),
+        );
+      yield* engine.appLifecycle.invalidateDrain(target.app);
+      return;
+    }
+    return yield* terminateRetainedSessions(target.app, retained, target.plan);
+  }
   const prior =
     stopPreflight?.appliedFileSync ??
     (yield* Effect.gen(function* () {
@@ -521,6 +564,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                         ...(needWriters ? [teardownForFailure] : []),
                       ]);
                       yield* sessionLease.rollback;
+                      if (sessionLease.preserveOnFailure && pendingStart !== undefined) {
+                        yield* Ref.set(leaseCleanupDone, true);
+                        return yield* pendingStart.retainTargets(exit.cause);
+                      }
                       if (sessionLease.rollbackTargets) {
                         if (preparedRollback === undefined && pendingStart !== undefined) {
                           return yield* pendingStart.retainTargets(exit.cause);
@@ -536,8 +583,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                     const failure = Cause.combine(exit.cause, cleanupExit.cause);
                     // Without provider rollback, prepared targets survive any cleanup failure.
                     if (
-                      sessionLease.rollbackTargets &&
-                      preparedRollback === undefined &&
+                      (sessionLease.preserveOnFailure ||
+                        (sessionLease.rollbackTargets && preparedRollback === undefined)) &&
                       pendingStart !== undefined
                     ) {
                       return yield* Effect.failCause(yield* pendingStart.retainTargets(failure));

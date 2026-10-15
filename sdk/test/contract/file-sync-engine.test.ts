@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Stream } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
-import { type AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
+import { type AppRef, FileSyncSessionRef, type FileSyncSessionSpec } from "@lando/sdk/schema";
 import type { FileSyncEngine } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -133,6 +133,35 @@ describe("FileSyncEngine contract", () => {
     const ref = await Effect.runPromise(Effect.scoped(engine.createSession(spec)));
     const listing = await Effect.runPromise(engine.listSessions({}));
     expect(listing.find((s) => s.ref === ref)).toBeUndefined();
+  });
+
+  test("persistent engines retain scoped sessions and the contract explicitly tears them down", async () => {
+    const engine = { ...freshTestFileSyncEngine(), sessionsPersistAcrossProcesses: true };
+    const ref = await Effect.runPromise(Effect.scoped(engine.createSession(buildSpec("persistent"))));
+    expect((await Effect.runPromise(engine.listSessions({}))).find((info) => info.ref === ref)?.status).toBe(
+      "running",
+    );
+    await Effect.runPromise(engine.terminateSession(ref));
+    await Effect.runPromise(runFileSyncEngineContract(engine));
+    expect(await Effect.runPromise(engine.listSessions({}))).toEqual([]);
+  });
+
+  test("contract rejects an engine that declares persistence but destroys its scoped session", async () => {
+    const engine = freshTestFileSyncEngine();
+    const createSession = engine.createSession;
+    const broken = {
+      ...engine,
+      sessionsPersistAcrossProcesses: true,
+      createSession: Effect.fnUntraced(function* (
+        this: typeof TestFileSyncEngine,
+        spec: FileSyncSessionSpec,
+      ) {
+        const ref = yield* createSession.call(this, spec);
+        yield* Effect.addFinalizer(() => this.terminateSession(ref).pipe(Effect.orDie));
+        return ref;
+      }),
+    };
+    await expectContractFailure(broken, "persistent session survives createSession scope finalization");
   });
 
   test("contract helper rejects engines that do not map outside-root sources to FileSyncStartError", async () => {

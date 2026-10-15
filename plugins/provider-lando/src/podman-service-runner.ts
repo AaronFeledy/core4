@@ -102,7 +102,8 @@ export type PodmanServiceSpawn = (
   options: PodmanServiceLaunchOptions,
 ) => PodmanServiceProcess;
 
-const defaultPodmanServiceSpawn: PodmanServiceSpawn = (argv, options) => Bun.spawn([...argv], options);
+const defaultPodmanServiceSpawn: PodmanServiceSpawn = (argv, options) =>
+  Bun.spawn([...argv], { ...options, windowsHide: true });
 
 const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
   Effect.tryPromise({
