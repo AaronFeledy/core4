@@ -50,7 +50,7 @@ lando exec app -- bundle exec rails server -b 0.0.0.0
 
 Ruby publishes its port endpoint but has no default healthcheck, even with an authored `command:`. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
 
-## Set the Rails webroot
+## Set the Ruby webroot context
 
 Run `lando rebuild` after adding `framework: rails` and your `webroot:` to the service:
 
@@ -79,9 +79,26 @@ lando exec app -- printenv LANDO_WEBROOT
 
 The webroot doesn't move the working directory or start a Rails server.
 Use `workingDirectory:` and `command:` for those. The Rails preset supplies
-development environment defaults and a server command hint; an authored
-environment value still wins. With `appMount: false`, Ruby omits the webroot
-from `LANDO_WEBROOT` and its service metadata, even if you set `webroot:`.
+development environment defaults; an authored environment value still wins.
+With `appMount: false`, Ruby omits its implicit webroot context. If you explicitly
+set a relative or absolute `webroot:`, planning fails instead of silently dropping it.
+Remove `webroot:` or enable the app mount. A plugin can also supply a feature
+that declares and handles the effective root. That declaration means root support,
+not that an HTTP server is running.
+
+Check planning without starting services:
+
+```sh
+lando app:cache:refresh --format=json
+```
+
+  <Scenario id="rejects-unmounted-explicit-root" render={false} reason="Full planner rejects explicit Ruby context without an app mount">
+    <Step name="reject">
+      <UseFixture name="ruby-unmounted-webroot" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+    </Step>
+  </Scenario>
 
 ## Pin a version
 
