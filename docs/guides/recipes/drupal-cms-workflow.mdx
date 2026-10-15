@@ -44,6 +44,12 @@ It also requires the `drupal_cms_starter` recipe that install uses, since `drupa
 
 `lando drupal-cms-install` runs project-local Drush with the recipe's database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a generated password when install finishes.
 
+On Windows with accelerated project files, the install command also gives the web server ownership of Drupal's public files directory and its contents. That lets uploads and image styles work after a command-line install. Check the default web-server user's access:
+
+```sh
+lando exec --user www-data appserver -- test -w /app/web/sites/default/files
+```
+
 Then confirm the day-to-day tools:
 
 ```sh

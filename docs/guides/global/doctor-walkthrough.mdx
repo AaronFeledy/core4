@@ -54,7 +54,7 @@ The first remediation is always something you can do without privileges, such as
 
 A watcher that starts but never delivers events, which some virtual filesystems cause, is not detected by this check.
 
-To see whether the machine you are typing on can allocate a watch right now, read the `filesystem-watch` check in the same report. On Linux and WSL it is a live, one-watch allocation on your host. It does not look inside the provider VM and does not refresh this router record. See [Check filesystem watches on this host](../subsystems/doctor-walkthrough.mdx#check-filesystem-watches-on-this-host).
+Read the `filesystem-watch` check in the same report for a live CLI-host result. Linux and WSL test one watch allocation. Windows also confirms one file event on the host's temporary filesystem. Neither result looks inside the provider VM or refreshes this router record. See [Check filesystem watches on this host](../subsystems/doctor-walkthrough.mdx#check-filesystem-watches-on-this-host).
 
 ## Verify
 
