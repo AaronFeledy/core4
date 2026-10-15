@@ -37,6 +37,15 @@ describe("traefik global service ServiceConfig", () => {
     expect(config.appMount).toBe(false);
   });
 
+  test("opts out of generated app routes when building the router service", () => {
+    // Given
+    const ports = { http: 8080, https: 8443 };
+    // When
+    const config = buildTraefikServiceConfig(ports);
+    // Then
+    expect(config.routes).toEqual([]);
+  });
+
   test("publishes rootless-safe loopback ingress endpoints", async () => {
     const config = await decodeConfig();
     const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");

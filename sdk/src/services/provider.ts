@@ -132,6 +132,8 @@ export interface ArtifactPullSpec {
 export interface ApplyOptions {
   readonly reconcile: boolean;
   readonly recordedPlan?: AppPlan;
+  /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
+  readonly completionPlan?: AppPlan;
   readonly signal?: AbortSignal;
   readonly serviceEnvironment?: ServiceEnvironmentOverrides;
   /**
@@ -143,6 +145,11 @@ export interface ApplyOptions {
   readonly forbidRecreate?: boolean;
 }
 
+/**
+ * Resolved secret values keyed by service and environment variable.
+ * Providers merge them over the applied plan's service environment, never use
+ * them as a replacement environment.
+ */
 export type ServiceEnvironmentOverrides = Readonly<
   Partial<Record<ServiceName, Readonly<Record<string, string>>>>
 >;
@@ -240,6 +247,8 @@ export interface ServiceRuntimeInfo {
   /** Container healthcheck status when the provider exposes one. */
   readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
+  /** Container exit code of a stopped container, when exposed by the runtime. */
+  readonly exitCode?: number;
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;

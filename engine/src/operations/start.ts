@@ -4,6 +4,7 @@ import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { shouldRetainReadinessResources } from "../lifecycle/readiness-failure.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -57,7 +58,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
               Effect.andThen((execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible)),
               Effect.andThen(startAppForTargetUnlocked(options, resolvedTarget, managed, execution)),
               Effect.onExit((exit) =>
-                Exit.isFailure(exit)
+                Exit.isFailure(exit) && !shouldRetainReadinessResources(exit.cause)
                   ? (execution.onFailedStart ?? Effect.void).pipe(Effect.uninterruptible)
                   : Effect.void,
               ),

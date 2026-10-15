@@ -6,6 +6,9 @@ head:
   - tag: title
     content: Lando local development environments from one config file
 hero:
+  image:
+    file: ./src/assets/lando-logo.svg
+    alt: Lando logo
   tagline: Describe your stack in one file. Lando builds and runs it in containers, so local setup stops being a project of its own.
   actions:
     - text: Install the Alpha

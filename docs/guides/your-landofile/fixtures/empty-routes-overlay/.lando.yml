@@ -4,3 +4,10 @@ services:
     type: "node:22"
     routes:
       - hostname: web.example.test
+tooling:
+  test:
+    cmds:
+      - service: web
+        cmd: echo base-first
+      - service: web
+        cmd: echo base-second

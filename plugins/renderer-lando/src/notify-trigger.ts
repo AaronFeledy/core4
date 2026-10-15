@@ -1,34 +1,5 @@
 import type { RendererIO } from "@lando/sdk/renderer";
 
-import type { CapabilityProbe } from "./capabilities.ts";
-import { loadOpenTuiModule } from "./opentui/prompt-driver.ts";
-
-type OpenTuiNotifyModule = {
-  createCliRenderer: (config: Record<string, unknown>) => Promise<{
-    triggerNotification: (message: string, title?: string) => boolean;
-    destroy: () => void;
-  }>;
-};
-
-const isOpenTuiNotifyModule = (value: unknown): value is OpenTuiNotifyModule =>
-  typeof value === "object" &&
-  value !== null &&
-  "createCliRenderer" in value &&
-  typeof (value as OpenTuiNotifyModule).createCliRenderer === "function";
-
-export const productionCapabilityProbe = (timeoutMs = 2000): CapabilityProbe => ({
-  timeoutMs,
-  run: async () => {
-    try {
-      const mod: unknown = await loadOpenTuiModule();
-      if (!isOpenTuiNotifyModule(mod)) return { kind: "no-response" };
-      return { kind: "success", color: true, notifications: true };
-    } catch {
-      return { kind: "no-response" };
-    }
-  },
-});
-
 const BEL = "\u0007";
 const OSC = "\u001b]";
 

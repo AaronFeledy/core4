@@ -122,11 +122,19 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Bake the runtime catalog before command modules import the bootstrap layers.
+    dependsOn: ["core-service-env-catalog"],
+    id: "schema-deprecations",
+    ownership: "derived",
+    script: "build-schema-deprecations.ts",
+    workspace: "repo",
+  },
+  {
     id: "command-registry-manifest",
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
     workspace: "core",
-    dependsOn: ["setup-plugin-flags", "mcp-allowlist"],
+    dependsOn: ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
   },
   {
     // Imports `@lando/sdk/schema`; see `bootstrap-layers`.

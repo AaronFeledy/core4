@@ -6,17 +6,9 @@ import { normalizeRoute, normalizeRoutes, parseRouteShorthand } from "../src/rou
 
 describe("route normalization", () => {
   test.each([
-    ["normalizes a bare hostname", "app.lndo.site", { hostname: "app.lndo.site", filters: [] }],
-    [
-      "normalizes host:port",
-      "app.lndo.site:8080",
-      { hostname: "app.lndo.site", endpoint: 8080, filters: [] },
-    ],
-    [
-      "normalizes host/path",
-      "app.lndo.site/api/",
-      { hostname: "app.lndo.site", pathPrefix: "/api/", filters: [] },
-    ],
+    ["normalizes a bare hostname", "app.lndo.site", { hostname: "app.lndo.site" }],
+    ["normalizes host:port", "app.lndo.site:8080", { hostname: "app.lndo.site", endpoint: 8080 }],
+    ["normalizes host/path", "app.lndo.site/api/", { hostname: "app.lndo.site", pathPrefix: "/api/" }],
     [
       "normalizes combined host:port/path wildcard shorthand",
       "lets.combine.*.lndo.site:8080/everything/for-real",
@@ -24,7 +16,6 @@ describe("route normalization", () => {
         hostname: "lets.combine.*.lndo.site",
         endpoint: 8080,
         pathPrefix: "/everything/for-real",
-        filters: [],
       },
     ],
   ] as const)("%s", (_name, text, expected) => {
@@ -42,7 +33,7 @@ describe("route normalization", () => {
       // When
       const result = parseRouteShorthand(hostname);
       // Then
-      expect(result).toEqual(Result.succeed({ hostname, filters: [] }));
+      expect(result).toEqual(Result.succeed({ hostname }));
     },
   );
 

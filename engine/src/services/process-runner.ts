@@ -123,12 +123,23 @@ const buildSpawnOptions = (input: ProcessSpawnOptions) => {
     ...(input.env === undefined ? {} : { env: { ...process.env, ...input.env } }),
     ...(cgroup === undefined ? {} : { cgroup }),
     windowsHide: input.windowsHide ?? true,
-    stdin: (input.stdin === undefined && input.stdinStream === undefined ? "ignore" : "pipe") as
-      | "ignore"
-      | "pipe",
-    stdout: "pipe" as const,
-    stderr: "pipe" as const,
+    stdin: (input.stdin !== undefined || input.stdinStream !== undefined
+      ? "pipe"
+      : input.inheritStdin === true
+        ? "inherit"
+        : "ignore") as "ignore" | "inherit" | "pipe",
+    stdout: (input.inheritOutput === true ? "inherit" : "pipe") as "inherit" | "pipe",
+    stderr: (input.inheritOutput === true ? "inherit" : "pipe") as "inherit" | "pipe",
   };
+};
+
+// Inherited output reaches the terminal directly, so the runner has nothing to read.
+const pipedOutput = (stream: unknown): ReadableStream<Uint8Array> | undefined =>
+  stream instanceof ReadableStream ? stream : undefined;
+
+const readText = (stream: unknown): Promise<string> => {
+  const piped = pipedOutput(stream);
+  return piped === undefined ? Promise.resolve("") : new Response(piped).text();
 };
 
 const isBrokenPipe = (cause: unknown): boolean =>
@@ -243,8 +254,8 @@ const runProcess = async (
             resolve();
           }, input.timeoutMs);
         });
-  const stdoutPromise = new Response(proc.stdout).text();
-  const stderrPromise = new Response(proc.stderr).text();
+  const stdoutPromise = readText(proc.stdout);
+  const stderrPromise = readText(proc.stderr);
   const stdinPump = pumpStdin(
     proc.stdin as BunFileSink | null | undefined,
     input,
@@ -292,7 +303,9 @@ async function* streamProcess(
   // reader wakes the consumer and preserves the original pipe error.
   const queue: ProcessStreamChunk[] = [];
   const queueLimit = 16;
-  let openReaders = 2;
+  const stdoutStream = pipedOutput(proc.stdout);
+  const stderrStream = pipedOutput(proc.stderr);
+  let openReaders = (stdoutStream === undefined ? 0 : 1) + (stderrStream === undefined ? 0 : 1);
   let failure: unknown;
   let failed = false;
   let cancelled = false;
@@ -337,8 +350,8 @@ async function* streamProcess(
       wakeConsumer();
     }
   };
-  const stdoutReader = drain(proc.stdout, "stdout");
-  const stderrReader = drain(proc.stderr, "stderr");
+  const stdoutReader = stdoutStream === undefined ? Promise.resolve() : drain(stdoutStream, "stdout");
+  const stderrReader = stderrStream === undefined ? Promise.resolve() : drain(stderrStream, "stderr");
 
   try {
     for (;;) {

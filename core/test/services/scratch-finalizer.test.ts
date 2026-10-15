@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/core/errors";
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
@@ -173,7 +173,7 @@ const die = (operation: string) =>
 const makeRecordingLayer = (
   appliedPlans: AppPlan[],
   destroyCalls: DestroyCall[],
-  options: { readonly failApply?: boolean } = {},
+  options: { readonly failApply?: boolean; readonly inspect?: RuntimeProviderShape["inspect"] } = {},
 ) => {
   const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
@@ -220,7 +220,16 @@ const makeRecordingLayer = (
     execStream: () => Stream.die("scratch finalizer test provider should not call execStream"),
     run: () => die("run"),
     logs: () => Stream.empty,
-    inspect: () => die("inspect"),
+    inspect:
+      options.inspect ??
+      ((target) =>
+        Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId,
+          status: "running",
+          lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+        })),
     list: () => Effect.succeed([]),
   });
 
@@ -279,6 +288,87 @@ const waitUntil = Effect.fnUntraced(function* (predicate: () => boolean) {
 });
 
 describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
+  test.each([false, true])("readiness failure obeys keep-on-failure=%s", async (keepOnFailure) => {
+    await withTempProject(async () => {
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const retained = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const registry = yield* ScratchRegistry;
+          const outcome = yield* Effect.result(
+            Effect.scoped(
+              service.acquire({
+                source: { kind: "fork" },
+                detached: true,
+                keepOnFailure,
+              }),
+            ),
+          );
+          return { outcome, entries: yield* registry.list() };
+        }).pipe(
+          Effect.provide(
+            makeRecordingLayer(appliedPlans, destroyCalls, {
+              inspect: (target) =>
+                Effect.succeed({
+                  app: target.app,
+                  service: target.service,
+                  providerId,
+                  status: "stopped",
+                  exitCode: 17,
+                }),
+            }),
+          ),
+        ),
+      );
+      expect(retained.outcome._tag).toBe("Failure");
+      expect(retained.entries).toHaveLength(keepOnFailure ? 1 : 0);
+      expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 1);
+      expect(
+        await directoryExists(
+          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+        ),
+      ).toBe(keepOnFailure);
+    });
+  });
+
+  test.each([false, true])("readiness interrupt obeys scratch keep-on-failure=%s", async (keepOnFailure) => {
+    await withTempProject(async () => {
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const inspecting = Deferred.makeUnsafe<void>();
+      const exit = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const fiber = yield* Effect.forkChild(
+            Effect.scoped(
+              service.acquire({
+                source: { kind: "fork" },
+                detached: false,
+                keepOnFailure,
+              }),
+            ),
+          );
+          yield* Deferred.await(inspecting);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
+        }).pipe(
+          Effect.provide(
+            makeRecordingLayer(appliedPlans, destroyCalls, {
+              inspect: () => Deferred.succeed(inspecting, undefined).pipe(Effect.andThen(Effect.never)),
+            }),
+          ),
+        ),
+      );
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 1);
+      expect(
+        await directoryExists(
+          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+        ),
+      ).toBe(keepOnFailure);
+    });
+  });
   test("keep-on-failure leaves the registry entry and scratch root after apply fails", async () => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];

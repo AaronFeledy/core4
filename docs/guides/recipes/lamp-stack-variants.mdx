@@ -31,13 +31,12 @@ The generated Landofile is an Apache-backed `appserver` on `php:8.4`, `framework
 
 ## Replace MariaDB with MySQL
 
-Swap `type: mariadb` for `type: mysql` and pin the image. A rebuild does not migrate old data, so export first if you still need what's in there. See [Switch databases](../services/switching-databases.mdx).
+Swap `type: mariadb` for `type: mysql` and add the version you want. A rebuild does not migrate old data, so export first if you still need what's in there. See [Switch databases](../services/switching-databases.mdx).
 
 ```yaml
 services:
   database:
-    type: mysql
-    image: mysql:8.4
+    type: mysql:8.4
 ```
 
   <Scenario id="mysql-replacement" render>
@@ -50,19 +49,18 @@ services:
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mysql\"[^}]*\"image\":\\s*\"mysql:8\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mysql:8\\.4\"" } }} />
     </Step>
   </Scenario>
 
 ## Replace MariaDB with PostgreSQL
 
-Swap `type: mariadb` for `type: postgres` and pin the image. The default PHP image already has `pdo_pgsql`.
+Swap `type: mariadb` for `type: postgres` and add the major you want. The default PHP image already has `pdo_pgsql`.
 
 ```yaml
 services:
   database:
-    type: postgres
-    image: postgres:15
+    type: postgres:18
 ```
 
   <Scenario id="postgres-replacement" render>
@@ -75,7 +73,7 @@ services:
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"[^}]*\"image\":\\s*\"postgres:15\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres:18\"" } }} />
     </Step>
   </Scenario>
 
@@ -92,8 +90,7 @@ services:
   database:
     type: mariadb
   database-legacy:
-    type: mysql
-    image: mysql:8.0
+    type: mysql:8.0
 ```
 
   <Scenario id="multiple-database-services" render>
@@ -107,7 +104,7 @@ services:
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database-legacy\":\\s*\\{[^}]*\"type\":\\s*\"mysql\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database-legacy\":\\s*\\{[^}]*\"type\":\\s*\"mysql:8\\.0\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":.*\"database-legacy\"" } }} />
     </Step>
   </Scenario>

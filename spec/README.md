@@ -113,7 +113,7 @@ If you are looking for a public surface or policy:
 | Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
-| Renderer events, first paint, task trees, keymaps, and notifications | 08 | §8.9 |
+| Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
 | Machine-readable command envelopes, advertised formats, streams, and closed pipes | 08 | §8.11 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
@@ -145,6 +145,7 @@ If you are looking for a public surface or policy:
 | Test and contract-suite layers | 13 | §13.1 |
 | Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
+| Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |

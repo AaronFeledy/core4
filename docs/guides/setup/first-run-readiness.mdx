@@ -23,7 +23,7 @@ Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid range
 
 If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
 
-A broken SSH agent sidecar does not fail setup. Setup prints a warning with the cause and finishes everything else, and apps start without SSH agent forwarding until the sidecar runs. Fix the cause, then rerun `lando setup`.
+Setup waits up to about 30 seconds for the SSH sidecar's agent to answer before recording the `shell` step as ready. An empty but reachable agent is ready too. A sidecar that cannot start, stops before answering, or never answers within that wait does not fail setup by itself. Setup prints a warning with the redacted cause and remediation, finishes everything else, and records `shell` as unavailable. Apps start without SSH agent forwarding until the agent answers. Fix the cause, then rerun `lando setup` to refresh the record. Later app starts also bring the sidecar up and wait for its agent, but `lando doctor` keeps showing setup's record until you rerun setup.
 
 On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Docker is the live path. Install Docker Desktop, then:
 

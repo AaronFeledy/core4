@@ -1,5 +1,8 @@
 import { JsonSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
+import { listLayerMergeRules } from "../landofile/layer-merge-trie.ts";
+import { pruneUnusedDefinitions } from "./json-schema-definitions.ts";
+import { getLayerMergeRule } from "./layer-merge.ts";
 
 import {
   type DeprecationNotice,
@@ -191,8 +194,19 @@ const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: Traver
 };
 
 const indexSignatureJsonSchema = (target: unknown, signature: AST.IndexSignature): unknown => {
-  const targetObject = jsonObject(target);
-  if (targetObject === undefined) return undefined;
+  const outer = jsonObject(target);
+  if (outer === undefined) return undefined;
+  // A struct with rest signatures emits its record under `allOf`, beside the explicit properties.
+  const targetObject =
+    outer.additionalProperties === undefined &&
+    outer.patternProperties === undefined &&
+    Array.isArray(outer.allOf)
+      ? (outer.allOf
+          .map(jsonObject)
+          .find(
+            (member) => member?.additionalProperties !== undefined || member?.patternProperties !== undefined,
+          ) ?? outer)
+      : outer;
 
   switch (signature.parameter._tag) {
     case "String":
@@ -222,6 +236,8 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
 
   const projection = jsonObject(ast.annotations?.jsonSchemaProjection);
   const targetObject = jsonObject(targetSchema);
+  const mergeRule = getLayerMergeRule(ast);
+  if (targetObject !== undefined && mergeRule !== undefined) targetObject["x-lando-merge"] = mergeRule;
   if (projection !== undefined && targetObject !== undefined) {
     for (const key of Object.keys(targetObject)) delete targetObject[key];
     Object.assign(targetObject, cloneJson(projection));
@@ -400,11 +416,13 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
   options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
 ): JsonSchema.JsonSchema => {
   const document = jsonSchemaDocument(schema, options);
-  return withSchemaDeprecations(schema, {
-    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
-    ...document.schema,
-    ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
-  });
+  return pruneUnusedDefinitions(
+    withSchemaDeprecations(schema, {
+      $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
+      ...document.schema,
+      ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
+    }),
+  );
 };
 
 const validateJsonSchemaDeprecations = (value: unknown, path: string, invalidPaths: string[]): void => {
@@ -774,8 +792,8 @@ const objectUnionFields = (ast: AST.AST, jsonSchema: JsonObject): ReadonlyArray<
 
 const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyArray<string> => {
   const rows: string[] = [
-    "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation | Layer merge |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
   for (const field of fields) {
     const propertyNotice =
@@ -792,6 +810,9 @@ const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyA
         acceptedValues(field.property, field.jsonSchemas, field.jsonSchemaRoot),
         field.property === undefined ? "—" : examples(field.property),
         propertyNotice === undefined ? "—" : markdownTextCell(formatDeprecationNotice(propertyNotice)),
+        field.property === undefined || getLayerMergeRule(field.property.type) === undefined
+          ? "—"
+          : codeValue(JSON.stringify(getLayerMergeRule(field.property.type))),
       ]
         .map(markdownCell)
         .join(" | ")
@@ -871,6 +892,37 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
 
   if (AST.isObjects(ast) && ast.indexSignatures.length > 0) {
     lines.push("## Schema details", "", ...renderIndexSignatureRows(ast, jsonSchema), "");
+  }
+
+  if (
+    [
+      "LandofileShape",
+      "ServiceConfig",
+      "ServiceConfigInput",
+      "ToolingTaskShape",
+      "IncludeEntry",
+      "LandofileEvents",
+    ].includes(name)
+  ) {
+    const rules = listLayerMergeRules(schema);
+    if (rules.length > 0) {
+      lines.push(
+        "## Layer merge rules",
+        "",
+        "Later layers deep-merge maps and override scalar values. An empty array clears inherited entries. Opaque extension arrays replace.",
+        "",
+        "| Path | Rule |",
+        "| --- | --- |",
+      );
+      for (const { path, rule } of rules) {
+        const policy =
+          rule.kind === "replace"
+            ? "Replace wholesale"
+            : `Keyed by ${rule.identity}; unkeyed entries replace; matches ${rule.onMatch}`;
+        lines.push(`| ${codeValue(path)} | ${policy} |`);
+      }
+      lines.push("");
+    }
   }
 
   const schemaTypes = jsonSchemaTypes(jsonSchema, jsonSchema);

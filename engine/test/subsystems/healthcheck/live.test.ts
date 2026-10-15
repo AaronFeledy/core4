@@ -129,7 +129,7 @@ describe("makeHealthcheckRunner", () => {
     if (failure instanceof HealthcheckTimeoutError) expect(failure.lastStatus).toBe("timeout after 5s");
   });
 
-  test("startPeriodSeconds delays the first exec attempt", async () => {
+  test("a passing start-period probe completes immediately", async () => {
     const fake = execSequence([0]);
     const runner = makeHealthcheckRunner(fake);
 
@@ -138,16 +138,51 @@ describe("makeHealthcheckRunner", () => {
         const fiber = yield* Effect.forkChild(
           runner.run(commandPlan("exit 0", { startPeriodSeconds: 15 }), appId, service),
         );
-        yield* TestClock.adjust("14 seconds");
+        yield* TestClock.adjust("0 seconds");
         const early = fiber.pollUnsafe();
-        expect(early).toBeUndefined();
-        expect(fake.calls).toHaveLength(0);
-        yield* TestClock.adjust("1 second");
+        expect(early?._tag).toBe("Success");
         const result = yield* Fiber.join(fiber);
         expect(result).toEqual({ healthy: true, service, attempts: 1, lastStatus: "ok" });
         expect(fake.calls).toHaveLength(1);
       }).pipe(Effect.provide(TestClock.layer())),
     );
+  });
+
+  test("start-period failures do not consume the post-period attempt budget", async () => {
+    const fake = execSequence([1, 1, 1, 0]);
+    const timed = await runExitUnderClock(
+      makeHealthcheckRunner(fake).run(
+        commandPlan("health", {
+          startPeriodSeconds: 3,
+          retries: 1,
+          intervalSeconds: 10,
+        }),
+        appId,
+        service,
+      ),
+      "3 seconds",
+    );
+    expect(successOf(timed.exit)).toMatchObject({ healthy: true, attempts: 4 });
+    expect(timed.elapsedMs).toBe(3_000);
+    expect(fake.calls).toHaveLength(4);
+  });
+
+  test("a few failures during the start period succeed without sleeping out the grace period", async () => {
+    const fake = execSequence([1, 1, 0]);
+    const timed = await runExitUnderClock(
+      makeHealthcheckRunner(fake).run(
+        commandPlan("health", {
+          startPeriodSeconds: 90,
+          retries: 1,
+          intervalSeconds: 10,
+        }),
+        appId,
+        service,
+      ),
+      "2 seconds",
+    );
+    expect(successOf(timed.exit)).toMatchObject({ healthy: true, attempts: 3 });
+    expect(timed.elapsedMs).toBe(2_000);
   });
 
   test("redacts provider and timeout failures", async () => {

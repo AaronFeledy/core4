@@ -111,7 +111,7 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 
 #### 20.6.3 Auto-start integration with user apps
 
-`AppFeature.requires.globalServices` is the only dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
+`AppFeature.requires.globalServices` is the only hard dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
 - A healthy set emits the start pair with `cached: true` and proceeds without provider work.
 - A cold or unhealthy set starts the required services with `cached: false` before user-app build.
@@ -119,9 +119,11 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 
 Direct Landofile `dependsOn` syntax for global services is not part of this contract (§14.2).
 
+The §10.4 SSH sidecar is not declared through `requires.globalServices`. The SSH overlay ensures the sidecar best-effort through `SshService.setup`, only when its agent does not answer, and its failure never aborts user-app start. The bundled sidecar's `setup` calls `ensureRunning`, so that start emits its own `pre-global-start`/`post-global-start` pair (`triggeredBy: "ensure-running"`).
+
 #### 20.6.4 Standard event sequence
 
-The global start event pair is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
+The global start event pair for required services is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. The SSH sidecar's best-effort start pair (§20.6.3) fires at start-time overlay resolution, only when the sidecar needed starting: in start and restart that is after the required-service pair and before the user-app build; in a service-scoped rebuild it follows the selected services' artifact build and precedes their provider apply. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
 
 #### 20.6.5 Restart, rebuild, and router revalidation
 
@@ -129,7 +131,9 @@ The global start event pair is nested inside user-app `pre-start`; any required 
 
 Explicit global start, restart, and rebuild MUST attempt selected services and their dependencies in dependency-connected groups. A typed build or apply failure in one group MUST NOT prevent independent groups from being attempted or cause successful groups to be rolled back. Partial failure MUST remain a command failure and MUST NOT publish `post-global-start` or `post-global-rebuild`. Routes of services in a failed group MUST NOT be applied.
 
-The global app owns one route definition. After its groups are attempted, including when every group fails, explicit global start, restart, and rebuild MUST publish it through `RouterService.applyRoutes` alone, containing exactly the routes of services the command started plus those of unselected services the managed provider observes running, paused, or restarting under the global app root. Routes of stopped, missing, or failed services are withdrawn; an empty set removes the definition. With routing disabled the definition is withdrawn instead (§10.2), and a global plan that declares no routes publishes nothing and needs no router. Started and rebuilt rows report their published route URLs. When routing is enabled and the global plan declares a service whose id is the active `RouterService.id`, a `meta:global:start` selection that contains a routed service also starts that service with its dependencies and reports it in `servicesStarted`, so the command never starts a service it does not report.
+After committed apply, every successfully applied group MUST pass the §6.7 readiness barrier before route publication and success events. Readiness verdicts are group outcomes: a failed readiness group joins the partial-failure aggregate and its routes are withdrawn like other failed groups; independent successful groups remain applied. Restart and rebuild MUST revalidate the router even if readiness fails after apply, without replacing the primary failure. Warm cached `ensureRunning` MUST skip the barrier because it MUST NOT contact the provider (§20.6.2); cold starts run it.
+
+The global app owns one route definition. After its groups are attempted, including when every group fails, explicit global start, restart, and rebuild MUST publish it through `RouterService.applyRoutes` alone, containing exactly the routes of services the command started plus those of unselected services the managed provider observes running, paused, or restarting under the global app root. Routes of stopped, missing, or failed services are withdrawn; an empty set removes the definition. With routing disabled, or when the global plan declares no routes, the definition is withdrawn instead (§10.2) without router setup. Started and rebuilt rows report their published route URLs. When routing is enabled and the global plan declares a service whose id is the active `RouterService.id`, a `meta:global:start` selection that contains a routed service also starts that service with its dependencies and reports it in `servicesStarted`, so the command never starts a service it does not report.
 
 ### 20.7 CLI surface (`meta:global:*`)
 
@@ -186,6 +190,8 @@ Global-app resources carry the standard ownership labels plus a global-app marke
 
 The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
 
+The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published endpoints and never a generated `<service>.global.<domain>` hostname the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
+
 Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection keeps §4.3 precedence: explicit Landofile selection, global default, plugin `defaultFor`, then sole implementation.
 
 #### 20.10.2 `CertificateAuthority` realization
@@ -227,6 +233,7 @@ All errors are tagged and include remediation where applicable:
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
 - `GlobalAppError`, the umbrella for global state-transition failures. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
+- `ServiceNotReadyError`, the shared post-commit readiness verdict. It participates in group outcomes and partial-failure aggregation; if no group succeeds the first original failure remains unchanged. Remediation uses `lando global:logs -s <service>` and `lando global:start`, except `inspect-failed`, which prescribes `lando doctor`. Applied containers remain available for diagnosis while failed routes are reconciled (§20.6.5).
 - `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)
 
 This surface also uses the shared `CommandAliasConflictError` and `ConfigExpressionScopeNotPermittedError` tags defined by their owning contracts (§7.3.1, §8.1.2).

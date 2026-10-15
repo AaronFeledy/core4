@@ -1,24 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, type Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { NotifyDesktopEvent } from "@lando/sdk/events";
 import {
   RENDERER_CAPABILITIES_NONE,
-  RENDERER_CAPABILITIES_TTY_INITIAL,
+  RENDERER_CAPABILITIES_TTY,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
 } from "@lando/sdk/renderer";
-import { Renderer } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
-import {
-  type CapabilityProbe,
-  createCapabilitySnapshot,
-  promoteFromProbe,
-  scheduleCapabilityProbe,
-} from "../src/capabilities.ts";
 import { sanitizeNotificationText } from "../src/notify-sanitize.ts";
+import { encodeDesktopNotification } from "../src/notify-trigger.ts";
 import {
+  landoRendererContribution,
   makeLandoEventConsumer,
   makeLandoService,
-  resolveCapabilitySnapshot,
 } from "../src/renderer-runtime.ts";
 
 const runService = async <A>(layer: Layer.Layer<Renderer>, effect: Effect.Effect<A, never, Renderer>) => {
@@ -31,149 +28,124 @@ const runService = async <A>(layer: Layer.Layer<Renderer>, effect: Effect.Effect
 };
 
 describe("RendererCapabilities matrix", () => {
-  test("default renderer non-TTY is all false", async () => {
-    const layer = makeLandoService({
-      writeStdout: () => undefined,
-      writeStderr: () => undefined,
-      isTTY: false,
+  for (const isTTY of [true, false, undefined]) {
+    test(`publishes synchronous capabilities when isTTY is ${String(isTTY)}`, async () => {
+      const io = {
+        writeStdout: () => undefined,
+        writeStderr: () => undefined,
+        ...(isTTY === undefined ? {} : { isTTY }),
+      };
+      const layer = makeLandoService(io);
+      io.isTTY = !isTTY;
+
+      const caps = await runService(
+        layer,
+        Effect.map(Renderer, (r) => r.capabilities),
+      );
+
+      expect(caps).toBe(isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE);
+      expect(Object.isFrozen(caps)).toBe(true);
     });
-    const caps = await runService(
-      layer,
-      Effect.map(Renderer, (r) => r.capabilities),
-    );
-    expect(caps).toEqual(RENDERER_CAPABILITIES_NONE);
-  });
+  }
 
-  test("default renderer TTY starts at interactive/animation true, color/notifications false", async () => {
-    const layer = makeLandoService({
-      writeStdout: () => undefined,
-      writeStderr: () => undefined,
-      isTTY: true,
+  for (const isTTY of [true, false]) {
+    test(`service and event consumer agree on the first notification when isTTY is ${String(isTTY)}`, async () => {
+      const writes: string[] = [];
+      const io = { isTTY, writeStdout: (text: string) => writes.push(text), writeStderr: () => undefined };
+      const consumer = landoRendererContribution.makeEventConsumer(io);
+      if (consumer === undefined) throw new Error("Lando renderer must provide an event consumer");
+      const runtime = ManagedRuntime.make(
+        Layer.merge(landoRendererContribution.makeService(io), consumer).pipe(
+          Layer.provideMerge(LandoEventService.layer),
+        ),
+      );
+      const event = NotifyDesktopEvent.make({ title: "Lando\u0007", body: "done\u202E" });
+      const notification = Promise.withResolvers<void>();
+      const originalWrite = io.writeStdout;
+      io.writeStdout = (text) => {
+        originalWrite(text);
+        notification.resolve();
+        return writes.length;
+      };
+
+      let supported = false;
+      try {
+        supported = await runtime.runPromise(Effect.map(Renderer, (r) => r.capabilities.notifications));
+        await runtime.runPromise(Effect.flatMap(EventService, (events) => events.publish(event)));
+        if (isTTY) await notification.promise;
+      } finally {
+        await runtime.dispose();
+      }
+
+      expect(supported).toBe(isTTY);
+      expect(writes.join("")).toBe(isTTY ? encodeDesktopNotification("done", "Lando") : "");
     });
-    const caps = await runService(
-      layer,
-      Effect.map(Renderer, (r) => r.capabilities),
+  }
+
+  test("flushes pending notification writes when the consumer is disposed", async () => {
+    const calls: string[] = [];
+    const runtime = ManagedRuntime.make(
+      makeLandoEventConsumer(
+        { isTTY: true, writeStdout: () => undefined, writeStderr: () => undefined },
+        {
+          triggerNotification: (message) => {
+            calls.push(message);
+            return true;
+          },
+          flushNotifications: async () => {
+            calls.push("flushed");
+          },
+        },
+      ).pipe(Layer.provideMerge(LandoEventService.layer)),
     );
-    expect(caps).toEqual(RENDERER_CAPABILITIES_TTY_INITIAL);
+
+    try {
+      await runtime.runPromise(
+        Effect.flatMap(EventService, (events) => events.publish(NotifyDesktopEvent.make({ title: "done" }))),
+      );
+    } finally {
+      await runtime.dispose();
+    }
+
+    expect(calls).toEqual(["done", "flushed"]);
   });
 
-  test("probe success promotes color and notifications without demoting interactive/animation", async () => {
-    const handle = createCapabilitySnapshot(RENDERER_CAPABILITIES_TTY_INITIAL);
-    promoteFromProbe(handle, { kind: "success", color: true, notifications: true });
-    expect(handle.get()).toEqual({
-      color: true,
-      interactive: true,
-      animation: true,
-      notifications: true,
+  test("does not load OpenTUI when constructing and disposing the TTY contribution", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "-e",
+        `
+        import { Effect, Layer, ManagedRuntime } from "effect";
+        import * as Events from "@lando/engine/services/event-service";
+        import { NotifyDesktopEvent } from "@lando/sdk/events";
+        import { EventService, Renderer } from "@lando/sdk/services";
+        let loads = 0;
+        Reflect.set(globalThis, Symbol.for("@lando/test/opentui-loader-probe"), () => { loads += 1; });
+        const { renderer } = await import("./plugins/renderer-lando/src/index.ts");
+        const io = { isTTY: true, externalOutputStream: process.stdout, writeStdout: () => {}, writeStderr: () => {} };
+        const runtime = ManagedRuntime.make(Layer.merge(renderer.makeService(io), renderer.makeEventConsumer(io)).pipe(Layer.provideMerge(Events.layer)));
+        try {
+          await runtime.runPromise(Renderer);
+          await runtime.runPromise(Effect.flatMap(EventService, events => events.publish(NotifyDesktopEvent.make({ title: "done" }))));
+        } finally { await runtime.dispose(); }
+        await Bun.write(Bun.stdout, JSON.stringify({ loads }));
+      `,
+      ],
+      cwd: new URL("../../../", import.meta.url).pathname,
+      stdout: "pipe",
+      stderr: "pipe",
     });
-  });
 
-  test("probe timeout and no-response leave the initial snapshot", async () => {
-    const timeoutHandle = createCapabilitySnapshot(RENDERER_CAPABILITIES_TTY_INITIAL);
-    promoteFromProbe(timeoutHandle, { kind: "timeout" });
-    expect(timeoutHandle.get()).toEqual(RENDERER_CAPABILITIES_TTY_INITIAL);
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
 
-    const noResponseHandle = createCapabilitySnapshot(RENDERER_CAPABILITIES_TTY_INITIAL);
-    promoteFromProbe(noResponseHandle, { kind: "no-response" });
-    expect(noResponseHandle.get()).toEqual(RENDERER_CAPABILITIES_TTY_INITIAL);
-  });
-
-  test("fake-clock delayed success promotes once without wall-clock wait", async () => {
-    const handle = createCapabilitySnapshot(RENDERER_CAPABILITIES_TTY_INITIAL);
-    const timers: Array<() => void> = [];
-    const clock = {
-      setTimeout: (fn: () => void, _ms: number) => {
-        timers.push(fn);
-        return 0;
-      },
-    };
-    let resolveProbe:
-      | ((value: { kind: "success"; color: boolean; notifications: boolean }) => void)
-      | undefined;
-    const probe: CapabilityProbe = {
-      timeoutMs: 50,
-      run: () =>
-        new Promise((resolve) => {
-          resolveProbe = resolve;
-        }),
-    };
-    scheduleCapabilityProbe(handle, probe, clock);
-    expect(handle.get()).toEqual(RENDERER_CAPABILITIES_TTY_INITIAL);
-    resolveProbe?.({ kind: "success", color: true, notifications: true });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(handle.get().notifications).toBe(true);
-    expect(handle.get().color).toBe(true);
-    // timeout firing later must not demote
-    for (const t of timers) t();
-    expect(handle.get().notifications).toBe(true);
-  });
-
-  test("makeService and makeEventConsumer share one snapshot for the same RendererIO", async () => {
-    const io = {
-      writeStdout: () => undefined,
-      writeStderr: () => undefined,
-      isTTY: true,
-    };
-    const clock = {
-      setTimeout: (_fn: () => void, _ms: number) => 0,
-    };
-    let resolveProbe:
-      | ((value: { kind: "success"; color: boolean; notifications: boolean }) => void)
-      | undefined;
-    const probe: CapabilityProbe = {
-      timeoutMs: 50,
-      run: () =>
-        new Promise((resolve) => {
-          resolveProbe = resolve;
-        }),
-    };
-    const serviceLayer = makeLandoService(io, { capabilityProbe: probe, clock });
-    const serviceCaps = await runService(
-      serviceLayer,
-      Effect.map(Renderer, (r) => r.capabilities),
-    );
-    expect(serviceCaps.notifications).toBe(false);
-
-    const shared = resolveCapabilitySnapshot(io);
-    // Consumer factory without an override reuses the same handle (no second probe).
-    const consumer = makeLandoEventConsumer(io);
-    expect(consumer).toBeDefined();
-    expect(resolveCapabilitySnapshot(io)).toBe(shared);
-
-    resolveProbe?.({ kind: "success", color: true, notifications: true });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(shared.get().notifications).toBe(true);
-    const after = await runService(
-      makeLandoService(io),
-      Effect.map(Renderer, (r) => r.capabilities),
-    );
-    expect(after.notifications).toBe(true);
-  });
-
-  test("notify.desktop before promotion is dropped and not replayed after promotion", async () => {
-    const calls: Array<{ message: string; title?: string }> = [];
-    const handle = createCapabilitySnapshot(RENDERER_CAPABILITIES_TTY_INITIAL);
-    const getCapabilities = () => handle.get();
-    const trigger = (message: string, title?: string) => {
-      calls.push(title === undefined ? { message } : { message, title });
-      return true;
-    };
-    const consumer = makeLandoEventConsumer(
-      { writeStdout: () => undefined, writeStderr: () => undefined, isTTY: true },
-      { getCapabilities, triggerNotification: trigger },
-    );
-    // Pre-promotion: notifications false → no call; no buffering for later replay.
-    expect(getCapabilities().notifications).toBe(false);
-    if (getCapabilities().notifications) trigger("x");
-    expect(calls).toEqual([]);
-    promoteFromProbe(handle, { kind: "success", color: true, notifications: true });
-    expect(calls).toEqual([]);
-    if (getCapabilities().notifications) trigger("after");
-    expect(calls).toEqual([{ message: "after" }]);
-    expect(consumer).toBeDefined();
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toEndWith(JSON.stringify({ loads: 0 }));
   });
 });
 

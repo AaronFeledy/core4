@@ -1,8 +1,9 @@
 import { Effect, Match, Predicate, Schema } from "effect";
-import { parseLandofile } from "../landofile/index.ts";
+import { mergeLandofiles, parseLandofile } from "../landofile/index.ts";
 import type { ConfigTranslateResult } from "../schema/config-translate.ts";
 import {
   LandofileAuthoringFragment,
+  LandofileAuthoringFragmentNative,
   type LandofileAuthoringFragmentWire,
   LandofileAuthoringShape,
   type LandofileAuthoringShapeWire,
@@ -15,15 +16,6 @@ export interface ConfigTranslatorEncodeSample {
   readonly fragment?: typeof LandofileAuthoringFragmentWire.Type;
 }
 
-const merge = (lower: unknown, upper: unknown): unknown => {
-  if (!Predicate.isObject(lower) || !Predicate.isObject(upper)) return upper;
-  return Object.fromEntries(
-    [...new Set([...Object.keys(lower), ...Object.keys(upper)])].map((key) => [
-      key,
-      Object.hasOwn(upper, key) ? merge(lower[key], upper[key]) : lower[key],
-    ]),
-  );
-};
 const layers = { base: 0, dist: 1, upstream: 2, canonical: 3, local: 4, user: 5 } as const;
 const onlyFragmentKeys = (emitted: unknown, fragment: unknown): boolean => {
   if (Array.isArray(emitted) && Array.isArray(fragment))
@@ -37,11 +29,15 @@ const onlyFragmentKeys = (emitted: unknown, fragment: unknown): boolean => {
   );
 };
 
-export const checkAuthoringLaws = Effect.fnUntraced(function* (
+export const checkAuthoringLaws: (
   harness: ConfigTranslatorContractHarness,
   result: ConfigTranslateResult,
   stableJson: (value: unknown) => string,
-) {
+) => Effect.Effect<void, unknown> = Effect.fnUntraced(function* (
+  harness: ConfigTranslatorContractHarness,
+  result: ConfigTranslateResult,
+  stableJson: (value: unknown) => string,
+): Effect.fn.Return<void, unknown> {
   const lower = Match.value(harness.translateInput).pipe(
     Match.tag("recipe-request", () => []),
     Match.tag("landofile-document-set", ({ currentLowerV4Fragments }) => currentLowerV4Fragments),
@@ -51,9 +47,19 @@ export const checkAuthoringLaws = Effect.fnUntraced(function* (
     ...[...lower].sort((a, b) => layers[a.layerId] - layers[b.layerId]),
     ...[...result.outputs].sort((a, b) => layers[a.targetLayer] - layers[b.targetLayer]),
   ];
-  let cumulative: unknown = {};
+  let cumulative: Record<string, unknown> = {};
   for (const { fragment } of fragments) {
-    cumulative = merge(cumulative, fragment);
+    const decoded = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(fragment, {
+      onExcessProperty: "error",
+    });
+    const native = yield* Schema.encodeEffect(LandofileAuthoringFragmentNative)(decoded, {
+      onExcessProperty: "error",
+    });
+    if (!Predicate.isObject(native))
+      return yield* Effect.fail(
+        new ContractFailure({ message: "A fragment must be a mapping.", assertion: "fragment mapping" }),
+      );
+    cumulative = mergeLandofiles([cumulative, native]);
     yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(cumulative, {
       onExcessProperty: "error",
     });
@@ -79,13 +85,21 @@ export const checkAuthoringLaws = Effect.fnUntraced(function* (
       sample.fragment === undefined
         ? Schema.decodeUnknownEffect(LandofileAuthoringShape)
         : Schema.decodeUnknownEffect(LandofileAuthoringFragment);
-    const actual = yield* decode(wire, { onExcessProperty: "error" });
+    const actual = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(wire, {
+      onExcessProperty: "error",
+    });
     const expected = yield* decode(sample.fragment ?? sample.context, {
       onExcessProperty: "error",
     });
+    const actualWire = yield* Schema.encodeEffect(LandofileAuthoringFragment)(actual, {
+      onExcessProperty: "error",
+    });
+    const expectedWire = yield* Schema.encodeUnknownEffect(LandofileAuthoringFragment)(expected, {
+      onExcessProperty: "error",
+    });
     if (
-      stableJson(actual) !== stableJson(expected) ||
-      (sample.fragment !== undefined && !onlyFragmentKeys(wire, sample.fragment))
+      stableJson(actualWire) !== stableJson(expectedWire) ||
+      (sample.fragment !== undefined && !onlyFragmentKeys(actualWire, sample.fragment))
     ) {
       return yield* Effect.fail(
         new ContractFailure({

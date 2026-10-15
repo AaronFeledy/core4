@@ -2,24 +2,18 @@ import { Schema } from "effect";
 import { satisfies, subset, valid, validRange } from "semver";
 
 import { causeMessage } from "@lando/sdk/errors";
-import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
-import {
-  commandHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mountAppRoot } from "./_volume-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
@@ -31,7 +25,6 @@ export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
 export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 
-const APP_MOUNT_TARGET = PortablePath.make("/app");
 // The kernel drops default-disposition signals to PID 1, so the idle process handles them itself.
 const DEFAULT_COMMAND = [
   "node",
@@ -39,8 +32,6 @@ const DEFAULT_COMMAND = [
   'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
 ] as const;
 const DEFAULT_PORT = 3000;
-const NODE_HEALTHCHECK_SCRIPT =
-  'const net=require("node:net");const socket=net.connect(Number(process.argv[1]),"127.0.0.1");socket.once("connect",()=>socket.end());socket.once("error",()=>process.exit(1));';
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
@@ -268,14 +259,9 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  mountAppRoot(ctx, { realization: "passthrough" });
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  if (service.command !== undefined) {
-    ctx.setHealthcheck(commandHealthcheck(["node", "-e", NODE_HEALTHCHECK_SCRIPT, String(port)], 10));
-  }
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
   const globals = normalizeNpmGlobals(service.globals);
@@ -321,8 +307,8 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
           {
-            id: "lando.env",
-            config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+            id: "lando.app-mount",
+            config: { target: "/app" },
           },
         ],
       };
@@ -361,7 +347,7 @@ export const nodeServiceType: ServiceType = {
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-          { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" } } },
+          { id: "lando.app-mount", config: { target: "/app" } },
         ],
         metadata: {
           node: {

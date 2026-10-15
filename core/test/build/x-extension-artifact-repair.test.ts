@@ -29,7 +29,7 @@ import {
   repairClosedExtension,
   schemaAt,
 } from "./x-extension-closed-record.ts";
-import { expectedWireExceptions } from "./x-extension-wire-proof.ts";
+import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
 
@@ -218,7 +218,12 @@ describe("closed x-* extension artifact repair", () => {
     if (!Array.isArray(parsed)) throw new Error("exceptions must be an array");
     const recorded = new Set<string>();
     for (const entry of parsed) {
-      if (!isJsonObject(entry) || entry.justification !== CLOSED_EXTENSION_JUSTIFICATION) continue;
+      if (
+        !isJsonObject(entry) ||
+        (entry.justification !== CLOSED_EXTENSION_JUSTIFICATION &&
+          entry.justification !== DIRECTIVE_TRANSPORT_JUSTIFICATION)
+      )
+        continue;
       if (
         typeof entry.surface !== "string" ||
         typeof entry.changeKind !== "string" ||
