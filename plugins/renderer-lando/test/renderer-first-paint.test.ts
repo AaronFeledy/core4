@@ -117,23 +117,28 @@ const waitForConsumer = Effect.fnUntraced(function* (
 interface FakeTerminalRecorder {
   readonly io: RendererIO;
   readonly chunks: ReadonlyArray<string>;
+  readonly stdoutChunks: ReadonlyArray<string>;
 }
 
 const createFakeTerminalRecorder = (
   options: { readonly terminalColumns?: number; readonly terminalRows?: number } = {},
 ): FakeTerminalRecorder => {
   const chunks: string[] = [];
+  const stdoutChunks: string[] = [];
   const io: RendererIO = {
     writeStdout: (chunk) => {
+      stdoutChunks.push(chunk);
+    },
+    writeStderr: (chunk) => {
       chunks.push(chunk);
     },
-    writeStderr: () => {},
     terminalColumns: options.terminalColumns ?? 80,
     terminalRows: options.terminalRows,
   };
   return {
     io,
     chunks,
+    stdoutChunks,
   };
 };
 
@@ -233,6 +238,7 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
     await Effect.runPromise(Effect.scoped(drive([event]).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toHaveLength(1);
     expect(recorder.chunks[0]).toBe(`${renderPlainLine(event)}\n`);
+    expect(recorder.stdoutChunks).toEqual([]);
   });
 
   test("buffered degradation writes one complete plain line per event", async () => {
@@ -241,10 +247,42 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
     const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toEqual(events.map((event) => `${renderPlainLine(event)}\n`));
+    expect(recorder.stdoutChunks).toEqual([]);
   });
 });
 
 describe("first paint via the production TTY consumer and fake OpenTUI substrate", () => {
+  test("init paints its declared children in the first frame, without an empty session prelude", async () => {
+    const fixture = makeLiveRegionFixture();
+    const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
+    const io = { ...base, externalOutputStream: process.stdout };
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(cliInit("apps:init", "init-first-paint"));
+          yield* events.publish(treeStart("init:drupal-cms", "Initialize cms", ["render", "postinit"]));
+          yield* waitForConsumer(() => written(fixture).includes("◌ postinit"));
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, {
+                createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
+              }),
+              LandoEventService.layer,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(stripAnsi(fixture.writes[0] ?? "")).toBe(
+      "╭─ apps:init\r\n│ ◌ render\r\n│ ◌ postinit\r\n╰─ 0/2 running\r\n",
+    );
+    expect(written(fixture)).not.toContain("0/0 running");
+  });
+
   test("publishes the live skeleton before completion, then commits and releases the finished tree", async () => {
     const fixture = makeLiveRegionFixture();
     const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });

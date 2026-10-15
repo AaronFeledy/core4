@@ -122,6 +122,8 @@ test.each([...dropped])("drops global %s once without blocking authoring output"
     { kind: "dropped", keyPath: [key] },
   ]);
   expect(result.diagnostics[0]?.remediation).toBeTruthy();
+  if (key === "channel")
+    expect(result.diagnostics[0]?.remediation).toContain("lando update --channel stable|next|dev");
   expect(result.outputs[0]?.fragment).toEqual({ name: "demo" });
 });
 

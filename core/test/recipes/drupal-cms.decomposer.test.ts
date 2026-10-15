@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import {
   computeRecipeContentDigest,
@@ -6,7 +7,7 @@ import {
   recipeContentDigestProjection,
   renderRecipeSnapshot,
 } from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { ConfigTranslateInput, type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
@@ -26,6 +27,7 @@ import {
   drupalCmsSnapshot,
 } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 
 const defaults = { ...drupalCmsDefaults };
 const alternatives = {
@@ -194,7 +196,47 @@ describe("drupal-cms decomposition", () => {
     expect(command).toContain(
       'php:eval \'if (!\\Drupal::service("file.htaccess_writer")->write("public://", FALSE))',
     );
+    expect(command).toContain('if test "$LANDO_HOST_OS" = win32; then');
+    expect(command).toContain('test ! -L "$lando_path"');
+    expect(command).toContain('test "$lando_public" = "$lando_root/web/sites/default/files"');
+    expect(command).toContain('if test "$lando_mount_uid" -ne 0 && test "$lando_mount_gid" -ne 0; then');
+    expect(command).toContain('test "$lando_worker_uid:$lando_worker_gid" = "$lando_mount_owner"');
+
+    expect(command).toContain(
+      'chown -hR -P -- "$lando_worker_user:$lando_worker_group" web/sites/default/files',
+    );
   });
+  test("parses generated install tooling through the recipe translator", async () => {
+    const translator = makeRecipeConfigTranslator({
+      decomposers: new Map([["drupal-cms", drupalCmsDecomposer]]),
+      redactor: createStandaloneRedactor("secrets"),
+    });
+    const request = Schema.decodeUnknownSync(ConfigTranslateInput)({
+      _tag: "recipe-request",
+      recipe: { id: "drupal-cms", version: drupalCmsProducer.manifestVersion },
+      sourceId: "recipe:drupal-cms:init",
+      answers: { ...defaults, name: "drupal-cms-app" },
+      secretAnswers: {},
+    });
+
+    const translated = await Effect.runPromise(runConfigTranslator(translator, request));
+    expect(translated.outputs).toHaveLength(1);
+    const authoring = translated.outputs[0]?.fragment as {
+      tooling: { "drupal-cms-install": { cmd: string } };
+    };
+    expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_MYSQL_INSTALL_COMMAND);
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "keeps install tooling valid when the dispatcher appends forwarded arguments",
+    () => {
+      // The tooling dispatcher adds this suffix when the command has no positional references.
+      const compiled = [DRUPAL_CMS_MYSQL_INSTALL_COMMAND, '"$@"'].join(" ");
+      const result = Bun.spawnSync(["sh", "-n", "-c", compiled, "lando-tooling"]);
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+    },
+  );
+
   test("keeps the multiline scaffold command intact through snapshot encoding", () => {
     const rendered = Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
       tooling: { "drupal-cms-scaffold": { cmd: string } };

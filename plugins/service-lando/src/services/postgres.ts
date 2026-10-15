@@ -12,9 +12,14 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
-const DEFAULT_IMAGE = "postgres:16";
-const VERSIONS = ["16"] as const;
-const ARTIFACTS = { "16": DEFAULT_IMAGE } as const;
+const VERSIONS = ["15", "16", "17", "18"] as const;
+const ARTIFACTS = {
+  "15": "postgres:15",
+  "16": "postgres:16",
+  "17": "postgres:17",
+  "18": "postgres:18",
+} as const;
+const DEFAULT_IMAGE = ARTIFACTS["16"];
 const DEFAULT_PORT = 5432;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
@@ -51,25 +56,58 @@ const credsFor = (input: {
   });
 };
 
+// Authored PGPORT reaches the server, so it must agree with the endpoint and healthcheck port.
+const listenPort = (service: ServiceConfig, serviceName: string): number => {
+  const authored = service.environment?.PGPORT;
+  if (authored === undefined) return service.port ?? DEFAULT_PORT;
+  const parsed = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error(
+      `services.${serviceName}.environment.PGPORT must be a TCP port number, got ${JSON.stringify(authored)}. Set port: instead, or fix PGPORT.`,
+    );
+  }
+  if (service.port !== undefined && service.port !== parsed) {
+    throw new Error(
+      `services.${serviceName} sets port: ${service.port} and environment.PGPORT: ${authored}. Postgres listens on PGPORT, so remove one or make them match.`,
+    );
+  }
+  return parsed;
+};
+
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
+  const port = listenPort(service, ctx.serviceName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("postgres", creds));
   addEnvRecord(ctx, landoDbEnvFor(creds));
+  // Postgres 18+ images default PGDATA to /var/lib/postgresql/<major>/docker and refuse to boot
+  // with a volume at the pre-18 path, so every major keeps its data on the Lando volume.
+  ctx.addEnv("PGDATA", DATA_TARGET);
+  // The server, the image's init scripts, and in-container clients all read PGPORT.
+  ctx.addEnv("PGPORT", String(port));
   ctx.addStorage({
     store: `${appName}-postgresql-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck(commandHealthcheck(["pg_isready", "-U", creds.user, "-d", creds.database], 30));
+  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
+  // Probe over TCP: the image's first-boot init server listens only on the unix socket.
+  ctx.setHealthcheck(
+    commandHealthcheck(
+      ["pg_isready", "-h", "127.0.0.1", "-p", String(port), "-U", creds.user, "-d", creds.database],
+      30,
+    ),
+  );
 
   if (addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`]);
+      // A command-line port beats a port line in the custom config, so an authored port still wins.
+      const portOverride =
+        service.port === undefined && service.environment?.PGPORT === undefined ? [] : ["-c", `port=${port}`];
+      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`, ...portOverride]);
     }
   }
 

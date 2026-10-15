@@ -10,6 +10,7 @@ import {
   GpgAgentConfig,
   SshAgentConfig,
 } from "./agent-forwarding.ts";
+import { LayerMergeRule } from "./layer-merge.ts";
 
 import {
   AxisToken,
@@ -284,6 +285,7 @@ import {
   PluginManifest,
   PluginSetupContribution,
   PluginSetupFlagContribution,
+  PluginStateLockOptions,
   RouterServiceContribution,
   SecretStoreContribution,
 } from "./plugin.ts";
@@ -469,6 +471,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   SecretStoreContribution,
   DeprecationNotice,
   DeprecationUse,
+  LayerMergeRule,
   LandofileExpressionParseError,
   LandofileExpressionForbiddenError,
   LandofileExpressionEvalError,
@@ -664,6 +667,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PluginContribution,
   PluginDoctorReport,
   PluginManifest,
+  PluginStateLockOptions,
   RouterServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
@@ -923,6 +927,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
   ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",
   DeprecationNotice: "Public Lando schema contract for Deprecation Notice.",
+  LayerMergeRule: "Declared collection policy for Landofile layers.",
   DeprecationUse: "Public Lando schema contract for Deprecation Use.",
   LandofileExpressionParseError: "Public Lando schema contract for Landofile Expression Parse Error.",
   LandofileExpressionForbiddenError: "Public Lando schema contract for Landofile Expression Forbidden Error.",
@@ -1115,6 +1120,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginSetupContribution: "Public Lando schema contract for Plugin Setup Contribution.",
   PluginContribution: "Public Lando schema contract for Plugin Contribution.",
   PluginManifest: "Public Lando schema contract for Plugin Manifest.",
+  PluginStateLockOptions: "Bounded acquisition options for a plugin-scoped durable-state lock.",
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PluginTrustState: "Public Lando schema contract for Plugin Trust State.",
   GlobalServiceContribution: "Public Lando schema contract for Global Service Contribution.",

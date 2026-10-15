@@ -845,7 +845,7 @@ describe("App handle managed lifecycle scopes", () => {
 
       expect(insideScope.failedReuse).toBe("Failure");
       expect(insideScope.blockedRetry).toBe("Failure");
-      expect(insideScope.blockedMessage).toContain("automatic recovery is not available");
+      expect(insideScope.blockedMessage).toContain("cannot reseed safely");
       expect(insideScope.createCalls).toBe(1);
       expect(insideScope.flushCalls).toBe(2);
       expect(insideScope.sessions).toBe(0);

@@ -199,6 +199,8 @@ export const resolveLandofileLoadExpressions = (
           }
           return result;
         }
+        if (isLandofileReset(value)) return value;
+        if (isLandofileOverride(value)) return override(visit(value.value, path));
         if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
         if (!Predicate.isObject(value)) return value;
         return Object.fromEntries(
@@ -243,3 +245,4 @@ export const resolveLandofileLoadExpressions = (
       });
     },
   });
+import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";

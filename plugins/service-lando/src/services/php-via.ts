@@ -144,12 +144,9 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
  * `preserveExplicitApacheIdentity` leaves an authored
  * `APACHE_RUN_USER`/`APACHE_RUN_GROUP` alone.
  */
-export const windowsBindWorkerIdentity = (
-  fallbackMount: string,
-  preserveExplicitApacheIdentity = false,
-): ReadonlyArray<string> => [
-  `if test "\${LANDO_HOST_OS:-}" = win32${preserveExplicitApacheIdentity ? ' && test "${APACHE_RUN_USER:-www-data}" = www-data && test "${APACHE_RUN_GROUP:-www-data}" = www-data' : ""}; then`,
-  `  lando_mount_owner=$(stat -c '%u:%g' -- "\${LANDO_PROJECT_MOUNT:-${fallbackMount}}")`,
+export const windowsBindWorkerIdentity = (preserveExplicitApacheIdentity = false): ReadonlyArray<string> => [
+  `if test "\${LANDO_HOST_OS:-}" = win32 && test -n "\${LANDO_PROJECT_MOUNT:-}"${preserveExplicitApacheIdentity ? ' && test "${APACHE_RUN_USER:-www-data}" = www-data && test "${APACHE_RUN_GROUP:-www-data}" = www-data' : ""}; then`,
+  `  lando_mount_owner=$(stat -c '%u:%g' -- "$LANDO_PROJECT_MOUNT")`,
   "  lando_mount_uid=${lando_mount_owner%%:*}",
   "  lando_mount_gid=${lando_mount_owner#*:}",
   '  case "$lando_mount_owner" in *[!0-9:]*|:*|*:|*:*:*) echo "Windows project mount must have numeric uid:gid ownership; got $lando_mount_owner." >&2; exit 1;; esac',
@@ -210,7 +207,7 @@ export const apacheStartCommand = (
   return [
     "sh",
     "-c",
-    ["set -eu", ...windowsBindWorkerIdentity("/app", true), 'exec apache2-foreground "$@"'].join("\n"),
+    ["set -eu", ...windowsBindWorkerIdentity(true), 'exec apache2-foreground "$@"'].join("\n"),
     "lando-apache",
     ...flags,
   ];
@@ -236,7 +233,7 @@ export const fpmStartCommand = (port: number, mapWindowsWorker = true): Readonly
   "-c",
   [
     "set -eu",
-    ...(mapWindowsWorker ? windowsBindWorkerIdentity("/app") : []),
+    ...(mapWindowsWorker ? windowsBindWorkerIdentity() : []),
     `printf 'include=/usr/local/etc/php-fpm.conf\\n[www]\\nlisten = ${String(port)}\\n' > ${PHP_FPM_CONFIG_PATH}`,
     `exec php-fpm -y ${PHP_FPM_CONFIG_PATH}`,
   ].join("\n"),

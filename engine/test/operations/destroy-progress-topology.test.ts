@@ -195,6 +195,7 @@ describe("destroy progress topology", () => {
             Effect.sync(() => {
               calls.push("complete");
             }),
+          disposalPhase: () => Effect.succeed("active" as const),
         },
       };
       const harness = makeHarness({

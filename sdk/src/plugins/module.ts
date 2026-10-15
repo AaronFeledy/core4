@@ -135,7 +135,10 @@ export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
  */
 export type ConfigTranslatorLoader = () => Promise<ConfigTranslatorShape>;
 
-export type FileSyncEngineContribution = Layer.Layer<FileSyncEngine, unknown, unknown>;
+export type FileSyncEngineContributionLayer = Layer.Layer<FileSyncEngine, unknown, unknown>;
+export interface FileSyncEngineContribution {
+  readonly make: (ctx: LandoPluginContext) => FileSyncEngineContributionLayer;
+}
 export type CertificateAuthorityContributionLayer = Layer.Layer<
   CertificateAuthority,
   never,

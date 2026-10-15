@@ -8,7 +8,7 @@ import type { ProviderError, ServiceExitResult, ServiceSelector } from "@lando/s
 import type { WaitDialect } from "./dialect.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
-import { redactDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactResponseDetails, withApiReason } from "./redact.ts";
 
 export interface WaitForExitOptions {
   readonly api?: EngineHttpApi;
@@ -62,7 +62,7 @@ export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
 
   const decoded = yield* parseEngineJson(response, options.ctx, "waitForExit", {
     message: "Container engine API returned malformed JSON.",
-    details: redactDetails(response),
+    details: redactResponseDetails(response),
   });
   const exitCode = options.dialect.decodeExitCode(decoded);
   if (exitCode === undefined) {

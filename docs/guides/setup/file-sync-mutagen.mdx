@@ -6,15 +6,44 @@ timeout: 120000
 tags: [beta, docs, file-sync, mutagen, setup]
 ---
 
-# Accelerate slow bind mounts with Mutagen
+# Accelerate Windows project files with Mutagen
 
-Mutagen-backed file sync is not a user command on Alpha. There is no `lando mutagen`. Linux x64 bind mounts are native, so `lando setup` records file-sync as satisfied and does not download Mutagen.
+Run `lando setup` to install the file-sync tools for Windows with the managed `lando` provider. Lando starts and manages the sync sessions for your app.
 
-The bundled engine still fails closed until a live Mutagen host client ships. `lando setup` can provision pinned Mutagen binaries on slow bind-mount providers (macOS and Windows VMs). That client is not wired up as a working session path yet.
+## Install the sync tools
 
-## What works today
+```sh
+lando setup
+lando doctor
+```
 
-Exclude paths in the Landofile. That is the user file-sync control on Alpha:
+Setup installs checksum-verified Mutagen binaries and a private Docker command-line client. Lando uses that client to reach its managed Podman machine. You don't need to install or start Docker Desktop.
+
+The `file-sync` doctor check verifies that the installed tools and session client are available. The separate `filesystem-watch` check creates a temporary Windows file and verifies that a native watcher receives its event. That watch check covers the host temporary directory; it does not test every project directory or a container watcher.
+
+## Start or rebuild the app
+
+From your project directory:
+
+```sh
+lando start
+lando info
+```
+
+If the app already uses ordinary mounts, rebuild it after setup so its containers use the accelerated mounts:
+
+```sh
+lando rebuild
+lando doctor
+```
+
+Edit a project file on Windows and check the change through the app's URL or tooling. Files written inside the synced project paths return to Windows too. Lando completes the initial sync before it starts the app's services. That first scan can take several minutes for a large project; later starts reuse the session and its history. The project app mount is accelerated; extra bind mounts, including config files, keep their ordinary mount behavior.
+
+If you set a service's `user`, use a numeric UID and GID on Windows, such as `1000:1000`. Lando uses that identity for synced files. Named service users cannot be resolved before the container starts; use the numeric identity from your image.
+
+## Exclude generated files
+
+Add patterns under the service's app mount:
 
 ```yaml
 services:
@@ -22,12 +51,45 @@ services:
     type: "node:22"
     primary: true
     appMount:
+      target: /app
       excludes:
         - dist
 ```
 
-See [Exclude paths from file sync](./file-sync-excludes.mdx).
+The defaults already exclude `node_modules`, `vendor`, `.git`, and `tmp`. See [Exclude paths from file sync](./file-sync-excludes.mdx) for includes and per-service overrides.
 
-`lando setup --skip-file-sync` skips the Mutagen download on slow-mount hosts. Run `lando setup` without the flag later if you want the pinned tools installed. The tools do not enable accelerated mounts in this build. Do not use the flag to switch providers. `--yes` is consent, not a provider switch.
+## Stop and resume the app
 
-When a slow-mount host is supported, `lando doctor` will run the `file-sync` check only if `bindMountPerformance` is `slow`. Native Linux Docker or Podman skips that check.
+```sh
+lando stop
+lando start
+```
+
+Stopping pauses the app's sessions and retains their history. Starting resumes them, including changes made while the app was stopped. Lando uses two-way safe sync: if both sides change the same file incompatibly, it reports a conflict instead of choosing one version silently.
+
+`lando destroy` removes the app's sync sessions and disposable sync caches after syncing pending changes in included paths back to the project. Resolve reported sync errors before retrying destroy. The normal destroy rules for application data volumes still apply.
+
+## Resolve a file conflict
+
+If start reports a conflict, keep the session and inspect the affected paths:
+
+```sh
+lando start --format=json
+```
+
+The error names the session, relative file paths, verified Mutagen and Docker tools, isolated session data, and helper container. Use those exact tools and settings when inspecting it. The Windows project is one copy; the helper's `/sync` directory is the other.
+
+Stop anything writing to the affected project files, then use the reported Mutagen CLI and isolated session data to pause that exact session. For a conflict between two regular files, copy both versions to a backup folder outside the project before changing either one. Compare or merge the backups, then put the chosen contents in both locations. Keep the helper file owned by the service's numeric UID and GID. Once both copies agree, retry:
+
+```sh
+lando start
+lando info
+```
+
+Directory, deletion, and symbolic-link conflicts need a decision about which content to keep; see [Mutagen's conflict resolution guide](https://mutagen.io/documentation/synchronization#conflict-resolution). Keep your backups until the app starts and the files match. Do not reset or terminate Lando's session or remove its cache to bypass a conflict: that can discard the history or the container's unreturned edits.
+
+## Skip installation
+
+`lando setup --skip-file-sync` skips installing sync tools. It does not remove tools that are already installed or change your provider.
+
+Native Linux providers keep their native bind mounts and skip this file-sync check. Accelerated sessions described here require Windows and the managed `lando` provider; other provider and host combinations keep their existing mount behavior.

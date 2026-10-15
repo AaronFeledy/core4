@@ -12,7 +12,7 @@ import {
 } from "../engine-api.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
-import { redactDetails, redactString } from "../redact.ts";
+import { redactResponseDetails, redactString } from "../redact.ts";
 import {
   type SocketHttpConnection,
   connectSocket,
@@ -42,7 +42,7 @@ const unavailableStatus = (
     providerId: ctx.providerId,
     operation,
     message,
-    details: redactDetails(response),
+    details: redactResponseDetails(response),
     remediation: ctx.remediation,
   });
 

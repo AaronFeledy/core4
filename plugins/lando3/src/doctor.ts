@@ -22,8 +22,8 @@ export const runLando3Leftovers = Effect.fn("Lando3Doctor.leftovers")(function* 
         solutions: [
           {
             kind: "manual",
-            description: "Run `lando4 doctor` inside an app to check for Lando 3 leftovers.",
-            command: "lando4 doctor",
+            description: "Run `lando doctor` inside an app to check for Lando 3 leftovers.",
+            command: "lando doctor",
           },
         ],
       },
@@ -76,7 +76,7 @@ export const runLando3Leftovers = Effect.fn("Lando3Doctor.leftovers")(function* 
           {
             kind: "manual",
             description:
-              "These look like Lando 3 resources for this app. Lando 4 did not change or remove them. Back up or confirm any data you need, then remove them with Lando 3 (for example, run Lando 3's `lando destroy` in this app).",
+              "These look like Lando 3 resources for this app. Lando 4 did not change or remove them. Back up or confirm any data you need, then invoke the saved Lando 3 executable with `destroy` in this app.",
           },
         ],
       },
@@ -92,8 +92,8 @@ export const runLando3Leftovers = Effect.fn("Lando3Doctor.leftovers")(function* 
         solutions: [
           {
             kind: "manual",
-            description: "Re-run `lando4 doctor` when the provider is reachable.",
-            command: "lando4 doctor",
+            description: "Re-run `lando doctor` when the provider is reachable.",
+            command: "lando doctor",
           },
         ],
       },
@@ -107,7 +107,8 @@ export const runLando3Shadow = Effect.fn("Lando3Doctor.shadow")(function* (
   const name = "lando3-shadow";
   if (input.executables === undefined) return [skipped(name, "no-locator")];
   const location = yield* input.executables.locate("lando");
-  if (location.runningBasename !== "lando4") return [skipped(name, "not-running-as-lando4")];
+  if (location.runningBasename !== "lando" && location.runningBasename !== "lando4")
+    return [skipped(name, "not-running-as-lando")];
   const result: PluginDoctorReport = Match.value(location.candidate).pipe(
     Match.when(
       { kind: "missing" },
@@ -170,7 +171,7 @@ export const runLando3Shadow = Effect.fn("Lando3Doctor.shadow")(function* (
           {
             kind: "manual",
             description:
-              "A different `lando` is on PATH. Lando 4 did not run or inspect it and makes no claim about its version. Keep using `lando4` for Lando 4 and `lando` for Lando 3 side by side.",
+              "A different `lando` is on PATH. Lando 4 did not run or inspect it and makes no claim about its version. Put the Lando 4 executable first on PATH and use an explicit executable path for Lando 3.",
           },
         ],
       };

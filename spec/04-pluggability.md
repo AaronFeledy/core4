@@ -26,7 +26,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 | Tooling execution | `ToolingEngine` | Core `providerExec` and `host` | `toolingEngines:`; per-step/task/default/Landofile/global selection (§8.6). Core ids MUST NOT be replaced; implementations MUST pass the tooling-engine contract suite (§13.1). |
 | Template rendering | `TemplateEngine` | Core `lando`; bundled `handlebars` and `mustache` whole-file engines | `templateEngines:`; explicit `engine`, extension, Landofile `defaultTemplateEngine`, then global config (§7.3.2). Only `lando` interpolates Landofile string values. |
 | Console logging | `Logger` | Effect logger, quiet unless configured; TTY-pretty or JSON | `loggers:`; select by `--log-level`, `LANDO_LOG_LEVEL`, or `logLevel`; `--debug` raises the floor. |
-| Output rendering | `Renderer` | Built-in default | `renderers:`; `--renderer`, `LANDO_RENDERER`, then TTY/CI detection. |
+| Output rendering | `Renderer` | Built-in default | `renderers:`; `--renderer`, `LANDO_RENDERER`, global `renderer:`, then the bundled `lando` default (§8.9). |
 | Schema validation | `SchemaValidator` | Effect Schema | Reserved and not user-swappable. |
 | Config translation | `ConfigTranslator` | `lando4` decode/encode, `recipe` decode, bundled `lando3` decode-only | `configTranslators:`; explicit `app:config:translate`, `app:config:explain`, `app:config:migrate`, or `apps:init` only. Never bootstrap or normal loading. Implementations MUST pass the config-translator contract suite (§13.1). |
 | CLI framework | `CommandFramework` | Native shared command registry/dispatcher (§8.4.1) | Replaceable, though not recommended; `@effect/cli` adapters are permitted. |

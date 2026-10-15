@@ -107,9 +107,8 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
       visit(ast.thunk(), target, path);
     } else if (AST.isUnion(ast)) {
       const branches = target.anyOf ?? target.oneOf;
-      const members = ast.types.filter(
-        (member) => !AST.isNever(member) && !(AST.isOptional(ast) && AST.isUndefined(member)),
-      );
+      // Effect retains Never as { not: {} }; only optional Undefined disappears.
+      const members = ast.types.filter((member) => !(AST.isOptional(ast) && AST.isUndefined(member)));
       const onlyMember = members.length === 1 ? members[0] : undefined;
       if (onlyMember !== undefined) {
         visit(onlyMember, target, path);
@@ -218,6 +217,28 @@ describe("schema snapshot artifact-set gate", () => {
       properties: { optional: { anyOf: [{ type: "string" }, { type: "null" }] } },
     };
     expect(unexplainedNullPaths(schema, artifact)).toEqual(["$.properties.optional.anyOf[1]"]);
+  });
+
+  test("artifact null guard aligns Never branches without accepting a substituted null", () => {
+    const schema = Schema.Struct({ value: Schema.Union([Schema.String, Schema.Null, Schema.Never]) });
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    expect(unexplainedNullPaths(schema, artifact)).toEqual([]);
+    const corrupted = {
+      type: "object",
+      properties: { value: { anyOf: [{ type: "string" }, { type: "null" }, { type: "null" }] } },
+    };
+    expect(unexplainedNullPaths(schema, corrupted)).toEqual(["$.properties.value.anyOf[2]"]);
+  });
+
+  test("explicit projections do not emit abandoned definitions from the replaced source", () => {
+    const hidden = Schema.Struct({ value: Schema.NullOr(Schema.String) }).annotate({
+      identifier: "ReplacedSource",
+    });
+    const schema = Schema.Struct({ hidden }).annotate({ jsonSchemaProjection: { type: "string" } });
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    expect(artifact).toMatchObject({ type: "string" });
+    expect(artifact.$defs).toBeUndefined();
+    expect(unexplainedNullPaths(schema, artifact)).toEqual([]);
   });
 
   test.each([

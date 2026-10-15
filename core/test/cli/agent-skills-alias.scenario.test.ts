@@ -33,11 +33,11 @@ test("removes owned skills from the canonical cwd after init through a symlinked
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ]);
-    expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
-    return stdout;
+    expect({ exitCode, stderr }).toMatchObject({ exitCode: 0 });
+    return { stdout, stderr };
   };
   try {
-    await run(
+    const initialized = await run(
       [
         "init",
         join(alias, "app"),
@@ -49,12 +49,15 @@ test("removes owned skills from the canonical cwd after init through a symlinked
       ],
       root,
     );
+    expect(initialized.stderr).toContain("[agentskills] ✓ complete: Installed agent skills");
+    expect(initialized.stdout).not.toContain("[agentskills]");
 
     // When a later command discovers the same app from its canonical cwd.
     const output = await run(["agent:skills:remove", "--format=json"], app);
 
     // Then removal finds the ownership recorded by init and deletes the skill.
-    expect(JSON.parse(output)).toMatchObject({
+    expect(output.stderr).toBe("");
+    expect(JSON.parse(output.stdout)).toMatchObject({
       ok: true,
       result: { appRoot: app, entries: [{ path: AGENT_SKILLS_SKILL_PATH, action: "update" }] },
     });

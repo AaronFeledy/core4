@@ -17,7 +17,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
 | Service keys | 43 | 107 | 212 | 362 |
-| YAML tags | 0 | 0 | 2 | 2 |
+| YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
 
@@ -38,8 +38,8 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 
 | Key path | Disposition | Detail |
 | --- | --- | --- |
-| `!override` | rejected | Remove !override and express the override through Landofile layer merge semantics. |
-| `!reset` | rejected | Remove !reset and express the override through Landofile layer merge semantics. |
+| `!override` | normalized | Native Landofile layer merging consumes override directives by replacing inherited values. |
+| `!reset` | normalized | Native Landofile layer merging consumes reset directives by removing mapping members. |
 
 ## Service keys
 

@@ -56,6 +56,7 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
@@ -791,7 +792,20 @@ const makeScratchAppService = (
         scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
       ),
     );
-    yield* applyScratchRoutes(builtPlan, landofileRouter);
+    yield* applyScratchRoutes(builtPlan, landofileRouter).pipe(
+      Effect.andThen(
+        waitForServiceReadiness({
+          provider,
+          plan: builtPlan,
+          services: Object.values(builtPlan.services).map((service) => service.name),
+          retainOnInterrupt: false,
+        }),
+      ),
+      Effect.onInterrupt(() => (keepOnFailure ? Effect.void : destroyScratchResources)),
+      Effect.mapError((cause) =>
+        scratchAppError("start", `Unable to ready scratch app ${scratchId}.`, cause),
+      ),
+    );
     if (!detached) {
       // Skip the destroy when the entry was converted to detached mid-scope
       // (`apps:scratch:run --keep`): the registry owns the scratch from there.

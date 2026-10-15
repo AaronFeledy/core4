@@ -46,7 +46,7 @@ describe("renderer.setup fixture", () => {
   test("plain renderer formats provider setup steps", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, rawEvents);
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines[0]).toBe("▼ Setting up Lando runtime (4 steps)");
     expect(lines[1]).toContain("[bundle] start: Verify runtime bundle");
     expect(lines[2]).toContain("[bundle] ✓ complete: Verify runtime bundle");
@@ -62,7 +62,7 @@ describe("renderer.setup fixture", () => {
   test("plain renderer snapshot is stable", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, decodeFixtureEvents());
-    expect(io.stdout()).toMatchSnapshot();
+    expect(io.stderr()).toMatchSnapshot();
   });
 
   test("json renderer snapshot is stable on stderr", () => {
@@ -76,10 +76,11 @@ describe("renderer.setup fixture", () => {
     renderPlain(plainIo, decodeFixtureEvents());
 
     const landoIo = createBufferedRendererIO();
-    drainRendererSync(renderPlainLine, landoIo, "stdout", decodeFixtureEvents());
+    drainRendererSync(renderPlainLine, landoIo, decodeFixtureEvents());
 
-    expect(landoIo.stdout()).toBe(plainIo.stdout());
-    expect(landoIo.stdout()).toMatchSnapshot();
+    expect(landoIo.stderr()).toBe(plainIo.stderr());
+    expect(landoIo.stderr()).toMatchSnapshot();
+    expect(landoIo.stdout()).toBe("");
   });
 
   test("setup event order is tree.start → steps → tree.complete", () => {

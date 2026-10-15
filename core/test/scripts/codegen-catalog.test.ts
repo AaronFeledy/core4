@@ -75,8 +75,21 @@ const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
-  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions", "php-msmtp-pins"]],
+  [
+    "bundled-plugins",
+    "derived",
+    "build-bundled-plugins.ts",
+    "repo",
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
+  ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
+  [
+    "docker-cli-versions",
+    "committed-pin",
+    "build-docker-cli-versions.ts",
+    "repo",
+    ["core-service-env-catalog"],
+  ],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
@@ -87,7 +100,7 @@ const expectedCatalogRows = [
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    ["mutagen-versions", "php-msmtp-pins"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
   ],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
@@ -98,12 +111,13 @@ const expectedCatalogRows = [
     ["setup-plugin-flags", "mcp-allowlist"],
   ],
   ["core-service-env-catalog", "derived", "build-core-service-env-catalog.ts", "repo"],
+  ["schema-deprecations", "derived", "build-schema-deprecations.ts", "repo", ["core-service-env-catalog"]],
   [
     "command-registry-manifest",
     "derived",
     "build-command-registry-manifest.ts",
     "core",
-    ["setup-plugin-flags", "mcp-allowlist"],
+    ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
   ],
   ["compiled-decoders", "derived", "build-compiled-decoders.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -207,7 +221,10 @@ describe("codegen catalog", () => {
       waves.findIndex((wave) => wave.some((entry) => entry.id === id));
 
     // When: each pin generator is placed in a wave.
-    const pinWaves = ["mutagen-versions", "php-msmtp-pins"].map((id) => ({ id, wave: waveIndexOf(id) }));
+    const pinWaves = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"].map((id) => ({
+      id,
+      wave: waveIndexOf(id),
+    }));
 
     // Then: the pin is fully written before any importer reads it. Sharing a wave
     // lets the import observe the file mid-truncation, because `Bun.write`
@@ -274,7 +291,7 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions", "php-msmtp-pins"];
+    const expectedCommittedPins = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
@@ -298,13 +315,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(32);
+    expect(catalog).toHaveLength(34);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(2);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(19);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(20);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -340,6 +357,7 @@ describe("codegen catalog", () => {
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
+    expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );

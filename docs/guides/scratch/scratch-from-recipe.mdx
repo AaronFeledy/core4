@@ -39,7 +39,7 @@ lando scratch:info <id>
 lando scratch:destroy <id>
 ```
 
-`--detach` returns after the scratch starts. Without it the session stays attached.
+`--detach` returns after services pass startup readiness. Enabled healthchecks must pass; services without checks settle in a running state, and completion jobs must exit 0. Without `--detach` the session stays attached. A failed or interrupted acquisition cleans up scratch resources by default. `--keep-on-failure` retains failed acquisition state for inspection and explicit destruction; it does not turn a failed start into success.
 
 `lando run --from lamp -- composer --version` runs one command in a disposable scratch app. When `--from` is omitted, `lando run` uses the bundled toolbox recipe.
 
@@ -56,3 +56,12 @@ lando start
 
 - [Write a Landofile](../landofile/your-landofile.mdx)
 - [Everyday commands](../cli/everyday-commands.mdx)
+
+<Guide>
+  <Scenario id="scratch-failure-policy" tags={["scenario"]} render={false} reason="Verify acquisition flags without starting scratch containers">
+    <Step name="check-failure-policy">
+      <Run command="lando scratch:start --help" />
+      <Verify command="lando scratch:start --help" expect={{ stdout: { regex: "--keep-on-failure" } }} />
+    </Step>
+  </Scenario>
+</Guide>

@@ -100,6 +100,12 @@ export const FileSyncSessionSpec = Schema.Struct({
 });
 export type FileSyncSessionSpec = Schema.Schema.Type<typeof FileSyncSessionSpec>;
 
+/** Existing owned sync volumes proved by retained-target writer quiescence. */
+export const RetainedFileSyncQuiescence = Schema.Struct({
+  preparedVolumeNames: Schema.Array(Schema.String),
+});
+export type RetainedFileSyncQuiescence = Schema.Schema.Type<typeof RetainedFileSyncQuiescence>;
+
 /**
  * Provider-owned, verified container endpoint for one planned sync session.
  * The endpoint is data only; its cleanup action stays with the provider.
@@ -118,6 +124,14 @@ export const PreparedFileSyncTarget = Schema.Struct({
     volumeName: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
       description: "Owned named volume backing the planned session target.",
     }),
+    permissions: Schema.optionalKey(
+      Schema.Struct({
+        owner: Schema.String,
+        group: Schema.String,
+        defaultFileMode: Schema.String,
+        defaultDirectoryMode: Schema.String,
+      }),
+    ),
   }).annotate({
     description: "Provider-verified container endpoint for the session.",
   }),
@@ -142,6 +156,10 @@ export const FileSyncSessionInfo = Schema.Struct({
   lastUpdatedAt: Schema.DateTimeUtcFromString,
   /** Optional structured detail (drift count, last error message, etc.). */
   detail: Schema.optionalKey(Schema.String),
+  /** Validated relative paths for an observed synchronization conflict. */
+  conflictedPaths: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description: "Validated relative paths for an observed synchronization conflict.",
+  }),
 });
 export type FileSyncSessionInfo = Schema.Schema.Type<typeof FileSyncSessionInfo>;
 

@@ -17,7 +17,9 @@ const io: WatchNativeIO = {
 const systemError = (code: string) => Object.assign(new Error("secret /private/test"), { code });
 const run = (native: WatchNativeIO = io, platform = "linux") =>
   Effect.runPromise(
-    filesystemWatchDoctor((text) => text, platform).pipe(Effect.provide(FilesystemWatchIO.layerWith(native))),
+    filesystemWatchDoctor((text) => text, platform).pipe(
+      Effect.provide(FilesystemWatchIO.layerWith(native, platform)),
+    ),
   );
 
 test("passes one allocation even when all configured limits are tiny", async () => {
@@ -121,7 +123,7 @@ test.each(["EACCES", "EPERM", "ENOENT"])(
   },
 );
 
-test.each(["darwin", "win32", "freebsd"])("avoids native IO on unsupported %s", async (platform) => {
+test.each(["darwin", "freebsd"])("avoids native IO on unsupported %s", async (platform) => {
   // Given
   let calls = 0;
   const native = {
@@ -159,42 +161,45 @@ test("redacts every context value and remediation before returning it", async ()
   expect(check?.solutions[0]?.description).toBe("[redacted]");
 });
 
-test("bounds stalled IO to one attempt and interrupts its scope", async () => {
-  // Given
-  let interrupted = false;
-  // When
-  const checks = await Effect.runPromise(
-    Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      const fiber = yield* Effect.forkChild(
-        filesystemWatchDoctor((text) => text, "linux").pipe(
-          Effect.provideService(
-            FilesystemWatchIO,
-            FilesystemWatchIO.of({
-              observe: Deferred.succeed(started, undefined).pipe(
-                Effect.andThen(Effect.never),
-                Effect.onInterrupt(() =>
-                  Effect.sync(() => {
-                    interrupted = true;
-                  }),
+test.each(["linux", "win32"])(
+  "bounds stalled %s IO to one attempt and interrupts its scope",
+  async (platform) => {
+    // Given
+    let interrupted = false;
+    // When
+    const checks = await Effect.runPromise(
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const fiber = yield* Effect.forkChild(
+          filesystemWatchDoctor((text) => text, platform).pipe(
+            Effect.provideService(
+              FilesystemWatchIO,
+              FilesystemWatchIO.of({
+                observe: Deferred.succeed(started, undefined).pipe(
+                  Effect.andThen(Effect.never),
+                  Effect.onInterrupt(() =>
+                    Effect.sync(() => {
+                      interrupted = true;
+                    }),
+                  ),
                 ),
-              ),
-            }),
+              }),
+            ),
           ),
-        ),
-      );
-      yield* Deferred.await(started);
-      yield* TestClock.adjust(501);
-      return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
-  // Then
-  expect(checks[0]).toMatchObject({
-    status: "warn",
-    context: { allocation: "unknown", cleanup: "pending-or-unobserved" },
-  });
-  expect(interrupted).toBe(true);
-});
+        );
+        yield* Deferred.await(started);
+        yield* TestClock.adjust(platform === "win32" ? 1501 : 501);
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+    // Then
+    expect(checks[0]).toMatchObject({
+      status: "warn",
+      context: { allocation: "unknown", cleanup: "pending-or-unobserved" },
+    });
+    expect(interrupted).toBe(true);
+  },
+);
 
 test.each([false, true])(
   "combined report retains manual host check without provider bootstrap, fix=%s",
@@ -260,4 +265,83 @@ test("collector reports unexpected watch probe defects instead of hiding them as
   );
   expect(report.subsystems.checks.some(({ name }) => name === "filesystem-watch")).toBe(false);
   expect(JSON.stringify(report)).not.toContain("private-probe-secret");
+});
+
+test("Windows reports confirmed host event delivery without Linux inotify fields", async () => {
+  let onEvent: ((filename: string | null) => void) | undefined;
+  const [check] = await run(
+    {
+      ...io,
+      readLimit: async () => {
+        throw new Error("Windows must not read Linux limits");
+      },
+      watchDirectory: (_path, _onError, callback) => {
+        onEvent = callback;
+        return { close: () => {} };
+      },
+      writeProbeFile: async (path) => {
+        onEvent?.(path.split("/").at(-1) ?? null);
+      },
+      removeProbeFile: async () => {},
+    },
+    "win32",
+  );
+  expect(check).toMatchObject({
+    status: "pass",
+    context: {
+      platform: "win32",
+      observation: "local-windows-temp-filesystem",
+      allocation: "event-delivered",
+      eventDelivery: "confirmed",
+      providerVm: "unobserved",
+      cleanup: "complete",
+    },
+  });
+  expect(check?.context.max_user_watches).toBeUndefined();
+});
+
+test("Windows classifies a native watch failure without suggesting inotify changes", async () => {
+  const [check] = await run(
+    {
+      ...io,
+      watchDirectory: () => {
+        throw systemError("EPERM");
+      },
+      writeProbeFile: async () => {},
+      removeProbeFile: async () => {},
+    },
+    "win32",
+  );
+  expect(check).toMatchObject({
+    status: "fail",
+    context: {
+      stage: "watch",
+      allocation: "permission-denied",
+      errno: "EPERM",
+      eventDelivery: "unobserved",
+    },
+  });
+  expect(JSON.stringify(check)).not.toContain("inotify");
+});
+
+test("Windows rejects an injected allocation-only observation as unconfirmed", async () => {
+  const [check] = await Effect.runPromise(
+    filesystemWatchDoctor((text) => text, "win32").pipe(
+      Effect.provideService(
+        FilesystemWatchIO,
+        FilesystemWatchIO.of({
+          observe: Effect.succeed({
+            limits: {},
+            allocation: { stage: "complete" },
+            cleanup: "complete",
+            eventDelivery: "unobserved",
+          }),
+        }),
+      ),
+    ),
+  );
+  expect(check).toMatchObject({
+    status: "fail",
+    context: { allocation: "event-not-confirmed", proof: "none", eventDelivery: "unobserved" },
+  });
 });

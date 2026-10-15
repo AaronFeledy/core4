@@ -65,15 +65,17 @@ interface RunResult {
   readonly stderr: string;
 }
 
-const normalizeElapsedTiming = (text: string): string =>
+const normalizeTiming = (text: string): string =>
   text
     .replace(/\(\d+(?:\.\d+)?(?:ms|s)\)/g, "(<elapsed>)")
-    .replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs":0');
+    .replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs":0')
+    // Recipe notices are renderer events; independent runs retain different clock instants.
+    .replace(/"timestamp":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"/g, '"timestamp":"<timestamp>"');
 
 const normalizeRunElapsedTiming = (result: RunResult): RunResult => ({
   ...result,
-  stdout: normalizeElapsedTiming(result.stdout),
-  stderr: normalizeElapsedTiming(result.stderr),
+  stdout: normalizeTiming(result.stdout),
+  stderr: normalizeTiming(result.stderr),
 });
 
 const runNonTty = async (
@@ -333,7 +335,7 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
 });
 
 describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acceptance", () => {
-  test("plain and json match the explicit line-mode baseline apart from elapsed timing", async () => {
+  test("plain and json match the explicit line-mode baseline apart from elapsed timing and timestamps", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "lando-opentui-source-"));
     const appRoot = resolve(root, "app");
     await mkdir(appRoot);
@@ -364,9 +366,7 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
         });
         expect(scrubPtyNoise(normal)).not.toContain("╭");
         expect(scrubPtyNoise(normal)).toContain("(value or index):");
-        expect(normalizeElapsedTiming(scrubPtyNoise(normal))).toBe(
-          normalizeElapsedTiming(scrubPtyNoise(withoutOpenTui)),
-        );
+        expect(normalizeTiming(scrubPtyNoise(normal))).toBe(normalizeTiming(scrubPtyNoise(withoutOpenTui)));
         expect(await readProbe(tracePath)).toEqual([]);
       }
       const failureTrace = resolve(root, "failure.jsonl");

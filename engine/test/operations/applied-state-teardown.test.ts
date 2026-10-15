@@ -4,15 +4,21 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
+import {
+  AppResolveError,
+  FileSyncStartError,
+  LandofileValidationError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   type LandofileShape,
+  PortablePath,
   ProviderId,
   ServiceName,
   type VolumeInfo,
@@ -30,6 +36,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import { beginAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import {
   teardownDesiredOrUnchanged,
   withTeardownResolution,
@@ -149,6 +156,27 @@ const planAt = (root: string): AppPlan => ({
   },
   extensions: {},
 });
+
+const retainedPlanAt = (root: string): AppPlan => {
+  const base = planAt(root);
+  return {
+    ...base,
+    fileSync: [
+      {
+        engineId: "mutagen",
+        session: {
+          app: { kind: "user", id: base.id, root: base.root },
+          service: ServiceName.make("web"),
+          mountKey: "app-mount",
+          source: base.root,
+          target: { _tag: "volume", name: "retained-web", path: PortablePath.make("/app") },
+          mode: "two-way-safe",
+          excludes: [],
+        },
+      },
+    ],
+  };
+};
 
 const targetFor = (plan: AppPlan, root = plan.root): ResolvedAppTarget => ({
   plan,
@@ -901,6 +929,72 @@ describe("applied-state teardown", () => {
       expect(result.outcome).toBe("unchanged");
       expect(result.servicesDestroyed).toEqual([]);
       expect(harness.removalAttempts).toEqual([{ service: "appserver", containerId: undefined }]);
+    });
+  });
+
+  test("CLI destroy routes orphaned retained sync through durable cleanup", async () => {
+    await withTempRoot(async (root) => {
+      const base = planAt(root);
+      const retainedPlan = retainedPlanAt(root);
+      const harness = makeLayer({
+        desiredPlan: retainedPlan,
+        orphans: [orphanGroup({ root, services: ["web"] })],
+      });
+      await Effect.runPromise(
+        beginAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
+          Effect.flatMap((pending) =>
+            pending
+              .retainTargets(
+                Cause.fail(
+                  new FileSyncStartError({
+                    engineId: "mutagen",
+                    message: "interrupted after helper preparation",
+                  }),
+                ),
+              )
+              .pipe(Effect.asVoid),
+          ),
+          Effect.provide(harness.layer),
+        ),
+      );
+      const result = await Effect.runPromiseExit(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(harness.mutationOrder).toEqual([]);
+      expect(harness.removalAttempts).toEqual([]);
+      expect(harness.desiredLoads).toContain("discover");
+    });
+  });
+
+  test("CLI destroy does not use the old ordinary applied plan for retained migration", async () => {
+    await withTempRoot(async (root) => {
+      const oldPlan = planAt(root);
+      const retainedPlan = retainedPlanAt(root);
+      const harness = makeLayer({ appliedPlan: oldPlan, desiredPlan: retainedPlan });
+      await Effect.runPromise(
+        beginAcceleratedStart(retainedPlan, { kind: "user", id: oldPlan.id, root: oldPlan.root }).pipe(
+          Effect.flatMap((pending) =>
+            pending
+              .retainTargets(
+                Cause.fail(
+                  new FileSyncStartError({
+                    engineId: "mutagen",
+                    message: "migration failed after sync preparation",
+                  }),
+                ),
+              )
+              .pipe(Effect.asVoid),
+          ),
+          Effect.provide(harness.layer),
+        ),
+      );
+      const result = await Effect.runPromiseExit(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(harness.destroyCalls).toEqual([]);
+      expect(harness.desiredLoads).toContain("discover");
     });
   });
 

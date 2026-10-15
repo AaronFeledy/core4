@@ -67,22 +67,32 @@ export interface SummarySection {
   readonly notes?: ReadonlyArray<string>;
 }
 
+const BUILTIN_NEXT_COMMANDS = {
+  info: "lando info",
+  logs: "lando logs",
+  exec: "lando exec <service> -- <command>",
+} as const;
+
+export type SummaryBuiltinNextCommand = keyof typeof BUILTIN_NEXT_COMMANDS;
+
 export interface SummaryDocument {
   readonly title: string;
   readonly tone?: SummaryTone;
   readonly subtitle?: string;
   readonly sections: ReadonlyArray<SummarySection>;
   readonly nextSteps?: ReadonlyArray<string>;
+  /** Finite public command hints; arbitrary text belongs in redacted nextSteps. */
+  readonly nextCommands?: ReadonlyArray<SummaryBuiltinNextCommand>;
   readonly footer?: string;
 }
 
 export interface FormatSummaryOptions {
   readonly columns?: number | undefined;
-  /** Applied to every document string before paint so SGR is never redacted. */
+  /** Applied to arbitrary document text before paint so SGR is never redacted. */
   readonly redact?: ((text: string) => string) | undefined;
 }
 
-/** Redact every user-facing string on a summary document, leaving tones intact. */
+/** Redact arbitrary summary text, retaining tones and finite public command ids. */
 export const redactSummaryDocument = (
   doc: SummaryDocument,
   redact: (text: string) => string,
@@ -113,8 +123,21 @@ export const redactSummaryDocument = (
     ...(section.notes === undefined ? {} : { notes: section.notes.map(redact) }),
   })),
   ...(doc.nextSteps === undefined ? {} : { nextSteps: doc.nextSteps.map(redact) }),
+  ...(doc.nextCommands === undefined ? {} : { nextCommands: doc.nextCommands }),
   ...(doc.footer === undefined ? {} : { footer: redact(doc.footer) }),
 });
+
+// Expand only renderer-owned vocabulary after redacting every arbitrary string.
+// A runtime caller outside TypeScript cannot turn this into a trusted-text escape.
+const prepareSummaryDocument = (doc: SummaryDocument, options: FormatSummaryOptions): SummaryDocument => {
+  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  const commands = (prepared.nextCommands ?? []).flatMap((command) =>
+    Object.hasOwn(BUILTIN_NEXT_COMMANDS, command) ? [BUILTIN_NEXT_COMMANDS[command]] : [],
+  );
+  return commands.length === 0
+    ? prepared
+    : { ...prepared, nextSteps: [...(prepared.nextSteps ?? []), ...commands] };
+};
 
 const headerTitle = (doc: SummaryDocument): string => {
   const chip = doc.tone === undefined ? "" : ` ${toneChip(doc.tone)}`;
@@ -144,7 +167,7 @@ const composeRowStyle = (row: SummaryRow): ((line: string) => string) | undefine
 };
 
 export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
-  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  const prepared = prepareSummaryDocument(doc, options);
   const width = resolveSummaryWidth(options.columns);
   const innerWidth = width - 4;
   const lines: string[] = [];
@@ -197,12 +220,12 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
 };
 
 export const formatQuietSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
-  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  const prepared = prepareSummaryDocument(doc, options);
   return formatPreparedQuietSummary(prepared, options.columns);
 };
 
 /** Task-tree rail framing for a static report printed under a live tree. */
 export const formatRailSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
-  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  const prepared = prepareSummaryDocument(doc, options);
   return formatPreparedRailSummary(prepared, options.columns);
 };

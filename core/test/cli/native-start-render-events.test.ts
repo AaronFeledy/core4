@@ -65,9 +65,9 @@ const expectPlainHumanTaskRendering = async (spec: LandoCommandSpec, finalLine: 
   // Then: the task tree is consumed before the final human result.
   expect("renderEvents" in options).toBe(false);
   expect("renderEvents" in spec).toBe(false);
-  expect(io.stdout()).toContain("▼ Starting");
-  expect(io.stdout()).toContain("[app:start:web] start: web");
-  expect(io.stdout().endsWith(`${finalLine}\n`)).toBe(true);
+  expect(io.stderr()).toContain("▼ Starting");
+  expect(io.stderr()).toContain("[app:start:web] start: web");
+  expect(io.stdout()).toBe(`${finalLine}\n`);
 };
 
 const HUMAN_SPECS = [

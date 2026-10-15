@@ -16,7 +16,7 @@ lando composer install
 
 At a terminal, Lando hands the terminal to the command. Its own output and progress bars show as-is, your keystrokes reach it, resizing the window resizes its terminal, and Ctrl-C stops it. Prompts work: a bare `lando psql` is a live session, and `npx` can ask before it installs a package.
 
-Redirect stdin, or run it from a script or CI, and Lando publishes a task tree instead:
+Redirect stdin and Lando runs without a PTY and publishes a task tree instead:
 
 ```sh
 lando composer install < /dev/null
@@ -24,24 +24,51 @@ lando composer install < /dev/null
 
 Redirected input still reaches the command as plain bytes, with no terminal in between, so `lando psql < dump.sql` runs the dump and exits.
 
-The tree has a parent task for the command, one child per target service, streamed stdout/stderr lines on each child, then a complete or fail close with the exit code.
+The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. The command's own output prints as it arrives.
+
+Redirect stdout and the file or pipe gets the command's output and nothing else. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
+
+```sh
+lando gen > out.txt
+lando gen | wc -l
+```
+
+The same split applies to `:host` tasks, `.bun.sh` scripts, `lando exec`, and `lando run`. Output with no trailing newline stays that way. Every other command follows it too: `lando start > start.log` keeps the ready summary and leaves the progress on your terminal.
 
 A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts.
 
 ## Pick a renderer mode
 
-| Mode | Behavior |
-| --- | --- |
-| `lando` (default) | Concurrent task tree. A parent line plus an indented child per service, each with a spinner and the most recent output lines. |
-| `verbose` | The human line plus the full event payload for every event. This is the debug dump, not the task tree. |
-| `plain` | Flat stream. One `[stepId]`-prefixed line per output event, no tree, no spinners. |
-| `json` | Structured `task.*` events on stderr. |
+| Mode | Progress and messages | Command output |
+| --- | --- | --- |
+| `lando` (default) | Live task tree when stdout is a terminal. Otherwise one line per event on stderr. | stdout |
+| `verbose` | Human line plus the full event payload for every event, on stderr. | stdout |
+| `plain` | One line per event on stderr, no tree, no spinners. Tooling prints no tree lines. | stdout |
+| `json` | Structured events and messages on stderr. | JSON envelope on stdout |
+
+`--format=json` wraps the command result in a JSON envelope on stdout. Progress and messages stay on stderr.
 
 <Guide>
-  <Scenario id="output-streaming-config-check" render={false} reason="The task-tree event contract and renderer modes above are covered by focused renderer and tooling event tests without running provider-backed tooling in guide tests. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
+  <Scenario id="clean-script-stdout" render>
+    <Step name="prepare-script">
+      <UseFixture name="clean-output" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-script">
+      <Verify command="lando gen" expect={{ stdout: "alpha\nbeta\n", stderr: { regex: "complete" } }} />
+    </Step>
+    <Step name="cleanup-script">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="clean-verbose-stdout" render={false} reason="Verbose event payloads must stay separate from script stdout">
+    <Step name="prepare-verbose-script">
+      <UseFixture name="clean-output" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando gen --renderer=verbose" expect={{ stdout: "alpha\nbeta\n", stderr: { regex: "task.tree.complete" } }} />
+    </Step>
+    <Step name="cleanup-verbose-script">
+      <Cleanup />
     </Step>
   </Scenario>
 </Guide>

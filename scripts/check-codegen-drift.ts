@@ -7,6 +7,7 @@ export const CATALOG_OUTPUT_PATHS = [
   "docs/reference/compose-key-matrix.mdx",
   "images/php",
   "plugins/file-sync-mutagen/mutagen-versions.json",
+  "plugins/file-sync-mutagen/docker-cli-versions.json",
   "plugins/service-lando/src/services/php-msmtp-pins.json",
   "recipes/*/.scaffold/*",
   "sdk/src/schema/generated/core-service-env.ts",

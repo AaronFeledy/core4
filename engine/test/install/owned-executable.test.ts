@@ -8,7 +8,7 @@ import { Effect, Result } from "effect";
 
 import {
   type InstallOwnershipError,
-  isLando4ExecutableName,
+  isLandoExecutableName,
   refreshInstallRecord,
   resolveOwnedExecutable,
 } from "@lando/engine/install/owned-executable";
@@ -46,7 +46,7 @@ const seed = async (
   const root = await makeRoot();
   const binDir = join(root, "bin");
   await mkdir(binDir, { recursive: true });
-  const executablePath = join(binDir, options.executableName ?? "lando4");
+  const executablePath = join(binDir, options.executableName ?? "lando");
   const bytes = options.bytes ?? "lando4-binary";
   if (options.writeExecutable !== false) {
     await writeFile(executablePath, bytes);
@@ -84,30 +84,33 @@ const refusal = async (
   return outcome.failure;
 };
 
-describe("lando4 executable name rule", () => {
-  test("accepts only the exact v4 basename per platform", () => {
-    expect(isLando4ExecutableName("/usr/local/bin/lando4", "linux")).toBe(true);
-    expect(isLando4ExecutableName("/usr/local/bin/lando", "linux")).toBe(false);
-    expect(isLando4ExecutableName("/usr/local/bin/lando4.exe", "linux")).toBe(false);
-    expect(isLando4ExecutableName("/usr/local/bin/lando4-old", "linux")).toBe(false);
-    expect(isLando4ExecutableName("C:\\lando\\lando4.exe", "win32")).toBe(true);
-    expect(isLando4ExecutableName("C:\\lando\\LANDO4.EXE", "win32")).toBe(true);
-    expect(isLando4ExecutableName("C:\\lando\\lando4", "win32")).toBe(false);
-    expect(isLando4ExecutableName("C:\\lando\\lando.exe", "win32")).toBe(false);
+describe("Lando executable name rule", () => {
+  test("accepts canonical and persisted earlier names per platform", () => {
+    expect(isLandoExecutableName("/usr/local/bin/lando4", "linux")).toBe(true);
+    expect(isLandoExecutableName("/usr/local/bin/lando", "linux")).toBe(true);
+    expect(isLandoExecutableName("/usr/local/bin/lando4.exe", "linux")).toBe(false);
+    expect(isLandoExecutableName("/usr/local/bin/lando4-old", "linux")).toBe(false);
+    expect(isLandoExecutableName("C:\\lando\\lando4.exe", "win32")).toBe(true);
+    expect(isLandoExecutableName("C:\\lando\\LANDO4.EXE", "win32")).toBe(true);
+    expect(isLandoExecutableName("C:\\lando\\lando4", "win32")).toBe(false);
+    expect(isLandoExecutableName("C:\\lando\\lando.exe", "win32")).toBe(true);
   });
 });
 
 describe("resolveOwnedExecutable", () => {
-  test("resolves the recorded executable when the record proves ownership", async () => {
-    const fixture = await seed();
-    const owned = await Effect.runPromise(
-      resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }),
-    );
-    expect(owned.path).toBe(fixture.executablePath);
-    expect(owned.sha256).toBe(sha256(fixture.bytes));
-    expect(owned.size).toBe(Buffer.byteLength(fixture.bytes));
-    expect(owned.record.data.executable.channel).toBe("stable");
-  });
+  test.each(["lando", "lando4"])(
+    "resolves recorded %s when the record proves ownership",
+    async (executableName) => {
+      const fixture = await seed({ executableName });
+      const owned = await Effect.runPromise(
+        resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }),
+      );
+      expect(owned.path).toBe(fixture.executablePath);
+      expect(owned.sha256).toBe(sha256(fixture.bytes));
+      expect(owned.size).toBe(Buffer.byteLength(fixture.bytes));
+      expect(owned.record.data.executable.channel).toBe("stable");
+    },
+  );
 
   test("refuses when no install record exists", async () => {
     const root = await makeRoot();
@@ -128,7 +131,7 @@ describe("resolveOwnedExecutable", () => {
   });
 
   test("refuses a record whose executable entry names a foreign basename", async () => {
-    const fixture = await seed({ executableName: "lando" });
+    const fixture = await seed({ executableName: "other-cli" });
     const error = await refusal(
       resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }),
     );
@@ -179,7 +182,7 @@ describe("resolveOwnedExecutable", () => {
       resolveOwnedExecutable({
         recordFile: fixture.recordFile,
         platform: "linux",
-        destination: join(fixture.root, "bin", "lando"),
+        destination: join(fixture.root, "bin", "other-cli"),
       }),
     );
     expect(error.reason).toBe("path-mismatch");
@@ -191,7 +194,7 @@ describe("resolveOwnedExecutable", () => {
       resolveOwnedExecutable({
         recordFile: fixture.recordFile,
         platform: "linux",
-        destination: join(fixture.root, "bin", ".", "lando4"),
+        destination: join(fixture.root, "bin", ".", "lando"),
       }),
     );
     expect(owned.path).toBe(fixture.executablePath);

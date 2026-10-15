@@ -255,7 +255,7 @@ describe("update signed manifest", () => {
           break;
         case "foreign-basename": {
           const record = await Bun.file(recordFile).json();
-          record.data.executable.path = join(root, "bin", "lando");
+          record.data.executable.path = join(root, "bin", "other-cli");
           await writeFile(recordFile, JSON.stringify(record));
           break;
         }

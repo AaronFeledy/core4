@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { ScratchAppError } from "@lando/core/errors";
 import { type AppPlan, type ProviderCapabilities, ProviderId, landoAppNetworkName } from "@lando/core/schema";
@@ -267,11 +267,18 @@ const makeScratchForkLayer = (
         });
         return { kind: "destroyed" as const };
       }),
-    exec: () => die("exec"),
+    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
     run: () => die("run"),
     logs: () => Stream.empty,
-    inspect: () => die("inspect"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+      }),
     list: () => Effect.succeed([]),
   });
 

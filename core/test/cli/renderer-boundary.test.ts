@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
 import * as RendererOutput from "@lando/renderer/output";
@@ -7,7 +8,7 @@ import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
@@ -126,10 +127,10 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    // Then: the task tree is painted before the final human result.
-    expect(io.stdout()).toContain("▼ Starting");
-    expect(io.stdout()).toContain("[app:start:web] start: web");
-    expect(io.stdout().endsWith("ready\n")).toBe(true);
+    // Then: narration stays on stderr and stdout contains only the final result.
+    expect(io.stderr()).toContain("▼ Starting");
+    expect(io.stderr()).toContain("[app:start:web] start: web");
+    expect(io.stdout()).toBe("ready\n");
   });
 
   test("plain event rendering keeps tooling output flat", async () => {
@@ -183,7 +184,8 @@ describe("runWithRendererHandling", () => {
         formatError: () => "should not happen",
       },
     );
-    expect(io.stdout()).toBe("[tooling:composer:appserver] installing\n");
+    expect(io.stderr()).toBe("[tooling:composer:appserver] installing\n");
+    expect(io.stdout()).toBe("");
   });
 
   test("json consumes notify.desktop without enabling unrelated event rendering", async () => {
@@ -449,10 +451,10 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual([
+    expect(io.stderrLines()).toEqual([
       "⚠ Deprecated command app:old (used 2 times): Use app:up instead. Replacement: app:up.",
-      "ok",
     ]);
+    expect(io.stdout()).toBe("ok\n");
   });
 
   test("emits severity info deprecations as an end-of-run summary line", async () => {
@@ -471,7 +473,8 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stderrLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stdout()).toBe("");
   });
 
   test("suppresses only renderer warning output when requested", async () => {
@@ -493,10 +496,8 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual([
-      "ℹ Deprecated surfaces used: config-key legacy.key (1 use).",
-      "summary=2",
-    ]);
+    expect(io.stderrLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stdout()).toBe("summary=2\n");
   });
 
   test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {
@@ -580,5 +581,95 @@ describe("write helpers", () => {
       ),
     );
     expect(io.stderr()).toBe("oops\n");
+  });
+});
+
+describe("native Windows TTY result newlines", () => {
+  const nativeIO = () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const stream = (writes: string[]) =>
+      Object.assign(new EventEmitter(), {
+        isTTY: true,
+        columns: 100,
+        rows: 24,
+        write: (chunk: string) => {
+          writes.push(chunk);
+          return true;
+        },
+      }) as unknown as NodeJS.WriteStream;
+    return {
+      io: createStdioRendererIO(stream(stdout), stream(stderr), undefined, { platform: "win32" }),
+      stdout,
+      stderr,
+    };
+  };
+
+  test.each(["lando", "plain"] as const)(
+    "%s human results use CRLF after the command scope closes",
+    async (rendererMode) => {
+      const fixture = nativeIO();
+      await runWithRendererHandling(Effect.succeed("ready"), {
+        runtime: Layer.empty,
+        rendererMode,
+        io: fixture.io,
+        render: () => "Started\n  app is ready\n\nURLs\n  https://app.test",
+        formatError: String,
+        setExitCode: () => undefined,
+      });
+      expect(fixture.stdout.join("")).toBe("Started\r\n  app is ready\r\n\r\nURLs\r\n  https://app.test\r\n");
+      expect(fixture.stderr).toEqual([]);
+    },
+  );
+
+  test.each(["json", "yaml"] as const)(
+    "lando renderer preserves %s envelope LF bytes",
+    async (resultFormat) => {
+      const fixture = nativeIO();
+      await runWithRendererHandling(Effect.succeed({ answer: "ready" }), {
+        runtime: Layer.empty,
+        rendererMode: "lando",
+        resultFormat,
+        resultSchema: Schema.Struct({ answer: Schema.String }),
+        io: fixture.io,
+        command: "app:info",
+        formatError: String,
+        setExitCode: () => undefined,
+      });
+      const output = fixture.stdout.join("");
+      expect(output).toContain("ready");
+      expect(output.endsWith("\n")).toBe(true);
+      expect(output).not.toContain("\r");
+      expect(fixture.stderr).toEqual([]);
+    },
+  );
+
+  test("lando renderer preserves NDJSON result LF bytes", async () => {
+    const fixture = nativeIO();
+    const rows = ['{"answer":"ready"}', '{"answer":"next"}'].join("\n");
+    await runWithRendererHandling(Effect.succeed("ready"), {
+      runtime: Layer.empty,
+      rendererMode: "lando",
+      resultFormat: "ndjson",
+      io: fixture.io,
+      render: () => rows,
+      formatError: String,
+      setExitCode: () => undefined,
+    });
+    expect(fixture.stdout.join("")).toBe(`${rows}\n`);
+    expect(fixture.stderr).toEqual([]);
+  });
+
+  test("json renderer preserves text-result LF bytes", async () => {
+    const fixture = nativeIO();
+    await runWithRendererHandling(Effect.succeed("ready"), {
+      runtime: Layer.empty,
+      rendererMode: "json",
+      io: fixture.io,
+      render: () => "first\nsecond",
+      formatError: String,
+      setExitCode: () => undefined,
+    });
+    expect(fixture.stdout.join("")).toBe("first\nsecond\n");
   });
 });

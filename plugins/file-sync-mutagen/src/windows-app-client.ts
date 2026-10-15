@@ -19,6 +19,12 @@ export interface PreparedWindowsMutagenTargets {
       readonly containerId: string;
       readonly volumeName: string;
       readonly path: string;
+      readonly permissions?: {
+        readonly owner: string;
+        readonly group: string;
+        readonly defaultFileMode: string;
+        readonly defaultDirectoryMode: string;
+      };
     };
   }>;
 }
@@ -38,9 +44,8 @@ const invalidTargets = (message: string) =>
   });
 
 /**
- * Explicit composition seam for a fully prepared provider target set.
- * The default bundled engine never calls this factory; activation needs
- * ordered app lifecycle, rollback, and destroy cleanup first.
+ * Bind the complete verified managed Windows target set to a durable
+ * Mutagen process client after provider preparation.
  */
 export const makePreparedWindowsMutagenAppClient = (
   options: PreparedWindowsMutagenAppClientOptions,
@@ -76,7 +81,12 @@ export const makePreparedWindowsMutagenAppClient = (
         session.target._tag !== "volume" ||
         endpoint.volumeName !== session.target.name ||
         endpoint.path !== "/sync" ||
-        endpoint.containerId.length === 0,
+        endpoint.containerId.length === 0 ||
+        endpoint.permissions === undefined ||
+        !/^\d+$/u.test(endpoint.permissions.owner) ||
+        !/^\d+$/u.test(endpoint.permissions.group) ||
+        !/^0[0-7]{3}$/u.test(endpoint.permissions.defaultFileMode) ||
+        !/^0[0-7]{3}$/u.test(endpoint.permissions.defaultDirectoryMode),
     )
   ) {
     return Effect.fail(
@@ -90,7 +100,11 @@ export const makePreparedWindowsMutagenAppClient = (
       const matching = targets.filter(({ session }) => isDeepStrictEqual(session, spec));
       const endpoint = matching[0]?.endpoint;
       return matching.length === 1 && endpoint !== undefined
-        ? Effect.succeed({ containerId: endpoint.containerId, path: endpoint.path })
+        ? Effect.succeed({
+            containerId: endpoint.containerId,
+            path: endpoint.path,
+            ...(endpoint.permissions === undefined ? {} : { permissions: endpoint.permissions }),
+          })
         : Effect.fail(
             invalidTargets("The requested Mutagen session has no unique verified provider target."),
           );

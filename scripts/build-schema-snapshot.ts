@@ -15,12 +15,17 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { Schema } from "effect";
+import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
 
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import {
+  IncludeEntry,
   JSON_SCHEMA_NAMES,
+  LandofileShape,
   PluginManifest,
+  ServiceConfig,
+  ToolingTaskShape,
   assertJsonSchemaDeprecationsValid,
   assertPublicSchemaAnnotations,
   getEditorJsonSchema,
@@ -110,6 +115,13 @@ const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifa
 const renderJson = (value: unknown): string => `${JSON.stringify(stable(value), null, 2)}\n`;
 
 const main = async (): Promise<void> => {
+  for (const root of [
+    LandofileShape,
+    ServiceConfig,
+    Schema.Record(Schema.String, ToolingTaskShape),
+    IncludeEntry,
+  ])
+    assertLayerMergeCompleteness(root);
   assertPublicSchemaAnnotations();
   assertPublicSchemaContractCoverage(REPO_ROOT);
 

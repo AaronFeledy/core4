@@ -1,10 +1,10 @@
 import { DateTime, Effect, Result, Schema } from "effect";
 
-import { startedServiceRow } from "@lando/engine/operations/authority-url";
 import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 import {
   applyGlobalServiceGroups,
   globalServiceGroupError,
+  waitForGlobalServiceGroups,
 } from "@lando/engine/operations/global-service-groups";
 import type {
   GlobalAppError,
@@ -18,8 +18,10 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
+import { ServiceName } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -70,6 +72,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 });
 
 export type GlobalRebuildError =
+  | ServiceNotReadyError
   | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
@@ -138,7 +141,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         { volumes: false, removeState: false },
       );
 
-      const outcome = yield* applyGlobalServiceGroups(
+      const applied = yield* applyGlobalServiceGroups(
         loaded.plan,
         {
           provider,
@@ -150,6 +153,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         },
         (plan) => builder.build(plan, { refresh: true }),
       );
+      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
       const partialError = globalServiceGroupError("rebuild", outcome);
       const router = yield* RouterService;
       const startedNames = new Set(outcome.services.map((service) => service.name));
@@ -160,7 +164,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
       });
       const publication = yield* Effect.result(publish);
       if (partialError !== undefined) {
-        if (outcome.services.length > 0) yield* Effect.result(router.revalidateStartup);
+        if (applied.services.length > 0) yield* Effect.result(router.revalidateStartup);
         return yield* Effect.fail(partialError);
       }
       const { builtPlan } = outcome;
@@ -169,14 +173,10 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         return yield* Effect.fail(publication.failure);
       }
       const routeUrls = publication.success;
-      const servicesRebuilt = yield* Effect.forEach(outcome.services, (service) =>
-        provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-          Effect.map((runtime) => {
-            const row = startedServiceRow(service, runtime);
-            return { ...row, endpoints: [...row.endpoints, ...(routeUrls.get(service.name) ?? [])] };
-          }),
-        ),
-      );
+      const servicesRebuilt = outcome.ready.map((row) => ({
+        ...row,
+        endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
+      }));
 
       // Re-observe the router before the post event: a rebuild that leaves the
       // router's startup observation broken has not finished rebuilding.

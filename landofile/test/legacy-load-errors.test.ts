@@ -39,7 +39,7 @@ test.each([
     _tag: "Lando3LandofileDetected",
     appRoot: root,
     sourceFile,
-    remediation: "Run `lando4 app:config:translate --from lando3 --write`.",
+    remediation: "Run `lando app:config:translate --from lando3 --write`.",
   });
 });
 
@@ -59,7 +59,7 @@ test.each(["base", "dist", "upstream", "local", "user"])(
       appRoot: root,
       canonicalFile,
       conflictingLayer: join(root, filename),
-      remediation: `Run \`lando4 app:config:translate --from lando3 --file ${filename} --write\`.`,
+      remediation: `Run \`lando app:config:translate --from lando3 --file ${filename} --write\`.`,
     });
   },
 );

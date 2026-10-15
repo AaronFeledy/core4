@@ -342,7 +342,6 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       ["command", "echo ok", "command", "echo ok"],
       ["user", "root", "user", "root"],
       ["environment", "{VALUE: 123}", "environment", { VALUE: "123" }],
-      ["creds", "{database: app}", "creds", { database: "app" }],
       ["portforward", "3307", "ports", ["3307:3306"]],
     ] as const
   ).map(
@@ -353,6 +352,23 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       golden: [output(service(`type: mysql:8.0, ${key}: ${value}`), ["services", "s", target], expected)],
     }),
   ),
+  {
+    pattern: ["services", "*", "creds"],
+    disposition: "target",
+    owner: "lower-catalog-common",
+    golden: [
+      output(
+        service("type: mysql:8.0, creds: {user: app, password: app, database: app}"),
+        ["services", "s", "creds"],
+        { user: "app", password: "app", database: "app" },
+      ),
+      diagnostic(service("type: mysql:8.0, creds: {database: app}"), "unsupported", [
+        "services",
+        "s",
+        "creds",
+      ]),
+    ],
+  },
   {
     pattern: ["services", "*", "sport"],
     disposition: "target",

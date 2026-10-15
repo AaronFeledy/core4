@@ -125,7 +125,7 @@ test.each(["", "../lando", "a\\lando"])("rejects candidate name %s", async (name
   expect(result.candidate.kind).toBe("ambiguous");
 });
 
-test.each(["lando4.exe", "LANDO4.EXE", "LANDO4"])(
+test.each(["lando.exe", "LANDO.EXE", "LANDO", "lando4.exe", "LANDO4.EXE", "LANDO4"])(
   "uses Windows PATH and PATHEXT with running name %s",
   async (basename) => {
     // Given
@@ -141,7 +141,7 @@ test.each(["lando4.exe", "LANDO4.EXE", "LANDO4"])(
     );
     // Then
     expect(result).toEqual({
-      runningBasename: "lando4",
+      runningBasename: basename.toLowerCase().replace(/\.exe$/u, ""),
       candidate: { kind: "found", path: await realpath(join(root, "lando.exe")) },
     });
   },

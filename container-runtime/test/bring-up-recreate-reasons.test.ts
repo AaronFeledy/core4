@@ -108,3 +108,68 @@ describe("bringUpRecreateReasons", () => {
     ).toEqual([]);
   });
 });
+
+describe("agent socket storage reconciliation", () => {
+  test.each(["ssh", "gpg"] as const)("compares %s sidecar storage using the volume name", (kind) => {
+    const target = PortablePath.make(`/run/lando/${kind}-agent`);
+    const sidecar: ServicePlan = {
+      ...service,
+      endpoints: [],
+      storage: [{ store: "agent-volume", target, readOnly: false }],
+    };
+    expect(bringUpRecreateReasons(plan, sidecar, { bindSources: {} }, { skipAbsentFields: true })).toEqual([
+      "bind-source",
+    ]);
+    expect(
+      bringUpRecreateReasons(
+        plan,
+        sidecar,
+        { bindSources: { [target]: "volume:agent-volume" } },
+        { skipAbsentFields: true },
+      ),
+    ).toEqual([]);
+    expect(
+      bringUpRecreateReasons(
+        plan,
+        sidecar,
+        { bindSources: { [target]: "volume:previous-volume" } },
+        { skipAbsentFields: true },
+      ),
+    ).toEqual(["bind-source"]);
+  });
+
+  test("does not turn unrelated data storage into an agent socket recreation condition", () => {
+    const dataService: ServicePlan = {
+      ...service,
+      endpoints: [],
+      storage: [{ store: "database-data", target: PortablePath.make("/var/lib/database"), readOnly: false }],
+    };
+    expect(
+      bringUpRecreateReasons(plan, dataService, { bindSources: {} }, { skipAbsentFields: true }),
+    ).toEqual([]);
+  });
+});
+
+test("an ordinary app bind at the sidecar host endpoint does not grant sidecar drift ownership", () => {
+  const ordinary: ServicePlan = {
+    ...service,
+    endpoints: [],
+    mounts: [
+      {
+        type: "bind",
+        source: "/app/auth",
+        target: PortablePath.make("/ssh-auth"),
+        readOnly: true,
+        realization: "passthrough",
+      },
+    ],
+  };
+  expect(
+    bringUpRecreateReasons(
+      plan,
+      ordinary,
+      { bindSources: { "/ssh-auth": "/previous/auth" } },
+      { skipAbsentFields: true },
+    ),
+  ).toEqual([]);
+});

@@ -4,7 +4,7 @@ import { Effect, Fiber, Layer, Option, Queue } from "effect";
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
-import { renderPlainLine } from "./format.ts";
+import { renderLandoLine } from "./format.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import {
@@ -24,6 +24,7 @@ const taskIdOf = (event: LandoEvent): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
+// allow: SIZE_OK — terminal ownership and its shutdown barrier share one scoped consumer closure.
 export const layer = (
   io: RendererIO,
   stdout: NodeJS.WriteStream,
@@ -42,17 +43,18 @@ export const layer = (
       const queue = yield* events.subscribeQueue;
       const runtime = yield* Effect.context<never>();
       const scope = yield* Effect.scope;
+      let closing = false;
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
       let session: TaskTreeSession = idleSession();
-      const toolingStatus = createToolingStatusPainter();
+      const toolingStatus = createToolingStatusPainter(undefined, () => closing);
       let active:
         | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;
 
       const line = (event: LandoEvent): void => {
-        const text = renderPlainLine(event);
-        if (text !== null) journal.writeStdout(`${text}\n`);
+        const text = renderLandoLine(event, true, io.terminalColumns);
+        if (text !== null) journal.writeStderr(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {
         const cause = claimOpenTuiDegradationNotice();
@@ -63,8 +65,14 @@ export const layer = (
             );
       });
       const runInScope = <A, E>(effect: Effect.Effect<A, E>): void => {
+        if (closing) return;
         Effect.runForkWith(runtime)(
-          Effect.forkIn(serialized(effect).pipe(Effect.ignore), scope).pipe(Effect.asVoid),
+          Effect.forkIn(
+            serialized(Effect.suspend(() => (closing ? Effect.void : Effect.asVoid(effect)))).pipe(
+              Effect.ignore,
+            ),
+            scope,
+          ).pipe(Effect.asVoid),
         );
       };
 
@@ -101,6 +109,7 @@ export const layer = (
           viewModel,
           renderFooter,
           serialize: serialized,
+          isClosing: () => closing,
         });
         const input = new TaskTreeInputController(viewModel);
         const publishedByInput = new WeakSet<LandoEvent>();
@@ -108,6 +117,7 @@ export const layer = (
           event: LandoEvent,
           preferredInternalId?: string,
         ): Effect.fn.Return<boolean> {
+          if (closing) return false;
           const taskId = taskIdOf(event);
           if (taskId === undefined) return false;
           if (event._tag === "task.detail.expand") {
@@ -162,12 +172,14 @@ export const layer = (
           }).pipe(Effect.ignore);
         });
         handleResize = (width, height) => {
+          if (closing) return;
           resize(width, height);
           runInScope(transcriptTail.refresh);
         };
         const subscribe = io.subscribeInput;
-        if (subscribe !== undefined) {
+        if (!closing && subscribe !== undefined) {
           unsubscribe = subscribe((raw) => {
+            if (closing) return;
             if (raw.includes("\x03")) {
               raiseInterrupt();
               return;
@@ -222,20 +234,26 @@ export const layer = (
         session = routed.session;
       });
       const fiber = yield* Effect.forkScoped(
-        Effect.gen(function* () {
-          while (true) yield* serialized(consume(yield* Queue.take(queue)));
-        }),
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            while (true) {
+              const event = yield* restore(Queue.take(queue));
+              yield* serialized(consume(event));
+            }
+          }),
+        ),
       );
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
+          closing = true;
           handleResize = () => {};
           unsubscribe?.();
-          toolingStatus.stop();
+          yield* Fiber.interrupt(fiber);
           const remaining = yield* Queue.clear(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) yield* serialized(consume(event));
           }
-          yield* Fiber.interrupt(fiber);
+          toolingStatus.stop();
           const substrate = active;
           if (substrate !== undefined) {
             if (shouldFlushSessionOnDispose(session, substrate.hasTasks())) {
