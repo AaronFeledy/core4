@@ -174,7 +174,7 @@ describe("runWithRendererHandling redaction", () => {
   });
 });
 
-test("start command hints remain usable after the effective MariaDB default password is registered", async () => {
+test("start command hints remain usable when a secret explicitly matches the CLI name", async () => {
   resetRegisteredRedactionValuesForTesting();
   const customSecret = "private-start-canary";
   const tokens = collectAppPlanRedactionTokens({
@@ -182,13 +182,13 @@ test("start command hints remain usable after the effective MariaDB default pass
       database: { environment: { MARIADB_PASSWORD: "lando", API_TOKEN: customSecret } },
     },
   });
-  expect(tokens).toContain("lando");
+  expect(tokens).not.toContain("lando");
   expect(tokens).toContain(customSecret);
   const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
   try {
     await runWithRendererHandling(
       Effect.gen(function* () {
-        yield* registerRedactionValues(tokens);
+        yield* registerRedactionValues([...tokens, "lando"]);
         return {
           app: customSecret,
           servicesStarted: [{ name: "lando", state: "running", endpoints: [`https://${customSecret}.test`] }],
