@@ -179,6 +179,8 @@ export const resolveYamlReferences = (
       }
       return resolve(anchor.value, [...stack, value.name], value);
     }
+    if (isLandofileReset(value)) return value;
+    if (isLandofileOverride(value)) return override(resolve(value.value, stack, origin));
     if (Array.isArray(value)) return value.map((entry) => resolve(entry, stack, origin));
     if (!isMapping(value)) return value;
 
@@ -188,6 +190,15 @@ export const resolveYamlReferences = (
       for (const target of targets) {
         const resolved = resolve(target, stack, origin);
         for (const mapping of Array.isArray(resolved) ? resolved : [resolved]) {
+          if (isLandofileOverride(mapping) || isLandofileReset(mapping)) {
+            throw new LandofileParseError({
+              message: "YAML merge key << cannot use a Landofile merge directive as its source.",
+              filePath: state.filePath,
+              line: merge.line,
+              column: merge.column,
+              remediation: "Put !override or !reset on the target member instead of the << merge source.",
+            });
+          }
           if (!isMapping(mapping)) {
             throw referenceError(
               state,
@@ -209,3 +220,4 @@ export const resolveYamlReferences = (
 
   return resolve(root, [], { line: 1, column: 1 });
 };
+import { isLandofileOverride, isLandofileReset, override } from "./merge-directives.ts";

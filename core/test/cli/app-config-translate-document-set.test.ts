@@ -201,26 +201,27 @@ describe("translate document set", () => {
     expect(fragments).toEqual([]);
   });
 
-  test.each(['recipe: lamp\nconfig:\n  php: "7.4"\n', "runtime: [\n"])(
-    "fails closed naming a lower layer that is not valid v4",
-    async (content) => {
-      // Given
-      const appRoot = await makeAppDir({ ".lando.yml": content });
-      // When
-      const exit = await Effect.runPromiseExit(
-        lowerV4LayerFragments({
-          appRoot,
-          selectedSourceIds: [".lando.local.yml"],
-          documents: [yamlDocument(".lando.yml", content)],
-        }),
-      );
-      // Then
-      const failure = failureValue(exit);
-      expect(failure?._tag).toBe("ConfigTranslateError");
-      expect(failure?.message).toContain(".lando.yml is not a v4 Landofile fragment");
-      expect(failure?.remediation).toContain("--file .lando.yml");
-    },
-  );
+  test.each([
+    'recipe: lamp\nconfig:\n  php: "7.4"\n',
+    "runtime: [\n",
+    "services:\n  web:\n    routes:\n      - hostname: !override web.test\n",
+  ])("fails closed naming a lower layer that is not valid v4", async (content) => {
+    // Given
+    const appRoot = await makeAppDir({ ".lando.yml": content });
+    // When
+    const exit = await Effect.runPromiseExit(
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [".lando.local.yml"],
+        documents: [yamlDocument(".lando.yml", content)],
+      }),
+    );
+    // Then
+    const failure = failureValue(exit);
+    expect(failure?._tag).toBe("ConfigTranslateError");
+    expect(failure?.message).toContain(".lando.yml is not a v4 Landofile fragment");
+    expect(failure?.remediation).toContain("--file .lando.yml");
+  });
 
   test("surfaces a Landofile form conflict unchanged", async () => {
     // Given

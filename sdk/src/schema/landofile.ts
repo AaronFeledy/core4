@@ -820,18 +820,22 @@ export type ServiceConfigInput = typeof ServiceConfigInput.Type;
  * encoded {@link ServiceConfig} surface plus the Compose spellings, so the
  * per-field transforms run once, inside {@link ServiceConfig}.
  */
+export const SERVICE_CONFIG_ALIASES = [
+  ["working_dir", "workingDirectory"],
+  ["env_file", "envFile"],
+  ["depends_on", "dependsOn"],
+] as const;
+
 const ServiceConfigDecode = ServiceConfigInput.pipe(
   Schema.decodeTo(
     ServiceConfig,
     SchemaTransformation.transformEffect({
       decode: (input) => {
-        const { working_dir, env_file, depends_on, ...rest } = input as Record<string, unknown>;
-        const canonical: Record<string, unknown> = { ...rest };
-        if (canonical.workingDirectory === undefined && working_dir !== undefined) {
-          canonical.workingDirectory = working_dir;
+        const canonical: Record<string, unknown> = { ...input };
+        for (const [alias, key] of SERVICE_CONFIG_ALIASES) {
+          if (!Object.hasOwn(input, key) && Object.hasOwn(input, alias)) canonical[key] = input[alias];
+          delete canonical[alias];
         }
-        if (canonical.envFile === undefined && env_file !== undefined) canonical.envFile = env_file;
-        if (canonical.dependsOn === undefined && depends_on !== undefined) canonical.dependsOn = depends_on;
         return Effect.succeed(canonical);
       },
       encode: (encoded) => Effect.succeed(encoded),
@@ -1531,4 +1535,6 @@ export const LandofileShape = LandofileShapeBase.pipe((self) =>
 );
 export type LandofileShape = typeof LandofileShape.Type;
 
-export const defineLandofile = <T extends LandofileShape>(value: T): T => value;
+export const defineLandofile = <T extends import("./landofile-overlay.ts").LandofileOverlayInput>(
+  value: T,
+): T => value;

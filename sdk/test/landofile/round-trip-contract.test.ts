@@ -13,7 +13,9 @@ import {
   LandofileEmitError,
   emitLandofileYaml,
   emitLandofileYamlEither,
+  override,
   parseLandofile,
+  reset,
 } from "@lando/sdk/landofile";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
@@ -283,4 +285,58 @@ test("the Landofile subset parser still round-trips the same corpus, including c
   const parsed = await roundTrip(model);
   // Then
   expect(parsed).toEqual(model);
+});
+
+describe("@lando/sdk/landofile — native merge directive round-trip", () => {
+  const BRAND = Symbol.for("@lando/sdk/landofile/merge-directive");
+
+  test("preserves directives on ordinary and first sequence-map members", async () => {
+    // Given directives on a mapping member and on the first member of a list-item map.
+    const value = {
+      services: {
+        web: {
+          image: override("nginx:stable"),
+          environment: { FOO: reset(), KEEP: "yes" },
+          routes: [{ filters: override([{ type: "redirect", to: "/" }]), hostname: "web.test" }],
+        },
+      },
+    };
+    // When emitted then parsed, then directive kind and payload survive.
+    expect(await roundTrip(value)).toEqual(value);
+  });
+
+  test("preserves empty override payloads and nested directives", async () => {
+    // Given empty collection payloads and a directive nested inside an override payload.
+    const value = {
+      routes: override([]),
+      labels: override({}),
+      environment: override({ OLD: reset(), NEW: override("new") }),
+    };
+    // When round-tripped, then the authored operations are unchanged.
+    expect(await roundTrip(value)).toEqual(value);
+  });
+
+  test("emits native YAML tag spellings", () => {
+    // Given one of each directive; when emitted.
+    const yaml = emitLandofileYaml({ environment: override({ A: "a" }), image: reset() });
+    // Then the text carries the native tags.
+    expect(yaml).toContain("environment: !override\n");
+    expect(yaml).toContain("image: !reset");
+  });
+
+  test.each([
+    ["an unrelated symbol key", { a: { [Symbol("other")]: 1 } }],
+    ["a malformed directive wrapper", { a: { [BRAND]: "override" } }],
+    ["an unknown directive kind", { a: { [BRAND]: "delete" } }],
+  ])("still rejects %s", (_label, value) => {
+    // Given a non-emittable symbol-bearing value; when emitting, then it fails closed.
+    expect(() => emitLandofileYaml(value)).toThrow(LandofileEmitError);
+  });
+
+  test("still rejects a cycle through an override payload", () => {
+    // Given a payload that contains itself; when emitting, then it fails closed.
+    const payload: Record<string, unknown> = {};
+    payload.self = payload;
+    expect(() => emitLandofileYaml({ a: override(payload) })).toThrow(LandofileEmitError);
+  });
 });

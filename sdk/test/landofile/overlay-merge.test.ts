@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   mergeLandofiles,
   mergeValues,
+  override,
+  reset,
   resolveLayerMergeRule,
   routeFilterIdentity,
   routeFilterMatches,
@@ -433,5 +435,130 @@ describe("mergeValues identity edges", () => {
 
   test("replaces filters lacking identity", () => {
     expect(mergeValues(RouteObjectInput, [{ type: "redirect" }], [{}], ["filters"])).toEqual([{}]);
+  });
+});
+
+const BRAND = Symbol.for("@lando/sdk/landofile/merge-directive");
+const markerPaths = (value: unknown, path = "$"): ReadonlyArray<string> => {
+  if (Array.isArray(value)) return value.flatMap((entry, index) => markerPaths(entry, `${path}[${index}]`));
+  if (typeof value !== "object" || value === null) return [];
+  return [
+    ...(Object.getOwnPropertySymbols(value).includes(BRAND) ? [path] : []),
+    ...Object.entries(value).flatMap(([key, entry]) => markerPaths(entry, `${path}.${key}`)),
+  ];
+};
+const web = (value: Record<string, unknown>) => ({ services: { web: value } });
+
+describe("native merge directives", () => {
+  test.each([
+    ["a map", "environment", { A: "a", B: "b" }, { C: "c" }],
+    ["a keyed list", "routes", ["a.test", "b.test"], ["b.test"]],
+    ["a scalar", "image", "nginx", "nginx:stable"],
+  ] as const)("override replaces %s without merging", (_label, key, base, replacement) => {
+    // Given an inherited value and an override at the same member; when folded.
+    const result = mergeLandofiles([web({ [key]: base }), web({ [key]: override(replacement) })]);
+    // Then the inherited value is fully replaced.
+    expect(result).toEqual(web({ [key]: replacement }));
+  });
+
+  test("reset removes an existing member and ignores an absent one", () => {
+    // Given one inherited key and one never-authored key, both reset.
+    const result = mergeLandofiles([
+      web({ environment: { OLD: "old", KEEP: "keep" } }),
+      web({ environment: { OLD: reset(), ABSENT: reset() } }),
+    ]);
+    // Then only the existing key disappears and the containing map stays.
+    expect(result).toEqual(web({ environment: { KEEP: "keep" } }));
+  });
+
+  test("reset removes a whole service without pruning the services map", () => {
+    // Given a lower service and a higher reset of it; when folded.
+    const result = mergeLandofiles([web({ image: "nginx" }), { services: { web: reset() } }]);
+    // Then the member is absent, not null or empty.
+    expect(result).toEqual({ services: {} });
+  });
+
+  test("a later ordinary value reintroduces a reset key", () => {
+    // Given add, reset, then re-add across three layers; when folded.
+    const result = mergeLandofiles([
+      web({ environment: { FOO: "one" } }),
+      web({ environment: { FOO: reset() } }),
+      web({ environment: { FOO: "two" } }),
+    ]);
+    // Then the newest ordinary value wins.
+    expect(result).toEqual(web({ environment: { FOO: "two" } }));
+  });
+
+  test("lowest-layer directives insert override payloads and drop resets", () => {
+    // Given directives with nothing beneath them; when folded alone.
+    const result = mergeLandofiles([web({ image: override("nginx"), environment: { GONE: reset() } })]);
+    // Then the override inserts its payload and the reset removes nothing.
+    expect(result).toEqual(web({ image: "nginx", environment: {} }));
+  });
+
+  test("consumes directives inside override payloads against an empty context", () => {
+    // Given nested directives inside a replacement payload.
+    const result = mergeLandofiles([
+      web({ environment: { OLD: "old" } }),
+      web({ environment: override({ OLD: reset(), NEW: override("new") }) }),
+    ]);
+    // Then the nested reset finds nothing and the nested override is unwrapped.
+    expect(result).toEqual(web({ environment: { NEW: "new" } }));
+  });
+
+  test("materializes directives in new members, appended entries, and type-change replacements", () => {
+    // Given directives inside subtrees that bypass the recursive member merge.
+    const result = mergeLandofiles([
+      web({
+        routes: [{ hostname: "a.test", filters: [{ name: "f", type: "stripPrefix", prefix: "/a" }] }],
+      }),
+      {
+        services: {
+          web: {
+            routes: [
+              {
+                hostname: "a.test",
+                filters: [{ name: "f", type: "redirect", to: override("/b"), x: reset() }],
+              },
+              { hostname: "b.test", filters: override([]), extra: reset() },
+            ],
+          },
+          cache: { image: override("redis"), environment: { GONE: reset() } },
+        },
+      },
+    ]);
+    // Then every result is an effective value with no directive markers.
+    expect(markerPaths(result)).toEqual([]);
+    expect(result).toEqual({
+      services: {
+        web: {
+          routes: [
+            { hostname: "a.test", filters: [{ name: "f", type: "redirect", to: "/b" }] },
+            { hostname: "b.test", filters: [] },
+          ],
+        },
+        cache: { image: "redis", environment: {} },
+      },
+    });
+  });
+
+  test("an empty collection still blanks an inherited keyed list", () => {
+    // Given an inherited route list and an ordinary empty list; when folded.
+    const result = mergeLandofiles([web({ routes: ["a.test"] }), web({ routes: [] })]);
+    // Then routes are blanked, not removed.
+    expect(result).toEqual(web({ routes: [] }));
+  });
+
+  test("mergeValues normalizes its left input and never returns markers", () => {
+    // Given directives on both sides of an opaque merge.
+    const result = mergeValues(
+      Schema.Unknown,
+      { a: reset(), b: override({ c: reset(), d: 1 }) },
+      { e: override(2) },
+    );
+    // Then the result is marker-free and a top-level reset becomes undefined.
+    expect(result).toEqual({ b: { d: 1 }, e: 2 });
+    expect(markerPaths(result)).toEqual([]);
+    expect(mergeValues(Schema.Unknown, { a: 1 }, reset())).toBeUndefined();
   });
 });

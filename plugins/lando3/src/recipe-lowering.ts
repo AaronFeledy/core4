@@ -6,17 +6,19 @@ import type {
   ConfigTranslateSourceId,
   LandofileLayer,
 } from "@lando/sdk/schema";
-import { Effect } from "effect";
-import type { Lando3TranslatorPorts, LegacyOccurrence } from "./contract.ts";
+import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
+import type { Lando3TranslatorPorts } from "./contract.ts";
 import {
   dedupeDiagnostics,
   droppedConfigKey,
   generatedRecipe,
   invalidOptionValue,
-  relocationDiagnostic,
   unsupportedRecipe,
 } from "./diagnostics.ts";
 import { type LegacyPrefixView, requiredOptionViews } from "./effective-views.ts";
+import { replayDecodedDeltas } from "./layer-delta-replay.ts";
+import { equal, record, sorted } from "./layer-delta-values.ts";
 import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
@@ -62,17 +64,7 @@ const recipeFailure = (
     cause: new Lando3UnsupportedRecipeError({ ...details, sourceLayer: view.layer }),
   });
 
-const sortedValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(sortedValue);
-  if (typeof value !== "object" || value === null) return value;
-  return sortFragment(value);
-};
-const sortFragment = (fragment: object): Readonly<Record<string, unknown>> =>
-  Object.fromEntries(
-    Object.entries(fragment)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([key, value]) => [key, sortedValue(value)]),
-  );
+const sortFragment = (fragment: object): Readonly<Record<string, unknown>> => record(sorted(fragment));
 
 const optionMemoKey = (recipeId: string, options: Readonly<Record<string, string | boolean>>): string =>
   JSON.stringify({ recipeId, options: Object.fromEntries(Object.entries(options).sort()) });
@@ -228,13 +220,25 @@ export const lowerRecipeViews = Effect.fnUntraced(function* (
   return { prefixes, diagnostics, decomposeCalls };
 });
 
-export const recipeLayerOutputs = (
+interface RecipeLayerOutputPlan {
+  readonly outputs: ReadonlyArray<ConfigTranslateOutput>;
+  readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
+  readonly required: ReadonlyArray<LandofileLayer>;
+}
+
+export const recipeLayerOutputs: (
+  folded: ReadonlyArray<LegacyPrefixView>,
+  lowered: LoweredRecipes,
+  names: ReadonlyArray<ConfigTranslateOutput>,
+  established?: ReadonlyArray<EstablishedLayer>,
+  authored?: ReadonlyArray<LoweredServicePrefix>,
+) => Effect.Effect<RecipeLayerOutputPlan, ConfigTranslateError> = Effect.fnUntraced(function* (
   folded: ReadonlyArray<LegacyPrefixView>,
   lowered: LoweredRecipes,
   names: ReadonlyArray<ConfigTranslateOutput>,
   established: ReadonlyArray<EstablishedLayer> = [],
   authored: ReadonlyArray<LoweredServicePrefix> = [],
-) => {
+): Effect.fn.Return<RecipeLayerOutputPlan, ConfigTranslateError> {
   let desired: LoweredPrefix["fragment"] = {};
   let authoredDesired: LoweredPrefix["fragment"] = {};
   const prefixes: DesiredPrefix[] = [];
@@ -266,60 +270,36 @@ export const recipeLayerOutputs = (
     });
   }
   const plan = planLayerDeltas(prefixes);
-  const outputs: ConfigTranslateOutput[] = plan.emitted.flatMap(({ layer, fragment }) => {
+  const replayed = yield* replayDecodedDeltas(prefixes, plan.emitted);
+  const outputs: ConfigTranslateOutput[] = [];
+  for (const { layer, fragment } of replayed) {
     const known = established.find((item) => item.layer === layer);
-    if (
-      known !== undefined &&
-      JSON.stringify(sortFragment(known.fragment)) === JSON.stringify(sortFragment(fragment))
-    )
-      return [];
+    if (known !== undefined && equal(known.fragment, fragment)) continue;
     const name = names.find(({ targetLayer }) => targetLayer === layer);
     const combined = sortFragment({ ...fragment, ...(isPlainRecord(name?.fragment) ? name.fragment : {}) });
-    if (Object.keys(combined).length === 0) return [];
-    return [
-      {
-        targetLayer: layer,
-        fragment: combined,
-        sourceIds:
-          Object.keys(fragment).length === 0
-            ? (name?.sourceIds ?? [])
-            : (folded.find(({ targetLayer }) => targetLayer === layer)?.sourceIds ?? known?.sourceIds ?? []),
-      },
-    ];
-  });
-  const diagnostics = plan.relocations.flatMap((relocation) => {
-    const view = folded.find(({ targetLayer }) => targetLayer === relocation.hoistedTo);
-    const sourceId = view?.sourceIds.at(-1);
-    if (view === undefined || sourceId === undefined) return [];
-    const occurrence: LegacyOccurrence = occurrencesAt(view.config, []).at(-1) ??
-      occurrencesAt(view.recipe, []).at(-1) ?? { sourceId, layer: view.layer, keyPath: [], span: undefined };
-    return [
-      relocationDiagnostic({
-        ...relocation,
-        occurrence,
-        unitLabel: relocation.unitPath
-          .map((segment) => {
-            switch (segment.kind) {
-              case "key":
-                return segment.key;
-              case "item":
-                return `${segment.key}[identity=${segment.identity}]`;
-              default:
-                return segment satisfies never;
-            }
-          })
-          .join("."),
-      }),
-    ];
-  });
+    if (Object.keys(combined).length === 0) continue;
+    const wire = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(combined, {
+      onExcessProperty: "error",
+    }).pipe(
+      Effect.flatMap((value) =>
+        Schema.encodeEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+      ),
+      Effect.mapError(
+        (cause) => new ConfigTranslateError({ message: `Invalid directive fragment at ${layer}.`, cause }),
+      ),
+    );
+    outputs.push({
+      targetLayer: layer,
+      fragment: wire,
+      sourceIds:
+        Object.keys(fragment).length === 0
+          ? (name?.sourceIds ?? [])
+          : (folded.find(({ targetLayer }) => targetLayer === layer)?.sourceIds ?? known?.sourceIds ?? []),
+    });
+  }
   return {
     outputs,
-    diagnostics: dedupeDiagnostics([...lowered.diagnostics, ...diagnostics]),
-    required: [
-      ...new Set([
-        ...outputs.map(({ targetLayer }) => targetLayer),
-        ...plan.relocations.flatMap(({ hoistedTo, omittedFrom }) => [hoistedTo, ...omittedFrom]),
-      ]),
-    ],
+    diagnostics: dedupeDiagnostics(lowered.diagnostics),
+    required: [...new Set(outputs.map(({ targetLayer }) => targetLayer))],
   };
-};
+});

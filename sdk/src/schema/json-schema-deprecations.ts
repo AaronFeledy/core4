@@ -1,6 +1,7 @@
 import { JsonSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import { listLayerMergeRules } from "../landofile/layer-merge-trie.ts";
+import { pruneUnusedDefinitions } from "./json-schema-definitions.ts";
 import { getLayerMergeRule } from "./layer-merge.ts";
 
 import {
@@ -415,11 +416,13 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
   options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
 ): JsonSchema.JsonSchema => {
   const document = jsonSchemaDocument(schema, options);
-  return withSchemaDeprecations(schema, {
-    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
-    ...document.schema,
-    ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
-  });
+  return pruneUnusedDefinitions(
+    withSchemaDeprecations(schema, {
+      $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
+      ...document.schema,
+      ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
+    }),
+  );
 };
 
 const validateJsonSchemaDeprecations = (value: unknown, path: string, invalidPaths: string[]): void => {

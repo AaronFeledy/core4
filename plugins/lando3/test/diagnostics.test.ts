@@ -7,7 +7,6 @@ import {
   generatedRecipe,
   invalidOptionValue,
   orderDiagnostics,
-  relocationDiagnostic,
   unsupportedRecipe,
 } from "../src/diagnostics.ts";
 
@@ -21,15 +20,6 @@ const occurrence: LegacyOccurrence = {
     end: { line: 4, column: 12, offset: 29 },
   },
 };
-const relocation = {
-  unitLabel: "services.redis",
-  hoistedTo: "local",
-  omittedFrom: ["dist", "canonical"],
-  changedPrefixes: ["dist", "canonical"],
-  sourceIds: [ConfigTranslateSourceId.make("a"), ConfigTranslateSourceId.make("b")],
-  occurrence,
-};
-
 describe("recipe diagnostics", () => {
   test("reports a dropped config key", () => {
     const result = droppedConfigKey({ recipeId: "drupal", legacyKey: "xdebug", occurrence });
@@ -131,32 +121,6 @@ describe("recipe diagnostics", () => {
     });
   });
 
-  test("reports relocation with every contributing source and changed prefix", () => {
-    const result = relocationDiagnostic(relocation);
-    expect(result).toEqual({
-      kind: "needs-review",
-      sourceId: ConfigTranslateSourceId.make(".lando.yml"),
-      keyPath: ["services", "redis"],
-      span: { start: { line: 4, column: 3 }, end: { line: 4, column: 12 } },
-      message:
-        "services.redis moved to the local layer because Lando 4 layers cannot remove it later (sources: a, b). The dist, canonical prefix no longer contains services.redis in the translated files.",
-      remediation:
-        "Review services.redis in the local layer; the earlier layers no longer define it on their own.",
-    });
-  });
-
-  test("omits the prefix sentence when no prefixes changed", () => {
-    const result = relocationDiagnostic({
-      ...relocation,
-      unitLabel: "routes[name=web]",
-      changedPrefixes: [],
-    });
-    expect(result.message).toBe(
-      "routes[name=web] moved to the local layer because Lando 4 layers cannot remove it later (sources: a, b).",
-    );
-    expect(result.keyPath).toEqual(["routes[name=web]"]);
-  });
-
   test("every constructor supplies remediation and single-line text without a span", () => {
     const unlocated = { ...occurrence, span: undefined };
     const results = [
@@ -171,7 +135,6 @@ describe("recipe diagnostics", () => {
       }),
       unsupportedRecipe({ legacyId: "legacy", reason: "unknown", occurrence: unlocated }),
       generatedRecipe({ recipeId: "drupal", occurrence: unlocated }),
-      relocationDiagnostic({ ...relocation, occurrence: unlocated }),
     ];
     for (const result of results) {
       expect(result.remediation).toBeDefined();

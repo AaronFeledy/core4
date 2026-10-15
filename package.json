@@ -93,6 +93,7 @@
     "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",
+    "codegen:schema-deprecations": "bun run scripts/build-schema-deprecations.ts",
     "codegen:mutagen-versions": "bun run scripts/build-mutagen-versions.ts",
     "codegen:php-msmtp-pins": "bun run scripts/build-php-msmtp-pins.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",

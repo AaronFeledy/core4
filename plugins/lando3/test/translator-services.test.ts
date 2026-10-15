@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
+import { isPlainRecord, mergeLandofiles, reset } from "@lando/sdk/landofile";
+import { LandofileAuthoringFragment } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
@@ -151,7 +152,7 @@ test("orders root hooks before user hooks when both are authored", async () => {
   ]);
 });
 
-test("hoists a removed service when a higher layer disables it", async () => {
+test("resets a removed service when a higher layer disables it", async () => {
   // Given
   const fake = fakeDecomposers();
   const translator = makeLando3ConfigTranslator({
@@ -165,12 +166,12 @@ test("hoists a removed service when a higher layer disables it", async () => {
   // When
   const result = await Effect.runPromise(translator.translate(input));
   // Then
-  expect(
-    mergeLandofiles(result.outputs.flatMap(({ fragment }) => (isPlainRecord(fragment) ? [fragment] : []))),
-  ).toEqual({});
-  expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services"] },
-  ]);
+  const fragments = result.outputs.map(({ fragment }) =>
+    Schema.decodeUnknownSync(LandofileAuthoringFragment)(fragment),
+  );
+  expect(fragments.at(-1)).toEqual({ services: reset() });
+  expect(mergeLandofiles(fragments.filter(isPlainRecord))).toEqual({});
+  expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([]);
 });
 
 test("moves Compose includes and excludes when top-level settings are authored", async () => {
