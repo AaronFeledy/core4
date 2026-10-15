@@ -22,7 +22,7 @@ lando pip install -r requirements.txt
 lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Use an existing `requirements.txt`, or install FastAPI and uvicorn with `lando pip install fastapi 'uvicorn[standard]'`, then save the versions with `lando exec web -- pip freeze > requirements.txt`.
+Use an existing `requirements.txt`, or install FastAPI and uvicorn with `lando pip install fastapi 'uvicorn[standard]'`, then save the versions with `lando pip freeze > requirements.txt`.
 
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it. The URL answers only once your app is serving.
 

@@ -66,7 +66,11 @@ describe("lemp decomposition", () => {
     // When the LEMP services are decomposed.
     const { fragment } = Effect.runSync(decomposer.decompose(input));
     if (typeof fragment === "string") throw new TypeError("Expected an object fragment");
-    if (typeof fragment.services === "string") throw new TypeError("Expected object services");
+    if (
+      typeof fragment.services === "string" ||
+      (fragment.services !== undefined && "_tag" in fragment.services)
+    )
+      throw new TypeError("Expected object services");
     // Then nginx serves the shared webroot through the primary PHP-FPM service.
     expect(fragment.services?.web).toMatchObject({
       type: "nginx",

@@ -43,6 +43,7 @@ const harness = (isInteractive: boolean) => {
     probeForward: () => Effect.succeed({ kind: "success" }),
   };
   const router = makeTraefikRouterService({
+    probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,

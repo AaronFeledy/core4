@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import {
   type AppPlan,
   LandofileShape,
@@ -12,8 +13,10 @@ import {
 } from "@lando/core/schema";
 import {
   type ApplyOptions,
+  type CommandSpec,
   type ConfigService,
   type EventService,
+  type ExecChunk,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -22,11 +25,12 @@ import {
   ScratchAppService,
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
 import { makeScratchRegistry } from "@lando/engine/scratch-app/registry";
@@ -41,21 +45,23 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
+import { ServiceExecError } from "@lando/sdk/errors";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
+import { FinishCommandProgress } from "../../src/cli/command-progress.ts";
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
   normalizeScratchRunArgvForParsing,
   parseScratchRunArgv,
-  renderScratchRunResult,
   scratchRun,
   scratchRunHasCommandTail,
   scratchRunOptionsFromInput,
@@ -63,6 +69,7 @@ import {
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -128,13 +135,9 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-interface ExecCall {
+interface ExecCall extends CommandSpec {
   readonly app: string;
   readonly service: string;
-  readonly command: ReadonlyArray<string>;
-  readonly tty: boolean | undefined;
-  readonly stdin: string | undefined;
-  readonly env: Readonly<Record<string, string>> | undefined;
 }
 
 interface DestroyCall {
@@ -157,6 +160,10 @@ interface HarnessOptions {
   readonly execStdout?: string;
   readonly execStderr?: string;
   readonly execNever?: boolean;
+  readonly execStream?: RuntimeProviderShape["execStream"];
+  readonly onExec?: (spec: CommandSpec) => void;
+  readonly onApply?: () => void;
+  readonly execStarted?: () => void;
   readonly configLayer?: Layer.Layer<ConfigService>;
 }
 
@@ -194,6 +201,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     apply: (plan, applyOptions) =>
       Effect.sync(() => {
         recorded.appliedPlans.push(plan);
+        options.onApply?.();
         options.applyOptions?.push(applyOptions);
         return { changed: true };
       }),
@@ -207,31 +215,43 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         return { kind: "destroyed" as const };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
-    exec: (target, spec) => {
+    exec: () => die("exec"),
+    execStream: (target, spec) => {
       const record = Effect.sync(() => {
         recorded.execCalls.push({
           app: String(target.app),
           service: String(target.service),
-          command: spec.command,
-          tty: spec.tty,
-          stdin: spec.stdin,
-          env: spec.env,
+          ...spec,
         });
+        options.onExec?.(spec);
+        options.execStarted?.();
       });
-      if (options.execNever === true) return record.pipe(Effect.andThen(Effect.never));
-      return record.pipe(
-        Effect.as({
-          exitCode: options.execExitCode ?? 0,
-          stdout: options.execStdout ?? "",
-          stderr: options.execStderr ?? "",
-        }),
+      return Stream.unwrap(
+        record.pipe(
+          Effect.as(
+            options.execNever === true
+              ? Stream.never
+              : (options.execStream?.(target, spec) ??
+                  Stream.fromIterable<ExecChunk>([
+                    { kind: "stdout", chunk: new TextEncoder().encode(options.execStdout ?? "") },
+                    { kind: "stderr", chunk: new TextEncoder().encode(options.execStderr ?? "") },
+                    { exitCode: options.execExitCode ?? 0 },
+                  ])),
+          ),
+        ),
       );
     },
-    execStream: () => Stream.die("scratch run test provider should not call execStream"),
     run: () => die("run"),
     runStream: () => Stream.die("scratch run test provider should not call runStream"),
     logs: () => Stream.empty,
-    inspect: () => die("inspect"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+      }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
     restoreVolume: () => die("restoreVolume"),
@@ -510,7 +530,6 @@ describe("scratchRun", () => {
         );
 
         expect(applyOptions[0]?.serviceEnvironment?.[ServiceName.make("web")]).toEqual({
-          LANDO_HOST_IP: "host.lando.internal",
           TOKEN: "resolved-scratch-token",
         });
         expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.environment).toEqual({
@@ -751,7 +770,15 @@ describe("scratchRun", () => {
   test("interrupting a running exec destroys the scratch", async () => {
     await withTempProject(async () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
-      const layer = makeHarnessLayer(recorded, { execNever: true });
+      const ready = Promise.withResolvers<void>();
+      const stages: string[] = [];
+      const layer = makeHarnessLayer(recorded, {
+        execNever: true,
+        execStarted: () => ready.resolve(),
+        onExec: () => {
+          stages.push("exec");
+        },
+      });
       await Effect.runPromise(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkChild(
@@ -761,18 +788,25 @@ describe("scratchRun", () => {
               keep: false,
               answers: {},
               issues: [],
-            }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+              hostIo: "cli",
+            }).pipe(
+              Effect.provide(layer),
+              Effect.provide(testSupportLayer()),
+              Effect.provideService(
+                FinishCommandProgress,
+                Effect.sync(() => {
+                  stages.push("finish");
+                }),
+              ),
+            ),
           );
-          yield* Effect.gen(function* () {
-            for (let attempt = 0; attempt < 500 && recorded.execCalls.length === 0; attempt += 1) {
-              yield* Effect.sleep("5 millis");
-            }
-          });
+          yield* Effect.promise(() => ready.promise);
           yield* Fiber.interrupt(fiber);
         }),
       );
       expect(recorded.execCalls).toHaveLength(1);
       expect(recorded.destroyCalls).toHaveLength(1);
+      expect(stages).toEqual(["finish", "exec"]);
     });
   });
 
@@ -835,7 +869,7 @@ describe("scratchRun", () => {
     });
   });
 
-  test("stdin TTY allocates a TTY on the provider exec", async () => {
+  test("non-CLI scratch execution does not inherit the host terminal", async () => {
     await withTempProject(async () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
       await Effect.runPromise(
@@ -847,11 +881,12 @@ describe("scratchRun", () => {
             answers: {},
             issues: [],
           },
-          { ...defaultScratchRunDeps, stdinIsTty: () => true },
+          defaultScratchRunDeps,
         ).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
-      expect(recorded.execCalls[0]?.tty).toBe(true);
-      expect(recorded.execCalls[0]?.stdin).toBe("inherit");
+      expect(recorded.execCalls[0]?.tty).toBeUndefined();
+      expect(recorded.execCalls[0]?.stdin).toBeUndefined();
+      expect(recorded.execCalls[0]?.stdinStream).toBeUndefined();
     });
   });
 });
@@ -914,7 +949,8 @@ describe("scratch run cleanup and warm repeats", () => {
   test("interrupting a run leaves no registry entry or scratch root behind", async () => {
     await withTempProject(async () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
-      const layer = makeHarnessLayer(recorded, { execNever: true });
+      const ready = Promise.withResolvers<void>();
+      const layer = makeHarnessLayer(recorded, { execNever: true, execStarted: () => ready.resolve() });
       await Effect.runPromise(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkChild(
@@ -926,9 +962,7 @@ describe("scratch run cleanup and warm repeats", () => {
               issues: [],
             }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
           );
-          for (let attempt = 0; attempt < 500 && recorded.execCalls.length === 0; attempt += 1) {
-            yield* Effect.sleep("5 millis");
-          }
+          yield* Effect.promise(() => ready.promise);
           yield* Fiber.interrupt(fiber);
         }),
       );
@@ -1043,13 +1077,52 @@ describe("scratch run rendering", () => {
     stderr: "",
   };
 
-  test("renders tool stdout without a duplicate trailing newline", () => {
-    expect(renderScratchRunResult(baseResult)).toBe("ok");
+  test("streams tool stdout byte-exact without a duplicate trailing newline", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const chunks: string[] = [];
+      await Effect.runPromise(
+        scratchRun({ command: ["echo", "ok"], mount: false, keep: false, answers: {}, issues: [] }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
+          Effect.provide(testSupportLayer()),
+          Effect.provideService(StreamFrameSink, {
+            emit: (frame) =>
+              Effect.sync(() => {
+                chunks.push(
+                  typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+                );
+              }),
+          }),
+        ),
+      );
+      expect(chunks.join("")).toBe("ok\n");
+    });
   });
 
-  test("prints the scratch id for a kept run", () => {
-    const rendered = renderScratchRunResult({ ...baseResult, kept: true });
-    expect(rendered).toContain("scratch-toolbox-abc123");
+  test("prints the kept scratch id on human stderr, not tool stdout", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      const result = await Effect.runPromise(
+        scratchRun({
+          command: ["echo", "ok"],
+          mount: false,
+          keep: true,
+          answers: {},
+          issues: [],
+          hostIo: "cli",
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
+          Effect.provide(testSupportLayer()),
+          Effect.provide(RendererRuntime.layerPlainService(io)),
+        ),
+      );
+      expect(io.stderr()).toBe(`kept: ${result.scratchId}\n`);
+      expect(io.stdout()).toBe("");
+      expect(result.stdout).toBe("ok\n");
+      expect(result.kept).toBe(true);
+      expect(recorded.destroyCalls).toHaveLength(0);
+    });
   });
 
   test("success exit code passes through only non-zero tool exits", () => {
@@ -1057,22 +1130,70 @@ describe("scratch run rendering", () => {
     expect(scratchRunSuccessExitCode({ ...baseResult, exitCode: 3 })).toBe(3);
   });
 
-  test("human rendering includes captured tool stderr", () => {
-    expect(
-      renderScratchRunResult(
-        { ...baseResult, stderr: "warn\n" },
-        { mode: "plain", format: "text", columns: 80, isTTY: false },
-      ),
-    ).toBe("ok\nwarn");
+  test("human streaming sends tool stderr to the stderr sink", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const frames: StreamFrameSinkFrame[] = [];
+      await Effect.runPromise(
+        scratchRun({ command: ["true"], mount: false, keep: false, answers: {}, issues: [] }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
+          Effect.provide(testSupportLayer()),
+          Effect.provideService(StreamFrameSink, {
+            emit: (frame) =>
+              Effect.sync(() => {
+                frames.push({
+                  ...frame,
+                  chunk:
+                    typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+                });
+              }),
+          }),
+        ),
+      );
+      expect(frames).toEqual([{ _tag: "stderr", chunk: "warn\n", raw: true }]);
+    });
   });
 
-  test("json rendering leaves captured tool stderr for stream frames only", () => {
-    expect(
-      renderScratchRunResult(
-        { ...baseResult, stderr: "warn\n" },
-        { mode: "lando", format: "json", columns: 80, isTTY: false },
-      ),
-    ).toBe("ok");
+  test("live JSON emits tool frames and one terminal result without a human kept notice", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      const streaming = appsScratchRunSpec.streaming;
+      if (streaming === undefined) throw new TypeError("scratch run must declare stream frames");
+      const streamingMode =
+        typeof appsScratchRunSpec.streamingMode === "function"
+          ? appsScratchRunSpec.streamingMode({})
+          : appsScratchRunSpec.streamingMode;
+      await runWithRendererHandling(
+        appsScratchRunSpec.run({
+          argv: ["--no-mount", "--keep", "--", "cat"],
+          hostIo: "cli",
+          flags: { format: "json" },
+        }),
+        {
+          runtime: makeHarnessLayer(recorded, { execStdout: "piped-in\n", execStderr: "warn\n" }).pipe(
+            Layer.provide(testSupportLayer()),
+          ),
+          rendererMode: "plain",
+          resultFormat: "json",
+          streaming,
+          ...(streamingMode === undefined ? {} : { streamingMode }),
+          io,
+          resultSchema: appsScratchRunSpec.resultSchema,
+          formatError: String,
+        },
+      );
+      const frames = io
+        .stdout()
+        .trim()
+        .split("\n")
+        .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+      expect(frames).toHaveLength(3);
+      expect(frames[0]).toMatchObject({ _tag: "stdout", chunk: "piped-in\n" });
+      expect(frames[1]).toMatchObject({ _tag: "stderr", chunk: "warn\n" });
+      expect(frames[2]).toMatchObject({ _tag: "result", envelope: { result: { kept: true } } });
+      expect(io.stderr()).toBe("");
+    });
   });
 
   test("json streaming does not duplicate captured tool stderr onto renderer stderr", async () => {
@@ -1144,6 +1265,31 @@ describe("scratch run agent env forwarding", () => {
       );
       expect(recorded.execCalls).toHaveLength(1);
       expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: "1" });
+    });
+  });
+
+  test("redacts forwarded agent env values from live tool output", async () => {
+    await withTempProject(async () => {
+      const secret = "opencode-forwarded-secret";
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      try {
+        await withHostEnv({ OPENCODE: secret }, () =>
+          Effect.runPromise(
+            scratchRun(baseOptions).pipe(
+              Effect.provide(makeHarnessLayer(recorded, { execStdout: `OPENCODE=${secret}\n` })),
+              Effect.provide(RendererOutput.layerStreamFrameSink("text")),
+              Effect.provide(testSupportLayer()),
+              Effect.provide(RendererRuntime.layerPlainService(io)),
+            ),
+          ),
+        );
+      } finally {
+        resetRegisteredRedactionValuesForTesting();
+      }
+      expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: secret });
+      expect(io.stdout()).not.toContain(secret);
+      expect(io.stdout()).toContain("OPENCODE=[redacted]");
     });
   });
 
@@ -1276,25 +1422,359 @@ describe("readScratchLandofile", () => {
 });
 
 describe("scratch run streaming spec", () => {
-  const baseResult: ScratchRunResult = {
-    scratchId: "scratch-toolbox-abc123",
-    service: "toolbox",
-    command: ["echo", "ok"],
-    exitCode: 0,
-    kept: false,
-    stdout: "ok\n",
-    stderr: "warn\n",
-  };
-
   test("declares the shared StreamFrame schema", () => {
     expect(appsScratchRunSpec.streaming).toBe(StreamFrame);
   });
 
-  test("maps stdout and stderr onto service-tagged stream frames", () => {
-    expect(appsScratchRunSpec.streamFrames?.(baseResult)).toEqual([
-      { _tag: "stdout", service: "toolbox", chunk: "ok\n" },
-      { _tag: "stderr", service: "toolbox", chunk: "warn\n" },
-    ]);
-    expect(appsScratchRunSpec.streamFrames?.({ ...baseResult, stdout: "", stderr: "" })).toEqual([]);
+  test("delivers the first chunk before exit and retires progress before starting exec", async () => {
+    // Given
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const firstChunk = Promise.withResolvers<void>();
+      const finishTool = Promise.withResolvers<void>();
+      const stages: string[] = [];
+      const chunks: string[] = [];
+      const layer = makeHarnessLayer(recorded, {
+        onApply: () => {
+          stages.push("acquire");
+        },
+        onExec: () => {
+          stages.push("exec");
+        },
+        execStream: () =>
+          Stream.concat(
+            Stream.fromIterable<ExecChunk>([{ kind: "stdout", chunk: new TextEncoder().encode("prompt> ") }]),
+            Stream.fromEffect(
+              Effect.promise(() => finishTool.promise).pipe(Effect.as<ExecChunk>({ exitCode: 7 })),
+            ),
+          ),
+      });
+      const program = scratchRun({
+        command: ["cat"],
+        mount: false,
+        keep: false,
+        answers: {},
+        issues: [],
+        hostIo: "cli",
+      }).pipe(
+        Effect.provide(layer),
+        Effect.provide(testSupportLayer()),
+        Effect.provideService(
+          FinishCommandProgress,
+          Effect.sync(() => {
+            stages.push("finish");
+          }),
+        ),
+        Effect.provideService(StreamFrameSink, {
+          emit: (frame) =>
+            Effect.sync(() => {
+              chunks.push(
+                typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+              );
+              firstChunk.resolve();
+            }),
+        }),
+      );
+      // When
+      const completion = Effect.runPromise(program);
+      try {
+        await firstChunk.promise;
+        // Then
+        expect(chunks).toEqual(["prompt> "]);
+        expect(stages).toEqual(["acquire", "finish", "exec"]);
+        expect(recorded.destroyCalls).toHaveLength(0);
+      } finally {
+        finishTool.resolve();
+      }
+      const result = await completion;
+      expect(result.exitCode).toBe(7);
+      expect(recorded.destroyCalls).toHaveLength(1);
+    });
+  });
+
+  test("a failed progress teardown prevents exec and still destroys scratch resources", async () => {
+    // Given
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      // When
+      const exit = await Effect.runPromiseExit(
+        scratchRun({
+          command: ["cat"],
+          mount: false,
+          keep: false,
+          answers: {},
+          issues: [],
+          hostIo: "cli",
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded)),
+          Effect.provide(testSupportLayer()),
+          Effect.provideService(FinishCommandProgress, Effect.die(new TypeError("teardown failed"))),
+        ),
+      );
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(recorded.execCalls).toHaveLength(0);
+      expect(recorded.destroyCalls).toHaveLength(1);
+    });
+  });
+
+  test.each(["provider failure", "interruption"] as const)(
+    "restores keyboard raw mode and destroys scratch on %s",
+    async (mode) => {
+      // Given
+      await withTempProject(async () => {
+        let raw = false;
+        const modes: boolean[] = [];
+        const input = Object.assign(new PassThrough(), {
+          isTTY: true,
+          setRawMode: (value: boolean) => {
+            raw = value;
+            modes.push(value);
+          },
+        });
+        Object.defineProperty(input, "isRaw", { get: () => raw });
+        const descriptor = Object.getOwnPropertyDescriptor(process, "stdin");
+        if (descriptor === undefined) throw new TypeError("missing stdin descriptor");
+        const controller = new AbortController();
+        const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+        const layer = makeHarnessLayer(recorded, {
+          execNever: mode === "interruption",
+          onApply: () => {
+            expect(raw).toBe(false);
+          },
+          onExec: () => {
+            expect(raw).toBe(true);
+            if (mode === "interruption") controller.abort();
+          },
+          execStream: () =>
+            Stream.fail(
+              new ServiceExecError({
+                providerId: "lando",
+                operation: "exec",
+                service: "toolbox",
+                message: "exec failed",
+              }),
+            ),
+        });
+        Object.defineProperty(process, "stdin", { configurable: true, value: input });
+        try {
+          // When
+          const exit = await Effect.runPromiseExit(
+            scratchRun({
+              command: ["cat"],
+              mount: false,
+              keep: false,
+              answers: {},
+              issues: [],
+              hostIo: "cli",
+              tty: true,
+              signal: controller.signal,
+            }).pipe(
+              Effect.provide(layer),
+              Effect.provide(testSupportLayer()),
+              Effect.provideService(
+                FinishCommandProgress,
+                Effect.sync(() => {
+                  expect(raw).toBe(false);
+                }),
+              ),
+            ),
+            { signal: controller.signal },
+          );
+          // Then
+          expect(Exit.isFailure(exit)).toBe(true);
+          expect(modes).toEqual([true, false]);
+          expect(raw).toBe(false);
+          expect(recorded.execCalls).toHaveLength(1);
+          expect(recorded.destroyCalls).toHaveLength(1);
+        } finally {
+          Object.defineProperty(process, "stdin", descriptor);
+          input.destroy();
+        }
+      });
+    },
+  );
+
+  test.each([
+    {
+      stdinTTY: false,
+      stdoutTTY: false,
+      format: "text",
+      rendererMode: "plain",
+      cli: true,
+      keyboard: false,
+      attached: true,
+      retire: true,
+    },
+    {
+      stdinTTY: false,
+      stdoutTTY: true,
+      format: "json",
+      rendererMode: "lando",
+      cli: true,
+      keyboard: false,
+      attached: true,
+      retire: false,
+    },
+    {
+      stdinTTY: false,
+      stdoutTTY: true,
+      format: "yaml",
+      rendererMode: "lando",
+      cli: true,
+      keyboard: false,
+      attached: true,
+      retire: false,
+    },
+    {
+      stdinTTY: true,
+      stdoutTTY: true,
+      format: "text",
+      rendererMode: "lando",
+      cli: true,
+      keyboard: true,
+      attached: true,
+      retire: true,
+    },
+    {
+      stdinTTY: true,
+      stdoutTTY: false,
+      format: "text",
+      rendererMode: "lando",
+      cli: true,
+      keyboard: false,
+      attached: false,
+      retire: true,
+    },
+    {
+      stdinTTY: true,
+      stdoutTTY: true,
+      format: "text",
+      rendererMode: "json",
+      cli: true,
+      keyboard: false,
+      attached: false,
+      retire: true,
+    },
+    {
+      stdinTTY: true,
+      stdoutTTY: true,
+      format: "json",
+      rendererMode: "lando",
+      cli: true,
+      keyboard: false,
+      attached: false,
+      retire: false,
+    },
+    {
+      stdinTTY: true,
+      stdoutTTY: true,
+      format: "text",
+      rendererMode: "lando",
+      cli: false,
+      keyboard: false,
+      attached: false,
+      retire: false,
+    },
+    {
+      stdinTTY: false,
+      stdoutTTY: false,
+      format: "text",
+      rendererMode: "plain",
+      cli: true,
+      nonInteractive: true,
+      keyboard: false,
+      attached: false,
+      retire: false,
+    },
+  ])("applies scratch host IO only at the CLI boundary: %j", async (scenario) => {
+    // Given
+    await withTempProject(async () => {
+      let raw = false;
+      const rawChanges: boolean[] = [];
+      const input = Object.assign(new PassThrough(), {
+        isTTY: scenario.stdinTTY,
+        setRawMode: (value: boolean) => {
+          raw = value;
+          rawChanges.push(value);
+        },
+      });
+      Object.defineProperty(input, "isRaw", { get: () => raw });
+      const payload = scenario.keyboard ? "typed\x03\n" : "piped-in\n";
+      input.end(payload);
+      const stdinDescriptor = Object.getOwnPropertyDescriptor(process, "stdin");
+      const stdoutDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+      if (stdinDescriptor === undefined) throw new TypeError("missing stdin descriptor");
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const stages: string[] = [];
+      const controller = new AbortController();
+      const layer = makeHarnessLayer(recorded, {
+        onApply: () => {
+          stages.push(`acquire:${raw}`);
+        },
+        onExec: () => {
+          stages.push(`exec:${raw}`);
+        },
+        execStream: (_target, spec) =>
+          Stream.unwrap(
+            Effect.promise(async () => {
+              let received = "";
+              if (spec.stdinStream !== undefined)
+                for await (const bytes of spec.stdinStream) received += new TextDecoder().decode(bytes);
+              return Stream.fromIterable<ExecChunk>([
+                { kind: "stdout", chunk: new TextEncoder().encode(received) },
+                { exitCode: 0 },
+              ]);
+            }),
+          ),
+      });
+      Object.defineProperty(process, "stdin", { configurable: true, value: input });
+      Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: scenario.stdoutTTY });
+      try {
+        // When
+        const result = await Effect.runPromise(
+          appsScratchRunSpec
+            .run({
+              argv: ["--no-mount", "--", "cat"],
+              flags: { format: scenario.format },
+              rendererMode: scenario.rendererMode,
+              ...(scenario.cli ? { hostIo: "cli" } : {}),
+              ...("nonInteractive" in scenario ? { interaction: "non-interactive" } : {}),
+              signal: controller.signal,
+            })
+            .pipe(
+              Effect.provide(layer),
+              Effect.provide(testSupportLayer()),
+              Effect.provideService(
+                FinishCommandProgress,
+                Effect.sync(() => {
+                  stages.push(`finish:${raw}`);
+                }),
+              ),
+            ),
+        );
+        // Then
+        expect(result.stdout).toBe(scenario.attached ? payload : "");
+        expect(recorded.execCalls[0]?.tty === true).toBe(scenario.keyboard);
+        expect(recorded.execCalls[0]?.stdinStream !== undefined).toBe(scenario.attached);
+        expect(recorded.execCalls[0]?.terminalResize !== undefined).toBe(scenario.keyboard);
+        expect(recorded.execCalls[0]?.signal).toBe(controller.signal);
+        expect(controller.signal.aborted).toBe(false);
+        expect(stages).toEqual([
+          "acquire:false",
+          ...(scenario.retire ? ["finish:false"] : []),
+          `exec:${scenario.keyboard}`,
+        ]);
+        expect(rawChanges).toEqual(scenario.keyboard ? [true, false] : []);
+        expect(raw).toBe(false);
+        if (!scenario.cli || "nonInteractive" in scenario) expect(input.read()).toEqual(Buffer.from(payload));
+        expect(recorded.destroyCalls).toHaveLength(1);
+      } finally {
+        Object.defineProperty(process, "stdin", stdinDescriptor);
+        if (stdoutDescriptor === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+        else Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
+        input.destroy();
+      }
+    });
   });
 });

@@ -31,7 +31,7 @@
       "name": "@lando/core",
       "version": "0.0.0",
       "bin": {
-        "lando4": "./bin/lando.ts",
+        "lando": "./bin/lando.ts",
       },
       "dependencies": {
         "@gabrielbryk/jq-ts": "1.7.0",
@@ -241,6 +241,7 @@
       "name": "@lando/proxy-traefik",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",

@@ -96,6 +96,7 @@ const makeLifecycleHarness = (input: {
     probeForward: () => Effect.succeed({ kind: "success" }),
   };
   const service = makeTraefikRouterService({
+    probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,

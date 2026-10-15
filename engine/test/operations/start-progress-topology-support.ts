@@ -146,6 +146,8 @@ export const makeHarness = (
     readonly onApply?: (plan: AppPlan, options?: ApplyOptions) => void;
     readonly onStop?: (...args: Parameters<RuntimeProviderShape["stop"]>) => void;
     readonly inspect?: RuntimeProviderShape["inspect"];
+    readonly exec?: RuntimeProviderShape["exec"];
+    readonly logs?: RuntimeProviderShape["logs"];
     readonly listVolumes?: RuntimeProviderShape["listVolumes"];
     readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly onVolumeLock?: (key: string) => void;
@@ -235,6 +237,7 @@ export const makeHarness = (
           providerId,
           status: "running",
           state: "running",
+          lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           endpoints: plannedApp.services[target.service]?.endpoints ?? [],
         })),
     stop: (target) =>
@@ -262,7 +265,8 @@ export const makeHarness = (
           },
         })),
     execStream: () => Stream.empty,
-    logs: () => Stream.empty,
+    exec: options.exec ?? TestRuntimeProvider.exec,
+    logs: options.logs ?? (() => Stream.empty),
   };
   const runtimeProviderRegistry = {
     list: Effect.succeed([providerId]),

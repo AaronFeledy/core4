@@ -7,9 +7,10 @@ import { gzipSync } from "node:zlib";
 
 import type { BunPlugin } from "bun";
 
-import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { opentuiNativeCatalog } from "./generated/opentui-native/catalog.generated.ts";
+import { WINDOWS_BRANDING, windowsPeVersion } from "./windows-branding.ts";
 
 export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
 
@@ -139,6 +140,7 @@ export const buildCompiledBinary = async (
   options: CompiledBinaryOptions,
   build: CompiledBinaryBuildRunner = (config) => Bun.build(config),
   prepareShimAssets: HostProxyShimAssetBuilder = buildHostProxyShimAssets,
+  host: string = hostTarget(),
 ): Promise<Bun.BuildOutput> => {
   const platform = platformFor(options.target ?? hostTarget());
   const version = resolveCompiledBinaryVersion({
@@ -147,6 +149,11 @@ export const buildCompiledBinary = async (
   });
   const stagingDir = await mkdtemp(resolve(tmpdir(), "lando-compile-shims-"));
   try {
+    if (isWindowsCiPlatform(platform) && !isWindowsCiPlatform({ id: host })) {
+      console.warn(
+        `[build-compiled-binary] ${platform.id}: Bun cannot embed the Lando icon or version info when cross-compiling; this binary keeps Bun's defaults. Compile on Windows for a branded binary.`,
+      );
+    }
     const shimAssets = await prepareShimAssets(stagingDir);
     const output = await build({
       entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts"), ...shimAssets],
@@ -154,7 +161,14 @@ export const buildCompiledBinary = async (
       format: "esm",
       splitting: true,
       // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json.
-      compile: { target: bunTargetFor(platform), outfile: options.outfile },
+      compile: {
+        target: bunTargetFor(platform),
+        outfile: options.outfile,
+        // Bun applies PE branding only on Windows hosts; CI uses native Windows runners.
+        ...(isWindowsCiPlatform(platform) && isWindowsCiPlatform({ id: host })
+          ? { windows: { ...WINDOWS_BRANDING, version: windowsPeVersion(version) } }
+          : {}),
+      },
       bytecode: true,
       minify: true,
       sourcemap: "external",

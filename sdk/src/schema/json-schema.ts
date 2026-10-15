@@ -10,6 +10,7 @@ import {
   GpgAgentConfig,
   SshAgentConfig,
 } from "./agent-forwarding.ts";
+import { LayerMergeRule } from "./layer-merge.ts";
 
 import {
   AxisToken,
@@ -470,6 +471,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   SecretStoreContribution,
   DeprecationNotice,
   DeprecationUse,
+  LayerMergeRule,
   LandofileExpressionParseError,
   LandofileExpressionForbiddenError,
   LandofileExpressionEvalError,
@@ -925,6 +927,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
   ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",
   DeprecationNotice: "Public Lando schema contract for Deprecation Notice.",
+  LayerMergeRule: "Declared collection policy for Landofile layers.",
   DeprecationUse: "Public Lando schema contract for Deprecation Use.",
   LandofileExpressionParseError: "Public Lando schema contract for Landofile Expression Parse Error.",
   LandofileExpressionForbiddenError: "Public Lando schema contract for Landofile Expression Forbidden Error.",

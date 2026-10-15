@@ -139,15 +139,22 @@ posix_quote() {
 print_path_guidance() {
   user_data_root=$(default_user_data_root)
   bin_dir=$(dirname "$destination")
-  printf '\nRun this command to add lando4 to PATH:\n'
+  printf '\nRun this command to add lando to PATH:\n'
   # Expansion belongs to the users shell when they run the printed command.
   # shellcheck disable=SC2016
   printf 'eval "$(%s shellenv)"\n' "$(posix_quote "$destination")"
   printf 'The command prints:\n'
   printf 'export LANDO_USER_DATA_ROOT=%s\n' "$(posix_quote "$user_data_root")"
   # shellcheck disable=SC2016
-  printf 'case ":${PATH}:" in *%s*) ;; *) export PATH=%s":${PATH}" ;; esac\n' \
-    "$(posix_quote ":$bin_dir:")" "$(posix_quote "$bin_dir")"
+  printf '_lando_shellenv_tail="${PATH-}"\n'
+  printf '_lando_shellenv_path=%s\n' "$(posix_quote "$bin_dir")"
+  printf 'while :; do\n'
+  printf '  _lando_shellenv_entry=${_lando_shellenv_tail%%%%:*}\n'
+  printf '  if [ "$_lando_shellenv_entry" != %s ]; then _lando_shellenv_path="$_lando_shellenv_path:$_lando_shellenv_entry"; fi\n' "$(posix_quote "$bin_dir")"
+  printf '  case "$_lando_shellenv_tail" in *:*) _lando_shellenv_tail=${_lando_shellenv_tail#*:} ;; *) break ;; esac\n'
+  printf 'done\n'
+  printf 'export PATH="$_lando_shellenv_path"\n'
+  printf 'unset _lando_shellenv_tail _lando_shellenv_path _lando_shellenv_entry\n'
 }
 
 print_setup_skipped() {
@@ -167,7 +174,7 @@ run_post_install_setup() {
     return
   fi
 
-  printf 'Run lando4 setup now? [y/N] ' >&2
+  printf 'Run lando setup now? [y/N] ' >&2
   read -r answer || answer=
   case "$answer" in
     y|Y|yes|YES)
@@ -239,7 +246,7 @@ json_string() {
 }
 
 reject_destination() {
-  fail "Refusing to replace $destination: ownership is unproven. Remove it or set LANDO_INSTALL_DIR to another directory."
+  fail "Refusing to replace $destination: ownership is unproven. Back up or remove the existing executable, then rerun the installer; or set LANDO_INSTALL_DIR to another directory."
 }
 
 check_destination() {
@@ -411,7 +418,7 @@ install_dir=$(default_install_dir)
 case "$install_dir" in /*) ;; *) install_dir="$PWD/$install_dir" ;; esac
 user_data_root=$(default_user_data_root)
 record="$user_data_root/install/record.json"
-destination="$install_dir/lando4"
+destination="$install_dir/lando"
 check_destination
 tmp=$(mktemp -d)
 install_tmp=
@@ -421,7 +428,7 @@ trap 'exit 1' INT TERM
 
 manifest=$tmp/manifest.json
 sums=$tmp/SHA256SUMS
-binary=$tmp/lando4
+binary=$tmp/lando
 
 download "$manifest_url" "$manifest"
 binary_url=$(manifest_binary_field "$manifest" "$platform" "url")
@@ -439,7 +446,7 @@ verify_checksum "$sums" "$binary" "$artifact"
 
 mkdir -p "$install_dir"
 umask 077
-install_tmp=$(mktemp "$install_dir/.lando4.tmp.XXXXXX")
+install_tmp=$(mktemp "$install_dir/.lando.tmp.XXXXXX")
 cp "$binary" "$install_tmp"
 chmod 0755 "$install_tmp"
 check_destination

@@ -54,19 +54,20 @@ describe("hostile Lando 3 lifecycle", () => {
     async (kind) => {
       // Given (phase 0) one hostile installation, retained throughout every phase.
       const root = await makeTempRoot();
+      const legacyDir = join(root, "legacy-bin");
       const installDir = join(root, "bin");
       const dataRoot = join(root, "data");
       const cacheRoot = join(root, "cache");
       const confRoot = join(root, "conf");
-      const legacyPath = join(installDir, "lando");
-      const destination = join(installDir, "lando4");
+      const legacyPath = join(legacyDir, "lando");
+      const destination = join(installDir, "lando");
       const recordPath = join(dataRoot, "install", "record.json");
-      const legacyState = join(installDir, ".lando");
+      const legacyState = join(legacyDir, ".lando");
       const profilePath = join(root, ".profile");
       const profileBytes = textBytes(
         '# >>> LANDO shellenv >>>\nexport PATH="/legacy/lando/bin:$PATH"\n# <<< LANDO shellenv <<<\nexport USER_AUTHORED=keep\n',
       );
-      await mkdir(installDir);
+      await mkdir(legacyDir);
       switch (kind) {
         case "regular":
           await writeFile(legacyPath, "distinctive Lando 3 bytes", { mode: 0o700 });
@@ -117,7 +118,7 @@ describe("hostile Lando 3 lifecycle", () => {
         PATH: join(root, "no-host-runtimes"),
       };
 
-      // When (phase 1) installing beside Lando 3 through the real POSIX installer.
+      // When (phase 1) installing in a separate directory through the real POSIX installer.
       const fixture = await createReleaseFixture(root);
       const fixtureBytes = await readFile(fixture.binaryPath);
       const { gpgPath, logPath } = await createFakeGpg(root);
@@ -148,7 +149,7 @@ describe("hostile Lando 3 lifecycle", () => {
         platform: "linux-x64",
       });
       expect((await lstat(recordPath)).mode & 0o777).toBe(0o600);
-      expect((await readdir(installDir)).sort()).toEqual([".lando", "lando", "lando4"]);
+      expect((await readdir(installDir)).sort()).toEqual(["lando"]);
       await assertLegacyUnchanged(before, "install");
 
       // When (phase 2) shellenv reads the real install record.
@@ -163,7 +164,7 @@ describe("hostile Lando 3 lifecycle", () => {
       // When (phase 3) the real CLI plans a dry-run without host runtimes on PATH.
       const dryRun = await runCli(["uninstall", "--dry-run", "--format=json"], env);
       // Then the machine envelope names only the owned binary.
-      expect(dryRun.exitCode).toBe(0);
+      expect(dryRun.exitCode, dryRun.stderr || dryRun.stdout).toBe(0);
       const envelope = Schema.decodeUnknownSync(DryRunEnvelope)(dryRun.stdout);
       expect(envelope.ok).toBe(true);
       expect(envelope.result).toMatchObject({ dryRun: true, mode: "keep-data" });
@@ -217,7 +218,7 @@ describe("hostile Lando 3 lifecycle", () => {
       expect(updated).toMatchObject({ updatedCore: true, coreUpdateAvailable: true });
       expect(await readFile(destination, "utf8")).toBe("new-binary");
       expect(await readFile(`${destination}.bak`)).toEqual(fixtureBytes);
-      await expect(lstat(join(installDir, "lando.bak"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(lstat(join(legacyDir, "lando.bak"))).rejects.toMatchObject({ code: "ENOENT" });
       const refreshed = await Effect.runPromise(
         decodeInstallRecord(await readFile(recordPath, "utf8"), recordPath),
       );
@@ -268,7 +269,7 @@ describe("hostile Lando 3 lifecycle", () => {
         await expect(lstat(destination)).rejects.toMatchObject({ code: "ENOENT" });
         await expect(lstat(recordPath)).rejects.toMatchObject({ code: "ENOENT" });
         expect(await readFile(`${destination}.bak`)).toEqual(fixtureBytes);
-        const remaining = [".lando", "lando", "lando4.bak"];
+        const remaining = ["lando.bak"];
         expect((await readdir(installDir)).sort()).toEqual(remaining);
         expect(await readFile(profilePath)).toEqual(Buffer.from(profileBytes));
         await assertLegacyUnchanged(before, "uninstall");

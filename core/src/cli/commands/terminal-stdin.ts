@@ -1,8 +1,10 @@
 /**
- * Adapt a flowing terminal stream to cancellable input for remote interactive exec.
+ * Adapt a flowing stdin stream (terminal or pipe) to cancellable input for remote exec.
  * Readable's built-in async iterator can leave a pending read alive after return().
  */
 export const cancellableTerminalStdin = (input: {
+  readonly readableEnded?: boolean;
+  readonly readableFlowing?: boolean | null;
   on(event: "data", listener: (chunk: Uint8Array) => void): unknown;
   on(event: "end", listener: () => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
@@ -20,10 +22,10 @@ export const cancellableTerminalStdin = (input: {
           reject: (error: Error) => void;
         }
       | undefined;
-    let closed = false;
+    let closed = input.readableEnded === true;
     let paused = false;
     let failure: Error | undefined;
-    const finish = () => {
+    const detach = () => {
       if (closed) return;
       closed = true;
       input.off("data", onData);
@@ -32,6 +34,10 @@ export const cancellableTerminalStdin = (input: {
       input.pause();
       waiting?.resolve({ done: true, value: undefined });
       waiting = undefined;
+    };
+    // Natural end keeps queued bytes for the reader; only cancellation discards them.
+    const finish = () => {
+      detach();
       chunks.length = 0;
     };
     const onData = (chunk: Uint8Array) => {
@@ -44,7 +50,7 @@ export const cancellableTerminalStdin = (input: {
         paused = true;
       }
     };
-    const onEnd = () => finish();
+    const onEnd = () => detach();
     const onError = (error: Error) => {
       failure = error;
       const pending = waiting;
@@ -52,14 +58,16 @@ export const cancellableTerminalStdin = (input: {
       finish();
       pending?.reject(error);
     };
-    input.on("data", onData);
-    input.on("end", onEnd);
-    input.on("error", onError);
+    if (!closed) {
+      input.on("data", onData);
+      input.on("end", onEnd);
+      input.on("error", onError);
+    }
     return {
       next: () => {
         const chunk = chunks.shift();
         if (chunk !== undefined) {
-          if (paused && chunks.length === 0) {
+          if (paused && chunks.length === 0 && !closed) {
             paused = false;
             input.resume();
           }
@@ -67,7 +75,8 @@ export const cancellableTerminalStdin = (input: {
         }
         if (failure !== undefined) return Promise.reject(failure);
         if (closed) return Promise.resolve({ done: true as const, value: undefined });
-        if (paused) {
+        // An earlier reader's return() pauses the shared input; a later step must restart it.
+        if (paused || input.readableFlowing === false) {
           paused = false;
           input.resume();
         }

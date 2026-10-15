@@ -2,6 +2,7 @@ services:
   app:
     routes:
       - hostname: api.lndo.site
+        pathPrefix: /v1
         filters:
           - name: strip-v1
             type: stripPrefix

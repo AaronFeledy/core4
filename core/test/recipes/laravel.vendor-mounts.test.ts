@@ -40,9 +40,8 @@ test.each([false, true])("Laravel vendor mounts when worker=%s", async (worker) 
     for (const name of worker ? ["appserver", "worker"] : ["appserver"]) {
       const service = plan.services[ServiceName.make(name)];
       expect(service?.storage.filter(({ target }) => target === "/app/vendor")).toHaveLength(worker ? 0 : 1);
-      expect(service?.mounts).toContainEqual(
-        expect.objectContaining({ source: root, target: "/app", type: "bind" }),
-      );
+      expect(service?.appMount).toMatchObject({ source: root, target: "/app" });
+      expect(service?.mounts.some((mount) => mount.type === "bind" && mount.source === root)).toBe(false);
     }
 
     // Then npm runs in a private Node service on the same project bind in either mode.
@@ -61,9 +60,7 @@ test.each([false, true])("Laravel vendor mounts when worker=%s", async (worker) 
       primary: false,
       endpoints: [],
     });
-    expect(node?.mounts).toContainEqual(
-      expect.objectContaining({ source: root, target: "/app", type: "bind" }),
-    );
+    expect(node?.appMount).toMatchObject({ source: root, target: "/app" });
     expect(node?.healthcheck).toBeUndefined();
     expect(node?.command).toEqual([
       "node",

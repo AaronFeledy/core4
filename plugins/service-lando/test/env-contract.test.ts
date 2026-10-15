@@ -4,10 +4,13 @@ import { Schema } from "effect";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
+import { appMountTarget } from "../src/services/_volume-helpers.ts";
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
+import { dotnetServiceType } from "../src/services/dotnet.ts";
 import { elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
+import { landoServiceType } from "../src/services/lando.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
@@ -40,6 +43,162 @@ const host: ServiceTypeHostFacts = {
   arch: "x64",
 };
 
+describe("effective app mount paths", () => {
+  test.each([
+    [undefined, "/app"],
+    [false, "/app"],
+    [{ target: "/site/" }, "/site"],
+    [{ target: "/other/../site" }, "/site"],
+  ] as const)("normalizes app mount %j to %s", (authored, expected) => {
+    // Given: a decoded service with an optional app mount.
+    const config = Schema.decodeUnknownSync(LandofileShape)({
+      services: { web: { type: "apache", ...(authored === undefined ? {} : { appMount: authored }) } },
+    });
+    const service = config.services?.[ServiceName.make("web")];
+    if (service === undefined) throw new Error("web service missing");
+    // When: the mount target is derived.
+    const target = appMountTarget(service.appMount);
+    // Then: defaults and disabled mounts retain /app, while authored targets are normalized.
+    expect(String(target)).toBe(expected);
+  });
+
+  const mountCases = [
+    { serviceType: php82ServiceType, webroot: "public", cwd: "/site/public" },
+    { serviceType: nginxServiceType, webroot: "public", cwd: "/site/public" },
+    { serviceType: apacheServiceType },
+    { serviceType: staticNginxServiceType },
+    { serviceType: staticCaddyServiceType },
+    { serviceType: node22ServiceType },
+    { serviceType: landoServiceType, image: "alpine:3" },
+    { serviceType: python312ServiceType },
+    { serviceType: ruby33ServiceType },
+    { serviceType: ruby33ServiceType, framework: "rails", expectedWebroot: "/site/public" },
+    { serviceType: go122ServiceType },
+    { serviceType: dotnetServiceType },
+    {
+      serviceType: composeServiceType,
+      image: "alpine:3",
+      expectsAppPaths: false,
+      cwd: undefined,
+    },
+  ] satisfies ReadonlyArray<{
+    readonly serviceType: ServiceType;
+    readonly image?: string;
+    readonly framework?: string;
+    readonly webroot?: string;
+    readonly expectedWebroot?: string;
+    readonly expectsAppPaths?: boolean;
+    readonly cwd?: string | undefined;
+  }>;
+
+  for (const entry of mountCases) {
+    test(`${entry.serviceType.id} ${"framework" in entry ? entry.framework : ""} follows a moved app mount`, async () => {
+      // Given: an app mount with a trailing slash and an optional framework/webroot.
+      const { serviceType } = entry;
+      const config = Schema.decodeUnknownSync(LandofileShape)({
+        services: {
+          web: {
+            type: serviceType.id,
+            appMount: { target: "/site/" },
+            ...("image" in entry ? { image: entry.image } : {}),
+            ...("framework" in entry ? { framework: entry.framework } : {}),
+            ...("webroot" in entry ? { webroot: entry.webroot } : {}),
+          },
+        },
+      });
+      const service = config.services?.[ServiceName.make("web")];
+      if (service === undefined) throw new Error("web service missing");
+      // When: the service is composed through the real service features and authored wrapper.
+      const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
+      // Then: app-source intent has no mirror bind, with matching env and default cwd.
+      expect(String(plan.appMount?.target)).toBe("/site");
+      expect(plan.mounts.some((mount) => mount.type === "bind" && mount.source === "/srv/apps/myapp")).toBe(
+        false,
+      );
+      expect(plan.workingDirectory === undefined ? undefined : String(plan.workingDirectory)).toBe(
+        "cwd" in entry ? entry.cwd : "/site",
+      );
+      if (!("expectsAppPaths" in entry)) {
+        expect(plan.environment.LANDO_APP_ROOT).toBe("/site");
+        expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/site");
+      }
+      if (entry.expectedWebroot !== undefined) {
+        expect(plan.environment.LANDO_WEBROOT).toBe(entry.expectedWebroot);
+      }
+    });
+  }
+
+  test("an authored working directory wins over the moved mount", async () => {
+    // Given: a mount and working directory with different paths.
+    const config = Schema.decodeUnknownSync(LandofileShape)({
+      services: { web: { type: "apache", appMount: { target: "/site" }, workingDirectory: "/work" } },
+    });
+    const service = config.services?.[ServiceName.make("web")];
+    if (service === undefined) throw new Error("web service missing");
+    // When: the service is composed.
+    const plan = await composeServicePlan({
+      serviceType: apacheServiceType,
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+    // Then: the authored working directory wins without changing the app paths.
+    expect(String(plan.workingDirectory)).toBe("/work");
+    expect(plan.environment.LANDO_APP_ROOT).toBe("/site");
+  });
+
+  for (const serviceType of [php82ServiceType, composeServiceType]) {
+    test(`${serviceType.id} lets an authored mount replace the moved app bind`, async () => {
+      // Given: an authored bind at the effective app target.
+      const config = Schema.decodeUnknownSync(LandofileShape)({
+        services: {
+          web: {
+            type: serviceType.id,
+            image: "alpine:3",
+            appMount: { target: "/site/" },
+            mounts: ["./alternate:/site"],
+          },
+        },
+      });
+      const service = config.services?.[ServiceName.make("web")];
+      if (service === undefined) throw new Error("web service missing");
+      // When: the service is composed.
+      const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
+      // Then: only the authored bind occupies the target.
+      expect(plan.mounts.filter((mount) => mount.target === "/site")).toMatchObject([
+        { type: "bind", source: "/srv/apps/myapp/alternate" },
+      ]);
+      expect(plan.mounts.some((mount) => mount.target === "/app")).toBe(false);
+    });
+  }
+
+  test("compose volumes do not duplicate a normalized app mount target", async () => {
+    // Given: a Compose volume targeting the normalized app bind.
+    const config = Schema.decodeUnknownSync(LandofileShape)({
+      services: {
+        web: {
+          type: "compose",
+          image: "alpine:3",
+          appMount: { target: "/site/" },
+          volumes: ["./alternate:/site"],
+        },
+      },
+    });
+    const service = config.services?.[ServiceName.make("web")];
+    if (service === undefined) throw new Error("web service missing");
+    // When: the service is composed.
+    const plan = await composeServicePlan({
+      serviceType: composeServiceType,
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+    // Then: the app bind wins over the Compose volume.
+    expect(String(plan.appMount?.target)).toBe("/site");
+    expect(plan.mounts).toEqual([]);
+  });
+});
+
 interface CatalogCase {
   readonly id: string;
   readonly serviceType: ServiceType;
@@ -57,6 +216,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     expectedType: "apache",
     expectsAppPaths: true,
     expectsWebroot: "/app",
+  },
+  {
+    id: "dotnet",
+    serviceType: dotnetServiceType,
+    landofileService: { type: "dotnet" },
+    expectedType: "dotnet",
+    expectsAppPaths: true,
+    expectsWebroot: null,
   },
   {
     id: "nginx",

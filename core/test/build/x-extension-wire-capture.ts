@@ -5,9 +5,12 @@ import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { schemaAt } from "./x-extension-closed-record.ts";
 
-/** Reproduce the immutable capture from an unmodified, generated 15133ee26 checkout. */
+/** Capture complete wire subtrees from a generated checkout at the named revision. */
 const base = process.argv[2];
 if (base === undefined) throw new Error("Pass the generated historical checkout root");
+const profile = process.argv[3] ?? "base";
+if (profile !== "base" && profile !== "directives") throw new Error("Unknown wire capture profile");
+const provenanceCommit = process.argv[4] ?? "15133ee26729942dde7b9d4f0e033b4ced46406d";
 const load = async (name: string) => {
   const value: unknown = await Bun.file(resolve(base, `dist/schemas/${name}.json`)).json();
   if (!isJsonObject(value)) throw new Error(`Invalid historical schema: ${name}`);
@@ -41,12 +44,12 @@ if (
 }
 const json = JSON.stringify({ input, services: schemaAt(encode, "$.context.services") });
 await Bun.write(
-  resolve(import.meta.dirname, "fixtures/x-extension-wire.base.json"),
+  resolve(import.meta.dirname, `fixtures/x-extension-wire.${profile}.json`),
   `${JSON.stringify(
     {
-      provenanceCommit: "15133ee26729942dde7b9d4f0e033b4ced46406d",
+      provenanceCommit,
       capture:
-        "Complete normalized ConfigTranslateInput and ConfigTranslateEncodeInput.context.services; the shared fragment occurs once in input. UTF-8 JSON, gzip, base64. No repair applied. Reproduce with x-extension-wire-capture.ts <historical checkout>.",
+        "Complete normalized ConfigTranslateInput and ConfigTranslateEncodeInput.context.services; the shared fragment occurs once in input. UTF-8 JSON, gzip, base64. No repair applied. Reproduce with x-extension-wire-capture.ts <generated checkout> <profile> <commit>.",
       sha256: createHash("sha256").update(json).digest("hex"),
       gzipBase64: Buffer.from(Bun.gzipSync(json)).toString("base64"),
     },

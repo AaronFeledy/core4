@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Option } from "effect";
+import { isReadinessInterruptCause } from "./readiness-failure.ts";
 
 export const runAllAndMergeFailures = Effect.fn("Lifecycle.runAllAndMergeFailures")(function* <E, R>(
   effects: ReadonlyArray<Effect.Effect<void, E, R>>,
@@ -22,7 +23,7 @@ export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(
     onSuccess: Effect.succeed,
     onFailure: (failureCause) => {
       const failed = Cause.findErrorOption(failureCause);
-      if (Option.isSome(failed) && skip(failed.value)) {
+      if (isReadinessInterruptCause(failureCause) || (Option.isSome(failed) && skip(failed.value))) {
         return Effect.failCause(failureCause);
       }
       return Effect.matchCauseEffect(cleanup, {

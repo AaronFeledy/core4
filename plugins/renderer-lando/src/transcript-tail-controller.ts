@@ -19,6 +19,7 @@ interface TranscriptTailControllerInput {
   readonly viewModel: TaskTreeInteractionModel;
   readonly renderFooter: () => void;
   readonly serialize: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>;
+  readonly isClosing?: () => boolean;
 }
 
 export const makeTranscriptTailController = Effect.fnUntraced(function* (
@@ -38,6 +39,7 @@ export const makeTranscriptTailController = Effect.fnUntraced(function* (
     expectedGeneration: number,
     direction: TranscriptTailPageDirection,
   ) {
+    if (input.isClosing?.() === true) return false;
     const current = active;
     if (current === undefined || current.generation !== expectedGeneration) return false;
     const page = yield* current.session
@@ -46,6 +48,7 @@ export const makeTranscriptTailController = Effect.fnUntraced(function* (
     const latest = active;
     if (
       Option.isNone(page) ||
+      input.isClosing?.() === true ||
       latest === undefined ||
       latest.generation !== expectedGeneration ||
       input.viewModel.expandedTaskId !== latest.taskId

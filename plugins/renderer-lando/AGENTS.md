@@ -7,6 +7,7 @@ Inherit root `AGENTS.md`. Keep only package-specific facts agents would miss.
 - Read, follow, and update `DESIGN.md` before any renderer visual, design, color, layout, or motion work.
 - `DESIGN.md` is the TTY rail contract. Do not invent tokens, glyphs, or motion outside it.
 - plain, JSON, verbose, non-TTY, and CI stay undecorated. Do not leak rail chrome, glyphs, or colors into machine modes.
+- Narration in line mode and `message.*` goes to stderr; stdout is for results and payloads. Only the TTY live region paints on stdout, with interleaved output committed through journal scrollback.
 
 ## Gotchas
 

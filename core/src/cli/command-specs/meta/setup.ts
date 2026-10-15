@@ -151,7 +151,9 @@ export const setupSpec: LandoCommandSpec<
 
     if (!inputBooleanFlag(input, "skip-provider")) {
       if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
-        const available = yield* provider.isAvailable;
+        const available = yield* provider.isAvailable.pipe(
+          Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
+        );
         if (!available) {
           const error = systemRuntimeUnavailableError(selectedProviderId);
           yield* recorder.recordFailure("provider", error);

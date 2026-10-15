@@ -328,7 +328,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
 
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
-    if (authoredRoutes.length > 0) {
+    if (authoredRoutes !== undefined) {
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         routeRefs.push(
           ...(yield* routeAccumulator.add(

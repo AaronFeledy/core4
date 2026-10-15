@@ -93,7 +93,7 @@ describe("lando3 leftovers", () => {
       runtimeStatus: "skipped",
       context: { reason },
     });
-    if (reason === "no-app-context") expect(result.solutions[0]?.command).toBe("lando4 doctor");
+    if (reason === "no-app-context") expect(result.solutions[0]?.command).toBe("lando doctor");
   });
   test("skips when no inspector exists", async () => {
     // Given / When
@@ -165,6 +165,29 @@ describe("lando3 leftovers", () => {
 });
 
 describe("lando3 shadow", () => {
+  test.each(["lando", "lando4"])(
+    "compares PATH candidates when running the recorded command %s",
+    async (runningBasename) => {
+      const runningPath = `/opt/v4/${runningBasename}`;
+      for (const candidatePath of [runningPath, "/opt/v3/lando"]) {
+        const executables = locator({
+          runningBasename,
+          runningPath,
+          candidate: { kind: "found", path: candidatePath },
+        });
+        const result = await report(runLando3Shadow({ ...base, executables }), "lando3-shadow");
+        expect(result.runtimeStatus).toBe(
+          candidatePath === runningPath ? "same-executable" : "potential-shadow",
+        );
+        expect(executables.calls).toEqual(["lando"]);
+        if (candidatePath !== runningPath) {
+          expect(result.solutions[0]?.description).toContain("Put the Lando 4 executable first on PATH");
+          expect(result.solutions[0]?.description).not.toContain("Keep using `lando4`");
+        }
+      }
+    },
+  );
+
   test("skips when no locator exists", async () => {
     // Given / When
     const result = await report(runLando3Shadow(base), "lando3-shadow");
@@ -184,7 +207,7 @@ describe("lando3 shadow", () => {
     {
       location: { runningBasename: "bun", candidate: { kind: "found", path: "/bin/lando" } },
       runtimeStatus: "skipped",
-      context: { reason: "not-running-as-lando4" },
+      context: { reason: "not-running-as-lando" },
     },
     {
       location: { runningBasename: "lando4", candidate: { kind: "missing" } },

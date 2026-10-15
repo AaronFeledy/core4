@@ -1,0 +1,280 @@
+---
+id: wordpress-vite
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, wordpress, php, node, vite, hmr]
+---
+
+# Run Vite HMR with the WordPress recipe
+
+Add a `node:22` service beside WordPress, proxy it on `vite.<app>.lndo.site`, and load theme assets from Vite during local development.
+
+Prerequisite: a running, installed WordPress app from [Run the WordPress recipe](wordpress-workflow.mdx), with WordPress 6.5 or newer. The examples use app name `wp-vite`, the default `lndo.site` domain, and WordPress files at the app root.
+
+## Add Node and npm tooling
+
+Merge a `node` service and `npm` tooling into `.lando.yml`:
+
+```yaml
+services:
+  node:
+    type: "node:22"
+    port: 5173
+    primary: false
+    routes:
+      - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+tooling:
+  npm:
+    cmds:
+      - npm
+    description: "Run npm inside the node service."
+    service: node
+```
+
+Then:
+
+```sh
+lando start
+lando info
+```
+
+`lando info` lists routes for both `appserver` (`https://wp-vite.lndo.site`) and `node` (`https://vite.wp-vite.lndo.site`). The Node service stays idle until you run Vite; its route cannot serve assets yet. `port: 5173` declares the internal HTTP endpoint, not a host port binding.
+
+Use the actual HTTPS URLs from `lando info`. The examples below assume port 443. Lando can use fallback ports, including 8080 for HTTP and 8443 for HTTPS. If info shows `:8443`, include it in both origins below and set `hmr.clientPort` to `8443`; keep the internal `server.port` at `5173`.
+
+## Scaffold a Vite theme
+
+Create the theme directory from the app root:
+
+```sh
+mkdir -p wp-content/themes/vite-theme/src
+```
+
+Save this as `wp-content/themes/vite-theme/style.css` so WordPress recognizes the theme:
+
+```css
+/*
+Theme Name: Vite Theme
+*/
+```
+
+Save this minimal classic-theme template as `wp-content/themes/vite-theme/index.php`. The `wp_head()` and `wp_footer()` calls let WordPress print the enqueued assets:
+
+```php
+<!doctype html>
+<html <?php language_attributes(); ?>>
+<head>
+	<meta charset="<?php bloginfo( 'charset' ); ?>">
+	<?php wp_head(); ?>
+</head>
+<body <?php body_class(); ?>>
+	<?php wp_body_open(); ?>
+	<p class="vite-banner">Waiting for Vite.</p>
+	<?php wp_footer(); ?>
+</body>
+</html>
+```
+
+Save the following files inside that theme directory. This example targets Vite 6; use the latest patched 6.x release allowed by the package range.
+
+```json
+{
+  "name": "vite-theme",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
+```
+
+Save that JSON as `package.json`.
+
+```js
+// vite.config.js
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  root: '.',
+  base: './',
+  publicDir: false,
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    manifest: true,
+    modulePreload: { polyfill: false },
+    rollupOptions: {
+      input: 'src/main.js',
+    },
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    allowedHosts: ['vite.wp-vite.lndo.site'],
+    origin: 'https://vite.wp-vite.lndo.site',
+    cors: { origin: 'https://wp-vite.lndo.site' },
+    hmr: {
+      host: 'vite.wp-vite.lndo.site',
+      protocol: 'wss',
+      clientPort: 443,
+    },
+  },
+});
+```
+
+Swap `wp-vite` for your app name and adjust the domain if you've changed it. `cors.origin` is the WordPress origin, not the Vite origin. Vite's default CORS policy does not allow this cross-origin module load. Keep an explicit origin and hostname allowlist, not `true`.
+
+Lando's proxy terminates HTTPS and forwards HTTP and WebSocket upgrades to Node on `5173`. Vite therefore listens on `0.0.0.0` without `server.https`; the browser connects using `wss` on the proxy's HTTPS port. `strictPort` prevents Vite from silently moving away from the declared endpoint. The relative `base` keeps built asset URLs inside the theme's `dist` directory.
+
+```js
+// src/main.js
+import './main.css';
+
+const banner = document.querySelector('.vite-banner');
+if (banner) {
+  banner.textContent = 'Vite entry loaded.';
+}
+```
+
+```css
+/* src/main.css */
+.vite-banner {
+  color: #0b5fff;
+  font-weight: 700;
+}
+```
+
+Install from the theme directory inside `node`:
+
+```sh
+lando npm --prefix wp-content/themes/vite-theme install
+lando npm --prefix wp-content/themes/vite-theme --version
+lando exec node -- node --version
+```
+
+## Enqueue Vite in development
+
+Point the theme at the Vite origin while you develop. Use the HTTPS URL `lando info` prints for `node` (include the port when info shows one):
+
+```php
+<?php
+declare(strict_types=1);
+
+const VITE_THEME_DEV = true;
+const VITE_THEME_ORIGIN = 'https://vite.wp-vite.lndo.site';
+
+add_action( 'wp_enqueue_scripts', static function (): void {
+	if ( VITE_THEME_DEV ) {
+		wp_enqueue_script_module( 'vite-client', VITE_THEME_ORIGIN . '/@vite/client', array(), null );
+		wp_enqueue_script_module( 'vite-theme-main', VITE_THEME_ORIGIN . '/src/main.js', array(), null );
+		return;
+	}
+
+	$manifest_path = get_stylesheet_directory() . '/dist/.vite/manifest.json';
+	if ( ! file_exists( $manifest_path ) ) {
+		return;
+	}
+	$manifest = json_decode( (string) file_get_contents( $manifest_path ), true );
+	$entry    = $manifest['src/main.js'] ?? null;
+	if ( ! is_array( $entry ) ) {
+		return;
+	}
+	if ( ! empty( $entry['css'] ) && is_array( $entry['css'] ) ) {
+		foreach ( $entry['css'] as $index => $css_file ) {
+			wp_enqueue_style(
+				'vite-theme-' . $index,
+				get_stylesheet_directory_uri() . '/dist/' . ltrim( (string) $css_file, '/' ),
+				array(),
+				null
+			);
+		}
+	}
+	if ( ! empty( $entry['file'] ) ) {
+		wp_enqueue_script_module(
+			'vite-theme-main',
+			get_stylesheet_directory_uri() . '/dist/' . ltrim( (string) $entry['file'], '/' ),
+			array(),
+			null
+		);
+	}
+} );
+
+```
+
+Save this as `functions.php`. `wp_enqueue_script_module()` emits `type="module"` in development and production and requires WordPress 6.5+. No `script_loader_tag` filter is needed.
+
+Activate the theme:
+
+```sh
+lando wp theme activate vite-theme
+```
+
+## Run the Vite dev server
+
+```sh
+lando npm --prefix wp-content/themes/vite-theme run dev
+```
+
+Leave that running. Open the WordPress HTTPS URL from `lando info`. The page should load `@vite/client` and `src/main.js` from `vite.wp-vite.lndo.site`, and the banner text should flip to `Vite entry loaded.` That text proves the entry ran, not that the HMR socket connected. In browser developer tools, confirm a WebSocket connection to the Vite hostname using `wss` and status `101`.
+
+Edit `src/main.css` to see a CSS hot update without a full reload. This plain JavaScript entry does not accept HMR updates, so edits to `src/main.js` trigger a full page reload. If file changes aren't detected on a mounted filesystem, try `server.watch: { usePolling: true }`; polling uses more CPU.
+
+Confirm the Vite origin serves the entry:
+
+```sh
+curl -fsS https://vite.wp-vite.lndo.site/src/main.js
+curl -fsS -o /dev/null https://vite.wp-vite.lndo.site/@vite/client
+```
+
+## Build for production
+
+The build empties the theme's `dist` directory. Keep only generated assets there.
+
+```sh
+lando npm --prefix wp-content/themes/vite-theme run build
+```
+
+That writes `dist/.vite/manifest.json` plus hashed assets under `dist/assets/`. Set `VITE_THEME_DEV` to `false` so WordPress enqueues the built files from the theme directory instead of the Vite origin. Stop the dev server with Ctrl+C, reload WordPress, and confirm the browser loads the JavaScript and CSS from `/wp-content/themes/vite-theme/dist/assets/` without requests to the Vite hostname.
+
+The manifest reader covers this single-entry example. If you add code splitting, also follow each manifest entry's `imports` recursively and enqueue those chunks' CSS, as described in [Vite's backend integration guide](https://v6.vite.dev/guide/backend-integration).
+
+## Check the Landofile
+
+```sh
+lando app:config:lint
+lando app:config --format=json
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="wordpress-vite" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"wordpress\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"npm\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Continue configuring the app
+
+- [Run the WordPress recipe](wordpress-workflow.mdx)
+- [Add Node.js](../services/node.mdx)
+- [Route shorthand](../proxy/route-shorthand.mdx)

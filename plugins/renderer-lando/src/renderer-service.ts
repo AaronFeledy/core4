@@ -36,7 +36,7 @@ const makeMessageContract = (io: RendererIO) => {
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
       const line = renderPlainLine(event);
-      if (line !== null) output.writeStdout(`${line}\n`);
+      if (line !== null) output.writeStderr(`${line}\n`);
     });
   return {
     info: (body: string): Effect.Effect<void> =>
@@ -79,5 +79,5 @@ export const makeLandoService = (
 export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
     const line = renderPlainLine(event);
-    if (line !== null) io.writeStdout(`${line}\n`);
+    if (line !== null) io.writeStderr(`${line}\n`);
   });

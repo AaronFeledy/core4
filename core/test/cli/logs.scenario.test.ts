@@ -634,7 +634,11 @@ describe("lando logs", () => {
       StreamFrameSink.of({
         emit: (frame) =>
           Effect.sync(() => {
-            emitted.push(frame);
+            emitted.push({
+              _tag: frame._tag,
+              chunk: typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk),
+              ...(frame.service === undefined ? {} : { service: frame.service }),
+            });
           }),
       }),
     );

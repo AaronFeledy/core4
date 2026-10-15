@@ -14,6 +14,19 @@ export interface ShellCommandOptions {
   readonly argv?: ReadonlyArray<string>;
 }
 
+/** Options for running a host script file through `ShellRunner.runScript`. */
+export interface ShellScriptOptions extends ShellCommandOptions {
+  /**
+   * How the script reaches the host terminal. Omitted, the script's stdin is ignored.
+   * `stdin` inherits Lando's stdin descriptor (pipe, file, or terminal) and still captures
+   * and streams output. `terminal` inherits stdin, stdout, and stderr, so the script owns
+   * the terminal and its output is not captured.
+   */
+  readonly hostIo?: "stdin" | "terminal";
+  /** Aborting kills the script process. */
+  readonly signal?: AbortSignal;
+}
+
 export interface ProcessSpawnOptions {
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
@@ -21,6 +34,16 @@ export interface ProcessSpawnOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
   readonly stdinStream?: AsyncIterable<Uint8Array>;
+  /**
+   * Give the child this process's own stdin descriptor (terminal, pipe or file)
+   * instead of a runner-written pipe. Only applies without stdin or stdinStream.
+   */
+  readonly inheritStdin?: boolean;
+  /**
+   * Let the child write straight to this process's stdout and stderr. The runner then
+   * captures and streams nothing for them.
+   */
+  readonly inheritOutput?: boolean;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   /** Hide a child console window on Windows. Defaults to true; ignored on other platforms. */
@@ -100,7 +123,7 @@ export class ShellRunner extends Context.Service<
     ) => Effect.Effect<ProcessResult, ShellExecError>;
     readonly runScript: (
       path: string,
-      options?: ShellCommandOptions,
+      options?: ShellScriptOptions,
     ) => Effect.Effect<ProcessResult, ShellExecError>;
     readonly interactive: (
       spec: ShellInteractiveSpec,

@@ -91,7 +91,7 @@ export interface ToolingInvocation {
   readonly tty?: boolean;
   /** Attached output-terminal facts, independent from PTY allocation intent. */
   readonly hostTerminal?: HostTerminal;
-  /** Re-iterable host keyboard input; each container step acquires its own reader. */
+  /** Re-iterable host stdin, keyboard or piped bytes, attached with or without a PTY; each container step acquires its own reader. */
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   /** Attached terminal resize events, forwarded to each container PTY. */
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;

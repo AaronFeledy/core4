@@ -41,7 +41,7 @@ export const legacyLoadFailure = Effect.fnUntraced(function* (
         appRoot: source.appRoot,
         sourceFile: source.sourceFile,
         message: `Canonical Landofile ${source.sourceFile} contains Lando 3 configuration; native loading accepts only v4.`,
-        remediation: "Run `lando4 app:config:translate --from lando3 --write`.",
+        remediation: "Run `lando app:config:translate --from lando3 --write`.",
       }),
     );
   if (source.validCanonicalFile !== undefined)
@@ -51,7 +51,7 @@ export const legacyLoadFailure = Effect.fnUntraced(function* (
         canonicalFile: source.validCanonicalFile,
         conflictingLayer: source.sourceFile,
         message: `Lando 3 layer ${relative(source.appRoot, source.sourceFile)} conflicts with v4 canonical Landofile ${source.validCanonicalFile}.`,
-        remediation: `Run \`lando4 app:config:translate --from lando3 --file ${relative(source.appRoot, source.sourceFile)} --write\`.`,
+        remediation: `Run \`lando app:config:translate --from lando3 --file ${relative(source.appRoot, source.sourceFile)} --write\`.`,
       }),
     );
   return yield* Effect.fail(original);

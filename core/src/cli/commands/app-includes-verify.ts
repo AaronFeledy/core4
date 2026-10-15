@@ -18,7 +18,7 @@ import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } 
 import type { StateStore } from "@lando/sdk/services";
 
 import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { rejectComposeKeys, rejectComposeTags } from "@lando/landofile/compose/rejections";
+import { rejectComposeKeys } from "@lando/landofile/compose/rejections";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import type {
   IncludeVerifyReport,
@@ -27,6 +27,7 @@ import type {
 } from "@lando/landofile/includes";
 import { parseLandofile } from "@lando/landofile/parser";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
+import { decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
 
 export type {
   IncludeVerifyEntry,
@@ -117,11 +118,11 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
         cause,
       }),
   });
-  const checkedContent = yield* rejectComposeTags(filePath, content);
-  const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
+  const parsed = yield* parseLandofile({ file: filePath, content, cwd: appRoot });
   const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
   yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error", errors: "all" });
+  const overlay = yield* decodeLandofileLayer(filePath, checkedParsed);
+  const decoded = decodeLandofile(mergeLandofiles([overlay]), { onExcessProperty: "error", errors: "all" });
   if (decoded._tag === "Failure") {
     const issues = validationIssuesFromCause(decoded.failure);
     return yield* Effect.fail(

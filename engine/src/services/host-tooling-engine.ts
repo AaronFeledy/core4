@@ -13,6 +13,7 @@ import {
   type RuntimeProviderShape,
   type ShellCommandOptions,
   type ShellRunner,
+  type ShellScriptOptions,
   ToolingEngine,
   type ToolingEngineResult,
   type ToolingHostStep,
@@ -231,7 +232,7 @@ export const resolveScriptPath = (
 export const runHostScript = Effect.fn("ShellRunner.runHostScript")(function* (
   scriptPath: string,
   permittedRoots: ReadonlyArray<string>,
-  options?: ShellCommandOptions,
+  options?: ShellScriptOptions,
 ) {
   const privateFileAccess = yield* PrivateFileAccessService;
   const resolved = yield* resolveScriptPath(scriptPath, permittedRoots);

@@ -126,10 +126,10 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    // Then: the task tree is painted before the final human result.
-    expect(io.stdout()).toContain("▼ Starting");
-    expect(io.stdout()).toContain("[app:start:web] start: web");
-    expect(io.stdout().endsWith("ready\n")).toBe(true);
+    // Then: narration stays on stderr and stdout contains only the final result.
+    expect(io.stderr()).toContain("▼ Starting");
+    expect(io.stderr()).toContain("[app:start:web] start: web");
+    expect(io.stdout()).toBe("ready\n");
   });
 
   test("plain event rendering keeps tooling output flat", async () => {
@@ -183,7 +183,8 @@ describe("runWithRendererHandling", () => {
         formatError: () => "should not happen",
       },
     );
-    expect(io.stdout()).toBe("[tooling:composer:appserver] installing\n");
+    expect(io.stderr()).toBe("[tooling:composer:appserver] installing\n");
+    expect(io.stdout()).toBe("");
   });
 
   test("json consumes notify.desktop without enabling unrelated event rendering", async () => {
@@ -449,10 +450,10 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual([
+    expect(io.stderrLines()).toEqual([
       "⚠ Deprecated command app:old (used 2 times): Use app:up instead. Replacement: app:up.",
-      "ok",
     ]);
+    expect(io.stdout()).toBe("ok\n");
   });
 
   test("emits severity info deprecations as an end-of-run summary line", async () => {
@@ -471,7 +472,8 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stderrLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stdout()).toBe("");
   });
 
   test("suppresses only renderer warning output when requested", async () => {
@@ -493,10 +495,8 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual([
-      "ℹ Deprecated surfaces used: config-key legacy.key (1 use).",
-      "summary=2",
-    ]);
+    expect(io.stderrLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stdout()).toBe("summary=2\n");
   });
 
   test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {

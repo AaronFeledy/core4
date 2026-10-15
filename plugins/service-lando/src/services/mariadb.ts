@@ -1,4 +1,5 @@
 import { sha256Hex } from "@lando/sdk/digest";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 
 import { Effect, Schema } from "effect";
 
@@ -76,7 +77,7 @@ const mariadbCreds = (
     ...(service.environment === undefined ? {} : { environment: service.environment }),
     defaults: {
       user: "lando",
-      password: "lando",
+      password: DEFAULT_PASSWORD,
       database: appName,
       rootPassword: defaultRootPassword(appName, serviceName),
     },

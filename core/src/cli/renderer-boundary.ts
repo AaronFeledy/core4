@@ -1,4 +1,16 @@
-import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Result, Schema, Tracer } from "effect";
+import {
+  Cause,
+  Clock,
+  Effect,
+  ErrorReporter,
+  Exit,
+  Layer,
+  References,
+  Result,
+  Schema,
+  Scope,
+  Tracer,
+} from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
@@ -21,6 +33,7 @@ import {
   runCommandLifecycle,
   withCommandEventService,
 } from "./command-lifecycle";
+import { FinishCommandProgress, finishCommandProgress } from "./command-progress";
 import { type CommandTraceCapture, formatCommandTrace } from "./command-tracer";
 import { withCommandTracing } from "./command-tracing";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
@@ -223,7 +236,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
-  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format).pipe(
+  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format, io).pipe(
     Layer.provide(
       Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
     ),
@@ -333,10 +346,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
               ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
             });
-      if (invocation !== undefined) {
-        // Terminal subscribers publish to the command-scoped renderer before its scope closes.
-        yield* Effect.yieldNow;
-      }
+      yield* finishCommandProgress();
       resultExit = commandExit;
       const renderSpan = yield* renderStage.start;
       return yield* withStageParent(renderCommandExit(commandExit), renderSpan);
@@ -403,10 +413,18 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }
     }
-    const executeWithEventConsumer =
-      eventConsumerLayer === undefined
-        ? executeCommand
-        : executeCommand.pipe(Effect.provide(eventConsumerLayer));
+    const executeWithEventConsumer = Effect.scoped(
+      Effect.gen(function* () {
+        if (eventConsumerLayer === undefined) return yield* executeCommand;
+        const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
+        const consumerContext = yield* Layer.buildWithScope(eventConsumerLayer, consumerScope);
+        const finish = yield* Effect.cached(Scope.close(consumerScope, Exit.void));
+        return yield* executeCommand.pipe(
+          Effect.provide(consumerContext),
+          Effect.provideService(FinishCommandProgress, finish),
+        );
+      }),
+    );
     // Build the command runtime in its own memo map. Effect 4 otherwise reuses the
     // diagnostic fallback's `RedactionService.layer`, bound to the env-only secret
     // store, and secrets from the runtime's own store would render unredacted.

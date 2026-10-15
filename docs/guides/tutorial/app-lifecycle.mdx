@@ -141,12 +141,12 @@ lando apps:poweroff
 
 The same loop, end to end, against the default `lando` provider. `start`
 reports the app ready, `info` shows both services `running`, `stop` names what
-it stopped, and nothing lands on stderr along the way:
+it stopped. Results stay on stdout; progress goes to stderr:
 
   <Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
-      <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: "" }} />
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
     </Step>
     <Step name="inspect">
       <Verify command="lando info" expect={{ stdout: { regex: "(^|\\n)app\\trunning\\t[\\s\\S]*\\ndb\\trunning\\t" }, stderr: "" }} />

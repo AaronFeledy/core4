@@ -4,6 +4,9 @@ import { AGENT_SOCKET_CONTAINER_DIR, type AppPlan, type ServicePlan } from "@lan
 import { fingerprintPlannedPublishPorts } from "../plan.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
+// Private SSH sidecar protocol: the optional POSIX host socket bind endpoint.
+const SSH_SIDECAR_HOST_SOCKET_DIRECTORY = "/ssh-auth";
+
 export type BringUpRecreateReason = "publish-port" | "bind-source" | "network";
 
 export interface BringUpInspectSnapshot {
@@ -65,8 +68,21 @@ export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspec
   const source = sourceLookup(inspected.bindSources);
   for (const target of Object.values(AGENT_SOCKET_CONTAINER_DIR)) {
     const agentMount = service.mounts.find((mount) => mount.target === target);
-    const agentSource = agentMount === undefined ? undefined : `${agentMount.type}:${agentMount.source}`;
+    // Global sidecars declare socket volumes as storage; app overlays use mounts.
+    const agentStorage = service.storage.find((mount) => mount.target === target);
+    const agentSource =
+      agentMount !== undefined
+        ? `${agentMount.type}:${agentMount.source}`
+        : agentStorage === undefined
+          ? undefined
+          : `volume:${agentStorage.store}`;
     if (agentSource !== source(target)) return true;
+  }
+  if (service.storage.some((mount) => mount.target === AGENT_SOCKET_CONTAINER_DIR.ssh)) {
+    const hostSocketMount = service.mounts.find(
+      (mount) => mount.target === SSH_SIDECAR_HOST_SOCKET_DIRECTORY,
+    );
+    if (hostSocketMount?.source !== source(SSH_SIDECAR_HOST_SOCKET_DIRECTORY)) return true;
   }
   const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
   if (socketTarget === undefined) return false;

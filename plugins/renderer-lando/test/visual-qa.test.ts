@@ -296,7 +296,8 @@ describe("undecorated machine-mode regression fixtures", () => {
   test("plain non-TTY fallback emits no ANSI and no panel framing", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, [...events, warn("runtime bundle checksum is using a placeholder")]);
-    const out = io.stdout();
+    const out = io.stderr();
+    expect(io.stdout()).toBe("");
     expect(out).not.toContain(ESC);
     expect(out).not.toContain("LANDO OPS");
     expect(out).not.toContain("╭─");
@@ -315,8 +316,10 @@ describe("undecorated machine-mode regression fixtures", () => {
         program.pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), LandoEventService.layer))),
       ),
     );
-    expect(io.stdout()).not.toContain(ESC);
-    expect(io.stdout()).not.toContain("╭─");
+    expect(io.stderr()).not.toContain(ESC);
+    expect(io.stderr()).not.toContain("╭─");
+    expect(io.stderr()).toContain("complete");
+    expect(io.stdout()).toBe("");
   });
 });
 

@@ -77,6 +77,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   SecretStoreContribution: "sdk/test/schema/plugin-secret-stores.test.ts",
   DeprecationNotice: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DeprecationUse: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LayerMergeRule: "sdk/test/schema/landofile-merge-rules.test.ts",
   LandofileExpressionParseError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileExpressionForbiddenError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileExpressionEvalError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

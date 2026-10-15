@@ -3,9 +3,9 @@
  *
  * Ownership itself stays the four-condition predicate in `./record.ts`. This
  * module adds the one extra operation policy destructive commands need — the
- * target must carry Lando 4's own executable name — and it resolves the target
+ * target must carry a Lando executable name — and it resolves the target
  * from the install record instead of from the running process, so a foreign
- * `lando` can never be renamed, replaced, or deleted.
+ * executable can never be renamed, replaced, or deleted without matching proof.
  */
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
@@ -16,8 +16,10 @@ import { Effect, Result, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { type InstallRecord, decodeInstallRecord, installRecordOwnsDestination } from "./record";
 
-const LANDO4_POSIX_EXECUTABLE_NAME = "lando4";
-const LANDO4_WINDOWS_EXECUTABLE_NAME = "lando4.exe";
+// Earlier persisted install records used lando4. Keep those copies manageable
+// while every new install publishes the canonical lando command.
+const POSIX_EXECUTABLE_NAMES = new Set(["lando", "lando4"]);
+const WINDOWS_EXECUTABLE_NAMES = new Set(["lando.exe", "lando4.exe"]);
 
 // Windows paths must split on both separators even when this runs on a POSIX
 // host, so a win32 verdict does not depend on which machine evaluates it.
@@ -25,10 +27,10 @@ const executableName = (path: string, platform: string): string =>
   platform === "win32" ? (path.split(/[\\/]/u).pop() ?? path) : basename(path);
 
 /** Windows compares case-insensitively; every other host requires the exact name. */
-export const isLando4ExecutableName = (path: string, platform: string): boolean =>
+export const isLandoExecutableName = (path: string, platform: string): boolean =>
   platform === "win32"
-    ? executableName(path, platform).toLowerCase() === LANDO4_WINDOWS_EXECUTABLE_NAME
-    : executableName(path, platform) === LANDO4_POSIX_EXECUTABLE_NAME;
+    ? WINDOWS_EXECUTABLE_NAMES.has(executableName(path, platform).toLowerCase())
+    : POSIX_EXECUTABLE_NAMES.has(executableName(path, platform));
 
 const INSTALL_OWNERSHIP_REMEDIATION =
   "Lando 4 replaces and removes only the executable recorded in its own install record. Rerun the Lando 4 installer to repair the record, or update through the package manager that installed this copy. Lando never adopts an executable it did not install.";
@@ -125,7 +127,7 @@ const inspect = (
       ),
     );
   }
-  if (!isLando4ExecutableName(destination, platform)) {
+  if (!isLandoExecutableName(destination, platform)) {
     return Result.fail(
       refuse(
         "foreign-basename",

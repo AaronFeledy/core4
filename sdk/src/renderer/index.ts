@@ -21,7 +21,7 @@ export * from "./format.ts";
 
 export {
   RENDERER_CAPABILITIES_NONE,
-  RENDERER_CAPABILITIES_TTY_INITIAL,
+  RENDERER_CAPABILITIES_TTY,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
   RendererCapabilities,
   type RendererCapabilities as RendererCapabilitiesType,
@@ -77,6 +77,10 @@ export {
 export interface RendererIO {
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
+  /** Raw stdout bytes for redirected binary live frames. Omitted writers fall back to UTF-8 text. */
+  readonly writeStdoutBytes?: (chunk: Uint8Array) => void;
+  /** Raw stderr bytes for redirected binary live frames. Omitted writers fall back to UTF-8 text. */
+  readonly writeStderrBytes?: (chunk: Uint8Array) => void;
   /** Raw stdout stream patched by the capture-stdout substrate; undefined degrades to line mode. */
   readonly externalOutputStream?: NodeJS.WriteStream;
   /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */

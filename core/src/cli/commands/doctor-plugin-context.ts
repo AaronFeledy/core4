@@ -1,6 +1,6 @@
 import { realpath, stat } from "node:fs/promises";
 import { basename, join, posix, win32 } from "node:path";
-import { isLando4ExecutableName } from "@lando/engine/install/owned-executable";
+import { isLandoExecutableName } from "@lando/engine/install/owned-executable";
 import * as EngineLandofileServiceLayer from "@lando/engine/services/landofile-live";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import * as ManagedFileTransactionGuardLayer from "@lando/managed-file/transaction-guard";
@@ -82,9 +82,10 @@ export const makeDoctorExecutableLocator = (options: {
   const windows = options.platform === "win32";
   const rawBasename = windows ? win32.basename(options.execPath) : basename(options.execPath);
   const runningBasename =
-    isLando4ExecutableName(options.execPath, options.platform) ||
-    (windows && rawBasename.toLowerCase() === "lando4")
-      ? "lando4"
+    windows &&
+    (isLandoExecutableName(options.execPath, options.platform) ||
+      ["lando", "lando4"].includes(rawBasename.toLowerCase()))
+      ? rawBasename.toLowerCase().replace(/\.exe$/u, "")
       : rawBasename;
   const envValue = (key: string) =>
     windows

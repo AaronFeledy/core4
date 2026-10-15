@@ -28,7 +28,7 @@ lando app:cache:refresh
 lando build
 ```
 
-The script prints `built dist/ from src/` inside Lando's task tree and `lando build` exits with the script's own exit code.
+The script prints `built dist/ from src/` and `lando build` exits with the script's own exit code.
 
 ## Write the front matter
 
@@ -101,6 +101,28 @@ Lando reads its own global flags, such as `--format` and `--verbose`, anywhere o
 ```sh
 lando stamp -- --format=json
 ```
+
+## Feed a script stdin
+
+Pipe or redirect into the command and the script reads it to the end. Save this as `.lando/scripts/count.bun.sh`:
+
+```sh
+# ---
+# desc: Count the lines on stdin
+# ---
+wc -l
+```
+
+```sh
+printf 'a\nb\nc\n' | lando count
+lando count < src/index.html
+```
+
+The first prints `3`. Commands inside the script share that input, so a `seed` script can take `lando seed < dump.sql` and hand the dump to whatever client it runs.
+
+Run it from a terminal with nothing piped in and the script gets your terminal: keyboard, screen, and all. Prompts, colors, a nested `lando psql`, or anything else that expects a terminal works the way it does when you type the command yourself. Ctrl+C stops the script and `lando` exits `130`.
+
+With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not. A script that waits for typed input reads end of input instead of hanging your agent or CI job.
 
 ## Capture output as JSON or YAML
 
@@ -226,7 +248,7 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
 
 ## Declare a host task in the Landofile
 
-A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Lando prints the collected output when the task body finishes. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Lando prints the collected output on stdout when the task body finishes, and its task progress on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
 
 ```yaml
 name: host-task-demo
@@ -264,12 +286,12 @@ lando stamp abc1234
     <Step name="stamp">
       <Run command="lando stamp abc1234" />
       <Verify file="scripts-demo/dist/version.txt" expect={{ regex: "abc1234" }} />
-      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "stamped dist/version.txt with abc1234" } }} />
+      <Verify command="lando stamp abc1234" expect={{ stdout: "stamped dist/version.txt with abc1234\n" }} />
     </Step>
     <Step name="env-init">
       <Run command="lando app:env:init" />
       <Verify file="scripts-demo/.env" expect={{ regex: "APP_ENV=local" }} />
-      <Verify command="lando app:env:init --format=json" expect={{ stdout: { regex: "already exists, leaving it alone" } }} />
+      <Verify command="lando app:env:init" expect={{ stdout: ".env already exists, leaving it alone\n" }} />
     </Step>
     <Step name="capture">
       <Run command="lando stamp abc1234 --format=json" />

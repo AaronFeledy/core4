@@ -76,7 +76,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:share` | `share` | `app` | Start tunnel; `--target`, `--provider`, `--detach`, `--format json` |
 | `app:share:list` | none | `app` | List tunnel sessions |
 | `app:share:stop` | none | `app` | Stop a detached tunnel session |
-| `app:ssh` | `ssh` | `app` | `app:exec` with `--interactive --tty` defaults |
+| `app:ssh` | `ssh` | `app` | Login shell (`sh -l`) or supplied command in a service; stdin and PTY follow the command-wide host-stdin rule |
 | `app:start` | `start` | `app` | Start current app |
 | `app:stop` | `stop` | `app` | Stop current app |
 | `apps:init` | `init` | `plugins` | Scaffold an app (§8.8) |
@@ -134,6 +134,7 @@ Command-wide rules:
 - `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
+- For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and its end MUST close the command's stdin in every output format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML result formats disable PTYs and keyboard attachment, and `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, for `app:ssh` with terminal stdin, and for `apps:scratch:run` and tooling with terminal stdin and stdout. A `.bun.sh` script runs on the host, so piped input reaches it by inheriting Lando's stdin descriptor instead of a forwarded copy; a keyboard-attached script inherits Lando's stdin, stdout, and stderr and owns the terminal, so its output reaches the user's terminal directly and is neither captured nor redacted. Keyboard-attached tooling does not render its task tree, and in human-result formats `apps:scratch:run` retires its acquisition progress before the tool starts (§8.9.2). In human-result formats, when stdout is not a terminal, the stdout of tooling, `apps:scratch:run`, and `.bun.sh` script tasks MUST carry only the tool's output, subject to redaction; task trees and acquisition progress go to stderr (§8.9.1). Machine formats follow §8.11. Interrupting the CLI process MUST stop the tool or script; an interrupted script reports exit status 130, like interrupted container tooling. Dispatched event, MCP, and library command invocations MUST NOT consume process stdin.
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
 - `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched. Stopping the managed runtime service before its recorded runtime directory is removed follows §5.8.1.
 - `--clear` is universal and purges relevant caches.
@@ -264,7 +265,7 @@ Source mode and the compiled `$bunfs` binary share one registry and `runCli` dis
 - Canonical ids and aliases are colon-form tokens. Compatibility normalization is limited to `apps scratch run`; `scratch <start|stop|destroy|list|info|logs|gc|run>`; `meta recipes` and `recipes` with `list|describe|validate`; `share <list|stop>`; `meta global` and `global` with `config|destroy|info|install|list|logs|rebuild|restart|start|status|stop|uninstall`; global config `set|unset|edit|validate`; `app includes <update|verify>`; and `app config` with `translate|lint|set|unset|edit|validate`. Unsupported `apps list` and `app start` remain unknown.
 - Level-`none` files MUST NOT import OCLIF, heavy Effect graphs, `@lando/sdk`, renderers, or plugins (§1.2).
 - `@lando/core/oclif` is not exported; embedding uses `@lando/core/cli` (§16.2).
-- `SIGINT` interrupts the active Effect fiber and finalizes scoped resources.
+- `SIGINT` interrupts the active Effect fiber and finalizes scoped resources. A foreground tool or script MAY instead be cancelled through an abort signal and report its conventional exit status, and while a keyboard-attached container PTY owns the terminal, Ctrl+C reaches that PTY rather than Lando.
 
 The historical OCLIF manifest is replaced by the registry-derived embedded manifest plus `plugin-command` and `app-command` indexes (§12.1). Router bootstrap MUST NOT parse Landofiles, resolve includes, contact plugin sources, import command modules, or initialize providers.
 
@@ -334,6 +335,8 @@ Tooling adds invocation-time scopes `task.name`, `task.subnamespace`, `task.comm
 #### 8.5.7 Events as tasks
 
 Landofile `events:` accepts the same step types as `cmds` and adds decoded `.event` payload context. Event-triggered tasks execute directly and MUST NOT register router commands. The valid event set MUST be extended from fully resolved tooling before validation, including `pre-restart`, `post-restart`, and `pre-<tool>`/`post-<tool>`.
+
+Each `events.<name>` step list replaces its inherited list wholesale across layers; a step's `service` is an execution target, not a merge identity (§7.2).
 
 Host-wide steps live in `<userConfRoot>/config.yml` under `hostEvents`, never in `GlobalConfig.events` (delivery policy) and never in the global-app Landofile. Env overlays MUST drop any path whose first segment is `hostEvents`. The ten supported names are pre/post `start`, `stop`, `restart`, `rebuild`, and `destroy`. Restart and rebuild nest the same stop/start (or destroy/start) trees as project events. v1 steps are a string, `{cmd, service?}` (`:host` allowed), or `{command}`; `task`, `defer`, `for`, `env`, `flags`, `args`, `dir`, `user`, and unknown fields fail at load. Container (non-`:host`) steps in `pre-start`, `post-stop`, and `post-destroy` fail at load and MUST name `config.yml hostEvents.<event>[i]`. A `command:` step that resolves to a lifecycle command id also fails at load.
 
@@ -596,7 +599,9 @@ The Effect service tag `Renderer` has `id`, current `RendererCapabilities`, `ren
 
 Named renderer contracts include `Renderer`, `RendererCapabilities`, `RenderEvent`, `ImmediateLine`, and `RenderError`.
 
-Capabilities default false. The default TTY renderer starts with `interactive` and `animation` true and MAY monotonically promote `color` and `notifications` once after a nonblocking substrate probe. Callers MUST reread capabilities at use time; pre-promotion events are not replayed. Degraded, non-TTY, `plain`, and `json` runs expose no interactive capabilities; TTY `verbose` exposes color only. Third-party renderers MUST use immutable capability snapshots and monotonic promotion.
+The default `lando` renderer MUST publish a fixed immutable capability snapshot synchronously at construction: `RENDERER_CAPABILITIES_TTY` (all four fields true) when `RendererIO.isTTY` is true, otherwise `RENDERER_CAPABILITIES_NONE` (all four false). Capability resolution MUST NOT import OpenTUI, probe the substrate or terminal, delay first output, or keep the process alive after command completion. OpenTUI presentation failure falls back to line mode (§8.9.3) without changing this snapshot. `plain` and `json` expose all four fields false; TTY `verbose` exposes color only.
+
+Third-party renderers MUST use immutable capability snapshots and MAY replace them only by monotonic promotion. Callers MUST reread capabilities at use time to support those renderers; events dropped before promotion MUST NOT be replayed. Third-party capability resolution MUST NOT delay first output or process exit.
 
 Built-in `RenderEvent` names are:
 
@@ -609,7 +614,7 @@ Built-in `RenderEvent` names are:
 
 `task.tree.start` identifies parent, label, children, and optional layout mode. `task.detail` identifies task, stdout/stderr stream, and line. Detail expand/collapse are renderer input events, not caller output events.
 
-The default renderer is plugin `@lando/renderer-lando`, id `lando`. Core fallbacks are `json`, `plain`, and `verbose`. Selection precedence is `--renderer` → `LANDO_RENDERER` → global `renderer:` → TTY/CI detection, choosing `json` for non-TTY/CI and `lando` otherwise. Typed messages and schemas are published from `@lando/sdk`.
+The default renderer is plugin `@lando/renderer-lando`, id `lando`. Core fallbacks are `json`, `plain`, and `verbose`. Selection precedence MUST be `--renderer` → `LANDO_RENDERER` → global `renderer:` → default `lando`, including non-TTY and CI. The `lando` renderer MUST degrade to line mode when stdout is not a terminal. Typed messages and schemas are published from `@lando/sdk`.
 
 #### 8.9.1 First-paint contract
 
@@ -624,13 +629,15 @@ Renderers MUST meet §2.1 policy:
 | Completion | Final line within 50 ms of terminal event |
 | Level `none` | Direct native output; `Renderer` is not involved |
 
-The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. JSON emits exactly one stdout result and structured stderr events, with a first stderr event inside the meaningful-line budget.
+The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. Narration from `lando` line mode, `plain`, and `verbose`, including every `message.*` contract, MUST go to stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. The TTY live region MAY paint on stdout only when `RendererIO.isTTY` and `externalOutputStream` are set; it MUST commit interleaved output through journal scrollback. §8.9.7 notification controls MAY also target terminal stdout. JSON emits exactly one stdout result and structured stderr events, with a first stderr event inside the meaningful-line budget.
 
 #### 8.9.2 Concurrent task tree contract
 
 `task.tree.start`/`complete` bracket concurrent children. TTY renderers show parent/child state, recent per-task `task.detail`, success/failure summaries, focus navigation, and Enter/Escape expand/collapse. Expanded full-tail view uses persisted §6.13.6/§12.4 transcripts and MUST preserve cancellation and restore the tree. It remains available after completion. Renderers publish `task.detail.expand` and `task.detail.collapse` through `EventService`.
 
-Non-TTY mode emits stable-prefixed detail lines and tree summaries with no input or alt screen. `json` emits structured task events on stderr. `plain` emits only completion/failure summaries. Publishers redact `task.detail`; local transcript full-tail is not exported to telemetry, guide transcripts, or JSON. Ctrl+C MUST interrupt every in-flight child and MUST NOT be swallowed in expanded view.
+A command that hands the terminal to a foreground child partway through an invocation (`apps:scratch:run`) first retires that invocation's event-rendering consumer and waits for it: delivered events render in order, the open tree paints as a final static frame, and renderer input, the live region, and output interception are released before the child's first byte or keystroke. The handoff is one-way; later events in that invocation are not repainted, and the `Renderer` output service stays usable for the child's raw output.
+
+In human-result formats, `lando` line mode MUST emit stable-prefixed detail lines and tree summaries on stderr, without input handling or an alternate screen. `json` emits structured task events on stderr. `plain` MUST emit flat renderable event lines on stderr; tooling uses detail-only task events, without tree lifecycle lines. `verbose` MUST emit human lines and full event payloads on stderr; framed JSON streams carry events as §8.11.3 event frames instead. All renderer `message.*` narration MUST use stderr, except that an attached TTY live region commits it into stdout scrollback. Publishers redact `task.detail`; local transcript full-tail is not exported to telemetry, guide transcripts, or JSON. Ctrl+C MUST interrupt every in-flight child and MUST NOT be swallowed in expanded view.
 
 #### 8.9.3 Default renderer implementation contract
 
@@ -640,7 +647,7 @@ Non-TTY mode emits stable-prefixed detail lines and tree summaries with no input
 - Core, level-`none`, pre-renderer, non-TTY, `plain`, and `json` paths MUST NOT load it.
 - Renderer tests MAY statically import `@opentui/core/testing`.
 
-Initialization failure MUST degrade to non-TTY line mode with a debug notice and MUST NOT fail the command or contaminate machine output. Task trees use the substrate's pinned split-footer live region, atomic frames, native scrollback, resize replay, and alt-screen transition. Animation runs only while needed and is capped at 30 fps. Prompt chrome uses the same substrate without changing `InteractionService` contracts. Headless frame snapshots cover task transitions, all prompt types, narrow terminals, and resize.
+Initialization failure MUST degrade to non-TTY line mode with a debug notice and MUST NOT fail the command or contaminate machine output. Task trees paint inline at the cursor with atomic frames, native scrollback, and resize replay; OpenTUI is acquired lazily for the expanded full-tail view on the alternate screen, and retirement (§8.9.2) leaves the final inline frame static. Animation runs only while needed and is capped at 30 fps. Prompt chrome uses the same substrate without changing `InteractionService` contracts. Headless frame snapshots cover task transitions, all prompt types, narrow terminals, and resize.
 
 #### 8.9.4 Rich render events
 
@@ -685,13 +692,15 @@ The closed action vocabulary and defaults are frozen; global `keymap:` overrides
 | `viewer.quit` | viewer | `q` |
 | `keymap.help` | keymap overlay | `question-mark` |
 
-Published schemas are `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, and `KeymapConfig`. Chords use canonical lowercase modifier order `ctrl+`, `alt+`, `shift+` and a closed key vocabulary. Each action has a bounded unique chord list. Malformed bindings fail ordinary `ConfigError`. `ctrl+c` is permanently reserved for `Effect.interrupt` and cannot be bound, disabled, or shadowed.
+Published schemas are `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, and `KeymapConfig`. Chords use canonical lowercase modifier order `ctrl+`, `alt+`, `shift+` and a closed key vocabulary. Each action has a bounded unique chord list. Malformed bindings fail ordinary `ConfigError`. While the renderer owns keyboard input, `ctrl+c` is permanently reserved for `Effect.interrupt` and cannot be bound, disabled, or shadowed.
 
 Same-surface chord collisions fail after schema decode with `KeymapConflictError`, carrying `_tag: "KeymapConflictError"`, `surface`, `chord`, sorted `actions`, `message`, and `remediation`. Cross-surface reuse is valid. Plugins cannot add actions. Non-TTY binds nothing.
 
 #### 8.9.7 Desktop notifications
 
-`NotifyDesktopEvent` (`notify.desktop`) carries nonempty `title`, optional `body`, and optional urgency `info|success|failure`. Publishers MUST redact content. The renderer sanitizes line/control and bidi characters, normalizes Unicode NFC, drops empty results, and realizes notifications only when current `RendererCapabilities.notifications` is true. JSON passes the structured event; plain/non-TTY drops it. Lando MUST NOT hand-frame terminal notification protocols.
+`NotifyDesktopEvent` (`notify.desktop`) carries nonempty `title`, optional `body`, and optional urgency `info|success|failure`. Publishers MUST redact content. The renderer sanitizes line/control and bidi characters, normalizes Unicode NFC, drops empty results, and realizes notifications only when current `RendererCapabilities.notifications` is true. JSON passes the structured event; plain/non-TTY drops it.
+
+The default TTY renderer MUST emit sanitized OSC 99 frames through `RendererIO` without importing OpenTUI, constructing a `CliRenderer`, querying the terminal, or waiting for a terminal response. Its `notifications` capability declares an available emission path, not detected terminal support; unsupported terminals ignore the frames. Notification presentation MUST NOT depend on OpenTUI availability.
 
 Bundled plugin `@lando/notify-lando` owns policy through `NotifyConfig` at global `notify:` with `enabled` default true, `thresholdMs` default 15000, and bounded additional canonical `commands`. The default eligible family is ordered: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. Config ids validate against the cwd-independent global registry, then deduplicate in first-occurrence order. Unknown ids return `ConfigError`.
 

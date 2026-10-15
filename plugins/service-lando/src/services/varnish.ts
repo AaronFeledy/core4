@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
+import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
@@ -76,14 +76,6 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setUser(service.user ?? "root");
 
   const vclSource = vclOverrideBindSource(service, ctx.appRoot);
-  if (vclSource !== undefined) {
-    ctx.addMount({
-      type: "bind",
-      source: vclSource,
-      target: PortablePath.make(VCL_TARGET),
-      readOnly: true,
-    });
-  }
 
   if (service.command === undefined && service.entrypoint === undefined) {
     ctx.setEntrypoint(["/bin/sh", "-c"]);

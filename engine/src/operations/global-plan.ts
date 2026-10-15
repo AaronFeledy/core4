@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 
 import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { type LandofileDecodedOverlay, decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
   type AppPlan,
   type LandofileShape,
@@ -71,7 +71,10 @@ export const decodeGlobalLandofile = (input: {
   readonly content: string;
   readonly cwd: string;
 }): Effect.Effect<LandofileShape, LandofileParseError | LandofileValidationError> =>
-  parseLandofile(input).pipe(Effect.flatMap((parsed) => validateGlobalLandofile(input.file, parsed)));
+  parseLandofile(input).pipe(
+    Effect.flatMap((parsed) => decodeLandofileLayer(input.file, parsed)),
+    Effect.flatMap((overlay) => validateGlobalLandofile(input.file, mergeLandofiles([overlay]))),
+  );
 
 const withProcessCwd = <A, E, R>(
   cwd: string,
@@ -106,12 +109,16 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   const exists = yield* fileSystem.exists(paths.distLandofile);
   if (!exists) return { materialized: false, paths };
 
-  const layers: LandofileShape[] = [];
+  const layers: LandofileDecodedOverlay[] = [];
   for (const basename of [...DEFAULT_PRE_LANDOFILES, DEFAULT_LANDOFILE, ...DEFAULT_POST_LANDOFILES]) {
     const file = join(paths.root, basename);
     if (!(yield* fileSystem.exists(file))) continue;
     const content = yield* fileSystem.readText(file);
-    layers.push(yield* decodeGlobalLandofile({ file, content, cwd: paths.root }));
+    layers.push(
+      yield* parseLandofile({ file, content, cwd: paths.root }).pipe(
+        Effect.flatMap((parsed) => decodeLandofileLayer(file, parsed)),
+      ),
+    );
   }
   const landofile = yield* validateGlobalLandofile(paths.userLandofile, {
     ...mergeLandofiles(layers),

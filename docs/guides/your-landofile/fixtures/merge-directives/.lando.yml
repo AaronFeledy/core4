@@ -1,0 +1,10 @@
+name: merge-directives
+services:
+  web:
+    type: nginx
+    environment:
+      APP_ENV: dev
+      DEBUG: "true"
+    routes:
+      - web.a.test
+      - web.b.test

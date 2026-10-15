@@ -14,6 +14,41 @@ const plan = (input: unknown) =>
     planner.plan(Schema.decodeUnknownSync(LandofileShape)(input), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
 
+for (const fixture of [
+  { name: "absent", service: {}, expected: ["web.routes-app.lndo.site"] },
+  { name: "empty service", service: { routes: [] }, expected: [] },
+  { name: "empty proxy", service: {}, proxy: { web: [] }, expected: [] },
+  { name: "unrelated proxy", service: {}, proxy: {}, expected: ["web.routes-app.lndo.site"] },
+  { name: "authored service", service: { routes: ["service.test"] }, expected: ["service.test"] },
+  { name: "authored proxy", service: {}, proxy: { web: ["proxy.test"] }, expected: ["proxy.test"] },
+  {
+    name: "empty service with proxy",
+    service: { routes: [] },
+    proxy: { web: ["proxy.test"] },
+    expected: ["proxy.test"],
+  },
+  {
+    name: "service with empty proxy",
+    service: { routes: ["service.test"] },
+    proxy: { web: [] },
+    expected: ["service.test"],
+  },
+]) {
+  test(`plans only the intended routes when declarations are ${fixture.name}`, async () => {
+    // Given
+    const input = {
+      name: "routes-app",
+      services: { web: { type: "nginx", ...fixture.service } },
+      ...("proxy" in fixture ? { proxy: fixture.proxy } : {}),
+    };
+    // When
+    const result = await Effect.runPromise(plan(input));
+    // Then
+    expect(result.routes.map(({ hostname }) => hostname)).toEqual(fixture.expected);
+    expect(result.services[ServiceName.make("web")]?.routes).toHaveLength(fixture.expected.length);
+  });
+}
+
 test("preserves distinct paths when routes share a host", async () => {
   // Given
   const input = {
