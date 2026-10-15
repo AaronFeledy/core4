@@ -19,6 +19,8 @@ services:
 
 Add `framework:` when you want FastAPI, Django, or Flask defaults for port and env. Keep-alive still runs until you set `command:` or serve with `lando exec`.
 
+Python publishes its port endpoint but has no default healthcheck, including for authored worker commands. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+
 ```yaml
 name: python-fastapi
 services:

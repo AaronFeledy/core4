@@ -106,6 +106,9 @@ export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
 export * from "./json-schema.ts";
 export * from "./json-schema-editor.ts";
 export * from "./landofile.ts";
+export * from "./landofile-directive.ts";
+export * from "./landofile-overlay.ts";
+export { override, reset } from "../landofile/merge-directives.ts";
 export * from "./landofile-authoring-expression.ts";
 export * from "./landofile-authoring.ts";
 export * from "./landofile-reference.ts";
@@ -146,3 +149,9 @@ export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
 export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
+export {
+  LayerMergeRule,
+  SchemaLayerMergeAnnotationId,
+  layerMerge,
+  getLayerMergeRule,
+} from "./layer-merge.ts";

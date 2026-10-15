@@ -74,14 +74,13 @@ describe("Compose disposition matrix", () => {
     ]);
   });
 
-  test("rejects Compose layer override tags with merge remediation", () => {
+  test("normalizes Compose layer override tags through native layer merging", () => {
     expect(Object.keys(composeTagDispositions).sort()).toEqual(["!override", "!reset"]);
 
     for (const entry of Object.values(composeTagDispositions)) {
-      expect(entry.disposition).toBe("rejected");
+      expect(entry.disposition).toBe("normalized");
       expect(entry.rationale.length).toBeGreaterThan(0);
-      expect(entry.remediation?.length).toBeGreaterThan(0);
-      expect(entry.remediation).toContain("merge");
+      expect(entry.remediation).toBeUndefined();
     }
   });
 

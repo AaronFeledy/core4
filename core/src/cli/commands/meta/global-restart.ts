@@ -45,6 +45,11 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(function* (
         yield* Effect.result(router.revalidateStartup);
         return yield* Effect.fail(error);
       }),
+      ServiceNotReadyError: Effect.fnUntraced(function* (error) {
+        const router = yield* RouterService;
+        yield* Effect.result(router.revalidateStartup);
+        return yield* Effect.fail(error);
+      }),
     }),
   );
   // The router is the reason this command is prescribed as a recovery step,

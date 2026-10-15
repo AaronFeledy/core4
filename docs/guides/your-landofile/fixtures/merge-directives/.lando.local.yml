@@ -1,0 +1,6 @@
+services:
+  web:
+    environment:
+      DEBUG: !reset
+    routes: !override
+      - web.local.test

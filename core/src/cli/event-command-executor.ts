@@ -3,6 +3,7 @@ import { Cause, Context, Effect, Layer } from "effect";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
@@ -190,6 +191,7 @@ export const makeEventCommandExecutor = (
                 format: "text",
                 columns: undefined,
                 isTTY: outputRenderer.capabilities.interactive,
+                proxyDefaultDomain: yield* resolveProxyDefaultDomain,
                 env: process.env,
               });
               if (rendered !== undefined && rendered.length > 0) {

@@ -83,6 +83,10 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
+Layer merging matches routes by the same scheme, case-insensitive hostname, and path-prefix identity used for conflict detection, regardless of spelling. Omitted scheme means HTTPS and omitted path prefix means `/`. Backend ports do not change that identity. `both` participates in both schemes; overlaying only HTTPS keeps the inherited HTTP entry.
+
+Route identities with template expressions match by their literal text, including case. An untouched `both` route stays authored as one entry; a matched entry splits into its scheme parts.
+
 ## Choose a catalog service's endpoints
 
 Name an endpoint when a route should target it explicitly:
@@ -120,7 +124,7 @@ This does not change what the daemon listens on or disable its healthcheck.
 Keep endpoint ports aligned with the daemon's configuration. Routes must target
 an HTTP or HTTPS endpoint that remains in the list; Lando won't restore a default
 endpoint to satisfy a route. Normal Landofile layer merging still happens first,
-including merging named endpoint entries by name.
+including merging endpoint entries by exact name when every entry on both sides is named.
 
 ## Choose which overlapping route wins
 
@@ -223,7 +227,7 @@ A `pathPrefix` route matches the path and forwards it unchanged. Your service se
 
 `name` on a filter is not an HTTP header name. It is how Lando matches filters across Landofile layers (`.lando.yml`, `.lando.local.yml`, and friends) when it merges them.
 
-- A named filter in an overlay replaces the base filter with the same `name`. Nothing is duplicated.
+- A named filter in an overlay merges with the base filter with the same `name`. Changing its type replaces the matched entry instead.
 - An unnamed filter matches an unnamed base filter with the same `type`.
 - Named and unnamed filters never match each other.
 - Filters that match nothing are appended.
@@ -250,6 +254,7 @@ with this overlay:
 # .lando.local.yml
 routes:
   - hostname: api.lndo.site
+    pathPrefix: /v1
     filters:
       - name: strip-v1
         type: stripPrefix
@@ -265,7 +270,7 @@ To clear every inherited filter on a matching route, set `filters: []` in the hi
 
 ## Check what merged
 
-`lando app:config` prints the merged Landofile, shorthand strings verbatim and object routes with their filters. `lando app:config:lint` rejects a malformed shorthand and names the exact list entry:
+`lando app:config` prints the merged Landofile. A shorthand route keeps its string spelling unless a higher layer matched it, which turns it into an object route; a matched `both` route shows as separate `http` and `https` entries. `lando app:config:lint` rejects a malformed shorthand and names the exact list entry:
 
 ```sh
 lando app:config --format=json

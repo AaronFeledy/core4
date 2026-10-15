@@ -26,3 +26,18 @@ test("preserves Landofile extension slots and descriptions in the editor project
     expect.stringMatching(/^#\/definitions\//),
   );
 });
+
+test("publishes native merge directive tags without widening Landofile fields", () => {
+  // Given the Landofile editor projection.
+  const artifact = getEditorJsonSchema("LandofileShape");
+
+  // Then the informational tag registry names both directives and every YAML node kind.
+  for (const tag of ["!override", "!reset"])
+    expect(artifact).toHaveProperty(["x-lando-yaml-tags", tag, "kinds"], ["scalar", "sequence", "mapping"]);
+  expect(getEditorJsonSchema("GlobalConfig")).not.toHaveProperty("x-lando-yaml-tags");
+  // And no field schema admits the internal directive brand or wire envelope.
+  const text = JSON.stringify({ ...artifact, "x-lando-yaml-tags": undefined });
+  expect(text).not.toContain("LandofileReset");
+  expect(text).not.toContain("LandofileOverride");
+  expect(text).not.toContain("merge-directive");
+});

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 
 import { cancellableTerminalStdin } from "../../src/cli/commands/terminal-stdin";
 
@@ -19,6 +20,57 @@ class TerminalInput extends EventEmitter {
 }
 
 describe("cancellable terminal stdin", () => {
+  test("a fresh iteration completes immediately when the input has already ended", async () => {
+    // Given
+    const input = new PassThrough();
+    const stream = cancellableTerminalStdin(input);
+    const first = stream[Symbol.asyncIterator]();
+    const pending = first.next();
+    input.end();
+    await pending;
+    // When
+    const second = stream[Symbol.asyncIterator]();
+    const result = await second.next();
+    // Then
+    expect(result.done).toBe(true);
+    expect(input.listenerCount("data")).toBe(0);
+    expect(input.listenerCount("end")).toBe(0);
+    expect(input.listenerCount("error")).toBe(0);
+  });
+
+  test("delivers chunks queued before end, then reports end of input", async () => {
+    // Given
+    const input = new TerminalInput();
+    const iterator = cancellableTerminalStdin(input)[Symbol.asyncIterator]();
+    const pending = iterator.next();
+    input.emit("data", bytes("first"));
+    input.emit("data", bytes("last"));
+    // When
+    input.emit("end");
+    // Then
+    expect(await pending).toEqual({ done: false, value: bytes("first") });
+    expect(await iterator.next()).toEqual({ done: false, value: bytes("last") });
+    expect(await iterator.next()).toEqual({ done: true, value: undefined });
+  });
+
+  test("a later reader resumes input that an earlier reader paused on return", async () => {
+    // Given
+    const input = new PassThrough();
+    const stream = cancellableTerminalStdin(input);
+    const first = stream[Symbol.asyncIterator]();
+    const firstRead = first.next();
+    input.write("step-one");
+    await firstRead;
+    await first.return?.();
+    // When
+    const second = stream[Symbol.asyncIterator]();
+    const secondRead = second.next();
+    input.write("step-two");
+    // Then
+    expect(await secondRead).toEqual({ done: false, value: Buffer.from("step-two") });
+    await second.return?.();
+  });
+
   test("return releases a pending read without another keypress and removes listeners", async () => {
     const input = new TerminalInput();
     const iterator = cancellableTerminalStdin(input)[Symbol.asyncIterator]();

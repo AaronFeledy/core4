@@ -250,8 +250,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             serviceName: name,
             certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
             hostnames: pinnedService.hostnames ?? [],
-            routes,
-            defaultRouteHostname: routes.length === 0 ? `${name}.${appSlug}.${defaultDomain}` : undefined,
+            routes: routes ?? [],
+            defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
             resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
             fileSystem,
           })

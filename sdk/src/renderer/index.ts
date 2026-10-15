@@ -21,7 +21,7 @@ export * from "./format.ts";
 
 export {
   RENDERER_CAPABILITIES_NONE,
-  RENDERER_CAPABILITIES_TTY_INITIAL,
+  RENDERER_CAPABILITIES_TTY,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
   RendererCapabilities,
   type RendererCapabilities as RendererCapabilitiesType,

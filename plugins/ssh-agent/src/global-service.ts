@@ -27,13 +27,16 @@ export const createSshAgentServiceConfig = (paths = makeLandoPaths()): ServiceCo
     type: "compose",
     appMount: false,
     image: "alpine:3.20",
+    // Bake the tools into the image so sidecar starts never need the network.
+    build: {
+      artifact: [{ run: "apk add --no-cache openssh-client socat", user: "root" }],
+    },
     // The sidecar keeps no per-user state, so there is no home to persist.
     home: false,
     command: [
       "sh",
       "-c",
       [
-        "apk add --no-cache openssh-client socat",
         ...(publishesHostSocket ? [`mkdir -p ${SSH_AGENT_HOST_DIRECTORY}`] : []),
         `chmod 755 ${SSH_AGENT_DIRECTORY}`,
         `rm -f ${SSH_AGENT_SOCKET} /tmp/ssh-agent.sock${publishesHostSocket ? ` ${SSH_AGENT_HOST_SOCKET}` : ""}`,

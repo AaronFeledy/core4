@@ -272,6 +272,7 @@ describe("setup persistence", () => {
     // Given: a Traefik proxy whose global service ensureRunning succeeds.
     const files = new Map<string, string>();
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

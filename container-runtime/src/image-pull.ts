@@ -13,6 +13,9 @@ import { redactDetails, redactString, withApiReason } from "./redact.ts";
 const REGISTRY_AUTH_REMEDIATION =
   "The container engine may be using stale registry credentials from ${XDG_RUNTIME_DIR}/containers/auth.json, $REGISTRY_AUTH_FILE, $DOCKER_CONFIG, or ~/.docker/config.json. Run `podman logout --all` or `docker logout`, or remove the stale `auths` entry for the affected registry, then retry the pull.";
 
+const REGISTRY_PULL_REMEDIATION =
+  "Check the image reference, the container engine's registry policy, registry availability, and network access, then retry the pull.";
+
 const REGISTRY_AUTH_FAILURE_SIGNATURES = [
   "unauthorized",
   "authentication required",
@@ -151,6 +154,7 @@ type PullFailureInput = {
 
 const pullFailureFields = (input: PullFailureInput) => {
   const failureKind = classifyPullFailure(input.message);
+  const signature = input.signature ?? classifyPullFailureSignature(input.message);
   return {
     providerId: input.ctx.providerId,
     operation: "pullArtifact",
@@ -169,7 +173,12 @@ const pullFailureFields = (input: PullFailureInput) => {
             ...(input.signature === undefined ? {} : { signature: input.signature }),
           },
     ),
-    remediation: failureKind === "registry-auth" ? REGISTRY_AUTH_REMEDIATION : input.ctx.remediation,
+    remediation:
+      failureKind === "registry-auth"
+        ? REGISTRY_AUTH_REMEDIATION
+        : signature !== "unknown" || /\bregistry\b/iu.test(input.message)
+          ? REGISTRY_PULL_REMEDIATION
+          : input.ctx.remediation,
     ...(input.cause === undefined ? {} : { cause: input.cause }),
   };
 };
@@ -194,12 +203,14 @@ const pullFailureFromTransport = (
   error: ProviderUnavailableError | ProviderInternalError,
 ): ProviderUnavailableError | ProviderInternalError => {
   const status = httpStatusOf(error.details);
+  // Reclassified HTTP failures keep the transport cause, not generic runtime-repair advice.
+  const cause = status === undefined ? error : error.cause;
   const input = {
     ctx,
     reference,
     message: status === undefined ? error.message : withApiReason(`HTTP ${status}.`, error.details),
     ...(status === undefined ? {} : { details: error.details }),
-    cause: error,
+    ...(cause === undefined ? {} : { cause }),
   };
   return error instanceof ProviderInternalError
     ? new ProviderInternalError(pullFailureFields(input))

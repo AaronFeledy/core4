@@ -4,6 +4,9 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import type { Baseline } from "../../../scripts/bench-startup-baseline.ts";
+import { TTY_OVERHEAD_COMMAND, summarizeTtyOverhead } from "../../../scripts/bench-tty-renderer-overhead.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const benchScript = resolve(repoRoot, "scripts/bench-opentui-startup.ts");
 const trackedBaseline = resolve(repoRoot, "scripts/bench-baselines.json");
@@ -12,14 +15,12 @@ const writeFakeBinary = async (dir: string): Promise<string> => {
   const path = join(dir, "fake-lando");
   await writeFile(
     path,
-    [
-      "#!/usr/bin/env bash",
-      "set -euo pipefail",
-      'sleep "${LANDO_FAKE_FIRST_OUTPUT_SECONDS:-0.001}"',
-      "printf 'fake startup output\\n'",
-      'sleep "${LANDO_FAKE_EXIT_SECONDS:-0.001}"',
-      "",
-    ].join("\n"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == "version --renderer=lando" ]] && test -t 1; then sleep "\${LANDO_FAKE_TTY_SECONDS:-0.001}"; fi
+sleep "\${LANDO_FAKE_FIRST_OUTPUT_SECONDS:-0.001}"
+printf 'fake startup output\\n'
+sleep "\${LANDO_FAKE_EXIT_SECONDS:-0.001}"\n`,
   );
   await chmod(path, 0o755);
   return path;
@@ -27,11 +28,8 @@ const writeFakeBinary = async (dir: string): Promise<string> => {
 
 const writeBaseline = async (
   dir: string,
-  openTuiStartup?: {
-    readonly runs: number;
-    readonly startupBudgetMs: number;
-    readonly firstOutputBudgetMs: number;
-  },
+  openTuiStartup?: Pick<Baseline, "runs" | "startupBudgetMs" | "firstOutputBudgetMs">,
+  ttyRendererOverhead: unknown = { runs: 2, overheadBudgetMs: 150 },
 ): Promise<string> => {
   const path = join(dir, "bench-baselines.json");
   await writeFile(
@@ -46,6 +44,7 @@ const writeBaseline = async (
               command: ["--version"],
               ...openTuiStartup,
             },
+            ttyRendererOverhead,
           },
       null,
       2,
@@ -74,6 +73,67 @@ const runBench = async (
 };
 
 describe("bench-opentui-startup", () => {
+  test("compares median samples at the inclusive overhead budget and ignores one outlier", () => {
+    const samples = { piped: [10, 40, 20, 30], tty: [100, 900, 170, 160] };
+    expect(summarizeTtyOverhead({ ...samples, overheadBudgetMs: 150 })).toEqual({
+      ok: true,
+      pipedMedianMs: 25,
+      ttyMedianMs: 165,
+      overheadMs: 140,
+      overheadBudgetMs: 150,
+    });
+    expect(summarizeTtyOverhead({ ...samples, overheadBudgetMs: 140 }).ok).toBe(true);
+    expect(summarizeTtyOverhead({ ...samples, overheadBudgetMs: 139 }).ok).toBe(false);
+  });
+
+  for (const [record, error] of [
+    [null, "ttyRendererOverhead baseline must be an object"],
+    [{ runs: 1.5, overheadBudgetMs: 150 }, "runs must be a positive integer"],
+    [{ runs: 2, overheadBudgetMs: 0 }, "overheadBudgetMs must be a positive number"],
+  ] as const) {
+    test(`rejects invalid TTY overhead baseline: ${error}`, async () => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-tty-baseline-"));
+      try {
+        const baseline = await writeBaseline(
+          dir,
+          { runs: 1, startupBudgetMs: 1000, firstOutputBudgetMs: 1000 },
+          record,
+        );
+        const result = await runBench(["--baseline", baseline]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain(error);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("fails for TTY-only process-exit latency on the full CLI command", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-tty-overhead-fail-"));
+    try {
+      const binary = await writeFakeBinary(dir);
+      const baseline = await writeBaseline(dir, {
+        runs: 2,
+        startupBudgetMs: 1000,
+        firstOutputBudgetMs: 1000,
+      });
+      const result = await runBench(["--binary", binary, "--baseline", baseline, "--json"], {
+        LANDO_FAKE_TTY_SECONDS: "0.350",
+      });
+      expect(result.exitCode).toBe(1);
+      const summary = JSON.parse(result.stderr);
+      expect(summary.ttyRendererOverhead).toMatchObject({
+        ok: false,
+        command: TTY_OVERHEAD_COMMAND,
+        runs: 2,
+        overheadBudgetMs: 150,
+      });
+      expect(summary.ttyRendererOverhead.overheadMs).toBeGreaterThan(150);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("tracked baseline pins the canonical OpenTUI startup gate", async () => {
     const parsed: unknown = await Bun.file(trackedBaseline).json();
     expect(parsed).toMatchObject({
@@ -85,6 +145,7 @@ describe("bench-opentui-startup", () => {
         startupBudgetMs: 50,
         firstOutputBudgetMs: 50,
       },
+      ttyRendererOverhead: { runs: 20, overheadBudgetMs: 150 },
     });
   });
 
@@ -106,6 +167,7 @@ describe("bench-opentui-startup", () => {
       expect(result.stdout).toContain("samples: 2");
       expect(result.stdout).toContain("startup p95");
       expect(result.stdout).toContain("budget 1000ms");
+      expect(result.stdout).toContain("TTY renderer overhead passed");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
