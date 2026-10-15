@@ -30,7 +30,7 @@ files:
     template: true
 postInit:
   - type: message
-    text: Run 'lando start' inside the new app directory to bring Django up.
+    text: Run 'lando start' inside the new app directory to start the containers. Once Django is installed, run 'lando django runserver 0.0.0.0:8000' to serve the app.
 
 ${djangoSnapshotYaml}
 `;
