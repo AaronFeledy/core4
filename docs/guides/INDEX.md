@@ -143,6 +143,7 @@ the Beta guides above.
 | - | - | php service type (runtime + framework presets) | `docs/guides/services/php.mdx` | Shipped |
 | - | - | node service type | `docs/guides/services/node.mdx` | Shipped |
 | - | - | TypeScript toolchain on a Node service | `docs/guides/services/node-typescript.mdx` | Shipped |
+| - | - | compile PHP CMS theme assets with a Node sidecar | `docs/guides/services/node-theme-assets.mdx` | Shipped |
 | - | - | python service type | `docs/guides/services/python.mdx` | Shipped |
 | - | - | ruby service type | `docs/guides/services/ruby.mdx` | Shipped |
 | - | - | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |

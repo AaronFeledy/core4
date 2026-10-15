@@ -1,0 +1,27 @@
+name: drupal-theme-child
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    framework: drupal
+    webroot: web
+    composer: "2"
+    allowOverride: true
+    port: 80
+  node:
+    type: "node:22"
+    primary: false
+    endpoints: []
+tooling:
+  npm:
+    service: node
+    dir: /app/web/themes/custom/mytheme
+    description: Run npm inside the theme.
+    cmds:
+      - npm
+  npx:
+    service: node
+    dir: /app/web/themes/custom/mytheme
+    description: Run npx inside the theme.
+    cmds:
+      - npx
