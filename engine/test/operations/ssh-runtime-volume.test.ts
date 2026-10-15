@@ -72,44 +72,50 @@ const registry = (state: string, selected: string[]) => ({
   },
 });
 
-test("managed sidecar uses the plugin volume without host probing or worker services", async () => {
-  // Given
-  const selected: string[] = [];
-  let setups = 0;
-  const warnings: string[] = [];
-  // When
-  const session = await Effect.runPromise(
-    Effect.gen(function* () {
-      const events = yield* EventService;
-      const overlaid = yield* withStartedSshAgent(
-        plan,
-        app,
-        capabilities,
-        { mode: "sidecar" },
-        { use: Effect.succeed },
-      );
-      warnings.push(...(yield* events.query("message.warn")).map((event) => event.body));
-      return overlaid;
-    }).pipe(
-      Effect.provideService(SshService, {
-        ...ssh,
-        setup: () =>
-          Effect.sync(() => {
-            setups++;
-          }),
-      }),
-      Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
-      Effect.provideService(PathsService, makeLandoPaths({ platform: "darwin" })),
-      Effect.provide(LandoEventService.layer),
-      Effect.provide(PrivateFileAccessService.layer),
-    ),
-  );
-  // Then
-  expect(session.services[ServiceName.make("web")]?.environment.SSH_AUTH_SOCK).toBeDefined();
-  expect(setups).toBe(0);
-  expect(selected).toEqual(["lando"]);
-  expect(warnings).toEqual([]);
-});
+test.each(["win32", "linux", "darwin"] as const)(
+  "managed sidecar on %s uses the plugin volume without host probing or worker services",
+  async (platform) => {
+    // Given
+    const selected: string[] = [];
+    let setups = 0;
+    const warnings: string[] = [];
+    // When
+    const session = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        const overlaid = yield* withStartedSshAgent(
+          plan,
+          app,
+          capabilities,
+          { mode: "sidecar" },
+          { use: Effect.succeed },
+        );
+        warnings.push(...(yield* events.query("message.warn")).map((event) => event.body));
+        return overlaid;
+      }).pipe(
+        Effect.provideService(SshService, {
+          ...ssh,
+          setup: () =>
+            Effect.sync(() => {
+              setups++;
+            }),
+        }),
+        Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+        Effect.provideService(PathsService, makeLandoPaths({ platform })),
+        Effect.provide(LandoEventService.layer),
+        Effect.provide(PrivateFileAccessService.layer),
+      ),
+    );
+    // Then
+    expect(session.services[ServiceName.make("web")]?.environment.SSH_AUTH_SOCK).toBeDefined();
+    expect(session.services[ServiceName.make("web")]?.mounts).toContainEqual(
+      expect.objectContaining({ type: "volume", source: "plugin-owned-agent", readOnly: true }),
+    );
+    expect(setups).toBe(0);
+    expect(selected).toEqual(["lando"]);
+    expect(warnings).toEqual([]);
+  },
+);
 
 test("stopped sidecar warns and leaves the app without an overlay", async () => {
   // Given
