@@ -20,13 +20,11 @@ export const buildArgSecretReferenceError = (
   arg: string,
   value: string,
 ): BuildArgSecretReferenceError | undefined => {
-  const reference = firstSecretReference(value);
-  if (reference === undefined) return undefined;
+  if (firstSecretReference(value) === undefined) return undefined;
   return new BuildArgSecretReferenceError({
-    message: `Service ${service} build arg ${arg} uses ${reference}. Build args are recorded in image history.`,
+    message: `Service ${service} build arg ${arg} contains a secret reference. Build args are recorded in image history.`,
     service,
     arg,
-    reference,
     remediation:
       "Put the secret in a service environment value as ${secret:...} instead. Secret stores resolve environment at start, not during image build.",
   });

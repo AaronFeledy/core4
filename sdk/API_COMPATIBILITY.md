@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `@lando/sdk/errors` adds `BuildArgSecretReferenceError` (`message`, `service`, `arg`, `reference`, `remediation`) when a `${secret:...}` reference appears in service `build.args`. Classic image builds send those args through `/build?buildargs` and record them in image history. The tag belongs to `AppPlannerError`; start, rebuild, and other planner consumers inherit it. It registers no JSON Schema. `AppConfigApi.lint` stays on its narrower channel and reports the same rejection as a lint violation.
+- `@lando/sdk/errors` adds `BuildArgSecretReferenceError` (`message`, `service`, `arg`, `remediation`) when a `${secret:...}` reference appears in service `build.args`. Classic image builds send those args through `/build?buildargs` and record them in image history. The tag belongs to `AppPlannerError`; start, rebuild, and other planner consumers inherit it. The error names the service and arg key only; it does not carry the reference id or the arg value. It registers no JSON Schema. `AppConfigApi.lint` stays on its narrower channel and reports the same rejection as a lint violation.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.
 

@@ -36,6 +36,16 @@ describe("authored compose build args", () => {
     if (!Exit.isSuccess(exit)) throw new Error("Expected planning success");
   });
 
+  test("plans an escaped $${secret:...} build arg as a literal", async () => {
+    const exit = await planExit({
+      type: "lando",
+      build: { context: ".", args: { TOKEN: "$${secret:TOKEN}" } },
+    });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) throw new Error("Expected planning success");
+  });
+
   test("rejects an exact ${secret:...} in build.args before the build runs", async () => {
     const exit = await planExit({
       type: "lando",
@@ -50,25 +60,32 @@ describe("authored compose build args", () => {
       _tag: "BuildArgSecretReferenceError",
       service: "web",
       arg: "TOKEN",
-      reference: "${secret:TOKEN}",
     });
     if (error instanceof BuildArgSecretReferenceError) {
       expect(error.remediation).toContain("environment");
       expect(error.message).toContain("image history");
+      expect(error).not.toHaveProperty("reference");
     }
   });
 
-  test("rejects an embedded ${secret:...} in build.args", async () => {
+  test("rejects an embedded ${secret:...} in build.args without leaking the value", async () => {
     const exit = await planExit({
       type: "lando",
-      build: { context: ".", args: { TOKEN: "prefix-${secret:TOKEN}" } },
+      build: { context: ".", args: { TOKEN: "visible-leak-${secret:op://vault/item/field}" } },
     });
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("Expected planning failure");
-    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toMatchObject({
       _tag: "BuildArgSecretReferenceError",
-      reference: "${secret:TOKEN}",
+      service: "web",
+      arg: "TOKEN",
     });
+    if (error instanceof BuildArgSecretReferenceError) {
+      expect(error.message).not.toContain("visible-leak");
+      expect(error.message).not.toContain("op://");
+      expect(error.message).not.toContain("vault/item/field");
+    }
   });
 });

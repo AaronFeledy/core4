@@ -33,14 +33,29 @@ describe("build arg secret references", () => {
       _tag: "BuildArgSecretReferenceError",
       service: "web",
       arg: "TOKEN",
-      reference: "${secret:TOKEN}",
     });
     expect(embedded).toMatchObject({
       _tag: "BuildArgSecretReferenceError",
       arg: "TOKEN",
-      reference: "${secret:TOKEN}",
     });
     expect(firstBuildArgSecretReferenceError("web", { NODE_ENV: "production" })).toBeUndefined();
+    expect(firstBuildArgSecretReferenceError("web", { TOKEN: "$${secret:TOKEN}" })).toBeUndefined();
+  });
+
+  test("omits the arg value and reference id from the error message", () => {
+    const error = buildArgSecretReferenceError(
+      "web",
+      "TOKEN",
+      "visible-leak-${secret:op://Dev Vault/Stripe/credential}",
+    );
+
+    expect(error).toBeInstanceOf(BuildArgSecretReferenceError);
+    expect(error?.message).toContain("web");
+    expect(error?.message).toContain("TOKEN");
+    expect(error?.message).not.toContain("visible-leak");
+    expect(error?.message).not.toContain("op://");
+    expect(error?.message).not.toContain("Dev Vault");
+    expect(error).not.toHaveProperty("reference");
   });
 
   test("collects every secret-bearing build arg on a landofile", () => {
@@ -62,8 +77,8 @@ describe("build arg secret references", () => {
     });
 
     expect(buildArgSecretReferenceErrors(landofile)).toMatchObject([
-      { service: "web", arg: "TOKEN", reference: "${secret:TOKEN}" },
-      { service: "web", arg: "OTHER", reference: "${secret:OTHER}" },
+      { service: "web", arg: "TOKEN" },
+      { service: "web", arg: "OTHER" },
     ]);
   });
 });

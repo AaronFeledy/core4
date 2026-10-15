@@ -46,7 +46,6 @@ export class BuildArgSecretReferenceError extends Schema.TaggedError<BuildArgSec
     message: Schema.String,
     service: Schema.String,
     arg: Schema.String,
-    reference: Schema.String,
     remediation: Schema.String,
   },
 ) {}
