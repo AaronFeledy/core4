@@ -562,6 +562,14 @@ describe("provider data plane", () => {
         "dev.lando.volume-owner": "/canonical/app",
       },
     });
+    expect(requests[containerCreateIndex]?.body).toMatchObject({
+      Labels: {
+        "dev.lando.role": "ephemeral=data",
+        "dev.lando.app": "app-id",
+        "dev.lando.store": "data",
+        "dev.lando.provider": "test",
+      },
+    });
   });
 
   test("preserves colon targets in ephemeral API Mounts", async () => {
@@ -1237,10 +1245,64 @@ describe("provider data plane", () => {
       );
     } else {
       expect(result.failure.message).toContain(reason);
-      expect(result.failure.remediation).toContain("Remove that container first");
-      expect(result.failure.remediation).toContain("lando destroy");
-      expect(result.failure.remediation).toContain("lando doctor");
+      expect(result.failure.remediation).toContain("lando destroy --volumes");
+      expect(result.failure.remediation).toContain("cannot see these helpers");
+      expect(result.failure.remediation).not.toContain("lists leftovers");
     }
+  });
+
+  test("removeVolume sweeps a leftover data helper before deleting the volume", async () => {
+    const helpers = [
+      {
+        Id: "helper-1",
+        Names: ["/lando-test-data-aaaa"],
+        Labels: {
+          "dev.lando.role": "ephemeral=data",
+          "dev.lando.app": "app-id",
+          "dev.lando.provider": "test",
+        },
+        Mounts: [{ Name: "data" }],
+      },
+    ];
+    const removed: string[] = [];
+    const api: DataPlaneApiClient = {
+      request: (input) =>
+        Effect.sync(() => {
+          if (input.path === "/volumes/data" && input.method === "GET") {
+            return {
+              status: 200,
+              body: JSON.stringify({
+                Name: "data",
+                Labels: { "dev.lando.volume-instance": volumeGeneration },
+              }),
+            };
+          }
+          if (input.method === "GET" && input.path.startsWith("/containers/json?")) {
+            return { status: 200, body: JSON.stringify(helpers) };
+          }
+          if (input.method === "DELETE" && input.path.startsWith("/containers/")) {
+            removed.push(input.path);
+            helpers.splice(0, helpers.length);
+            return { status: 204, body: "" };
+          }
+          if (input.method === "DELETE" && input.path === "/volumes/data") {
+            return helpers.length === 0
+              ? { status: 204, body: "" }
+              : { status: 409, body: JSON.stringify({ message: "volume data is in use" }) };
+          }
+          return { status: 500, body: `unexpected ${input.method} ${input.path}` };
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    await Effect.runPromise(provider.removeVolume({ app: appId, store: "data" }, volumeGeneration));
+
+    expect(removed.some((path) => path.includes("helper-1"))).toBe(true);
   });
 
   test("allows restore only while the elected witness generation still matches", async () => {

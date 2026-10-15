@@ -1,6 +1,6 @@
 /**
- * Signal handling — bridge `SIGINT` (and `SIGTERM` where appropriate) to
- * `Effect.interrupt` on the running fiber.
+ * Signal handling. Bridge SIGINT, SIGTERM, SIGHUP on POSIX, and SIGBREAK on
+ * Windows, to `Effect.interrupt` on the running fiber.
  *
  * The native CLI dispatcher installs a signal handler that calls
  * `Effect.interrupt` on the running fiber. Providers' resource scopes
@@ -20,10 +20,15 @@ export interface InstallSignalHandlersOptions {
   readonly signals?: ReadonlyArray<NodeJS.Signals>;
 }
 
+export const defaultInterruptSignals = (
+  platform: NodeJS.Platform = process.platform,
+): ReadonlyArray<NodeJS.Signals> =>
+  platform === "win32" ? ["SIGINT", "SIGTERM", "SIGBREAK"] : ["SIGINT", "SIGTERM", "SIGHUP"];
+
 export const installSignalHandlers = Effect.fnUntraced(function* (
   options: InstallSignalHandlersOptions,
 ): Effect.fn.Return<void, never, Scope.Scope> {
-  const signals = Array.from(new Set(options.signals ?? ["SIGINT", "SIGTERM"]));
+  const signals = Array.from(new Set(options.signals ?? defaultInterruptSignals()));
   const interruptor = options.fiber.id;
   const handlers = signals.map((signal) => {
     const handler = () => {
