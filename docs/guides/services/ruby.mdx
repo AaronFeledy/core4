@@ -49,6 +49,8 @@ lando bundle install
 lando exec app -- bundle exec rails server -b 0.0.0.0
 ```
 
+Ruby publishes its port endpoint but has no default healthcheck, even with an authored `command:`. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+
 ## Pin a version
 
 Set `image:` to use the full (non-slim) or an alternate Ruby base image when

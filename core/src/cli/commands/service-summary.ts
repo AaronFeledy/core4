@@ -11,6 +11,8 @@ export const summaryToneFromTable = (
 export const START_STATUS_TONES = {
   running: "ok",
   ready: "ok",
+  completed: "ok",
+  restarting: "warn",
   starting: "pending",
   stopped: "skipped",
   unhealthy: "error",

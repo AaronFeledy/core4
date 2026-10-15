@@ -93,7 +93,7 @@ Add a Celery worker at init with `--answer=celery=true`:
 lando init --recipe django --name=django-celery --yes --answer=celery=true
 ```
 
-That service runs `celery -A app worker --loglevel=info`. Point Celery at your real app module before you start it.
+That service runs `celery -A app worker --loglevel=info` with `restart: unless-stopped`. Point Celery at your real app module. If the application or dependencies are missing, start warns about the worker and reports it as `restarting`; the worker retries and starts on its own after installation. Use `lando logs --service=worker` to check it. Python has no default healthcheck; author `healthcheck:` when your web service needs an application readiness gate.
 
 ## Connect Django to Postgres and Redis
 

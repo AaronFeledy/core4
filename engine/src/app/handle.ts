@@ -29,6 +29,7 @@ import { EventService, Renderer } from "@lando/sdk/services";
 import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { shouldRetainReadinessResources } from "../lifecycle/readiness-failure.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
 import { provideRuntime } from "../runtime/observability.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
@@ -98,7 +99,9 @@ export const makeAppHandle = (
         )
         .pipe(
           provide,
-          Effect.onError(() => lifecycle.discard(scope)),
+          Effect.onError((cause) =>
+            shouldRetainReadinessResources(cause) ? Effect.void : lifecycle.discard(scope),
+          ),
         );
     }, lifecycle.serialize),
     stop: (options?: StopAppOptions) =>
@@ -117,7 +120,9 @@ export const makeAppHandle = (
         })
         .pipe(
           provide,
-          Effect.onError(() => lifecycle.discard(scope)),
+          Effect.onError((cause) =>
+            shouldRetainReadinessResources(cause) ? Effect.void : lifecycle.discard(scope),
+          ),
         );
     }, lifecycle.serialize),
     rebuild: Effect.fn("App.rebuild")(function* (options?: RebuildAppOptions) {
@@ -134,7 +139,9 @@ export const makeAppHandle = (
         })
         .pipe(
           provide,
-          Effect.onError(() => lifecycle.discard(scope)),
+          Effect.onError((cause) =>
+            shouldRetainReadinessResources(cause) ? Effect.void : lifecycle.discard(scope),
+          ),
         );
     }, lifecycle.serialize),
     destroy: (options?: DestroyAppOptions) =>

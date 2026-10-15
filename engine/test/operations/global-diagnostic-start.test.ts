@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -60,6 +60,13 @@ for (const failBuild of [false, true]) {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
+      inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
+        TestRuntimeProvider.inspect(target).pipe(
+          Effect.map((runtime) => ({
+            ...runtime,
+            lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
+          })),
+        ),
       apply: (applied: AppPlan) =>
         applied.id === globalPlan.id
           ? runServiceStartSchedule(applied, {

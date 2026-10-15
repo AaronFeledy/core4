@@ -127,11 +127,9 @@ lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
 
 The recipe automatically shares host `vendor` between appserver and worker.
 You don't need manual `appMount.includes` overrides. The worker runs
-`php artisan queue:work` only after a Laravel application and its dependencies
-exist. If you started the services before installing Laravel, restart afterward:
+`php artisan queue:work` with `restart: unless-stopped`. Before Laravel and its dependencies exist, start warns about the worker and reports it as `restarting`. The worker retries automatically and starts on its own once installation finishes:
 
 ```sh
-lando restart
 lando logs --service=worker
 ```
 
