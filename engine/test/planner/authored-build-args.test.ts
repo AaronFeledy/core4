@@ -11,6 +11,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const APP_ROOT = process.cwd();
+const capabilities = { ...TestRuntimeProvider.capabilities, artifactBuild: true };
 const planExit = (service: typeof ServiceConfig.Encoded) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "build-arg-secret",
@@ -19,7 +20,7 @@ const planExit = (service: typeof ServiceConfig.Encoded) => {
   });
   return Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
+      planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), capabilities),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 };

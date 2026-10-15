@@ -29,7 +29,7 @@ test("reports a secret reference in compose build.args as a lint violation", asy
       "      context: .",
       "      args:",
       "        TOKEN: '${secret:TOKEN}'",
-      "        MIXED: prefix-${secret:OTHER}",
+      "        MIXED: 'prefix-${secret:OTHER}'",
       "",
     ].join("\n"),
     async (root) => {
