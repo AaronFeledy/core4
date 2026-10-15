@@ -127,11 +127,12 @@ const extractExtraTagFields = (
     const exitCode = record.exitCode;
     if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
   }
-  if (tag === "ServiceStartError" || tag === "ServiceExecError" || tag === "ServiceNotFoundError") {
+  const isStartupFailure = tag === "ServiceStartError" || tag === "ServiceNotReadyError";
+  if (isStartupFailure || tag === "ServiceExecError" || tag === "ServiceNotFoundError") {
     const service = asString(record.service);
     if (service !== undefined) out.push(["service", service]);
   }
-  if (tag === "ServiceStartError") {
+  if (isStartupFailure) {
     const logTail = formatServiceStartLogTail(record.logTail);
     if (logTail !== undefined) out.push([logTail.label, logTail.text]);
   }
@@ -205,7 +206,7 @@ const extractExtraTagFields = (
     "timestamp",
     ...out.map(([key]) => key),
     ...(tag === "LandofileEventStepFailedError" ? ["index", "outputTail", "service"] : []),
-    ...(tag === "ServiceStartError" ? ["logTail"] : []),
+    ...(isStartupFailure ? ["logTail"] : []),
   ]);
   const scalar = (value: unknown): value is string | number | boolean =>
     typeof value === "string" ||

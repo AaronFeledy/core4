@@ -546,6 +546,62 @@ describe.each(dialects)("%s frame parser", (_name, dialect) => {
 
 describe("pull failure handling", () => {
   test.each([
+    ["registry docker.io is blocked by policy", "generic", "Content-Length"],
+    ["unauthorized: authentication required", "registry-auth", "Content-Length"],
+    ["manifest unknown", "generic", "Content-Length"],
+    ["registry docker.io is blocked by policy", "generic", "chunked"],
+    ["unauthorized: authentication required", "registry-auth", "chunked"],
+    ["manifest unknown", "generic", "chunked"],
+  ] as const)(
+    "preserves HTTP 500 engine reason %s (%s, %s) from the socket wire",
+    async (reason, failureKind, framing) => {
+      // Given
+      const reference = "docker.io/library/alpine:3.20";
+      const engineReason = `${reason}: https://user:${unsafeText}@engine.internal`;
+
+      // When
+      const failure = await withClosingSocket(
+        (socketPath) =>
+          Effect.runPromise(
+            pullImage(makePodmanApiClient(socketPath, landoCtx), reference, {
+              ctx: landoCtx,
+              dialect: libpodPullDialect,
+            }).pipe(Effect.flip),
+          ),
+        (socket) =>
+          socket.once("data", () => {
+            const body = JSON.stringify({ message: engineReason });
+            const head =
+              framing === "chunked"
+                ? `Transfer-Encoding: chunked\r\n\r\n${bytes(body).length.toString(16)}\r\n`
+                : `Content-Length: ${bytes(body).length}\r\n\r\n`;
+            socket.write(`HTTP/1.1 500 Internal Server Error\r\n${head}${body.slice(0, 10)}`);
+            socket.end(`${body.slice(10)}${framing === "chunked" ? "\r\n0\r\n\r\n" : ""}`);
+          }),
+      );
+
+      // Then
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure.operation).toBe("pullArtifact");
+      expect(failure.message).toContain(reason);
+      expect(failure.cause).toMatchObject({ kind: "http", details: { status: 500 } });
+      expect(failure.details).toMatchObject({
+        failureKind,
+        details: { status: 500, body: expect.stringContaining(reason) },
+      });
+      expect(failure.message).toContain("[redacted]");
+      expect(JSON.stringify({ message: failure.message, details: failure.details })).not.toContain(
+        unsafeText,
+      );
+      if (failureKind === "registry-auth") expect(failure.remediation).toContain("`podman logout --all`");
+      else {
+        expect(failure.remediation).not.toContain("lando doctor");
+        expect(failure.remediation).not.toContain("lando setup");
+      }
+    },
+  );
+
+  test.each([
     ["TOOMANYREQUESTS: retry later", "toomanyrequests"],
     ["requested access to the resource is denied", "denied"],
     ["MANIFEST_UNKNOWN: manifest missing", "manifest-unknown"],

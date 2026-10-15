@@ -1,0 +1,13 @@
+name: schema-merge-rules
+services:
+  web:
+    type: nginx
+    routes:
+      - web.a.test
+      - web.b.test
+events:
+  post-start:
+    - service: web
+      cmd: composer install
+    - service: web
+      cmd: seed

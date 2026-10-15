@@ -97,6 +97,65 @@ const makeBringUpApi = (
 };
 
 describe("lifecycle dialect", () => {
+  test.each(["full", "secrets-only"] as const)(
+    "preserves the same ordered create Env with %s resolved overrides",
+    async (shape) => {
+      // Given
+      const environment = {
+        PLAIN: "visible",
+        TOKEN: "${secret:API_TOKEN}",
+        SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
+        LAST: "last",
+      };
+      const appliedPlan = { ...plan, services: { [serviceName]: { ...service, environment } } };
+      const fake = makeBringUpApi();
+      // When
+      await Effect.runPromise(
+        bringUp(appliedPlan, {
+          api: fake.api,
+          ctx,
+          dialect: dockerLifecycleDialect,
+          serviceEnvironment: {
+            [serviceName]:
+              shape === "full" ? { ...environment, TOKEN: "resolved-canary" } : { TOKEN: "resolved-canary" },
+          },
+        }),
+      );
+      // Then
+      expect(
+        fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
+      ).toMatchObject({
+        Env: [
+          "PLAIN=visible",
+          "TOKEN=resolved-canary",
+          "SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock",
+          "LAST=last",
+        ],
+      });
+      expect(appliedPlan.services[serviceName]?.environment).toEqual(environment);
+      expect(JSON.stringify(appliedPlan)).not.toContain("resolved-canary");
+    },
+  );
+
+  test("preserves plain environment variables with empty secret overrides", async () => {
+    // Given
+    const appliedPlan = {
+      ...plan,
+      services: { [serviceName]: { ...service, environment: { PLAIN: "visible", LAST: "last" } } },
+    };
+    const fake = makeBringUpApi();
+    // When
+    await Effect.runPromise(
+      bringUp(appliedPlan, { api: fake.api, ctx, serviceEnvironment: { [serviceName]: {} } }),
+    );
+    // Then
+    expect(
+      fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
+    ).toMatchObject({
+      Env: ["PLAIN=visible", "LAST=last"],
+    });
+  });
+
   test("connects each created container to the shared network after ensuring its image", async () => {
     // Given
     const fake = makeBringUpApi();

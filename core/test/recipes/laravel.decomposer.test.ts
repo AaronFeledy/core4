@@ -103,6 +103,7 @@ describe("Laravel deterministic decomposition", () => {
           framework: "laravel",
           via: "cli",
           command: "php artisan queue:work",
+          restart: "unless-stopped",
           dependsOn: ["database", "cache"],
           appMount: { target: "/app", includes: ["vendor"] },
         },

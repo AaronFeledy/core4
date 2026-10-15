@@ -9,9 +9,7 @@ services:
     dependsOn:
       - database
   database:
-    type: postgres
-    image: postgres:15
-    home: false
+    type: postgres:18
 tooling:
   composer:
     service: appserver

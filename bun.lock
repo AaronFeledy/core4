@@ -241,6 +241,7 @@
       "name": "@lando/proxy-traefik",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",

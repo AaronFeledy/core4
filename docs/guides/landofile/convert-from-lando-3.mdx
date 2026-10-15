@@ -70,15 +70,26 @@ A Lando 3 `recipe:` with its `config:` map becomes the matching bundled Lando 4 
 
 Relative Lando 3 webroots carry over unchanged: `webroot: web` stays `web`. Lando 4 resolves that path against the service's app mount, `/app` unless `appMount.target` moves it, when planning the service. Omit `webroot` or use `.` for the app root. Absolute container paths remain available for a specific layout; relative paths that escape the app mount are rejected during planning.
 
-Tomcat is the exception. A Lando 4 Tomcat `webroot` is the absolute container path the whole app is deployed to, so a Lando 3 `webroot: .` is omitted and reported as `rewritten`, and any other relative Tomcat webroot is reported as `dropped` with a remediation.
+For Tomcat, conversion sets Lando 4 `webroot` to `<webroot>/webapps/ROOT` (`webapps/ROOT` when Lando 3 used the default), matching the path Lando 3 served at `/`. It reports that other webapps or WAR files under `webapps/` are not deployed.
 
 Hosting-platform recipes (`pantheon`, `platformsh`, `lagoon`, `acquia`), `drupal7` through `drupal9`, and any recipe Lando 4 does not bundle are rejected. The preview is empty, `--write` refuses, and your files do not change. Keep those apps on Lando 3 or replace the recipe with explicit v4 services first.
 
-### Relocation
+### Removals convert to `!reset` and `!override`
 
-Lando 4 layers merge by adding and overriding. They cannot delete a mapping key a lower layer set, but an explicitly empty list (`[]`) replaces any inherited list. Clearing a list stays in the higher layer without relocation. See [Override a list in a local layer](./your-landofile.mdx#override-a-list-in-a-local-layer) for an example.
+A Lando 3 higher layer that removes something becomes a native Lando 4 directive in the converted layer. The lower layers keep what they set, so every layer still means what it meant before.
 
-When a Lando 3 higher layer removed something that cannot be represented by an override (a `portforward: false` in `.lando.local.yml` over a `portforward: true` in `.lando.yml`), the smallest affected unit moves up to the highest layer that last changed it, and the earlier layers stop defining it. One `needs-review` diagnostic per relocation names the key path, the layer it moved to, and the source files involved.
+- A removed key or service becomes `!reset`. A `portforward: false` in `.lando.local.yml` over `portforward: true` in `.lando.yml` converts to `ports: !reset` in `.lando.local.yml`.
+- A list that loses, reorders, or rewrites an entry the merge cannot express becomes `!override` with the full list. An emptied list stays `[]`.
+- A change that cannot stand alone in its layer, such as a single recipe option, becomes `!override` on the nearest key that can.
+
+```yaml
+# .lando.local.yml after conversion
+services:
+  cache:
+    ports: !reset
+```
+
+See [Replace or remove a value with `!override` and `!reset`](./your-landofile.mdx#replace-or-remove-a-value-with-override-and-reset) for how layers consume them.
 
 ## Read the diagnostics
 
@@ -168,7 +179,7 @@ Every `lando` app command (`info`, `start`, `exec`, `app:config:lint`) fails the
     </Step>
   </Scenario>
 
-  <Scenario id="preview-layers-and-relocation" render>
+  <Scenario id="preview-layers-and-removals" render>
     <Step name="preview">
       <UseFixture name="lando3-layers" />
       <Run command="lando app:config:translate --from lando3" />
@@ -179,7 +190,8 @@ Every `lando` app command (`info`, `start`, `exec`, `app:config:lint`) fails the
       <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"generated\"[\\s\\S]*Lando 4 recipe lamp generated this layer" } }} />
       <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"rewritten\"[\\s\\S]*Rewrote portforward as a ports publication" } }} />
       <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"needs-review\"[\\s\\S]*settings\\.lando\\.php or wp-config may parse LANDO_INFO" } }} />
-      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"needs-review\"[\\s\\S]*services\\.cache moved to the local layer because Lando 4 layers cannot remove it later" } }} />
+      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"layer\":\\s*\"local\"[^}]*ports: !reset" } }} />
+      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { not: { regex: "cannot remove it later" } } }} />
       <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"deletions\":\\s*\\[\\s*\\{\\s*\"sourceId\":\\s*\"\\.lando\\.recipe\\.yml\"" } }} />
       <Verify file="lando3-layers/.lando.yml" expect={{ regex: "portforward: true" }} />
     </Step>
@@ -196,7 +208,8 @@ Every `lando` app command (`info`, `start`, `exec`, `app:config:lint`) fails the
       <Verify file="lando3-layers/.lando.dist.yml" expect={{ regex: "runtime: 4" }} />
       <Verify file="lando3-layers/.lando.yml" expect={{ regex: "name: convert-demo" }} />
       <Verify file="lando3-layers/.lando.yml" expect={{ not: { regex: "portforward" } }} />
-      <Verify file="lando3-layers/.lando.local.yml" expect={{ regex: "type: redis:7" }} />
+      <Verify file="lando3-layers/.lando.yml" expect={{ regex: "type: redis:7" }} />
+      <Verify file="lando3-layers/.lando.local.yml" expect={{ regex: "ports: !reset" }} />
       <Verify file="lando3-layers/.lando.yml.bak.d4d3d1bebb0dcaf589d5f595b353daa45884ff215e5372321679e86a23fd6512" expect={{ regex: "portforward: true" }} />
       <Verify file="lando3-layers/.lando.local.yml.bak.760c9d5ec10cf91bca3567255f32bf8faf962df7d9e87cfe1b9c1a9d244cc51c" expect={{ regex: "portforward: false" }} />
       <Verify file="lando3-layers/.lando.recipe.yml.bak.da5afa1c80f6a288cbad8d399912dc786b235f57b18a4e6ddc6e49da739ebc91" expect={{ regex: "recipe: lamp" }} />

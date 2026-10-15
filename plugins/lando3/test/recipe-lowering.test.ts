@@ -26,15 +26,17 @@ test("preserves layer precedence when an established overlay precedes legacy bas
   const base = { services: { appserver: { type: "php", image: "php:8.2" } } };
   const overlay = { services: { appserver: { type: "php", image: "php:8.3" } } };
   // When planning the newly lowered base alongside the established overlay.
-  const result = recipeLayerOutputs(
-    folded,
-    {
-      prefixes: [{ targetLayer: "base", sourceIds: [], fragment: base }],
-      diagnostics: [],
-      decomposeCalls: 1,
-    },
-    [],
-    [{ layer: "local", sourceIds: [], fragment: overlay }],
+  const result = await Effect.runPromise(
+    recipeLayerOutputs(
+      folded,
+      {
+        prefixes: [{ targetLayer: "base", sourceIds: [], fragment: base }],
+        diagnostics: [],
+        decomposeCalls: 1,
+      },
+      [],
+      [{ layer: "local", sourceIds: [], fragment: overlay }],
+    ),
   );
   // Then the base stands alone and the local overlay wins the final merge.
   expect(result.outputs.map(({ targetLayer, fragment }) => ({ targetLayer, fragment }))).toEqual([
@@ -55,16 +57,18 @@ test("keeps an established overlay ahead of carried authored services", async ()
   };
   const overlay = { services: { appserver: { type: "php", image: "php:8.3" } } };
   // When the local layer has no authored prefix of its own.
-  const result = recipeLayerOutputs(
-    folded,
-    {
-      prefixes: [{ targetLayer: "base", sourceIds: [], fragment: recipeBase }],
-      diagnostics: [],
-      decomposeCalls: 1,
-    },
-    [],
-    [{ layer: "local", sourceIds: [], fragment: overlay }],
-    [{ targetLayer: "base", sourceIds: [], fragment: authoredBase }],
+  const result = await Effect.runPromise(
+    recipeLayerOutputs(
+      folded,
+      {
+        prefixes: [{ targetLayer: "base", sourceIds: [], fragment: recipeBase }],
+        diagnostics: [],
+        decomposeCalls: 1,
+      },
+      [],
+      [{ layer: "local", sourceIds: [], fragment: overlay }],
+      [{ targetLayer: "base", sourceIds: [], fragment: authoredBase }],
+    ),
   );
   // Then the overlay image wins and the untouched authored field survives.
   expect(mergeLandofiles(result.outputs.map(({ fragment }) => fragment).filter(isPlainRecord))).toEqual({

@@ -75,6 +75,7 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
     type: "compose",
     image: TRAEFIK_IMAGE,
     appMount: false,
+    routes: [],
     dependsOn: [{ service: TRAEFIK_DIAGNOSTICS_ID, condition: "service_healthy", required: true }],
     // Router infrastructure keeps no per-user state, so there is no home to persist.
     home: false,

@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Arbitrary, Effect, Schema } from "effect";
+import { Arbitrary, Effect, Option, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
@@ -265,6 +267,7 @@ describe("machine-output conformance", () => {
         command: spec.id,
         resultSchema: spec.resultSchema,
         ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
+        ...(spec.streamingMode === "live" ? { streamingMode: "live" as const } : {}),
         ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
         ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
         ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
@@ -286,8 +289,23 @@ describe("machine-output conformance", () => {
       stderr: "warn\n",
     });
 
+    // The command streams chunks through the live sink as the tool produces them, then returns its result.
+    const streamedResult = (value: ReturnType<typeof successValue> & { redactionTokens?: string[] }) =>
+      Effect.gen(function* () {
+        const redaction = yield* Effect.serviceOption(RedactionService);
+        if (Option.isSome(redaction)) yield* redaction.value.registerValues(value.redactionTokens ?? []);
+        const sink = yield* Effect.serviceOption(StreamFrameSink);
+        if (Option.isSome(sink)) {
+          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, raw: true });
+          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, raw: true });
+        }
+        return value;
+      });
+
+    afterEach(resetRegisteredRedactionValuesForTesting);
+
     test("success emits stdout/stderr frames terminated by a result frame with scratch id and exit code", async () => {
-      const io = await runScratchRunSpec(Effect.succeed(successValue(0)));
+      const io = await runScratchRunSpec(streamedResult(successValue(0)));
       const frames = io.stdoutLines().map(decodeFrame);
       expect(frames.map((frame) => frame._tag)).toEqual(["stdout", "stderr", "result"]);
       const [stdout, stderr, result] = frames;
@@ -295,7 +313,6 @@ describe("machine-output conformance", () => {
         throw new Error("unexpected frame sequence");
       }
       expect(stdout.chunk).toBe("ok\n");
-      expect(stdout.service).toBe("toolbox");
       expect(stderr.chunk).toBe("warn\n");
       expect(result.envelope.ok).toBe(true);
       expect(result.envelope.command).toBe("apps:scratch:run");
@@ -332,7 +349,7 @@ describe("machine-output conformance", () => {
 
     test("a non-zero tool exit stays ok:true in the result frame and propagates the exit code", async () => {
       let exitCode: number | undefined;
-      const io = await runScratchRunSpec(Effect.succeed(successValue(7)), (code) => {
+      const io = await runScratchRunSpec(streamedResult(successValue(7)), (code) => {
         exitCode = code;
       });
       const frames = io.stdoutLines().map(decodeFrame);
@@ -347,7 +364,7 @@ describe("machine-output conformance", () => {
     test("forwarded agent env values are redacted from stream frames and the result envelope", async () => {
       const secret = "opencode-forwarded-secret";
       const io = await runScratchRunSpec(
-        Effect.succeed({
+        streamedResult({
           ...successValue(0),
           stdout: `out:${secret}\n`,
           stderr: `err:${secret}\n`,

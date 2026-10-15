@@ -1,5 +1,11 @@
 {
   "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
+  "publicDefaultCredentialExports": [
+    "DEFAULT_PASSWORD",
+    "MINIO_DEFAULT_PASSWORD",
+    "PUBLIC_DEFAULT_CREDENTIALS",
+    "isPublicDefaultCredential"
+  ],
   "schemaNames": [
     "AppId",
     "AppPlan",
@@ -167,7 +173,7 @@
     "ShellRunner": [
       "exec: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
       "run: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
-      "runScript: (path: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
+      "runScript: (path: string, options?: ShellScriptOptions) => Effect.Effect<ProcessResult, ShellExecError>",
       "interactive: (spec: ShellInteractiveSpec) => Effect.Effect<ShellInteractiveResult, ShellExecError>"
     ]
   },

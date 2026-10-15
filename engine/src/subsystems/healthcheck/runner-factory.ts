@@ -1,7 +1,8 @@
-import { Duration, Effect, Ref } from "effect";
+import { Effect, Ref, Result } from "effect";
 
+import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
-import { type ProbeResult, runProbe } from "@lando/sdk/probe";
+import type { ProbeResult } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
@@ -27,7 +28,6 @@ interface AttemptContext {
   readonly deps: { readonly exec: RuntimeProviderShape["exec"] };
   readonly target: ExecTarget;
   readonly command: ProviderCommandSpec;
-  readonly timeoutSeconds: number;
   readonly status: Ref.Ref<AttemptStatus>;
 }
 
@@ -66,20 +66,8 @@ const resolveRedactor = Effect.gen(function* () {
 });
 
 const makeAttempt = Effect.fnUntraced(function* (context: AttemptContext): Effect.fn.Return<AttemptOutcome> {
-  const completed = yield* Effect.timeoutOrElse(
-    Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
-    {
-      duration: Duration.seconds(context.timeoutSeconds),
-      orElse: () => Effect.succeed((() => "timeout" as const)()),
-    },
-  );
-
-  if (completed === "timeout") {
-    yield* Ref.set(context.status, { _tag: "timeout" });
-    return "red";
-  }
-
-  if (completed._tag === "Failure") {
+  const completed = yield* Effect.result(context.deps.exec(context.target, context.command));
+  if (Result.isFailure(completed)) {
     yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.failure) });
     return "red";
   }
@@ -151,24 +139,10 @@ export const makeHealthcheckRunner: (deps: {
       });
       const redactor = yield* resolveRedactor;
 
-      if (plan.startPeriodSeconds !== undefined && plan.startPeriodSeconds > 0) {
-        yield* Effect.sleep(Duration.seconds(plan.startPeriodSeconds));
-      }
-
-      const result = yield* runProbe(
-        {
-          id: `healthcheck:${service}`,
-          policy: {
-            maxAttempts: Math.max(1, plan.retries),
-            delay: Duration.seconds(plan.intervalSeconds),
-            backoff: "fixed",
-          },
-          classify: {
-            success: (value) => (value === "green" ? "green" : "red"),
-            failure: () => "red",
-          },
-        },
-        makeAttempt({ deps, target, command, timeoutSeconds: plan.timeoutSeconds, status }),
+      const result = yield* runHealthcheckProbe(
+        { id: `healthcheck:${service}`, plan },
+        makeAttempt({ deps, target, command, status }),
+        Ref.set(status, { _tag: "timeout" }).pipe(Effect.as("red" as const)),
       ).pipe(Effect.mapError((cause) => toProbeError(service, cause)));
       const finalStatus = yield* Ref.get(status);
 

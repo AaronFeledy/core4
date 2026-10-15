@@ -70,7 +70,11 @@ The `mysql` type ships the client task. After start:
 lando mysql --version
 ```
 
-Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can still pipe into `mysql` with `lando exec`.
+Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). Or pipe a plain SQL file straight into the client:
+
+```sh
+lando mysql < dump.sql
+```
 
 ## Add server config
 
