@@ -25,8 +25,17 @@ describe("shared webroot resolution", () => {
     },
   );
 
-  test("keeps the default webroot base when the app mount is disabled", () => {
-    expect(resolveWebroot("nginx", "public", false)).toBe("/app/public");
+  test.each([undefined, "public"])(
+    "rejects relative webroot %s when the app mount is disabled",
+    (webroot) => {
+      expect(() => resolveWebroot("nginx", webroot, false)).toThrow(
+        `nginx webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
+      );
+    },
+  );
+
+  test("normalizes an absolute webroot when the app mount is disabled", () => {
+    expect(resolveWebroot("nginx", "//srv/./www/", false)).toBe("/srv/www");
   });
 
   test("names the effective app mount when rejecting unsafe webroot characters", () => {
@@ -151,36 +160,37 @@ describe("resolved service document roots", () => {
     });
   }
 
-  test.each(["public", "/usr/local/tomcat/webapps/$host"])(
-    "Tomcat rejects deployment path %s during resolution",
-    async (webroot) => {
-      const config = Schema.decodeUnknownSync(LandofileShape)({
-        services: { java: { type: "tomcat", webroot } },
-      });
-      const service = config.services?.[ServiceName.make("java")];
-      if (service === undefined) throw new Error("java service missing");
-      const result = await Effect.runPromise(
-        Effect.result(
-          tomcatServiceType.resolve({
-            name: "java",
-            service,
-            appRoot: "/srv/apps/myapp",
-            appName: "myapp",
-            metadata,
-          }),
-        ),
-      );
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe("ServiceTypeError");
-        expect(result.failure.message).toContain(
-          "tomcat webroot is the container path the app is deployed to and must be absolute, such as /usr/local/tomcat/webapps/ROOT.",
-        );
-      }
-    },
-  );
+  test.each([
+    ["../x", "tomcat webroot ../x leaves the app mount (/app); use an absolute container path instead."],
+    [
+      "/usr/local/tomcat/webapps/$host",
+      "tomcat webroot must be a path relative to the app mount (/app), such as public, or an absolute container path, using only letters, digits, '.', '_', '-', and '/'.",
+    ],
+  ] as const)("Tomcat rejects webroot %s during resolution", async (webroot, message) => {
+    const config = Schema.decodeUnknownSync(LandofileShape)({
+      services: { java: { type: "tomcat", webroot } },
+    });
+    const service = config.services?.[ServiceName.make("java")];
+    if (service === undefined) throw new Error("java service missing");
+    const result = await Effect.runPromise(
+      Effect.result(
+        tomcatServiceType.resolve({
+          name: "java",
+          service,
+          appRoot: "/srv/apps/myapp",
+          appName: "myapp",
+          metadata,
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("ServiceTypeError");
+      expect(result.failure.message).toContain(message);
+    }
+  });
 
-  test("Tomcat normalizes its deploy mount without rewriting the authored path", async () => {
+  test("Tomcat preserves the authored webroot without moving the app mount", async () => {
     // Given: an absolute deployment path containing redundant segments.
     const webroot = "/usr/local/tomcat/webapps/../webapps/ROOT";
     const config = Schema.decodeUnknownSync(LandofileShape)({
@@ -201,8 +211,48 @@ describe("resolved service document roots", () => {
     const resolution = await Effect.runPromise(tomcatServiceType.resolve({ ...input, name: "java" }));
     const plan = await composeServicePlan(input);
 
-    // Then: only the runtime mount is normalized.
+    // Then: the authored webroot is kept and the app mount stays at /app.
     expect(String(resolution.normalizedConfig.webroot)).toBe(webroot);
-    expect(String(plan.appMount?.target)).toBe("/usr/local/tomcat/webapps/ROOT");
+    expect(String(plan.appMount?.target)).toBe("/app");
   });
+
+  for (const [type, serviceType, label] of [
+    ["php:8.2", php82ServiceType, "PHP"],
+    ["nginx", nginxServiceType, "nginx"],
+    ["apache", apacheServiceType, "Apache"],
+    ["static", staticNginxServiceType, "Static"],
+    ["tomcat", tomcatServiceType, "tomcat"],
+  ] as const) {
+    test.each([undefined, "public"])(`${type} rejects webroot %s with appMount false`, async (webroot) => {
+      // Given: a code-free web service with an app-relative document root.
+      const config = Schema.decodeUnknownSync(LandofileShape)({
+        services: { web: { type, appMount: false, ...(webroot === undefined ? {} : { webroot }) } },
+      });
+      const service = config.services?.[ServiceName.make("web")];
+      if (service === undefined) throw new Error("web service missing");
+      // When / Then: type resolution rejects the missing app mount.
+      await expect(
+        composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata }),
+      ).rejects.toThrow(
+        `${label} webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
+      );
+    });
+
+    test(`${type} accepts an image document root with appMount false`, async () => {
+      // Given: an absolute image-provided document root.
+      const config = Schema.decodeUnknownSync(LandofileShape)({
+        services: { web: { type, appMount: false, webroot: "/srv/www" } },
+      });
+      const service = config.services?.[ServiceName.make("web")];
+      if (service === undefined) throw new Error("web service missing");
+      // When: the service is planned.
+      const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
+      // Then: image content is served without app code or app-root environment.
+      expect(plan.appMount).toBeUndefined();
+      expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
+      expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
+      expect(plan.workingDirectory).toBeUndefined();
+      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+    });
+  }
 });

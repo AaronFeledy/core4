@@ -15,7 +15,7 @@ import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache
 import { appPlanCachePath, appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
-test.each([17, 18])("rejects matching revision-%i persisted plans", async (revision) => {
+test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (revision) => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-canonical-plan-"));
   try {
     const appRoot = "/workspace/canonical-app";

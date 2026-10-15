@@ -9,8 +9,9 @@ tags: [beta, docs, ruby, service, runtime]
 
 Put `type: ruby:3.3` on the primary service. Ruby has no bare `type: ruby` alias, so pin a version.
 Lando currently supports `ruby:3.3`, and the default image is
-`ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app`,
-which is also the working directory:
+`ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app` by
+default, which is also the working directory; set `appMount.target` to move
+both:
 
 ```yaml
 name: ruby-demo
@@ -47,6 +48,8 @@ lando bundle install
 # Run a Rails server with lando exec; bind to 0.0.0.0 so the proxy can reach it
 lando exec app -- bundle exec rails server -b 0.0.0.0
 ```
+
+Ruby publishes its port endpoint but has no default healthcheck, even with an authored `command:`. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
 
 ## Pin a version
 

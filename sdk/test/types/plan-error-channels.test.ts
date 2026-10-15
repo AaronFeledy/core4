@@ -70,6 +70,7 @@ import type {
   SecretReferenceInvalidError,
   SecretStoreError,
   SecretStoreUnavailableError,
+  ServiceNotReadyError,
   ShellExecError,
   ShellScriptOutsideRootError,
   SshAgentTransportError,
@@ -443,7 +444,7 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("StartAppError retains its pre-refactor members", () => {
-    assertType<Equal<StartAppError, LegacyStartAppError>>(true);
+    assertType<Equal<StartAppError, LegacyStartAppError | ServiceNotReadyError>>(true);
     expect(true).toBe(true);
   });
 

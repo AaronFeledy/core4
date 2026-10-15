@@ -1,4 +1,5 @@
-import { isLegacyTagged, mergeLandofiles } from "@lando/sdk/landofile";
+import { isLegacyTagged, isPlainRecord, mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
+import { ServiceConfig } from "@lando/sdk/schema";
 import type { ConfigTranslateDiagnostic, ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
 import { lowerBuildHooks } from "./build-hooks.ts";
 import { CATALOG, resolveCatalogType } from "./catalog.ts";
@@ -244,7 +245,10 @@ export const lowerServiceViews = (
               remediation: `Rename the authored ${name} service or configure the companion manually.`,
             }),
           );
-        } else services.set(name, mergeLandofiles([services.get(name) ?? {}, companion]));
+        } else {
+          const merged = mergeValues(ServiceConfig, services.get(name) ?? {}, companion);
+          if (isPlainRecord(merged)) services.set(name, merged);
+        }
       }
     }
     declareRouteEndpoints(proxy.fragment, services, report, inherited.recipeServiceWires);

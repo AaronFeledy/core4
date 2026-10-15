@@ -21,6 +21,8 @@ The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, 
 
 When 80 and 443 are free, those URLs omit the port. When something else owns them, start prints `Port 80 is in use` or `Port 443 is in use`, names the holder if it can, and says `using 8080.` or `using 8443.` Then `lando info` prints the bound URLs, like `http://app.myapp.lndo.site:8080` and `https://app.myapp.lndo.site:8443`.
 
+On Linux, when binding ports 80 and 443 needs elevated permissions, Lando can ask to install a systemd socket proxy. That helper forwards HTTP and HTTPS traffic to Traefik; it is not tied to `lndo.site` and does not configure DNS. Declining keeps the unprivileged fallback-port path.
+
 ## Read lando info and lando doctor
 
 ```sh
@@ -44,7 +46,7 @@ HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTP
 
 The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-proxy.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
-You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
+Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published endpoints still work.
 
 ## Change the default domain
 
@@ -86,6 +88,13 @@ Router ports are shared by every app. After changing the `router` block in `conf
 ```sh
 lando setup
 lando info
+```
+
+After Traefik starts or restarts, Lando gives it up to 10 seconds to answer on both router ports before it warns. If `lando global:restart` or `lando global:rebuild` still warns that the ports did not answer, read Traefik's startup log and check the published ports:
+
+```sh
+lando global:logs --service=traefik --tail=100
+lando global:info
 ```
 
 ## Read an unmatched host

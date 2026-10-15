@@ -67,6 +67,17 @@ describe("ruby ServiceType — supported versions and frameworks", () => {
 });
 
 describe("ruby:3.3 ServiceType", () => {
+  test("omits the Rails preset webroot when appMount is false", async () => {
+    // Given: a Rails service that does not use app code.
+    const definition = { type: "ruby:3.3", framework: "rails", appMount: false };
+    // When: the preset is resolved and composed.
+    const plan = await composeRubyPlan(ruby33ServiceType, definition);
+    // Then: the image supplies cwd and there is no app-relative webroot.
+    expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+    expect(plan.workingDirectory).toBeUndefined();
+    expect(plan.appMount).toBeUndefined();
+    expect(plan.extensions["lando-service-ruby"]).not.toHaveProperty("webroot");
+  });
   test("plans a default Ruby 3.3 web service with framework=none defaults", async () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3" });
 
@@ -79,21 +90,11 @@ describe("ruby:3.3 ServiceType", () => {
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]?.type).toBe("bind");
-    expect(plan.mounts[0]?.source).toBe(APP_ROOT);
-    expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts).toEqual([]);
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
 
-    expect(plan.healthcheck).toEqual({
-      kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 10,
-    });
+    expect(plan.healthcheck).toBeUndefined();
 
     expect(plan.environment).toMatchObject({
       LANDO: "ON",
@@ -122,7 +123,7 @@ describe("ruby:3.3 ServiceType", () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "rails" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.RAILS_ENV).toBe("development");
     expect(plan.environment.RAILS_LOG_TO_STDOUT).toBe("true");
@@ -172,7 +173,7 @@ describe("ruby:3.3 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/ruby:3.3-custom" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 4000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/4000"]);
+    expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-ruby"]).toMatchObject({ port: 4000 });
   });
 
@@ -182,7 +183,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.extensions["lando-service-ruby"]).toBeDefined();
     expect(plan.artifact?.kind).toBe("ref");
     expect(plan.endpoints[0]?.protocol).toBe("http");
-    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck).toBeUndefined();
     expect(Object.keys(plan)).not.toContain("providers");
     expect(Object.keys(plan)).not.toContain("providerInfo");
   });

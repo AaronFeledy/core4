@@ -69,12 +69,16 @@ const observation = {
 };
 
 describe("global route publication", () => {
-  test("route-free plans never touch router or provider methods", async () => {
-    // Given a route-free app and unavailable routing and observation methods.
+  test("route-free plans withdraw the definition without applying or listing", async () => {
+    // Given a route-free app whose earlier definition may still be published.
+    const removed: string[] = [];
     const router = {
       ...makeRouter(),
       applyRoutes: () => Effect.die("Route-free publication must not apply"),
-      removeRoutes: () => Effect.die("Route-free publication must not remove"),
+      removeRoutes: (app: AppId) =>
+        Effect.sync(() => {
+          removed.push(app);
+        }),
     };
     const provider = { list: () => Effect.die("Route-free publication must not list") };
     // When publication runs without declared routes.
@@ -86,7 +90,8 @@ describe("global route publication", () => {
         { started: new Set(), failed: new Set() },
       ),
     );
-    // Then no router is required and no URLs are advertised.
+    // Then the stale definition is withdrawn and no URLs are advertised.
+    expect(removed).toEqual([plan.id]);
     expect(urls.size).toBe(0);
   });
 

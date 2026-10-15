@@ -58,6 +58,30 @@ Bare `restart` stops then starts the app, recreating its containers and reusing 
 
 If another process takes a selected service's host port after it stops, restart fails and leaves that service down. Check `lando info`, free the port or run `lando rebuild -s <name>`, then check `lando info` again.
 
+Start, restart, and rebuild wait for every affected service's enabled healthcheck before reporting success or running post-start steps. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.
+
+An unsupervised service that exits fails the command non-zero with `ServiceNotReadyError`. An exhausted healthcheck fails every service, even one with a restart policy. Applied user-app containers, routes, and volumes stay put: diagnose with `lando logs -s <service>` and `lando info`, fix the service or its `healthcheck:` configuration, then retry `lando start`. With `restart: always` or `unless-stopped`, an exit or observed restart produces a warning and a `restarting` row. `on-failure` does that only for a non-zero exit; exit 0 still fails readiness. Completion jobs must exit 0 regardless of restart policy.
+
+If the provider cannot inspect a service, the reason is `inspect-failed`: run `lando doctor` to restore the provider. That failure never counts as a supervised restart. Global services use `lando global:logs -s <service>` and `lando global:start`; failed groups lose their routes while independent ready groups stay applied. Scratch start and `lando run` also wait for readiness, but failed or interrupted acquisition cleans up unless you passed `scratch:start --keep-on-failure`. URL-scan warnings still do not fail start.
+
+Pressing Ctrl-C during readiness stops waiting but leaves the applied app, routes, volumes, and sessions running. The command still exits as interrupted. Interrupting earlier startup phases keeps their normal cleanup.
+
+## Fix an image pull failure
+
+Read the engine reason after the HTTP status in the pull error. A blocked registry,
+missing image tag, or registry connection failure needs a registry or network fix,
+not a runtime reinstall. Check the image reference and the container engine's
+registry policy, then retry once registry access works.
+
+For authentication failures, follow the error's credential remediation. Stale
+credentials can affect public images too. Clear the affected registry's stale
+credentials with the engine's logout command or remove its stale `auths` entry,
+then authenticate again if the registry requires it.
+
+Use `lando start --format=json` to inspect the tagged error and remediation.
+Already-pulled images can still work without registry access; see
+[Work offline](../config/offline-dev.mdx).
+
 ## Wait for another command to finish
 
 `start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
@@ -178,7 +202,7 @@ Container-only discoveries may have no saved root.
   </Scenario>
 </Guide>
 
-`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up.
+`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
 
 ## Check the host
 

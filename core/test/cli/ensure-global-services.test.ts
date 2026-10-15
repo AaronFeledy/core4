@@ -71,6 +71,7 @@ interface Harness {
   readonly inspectCalls: Array<InspectCall>;
   readonly events: Array<LandoEvent>;
   readonly operations: Array<"build" | "apply">;
+  readonly selectedProviders: string[];
 }
 
 const providerId = ProviderId.make("lando");
@@ -154,6 +155,7 @@ const makeHarness = async (
   const inspectCalls: Array<InspectCall> = [];
   const events: Array<LandoEvent> = [];
   const operations: Array<"build" | "apply"> = [];
+  const selectedProviders: string[] = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -172,6 +174,7 @@ const makeHarness = async (
         providerId,
         status: "running",
         state: "running",
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
         endpoints: [
           { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
         ],
@@ -215,7 +218,11 @@ const makeHarness = async (
       RuntimeProviderRegistry.of({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
+        select: (plan) =>
+          Effect.sync(() => {
+            selectedProviders.push(typeof plan === "object" ? String(plan.provider) : (plan ?? "default"));
+            return provider;
+          }),
       }),
     ),
     Layer.succeed(
@@ -248,7 +255,7 @@ const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, applyCalls, inspectCalls, events, operations };
+  return { dataRoot, layer, applyCalls, inspectCalls, events, operations, selectedProviders };
 };
 
 const withHarness = async <T>(
@@ -313,7 +320,6 @@ describe("ensureGlobalServicesRunning", () => {
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
       expect(harness.applyCalls[0]?.options.serviceEnvironment?.[ServiceName.make("traefik")]).toEqual({
-        LANDO_HOST_IP: "host.lando.internal",
         TOKEN: "resolved-global-token",
       });
       expect(harness.applyCalls[0]?.plan.services[ServiceName.make("traefik")]?.environment).toEqual({
@@ -321,7 +327,10 @@ describe("ensureGlobalServicesRunning", () => {
         TOKEN: "${secret:GLOBAL_TOKEN}",
       });
       expect(harness.operations).toEqual(["build", "apply"]);
-      expect(harness.inspectCalls.map((call) => String(call.target.service))).toEqual(["traefik"]);
+      expect([...new Set(harness.inspectCalls.map((call) => String(call.target.service)))]).toEqual([
+        "traefik",
+      ]);
+      expect(harness.selectedProviders.at(-1)).toBe("lando");
 
       const lifecycle = harness.events.filter(
         (event) => event._tag === "pre-global-start" || event._tag === "post-global-start",

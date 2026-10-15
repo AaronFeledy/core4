@@ -233,16 +233,19 @@ describe("proxy lowering", () => {
     expect(result.outputs.map(({ targetLayer }) => targetLayer)).toEqual(["upstream", "canonical"]);
     expect(result.merged.proxy).toEqual({
       appserver: [
-        route("demo", {
-          endpoint: 8080,
-          pathPrefix: "/api",
-          filters: [
-            strip("/api"),
-            { type: "responseHeader", name: "change", header: "X-New", value: "new" },
-            { type: "requestHeader", name: "keep", header: "X-Two", value: "kept" },
-            { type: "requestHeader", name: "append", header: "X-Three", value: "added" },
-          ],
-        }),
+        ...["http", "https"].map((scheme) =>
+          route("demo", {
+            scheme,
+            endpoint: 8080,
+            pathPrefix: "/api",
+            filters: [
+              strip("/api"),
+              { type: "responseHeader", name: "change", header: "X-New", value: "new" },
+              { type: "requestHeader", name: "keep", header: "X-Two", value: "kept" },
+              { type: "requestHeader", name: "append", header: "X-Three", value: "added" },
+            ],
+          }),
+        ),
         route("stable.demo"),
         route("added.demo"),
       ],
@@ -267,12 +270,15 @@ describe("proxy lowering", () => {
           pathPrefix: "/api",
           filters: [strip("/api"), { type: "requestHeader", name: "req", header: "X-One", value: "on" }],
         }),
-      ],
+      ].flatMap((item) => [
+        { ...item, scheme: "http" },
+        { ...item, scheme: "https" },
+      ]),
     });
   });
 });
 
-test("hoists a split secured route that a higher layer overrides and still orders diagnostics for core", async () => {
+test("updates split secured routes without relocation and still orders diagnostics for core", async () => {
   // Given two layers where the higher one overrides a middleware on a route split by scheme.
   const lower =
     "name: routes\nproxy:\n  web:\n    - hostname: web.demo\n      middlewares:\n        - {name: test, key: headers.customrequestheaders.X-Test, value: kirk}\n        - {name: test-secured, key: headers.customrequestheaders.X-Ssl, value: 'on'}\n";
@@ -281,9 +287,9 @@ test("hoists a split secured route that a higher layer overrides and still order
   const input = documentSet([document(".lando.yml", lower), document(".lando.local.yml", higher)]);
   // When
   const result = await Effect.runPromise(makeLando3ConfigTranslator(defaultLando3Ports()).translate(input));
-  // Then core accepts the result, including the unlocated relocation diagnostic.
+  // Then core accepts the result without a relocation diagnostic.
   expect(Result.isSuccess(validateConfigTranslateResult(input, result))).toBe(true);
-  expect(result.diagnostics.some(({ kind }) => kind === "needs-review")).toBe(true);
+  expect(result.diagnostics.filter(({ kind }) => kind === "needs-review")).toEqual([]);
   const merged = mergeLandofiles(
     result.outputs.map(({ fragment }) => (isPlainRecord(fragment) ? fragment : {})),
   );

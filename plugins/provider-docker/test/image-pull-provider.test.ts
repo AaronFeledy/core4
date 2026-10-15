@@ -152,13 +152,13 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     if (method === "DELETE") return { status: 204, body: "" };
     return { status: 500, body: '{"message":"unexpected request"}' };
   };
-  const api: DockerApiClient = {
+  const api = {
     info: Effect.succeed({}),
     request: ({ method, path }: DockerHttpRequest) => {
       requests.push(`${method} ${path}`);
       return Effect.succeed(responseFor(method, path));
     },
-  };
+  } satisfies DockerApiClient;
   return { api, requests };
 };
 
@@ -173,6 +173,47 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker pullArtifact", () => {
+  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+    // Given
+    const service = {
+      ...makeService("mailpit", mailpitRef),
+      environment: {
+        PLAIN: "visible",
+        TOKEN: "${secret:API_TOKEN}",
+        SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
+      },
+    };
+    const fake = makeFakeApi();
+    const creates: unknown[] = [];
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        dockerApi: {
+          ...fake.api,
+          request: (request) => {
+            if (request.path.startsWith("/containers/create?")) creates.push(request.body);
+            return fake.api.request(request);
+          },
+        },
+      }),
+    );
+    // When
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.apply(makePlan([service]), {
+          reconcile: false,
+          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+        }),
+      ),
+    );
+    // Then
+    expect(creates).toEqual([
+      expect.objectContaining({
+        Env: ["PLAIN=visible", "TOKEN=resolved-canary", "SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock"],
+      }),
+    ]);
+  });
+
   test("reuses a present image when policy is missing even if registry pulls would fail", async () => {
     // Given
     const fake = makeFakeApi({ images: new Set([mailpitRef]), pullStatus: 429 });
@@ -211,7 +252,8 @@ describe("provider-docker pullArtifact", () => {
     expect(failure._tag).toBe("ProviderUnavailableError");
     expect(failure.message).toContain("manifest unknown");
     expect(failure.remediation ?? "").not.toMatch(/lando destroy/u);
-    expect(failure.remediation).toContain("lando doctor --provider=docker");
+    expect(failure.remediation).toContain("image reference");
+    expect(failure.remediation).not.toContain("lando doctor");
   });
 
   test("fails the pull when post-pull inspect is not 200", async () => {

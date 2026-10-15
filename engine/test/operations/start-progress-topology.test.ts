@@ -58,7 +58,7 @@ describe("start progress topology", () => {
     const secretPlan: AppPlan = {
       ...plan,
       services: {
-        [web.name]: { ...web, environment: { TOKEN: "${secret:API_TOKEN}" } },
+        [web.name]: { ...web, environment: { PLAIN: "visible", TOKEN: "${secret:API_TOKEN}" } },
       },
     };
     let applied: { readonly plan: AppPlan; readonly environment: unknown } | undefined;
@@ -80,7 +80,10 @@ describe("start progress topology", () => {
 
     // Then
     expect(applied?.environment).toEqual({ web: { TOKEN: "resolved-canary" } });
-    expect(applied?.plan.services[web.name]?.environment).toEqual({ TOKEN: "${secret:API_TOKEN}" });
+    expect(applied?.plan.services[web.name]?.environment).toEqual({
+      PLAIN: "visible",
+      TOKEN: "${secret:API_TOKEN}",
+    });
     expect(JSON.stringify(applied?.plan)).not.toContain("resolved-canary");
   });
 

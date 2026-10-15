@@ -12,9 +12,7 @@ services:
   database:
     type: mariadb
   database-legacy:
-    type: mysql
-    image: mysql:8.0
-    home: false
+    type: mysql:8.0
 tooling:
   composer:
     service: appserver

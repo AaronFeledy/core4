@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { basename, join } from "node:path";
+import { makeConfigTranslators } from "@lando/lando3";
 import { lintLandofile } from "@lando/landofile/lint";
 import { parseLandofile } from "@lando/landofile/parser";
 import {
@@ -7,8 +8,10 @@ import {
   makeManagedFileTransactionGuard,
   makeManagedFileTransactions,
 } from "@lando/managed-file/transaction";
-import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragment } from "@lando/sdk/schema";
+import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
+import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { failure, originals, snapshot, withFixture } from "./translate-lando3-fixture.ts";
 
@@ -39,7 +42,9 @@ test("full write folds recipe content and backs up every overwritten or removed 
       await Effect.runPromise(
         parseLandofile({ file, content, cwd: root }).pipe(
           Effect.flatMap((value) =>
-            Schema.decodeUnknownEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+            Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(value, {
+              onExcessProperty: "error",
+            }),
           ),
         ),
       );
@@ -47,6 +52,31 @@ test("full write folds recipe content and backs up every overwritten or removed 
       services: { cache: { type: "redis:7" } },
     });
     expect(await Effect.runPromise(lintLandofile({ cwd: root }))).toMatchObject({ valid: true });
+  }));
+
+test("a layered recipe removal emits native tags without relocation diagnostics", () =>
+  withFixture(async ({ root, run, translators }) => {
+    await Bun.write(
+      join(root, ".lando.yml"),
+      "name: native-removal\nrecipe: wordpress\nconfig: {redis: true}\n",
+    );
+    await Bun.write(join(root, ".lando.local.yml"), "config: {redis: false}\n");
+    await Bun.write(join(root, ".lando.recipe.yml"), "services: {}\n");
+    const load = makeConfigTranslators({
+      decomposers: new Map([["wordpress", wordpressDecomposer]]),
+      redactor: createRedactor("secrets"),
+    }).get("lando3");
+    if (load === undefined) throw new Error("Expected the Lando 3 translator.");
+    const lando3 = await load();
+    const result = await Effect.runPromise(
+      run({ translators: [lando3, ...translators.filter(({ id }) => id !== "lando3")] }),
+    );
+    expect(result.mode).toBe("preview");
+    if (result.mode !== "preview") throw new Error("Expected a translation preview.");
+    const local = result.targets.find(({ path }) => basename(path) === ".lando.local.yml");
+    expect(local?.content).toContain("!reset");
+    expect(local?.content).toContain("!override");
+    expect(result.diagnostics.filter(({ kind }) => kind === "needs-review")).toEqual([]);
   }));
 
 const boundaries: readonly (readonly [TransactionCheckpoint, number])[] = [

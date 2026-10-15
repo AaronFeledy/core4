@@ -392,6 +392,7 @@ describe("setup classification after helper install", () => {
     const files = new Map<string, string>();
     const privilege = makePrivilege(ok());
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
@@ -448,6 +449,7 @@ describe("setup classification after helper install", () => {
     // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
     const service = makeTraefikRouterService({
+      probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

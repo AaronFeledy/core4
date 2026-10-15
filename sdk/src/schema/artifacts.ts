@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { layerMerge } from "./layer-merge.ts";
 import { AbsolutePath, ContainerUser, PortablePath } from "./primitives.ts";
 
 /**
@@ -70,5 +71,8 @@ export const BuildScriptStep = Schema.Union([
 export type BuildScriptStep = typeof BuildScriptStep.Type;
 
 /** Build script for `build.artifact:` and `build.app:` entries. */
-export const BuildScript = Schema.Union([BuildScriptStep, Schema.Array(BuildScriptStep)]);
+export const BuildScript = Schema.Union([
+  BuildScriptStep,
+  layerMerge(Schema.Array(BuildScriptStep), { kind: "replace" }),
+]);
 export type BuildScript = typeof BuildScript.Type;
