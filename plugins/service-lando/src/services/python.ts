@@ -20,22 +20,18 @@ export const PYTHON_FEATURE_PRIORITY = 600;
 const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, LanguageFrameworkPreset> = {
   django: {
     port: 8000,
-    defaultCommand: ["uvicorn", "--host", "0.0.0.0", "--port", "8000"],
     env: new Map([["DJANGO_SETTINGS_MODULE", "config.settings"]]),
   },
   fastapi: {
     port: 8000,
-    defaultCommand: ["uvicorn", "--host", "0.0.0.0", "--port", "8000"],
     env: new Map(),
   },
   flask: {
     port: 5000,
-    defaultCommand: ["gunicorn", "--bind", "0.0.0.0:5000"],
     env: new Map([["FLASK_APP", "app"]]),
   },
   none: {
     port: 8000,
-    defaultCommand: null,
     env: new Map(),
   },
 };
@@ -44,7 +40,6 @@ const PythonFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_PYTHON_FRAMEWORKS]),
   version: Schema.Literals([...SUPPORTED_PYTHON_VERSIONS]),
   port: Schema.Number,
-  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type PythonFeatureConfig = typeof PythonFeatureConfigSchema.Type;
 const configFor = (ctx: ServiceFeatureContext): PythonFeatureConfig => ctx.config as PythonFeatureConfig;

@@ -29,7 +29,7 @@ const fixtures = [
       features: [
         {
           id: "service-lando.go",
-          config: { framework: "none", version: "1.22", port: 8080, defaultCommand: null },
+          config: { framework: "none", version: "1.22", port: 8080 },
         },
         { id: "lando.env", config: {} },
         { id: "lando.app-mount", config: { target: "/app", excludes: [] } },
@@ -64,7 +64,7 @@ const fixtures = [
       features: [
         {
           id: "service-lando.python",
-          config: { framework: "none", version: "3.12", port: 8000, defaultCommand: null },
+          config: { framework: "none", version: "3.12", port: 8000 },
         },
         { id: "lando.env", config: {} },
         {
@@ -102,7 +102,7 @@ const fixtures = [
       features: [
         {
           id: "service-lando.ruby",
-          config: { framework: "none", version: "3.3", port: 3000, webroot: "/app", defaultCommand: null },
+          config: { framework: "none", version: "3.3", port: 3000, webroot: "/app" },
         },
         { id: "lando.env", config: { webroot: "/app" } },
         { id: "lando.app-mount", config: { target: "/app", excludes: [".bundle"] } },
@@ -121,7 +121,6 @@ const FeatureConfig = Schema.Struct({
   framework: Schema.Literal("none"),
   version: Schema.String,
   port: Schema.Number,
-  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
   webroot: Schema.optionalKey(Schema.String),
 });
 
@@ -159,7 +158,6 @@ for (const fixture of fixtures) {
     presets: {
       none: {
         port: fixture.resolution.features[0].config.port,
-        defaultCommand: null,
         webroot: "/app",
         env: new Map(),
       },
@@ -200,7 +198,7 @@ for (const fixture of fixtures) {
       expect(JSON.stringify(mounts)).toBe(JSON.stringify(fixture.mounts));
     });
 
-    test(`${fixture.language} ${source} projects authored webroot only when enabled`, async () => {
+    test(`${fixture.language} ${source} intermediate composition projects webroot only when enabled`, async () => {
       // Given: an authored webroot on each shared-runtime consumer.
       const input = inputFor(serviceType);
       const service = { ...input.service, webroot: PortablePath.make("frontend/public") };
@@ -218,6 +216,24 @@ for (const fixture of fixtures) {
         ...fixture.resolution.features[0].config,
         ...expected,
       });
+    });
+
+    test(`${fixture.language} ${source} preserves authored process fields over keep-alive`, async () => {
+      // Given
+      const input = inputFor(serviceType);
+      const command = ["run-app", "--foreground"];
+      const entrypoint = ["/usr/local/bin/boot-app"];
+      // When
+      const plan = await composeServicePlan({
+        serviceType,
+        service: { ...input.service, command, entrypoint, workingDirectory: PortablePath.make("/workspace") },
+        appRoot: input.appRoot,
+        metadata: input.metadata,
+      });
+      // Then
+      expect(plan.command).toEqual(command);
+      expect(plan.entrypoint).toEqual(entrypoint);
+      expect(String(plan.workingDirectory)).toBe("/workspace");
     });
   }
 

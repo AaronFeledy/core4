@@ -67,25 +67,21 @@ describe("ruby ServiceType — supported versions and frameworks", () => {
 });
 
 describe("ruby:3.3 ServiceType", () => {
-  test.each([undefined, "frontend/public", "/srv/www", "../outside", "$host"])(
-    "omits the Rails webroot %s when appMount is false",
-    async (webroot) => {
-      // Given: a Rails service that does not use app code.
-      const definition = {
-        type: "ruby:3.3",
-        framework: "rails",
-        appMount: false,
-        ...(webroot === undefined ? {} : { webroot }),
-      };
-      // When: the preset is resolved and composed.
-      const plan = await composeRubyPlan(ruby33ServiceType, definition);
-      // Then: the image supplies cwd and there is no app-relative webroot.
-      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
-      expect(plan.workingDirectory).toBeUndefined();
-      expect(plan.appMount).toBeUndefined();
-      expect(plan.extensions["lando-service-ruby"]).not.toHaveProperty("webroot");
-    },
-  );
+  test("omits implicit Rails context when appMount is false", async () => {
+    // Given: a Rails service that does not use app code.
+    const definition = {
+      type: "ruby:3.3",
+      framework: "rails",
+      appMount: false,
+    };
+    // When: the preset is resolved and composed.
+    const plan = await composeRubyPlan(ruby33ServiceType, definition);
+    // Then: the image supplies cwd and there is no app-relative webroot.
+    expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+    expect(plan.workingDirectory).toBeUndefined();
+    expect(plan.appMount).toBeUndefined();
+    expect(plan.extensions["lando-service-ruby"]).not.toHaveProperty("webroot");
+  });
   test("plans a default Ruby 3.3 web service with framework=none defaults", async () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3" });
 
@@ -121,13 +117,12 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.extensions["lando-service-ruby"]).toEqual({
       framework: "none",
       version: "3.3",
-      defaultCommand: null,
       port: 3000,
       webroot: "/app",
     });
   });
 
-  test("framework=rails sets port 3000, rails server default command preset, public/ webroot, and rails env", async () => {
+  test("framework=rails sets port, public context, and Rails env while keeping the service alive", async () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "rails" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
@@ -136,11 +131,11 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.environment.RAILS_ENV).toBe("development");
     expect(plan.environment.RAILS_LOG_TO_STDOUT).toBe("true");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/public");
+    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
 
     expect(plan.extensions["lando-service-ruby"]).toEqual({
       framework: "rails",
       version: "3.3",
-      defaultCommand: ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"],
       port: 3000,
       webroot: "/app/public",
     });

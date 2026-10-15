@@ -104,7 +104,6 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.extensions["lando-service-go"]).toEqual({
       framework: "none",
       version: "1.22",
-      defaultCommand: null,
       port: 8080,
     });
   });
