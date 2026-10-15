@@ -14,6 +14,7 @@ import type {
   AppIdReservedError,
   AppLockTimeoutError,
   AppResolveError,
+  BuildArgSecretReferenceError,
   BuildPhaseFailedError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
@@ -116,7 +117,8 @@ type LegacyAppPlannerChannel =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | LandofileUnknownEventError
+  | BuildArgSecretReferenceError;
 
 type LegacyBuildChannel =
   | EventError

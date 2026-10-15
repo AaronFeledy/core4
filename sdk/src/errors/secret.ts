@@ -34,3 +34,19 @@ export type SecretStoreError =
   | SecretNotFoundError
   | SecretStoreUnavailableError
   | SecretReferenceInvalidError;
+
+/**
+ * A `${secret:...}` reference appeared in service `build.args`. Classic image
+ * builds send those args through `/build?buildargs`, which records them in
+ * image history. Secret stores resolve environment values at start instead.
+ */
+export class BuildArgSecretReferenceError extends Schema.TaggedError<BuildArgSecretReferenceError>()(
+  "BuildArgSecretReferenceError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    arg: Schema.String,
+    reference: Schema.String,
+    remediation: Schema.String,
+  },
+) {}

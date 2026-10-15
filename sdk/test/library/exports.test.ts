@@ -434,6 +434,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.RecipeRunNotAllowedError).toBeDefined();
     expect(errors.RecipeFetchNotAllowedError).toBeDefined();
     expect(errors.SecretNotFoundError).toBeDefined();
+    expect(errors.BuildArgSecretReferenceError).toBeDefined();
     expect(errors.ConfigTranslateError).toBeDefined();
     expect(errors.ConfigTranslatorConflictError).toBeDefined();
     expect(errors.ConfigTranslateNoTranslatorsError).toBeDefined();

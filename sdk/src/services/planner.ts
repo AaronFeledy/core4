@@ -1,6 +1,7 @@
 import { Context, type Effect } from "effect";
 
 import type {
+  BuildArgSecretReferenceError,
   BuildPhaseFailedError,
   CapabilityError,
   CommandAliasConflictError,
@@ -27,7 +28,8 @@ export type AppPlannerError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | LandofileUnknownEventError
+  | BuildArgSecretReferenceError;
 
 export type BuildError = EventError | ProviderSelectionError | ProviderError;
 export type BuildAppError = BuildError | BuildPhaseFailedError;

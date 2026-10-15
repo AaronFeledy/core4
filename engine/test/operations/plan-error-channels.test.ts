@@ -4,6 +4,7 @@ import type { Effect } from "effect";
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  BuildArgSecretReferenceError,
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
@@ -87,7 +88,8 @@ type LegacyPlanAppChannel =
   | PublicationUnsupportedError
   | CommandAliasConflictError
   | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | LandofileUnknownEventError
+  | BuildArgSecretReferenceError;
 
 type LegacyOrphanTeardownError =
   | ProviderError
