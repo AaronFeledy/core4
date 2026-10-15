@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { access } from "node:fs/promises";
+import { basename } from "node:path";
 import { Effect, Fiber } from "effect";
 import {
   FilesystemWatchIO,
@@ -8,8 +9,8 @@ import {
 } from "../../src/cli/commands/doctor-filesystem-watch-io";
 
 const systemError = (code: string) => Object.assign(new Error("private path"), { code });
-const observe = (io: WatchNativeIO) =>
-  FilesystemWatchIO.use((fs) => fs.observe).pipe(Effect.provide(FilesystemWatchIO.layerWith(io)));
+const observe = (io: WatchNativeIO, platform = "linux") =>
+  FilesystemWatchIO.use((fs) => fs.observe).pipe(Effect.provide(FilesystemWatchIO.layerWith(io, platform)));
 const fixture = () => {
   const actions: string[] = [];
   const io: WatchNativeIO = {
@@ -261,3 +262,126 @@ test.skipIf(process.platform !== "linux")(
     expect(result).toMatchObject({ allocation: { stage: "watch", errno: "ENOSPC" }, cleanup: "complete" });
   },
 );
+
+test("Windows confirms an exact sentinel event and cleans the file before its directory", async () => {
+  const { io, actions } = fixture();
+  let onEvent: ((filename: string | null) => void) | undefined;
+  const result = await Effect.runPromise(
+    observe(
+      {
+        ...io,
+        readLimit: async () => {
+          throw new Error("Windows must not read Linux inotify limits");
+        },
+        watchDirectory: (_path, _onError, callback) => {
+          actions.push("watch");
+          onEvent = callback;
+          return { close: () => actions.push("close") };
+        },
+        writeProbeFile: async (path) => {
+          actions.push("write");
+          onEvent?.("unrelated-file");
+          onEvent?.(basename(path));
+        },
+        removeProbeFile: async () => {
+          actions.push("remove-file");
+        },
+      },
+      "win32",
+    ),
+  );
+  expect(result).toMatchObject({
+    allocation: { stage: "complete" },
+    eventDelivery: "confirmed",
+    cleanup: "complete",
+    limits: {},
+  });
+  expect(actions).toEqual(["mkdir", "watch", "write", "close", "remove-file", "remove"]);
+});
+
+test("Windows reports a missing event and still closes and removes its probe", async () => {
+  const { io, actions } = fixture();
+  const result = await Effect.runPromise(
+    observe(
+      {
+        ...io,
+        writeProbeFile: async () => {
+          actions.push("write");
+        },
+        removeProbeFile: async () => {
+          actions.push("remove-file");
+        },
+      },
+      "win32",
+    ),
+  );
+  expect(result).toMatchObject({
+    allocation: { stage: "delivery", errno: "ETIMEDOUT" },
+    eventDelivery: "missing",
+    cleanup: "complete",
+  });
+  expect(actions).toEqual(["mkdir", "watch", "write", "close", "remove-file", "remove"]);
+});
+
+test("Windows reports a native watcher error during delivery and cleans its probe", async () => {
+  const { io, actions } = fixture();
+  let onError: ((error: unknown) => void) | undefined;
+  const result = await Effect.runPromise(
+    observe(
+      {
+        ...io,
+        watchDirectory: (_path, callback) => {
+          actions.push("watch");
+          onError = callback;
+          return { close: () => actions.push("close") };
+        },
+        writeProbeFile: async () => {
+          actions.push("write");
+          onError?.(systemError("EPERM"));
+        },
+        removeProbeFile: async () => {
+          actions.push("remove-file");
+        },
+      },
+      "win32",
+    ),
+  );
+  expect(result).toMatchObject({
+    allocation: { stage: "watch", errno: "EPERM" },
+    eventDelivery: "unobserved",
+    cleanup: "complete",
+  });
+  expect(actions).toEqual(["mkdir", "watch", "write", "close", "remove-file", "remove"]);
+});
+
+test("Windows cleans a late file after interruption without waiting for event delivery", async () => {
+  const { io, actions } = fixture();
+  const started = Promise.withResolvers<void>();
+  const written = Promise.withResolvers<void>();
+  const removed = Promise.withResolvers<void>();
+  const fiber = Effect.runFork(
+    observe(
+      {
+        ...io,
+        writeProbeFile: () => {
+          actions.push("write");
+          started.resolve();
+          return written.promise;
+        },
+        removeProbeFile: async () => {
+          actions.push("remove-file");
+        },
+        removeDirectory: async () => {
+          actions.push("remove");
+          removed.resolve();
+        },
+      },
+      "win32",
+    ),
+  );
+  await started.promise;
+  await Effect.runPromise(Fiber.interrupt(fiber));
+  written.resolve();
+  await removed.promise;
+  expect(actions).toEqual(["mkdir", "watch", "write", "close", "remove-file", "remove"]);
+});
