@@ -135,7 +135,7 @@ describe("@lando/core/testing package export", () => {
     expect(testing.LANDO_BASE_DEFAULT_FEATURE_IDS).toBeDefined();
     expect(testing.PluginRegistryLayer.layer).toBeDefined();
     expect(testing.ProviderExecToolingEngine.layer).toBeDefined();
-    expect(testing.applyAuthoredAppMount).toBeFunction();
+    expect(testing.validateAuthoredAppMount).toBeFunction();
     expect(testing.applyAuthoredHealthcheck).toBeFunction();
     expect(testing.buildKeyForService).toBeFunction();
     expect(testing.composeService).toBeFunction();
@@ -203,7 +203,7 @@ describe("@lando/core/testing package export", () => {
         [
           process.execPath,
           "-e",
-          "const mod = await import('@lando/core/testing'); const names = ['AppPlanner', 'AppPlannerLayer.layer', 'LandoEventService.layer', 'L337_BASE_DEFAULT_FEATURE_IDS', 'LANDO_BASE_DEFAULT_FEATURE_IDS', 'PluginRegistryLayer.layer', 'ProviderExecToolingEngine.layer', 'ScenarioContext', 'TestClock', 'TestDataMover', 'TestDataset', 'TestRemoteSource', 'TestRuntimeLayer', 'TestRuntimeProvider', 'TestTunnelService', 'applyAuthoredAppMount', 'applyAuthoredHealthcheck', 'buildKeyForService', 'composeService', 'createBufferedRendererIO', 'loadLandofileFile', 'loadLogFileHelperPayloads', 'localRemoteSource', 'PluginRegistryLayer.layerWith', 'makePluginStateStore', 'makeTestDataMover', 'makeTestDataset', 'makeTestRemoteSource', 'makeTestRuntime', 'makeTestTunnelService', 'mergeDefaultExcludes', 'provideTestRuntime', 'withScenarioContext', 'withService']; const missing = names.filter((name) => name.split('.').reduce((value, key) => value?.[key], mod) === undefined); console.log(mod.TestRuntimeProvider.id); console.log(JSON.stringify(missing)); console.log(Bun.resolveSync('@lando/core/testing', process.cwd())); process.exit(missing.length === 0 ? 0 : 1);",
+          "const mod = await import('@lando/core/testing'); const names = ['AppPlanner', 'AppPlannerLayer.layer', 'LandoEventService.layer', 'L337_BASE_DEFAULT_FEATURE_IDS', 'LANDO_BASE_DEFAULT_FEATURE_IDS', 'PluginRegistryLayer.layer', 'ProviderExecToolingEngine.layer', 'ScenarioContext', 'TestClock', 'TestDataMover', 'TestDataset', 'TestRemoteSource', 'TestRuntimeLayer', 'TestRuntimeProvider', 'TestTunnelService', 'validateAuthoredAppMount', 'applyAuthoredHealthcheck', 'buildKeyForService', 'composeService', 'createBufferedRendererIO', 'loadLandofileFile', 'loadLogFileHelperPayloads', 'localRemoteSource', 'PluginRegistryLayer.layerWith', 'makePluginStateStore', 'makeTestDataMover', 'makeTestDataset', 'makeTestRemoteSource', 'makeTestRuntime', 'makeTestTunnelService', 'mergeDefaultExcludes', 'provideTestRuntime', 'withScenarioContext', 'withService']; const missing = names.filter((name) => name.split('.').reduce((value, key) => value?.[key], mod) === undefined); console.log(mod.TestRuntimeProvider.id); console.log(JSON.stringify(missing)); console.log(Bun.resolveSync('@lando/core/testing', process.cwd())); process.exit(missing.length === 0 ? 0 : 1);",
         ],
         consumerDir,
       );

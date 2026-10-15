@@ -170,6 +170,8 @@ Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|bake
 
 Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userCacheRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 
+Scratch startup MUST pass the shared §6.7 readiness barrier before reporting success, returning a started handle, marking the registry running, or executing `apps:scratch:run` tooling. Readiness failure and interruption MUST follow scratch scope cleanup, including routes, containers, applicable volumes, and the materialized root; `--keep-on-failure` retains failed acquisition state. User-app readiness retention markers MUST NOT suppress scratch cleanup. Scratch remediation MUST address the scratch identity and MUST NOT prescribe `lando start`.
+
 #### 21.10.2 Top-level alias reservation
 
 The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2. Conflicting plugin or tooling aliases raise `CommandAliasConflictError`. User alias overrides MAY remap them; canonical `apps:scratch:*` ids remain callable.
@@ -178,7 +180,7 @@ The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2
 
 `apps:scratch:run` is a thin `ScratchAppService.acquire` surface, not a separate lifecycle. It defaults to the bundled `toolbox` recipe, cwd isolation, and the primary service. `--from`, `--service`, and `--no-mount` select another recipe, target, or baked isolation.
 
-Arguments after `--` pass verbatim to provider exec. TTY and agent-context forwarding follow §6.9.1; output streams through the renderer; the tool exit code becomes the command exit code and is not a tagged Lando failure. Scope close destroys the scratch on success, failure, or interruption. `--keep` converts it to a detached scratch. JSON mode uses the streaming contract in §8.11.3. There is no warm pool (§21.15).
+Arguments after `--` pass verbatim to provider exec. Stdin and PTY follow the §8.2 host-stdin rule, and agent context follows §6.9.1. In human-result formats, acquisition progress renders first and is retired before the tool starts (§8.9.2), then tool output streams live through the renderer. JSON uses the §8.11.3 frames and YAML emits one terminal envelope. The tool exit code becomes the command exit code and is not a tagged Lando failure. Scope close destroys the scratch on success, failure, or interruption. `--keep` converts it to a detached scratch; human output names the kept id on stderr, apart from the tool's stdout. There is no warm pool (§21.15).
 
 ### 21.11 Cleanup, registry, and orphan reaping
 

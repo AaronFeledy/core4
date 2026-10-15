@@ -1,12 +1,16 @@
 import { landofileLayerRank } from "@lando/sdk/landofile";
-import type { ConfigTranslateDocumentSetInput, ConfigTranslateOutput } from "@lando/sdk/schema";
+import type {
+  ConfigTranslateDocumentSetInput,
+  ConfigTranslateOutput,
+  ConfigTranslateResult,
+} from "@lando/sdk/schema";
 import { lando3TargetLayer } from "./contract.ts";
 import { isAppRootLando3Layer, sourceLayerForDocument } from "./detect.ts";
 
 export const completeLando3CommitSet = (
   input: ConfigTranslateDocumentSetInput,
   planned: readonly ConfigTranslateOutput[],
-) => {
+): Pick<ConfigTranslateResult, "outputs" | "deletions"> => {
   // Completion must not turn a cleared translation into writes or deletions.
   if (planned.length === 0) return { outputs: [], deletions: [] };
 

@@ -1,6 +1,9 @@
 import { RouteInputError } from "@lando/sdk/errors";
+import { parseRouteShorthand } from "@lando/sdk/landofile";
 import type { RouteFilter, RouteInput } from "@lando/sdk/schema";
 import { Result } from "effect";
+
+export { parseRouteShorthand } from "@lando/sdk/landofile";
 
 export interface NormalizedRoute {
   readonly source?: { readonly key: string; readonly file?: string };
@@ -10,40 +13,6 @@ export interface NormalizedRoute {
   readonly pathPrefix?: string;
   readonly filters: ReadonlyArray<RouteFilter>;
 }
-
-export const parseRouteShorthand = (text: string): Result.Result<NormalizedRoute, string> => {
-  if (text.length === 0 || /\s/.test(text)) return Result.fail("Use a non-empty route without whitespace.");
-  if (text.includes("://")) return Result.fail("Omit the scheme prefix; use an object route to set scheme.");
-  if (/[?#]/.test(text)) return Result.fail("Remove query strings and fragments from the route.");
-  const slash = text.indexOf("/");
-  const authority = slash < 0 ? text : text.slice(0, slash);
-  const pathPrefix = slash < 0 ? undefined : text.slice(slash);
-  const colon = authority.indexOf(":");
-  const hostname = colon < 0 ? authority : authority.slice(0, colon);
-  if (
-    !/^[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?(?:\.[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?)*$/.test(
-      hostname,
-    )
-  ) {
-    return Result.fail(
-      "Use dot-separated hostname labels without leading or trailing hyphens, and begin any path with /.",
-    );
-  }
-  const portText = colon < 0 ? undefined : authority.slice(colon + 1);
-  const port = portText === undefined ? undefined : Number(portText);
-  if (
-    portText !== undefined &&
-    (!/^[0-9]+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535)
-  ) {
-    return Result.fail("Use a numeric port from 1 through 65535, followed by / if a path is present.");
-  }
-  return Result.succeed({
-    hostname,
-    ...(port === undefined ? {} : { endpoint: port }),
-    ...(pathPrefix === undefined ? {} : { pathPrefix }),
-    filters: [],
-  });
-};
 
 export const normalizeRoute = (
   route: RouteInput,
@@ -60,10 +29,7 @@ export const normalizeRoute = (
       filters: route.filters ?? [],
     });
   return Result.mapError(
-    Result.map(parseRouteShorthand(route), (normalized) => ({
-      ...normalized,
-      source,
-    })),
+    Result.map(parseRouteShorthand(route), (normalized) => ({ ...normalized, filters: [], source })),
     (message) =>
       new RouteInputError({
         ...source,

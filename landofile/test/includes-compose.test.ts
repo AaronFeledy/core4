@@ -177,17 +177,15 @@ describe("Compose include fragments", () => {
     expect(error.remediation).toBe(remediation);
   });
 
-  test("rejects a reset tag with the authored fragment source", async () => {
+  test("consumes a reset tag in an included fragment", async () => {
     // Given
     await writeFile(join(appRoot, "reset.yml"), "services:\n  web: !reset\n", "utf8");
 
     // When
-    const error = await reject({ includes: ["./reset.yml"] }, appRoot);
+    const result = await resolve({ includes: ["./reset.yml"] }, appRoot);
 
     // Then
-    expect(error._tag).toBe("ComposeKeyRejectedError");
-    expect(error.keyPath).toBe("!reset");
-    expect(error.source).toBe("./reset.yml");
+    expect(result).toMatchObject({ services: {} });
   });
 
   test("attributes a nested Compose fragment rejection to its own authored source", async () => {

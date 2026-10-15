@@ -98,12 +98,13 @@ const expectedCatalogRows = [
     ["setup-plugin-flags", "mcp-allowlist"],
   ],
   ["core-service-env-catalog", "derived", "build-core-service-env-catalog.ts", "repo"],
+  ["schema-deprecations", "derived", "build-schema-deprecations.ts", "repo", ["core-service-env-catalog"]],
   [
     "command-registry-manifest",
     "derived",
     "build-command-registry-manifest.ts",
     "core",
-    ["setup-plugin-flags", "mcp-allowlist"],
+    ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
   ],
   ["compiled-decoders", "derived", "build-compiled-decoders.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -298,13 +299,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(32);
+    expect(catalog).toHaveLength(33);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(2);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(19);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(20);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -340,6 +341,7 @@ describe("codegen catalog", () => {
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
+    expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );

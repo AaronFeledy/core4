@@ -41,9 +41,9 @@ export * as BunFileSystem from "@lando/engine/services/file-system";
 export { loadLandofileFile } from "@lando/engine/services/landofile-live";
 export {
   AppPlanner,
-  applyAuthoredAppMount,
   applyAuthoredHealthcheck,
   mergeDefaultExcludes,
+  validateAuthoredAppMount,
 } from "@lando/engine/services/planner";
 export * as AppPlannerLayer from "@lando/engine/services/planner";
 export * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";

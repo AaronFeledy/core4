@@ -3,6 +3,7 @@ import { posix } from "node:path";
 import { Schema } from "effect";
 
 import type { ServiceConfig } from "@lando/sdk/schema";
+import { appMountTarget } from "./_volume-helpers.ts";
 
 /** Resolve an authored document root without changing the authored service config. */
 export const resolveWebroot = (
@@ -10,7 +11,12 @@ export const resolveWebroot = (
   authored: string | undefined,
   appMount?: ServiceConfig["appMount"],
 ): string => {
-  const mount = posix.resolve("/", typeof appMount === "object" ? appMount.target : "/app");
+  if (appMount === false && !(authored ?? ".").startsWith("/")) {
+    throw new Error(
+      `${typeLabel} webroot "${authored ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
+    );
+  }
+  const mount = appMountTarget(appMount);
   const path = Schema.decodeUnknownSync(
     Schema.String.pipe(
       Schema.check(

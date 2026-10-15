@@ -14,6 +14,16 @@ If you author a service `healthcheck:` block, the plan schema accepts `kind` (`c
 
 The shipped `provider-exec` runner is command-only. `kind: command` runs via `RuntimeProvider.exec` in the container (a string command is wrapped as `sh -c`; an argv array is passed through). `kind: none` skips the probe and returns `healthy=true` with `lastStatus: skipped`. `kind: http` and `kind: tcp` fail with `The provider-exec healthcheck runner only supports command healthchecks.` There is no CLI or product HTTP/TCP probe. `url` and `port` are schema fields only.
 
+The runner probes immediately, including during `startPeriodSeconds`. Failed probes during that period do not consume retries; probes run at one-second intervals or `intervalSeconds` when shorter. The first passing probe returns immediately. After the start period, the runner permits `retries` attempts (at least one) at `intervalSeconds`, with `timeoutSeconds` per attempt.
+
+Start, restart, rebuild, and global-service start wait for enabled healthchecks before post-start subscribers run. The runner and provider `service_healthy` dependency gate share the same immediate two-phase probe. Language runtimes do not add default healthchecks; authors provide `healthcheck:` when needed.
+
+An unsupervised exited service fails with `ServiceNotReadyError`; applied user-app resources stay available for diagnosis. `restart: always` or `unless-stopped` permits an exit or observed restart to yield a warning and `restarting`; `on-failure` permits that only with a non-zero exit code. Exhausted healthchecks remain fatal for every service. A `service_completed_successfully` dependency target skips healthchecks and must exit 0 regardless of restart policy. Successful rows report `ready`, `running` without a check, or `completed` for verified jobs. Restart policies never relax dependency gates during provider apply.
+
+Provider inspection failures use `inspect-failed` and prescribe `lando doctor`, never a successful restart warning. Service diagnosis uses `lando logs -s <service>` and `lando start` for user apps, or `lando global:logs -s <service>` and `lando global:start` for global services. Scratch acquisition runs the same checks, but failure or interruption follows scratch cleanup and `--keep-on-failure`, not user-app retention.
+
+Non-instant readiness waits publish task-tree progress. Interruption during the barrier retains the applied app, routes, volumes, sessions, journal, and managed scopes while interruption propagates. Earlier startup phases keep their existing interrupt cleanup.
+
 This is not a user how-to. For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
 <Guide>

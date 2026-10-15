@@ -1,0 +1,22 @@
+name: node-typescript-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    port: 3000
+tooling:
+  npm:
+    cmd: [npm]
+    description: Run npm inside the app service.
+    service: app
+    dir: /app
+  node:
+    cmd: [node]
+    description: Run Node inside the app service.
+    service: app
+    dir: /app
+  npx:
+    cmd: [npx]
+    description: Run npx inside the app service.
+    service: app
+    dir: /app

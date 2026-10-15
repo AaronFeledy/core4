@@ -35,6 +35,8 @@
     "./dependency-gates": "./src/dependency-gates.ts",
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",
+    "./healthcheck-probe": "./src/healthcheck-probe.ts",
+    "./supervision": "./src/supervision.ts",
     "./engine-api": "./src/engine-api.ts",
     "./resource-names": "./src/resource-names.ts",
     "./redact": "./src/redact.ts",
