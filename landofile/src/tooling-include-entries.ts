@@ -1,10 +1,9 @@
-import { isAbsolute, resolve } from "node:path";
-
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 
-import { mergeValues } from "@lando/sdk/landofile";
+import { type LandofileDecodedOverlay, isMergeDirective, mergeValues } from "@lando/sdk/landofile";
 import { includeError } from "./include-guard.ts";
+import { includeAcquisitionView } from "./include-layer-overlays.ts";
 
 type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 
@@ -50,37 +49,7 @@ const isRemoteSource = (source: string): boolean =>
   source.startsWith("github:") ||
   /^https?:\/\//u.test(source);
 
-const sourceFromRoot = (source: string, sourceRoot: string, appRoot: string): string =>
-  sourceRoot === appRoot || isAbsolute(source) || isRemoteSource(source)
-    ? source
-    : resolve(sourceRoot, source);
-
-export const resolveToolingIncludeSourceRoots = (
-  landofile: LandofileShape,
-  sourceRoot: string,
-  appRoot: string,
-): LandofileShape => ({
-  ...landofile,
-  ...(landofile.includes === undefined
-    ? {}
-    : {
-        includes: landofile.includes.map((entry) =>
-          typeof entry === "string" || entry.kind !== "tooling"
-            ? entry
-            : { ...entry, source: sourceFromRoot(entry.source, sourceRoot, appRoot) },
-        ),
-      }),
-  ...(landofile.toolingIncludes === undefined
-    ? {}
-    : {
-        toolingIncludes: Object.fromEntries(
-          Object.entries(landofile.toolingIncludes).map(([namespace, entry]) => [
-            namespace,
-            { ...entry, file: sourceFromRoot(entry.file, sourceRoot, appRoot) },
-          ]),
-        ),
-      }),
-});
+export { resolveToolingIncludeSourceRoots } from "./tooling-include-source-roots.ts";
 
 const canonicalToolingEntries = (
   landofile: Pick<LandofileShape, "includes">,
@@ -121,11 +90,12 @@ const groupByNamespace = (
  * a higher layer that only redirects its source.
  */
 export const composeToolingIncludeEntries = (
-  sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
+  sources: ReadonlyArray<Pick<LandofileDecodedOverlay, "includes">>,
 ): ReadonlyArray<ObjectIncludeEntry> => {
   const composed = new Map<string, ReadonlyArray<ObjectIncludeEntry>>();
   for (const source of sources) {
-    for (const [key, declared] of groupByNamespace(source)) {
+    if (isMergeDirective(source.includes)) composed.clear();
+    for (const [key, declared] of groupByNamespace(includeAcquisitionView(source))) {
       const existing = composed.get(key);
       const overridden = existing?.length === 1 && declared.length === 1 ? existing[0] : undefined;
       const override = declared[0];

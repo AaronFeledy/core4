@@ -1,6 +1,7 @@
 import { posix } from "node:path";
+import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { LoweringPatch, ServiceLoweringContext } from "./lowering-contract.ts";
-import { needsReviewServiceKey } from "./service-diagnostics.ts";
+import { needsReviewServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 
 export const lowerTomcatWebroot = (
   service: Readonly<Record<string, unknown>>,
@@ -22,6 +23,18 @@ export const lowerTomcatWebroot = (
   }
 
   const webroot = Object.hasOwn(service, "webroot") ? service.webroot : ".";
+  if (isLegacyTagged(webroot))
+    return {
+      patch: {},
+      diagnostics: [
+        unsupportedServiceKey({
+          ctx,
+          relative: ["webroot"],
+          message: "The legacy Tomcat webroot is a file reference and was not read.",
+          remediation: "Set webroot to the literal ROOT webapp directory (<legacy root>/webapps/ROOT).",
+        }),
+      ],
+    };
   if (typeof webroot !== "string") {
     return {
       patch: { webroot },

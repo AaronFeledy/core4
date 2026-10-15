@@ -25,19 +25,34 @@ if (typeof capture.gzipBase64 !== "string") throw new Error("Missing captured wi
 const bytes = Bun.gunzipSync(Buffer.from(capture.gzipBase64, "base64"));
 const payload = wireObject(JSON.parse(new TextDecoder().decode(bytes)));
 const input = wireObject(payload.input);
-if (!Array.isArray(input.anyOf)) throw new Error("Missing captured input union");
-const documentSet = wireObject(
-  input.anyOf.find(
-    (branch) =>
-      isJsonObject(branch) &&
-      isJsonObject(branch.properties) &&
-      "currentLowerV4Fragments" in branch.properties,
-  ),
-);
+const fragmentFromInput = (input: ReturnType<typeof wireObject>) => {
+  if (!Array.isArray(input.anyOf)) throw new Error("Missing captured input union");
+  const documentSet = wireObject(
+    input.anyOf.find(
+      (branch) =>
+        isJsonObject(branch) &&
+        isJsonObject(branch.properties) &&
+        "currentLowerV4Fragments" in branch.properties,
+    ),
+  );
+  return schemaAt(documentSet, "$.currentLowerV4Fragments.items.fragment");
+};
 const captured = {
   input,
-  fragment: schemaAt(documentSet, "$.currentLowerV4Fragments.items.fragment"),
+  fragment: fragmentFromInput(input),
   services: wireObject(payload.services),
+};
+const directiveCapture = wireObject(
+  await Bun.file(resolve(import.meta.dirname, "fixtures/x-extension-wire.directives.json")).json(),
+);
+if (typeof directiveCapture.gzipBase64 !== "string") throw new Error("Missing directive capture bytes");
+const directiveBytes = Bun.gunzipSync(Buffer.from(directiveCapture.gzipBase64, "base64"));
+const directivePayload = wireObject(JSON.parse(new TextDecoder().decode(directiveBytes)));
+const directiveInput = wireObject(directivePayload.input);
+const directiveCaptured = {
+  input: directiveInput,
+  fragment: fragmentFromInput(directiveInput),
+  services: wireObject(directivePayload.services),
 };
 
 describe("embedded wire closed x-* artifact repair", () => {
@@ -48,14 +63,22 @@ describe("embedded wire closed x-* artifact repair", () => {
     );
   });
 
+  test("pins the reviewed directive transport capture independently of the historical repair", () => {
+    expect(directiveCapture.provenanceCommit).toBe("31996b06836f2647a61851f5a8d337df6d61ba23");
+    expect(createHash("sha256").update(directiveBytes).digest("hex")).toBe(
+      "28de00715c624a03f017e473db4124e9c137dae14064669f3957429c501be10a",
+    );
+    expect(jsonEquals(directiveCaptured.fragment, captured.fragment)).toBe(false);
+  });
+
   for (const [id, path, source] of WIRE_TARGETS) {
     const surface = `schema:${id}`;
-    test(`proves the complete repaired ${id} ${path} subtree`, async () => {
-      // Given the captured historical subtree, with every union alternative intact.
-      const before = captured[source];
+    test(`proves the complete directive-capable ${id} ${path} subtree`, async () => {
+      // Given the reviewed directive transport, with every union alternative intact.
+      const expected = directiveCaptured[source];
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      // When only the exact closed-extension producer signature is repaired.
-      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(before)));
+      // When the complete current subtree is compared with its transport baseline.
+      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(expected)));
       // Then the entire normalized subtree matches, not just the reported keyword.
       expect(jsonEquals(repaired, current)).toBe(true);
       expect(classifySchemaChange(repaired, current, "strict")).toEqual([]);
@@ -95,7 +118,7 @@ describe("embedded wire closed x-* artifact repair", () => {
       // Given a current subtree whose first string constraint is independently tightened.
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
       const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
-      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(captured[source])));
+      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(directiveCaptured[source])));
       // When the conservative classifier still reports the same coarse union delta.
       const findings = classifySchemaChange(
         atWirePath(captured[source], path),

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { composeServiceDispositions, composeTagDispositions } from "@lando/sdk/landofile";
+import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -114,24 +114,20 @@ describe("Landofile Compose rejection surface", () => {
   test.each([
     ["!reset", ["    environment: !reset"]],
     ["!override", ["    ports: !override [80]"]],
-  ] as const)("rejects the %s YAML tag without service attribution", async (keyPath, lines) => {
+  ] as const)("consumes the native %s YAML tag", async (_keyPath, lines) => {
     await withTempDir(async (dir) => {
       // Given
-      const { source, exit } = await loadYamlExit(dir, yamlService(...lines));
+      const { exit } = await loadYamlExit(dir, yamlService(...lines));
 
       // When
-      const error = failureOf(exit);
+      const succeeded = Exit.isSuccess(exit);
 
       // Then
-      expectRejection(error, {
-        keyPath,
-        remediation: composeTagDispositions[keyPath].remediation,
-        source,
-      });
+      expect(succeeded).toBe(true);
     });
   });
 
-  test("rejects an inline !override before the YAML parser", async () => {
+  test("keeps populated flow mapping rejection for an override payload", async () => {
     await withTempDir(async (dir) => {
       // Given
       const { source, exit } = await loadYamlExit(dir, yamlService("    environment: !override {A: 1}"));
@@ -140,12 +136,8 @@ describe("Landofile Compose rejection surface", () => {
       const error = failureOf(exit);
 
       // Then
-      expectRejection(error, {
-        keyPath: "!override",
-        remediation: composeTagDispositions["!override"].remediation,
-        source,
-      });
-      expect(error).not.toBeInstanceOf(LandofileParseError);
+      expect(error).toBeInstanceOf(LandofileParseError);
+      expect(error).toMatchObject({ filePath: source });
     });
   });
 

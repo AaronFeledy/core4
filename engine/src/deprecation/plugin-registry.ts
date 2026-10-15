@@ -1,13 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import {
-  type ContributionRef,
-  type DeprecationNotice,
-  JSON_SCHEMA_NAMES,
-  type PluginManifest,
-  getJsonSchema,
-  schemaDeprecationsFromJsonSchema,
-} from "@lando/sdk/schema";
+import type { ContributionRef, DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
 import { DeprecationService, PluginRegistry } from "@lando/sdk/services";
 import {
   SETUP_BUILTIN_FLAG_NAMES,
@@ -15,6 +8,7 @@ import {
   manifestSetupFlagContributions,
 } from "../plugins/setup-flags.ts";
 import { registerBuiltInContractDeprecations } from "./built-in-contracts.ts";
+import { SCHEMA_DEPRECATIONS } from "./generated/schema-deprecations.ts";
 
 type ContributionKind =
   | "serviceTypes"
@@ -111,10 +105,8 @@ const registerPluginDeprecations = Effect.fnUntraced(function* (manifests: Reado
 
 const registerSchemaDeprecations = Effect.gen(function* () {
   const deprecations = yield* DeprecationService;
-  for (const schemaName of JSON_SCHEMA_NAMES) {
-    for (const entry of schemaDeprecationsFromJsonSchema(getJsonSchema(schemaName))) {
-      yield* deprecations.register("schema-walk", "schema-field", `${schemaName}${entry.path}`, entry.notice);
-    }
+  for (const entry of SCHEMA_DEPRECATIONS) {
+    yield* deprecations.register(entry.source, entry.kind, entry.id, entry.notice);
   }
 });
 

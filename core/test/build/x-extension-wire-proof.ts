@@ -4,7 +4,9 @@ import {
   type JsonValue,
   isJsonObject,
 } from "../../../scripts/schema-compatibility/model.ts";
-import { CLOSED_EXTENSION_JUSTIFICATION } from "./x-extension-closed-record.ts";
+
+export const DIRECTIVE_TRANSPORT_JUSTIFICATION =
+  "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment.";
 
 export const WIRE_TARGETS = [
   ["ConfigTranslateDocumentSetInput", "$.currentLowerV4Fragments.items.fragment", "fragment"],
@@ -22,7 +24,7 @@ export const expectedWireExceptions = (): readonly CompatibilityException[] =>
     surface: `schema:${id}`,
     changeKind: "unsupported-construct",
     path: `${path}.anyOf`,
-    justification: CLOSED_EXTENSION_JUSTIFICATION,
+    justification: DIRECTIVE_TRANSPORT_JUSTIFICATION,
   }));
 
 export const wireObject = (value: unknown): JsonSchema => {

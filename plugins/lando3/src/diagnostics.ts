@@ -86,26 +86,6 @@ export const generatedRecipe = (args: {
   remediation: "Review the generated services before starting the app.",
 });
 
-export const relocationDiagnostic = (args: {
-  readonly unitLabel: string;
-  readonly hoistedTo: string;
-  readonly omittedFrom: ReadonlyArray<string>;
-  readonly changedPrefixes: ReadonlyArray<string>;
-  readonly sourceIds: ReadonlyArray<ConfigTranslateSourceId>;
-  readonly occurrence: LegacyOccurrence;
-}): ConfigTranslateDiagnostic => ({
-  kind: "needs-review",
-  sourceId: args.occurrence.sourceId,
-  keyPath: args.unitLabel.split("."),
-  ...spanOf(args.occurrence),
-  message: `${args.unitLabel} moved to the ${args.hoistedTo} layer because Lando 4 layers cannot remove it later (sources: ${args.sourceIds.join(", ")}).${
-    args.changedPrefixes.length === 0
-      ? ""
-      : ` The ${args.changedPrefixes.join(", ")} prefix no longer contains ${args.unitLabel} in the translated files.`
-  }`,
-  remediation: `Review ${args.unitLabel} in the ${args.hoistedTo} layer; the earlier layers no longer define it on their own.`,
-});
-
 /**
  * Layer order, then source span, then key path segment by segment. Stable.
  * An unlocated diagnostic sorts as line 0, ahead of located ones, because core

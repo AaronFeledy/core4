@@ -200,5 +200,8 @@ export const authoringWireAst = (ast: AST.AST): AST.AST => {
     return mapComposite(node, go, "walk");
   });
   const strip = memoWalk((node, go) => mapComposite(node, go, "keep"));
-  return strip(AST.toEncoded(unwrap(ast)));
+  const root = AST.isSuspend(ast)
+    ? Schema.make<Schema.Codec<unknown>>(ast.thunk()).annotate(ast.annotations ?? {}).ast
+    : ast;
+  return strip(AST.toEncoded(unwrap(root)));
 };
