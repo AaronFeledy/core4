@@ -34,11 +34,24 @@ export const streamBunScript = Effect.fnUntraced(
     },
   ) {
     const pending = { stdout: "", stderr: "" };
+    const stdoutDecoder = new TextDecoder("utf-8");
+    const stderrDecoder = new TextDecoder("utf-8");
     const emit = (kind: "stdout" | "stderr", chunk: string) =>
       output.sink?.emit({ _tag: kind, chunk: output.redact(chunk), raw: true }) ?? Effect.void;
+    const flushPending = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+      pending.stdout += stdoutDecoder.decode();
+      pending.stderr += stderrDecoder.decode();
+      for (const kind of ["stdout", "stderr"] as const) {
+        if (pending[kind].length > 0) yield* emit(kind, pending[kind]);
+        pending[kind] = "";
+      }
+      if (output.sink?.flush !== undefined) yield* output.sink.flush();
+    });
     const lineSink: StreamFrameSinkShape = {
       emit: Effect.fnUntraced(function* (frame) {
-        pending[frame._tag] += frame.chunk;
+        const decoder = frame._tag === "stdout" ? stdoutDecoder : stderrDecoder;
+        pending[frame._tag] +=
+          typeof frame.chunk === "string" ? frame.chunk : decoder.decode(frame.chunk, { stream: true });
         let newline = pending[frame._tag].indexOf("\n");
         while (newline !== -1) {
           const line = pending[frame._tag].slice(0, newline + 1);
@@ -47,6 +60,7 @@ export const streamBunScript = Effect.fnUntraced(
           newline = pending[frame._tag].indexOf("\n");
         }
       }),
+      flush: flushPending,
     };
     const runner = yield* ProcessRunner;
     const result = yield* collectExecStream(
@@ -61,9 +75,7 @@ export const streamBunScript = Effect.fnUntraced(
       }),
       output.sink === undefined ? Option.none() : Option.some(lineSink),
     );
-    for (const kind of ["stdout", "stderr"] as const) {
-      if (pending[kind].length > 0) yield* emit(kind, pending[kind]);
-    }
+    if (output.sink === undefined) yield* flushPending();
     return result;
   },
   Effect.scoped,

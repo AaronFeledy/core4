@@ -10,7 +10,22 @@ tags: [beta, docs, installer]
 
 > **Alpha status:** The PowerShell installer is **not live**. `https://get.lando.dev/install.ps1` is not serving v4. Unsigned `lando-windows-x64.exe` and `lando-windows-arm64.exe` **are** downloadable from the GitHub `v4.0.0-dev.N` prerelease. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-Download the unsigned Windows binary for your CPU from the GitHub prerelease. Run `.\lando-windows-x64.exe --version` (or `lando-windows-arm64.exe` on ARM64). Then `lando setup`. WSL is optional, not the only path. Follow [Install from a GitHub release](./github-releases.mdx) for asset names.
+Install the Windows binary and run it as `lando` in PowerShell. WSL is optional.
+
+1. Download `lando-windows-x64.exe` (or `lando-windows-arm64.exe` on ARM64) and `SHA256SUMS` from the same `v4.0.0-dev.N` [GitHub prerelease](https://github.com/AaronFeledy/core4/releases). Follow the [PowerShell checksum check](../../alpha-install-and-bug-reports.md) before renaming the binary.
+2. Follow [Put lando on PATH and run setup](./path-and-setup.mdx) to rename it to `lando.exe`, add its directory to PATH, and save the PATH entry in your PowerShell profile.
+3. Verify the command, set up the runtime, and check it:
+
+```powershell
+Get-Command lando | Select-Object -ExpandProperty Source
+lando --version
+lando setup
+lando doctor
+```
+
+`Get-Command` should point to the `lando.exe` you installed. If it points to an older installation, correct your PATH or remove an older `lando` alias from your PowerShell profile before continuing.
+
+If setup reports a missing host prerequisite, follow its remediation and rerun `lando setup`. Include `lando doctor` output when [reporting an Alpha bug](../../alpha-install-and-bug-reports.md).
 
 The script at `scripts/install.ps1` exists in this repo. It still needs live channel manifests at `https://update.lando.dev`. Those hosts are not shipping.
 

@@ -60,8 +60,11 @@ test.each([
         (exitCode === 0 ? "<two words>\n<$(echo injected)>\n" : "");
       switch (format) {
         case "text":
-          expect(stdout.split(expectedOut)).toHaveLength(2);
-          expect(stderr).toBe(kind === "shell" ? "diagnostic\n" : "");
+          expect(stdout).toBe(expectedOut);
+          expect(stderr).toContain("▼ probe (1 step)");
+          expect(stderr).toContain("[tooling:probe:exec] start: executing");
+          expect(stderr).toContain(exitCode === 0 ? "✓ complete" : "✗ fail (exit 7)");
+          expect(stderr.split("diagnostic\n")).toHaveLength(kind === "shell" ? 2 : 1);
           break;
         case "json":
           expect(JSON.parse(stdout)).toMatchObject({

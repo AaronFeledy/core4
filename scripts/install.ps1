@@ -98,7 +98,7 @@ function Invoke-PostInstallSetup([string] $InstalledPath) {
     if (-not $shouldSkipPrompt) { $shouldSkipPrompt = (EnvValue "LANDO_INSTALL_NONINTERACTIVE") -eq "1" }
     if (-not $shouldSkipPrompt) { $shouldSkipPrompt = [Console]::IsInputRedirected }
     if (-not $shouldSkipPrompt) {
-      $answer = Read-Host "Run lando4.exe setup now? [y/N]"
+      $answer = Read-Host "Run lando.exe setup now? [y/N]"
       $shouldRunSetup = $answer -in @("y", "Y", "yes", "YES")
     }
   }
@@ -133,7 +133,7 @@ function Get-InstallItem([string] $Path) {
 }
 
 function Assert-OwnedDestination([string] $Destination, [string] $RecordPath) {
-  $message = "Refusing to replace unowned destination $Destination. Choose a different LANDO_INSTALL_DIR."
+  $message = "Refusing to replace unowned destination $Destination. Back up or remove the existing executable, then rerun the installer; or choose a different LANDO_INSTALL_DIR."
   try {
     $item = Get-InstallItem $Destination
     if ($null -ne $item -and ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint))) { Fail $message }
@@ -242,10 +242,10 @@ if ([string]::IsNullOrWhiteSpace($baseUrl)) { $baseUrl = "https://update.lando.d
 $manifestUrl = EnvValue "LANDO_INSTALL_MANIFEST_URL"
 if ([string]::IsNullOrWhiteSpace($manifestUrl)) { $manifestUrl = "$($baseUrl.TrimEnd('/'))/$channel.json" }
 $installDir = [IO.Path]::GetFullPath((Default-InstallDir))
-$installedPath = Join-Path $installDir "lando4.exe"
+$installedPath = Join-Path $installDir "lando.exe"
 $recordPath = Join-Path ([IO.Path]::GetFullPath((Default-UserDataRoot))) "install/record.json"
 Assert-OwnedDestination $installedPath $recordPath
-$binaryStage = Join-Path $installDir ".lando4-$([Guid]::NewGuid().ToString('n')).tmp"
+$binaryStage = Join-Path $installDir ".lando-$([Guid]::NewGuid().ToString('n')).tmp"
 $recordStage = "$recordPath.$([Guid]::NewGuid().ToString('n')).tmp"
 $tmp = Join-Path ([IO.Path]::GetTempPath()) "lando-install-$([Guid]::NewGuid().ToString('n'))"
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -254,7 +254,7 @@ try {
   $manifestPath = Join-Path $tmp "manifest.json"
   $sums = Join-Path $tmp "SHA256SUMS"
   $signature = Join-Path $tmp "SHA256SUMS.signature"
-  $binary = Join-Path $tmp "lando4.exe"
+  $binary = Join-Path $tmp "lando.exe"
 
   Download-File $manifestUrl $manifestPath
   $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json

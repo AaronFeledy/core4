@@ -33,6 +33,7 @@ import {
   AmbiguousCertificateAuthoritiesError,
   InteractionCancelledError,
   InteractionUnavailableError,
+  ProviderUnavailableError,
   ProxySetupError,
   SshError,
 } from "@lando/sdk/errors";
@@ -2859,6 +2860,31 @@ describe("meta:setup command", () => {
       }
     });
 
+    test("setup --provider=docker surfaces Docker API version ranges", async () => {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "docker",
+        isAvailable: Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "docker",
+            operation: "docker-api",
+            message:
+              "Cannot negotiate a Docker Engine API version. Lando supports 1.43-1.44; this daemon reports 1.50-1.55.",
+            details: { kind: "docker-api-version", ourRange: "1.43-1.44", daemonRange: "1.50-1.55" },
+          }),
+        ),
+      };
+      const { registry } = buildRegistryThatCapturesPlan(provider);
+      const failure = await Effect.runPromise(
+        setupSpec
+          .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
+          .pipe(Effect.provide(buildSetupLayers(registry)), Effect.flip),
+      );
+      if (!(failure instanceof ProviderUnavailableError)) throw failure;
+      expect(failure.message).toContain("1.43-1.44");
+      expect(failure.message).toContain("1.50-1.55");
+    });
+
     for (const id of ["docker", "podman"] as const) {
       test(`persists --provider=${id} as defaultProviderId`, async () => {
         const confRoot = await mkdtemp(join(tmpdir(), `lando-setup-persist-${id}-`));
@@ -2996,18 +3022,34 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
 
     const commandEnv = {
       PATH: "/no-such-path",
+      LANDO_PROVIDER: "podman",
+      LANDO_USER_CACHE_ROOT: resolve(coreRoot, "dist/setup-test-cache"),
       LANDO_USER_CONF_ROOT: resolve(coreRoot, "dist/setup-test-conf"),
       LANDO_USER_DATA_ROOT: resolve(coreRoot, "dist/setup-test-data"),
     };
     const source = await runCommand([process.execPath, sourceCliPath, "setup"], coreRoot, commandEnv);
     const compiled = await runCommand([binaryPath, "setup"], coreRoot, commandEnv);
     const shellenv = await runCommand([binaryPath, "shellenv"], coreRoot, commandEnv);
+    const sourceShellenv = await runCommand(
+      [process.execPath, sourceCliPath, "shellenv"],
+      coreRoot,
+      commandEnv,
+    );
 
     expect(compiled.exitCode).toBe(source.exitCode);
     expect(compiled.stdout).toBe(source.stdout);
     expect(normalizeSetupFailure(compiled.stderr)).toBe(normalizeSetupFailure(source.stderr));
     expect(shellenv.stdout).toContain(`LANDO_USER_DATA_ROOT='${commandEnv.LANDO_USER_DATA_ROOT}'`);
-    expect(shellenv.stdout).toContain(`export PATH='${commandEnv.LANDO_USER_DATA_ROOT}/bin'`);
+    const evaluatePath = (snippet: string) =>
+      runCommand(["/bin/sh", "-c", `${snippet}\nprintf '%s' "$PATH"`], coreRoot, commandEnv);
+    const [sourcePath, compiledPath] = await Promise.all([
+      evaluatePath(sourceShellenv.stdout),
+      evaluatePath(shellenv.stdout),
+    ]);
+    expect(sourcePath.exitCode).toBe(0);
+    expect(compiledPath.exitCode).toBe(0);
+    expect(sourcePath.stdout).toBe(`${commandEnv.LANDO_USER_DATA_ROOT}/bin:${commandEnv.PATH}`);
+    expect(compiledPath.stdout).toBe(`${dirname(binaryPath)}:${commandEnv.PATH}`);
 
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);

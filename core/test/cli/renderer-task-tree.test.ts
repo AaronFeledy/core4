@@ -129,11 +129,12 @@ describe("plain renderer (non-TTY)", () => {
   test("output is plain-text (no ANSI escape codes) and one event per line", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, fixtureEvents);
-    const output = io.stdout();
+    const output = io.stderr();
     const escapeChar = String.fromCharCode(27);
     const ansiPattern = `${escapeChar}[`;
     expect(output.includes(ansiPattern)).toBe(false);
-    expect(io.stdoutLines().length).toBeGreaterThan(0);
+    expect(io.stderrLines().length).toBeGreaterThan(0);
+    expect(io.stdout()).toBe("");
   });
 });
 
@@ -175,7 +176,7 @@ describe("snapshot: renderer.task-tree.concurrent.ndjson", () => {
   test("plain renderer preserves event arrival order (snapshot)", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, events);
-    expect(io.stdout()).toMatchSnapshot();
+    expect(io.stderr()).toMatchSnapshot();
   });
 
   test("json renderer preserves event arrival order and tags (snapshot)", () => {
@@ -259,7 +260,7 @@ describe("cold-start regression: no events dropped before first task.tree.start"
     const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines.length).toBe(4);
     expect(lines[0]).toContain("▼ Building");
     expect(lines[1]).toContain("[a] start");

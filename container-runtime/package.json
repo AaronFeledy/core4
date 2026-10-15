@@ -50,6 +50,7 @@
     "./service-lifecycle": "./src/service-lifecycle.ts",
     "./wait-for-exit": "./src/wait-for-exit.ts",
     "./docker/api-client": "./src/docker/api-client.ts",
+    "./docker/api-version": "./src/docker/api-version.ts",
     "./podman/api-client": "./src/podman/api-client.ts",
     "./podman/bring-up": "./src/podman/bring-up.ts",
     "./podman/bring-up-recreate": "./src/podman/bring-up-recreate.ts",

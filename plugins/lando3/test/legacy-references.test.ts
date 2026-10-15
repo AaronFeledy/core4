@@ -30,6 +30,17 @@ const translate = (text: string) =>
   );
 
 test.each([
+  ["lando info --filter database", "Use lando info --service <svc> --format json"],
+  ["lando rebuild -s appserver", "Use lando rebuild --service <svc>"],
+  ["lando pull", "Configure remote sources with lando remote:add"],
+])("uses canonical remediation for %s", async (command, remediation) => {
+  const result = await translate(`name: demo\nx-script: ${JSON.stringify(command)}\n`);
+  expect(result.diagnostics[0]?.remediation).toContain(remediation);
+  expect(result.diagnostics[0]?.remediation).toContain("Verify lando --version reports Lando 4");
+  expect(result.diagnostics[0]?.remediation).not.toMatch(/\blando4\s/u);
+});
+
+test.each([
   "$LANDO_INFO",
   "${LANDO_MOUNT}",
   "settings.lando.php",

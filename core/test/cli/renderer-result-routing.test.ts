@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { CommandResultEnvelope } from "@lando/sdk/schema";
-import { Renderer } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
@@ -20,6 +20,41 @@ afterEach(() => {
 });
 
 describe("command result vs message routing under --renderer=json", () => {
+  test("verbose events and messages do not corrupt a JSON envelope", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+
+    // When
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        const renderer = yield* Renderer;
+        yield* events.publish({
+          _tag: "message.info",
+          body: "published progress",
+          timestamp: DateTime.nowUnsafe(),
+        });
+        yield* renderer.message.warn("imperative progress");
+        return { name: "demo" };
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "verbose",
+        resultFormat: "json",
+        command: "app:info",
+        resultSchema: Schema.Struct({ name: Schema.String }),
+        io,
+        formatError: String,
+      },
+    );
+
+    // Then
+    expect(decodeEnvelope(io.stdout())).toMatchObject({ ok: true, result: { name: "demo" } });
+    expect(io.stdoutLines()).toHaveLength(1);
+    expect(io.stderr()).toContain("published progress");
+    expect(io.stderr()).toContain("imperative progress");
+  });
+
   test("a command result envelope is written to stdout, not stderr", async () => {
     const io = createBufferedRendererIO();
     let renderCalled = false;

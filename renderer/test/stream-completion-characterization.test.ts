@@ -52,7 +52,8 @@ describe("renderer finite stream completion", () => {
 
         // Then: even an empty queue closes promptly; buffered events are rendered in order.
         expect(await Promise.race([closed, deadline.promise])).toBe("closed");
-        expect(io.stdout()).toBe(bodies.map((body) => `ℹ ${body}\n`).join(""));
+        expect(io.stderr()).toBe(bodies.map((body) => `ℹ ${body}\n`).join(""));
+        expect(io.stdout()).toBe("");
       } finally {
         clearTimeout(timer);
       }

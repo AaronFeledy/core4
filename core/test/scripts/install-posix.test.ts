@@ -131,13 +131,13 @@ const runInstaller = async (
 };
 
 describe("scripts/install.sh", () => {
-  test.each(["install", "a b$c;d'e\\\"f"])("records an atomic lando4 install in %s", async (directory) => {
+  test.each(["install", "a b$c;d'e\\\"f"])("records an atomic lando install in %s", async (directory) => {
     // Given a verified release and an isolated destination.
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, directory);
-    const destination = join(installDir, "lando4");
+    const destination = join(installDir, "lando");
     const env = {
       HOME: root,
       LANDO_INSTALL_DIR: installDir,
@@ -171,9 +171,9 @@ describe("scripts/install.sh", () => {
     });
     expect(record.data.shellProfiles).toEqual([]);
     expect((await lstat(recordPath)).mode & 0o777).toBe(0o600);
-    expect(await readdir(installDir)).toEqual(["lando4"]);
+    expect(await readdir(installDir)).toEqual(["lando"]);
     expect(await readdir(join(root, "data/install"))).toEqual(["record.json"]);
-    await expect(lstat(join(installDir, "lando"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
     expect((await runInstaller(env)).exitCode).toBe(0);
     expect(await readFile(destination)).toEqual(bytes);
   });
@@ -191,7 +191,7 @@ describe("scripts/install.sh", () => {
     if (kind === "symlink") await symlink(target, legacy);
     else await writeFile(legacy, "distinctive Lando 3 bytes", { mode: 0o700 });
     const before = await lstat(legacy);
-    // When installing Lando 4 beside it.
+    // When installation would replace the existing command.
     const result = await runInstaller({
       HOME: root,
       LANDO_INSTALL_DIR: installDir,
@@ -203,7 +203,8 @@ describe("scripts/install.sh", () => {
       LANDO_INSTALL_LIBC: "glibc",
     });
     // Then bytes, mode and link identity survive.
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Back up or remove the existing executable");
     const after = await lstat(legacy);
     expect(after.mode & 0o777).toBe(before.mode & 0o777);
     expect(after.isFile()).toBe(before.isFile());
@@ -231,7 +232,7 @@ describe("scripts/install.sh", () => {
     const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "bin");
     await mkdir(installDir);
-    const destination = join(installDir, "lando4");
+    const destination = join(installDir, "lando");
     const target = join(root, "target");
     const bytes = await readFile(fixture.binaryPath);
     await writeFile(target, "untouched target", { mode: 0o700 });
@@ -303,7 +304,7 @@ describe("scripts/install.sh", () => {
     if (beforeBytes) expect(await readFile(destination)).toEqual(beforeBytes);
     if (beforeLink) expect(await readlink(destination)).toBe(beforeLink);
     expect(await readFile(target, "utf8")).toBe("untouched target");
-    expect(await readdir(installDir)).toEqual(["lando4"]);
+    expect(await readdir(installDir)).toEqual(["lando"]);
   });
   test("verifies SHA256SUMS.asc with the vendored GPG trust root", async () => {
     const root = await makeTempRoot();
@@ -326,7 +327,7 @@ describe("scripts/install.sh", () => {
     const gpgLog = await Bun.file(logPath).text();
     expect(gpgLog).toContain("--verify");
     expect(gpgLog).toContain("SHA256SUMS.asc");
-    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
+    expect((await lstat(join(installDir, "lando"))).isFile()).toBe(true);
   });
 
   test("keeps GPG verification for manifests that explicitly point at an armored signature", async () => {
@@ -351,7 +352,7 @@ describe("scripts/install.sh", () => {
     expect(gpgLog).toContain("--homedir");
     expect(gpgLog).toContain("--import");
     expect(gpgLog).toContain("--verify");
-    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
+    expect((await lstat(join(installDir, "lando"))).isFile()).toBe(true);
   });
 
   test("fails closed when the vendored GPG trust root is missing", async () => {
@@ -373,7 +374,7 @@ describe("scripts/install.sh", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Missing or malformed vendored GPG trust root");
-    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(installDir, "lando"))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(logPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -395,7 +396,7 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
+    expect((await lstat(join(installDir, "lando"))).isFile()).toBe(true);
   });
 
   test("installs the verified linux-x64 binary into LANDO_INSTALL_DIR", async () => {
@@ -416,9 +417,9 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`installed: ${join(installDir, "lando4")}`);
-    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
-    expect(await Bun.$`${join(installDir, "lando4")} version`.text()).toContain("lando 4.0.0-test");
+    expect(result.stdout).toContain(`installed: ${join(installDir, "lando")}`);
+    expect((await lstat(join(installDir, "lando"))).isFile()).toBe(true);
+    expect(await Bun.$`${join(installDir, "lando")} version`.text()).toContain("lando 4.0.0-test");
     expect(await Bun.file(logPath).text()).toContain("--verify");
     expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.asc");
   });
@@ -442,8 +443,8 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Run this command to add lando4 to PATH:");
-    expect(result.stdout).toContain(`eval "$('${join(userDataRoot, "bin", "lando4")}' shellenv)"`);
+    expect(result.stdout).toContain("Run this command to add lando to PATH:");
+    expect(result.stdout).toContain(`eval "$('${join(userDataRoot, "bin", "lando")}' shellenv)"`);
     expect(result.stdout).toContain(renderPosixShellenv(userDataRoot));
   });
 
@@ -527,7 +528,7 @@ describe("scripts/install.sh", () => {
       expect(result.stderr).toBe("");
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`channel: ${channel}`);
-      expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
+      expect((await lstat(join(installDir, "lando"))).isFile()).toBe(true);
     }
   });
 
@@ -547,7 +548,7 @@ describe("scripts/install.sh", () => {
       LANDO_USER_DATA_ROOT: userDataRoot,
     });
 
-    const installedPath = join(userDataRoot, "bin", "lando4");
+    const installedPath = join(userDataRoot, "bin", "lando");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
@@ -582,7 +583,7 @@ describe("scripts/install.sh", () => {
       LANDO_USER_CONF_ROOT: confRoot,
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando4");
+    const installedPath = join(root, ".local/share/lando/bin/lando");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
@@ -610,7 +611,7 @@ describe("scripts/install.sh", () => {
       LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
     });
 
-    const installedPath = join(root, "Library/Application Support/Lando/bin/lando4");
+    const installedPath = join(root, "Library/Application Support/Lando/bin/lando");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
@@ -654,7 +655,7 @@ userDataRoot: ${finalRoot}
       XDG_DATA_HOME: join(root, "xdg"),
     });
 
-    const installedPath = join(root, "xdg/lando/bin/lando4");
+    const installedPath = join(root, "xdg/lando/bin/lando");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
@@ -701,7 +702,7 @@ userDataRoot: ${finalRoot}
       LANDO_USER_CONF_ROOT: confRoot,
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando4");
+    const installedPath = join(root, ".local/share/lando/bin/lando");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
@@ -732,7 +733,7 @@ userDataRoot: ${finalRoot}
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("platform: darwin-x64");
-    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
+    expect((await lstat(join(installDir, "lando"))).isFile()).toBe(true);
   });
 
   test("fails closed when signature verification fails", async () => {
@@ -753,7 +754,7 @@ userDataRoot: ${finalRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Signature verification failed");
-    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(installDir, "lando"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("fails closed when the downloaded binary does not match SHA256SUMS", async () => {
@@ -774,7 +775,7 @@ userDataRoot: ${finalRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Checksum mismatch");
-    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(installDir, "lando"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("rejects unsupported POSIX platform constraints before installing", async () => {
@@ -795,7 +796,7 @@ userDataRoot: ${finalRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Unsupported Linux libc");
-    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(installDir, "lando"))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(logPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

@@ -66,7 +66,7 @@ describe("bundled renderer resolution", () => {
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
-    expect(io.stdoutLines()).toEqual(["[web] start: start web"]);
-    expect(io.stderr()).toBe("");
+    expect(io.stderrLines()).toEqual(["[web] start: start web"]);
+    expect(io.stdout()).toBe("");
   });
 });

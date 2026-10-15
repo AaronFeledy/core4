@@ -261,8 +261,9 @@ describe("lando renderer visual language", () => {
 
     const plain = createBufferedRendererIO();
     renderPlain(plain, events);
-    expect(plain.stdout()).not.toContain("LANDO OPS");
-    expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+    expect(plain.stderr()).not.toContain("LANDO OPS");
+    expect(plain.stderr()).not.toContain(`${escapeChar}[`);
+    expect(plain.stdout()).toBe("");
   });
 
   test("renders an all-online success summary with text status, never color alone", () => {
@@ -306,14 +307,15 @@ describe("lando renderer visual language", () => {
       );
       expect(controller.scrollback.map(stripAnsi).join("\n")).toContain(`╭─ ${ttyPrefix}`);
       expect(controller.scrollback.map(stripAnsi).join("\n")).toContain("│ after the tree");
-      expect(stripAnsi(tty.stdout())).toContain(`╭─ ${ttyPrefix}`);
-      expect(stripAnsi(tty.stdout())).toContain("│ before the tree");
+      expect(stripAnsi(tty.stderr())).toContain(`╭─ ${ttyPrefix}`);
+      expect(stripAnsi(tty.stderr())).toContain("│ before the tree");
 
       const plain = createBufferedRendererIO();
       renderPlain(plain, events);
-      expect(plain.stdout()).toContain(`${plainPrefix} before the tree`);
-      expect(plain.stdout()).toContain(`${plainPrefix} after the tree`);
-      expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+      expect(plain.stderr()).toContain(`${plainPrefix} before the tree`);
+      expect(plain.stderr()).toContain(`${plainPrefix} after the tree`);
+      expect(plain.stderr()).not.toContain(`${escapeChar}[`);
+      expect(plain.stdout()).toBe("");
     },
   );
 
@@ -332,14 +334,15 @@ describe("lando renderer visual language", () => {
           }).pipe(Effect.provide(makeLandoService(io))),
         );
         if (isTTY) {
-          const lines = stripAnsi(io.stdout()).trimEnd().split("\n");
+          const lines = stripAnsi(io.stderr()).trimEnd().split("\n");
           expect(lines[0]).toContain(`╭─ ${ttyPrefix}`);
           expect(lines[1]).toContain("│ Installing local certificate trust");
           expect(lines[2]).toStartWith("╰");
           expect(lines.every((line) => Bun.stringWidth(line) < 80)).toBe(true);
         } else {
-          expect(io.stdout()).toBe(`${plainPrefix} Installing local certificate trust\n`);
+          expect(io.stderr()).toBe(`${plainPrefix} Installing local certificate trust\n`);
         }
+        expect(io.stdout()).toBe("");
       }
     },
   );

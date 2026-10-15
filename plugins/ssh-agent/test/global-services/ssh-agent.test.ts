@@ -7,10 +7,10 @@ import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
 
-import sshAgentGlobalService from "../../src/global-service.ts";
+import sshAgentGlobalService, { createSshAgentServiceConfig } from "../../src/global-service.ts";
 
-const decodeConfig = async (): Promise<ServiceConfig> => {
-  const value = await Effect.runPromise(sshAgentGlobalService);
+const decodeConfig = async (platform: NodeJS.Platform = "linux"): Promise<ServiceConfig> => {
+  const value = createSshAgentServiceConfig(makeLandoPaths({ platform }));
   return Schema.decodeUnknownSync(ServiceConfig)(value);
 };
 
@@ -19,7 +19,7 @@ const commandText = (config: ServiceConfig): string =>
 
 describe("ssh-agent global service ServiceConfig", () => {
   test("default export is an Effect producing a valid ServiceConfig", async () => {
-    const config = await decodeConfig();
+    const config = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(sshAgentGlobalService));
     expect(config.api).toBe(4);
     // Compose services apply authored mounts; the socket directory must reach the host.
     expect(config.type).toBe("compose");
@@ -68,7 +68,7 @@ describe("ssh-agent global service ServiceConfig", () => {
     expect(config.mounts).toEqual([
       {
         type: "bind",
-        source: join(makeLandoPaths().roots.userDataRoot, "ssh"),
+        source: join(makeLandoPaths({ platform: "linux" }).roots.userDataRoot, "ssh"),
         target: "/ssh-auth",
         readOnly: false,
       },
@@ -110,4 +110,37 @@ describe("ssh-agent global service ServiceConfig", () => {
     // Passphrase-protected keys are skipped gracefully (no stdin in container)
     expect(text).toContain("2>/dev/null || true");
   });
+});
+
+describe("SSH sidecar host delivery", () => {
+  test.each(["win32", "linux", "darwin"] as const)(
+    "publishes supported socket endpoints on %s",
+    async (platform) => {
+      const config = await decodeConfig(platform);
+      const command = commandText(config);
+      expect(config.storage).toEqual([
+        { store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" },
+      ]);
+      expect(config.environment?.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
+      expect(
+        config.mounts?.find((mount) => typeof mount !== "string" && mount.target === "/root/.ssh"),
+      ).toMatchObject({ source: "~/.ssh", readOnly: true });
+      if (platform === "win32") {
+        expect(config.mounts).toHaveLength(1);
+        expect(command).not.toContain("/ssh-auth");
+        expect(command).toEndWith(
+          "exec socat UNIX-LISTEN:/run/lando/ssh-agent/agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock",
+        );
+      } else {
+        expect(config.mounts).toHaveLength(2);
+        expect(command).toContain(
+          "(socat UNIX-LISTEN:/run/lando/ssh-agent/agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock &)",
+        );
+        expect(command).toEndWith(
+          "exec socat UNIX-LISTEN:/ssh-auth/ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock",
+        );
+      }
+      expect(command).toContain("rm -f /run/lando/ssh-agent/agent.sock /tmp/ssh-agent.sock");
+    },
+  );
 });

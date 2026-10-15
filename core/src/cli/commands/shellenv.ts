@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, win32 } from "node:path";
 
 import type { Context, Effect } from "effect";
 
@@ -114,12 +114,36 @@ const parseExecutable = (json: string, file: string) => {
   return { path: executable.path, sha256: executable.sha256, size: executable.size };
 };
 
-export const shellenvBinDir = (userDataRoot = resolveLandoRoots().userDataRoot): string => {
+export const shellenvCurrentExecutablePath = (
+  execPath = process.execPath,
+  argv: ReadonlyArray<string> = process.argv,
+  options?: { readonly standalone?: boolean | undefined },
+): string | undefined => {
+  const standalone =
+    options !== undefined && "standalone" in options
+      ? options.standalone
+      : typeof Bun.isStandaloneExecutable === "boolean"
+        ? Bun.isStandaloneExecutable
+        : undefined;
+  const compiled = standalone ?? (argv[1]?.includes("$bunfs") === true || argv[1]?.includes("~BUN") === true);
+  return compiled ? execPath : undefined;
+};
+
+export const shellenvBinDir = (
+  userDataRoot = resolveLandoRoots().userDataRoot,
+  currentExecutablePath = shellenvCurrentExecutablePath(),
+): string => {
   const paths = makeLandoPaths({ userDataRoot });
   const file = paths.installRecordFile;
   try {
     const recordStat = lstatSync(file, { throwIfNoEntry: false });
-    if (recordStat === undefined) return paths.binDir;
+    if (recordStat === undefined) {
+      // PATH discovery does not grant update/uninstall ownership or write an install record.
+      if (currentExecutablePath === undefined) return paths.binDir;
+      return /^[a-z]:/iu.test(currentExecutablePath) || currentExecutablePath.startsWith("\\\\")
+        ? win32.dirname(currentExecutablePath)
+        : dirname(currentExecutablePath);
+    }
     if (!recordStat.isFile() || recordStat.isSymbolicLink() || recordStat.isDirectory()) {
       throw new ShellenvInstallRecordError(
         "not-regular-file",
@@ -152,21 +176,60 @@ export const shellenvBinDir = (userDataRoot = resolveLandoRoots().userDataRoot):
   }
 };
 
-export const renderPosixShellenv = (userDataRoot = resolveLandoRoots().userDataRoot): string => {
-  const binDir = shellenvBinDir(userDataRoot);
-  return `export LANDO_USER_DATA_ROOT=${posixQuote(userDataRoot)}\ncase ":\${PATH}:" in *${posixQuote(`:${binDir}:`)}*) ;; *) export PATH=${posixQuote(binDir)}":\${PATH}" ;; esac`;
+export const renderPosixShellenv = (
+  userDataRoot = resolveLandoRoots().userDataRoot,
+  currentExecutablePath = shellenvCurrentExecutablePath(),
+): string => {
+  const binDir = shellenvBinDir(userDataRoot, currentExecutablePath);
+  const windowsPath = /^[a-z]:/iu.test(binDir) || binDir.startsWith("\\\\") || binDir.startsWith("//");
+  const selectedBin = windowsPath ? '"$_lando_shellenv_bin"' : posixQuote(binDir);
+  return [
+    `export LANDO_USER_DATA_ROOT=${posixQuote(userDataRoot)}`,
+    ...(windowsPath
+      ? [
+          `if command -v cygpath >/dev/null 2>&1 && _lando_shellenv_bin=$(cygpath -u ${posixQuote(binDir)}); then`,
+        ]
+      : []),
+    '_lando_shellenv_tail="${PATH-}"',
+    `_lando_shellenv_path=${selectedBin}`,
+    "while :; do",
+    "  _lando_shellenv_entry=${_lando_shellenv_tail%%:*}",
+    `  if [ "$_lando_shellenv_entry" != ${selectedBin} ]; then _lando_shellenv_path="$_lando_shellenv_path:$_lando_shellenv_entry"; fi`,
+    '  case "$_lando_shellenv_tail" in *:*) _lando_shellenv_tail=${_lando_shellenv_tail#*:} ;; *) break ;; esac',
+    "done",
+    'export PATH="$_lando_shellenv_path"',
+    "unset _lando_shellenv_tail _lando_shellenv_path _lando_shellenv_entry",
+    ...(windowsPath
+      ? [
+          "else",
+          "  printf 'Lando PATH setup needs cygpath to convert this Windows install directory.\\n' >&2",
+          "fi",
+          "unset _lando_shellenv_bin",
+        ]
+      : []),
+  ].join("\n");
 };
 
-export const renderPowerShellShellenv = (userDataRoot = resolveLandoRoots().userDataRoot): string => {
-  const binDir = powerShellQuote(shellenvBinDir(userDataRoot));
-  return `$Env:LANDO_USER_DATA_ROOT = ${powerShellQuote(userDataRoot)}\nif (-not (($Env:PATH -split [IO.Path]::PathSeparator) -contains ${binDir})) { $Env:PATH = ${binDir} + [IO.Path]::PathSeparator + $Env:PATH }`;
+export const renderPowerShellShellenv = (
+  userDataRoot = resolveLandoRoots().userDataRoot,
+  currentExecutablePath = shellenvCurrentExecutablePath(),
+): string => {
+  const selectedPath = shellenvBinDir(userDataRoot, currentExecutablePath);
+  const windowsPath =
+    /^[a-z]:/iu.test(selectedPath) || selectedPath.startsWith("\\\\") || selectedPath.startsWith("//");
+  const comparison = process.platform === "win32" || windowsPath ? "-ne" : "-cne";
+  const binDir = powerShellQuote(selectedPath);
+  return `$Env:LANDO_USER_DATA_ROOT = ${powerShellQuote(userDataRoot)}\n$Env:PATH = (@(${binDir}) + @($Env:PATH -split [IO.Path]::PathSeparator | Where-Object { $_ ${comparison} ${binDir} })) -join [IO.Path]::PathSeparator`;
 };
 
 export const renderShellenv = (
   shell: ShellenvShell = defaultShellenvShell(),
   userDataRoot = resolveLandoRoots().userDataRoot,
+  currentExecutablePath = shellenvCurrentExecutablePath(),
 ): string =>
-  shell === "powershell" ? renderPowerShellShellenv(userDataRoot) : renderPosixShellenv(userDataRoot);
+  shell === "powershell"
+    ? renderPowerShellShellenv(userDataRoot, currentExecutablePath)
+    : renderPosixShellenv(userDataRoot, currentExecutablePath);
 
 const landoShellenvBlock = (userDataRoot: string): string =>
   ["# >>> LANDO4 shellenv >>>", renderPosixShellenv(userDataRoot), "# <<< LANDO4 shellenv <<<"].join("\n");

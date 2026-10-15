@@ -27,7 +27,7 @@ const commandFindings = (text: string): readonly Finding[] => {
           kind: "unsupported",
           message: `Legacy lando ${verb} hoster commands are not emulated by Lando 4.`,
           remediation:
-            "Configure remote sources with lando4 remote:add and use lando4 pull/push for datasets, not hoster synchronization; otherwise keep this workflow on Lando 3.",
+            "Configure remote sources with lando remote:add and use lando pull/push for datasets, not hoster synchronization; otherwise keep this workflow on Lando 3.",
         });
         break;
       case "share":
@@ -42,42 +42,42 @@ const commandFindings = (text: string): readonly Finding[] => {
         if (has("--filter|--deep|-d"))
           review(
             "Legacy lando info output flags differ: Lando 4 has no --filter; --deep is an agent-environment audit, not Docker inspect.",
-            "Use lando4 info --service <svc> --format json and review consumers of the output.",
+            "Use lando info --service <svc> --format json and review consumers of the output.",
           );
         if (has("-s|--service"))
           review(
             "Legacy lando info scopes a service.",
-            "Use lando4 info --service <svc> and review its structured output.",
+            "Use lando info --service <svc> and review its structured output.",
           );
         break;
       case "rebuild":
         if (has("-s|--service"))
-          review("Legacy lando rebuild scopes a service.", "Use lando4 rebuild --service <svc>.");
+          review("Legacy lando rebuild scopes a service.", "Use lando rebuild --service <svc>.");
         break;
       case "logs":
         if (has("-t|--timestamps"))
           review(
             "Lando 4 logs has no timestamps flag.",
-            "Use lando4 logs --service <svc> without -t/--timestamps.",
+            "Use lando logs --service <svc> without -t/--timestamps.",
           );
         break;
       case "version":
         if (has("--all|-a|--component|-c"))
           review(
             "Lando 4 version reports core, Bun, and platform only, not component versions.",
-            "Use lando4 version without --all/-a/--component/-c and review output consumers.",
+            "Use lando version without --all/-a/--component/-c and review output consumers.",
           );
         break;
       case "list":
         review(
           "Lando 4 does not remove orphaned apps when listing apps.",
-          "Use lando4 list; destroy orphaned apps explicitly.",
+          "Use lando list; destroy orphaned apps explicitly.",
         );
         break;
     }
     review(
-      "After conversion, lando still runs Lando 3.",
-      "Call lando4 explicitly after reviewing command compatibility.",
+      "Conversion does not change which lando executable your shell resolves.",
+      "Verify lando --version reports Lando 4, then review command compatibility.",
     );
   }
   return findings;

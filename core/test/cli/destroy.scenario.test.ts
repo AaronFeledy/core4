@@ -438,9 +438,10 @@ describe("lando destroy", () => {
     await runDestroyCli(["-y"], harness, io, "plain");
 
     // Then
-    expect(io.stdout()).toContain(
+    expect(io.stderr()).toContain(
       "Proxy service is unavailable; destroying test-destroy without route cleanup.",
     );
+    expect(io.stdout()).not.toContain("Proxy service is unavailable");
   });
 
   test("paints a real destroy task tree through the native destroy spec in plain mode", async () => {
@@ -451,15 +452,15 @@ describe("lando destroy", () => {
     // When
     await runDestroyCli(["-y"], harness, io, "plain");
 
-    // Then: the producer tree is painted before the final destroy result.
-    expect(io.stdout()).toContain("Destroy test-destroy");
-    expect(io.stdout()).toContain("Destroy services");
-    expect(io.stdout()).toContain(
-      renderDestroyAppResult({
+    // Then: stderr paints the producer tree and stdout contains only the final result.
+    expect(io.stderr()).toContain("Destroy test-destroy");
+    expect(io.stderr()).toContain("Destroy services");
+    expect(io.stdout()).toBe(
+      `${renderDestroyAppResult({
         app: "test-destroy",
         servicesDestroyed: ["database", "web"],
         volumesRemoved: false,
-      }),
+      })}\n`,
     );
   });
 

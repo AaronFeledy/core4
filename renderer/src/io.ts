@@ -6,9 +6,15 @@ export const BROKEN_PIPE_EXIT_CODE = 141;
 
 type StdioDestination = "stdout" | "stderr";
 interface OutputStream {
-  readonly write: (chunk: string) => boolean;
+  readonly write: (chunk: string | Uint8Array) => boolean;
   readonly on?: (event: "error", listener: (error: unknown) => void) => unknown;
 }
+
+/** Stdio and buffered IO always implement the optional RendererIO byte writers. */
+export type BinaryRendererIO = RendererIO & {
+  readonly writeStdoutBytes: (chunk: Uint8Array) => void;
+  readonly writeStderrBytes: (chunk: Uint8Array) => void;
+};
 
 export const isBrokenPipeError = (error: unknown): boolean => {
   if (typeof error !== "object" || error === null) return false;
@@ -67,7 +73,11 @@ const markBrokenPipe = (destination: StdioDestination, stream: OutputStream): vo
 };
 
 // A closed downstream pipe is normal end-of-consumption, not a command failure.
-const guardedWrite = (destination: StdioDestination, stream: OutputStream, chunk: string): boolean => {
+const guardedWrite = (
+  destination: StdioDestination,
+  stream: OutputStream,
+  chunk: string | Uint8Array,
+): boolean => {
   if (brokenStreams.has(stream)) return false;
   if (!guardedStreams.has(stream)) {
     guardedStreams.add(stream);
@@ -127,14 +137,16 @@ export const createStdioRendererIO = (
   stderr: NodeJS.WriteStream = process.stderr,
   stdin: RendererInputStream = process.stdin,
   options: StdioRendererIOOptions = {},
-): RendererIO => {
+): BinaryRendererIO => {
   const platform = options.platform ?? process.platform;
   const terminalNewlines = options.terminalNewlines !== false && platform === "win32";
   const stdoutNewlines = terminalNewlineNormalizer(terminalNewlines && stdout.isTTY === true);
   const stderrNewlines = terminalNewlineNormalizer(terminalNewlines && stderr.isTTY === true);
-  const io: RendererIO = {
+  const io: BinaryRendererIO = {
     writeStdout: (chunk) => guardedWrite("stdout", stdout, stdoutNewlines(chunk)),
     writeStderr: (chunk) => guardedWrite("stderr", stderr, stderrNewlines(chunk)),
+    writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
+    writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
     externalOutputStream: stdout,
     isTTY: stdout.isTTY === true,
     get terminalColumns() {
@@ -189,9 +201,11 @@ export const detachStdioWrites = (): void => {
   }
 };
 
-export interface BufferedRendererIO extends RendererIO {
+export interface BufferedRendererIO extends BinaryRendererIO {
   readonly stdout: () => string;
   readonly stderr: () => string;
+  readonly stdoutBytes: () => Uint8Array;
+  readonly stderrBytes: () => Uint8Array;
   readonly stdoutLines: () => ReadonlyArray<string>;
   readonly stderrLines: () => ReadonlyArray<string>;
   readonly subscribeInput: (onKey: (raw: string) => void) => () => void;
@@ -209,19 +223,43 @@ const splitLines = (text: string): ReadonlyArray<string> => {
   return lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
 };
 
+const concatBytes = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
+  const bytes = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+};
+
 export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}): BufferedRendererIO => {
   let stdoutBuffer = "";
   let stderrBuffer = "";
+  const stdoutChunks: Uint8Array[] = [];
+  const stderrChunks: Uint8Array[] = [];
   const listeners = new Set<(raw: string) => void>();
   return {
     writeStdout: (chunk) => {
       stdoutBuffer += chunk;
+      stdoutChunks.push(new TextEncoder().encode(chunk));
     },
     writeStderr: (chunk) => {
       stderrBuffer += chunk;
+      stderrChunks.push(new TextEncoder().encode(chunk));
+    },
+    writeStdoutBytes: (chunk) => {
+      stdoutChunks.push(chunk);
+      stdoutBuffer += Buffer.from(chunk).toString("latin1");
+    },
+    writeStderrBytes: (chunk) => {
+      stderrChunks.push(chunk);
+      stderrBuffer += Buffer.from(chunk).toString("latin1");
     },
     stdout: () => stdoutBuffer,
     stderr: () => stderrBuffer,
+    stdoutBytes: () => concatBytes(stdoutChunks),
+    stderrBytes: () => concatBytes(stderrChunks),
     stdoutLines: () => splitLines(stdoutBuffer),
     stderrLines: () => splitLines(stderrBuffer),
     ...(options.isTTY === undefined ? {} : { isTTY: options.isTTY }),

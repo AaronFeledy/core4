@@ -138,6 +138,10 @@ keep their original bytes.
 plain, JSON, verbose, non-TTY, and CI stay undecorated. They do not use this
 rail, these glyphs, or these colors.
 
+Line-mode narration and every renderer message go to stderr. stdout carries
+only command results and payloads. The TTY live region is the exception: it
+paints on terminal stdout and commits interleaved output through journal scrollback.
+
 ### Lando logo
 
 - **Structure**: a solid planet, outer circle, and tapered orbit rising about 16 degrees from left to right, drawn with Unicode braille cells. Match the original Lando mark: the orbit has a broad lower edge and an offset inner cutout, not a uniform ellipse stroke.

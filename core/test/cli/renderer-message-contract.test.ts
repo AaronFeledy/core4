@@ -30,29 +30,29 @@ describe("Renderer message contract: plain", () => {
     expect(makePlainRenderer(createBufferedRendererIO()).id).toBe("plain");
   });
 
-  test("message.info writes the info glyph + body to stdout", () => {
+  test("message.info writes the info glyph + body to stderr", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makePlainRenderer(io).message.info("fetched 3 plugins"));
-    expect(io.stdoutLines()).toEqual(["ℹ fetched 3 plugins"]);
-    expect(io.stderr()).toBe("");
+    expect(io.stderrLines()).toEqual(["ℹ fetched 3 plugins"]);
+    expect(io.stdout()).toBe("");
   });
 
-  test("message.warn writes the warn glyph + body to stdout", () => {
+  test("message.warn writes the warn glyph + body to stderr", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makePlainRenderer(io).message.warn("deprecated key"));
-    expect(io.stdoutLines()).toEqual(["⚠ deprecated key"]);
+    expect(io.stderrLines()).toEqual(["⚠ deprecated key"]);
   });
 
-  test("message.error with remediation writes two indented stdout lines", () => {
+  test("message.error with remediation writes two indented stderr lines", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makePlainRenderer(io).message.error("Failed to load Landofile", "Run `lando config`."));
-    expect(io.stdoutLines()).toEqual(["✗ Failed to load Landofile", "  ↳ Run `lando config`."]);
+    expect(io.stderrLines()).toEqual(["✗ Failed to load Landofile", "  ↳ Run `lando config`."]);
   });
 
-  test("message.error without remediation writes a single stdout line", () => {
+  test("message.error without remediation writes a single stderr line", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makePlainRenderer(io).message.error("Plugin trust check failed"));
-    expect(io.stdoutLines()).toEqual(["✗ Plugin trust check failed"]);
+    expect(io.stderrLines()).toEqual(["✗ Plugin trust check failed"]);
   });
 
   test("plain message output never includes ANSI control sequences", () => {
@@ -62,7 +62,8 @@ describe("Renderer message contract: plain", () => {
     Effect.runSync(renderer.message.warn("b"));
     Effect.runSync(renderer.message.error("c", "d"));
     const escapeChar = String.fromCharCode(27);
-    expect(io.stdout().includes(`${escapeChar}[`)).toBe(false);
+    expect(io.stderr().includes(`${escapeChar}[`)).toBe(false);
+    expect(io.stdout()).toBe("");
   });
 });
 
@@ -71,14 +72,14 @@ describe("Renderer message contract: lando (plain-aliased)", () => {
     expect(landoService(createBufferedRendererIO()).id).toBe("lando");
   });
 
-  test("renders each severity to stdout via the plain formatter", () => {
+  test("renders each severity to stderr via the plain formatter", () => {
     const io = createBufferedRendererIO();
     const renderer = landoService(io);
     Effect.runSync(renderer.message.info("a"));
     Effect.runSync(renderer.message.warn("b"));
     Effect.runSync(renderer.message.error("c", "fix"));
-    expect(io.stdoutLines()).toEqual(["ℹ a", "⚠ b", "✗ c", "  ↳ fix"]);
-    expect(io.stderr()).toBe("");
+    expect(io.stderrLines()).toEqual(["ℹ a", "⚠ b", "✗ c", "  ↳ fix"]);
+    expect(io.stdout()).toBe("");
   });
 });
 
@@ -129,7 +130,7 @@ describe("Renderer message contract: json (stderr NDJSON)", () => {
   });
 });
 
-describe("Renderer message contract: verbose (stdout human + payload trace)", () => {
+describe("Renderer message contract: verbose (stderr human + payload trace)", () => {
   test("reports the verbose id", () => {
     expect(makeVerboseRenderer(createBufferedRendererIO()).id).toBe("verbose");
   });
@@ -137,7 +138,7 @@ describe("Renderer message contract: verbose (stdout human + payload trace)", ()
   test("message.info writes the human line plus a JSON payload trace", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makeVerboseRenderer(io).message.info("hey"));
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines.length).toBe(2);
     expect(lines[0]).toBe("ℹ hey");
     const trace = lines[1];
@@ -146,13 +147,13 @@ describe("Renderer message contract: verbose (stdout human + payload trace)", ()
     const parsed = JSON.parse(payload) as { _tag: string; body: string };
     expect(parsed._tag).toBe("message.info");
     expect(parsed.body).toBe("hey");
-    expect(io.stderr()).toBe("");
+    expect(io.stdout()).toBe("");
   });
 
   test("message.warn writes the human line plus a message.warn payload trace", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makeVerboseRenderer(io).message.warn("deprecated key"));
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines.length).toBe(2);
     expect(lines[0]).toBe("⚠ deprecated key");
     const trace = lines[1];
@@ -165,7 +166,7 @@ describe("Renderer message contract: verbose (stdout human + payload trace)", ()
   test("message.error trace carries the remediation field", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makeVerboseRenderer(io).message.error("boom", "do x"));
-    const lines = io.stdoutLines();
+    const lines = io.stderrLines();
     expect(lines[0]).toBe("✗ boom");
     expect(lines[1]).toBe("  ↳ do x");
     const trace = lines.find((line) => line.includes("⋯"));
@@ -184,7 +185,7 @@ describe("Renderer service tag exposure", () => {
       yield* renderer.message.error("nope", "do x");
     });
     await Effect.runPromise(program.pipe(Effect.provide(RendererRuntime.layerPlainService(io))));
-    expect(io.stdoutLines()).toEqual(["✗ nope", "  ↳ do x"]);
+    expect(io.stderrLines()).toEqual(["✗ nope", "  ↳ do x"]);
   });
 
   test("RendererRuntime.layerJsonService provides Renderer that writes to stderr", async () => {

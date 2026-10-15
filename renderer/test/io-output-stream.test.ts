@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 
-import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
+import {
+  createBufferedRendererIO,
+  createStdioRendererIO,
+  withStdioTerminalNewlines,
+} from "@lando/renderer/io";
 
 describe("renderer IO output stream seam", () => {
   test("stdio IO exposes process stdout by default", () => {
@@ -26,12 +30,12 @@ describe("renderer IO output stream seam", () => {
 });
 
 const terminalStream = (isTTY: boolean) => {
-  const writes: string[] = [];
+  const writes: (string | Uint8Array)[] = [];
   const stream = Object.assign(new EventEmitter(), {
     isTTY,
     columns: 100,
     rows: 24,
-    write: (chunk: string) => {
+    write: (chunk: string | Uint8Array) => {
       writes.push(chunk);
       return true;
     },
@@ -40,6 +44,22 @@ const terminalStream = (isTTY: boolean) => {
 };
 
 describe("native terminal line endings", () => {
+  test("Windows raw byte writers bypass text translation and survive machine IO selection", () => {
+    const stdout = terminalStream(true);
+    const stderr = terminalStream(true);
+    const io = createStdioRendererIO(stdout.stream, stderr.stream, undefined, { platform: "win32" });
+    const bytes = new Uint8Array([0xff, 0x0a, 0x0d, 0x0a, 0x00]);
+
+    io.writeStdoutBytes(bytes);
+    io.writeStderrBytes(bytes);
+    const machineIO = withStdioTerminalNewlines(io, false);
+    machineIO.writeStdoutBytes?.(bytes);
+    machineIO.writeStderrBytes?.(bytes);
+
+    expect(stdout.writes).toEqual([bytes, bytes]);
+    expect(stderr.writes).toEqual([bytes, bytes]);
+  });
+
   test("Windows TTY channels return to column zero and preserve split CRLF", () => {
     const stdout = terminalStream(true);
     const stderr = terminalStream(true);
