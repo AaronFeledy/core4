@@ -1,0 +1,211 @@
+---
+id: postgres-pgvector
+provider: test
+timeout: 90000
+tags: [beta, docs, postgres, pgvector, python, service, database]
+---
+
+# Run vector search on Postgres with pgvector
+
+Run vector search with `type: postgres:18` and the pgvector image for Postgres 18. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
+
+## Configure Postgres and Python
+
+Save this as `.lando.yml`. Keep the Postgres tooling, generated creds, and healthcheck while changing the image:
+
+```yaml
+name: pgvector-demo
+services:
+  db:
+    type: postgres:18
+    image: pgvector/pgvector:pg18
+    home: false
+  app:
+    type: "python:3.12"
+    primary: true
+    environment:
+      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ services.db.creds.password }}@db:5432/{{ services.db.creds.database }}"
+tooling:
+  uv:
+    service: app
+    cmd: uv
+  python:
+    service: app
+    cmd: python
+```
+
+Each `db` line has a job:
+
+| Key | Why |
+| --- | --- |
+| `type: postgres:18` | Select Lando's Postgres 18 service type while keeping the custom image below |
+| `image: pgvector/pgvector:pg18` | Postgres 18 with the `vector` extension already compiled in |
+| `home: false` | Disable home-directory persistence for this custom image. Without this or an explicit `home.path`, planning fails with `HomePathCapabilityError` because Lando cannot infer the image user's home |
+
+Lando sets `PGDATA` to `/var/lib/postgresql/data` and mounts the `<app>-postgresql-data` volume there for every supported Postgres major, including 18. You don't need an environment override for this image.
+
+Use a fresh app for this example. Changing an existing database's image from another Postgres major does not upgrade its files. Export the data before changing the major, then restore into a fresh volume.
+
+## Start and check the server
+
+Start it and check the server version. `lando start` waits until Postgres accepts TCP connections, including on a fresh volume:
+
+```sh
+lando start
+lando psql -c 'SELECT version();'
+```
+
+The `pg18` tag tracks Postgres 18; patch and extension versions can change. `db` has an internal TCP endpoint, not a published host endpoint, so `lando info` lists no endpoint URL for it. `app` reaches it at `db:5432`, which is what `DATABASE_URL` points at. `lando info` redacts the password, so build the URL from the resolved credential expressions above instead of copying it.
+
+## Enable the extension
+
+The image ships pgvector, but each database still has to turn it on:
+
+```sh
+lando psql -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+lando psql -Atc "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
+```
+
+The second command reports the installed pgvector version. On a fresh volume, the image initializes the user named by `POSTGRES_USER` as a superuser. Lando defaults that user to `lando`, so this example's `lando psql` can create the extension.
+
+## Store embeddings and search them
+
+Put a table, a few rows, and an HNSW index in `seed.sql`. Real embeddings have hundreds or thousands of dimensions; match `vector(N)` to your model's output. Three keeps the sample readable:
+
+```sql
+CREATE TABLE IF NOT EXISTS items (id bigserial PRIMARY KEY, body text NOT NULL, embedding vector(3) NOT NULL);
+INSERT INTO items (body, embedding) VALUES
+  ('cloud city', '[1,0,0]'),
+  ('carbonite', '[0,1,0]'),
+  ('sabacc', '[0.9,0.1,0]');
+CREATE INDEX IF NOT EXISTS items_embedding_hnsw ON items USING hnsw (embedding vector_cosine_ops);
+```
+
+Pipe it into the client, then ask for the two nearest rows by cosine distance:
+
+```sh
+lando psql -v ON_ERROR_STOP=1 < seed.sql
+lando psql -c "SELECT body, embedding <=> '[1,0,0]' AS distance FROM items ORDER BY embedding <=> '[1,0,0]' LIMIT 2;"
+```
+
+With these three rows, the nearest matches are `cloud city` and `sabacc`, in that order. Running the seed file again inserts duplicate rows.
+
+[`<=>` is cosine distance](https://github.com/pgvector/pgvector#querying) and pairs with `vector_cosine_ops`. `<->` is Euclidean (L2) distance; build the index with `vector_l2_ops` if that's the one you query. HNSW is approximate nearest-neighbor search, trading recall for speed. A tiny table may use a sequential scan instead. To encourage an index scan for inspection:
+
+```sh
+lando psql -c "SET enable_seqscan = off;" -c "EXPLAIN (COSTS OFF) SELECT body FROM items ORDER BY embedding <=> '[1,0,0]' LIMIT 2;"
+```
+
+Check the plan for an index scan on `items_embedding_hnsw`. HNSW indexes on `vector` support at most 2,000 dimensions; use pgvector's half-precision or other indexing options for larger embeddings.
+
+## Query from Python
+
+Use Psycopg 3 and [pgvector-python](https://github.com/pgvector/pgvector-python#psycopg-3) to query from Python. Add `requirements.txt` next to the Landofile:
+
+```text
+psycopg[binary]
+pgvector
+numpy
+```
+
+Install into a venv under `/app` so the packages survive a rebuild:
+
+```sh
+lando uv venv /app/.venv
+lando uv pip install --python /app/.venv/bin/python -r requirements.txt
+```
+
+Drop `search.py` next to the Landofile. It reads the `DATABASE_URL` Lando hands the `app` service:
+
+```python
+import os
+
+import numpy as np
+import psycopg
+from pgvector.psycopg import register_vector
+
+query = np.array([1.0, 0.0, 0.0])
+
+with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    register_vector(conn)
+    rows = conn.execute(
+        "SELECT body FROM items ORDER BY embedding <=> %s LIMIT 2",
+        (query,),
+    ).fetchall()
+
+for (body,) in rows:
+    print(body)
+```
+
+```sh
+lando exec app -- /app/.venv/bin/python search.py
+```
+
+The script prints the two matching bodies, one per line.
+
+If `register_vector` raises `vector type not found in the database`, the extension isn't enabled in that database yet. Run the `CREATE EXTENSION` step again.
+
+## Back up and restore the vectors
+
+`lando db:export` runs a normal dump, extension and index included:
+
+```sh
+lando db:export vectors.sql
+```
+
+The dump includes the extension declaration, table data, `vector(3)` column, and HNSW index, not the extension's installed binaries. Restore into an empty, running database on an image that also ships pgvector. Imports execute the dump's SQL and can change existing data; `--yes` skips confirmation even for an empty database:
+
+```sh
+lando db:import vectors.sql --yes
+```
+
+Verify the restored rows:
+
+```sh
+lando psql -c 'SELECT count(*) FROM items;'
+```
+
+Don't import this dump back into the populated sample database unless you've cleared it first. Import does not automatically drop existing tables. See [Import and export app databases](../tooling/db-import-export.mdx) for snapshots and resets.
+
+## Rebuild without losing rows
+
+With the same app and Postgres major, `lando rebuild -y` and `lando destroy -y` followed by `lando start` preserve the named database volume. The venv stays too, because it lives on the app mount. Check the table after rebuilding:
+
+```sh
+lando rebuild -y
+lando psql -c 'SELECT count(*) FROM items;'
+```
+
+Delete the app's service-scoped volumes when you want a clean database. This deletes the database volume and any persisted service homes, but not the source files or `/app/.venv`:
+
+```sh
+lando destroy -y --volumes
+```
+
+## Check the Landofile config
+
+`lando app:config --format=json` shows the Landofile's type, image, and `home` before anything boots. It does not show the planned `PGDATA`, inspect the image, or prove database readiness:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="pgvector-demo" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:18\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"pgvector/pgvector:pg18\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"home\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uv\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Add PostgreSQL](./postgres.mdx) for creds, `config.server`, and the `psql` task
+- [Add Python](./python.mdx) for frameworks, `uv`, and serving an API

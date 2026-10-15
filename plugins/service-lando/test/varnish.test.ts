@@ -113,8 +113,9 @@ describe("varnish ServiceType", () => {
         expect(vclMount(plan)).toMatchObject({
           type: "bind",
           source: "/srv/apps/myapp/default.vcl",
-          readOnly: true,
+          readOnly: false,
         });
+        expect(plan.mounts).toHaveLength(1);
         expect(plan.environment?.VARNISH_VCL_FILE).toBeUndefined();
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(plan.command?.[0]).toContain("/etc/varnish/default.vcl");
@@ -156,6 +157,7 @@ describe("varnish ServiceType", () => {
       source: "/srv/apps/myapp/custom.vcl",
       readOnly: true,
     });
+    expect(plan.mounts).toHaveLength(1);
     expect(plan.environment?.VARNISH_VCL_FILE).toBeUndefined();
   });
 
@@ -171,6 +173,7 @@ describe("varnish ServiceType", () => {
       source: "C:\\src\\default.vcl",
       readOnly: true,
     });
+    expect(plan.mounts).toHaveLength(1);
   });
 
   test("preserves an authored user", async () => {

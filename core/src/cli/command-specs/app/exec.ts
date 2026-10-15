@@ -35,7 +35,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     cwd: Flags.string({ description: "Working directory inside the service." }),
     interactive: Flags.boolean({
       char: "i",
-      description: "Attach host stdin to the command.",
+      description: "Attach your terminal keyboard to the command. Piped stdin is always attached.",
       default: false,
     }),
   },
@@ -66,12 +66,9 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     if (!execInputUsesCliHostIo(input) || nonInteractive)
       return execApp({ ...base, tty: false, interactive: false });
     if (envelope) return execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
-    const tty = process.stdout.isTTY === true;
     const interactive = booleanFlag(flags, "interactive");
-    return withInheritedStdinRawMode(
-      tty && interactive,
-      execApp(attachExecHostIo({ ...base, tty, interactive })),
-    );
+    const attached = attachExecHostIo({ ...base, tty: process.stdout.isTTY === true, interactive });
+    return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
   streamFrames: (value) => {
     const result = value as ExecAppResult;

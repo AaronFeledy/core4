@@ -7,6 +7,7 @@ import {
   type Redactor,
   type TranscriptRedactionEnv,
   createRedactor,
+  isPublicDefaultCredential,
   isUsableExactRedactionValue,
 } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
@@ -126,7 +127,12 @@ export const collectSecretEnvValues = (
       .filter(nonEmpty);
     const carriesSecret =
       key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
-    if (carriesSecret && nonEmpty(value) && isUsableExactRedactionValue(value)) {
+    if (
+      carriesSecret &&
+      nonEmpty(value) &&
+      !isPublicDefaultCredential(value) &&
+      isUsableExactRedactionValue(value)
+    ) {
       values.push(value);
     }
   }

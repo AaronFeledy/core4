@@ -8,7 +8,7 @@ tags: [beta, docs, cli, ssh]
 
 # Open a shell in a service
 
-`lando ssh` opens an interactive login shell (`sh -l`) in a running service. It is `app:exec` with a TTY.
+`lando ssh` opens an interactive login shell (`sh -l`) in a running service. It is `app:exec` with a TTY whenever your stdin is a terminal.
 
 ```sh
 lando ssh
@@ -29,6 +29,12 @@ Pass a command instead of the default shell:
 
 ```sh
 lando ssh -- ls -la
+```
+
+Pipe a script in, and the shell runs it without a terminal, then exits at the end of the input:
+
+```sh
+lando ssh < setup.sh
 ```
 
 ## Host keys

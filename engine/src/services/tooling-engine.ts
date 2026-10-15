@@ -121,7 +121,10 @@ const execSpec = (input: {
     command: input.command,
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(env === undefined || Object.keys(env).length === 0 ? {} : { env }),
-    ...(input.tty ? { tty: true, stdin: "inherit", stdinStream: input.stdinStream ?? idleStdin() } : {}),
+    ...(input.tty ? { tty: true } : {}),
+    ...(input.stdinStream !== undefined || input.tty
+      ? { stdin: "inherit", stdinStream: input.stdinStream ?? idleStdin() }
+      : {}),
     ...(input.terminalResize === undefined ? {} : { terminalResize: input.terminalResize }),
     ...(input.signal === undefined ? {} : { signal: input.signal }),
     ...(input.tty && input.hostTerminal?.columns !== undefined && input.hostTerminal.rows !== undefined

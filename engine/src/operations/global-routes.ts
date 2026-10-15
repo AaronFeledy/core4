@@ -19,8 +19,8 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     readonly failed: ReadonlySet<string>;
   },
 ): Effect.fn.Return<ReadonlyMap<ServiceName, ReadonlyArray<string>>, ProxyApplyError | ProviderError> {
-  if (plan.routes.length === 0) return new Map<ServiceName, ReadonlyArray<string>>();
-  if (!routerEnabled(plan)) {
+  if (plan.routes.length === 0 || !routerEnabled(plan)) {
+    // Best-effort: a route-free or router-disabled plan must not leave previously published hostnames live.
     yield* router.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
     return new Map<ServiceName, ReadonlyArray<string>>();
   }

@@ -17,7 +17,7 @@ export type PhpDbClientFamily = (typeof PHP_DB_CLIENT_FAMILIES)[number];
 export const PHP_DB_CLIENT_VERSIONS = {
   mysql: ["8.0", "8.4", "9.7"],
   mariadb: ["10.6", "10.11", "11.4"],
-  postgres: ["14", "15", "16", "17"],
+  postgres: ["14", "15", "16", "17", "18"],
   mongodb: ["6", "7", "8"],
 } as const;
 

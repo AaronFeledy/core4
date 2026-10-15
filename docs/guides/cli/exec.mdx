@@ -8,7 +8,7 @@ tags: [beta, docs, cli, exec]
 
 # Run commands inside a service
 
-`lando exec` runs a one-off command inside a running service. It doesn't attach host stdin by default, so commands finish without waiting for input. Add `-i` when the command needs stdin.
+`lando exec` runs a one-off command inside a running service. At a terminal it doesn't attach your keyboard, so commands finish without waiting for input. Add `-i` when you want to type into the command. Piped or redirected input always reaches the command.
 
 A service name before `--` selects that service; otherwise the primary service is used. Everything after `--` is the exact argv handed to the service. The command spec is non-strict, so it parses no flags of its own past that point.
 
@@ -21,6 +21,17 @@ lando exec --cwd /srv/app -- pwd
 ```
 
 Open a shell with `lando ssh` or `lando shell --service <name>`.
+
+## Pipe input in
+
+Pipe or redirect stdin, and the command reads it as plain bytes, then exits when the input ends:
+
+```sh
+printf 'hello\n' | lando exec -- cat
+lando exec db -- mysql -u lando -plando myapp < dump.sql
+```
+
+The command gets a terminal only when your stdin and stdout are both terminals. Piped input never goes through one, so nothing echoes back. Pipe the output away (`| grep`) and the command gets no terminal either, so tools that color only on a terminal print plain text.
 
 <Guide>
   <Scenario id="scaffold-and-start" render>
@@ -63,6 +74,12 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 ## Exit codes
 
 `app:exec` sets its own command exit code to the executed command's `exitCode`. A non-zero result is mirrored onto the CLI process, so `lando exec` propagates the target command's failure to the shell.
+
+## Masked output
+
+Lando masks credentials in what `lando exec`, `lando logs`, and tooling print. A value from a service environment key named like a password, token, key, or secret prints as `[redacted]`, and so does the password in a connection URL. The service itself still gets the real value.
+
+Lando's published default credentials, `lando` and `landolando`, print as-is. They're documented defaults, not secrets, and masking them would also blank `host.lando.internal` and every `lando doctor` hint. To keep a password masked, set your own or pull it from a [secret store](../config/secret-stores.mdx).
 
 ## Machine-readable output
 

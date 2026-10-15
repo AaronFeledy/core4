@@ -1,13 +1,13 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
-import { startedServiceRow } from "@lando/engine/operations/authority-url";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 
 import {
   applyGlobalServiceGroups,
   globalServiceGroupError,
+  waitForGlobalServiceGroups,
 } from "@lando/engine/operations/global-service-groups";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
@@ -23,9 +23,11 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import type { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
+import { ServiceName } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -79,6 +81,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 });
 
 export type GlobalStartError =
+  | ServiceNotReadyError
   | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
@@ -105,16 +108,9 @@ export type GlobalStartServices =
   | RuntimeProviderRegistry
   | RouterService;
 
-const READY_STATES = new Set(["running", "ready"]);
-
-const isGlobalStartReady = (result: GlobalStartResult): boolean =>
-  result.servicesStarted.length > 0 &&
-  result.servicesStarted.every((service) => READY_STATES.has(service.state));
-
 export const renderGlobalStartResult = (result: GlobalStartResult): string => {
   const services = joinServiceRows(result.servicesStarted.map(renderGlobalServiceRow));
-  const prefix = isGlobalStartReady(result) ? "ready" : "starting";
-  return lifecycleLine(prefix, result.app, services);
+  return lifecycleLine("ready", result.app, services);
 };
 
 export const globalStart = Effect.fn("GlobalStart.start")(function* (
@@ -175,7 +171,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
     },
     Effect.gen(function* () {
       const builds = yield* BuildOrchestrator;
-      const outcome = yield* applyGlobalServiceGroups(
+      const applied = yield* applyGlobalServiceGroups(
         loaded.plan,
         {
           provider,
@@ -187,6 +183,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
         },
         (plan) => withBuildProvider(builds.build(plan), provider),
       );
+      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
       const partialError = globalServiceGroupError("start", outcome);
       const selectedNames = new Set(outcome.services.map((service) => service.name));
       const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
@@ -199,16 +196,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
         return yield* Effect.fail(partialError);
       }
       const routeUrls = yield* applyRoutes;
-      const servicesStarted = yield* Effect.forEach(
-        services.filter((service) => selectedNames.has(service.name)),
-        (service) =>
-          provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
-            Effect.map((runtime) => {
-              const row = startedServiceRow(service, runtime);
-              return { ...row, endpoints: [...row.endpoints, ...(routeUrls.get(service.name) ?? [])] };
-            }),
-          ),
-      );
+      const servicesStarted = outcome.ready.map((row) => ({
+        ...row,
+        endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
+      }));
       return { app: loaded.plan.name, servicesStarted };
     }),
   );

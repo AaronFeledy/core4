@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import { validateConfigTranslateInput, validateConfigTranslateResult } from "@lando/sdk/landofile";
+import type { ConfigTranslateResult } from "@lando/sdk/schema";
 import type {
   ConfigTranslateDetectInput,
   ConfigTranslateInput,
@@ -72,7 +73,10 @@ export const detectConfigTranslators = Effect.fnUntraced(function* (
   return matches;
 });
 
-export const runConfigTranslator = Effect.fnUntraced(
+export const runConfigTranslator: (
+  translator: ConfigTranslatorShape,
+  input: ConfigTranslateInput,
+) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError> = Effect.fnUntraced(
   function* (translator: ConfigTranslatorShape, input: ConfigTranslateInput) {
     const validated = yield* Effect.fromResult(validateConfigTranslateInput(input));
     const result = yield* translator.translate(validated);

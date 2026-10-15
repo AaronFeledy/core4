@@ -1,9 +1,9 @@
 import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 
 import {
   type BunSelfSpawner,
@@ -57,7 +57,7 @@ export interface RunPostInitOptions {
   readonly recipeRoot?: string;
 }
 
-const secretsRedactor = createRedactor("secrets");
+const secretsRedactor = createStandaloneRedactor("secrets");
 
 export const redactBunOutput = (text: string): string => secretsRedactor.redactString(text);
 

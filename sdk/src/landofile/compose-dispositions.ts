@@ -546,13 +546,11 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
 // service and top-level matrix keys bidirectionally against the vendored JSON Schema.
 export const composeTagDispositions: Readonly<Record<"!reset" | "!override", ComposeDispositionEntry>> = {
   "!reset": {
-    disposition: "rejected",
-    rationale: "Compose multi-file reset tags are replaced by Landofile layer merge semantics.",
-    remediation: "Remove !reset and express the override through Landofile layer merge semantics.",
+    disposition: "normalized",
+    rationale: "Native Landofile layer merging consumes reset directives by removing mapping members.",
   },
   "!override": {
-    disposition: "rejected",
-    rationale: "Compose multi-file override tags are replaced by Landofile layer merge semantics.",
-    remediation: "Remove !override and express the override through Landofile layer merge semantics.",
+    disposition: "normalized",
+    rationale: "Native Landofile layer merging consumes override directives by replacing inherited values.",
   },
 };

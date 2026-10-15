@@ -36,7 +36,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |
-| `@lando/core/secrets` | `createRedactor`, `createSecretRedactor`, `RedactionProfile`, the canonical pattern catalog, and `REDACTED` (§3.7). |
+| `@lando/core/secrets` | `createRedactor`, `createSecretRedactor`, `RedactionProfile`, the canonical pattern catalog, `REDACTED`, and the published default credentials (`DEFAULT_PASSWORD`, `MINIO_DEFAULT_PASSWORD`, `PUBLIC_DEFAULT_CREDENTIALS`, `isPublicDefaultCredential`) (§3.7). |
 | `@lando/core/errors` | Published tagged errors. |
 | `@lando/core/events` | `EventService`, event schemas, priority bands, and standard sequences. |
 | `@lando/core/cli` | Programmatic built-in command operations (§16.7). |

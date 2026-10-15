@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:7fb28d607a78846087002b733f3600df86fc452eabfabc624f2ff8ab756d7dc3";
+  "sha256:f802f44c9a2069153075b54283b83ef274a5725ef4ecbe2abfb21489dc506e88";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -80,6 +80,7 @@ const expression: ExpressionNode = obj([
               ["framework", lit("laravel")],
               ["via", lit("cli")],
               ["command", lit("php artisan queue:work")],
+              ["restart", lit("unless-stopped")],
               ["dependsOn", arr(lit("database"), lit("cache"))],
               [
                 "appMount",

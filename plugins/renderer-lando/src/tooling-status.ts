@@ -46,6 +46,7 @@ export type ToolingStatusPainter = {
 
 export const createToolingStatusPainter = (
   now: () => number = () => DateTime.toEpochMillis(DateTime.nowUnsafe()),
+  isClosing: () => boolean = () => false,
 ): ToolingStatusPainter => {
   let timer: ReturnType<typeof setInterval> | undefined;
   let startedAt = 0;
@@ -53,7 +54,7 @@ export const createToolingStatusPainter = (
   let handle: ToolingStatusHandle | undefined;
 
   const paint = (): void => {
-    if (handle === undefined) return;
+    if (handle === undefined || isClosing()) return;
     handle.setFooter(formatToolingStatusLines(tool, now() - startedAt));
   };
 

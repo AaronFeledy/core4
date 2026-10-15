@@ -9,7 +9,7 @@ import { SchemaIssue } from "effect";
 import { Effect, Predicate, Result, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
-import { composeTopLevelDispositions, mergeValues } from "@lando/sdk/landofile";
+import { composeTopLevelDispositions, decodeLandofileLayer, mergeValues } from "@lando/sdk/landofile";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -22,14 +22,10 @@ import {
   parseValidationIssuePath,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
-import {
-  type ComposeRejectionMatch,
-  analyzeComposeRejections,
-  composeTagRejection,
-} from "./compose/rejections.ts";
+import { type ComposeRejectionMatch, analyzeComposeRejections } from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
 import { presentLandofileLayers } from "./layers.ts";
-import { detectLandofileTags, parseLandofile } from "./parser.ts";
+import { parseLandofile } from "./parser.ts";
 import type { TemplateEngineInputs } from "./ports.ts";
 import { normalizeRoutes } from "./route-normalize.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
@@ -332,15 +328,41 @@ export const lintLandofile = Effect.fn("Landofile.lint")(function* (
       });
     }
     parsedLayers.push(parsedEither.success);
-    layerRejections.push([
-      ...analyzeComposeRejections(parsedEither.success),
-      ...detectLandofileTags({ content: renderedEither.success, file: layer.filePath }).map(
-        composeTagRejection,
-      ),
-    ]);
+    layerRejections.push(analyzeComposeRejections(parsedEither.success));
   }
 
-  const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
+  const decodedLayers: unknown[] = [];
+  for (const [index, value] of parsedLayers.entries()) {
+    const decoded = yield* decodeLandofileLayer(
+      layersDiscovery.success[index]?.filePath ?? filePath,
+      value,
+    ).pipe(Effect.result);
+    if (Result.isFailure(decoded)) {
+      if (decoded.failure._tag === "LandofileValidationError")
+        return {
+          app: appNameOf(value),
+          file: layersDiscovery.success[index]?.filePath ?? filePath,
+          valid: false,
+          violations: decoded.failure.message.startsWith("Invalid Landofile layer.")
+            ? [
+                ...(layerRejections[index] ?? []).map(rejectionViolation),
+                ...violationsFor(value, layerRejections[index] ?? []),
+              ]
+            : decoded.failure.issues.map((issue) => ({ ...issue })),
+        };
+      return singleViolationResult(filePath, decoded.failure.message, {
+        line: decoded.failure.line,
+        column: decoded.failure.column,
+        suggestion: decoded.failure.remediation,
+      });
+    }
+    decodedLayers.push(decoded.success);
+  }
+
+  const parsed = decodedLayers.reduce<unknown>(
+    (merged, layer) => mergeValues(LandofileShape, merged, layer),
+    {},
+  );
   const rejections = layerRejections.flat();
   const rejectionViolations = rejections.map(rejectionViolation);
   const mergedViolations = violationsFor(parsed, rejections);
@@ -352,8 +374,11 @@ export const lintLandofile = Effect.fn("Landofile.lint")(function* (
     violationKeys.add(key);
     violations.push(violation);
   }
-  for (const [index, layer] of parsedLayers.entries()) {
-    for (const violation of violationsFor(layer, layerRejections[index] ?? [])) {
+  for (const [index, layer] of decodedLayers.entries()) {
+    for (const violation of violationsFor(
+      mergeValues(LandofileShape, {}, layer),
+      layerRejections[index] ?? [],
+    )) {
       const key = JSON.stringify(violation);
       if (violationKeys.has(key)) continue;
       violationKeys.add(key);

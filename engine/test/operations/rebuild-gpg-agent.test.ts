@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type AppPlan, PortablePath } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
@@ -38,11 +38,13 @@ for (const prepareExit of [0, 1]) {
     );
     await new Promise<void>((resolve) => server.listen(socketPath, resolve));
     const applied: AppPlan[] = [];
+    const applyOptions: (ApplyOptions | undefined)[] = [];
     const calls: string[] = [];
     const harness = makeHarness({
       plannedApp: selected,
-      onApply: (value) => {
+      onApply: (value, options) => {
         applied.push(value);
+        applyOptions.push(options);
         calls.push("apply");
       },
       onBuildApp: () => calls.push("build-app"),
@@ -117,9 +119,12 @@ for (const prepareExit of [0, 1]) {
       // Then
       expect(applied).toHaveLength(1);
       expect(applied[0]?.services[web.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
+      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.GNUPGHOME).toBeUndefined();
+      expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.GNUPGHOME).toBeUndefined();
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
+      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBeUndefined();
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
         source: "/relay/gpg-socket",
