@@ -191,6 +191,7 @@ type LegacyStartAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | GlobalAutoStartError
   | SecretNotFoundError
   | SecretStoreUnavailableError
@@ -249,6 +250,7 @@ type LegacyStopAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -285,6 +287,7 @@ type LegacyInfoAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -302,6 +305,7 @@ type LegacyExecAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
@@ -339,6 +343,7 @@ type LegacyToolingError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | ConfigError
   | ComposeKeyRejectedError
   | LandofileNotFoundError
@@ -392,6 +397,7 @@ type LegacyLogsAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
+  | BuildArgSecretReferenceError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
