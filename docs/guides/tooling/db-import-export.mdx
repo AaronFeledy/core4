@@ -90,6 +90,17 @@ lando db:reset --yes
     </Step>
   </Scenario>
 
+  <Scenario id="restore-unknown-snapshot" render={false} reason="Regression for an unknown snapshot id or label">
+    <Step name="restore-unknown">
+      <UseFixture name="one-db" />
+      <Run command="lando db:restore no-such-snapshot --yes --format=json" expectExit={1} />
+      <Verify errorTag="SnapshotNotFoundError" expect={{ regex: "lando db:snapshots" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="reset-requires-yes" render={false} reason="Regression for reset confirmation">
     <Step name="reset">
       <UseFixture name="one-db" />
