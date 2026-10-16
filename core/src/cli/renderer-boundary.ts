@@ -45,6 +45,8 @@ import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from "./format-flags";
+import { interruptOnAbort } from "./interrupt-on-abort";
+import { getActiveProcessAbortSignal } from "./process-abort-signal";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
@@ -118,6 +120,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
+  readonly signal?: AbortSignal;
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly successExitCode?: (value: A) => number | undefined;
   readonly failureExitCode?: (error: unknown) => number | undefined;
@@ -224,10 +227,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     });
     return Effect.sync(unsubscribe);
   });
+  const processAbortSignal = options.signal ?? getActiveProcessAbortSignal();
   // Subscribe before command writes; raceFirst waits for interrupted scope finalizers.
-  const commandEffect = Effect.raceFirst(brokenPipeSignal, effect).pipe(
-    Effect.withErrorReporting({ defectsOnly: true }),
-  );
+  const commandEffect = interruptOnAbort(
+    Effect.raceFirst(brokenPipeSignal, effect),
+    processAbortSignal,
+  ).pipe(Effect.withErrorReporting({ defectsOnly: true }));
   const renderContext: RenderContext = {
     mode: options.rendererMode,
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
@@ -366,7 +371,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         return { _tag: "handled-failure" } as const;
       }
       if (
-        options.suppressInterruptionDiagnostics === true &&
+        (options.suppressInterruptionDiagnostics === true || processAbortSignal?.aborted === true) &&
         Exit.isFailure(commandExit) &&
         Cause.hasInterruptsOnly(commandExit.cause)
       ) {
