@@ -12,6 +12,7 @@ import {
 import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
 import { kebab, shortHash } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
+import { effectiveShadowExcludes } from "./shadow-host-checks.ts";
 
 const GLOBAL_SCOPE_REMEDIATION =
   "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
@@ -137,6 +138,7 @@ export const expandExcludesToShadows = (
   serviceName: string,
   servicePlan: ServicePlan,
   appRoot: string,
+  shadowableExcludes: ReadonlySet<string>,
 ):
   | {
       servicePlan: ServicePlan;
@@ -145,9 +147,7 @@ export const expandExcludesToShadows = (
   | LandofileValidationError => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return { servicePlan, shadowStores: [] };
-  const excludes = appMount.excludes ?? [];
-  const includes = new Set(appMount.includes ?? []);
-  const effectiveExcludes = excludes.filter((entry) => !entry.startsWith("!") && !includes.has(entry));
+  const effectiveExcludes = effectiveShadowExcludes(appMount);
   if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
 
   const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
@@ -159,6 +159,7 @@ export const expandExcludesToShadows = (
   }> = [];
 
   for (const excludePath of effectiveExcludes) {
+    if (!shadowableExcludes.has(excludePath)) continue;
     const destination = joinPathSegments(appMount.target, excludePath);
     const mountTarget = plannedContainerDestination(destination, appRoot, [
       "services",

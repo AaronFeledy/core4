@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, database]
 
 # Import and export app databases
 
-Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed <file>` to load a dump into a database Lando freshly created.
+Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump or a snapshot.
 
 A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
 
@@ -40,10 +40,28 @@ Snapshots land in Lando's snapshot store, not next to your dump files. Lando bri
 ```sh
 lando db:snapshot --label before-change
 lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-change --yes
 ```
 
-`db:restore` takes the snapshot id that `db:snapshots` prints, not the label.
+`db:restore` takes a label or the id `db:snapshots` prints. Labels don't have to be unique. A label on more than one snapshot fails with `SnapshotAmbiguousError` and lists the matching ids, newest first, so pass one of those. A name that matches nothing fails with `SnapshotNotFoundError`.
+
+A snapshot restores only into the database volume that took it. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`; move that data with `db:export` and `db:seed <file>`.
+
+## Seed a fresh database
+
+`db:seed` loads a dump file or one of this app's snapshots into a database Lando freshly created that nothing has written to yet. It never prompts, because there is nothing to replace. That makes a snapshot a fast reset point that survives `--volumes`. This throws away the current database:
+
+```sh
+lando destroy -y --volumes
+lando start
+lando db:seed --snapshot before-change
+```
+
+`db:seed` reads a dump from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`. Use `db:import` to load data into a database that's already in use.
+
+```sh
+lando db:seed ../shared/baseline.sql.gz
+```
 
 ## Confirm destructive work
 

@@ -40,6 +40,8 @@ Some service types add their own excludes on top of the defaults. Python adds `_
 
 Excluded paths get an empty volume overlay so host files for that path are never read. Each service gets its own overlay, so two services never share an excluded directory. When a second service needs the same `vendor/` or `node_modules/`, include it on both.
 
+An overlay can only cover a directory. When an excluded path is a file on the host, like the one-line `.git` file in a git worktree, Lando skips the overlay and the file mounts as-is. File sync still leaves it out where Lando syncs files instead of bind-mounting them.
+
 ## Verify
 
 After you change excludes, rebuild so the mounts update:

@@ -203,12 +203,11 @@ lando db:export dump.sql.gz
 lando db:import dump.sql.gz --yes
 ```
 
-Snapshots save the database volume to Lando's snapshot store. `lando db:snapshots` prints each snapshot's id and label, and restore takes the id. Restoring replaces the current data:
+Snapshots save the database volume to Lando's snapshot store, and `lando db:snapshots` lists each one's id and label. Restore takes either. Restoring replaces the current data:
 
 ```sh
 lando db:snapshot --label before-migrate
-lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-migrate --yes
 ```
 
 `lando db:reset --yes` empties the database when you want a clean slate.
@@ -240,7 +239,7 @@ lando db:snapshot --label before-migrate
 lando exec web -- alembic upgrade head
 ```
 
-A bad migration rolls back with `lando db:restore <snapshot-id> --yes`.
+A bad migration rolls back with `lando db:restore before-migrate --yes`.
 
 ## Follow logs and open a shell
 

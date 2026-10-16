@@ -13,7 +13,8 @@ import {
   type PluginManifest,
   type ProviderCapabilities,
 } from "@lando/sdk/schema";
-import { CacheService } from "@lando/sdk/services";
+import { CacheService, type FileSystem } from "@lando/sdk/services";
+import type { Context } from "effect";
 
 import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
@@ -29,6 +30,7 @@ import {
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
 import { routerEnabled } from "../config/router-config.ts";
+import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 import { appPlanCachePath } from "./paths.ts";
@@ -37,13 +39,14 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 20n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 21n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
   readonly key: string;
   readonly versionConstraints: ReadonlyArray<VersionConstraintEntry>;
+  readonly shadowHostChecks: readonly ShadowHostCheck[];
   readonly generatedAtMs: number;
   readonly plan: unknown;
 }
@@ -225,6 +228,7 @@ const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>
 };
 
 export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
+  readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly cacheRoot: string;
   readonly appName: string;
   readonly appRoot: string;
@@ -252,6 +256,10 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
   if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
   if (!versionConstraintsUsable(payload.versionConstraints)) return null;
+  if (!Schema.is(Schema.Array(ShadowHostCheck))(payload.shadowHostChecks)) return null;
+  for (const check of payload.shadowHostChecks) {
+    if ((yield* canShadowHostPath(check.path, input.fileSystem)) !== check.shadowed) return null;
+  }
   return yield* Effect.try({
     try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
     catch: (cause) =>
@@ -272,6 +280,7 @@ export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly plan: AppPlan;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly now?: () => number;
+  readonly shadowHostChecks?: readonly ShadowHostCheck[];
 }): Effect.fn.Return<string, CacheError, CacheService> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   const cache = yield* CacheService;
@@ -283,6 +292,7 @@ export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
       landoVersion: CORE_VERSION,
       key: input.key,
       versionConstraints: input.versionConstraints ?? [],
+      shadowHostChecks: input.shadowHostChecks ?? [],
       generatedAtMs,
       plan: Schema.encodeSync(AppPlan)(input.plan),
     }),

@@ -70,7 +70,7 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 
 Template mounts use app-root-relative `source`, optional `engine`, `vars`, and `mode`. Sources obey include containment (§7.7.6). Engine selection is explicit, then extension-based, then `lando`; values resolve through the standard expression context. Providers receive only rendered `inline` mounts. Rendered output uses the `<userCacheRoot>/templates/<engineId>/...` `template-render` cache (§12.1).
 
-For bind excludes, planning creates storage shadows; `!` entries re-include paths. Copy includes become binds. Ordering preserves nested-path semantics.
+For bind excludes, planning creates storage shadows; `!` entries re-include paths. A shadow overlays a directory: an exclude whose host path exists as a non-directory, such as a Git worktree's `.git` file, gets no shadow and stays visible through passthrough binds. Copy includes become binds. Ordering preserves nested-path semantics.
 
 Every bind `MountPlan` has `realization: passthrough | accelerated` selected from `bindMountPerformance` (§5.4):
 
@@ -78,7 +78,7 @@ Every bind `MountPlan` has `realization: passthrough | accelerated` selected fro
 - `slow` uses a provider-managed `lando-sync-<app-id>-<service>-<mountKeyHash>` volume and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
 - `none` fails with `CapabilityError`.
 
-The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive excludes; otherwise planning retains storage shadows. Excludes are never silently dropped.
+The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive every exclude, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
 
 `mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, `file-sync-sessions` cache, and lifecycle events. Changing excludes changes the key.
 

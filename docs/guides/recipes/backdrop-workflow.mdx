@@ -208,12 +208,11 @@ lando db:import backdrop.sql.gz --yes
 lando bee cc all
 ```
 
-`db:export` writes into your current directory. For a quick undo point, snapshot the database. `db:restore` replaces the data too, and it takes the id `db:snapshots` lists, not the label:
+`db:export` writes into your current directory. For a quick undo point, snapshot the database and restore it by label. `db:restore` replaces the data too:
 
 ```sh
 lando db:snapshot --label before-update
-lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-update --yes
 ```
 
 Backdrop keeps active config as files, not in the database. Stock `settings.php` puts it under `files/config_<hash>/active`, where the hash comes from the `$database` value written in `settings.php` itself. `BACKDROP_SETTINGS` is merged in later, so it doesn't move that directory. Dumps and snapshots don't carry it, so when you import another site's database, bring that site's active config directory to the path `$config_directories['active']` names. More flags: [Import and export app databases](../tooling/db-import-export.mdx).

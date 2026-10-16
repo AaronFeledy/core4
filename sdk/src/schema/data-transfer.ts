@@ -226,6 +226,17 @@ export const SnapshotOptions = Schema.Struct({
 export type SnapshotOptions = typeof SnapshotOptions.Type;
 
 /**
+ * Options for restoring a volume snapshot.
+ */
+export const SnapshotRestoreOptions = Schema.Struct({
+  mode: Schema.optionalKey(Schema.Literals(["restore", "seed"])).annotate({
+    description:
+      "restore (default) requires the snapshot's original physical volume instance; seed requires a freshly created volume of the snapshot's own app, owner, and store with an in-progress initialization claim.",
+  }),
+});
+export type SnapshotRestoreOptions = typeof SnapshotRestoreOptions.Type;
+
+/**
  * Handle returned by `snapshot`, enough to locate the snapshot sidecar.
  */
 export const SnapshotHandle = Schema.Struct({

@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
 import {
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
   SqlCommandFailedError,
   SqlConfirmRequiredError,
   SqlDumpNotFoundError,
@@ -864,13 +866,171 @@ describe("executeDbCommand", () => {
   });
 
   test("seeds a provenance-confirmed fresh volume from a compatible physical snapshot", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      countStdout: "0",
+      snapshotVolumeInstance: "volume-instance:previous-generation",
+    });
 
     const exit = await run(harness.deps, { action: "seed", snapshotId: "seed-source", yes: false });
 
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(harness.lifecycle()).toEqual(["lock", "suspend", "restore", "resume"]);
+    expect(harness.restores()).toEqual([
+      {
+        id: "seed-source",
+        store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        opts: { mode: "seed" },
+      },
+    ]);
   });
+
+  for (const action of ["restore", "seed"] as const) {
+    test(`${action} prefers an exact id over matching labels`, async () => {
+      // Given: an exact id and a different snapshot with the same label.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "baseline" }));
+      if (source === undefined) throw new Error("missing fixture snapshot");
+      const deps = {
+        ...harness.deps,
+        listSnapshots: (filter: Parameters<typeof harness.deps.listSnapshots>[0]) =>
+          Effect.succeed(
+            filter.id === undefined ? [{ ...source, id: "label-match", label: "baseline" }] : [source],
+          ),
+      };
+      // When: the reference could identify either snapshot.
+      const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
+      // Then: the exact id wins.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(harness.restores()[0]).toMatchObject({ id: "baseline" });
+    });
+
+    test(`${action} resolves a unique label within the current app and store`, async () => {
+      // Given: a label whose id differs from the supplied reference.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "source-id" }));
+      if (source === undefined) throw new Error("missing fixture snapshot");
+      const filters: unknown[] = [];
+      const deps = {
+        ...harness.deps,
+        listSnapshots: (filter: Parameters<typeof harness.deps.listSnapshots>[0]) => {
+          filters.push(filter);
+          return Effect.succeed(filter.id === undefined ? [{ ...source, label: "baseline" }] : []);
+        },
+      };
+      // When: either command is given the label.
+      const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
+      // Then: resolution uses the default listing scope and mutation receives the resolved id.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(harness.restores()[0]).toMatchObject({ id: "source-id" });
+      expect(filters).toEqual([
+        { id: "baseline" },
+        {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: "owner:sql-app",
+          label: "baseline",
+        },
+      ]);
+    });
+
+    test(`${action} reports ambiguous labels with newest matching ids first`, async () => {
+      // Given: two independently addressable snapshots sharing a label.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "older" }));
+      if (source === undefined) throw new Error("missing fixture snapshot");
+      const deps = {
+        ...harness.deps,
+        listSnapshots: (filter: Parameters<typeof harness.deps.listSnapshots>[0]) =>
+          Effect.succeed(
+            filter.id !== undefined
+              ? []
+              : [
+                  { ...source, label: "baseline" },
+                  {
+                    ...source,
+                    id: "newer",
+                    label: "baseline",
+                    createdAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
+                  },
+                  { ...source, id: "unrelated", label: "other" },
+                ],
+          ),
+      };
+      // When: the shared label is selected.
+      const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
+      // Then: ambiguity is actionable and fails before any physical mutation.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected ambiguity");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(SnapshotAmbiguousError);
+      expect(error).toMatchObject({
+        snapshotId: "baseline",
+        matchCount: 2,
+        candidateIds: ["newer", "older"],
+      });
+      expect(harness.lifecycle()).toEqual([]);
+    });
+
+    test(`${action} reports unknown references as not found`, async () => {
+      // Given: neither an id nor a label exists.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const deps = { ...harness.deps, listSnapshots: () => Effect.succeed([]) };
+      // When: the missing reference is selected.
+      const exit = await run(deps, { action, snapshotId: "no-such-snapshot", yes: true });
+      // Then: the typed failure points to the discovery command.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected missing snapshot");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(SnapshotNotFoundError);
+      if (error instanceof SnapshotNotFoundError) expect(error.remediation).toContain("lando db:snapshots");
+      expect(harness.lifecycle()).toEqual([]);
+    });
+  }
+
+  for (const mismatch of [
+    "version",
+    "ownerKey",
+    "imageIdentity",
+    "sourceRoot",
+    "service",
+    "family",
+  ] as const) {
+    test(`snapshot seed rejects mismatched ${mismatch} before claiming the fresh volume`, async () => {
+      // Given: a snapshot of a previous generation with one incompatible lineage field.
+      const harness = makeSqlTestDeps({ password: SECRET, snapshotVolumeInstance: "previous-generation" });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "seed-source" }));
+      if (source?.metadata === undefined) throw new Error("missing fixture metadata");
+      const metadata = source.metadata;
+      const incompatible = {
+        version: { version: "5.7" },
+        ownerKey: { ownerKey: "foreign-owner" },
+        imageIdentity: { imageIdentity: "foreign-image" },
+        sourceRoot: { sourceRoot: AbsolutePath.make("/foreign-root") },
+        service: { service: ServiceName.make("other-service") },
+        family: { family: "postgres" },
+      };
+      const deps = {
+        ...harness.deps,
+        listSnapshots: () =>
+          Effect.succeed([
+            {
+              ...source,
+              metadata: { ...metadata, ...incompatible[mismatch] },
+            },
+          ]),
+      };
+      // When: a physical seed is attempted.
+      const exit = await run(deps, { action: "seed", snapshotId: "seed-source", yes: false });
+      // Then: compatibility fails before suspend or restore.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected incompatible snapshot");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+        SqlRecoveryUnavailableError,
+      );
+      expect(harness.lifecycle()).toEqual(["lock"]);
+    });
+  }
 
   test("quarantines an interrupted seed instead of trusting an empty database", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0", seedStatus: "in-progress" });

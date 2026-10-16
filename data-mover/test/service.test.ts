@@ -32,6 +32,7 @@ import {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   ProviderUnavailableError,
+  SnapshotOwnershipError,
   StateStoreError,
 } from "@lando/sdk/errors";
 import {
@@ -41,6 +42,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
+  type VolumeIdentity,
 } from "@lando/sdk/schema";
 import {
   DataMover,
@@ -56,6 +58,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
@@ -1838,6 +1841,129 @@ describe("BunDataMover.layer", () => {
     });
   });
 
+  for (const mode of ["native", "copy"] as const) {
+    for (const scenario of [
+      "in-progress",
+      "fresh",
+      "seeded",
+      "failed",
+      "absent",
+      "foreign-root",
+      "foreign-store",
+      "cross-store-handle",
+      "missing-identity",
+      "missing-metadata",
+      "restore",
+    ] as const) {
+      test(`${mode} physical seed checks ${scenario} on a new generation`, async () => {
+        // Given: a verified snapshot and a replacement volume in the same app lineage.
+        await withTempDir(async (dir) => {
+          const sourceStore = scenario === "cross-store-handle" ? "other" : "data";
+          const sourceIdentity: VolumeIdentity = {
+            coordinationKey: `daemon:${dir}`,
+            nativeName: sourceStore,
+            generation: "source-generation",
+            ownerRoot: absolute(dir),
+            origin: "created",
+          };
+          const targetIdentity: VolumeIdentity = {
+            ...sourceIdentity,
+            generation: "target-generation",
+            ownerRoot: scenario === "foreign-root" ? absolute(join(dir, "other")) : absolute(dir),
+            nativeName: scenario === "foreign-store" ? "other" : "data",
+          };
+          let identity = sourceIdentity;
+          let restoring = false;
+          let restoredGeneration: string | undefined;
+          const paths = makeLandoPaths({ userDataRoot: join(dir, "state") });
+          const exit = await Effect.runPromiseExit(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const mover = yield* DataMover;
+                const stateStore = yield* StateStore;
+                const handle = yield* mover.snapshot(
+                  { app, store: sourceStore },
+                  {
+                    volumeSnapshot: mode,
+                    ...(scenario === "missing-metadata"
+                      ? {}
+                      : {
+                          metadata: {
+                            sourceRoot: absolute(dir),
+                            service,
+                            volumeInstanceId: sourceIdentity.generation,
+                            family: "postgres" as const,
+                            version: "16",
+                            imageIdentity: "postgres:16",
+                            recoveryReason: "manual" as const,
+                          },
+                        }),
+                  },
+                );
+                identity = targetIdentity;
+                restoring = true;
+                const creation = yield* volumeInitialization(stateStore, targetIdentity);
+                if (scenario !== "absent") yield* creation.recordCreation;
+                if (scenario !== "fresh" && scenario !== "absent") yield* creation.begin("sql-seed");
+                if (scenario === "seeded" || scenario === "failed") {
+                  yield* creation.finish({ operationId: "sql-seed", outcome: scenario });
+                }
+                // When: the public lazy DataMover port restores into the replacement generation.
+                yield* mover.restore(
+                  handle,
+                  { app, store: "data" },
+                  scenario === "restore" ? undefined : { mode: "seed" },
+                );
+              }),
+            ).pipe(
+              Effect.provide(BunDataMover.layer),
+              Effect.provide(
+                Layer.mergeAll(
+                  stateStoreLayer,
+                  Layer.succeed(PathsService, paths),
+                  Layer.succeed(
+                    RuntimeProvider,
+                    RuntimeProvider.of({
+                      ...TestRuntimeProvider,
+                      pullArtifact: verifyingPullArtifact,
+                      capabilities: dataPlaneCapabilities({ volumeSnapshot: mode }),
+                      listVolumes: (filter) =>
+                        Effect.succeed([
+                          {
+                            ref: { app, store: filter?.store ?? "data" },
+                            ...(restoring && scenario === "missing-identity" ? {} : { identity }),
+                          },
+                        ]),
+                      restoreVolume: (spec) =>
+                        Effect.sync(() => {
+                          restoredGeneration = spec.expectedTargetGeneration;
+                        }),
+                    }),
+                  ),
+                  captureEvents().layer,
+                  redactionLayer,
+                ),
+              ),
+            ),
+          );
+          // Then: only a claimed seed may cross generations; restore remains strict.
+          if (scenario === "in-progress") {
+            expect(exit._tag).toBe("Success");
+            if (mode === "native") expect(restoredGeneration).toBe(targetIdentity.generation);
+          } else {
+            expect(exit._tag).toBe("Failure");
+            if (exit._tag === "Failure") {
+              expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+                SnapshotOwnershipError,
+              );
+            }
+            expect(restoredGeneration).toBeUndefined();
+          }
+        });
+      });
+    }
+  }
+
   test("rejects restoring a physical snapshot into a foreign volume instance", async () => {
     await withTempDir(async (dir) => {
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -1876,6 +2002,13 @@ describe("BunDataMover.layer", () => {
                     {
                       ref: { app, store: store ?? "target" },
                       instanceId: store === "source" ? "instance-source" : "instance-target",
+                      identity: {
+                        coordinationKey: "provider:data",
+                        nativeName: store ?? "target",
+                        generation: store === "source" ? "instance-source" : "instance-target",
+                        ownerRoot: absolute(dir),
+                        origin: "created",
+                      },
                       provenance: "known",
                     },
                   ]),

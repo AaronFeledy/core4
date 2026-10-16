@@ -123,11 +123,10 @@ Take a snapshot before an extension install or a core update:
 
 ```sh
 lando db:snapshot --label before-update
-lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-update --yes
 ```
 
-`db:restore` wants the snapshot id that `lando db:snapshots` lists, not the label. It asks before it replaces data; `--yes` skips the prompt.
+`db:restore` takes the label or the id `lando db:snapshots` lists. It asks before it replaces data; `--yes` skips the prompt.
 
 Want a browser UI too? Add a `type: phpmyadmin` service. See [Add phpMyAdmin](../services/phpmyadmin.mdx).
 

@@ -14,6 +14,7 @@ import {
   type SnapshotId,
   type SnapshotInfo,
   type SnapshotOptions,
+  type SnapshotRestoreOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
 
@@ -42,7 +43,11 @@ export type SqlExec = (
 export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
-  readonly restore: (id: string, store: VolumeRef) => Effect.Effect<void, unknown>;
+  readonly restore: (
+    id: string,
+    store: VolumeRef,
+    opts?: SnapshotRestoreOptions,
+  ) => Effect.Effect<void, unknown>;
   readonly listSnapshots: (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, unknown>;
   readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, unknown>;
 };

@@ -13,7 +13,7 @@ export const spec = {
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },
   args: {
-    snapshot: { type: "string", required: true, description: "Snapshot id to restore." },
+    snapshot: { type: "string", required: true, description: "Snapshot id or label to restore." },
   },
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,

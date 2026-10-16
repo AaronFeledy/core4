@@ -90,6 +90,9 @@ export class SnapshotAmbiguousError extends Schema.TaggedError<SnapshotAmbiguous
     message: Schema.String,
     snapshotId: Schema.String,
     matchCount: Schema.Number,
+    candidateIds: Schema.optional(Schema.Array(Schema.String)).annotate({
+      description: "Matching snapshot ids, newest first, when resolving an ambiguous label.",
+    }),
     remediation: Schema.optional(Schema.String),
   },
 ) {}

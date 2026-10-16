@@ -10,7 +10,7 @@ export const spec = {
   bootstrap: "app",
   flags: {
     service: { type: "string", description: "Target database service." },
-    snapshot: { type: "string", description: "Snapshot ID to seed from." },
+    snapshot: { type: "string", description: "Snapshot id or label to seed from." },
   },
   args: {
     file: { type: "string", required: false, description: "Dump file to seed from." },

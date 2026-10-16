@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `DataMover.restore` adds an optional third `opts?: SnapshotRestoreOptions` argument. Omitted options and `mode: "restore"` keep strict physical-volume generation checks. `mode: "seed"` permits a new generation only for the snapshot's own app, store, and owner root, with verified snapshot metadata and an in-progress volume initialization claim. `SnapshotAmbiguousError` adds optional `candidateIds`, ordered newest first, for id-or-label resolution; `snapshotId` retains the reference supplied by the caller.
+
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.
@@ -885,6 +887,7 @@ It registers no JSON Schema.
 - `SnapshotInfo`
 - `SnapshotMetadata`
 - `SnapshotOptions`
+- `SnapshotRestoreOptions`
 - `VolumeFilter`
 - `VolumeInfo`
 - `VolumeIdentity`

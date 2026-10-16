@@ -35,6 +35,7 @@ const liveHarnesses: SqlTestHarness[] = [];
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
   const snapshots: RecordedSnapshot[] = [];
+  const restores: Array<ReturnType<SqlTestHarness["restores"]>[number]> = [];
   const execs: RecordedExec[] = [];
   const published: string[] = [];
   const lifecycle: SqlLifecycleStep[] = [];
@@ -124,7 +125,8 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         });
         return { id: `snap-${store.store}-${snapshots.length}`, store };
       }),
-    restore: () => {
+    restore: (id, store, opts) => {
+      restores.push({ id, store, ...(opts === undefined ? {} : { opts }) });
       lifecycle.push("restore");
       return options.restoreFails === true ? Effect.fail(new FakeRestoreError()) : Effect.void;
     },
@@ -261,6 +263,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     deps,
     transfers: () => transfers,
     snapshots: () => snapshots,
+    restores: () => restores,
     execs: () => execs,
     published: () => published,
     lifecycle: () => lifecycle,
