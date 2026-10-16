@@ -54,8 +54,8 @@ test("warns when an env value contains ${ without failing the lint", async () =>
         suggestion: expect.stringContaining("{{ env.* }}"),
       },
     ]);
-    expect(result.warnings?.[0]?.suggestion).toContain("$$");
     expect(result.warnings?.[0]?.suggestion).toContain("single quotes");
+    expect(result.warnings?.[0]?.suggestion).not.toContain("$$");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -78,6 +78,40 @@ test("treats a bare NAME env line as an error with environment remediation", asy
         suggestion: 'environment: { NAME: "{{ env.NAME }}" }',
       },
     ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fails lint when a declared env file is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-env-lint-missing-"));
+  try {
+    await writeFile(join(root, ".lando.yml"), "name: env-lint-missing\nenv_file: [missing.env]\n");
+
+    const result = await lintApp(root);
+
+    expect(result.valid).toBe(false);
+    expect(result.violations).toEqual([
+      {
+        path: ["env_file", 0],
+        message: expect.stringContaining("Unable to read env file"),
+      },
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not add env-file warnings when no env file is declared", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-env-lint-none-"));
+  try {
+    await writeFile(join(root, ".lando.yml"), "name: env-lint-none\n");
+
+    const result = await lintApp(root);
+
+    expect(result.valid).toBe(true);
+    expect(result.violations).toEqual([]);
+    expect(result.warnings).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

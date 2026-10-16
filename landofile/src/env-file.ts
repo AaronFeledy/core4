@@ -47,8 +47,7 @@ const DOUBLE_QUOTED_ESCAPES: Readonly<Record<string, string>> = {
 const DECODED_ESCAPE_SUGGESTION =
   "Quote the value with single quotes to keep the raw text, or write \\\\ for each backslash you want to keep.";
 
-const INTERPOLATION_SUGGESTION =
-  "Use single quotes or $$ if you want a literal dollar, or set the value in environment: with {{ env.* }}.";
+const INTERPOLATION_SUGGESTION = "Use single quotes or environment: with {{ env.* }}.";
 
 const isHorizontalWhitespace = (char: string): boolean =>
   char !== "\n" && char !== "\r" && char.trim() === "";
@@ -92,44 +91,38 @@ export const decodeDoubleQuotedEnvValue = (raw: string): string => {
 const decodeSingleQuotedEnvValue = (raw: string): string => raw.replace(/\\'/gu, "'");
 
 export const warningsForEnvFileEntry = (entry: EnvFileEntry): ReadonlyArray<EnvFileWarning> => {
-  const warnings: EnvFileWarning[] = [];
   if (entry.quote === '"' && entry.value !== entry.raw) {
-    warnings.push({
-      line: entry.line,
-      key: entry.key,
-      message: `Double-quoted value for ${entry.key} decodes differently from its raw text.`,
-      suggestion: DECODED_ESCAPE_SUGGESTION,
-    });
+    return [
+      {
+        line: entry.line,
+        key: entry.key,
+        message: `Double-quoted value for ${entry.key} decodes differently from its raw text.`,
+        suggestion: DECODED_ESCAPE_SUGGESTION,
+      },
+    ];
   }
-  if (entry.raw.includes("${") || entry.value.includes("${")) {
-    warnings.push({
-      line: entry.line,
-      key: entry.key,
-      message: `Value for ${entry.key} contains \${, which env files do not interpolate.`,
-      suggestion: INTERPOLATION_SUGGESTION,
-    });
+  if (entry.quote !== "'" && (entry.raw.includes("${") || entry.value.includes("${"))) {
+    return [
+      {
+        line: entry.line,
+        key: entry.key,
+        message: `Value for ${entry.key} contains \${, which env files do not interpolate.`,
+        suggestion: INTERPOLATION_SUGGESTION,
+      },
+    ];
   }
-  return warnings;
+  return [];
 };
 
 const findClosingQuote = (content: string, quote: '"' | "'", openingIndex: number): number => {
   for (let index = openingIndex + 1; index < content.length; index += 1) {
     const char = content[index];
-    if (quote === "'") {
-      if (char === "\n" || char === "\r") return -1;
-      if (char === "\\" && content[index + 1] === "'") {
-        index += 1;
-        continue;
-      }
-      if (char === "'") return index;
-      continue;
-    }
     if (char === "\\") {
       if (content[index + 1] === undefined) return -1;
       index += 1;
       continue;
     }
-    if (char === '"') return index;
+    if (char === quote) return index;
   }
   return -1;
 };

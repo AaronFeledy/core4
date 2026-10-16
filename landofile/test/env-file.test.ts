@@ -202,6 +202,49 @@ describe("parseEnvFile", () => {
     expect(environment.S).toBe("it's \\n fine");
   });
 
+  test("parses a trailing backslash before a single closing quote as literal slashes", () => {
+    // Given / When / Then
+    expect(parsedEnvironment("A='a\\\\'").A).toBe("a\\\\");
+  });
+
+  test("parses multi-line single-quoted values", () => {
+    // Given
+    const content = ["MULTI='line1", "line2'", "AFTER=ok"].join("\n");
+
+    // When
+    const result = parseEnvFile(content, "/app/single-multi.env");
+
+    // Then
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.environment.MULTI).toBe("line1\nline2");
+    expect(result.environment.AFTER).toBe("ok");
+    expect(result.warnings).toEqual([]);
+  });
+
+  test("does not warn on a single-quoted ${ value", () => {
+    // Given / When
+    const result = parseEnvFile("TOKEN='${SECRET}'", "/app/quoted-interp.env");
+
+    // Then
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.environment.TOKEN).toBe("${SECRET}");
+    expect(result.warnings).toEqual([]);
+  });
+
+  test("emits one warning for a double-quoted \\${X} escape", () => {
+    // Given / When
+    const result = parseEnvFile('TOKEN="\\${X}"', "/app/escaped-interp.env");
+
+    // Then
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.environment.TOKEN).toBe("${X}");
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]?.message).toContain("decodes differently from its raw text");
+  });
+
   test("keeps ${...} literal instead of interpolating", () => {
     // Given / When
     const result = parseEnvFile('HOME="${HOME}"\nPLAIN=${HOME}', "/app/interp.env");
@@ -216,15 +259,13 @@ describe("parseEnvFile", () => {
         line: 1,
         key: "HOME",
         message: "Value for HOME contains ${, which env files do not interpolate.",
-        suggestion:
-          "Use single quotes or $$ if you want a literal dollar, or set the value in environment: with {{ env.* }}.",
+        suggestion: "Use single quotes or environment: with {{ env.* }}.",
       },
       {
         line: 2,
         key: "PLAIN",
         message: "Value for PLAIN contains ${, which env files do not interpolate.",
-        suggestion:
-          "Use single quotes or $$ if you want a literal dollar, or set the value in environment: with {{ env.* }}.",
+        suggestion: "Use single quotes or environment: with {{ env.* }}.",
       },
     ]);
   });
@@ -305,8 +346,46 @@ describe("warningsForEnvFileEntry", () => {
         line: 4,
         key: "TOKEN",
         message: "Value for TOKEN contains ${, which env files do not interpolate.",
+        suggestion: "Use single quotes or environment: with {{ env.* }}.",
+      },
+    ]);
+  });
+
+  test("does not warn on ${ inside a single-quoted value", () => {
+    // Given
+    const entry = {
+      key: "TOKEN",
+      value: "${SECRET}",
+      raw: "${SECRET}",
+      quote: "'" as const,
+      line: 1,
+    };
+
+    // When / Then
+    expect(warningsForEnvFileEntry(entry)).toEqual([]);
+  });
+
+  test("emits one warning when a double-quoted escape both decodes and produces ${", () => {
+    // Given
+    const entry = {
+      key: "TOKEN",
+      value: "${X}",
+      raw: "\\${X}",
+      quote: '"' as const,
+      line: 2,
+    };
+
+    // When
+    const warnings = warningsForEnvFileEntry(entry);
+
+    // Then
+    expect(warnings).toEqual([
+      {
+        line: 2,
+        key: "TOKEN",
+        message: "Double-quoted value for TOKEN decodes differently from its raw text.",
         suggestion:
-          "Use single quotes or $$ if you want a literal dollar, or set the value in environment: with {{ env.* }}.",
+          "Quote the value with single quotes to keep the raw text, or write \\\\ for each backslash you want to keep.",
       },
     ]);
   });
