@@ -18,7 +18,7 @@ describe("compose-go bump workflow", () => {
   test("runs daily with concurrency and automation permissions", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
-    expect(workflow).toContain("name: compose-vendor-bump");
+    expect(workflow).toContain('name: "compose-vendor-bump"');
     expect(workflow).toContain("  schedule:");
     expect(workflow).toContain("    - cron: '0 4 * * *'");
     expect(workflow).toContain("  workflow_dispatch:");
@@ -54,21 +54,19 @@ describe("compose-go bump workflow", () => {
     expect(workflow).toContain("git show origin/main:vendor/compose/compose-spec.json");
     expect(workflow).toContain("bun run scripts/report-compose-schema-diff.ts");
     expect(workflow).toContain("automation/compose-go-bump");
-    expect(workflow).toContain("gh pr list --state open --head automation/compose-go-bump");
+    expect(workflow).toContain('gh pr list --state open --head "$BRANCH"');
     expect(workflow).toContain("gh pr create");
-    expect(workflow).toContain("gh pr edit automation/compose-go-bump");
-    expect(workflow).toContain("gh workflow run ci.yml --ref automation/compose-go-bump");
+    expect(workflow).toContain('gh pr edit "$BRANCH"');
+    expect(workflow).toContain('gh workflow run ci.yml --ref "$BRANCH"');
   });
 
   test("preserves commits already added to the rolling PR branch", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
     expect(workflow).toContain("git fetch origin");
-    expect(workflow).toContain(
-      "git checkout -B automation/compose-go-bump origin/automation/compose-go-bump",
-    );
+    expect(workflow).toContain('git checkout -B "$BRANCH" "origin/$BRANCH"');
     expect(workflow).toContain("git merge --no-edit origin/main");
-    expect(workflow).toContain("git push origin HEAD:automation/compose-go-bump");
+    expect(workflow).toContain('git push origin "HEAD:$BRANCH"');
     expect(workflow).not.toContain("git push --force");
   });
 
@@ -78,7 +76,9 @@ describe("compose-go bump workflow", () => {
     expect(workflow).toContain("BRANCH_EXISTS=true");
     expect(workflow).toContain('if [ -z "$TARGET_TAG" ]; then');
     expect(workflow).toContain("git diff --quiet origin/main...HEAD -- vendor/compose/pin.json");
-    expect(workflow).toContain("if ! git diff --quiet -- vendor/compose/pin.json");
+    expect(workflow).toContain(
+      "git status --porcelain=v1 --untracked-files=all -- 'vendor/compose/pin.json'",
+    );
   });
 
   test("comments on one exact-title failure issue or creates it without labels", () => {
