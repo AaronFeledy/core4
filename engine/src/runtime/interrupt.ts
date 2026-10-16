@@ -9,8 +9,15 @@
  * Embedding hosts opt into this via `installSignalHandlers: true`. Off by
  * default in library mode so the host owns its own signal model.
  *
+ * Default SIGHUP is omitted when neither stdin nor stdout is a TTY, and on
+ * Linux when SigIgn bit 0 is set, so `nohup` keeps its inherited ignore.
+ * SIGINT is omitted when it is already ignored (background jobs).
  */
 import { Effect, type Fiber, type Scope } from "effect";
+
+import { defaultInterruptSignals } from "./process-signals.ts";
+
+export { defaultInterruptSignals } from "./process-signals.ts";
 
 export interface InstallSignalHandlersOptions {
   readonly fiber: Fiber.Fiber<unknown, unknown>;
@@ -19,11 +26,6 @@ export interface InstallSignalHandlersOptions {
    */
   readonly signals?: ReadonlyArray<NodeJS.Signals>;
 }
-
-export const defaultInterruptSignals = (
-  platform: NodeJS.Platform = process.platform,
-): ReadonlyArray<NodeJS.Signals> =>
-  platform === "win32" ? ["SIGINT", "SIGTERM", "SIGBREAK"] : ["SIGINT", "SIGTERM", "SIGHUP"];
 
 export const installSignalHandlers = Effect.fnUntraced(function* (
   options: InstallSignalHandlersOptions,
