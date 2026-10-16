@@ -124,7 +124,11 @@ export const deprecationsOutcome = (report: DoctorDeprecationReport): DoctorSect
 export const appConfigOutcome = (result: ConfigLintResult | undefined): DoctorSectionOutcome => {
   const label = doctorSectionLabel("app-config");
   if (result === undefined) return { summary: `${label} · skipped` };
-  if (result.valid) return {};
+  if (result.valid) {
+    const warningCount = result.warnings?.length ?? 0;
+    if (warningCount === 0) return {};
+    return { summary: `${label} · ${plural(warningCount, "warning")}`, warned: true };
+  }
   return { summary: `${label} · ${plural(result.violations.length, "violation")}`, failed: true };
 };
 
