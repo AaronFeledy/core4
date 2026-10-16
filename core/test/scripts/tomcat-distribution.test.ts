@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { expect, test } from "bun:test";
+import { Schema } from "effect";
 
-import serviceManifest from "../../../plugins/service-lando/package.json";
 import { renderReleaseWorkflow } from "../../../scripts/build-release-workflow.ts";
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms.ts";
 import { preparePackageJson } from "../../../scripts/prepare-npm-dev-packages.ts";
@@ -66,6 +66,9 @@ test("delivers complete Tomcat notices when the service plugin is packed for pub
   // Given: the real package tree and the same manifest preparation used by publishing.
   await withFixture(async (root) => {
     await cp(resolve(repoRoot, "plugins/service-lando"), root, { recursive: true });
+    const serviceManifest = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
+      await Bun.file(join(root, "package.json")).json(),
+    );
     await writeFile(
       join(root, "package.json"),
       JSON.stringify(preparePackageJson(serviceManifest, "4.0.0-dev.42")),
