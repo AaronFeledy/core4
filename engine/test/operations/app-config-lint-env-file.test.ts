@@ -9,9 +9,7 @@ import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const lintApp = (cwd: string) =>
   Effect.runPromise(
-    appConfigLint({ cwd }).pipe(
-      Effect.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
-    ),
+    appConfigLint({ cwd }).pipe(Effect.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer))),
   );
 
 test("warns when a double-quoted env value decodes differently from its raw text", async () => {
@@ -41,13 +39,8 @@ test("warns when a double-quoted env value decodes differently from its raw text
 test("warns when an env value contains ${ without failing the lint", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-interp-"));
   try {
-    await writeFile(
-      join(root, ".lando.yml"),
-      ["name: env-lint-interp", "services:", "  web:", "    image: alpine:3", "    env_file: [service.env]", ""].join(
-        "\n",
-      ),
-    );
-    await writeFile(join(root, "service.env"), "TOKEN=${SECRET}\n");
+    await writeFile(join(root, ".lando.yml"), "name: env-lint-interp\nenv_file: [runtime.env]\n");
+    await writeFile(join(root, "runtime.env"), "TOKEN=${SECRET}\n");
 
     const result = await lintApp(root);
 
@@ -55,7 +48,7 @@ test("warns when an env value contains ${ without failing the lint", async () =>
     expect(result.violations).toEqual([]);
     expect(result.warnings).toEqual([
       {
-        path: ["services", "web", "envFile", 0],
+        path: ["env_file", 0],
         line: 1,
         message: expect.stringContaining("${"),
         suggestion: expect.stringContaining("{{ env.* }}"),

@@ -1,8 +1,8 @@
 import { dirname, resolve } from "node:path";
-import { type Context, Effect, Option, Result } from "effect";
 import { parseEnvFile } from "@lando/landofile/env-file";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
+import { type Context, Effect, Option, Result } from "effect";
 import { resolveKnownEventSet } from "../planner/event-set.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 
@@ -128,6 +128,15 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
+  const envLint = yield* lintEnvFiles(loaded.success, dirname(result.file), fileSystem);
+  if (envLint.violations.length > 0) {
+    return {
+      ...result,
+      valid: false,
+      violations: envLint.violations,
+      ...(envLint.warnings.length === 0 ? {} : { warnings: envLint.warnings }),
+    };
+  }
   const resolved = yield* resolveKnownEventSet({
     landofile: loaded.success,
     pluginRegistry,
@@ -144,16 +153,11 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         violations: [
           { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
         ],
+        ...(envLint.warnings.length === 0 ? {} : { warnings: envLint.warnings }),
       };
     }
     return yield* Effect.fail(resolved.failure);
   }
-  const envLint = yield* lintEnvFiles(loaded.success, dirname(result.file), fileSystem);
-  if (envLint.violations.length === 0 && envLint.warnings.length === 0) return result;
-  return {
-    ...result,
-    valid: envLint.violations.length === 0,
-    violations: [...result.violations, ...envLint.violations],
-    ...(envLint.warnings.length === 0 ? {} : { warnings: envLint.warnings }),
-  };
+  if (envLint.warnings.length === 0) return result;
+  return { ...result, warnings: envLint.warnings };
 });

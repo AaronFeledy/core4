@@ -112,11 +112,7 @@ export const warningsForEnvFileEntry = (entry: EnvFileEntry): ReadonlyArray<EnvF
   return warnings;
 };
 
-const findClosingQuote = (
-  content: string,
-  quote: '"' | "'",
-  openingIndex: number,
-): number => {
+const findClosingQuote = (content: string, quote: '"' | "'", openingIndex: number): number => {
   for (let index = openingIndex + 1; index < content.length; index += 1) {
     const char = content[index];
     if (quote === "'") {
@@ -138,8 +134,7 @@ const findClosingQuote = (
   return -1;
 };
 
-const bareNameSuggestion = (name: string): string =>
-  `environment: { ${name}: "{{ env.${name} }}" }`;
+const bareNameSuggestion = (name: string): string => `environment: { ${name}: "{{ env.${name} }}" }`;
 
 export const parseEnvFile = (content: string, source: string): EnvFileParseResult => {
   const environment: Record<string, string> = {};
@@ -189,7 +184,12 @@ export const parseEnvFile = (content: string, source: string): EnvFileParseResul
     if (exportPrefix?.[0] !== undefined) index += exportPrefix[0].length;
 
     const keyStart = index;
-    while (index < content.length && content[index] !== "=" && content[index] !== "\n" && content[index] !== "\r") {
+    while (
+      index < content.length &&
+      content[index] !== "=" &&
+      content[index] !== "\n" &&
+      content[index] !== "\r"
+    ) {
       index += 1;
     }
 

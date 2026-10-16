@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  decodeDoubleQuotedEnvValue,
-  parseEnvFile,
-  warningsForEnvFileEntry,
-} from "../src/env-file.ts";
+import { decodeDoubleQuotedEnvValue, parseEnvFile, warningsForEnvFileEntry } from "../src/env-file.ts";
 
 const parsedEnvironment = (content: string, source = "/app/runtime.env") => {
   const result = parseEnvFile(content, source);
@@ -167,9 +163,9 @@ describe("parseEnvFile", () => {
     ['\\"', '"'],
     ["\\\\", "\\"],
     ["\\0101", "A"],
-  ] as const)("decodes double-quoted escape %s", (escape, expected) => {
+  ] as const)("decodes double-quoted escape %s", (sequence, expected) => {
     // Given / When
-    const environment = parsedEnvironment(`KEY="${escape}"`);
+    const environment = parsedEnvironment(`KEY="${sequence}"`);
 
     // Then
     expect(environment.KEY).toBe(expected);

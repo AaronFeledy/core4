@@ -81,7 +81,7 @@ describe("renderConfigLintResult", () => {
       warnings: [
         {
           path: ["env_file", 0],
-          message: 'Double-quoted value for PATH decodes differently from its raw text.',
+          message: "Double-quoted value for PATH decodes differently from its raw text.",
           suggestion: "Quote the value with single quotes to keep the raw text.",
           line: 1,
         },
