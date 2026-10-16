@@ -57,6 +57,21 @@ services:
 
 Lando fails with the resolved path and a fix when a declared file is missing, instead of starting services with a half-loaded environment.
 
+## Quote env file values
+
+Double-quoted values decode `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, `\$`, `\"`, `\\`, and octal `\0NNN`. Any other `\X` keeps the backslash. A double-quoted value can span lines. Single quotes are literal except `\'`.
+
+`${NAME}` stays as written. Env files do not interpolate. Put the expression in `environment:`, or use single quotes or `$$` when you want a literal dollar.
+
+A bare `NAME` line is an error. Write the host value in explicitly:
+
+```yaml
+environment:
+  NAME: "{{ env.NAME }}"
+```
+
+`lando app:config:lint` stays valid and warns when a double-quoted value changes after decode, for example `"C:\new"`, and when a value contains `${`.
+
 <Guide>
   <Scenario id="top-level-env-file" render>
     <Step name="scaffold">
