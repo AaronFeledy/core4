@@ -110,6 +110,26 @@ The live test builds and starts each major at the default and nondefault ports, 
 
 Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
 
+## Extend the internal maintenance workflows
+
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and exact-title failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+
+Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
+
+Owned-path detection includes staged and untracked outputs. Commits include only owned paths, even when a hook stages an unrelated file.
+
+Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose does not run `check:compose-coverage` before proposing or classify new keys automatically. PR CI and human review own classification.
+
+To add another internal consumer, keep discovery, updating, checks, and reporting in its generator's local hooks; declare only paths it owns. Reuse the envelope rather than adding pipeline modes or a public configuration surface. Keep each real generator in `scripts/codegen-catalog.ts`; the shared renderer is not a generator entry. Regenerate YAML through the consumer generator, never by hand.
+
+Run the bounded shell coverage with:
+
+```bash
+bun test core/test/build/maintenance-workflow.test.ts core/test/build/maintenance-workflow-renderer.test.ts core/test/build/tomcat-bump-workflow.test.ts core/test/build/compose-vendor-bump-workflow.test.ts
+```
+
+The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maintenance-workflow-harness.ts` exports isolated real-Git/local-bare-remote fixtures with fake GitHub and domain I/O, plus extracted generated scripts for driver or PTY checks. It changes no global Git configuration or process cwd. Native shell cases skip Windows; YAML checks remain portable.
+
 ## Library API and recipe test layers
 
 CI runs the Alpha library API and recipe layers as separate branch-protectable jobs:
