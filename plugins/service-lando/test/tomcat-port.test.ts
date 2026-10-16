@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { AbsolutePath, AppId, type AppPlan, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   tomcat9ServiceType,
   tomcat10ServiceType,
@@ -28,26 +29,19 @@ const BuildSteps = Schema.Struct({
 });
 const listenerStep = (plan: Awaited<ReturnType<typeof planTomcat>>) =>
   Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]).buildSteps.find(
-    ({ id }) => id === "service-lando.tomcat:http-port",
+    ({ id }) => id === "service-lando.tomcat:server-config",
   );
 
-const stockConnector =
-  '<Connector port="8080" protocol="HTTP/1.1"\n               connectionTimeout="20000" redirectPort="8443" />';
-const unrelated = `<Server port="8005" shutdown="SHUTDOWN">
-<!-- <Connector port="8080" protocol="HTTP/1.1" /> -->
-<!-- example
-<Connector port="8080" protocol="HTTP/1.1" />
--->
-<Connector port="8009" protocol="AJP/1.3" />
-<Connector port="8443" protocol="HTTP/1.1" SSLEnabled="true" />`;
-
-const runListenerStep = async (xml: string, port = 9090) => {
+const runListenerStep = async (port?: number, serviceType = tomcatServiceType) => {
   const home = await mkdtemp(join(tmpdir(), "lando-tomcat-port-"));
   try {
     await mkdir(join(home, "conf"));
     const path = join(home, "conf/server.xml");
-    await Bun.write(path, xml);
-    const plan = await planTomcat({ type: "tomcat", port });
+    await Bun.write(path, "unrelated image config");
+    const plan = await planTomcat(
+      { type: serviceType.id, ...(port === undefined ? {} : { port }) },
+      serviceType,
+    );
     const step = listenerStep(plan);
     expect(step).toBeDefined();
     if (step === undefined) throw new Error("Tomcat listener build step missing");
@@ -95,58 +89,51 @@ describe("Tomcat authored HTTP port", () => {
     await expect(result).resolves.toMatchObject({ providerId: service.provider });
   });
 
-  test.skipIf(process.platform === "win32").each([8080, 9090, 65535])(
-    "moves only the active stock connector to the endpoint and healthcheck port %i",
+  test.skipIf(process.platform === "win32").each([undefined, 8080, 9090, 65535])(
+    "bakes the owned configuration at port %s",
     async (port) => {
-      // Given: the stock connector alongside comments, shutdown, AJP, and TLS connectors.
-      const xml = `${unrelated}\n${stockConnector}\n</Server>\n`;
+      // Given: an owned catalog image, including the omitted-port path.
+      const selectedPort = port ?? 8080;
       // When: the generated build command runs against server.xml.
-      const result = await runListenerStep(xml, port);
-      // Then: only the active stock HTTP listener moves, matching the plan.
+      const result = await runListenerStep(port);
+      // Then: the full reviewed configuration is baked, matching the plan.
       expect(result.exitCode).toBe(0);
-      expect(result.xml).toBe(
-        `${unrelated}\n${stockConnector.replace('port="8080"', `port="${port}"`)}\n</Server>\n`,
-      );
+      expect(result.xml).toBe(TOMCAT_CATALOG["11"].serverXml.replace("{{HTTP_PORT}}", String(selectedPort)));
       expect(result.plan.endpoints).toContainEqual({
         _tag: "internal",
-        port,
+        port: selectedPort,
         protocol: "http",
         name: "web",
       });
-      expect(result.plan.healthcheck?.command).toEqual(["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`]);
+      expect(result.plan.healthcheck?.command).toEqual([
+        "bash",
+        "-c",
+        `exec 3<>/dev/tcp/127.0.0.1/${selectedPort}`,
+      ]);
     },
   );
 
-  test.skipIf(process.platform === "win32").each([
-    ["absent", `${unrelated}\n</Server>\n`],
-    ["changed", `${unrelated}\n${stockConnector.replace('port="8080"', 'port="8181"')}\n</Server>\n`],
-    ["ambiguous", `${unrelated}\n${stockConnector}\n${stockConnector}\n</Server>\n`],
-  ])("fails without changing server.xml when the stock connector is %s", async (_name, xml) => {
-    // Given / When: an image whose active connector no longer matches the stock contract.
-    const result = await runListenerStep(xml);
-    // Then: the build fails explicitly and leaves the input intact.
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("expected one active stock HTTP Connector");
-    expect(result.xml).toBe(xml);
-  });
-
   test.each([
-    ["tomcat:9", "tomcat:9-jre21", tomcat9ServiceType],
-    ["tomcat:10", "tomcat:10-jre21", tomcat10ServiceType],
-    ["tomcat:11", "tomcat:11-jre21", tomcat11ServiceType],
+    ["tomcat:9", TOMCAT_CATALOG["9"].image, tomcat9ServiceType],
+    ["tomcat:10", TOMCAT_CATALOG["10"].image, tomcat10ServiceType],
+    ["tomcat:11", TOMCAT_CATALOG["11"].image, tomcat11ServiceType],
   ] as const)("owns the planner-stamped catalog image for %s", async (type, image, serviceType) => {
     // Given / When: a versioned catalog image stamped into the service by the planner.
     const plan = await planTomcat({ type, image, port: 9090 }, serviceType);
-    // Then: the listener edit still belongs to Lando.
+    // Then: the paired configuration still belongs to Lando.
     expect(listenerStep(plan)).toBeDefined();
+    const command = Schema.decodeUnknownSync(Schema.Array(Schema.String))(listenerStep(plan)?.command);
+    expect(command[4]).toContain('<Connector port="9090" protocol="HTTP/1.1"');
+    const active = command[4]?.replace(/<!--[\s\S]*?-->/gu, "");
+    expect(active?.includes('maxParameterCount="1000"')).toBe(type !== "tomcat:11");
   });
 
   test.each([
-    { type: "tomcat" },
+    { type: "tomcat", image: "tomcat:11-jre21", port: 9090 },
     { type: "tomcat", image: "acme/tomcat:custom", port: 9090 },
     { type: "tomcat", build: { context: "." }, port: 9090 },
   ])("leaves the connector alone for %j", async (definition) => {
-    // Given / When: no port override, or an author-owned image configuration.
+    // Given / When: an author-owned image configuration.
     const plan = await planTomcat(definition);
     // Then: no listener mutation is scheduled.
     expect(listenerStep(plan)).toBeUndefined();

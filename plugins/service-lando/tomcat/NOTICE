@@ -1,0 +1,10 @@
+Apache Tomcat
+Copyright 1999-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+The server-*.xml files are unmodified Apache Tomcat configuration baselines.
+Their matching release versions, source commits and SHA-256 checksums are
+recorded in pins.json. Lando's generated configuration parameterizes the
+active HTTP connector port and adds a modification notice.

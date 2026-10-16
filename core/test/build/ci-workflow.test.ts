@@ -89,6 +89,7 @@ describe("ci workflow", () => {
       "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
+      "tomcat-bump.yml",
       "workflow-performance.yml",
     ]);
   });

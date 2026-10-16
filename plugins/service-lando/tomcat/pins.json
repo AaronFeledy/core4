@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "majors": {
+    "9": {
+      "version": "9.0.123",
+      "indexDigest": "sha256:bcbcd85a8c98d0e492cc3e1694b75b65bd212291240c6e6b270e2ce5e739712e",
+      "upstreamCommit": "110077ac321964192c316e5836d4285f096e9d05",
+      "configSha256": "61a387d09173adabe22f0f6af7589304d666be3dc78b95280c2e73e02f0fbe90"
+    },
+    "10": {
+      "version": "10.1.61",
+      "indexDigest": "sha256:30c309c264865eecd40ea28eeb8805762a4fe54269d35e00dc06231325c9c571",
+      "upstreamCommit": "ed89280ad31d8dfcac3a3b498d759f6f8b5eb097",
+      "configSha256": "5771ecf807db1a8390f6918b55f20e8565c0c8252f23ddde257e091e5a31a2ff"
+    },
+    "11": {
+      "version": "11.0.27",
+      "indexDigest": "sha256:b00c06ad765773b3613276111fc04560ae0cbc66e0ea87acc148854d5ba4929b",
+      "upstreamCommit": "52f3b364e5882a5dbcfc42cb8313a7c2ae532c64",
+      "configSha256": "e5a951708e88609f1f2ba093944b358d204c651147c1e4db575b0d9306139482"
+    }
+  }
+}
