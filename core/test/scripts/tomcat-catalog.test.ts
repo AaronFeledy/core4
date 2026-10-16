@@ -15,6 +15,7 @@ describe("offline Tomcat catalog", () => {
     const generated = await buildTomcatCatalog(root);
     // Then
     expect(await buildTomcatCatalog(root)).toBe(generated);
+    expect(generated.startsWith("/**\n * **GENERATED FILE** — do not edit by hand.")).toBe(true);
     for (const major of TOMCAT_MAJORS) {
       const pin = snapshot.pins.majors[major];
       validateTomcatPair(major, pin, snapshot.configs[major]);
