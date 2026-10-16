@@ -59,9 +59,9 @@ Lando fails with the resolved path and a fix when a declared file is missing, in
 
 ## Quote env file values
 
-Double-quoted values decode `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, `\$`, `\"`, `\\`, and octal `\0NNN`. Any other `\X` keeps the backslash. A double-quoted value can span lines. Single quotes are literal except `\'`.
+Double-quoted values decode `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, `\$`, `\"`, `\\`, and octal `\0NNN`. Any other `\X` keeps the backslash. Quoted values can span lines. Single quotes are literal except `\'`.
 
-`${NAME}` stays as written. Env files do not interpolate. Put the expression in `environment:`, or use single quotes or `$$` when you want a literal dollar.
+`${NAME}` stays as written. Env files do not interpolate. Put the expression in `environment:`, or use single quotes.
 
 A bare `NAME` line is an error. Write the host value in explicitly:
 
@@ -70,7 +70,7 @@ environment:
   NAME: "{{ env.NAME }}"
 ```
 
-`lando app:config:lint` stays valid and warns when a double-quoted value changes after decode, for example `"C:\new"`, and when a value contains `${`.
+`lando app:config:lint` stays valid and warns when a double-quoted value changes after decode, for example `"C:\new"`, and when an unquoted or double-quoted value contains `${`. Single-quoted `${` does not warn.
 
 <Guide>
   <Scenario id="top-level-env-file" render>
