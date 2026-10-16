@@ -105,10 +105,10 @@ lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: applicati
   http://localhost:7700/indexes/movies/documents
 ```
 
-Each write returns a `taskUid`. Poll until that task reports `succeeded`:
+Each write returns a `taskUid`. Replace `<taskUid>` below with the value from the write you want to check, and poll until that task reports `succeeded`:
 
 ```sh
-lando meili -H 'Authorization: Bearer lando' http://localhost:7700/tasks/1
+lando meili -H 'Authorization: Bearer lando' http://localhost:7700/tasks/<taskUid>
 ```
 
 Then search. Typo tolerance is the whole point, so `casa` still hits Casablanca:
