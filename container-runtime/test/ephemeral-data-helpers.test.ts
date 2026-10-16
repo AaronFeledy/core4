@@ -108,7 +108,13 @@ const runningHelper = {
   Mounts: [{ Type: "volume", Name: "data", Source: "data" }],
 };
 
-type Listed = typeof helper;
+type Listed = {
+  readonly Id: string;
+  readonly Names: ReadonlyArray<string>;
+  readonly State: string;
+  readonly Labels: Readonly<Record<string, string>>;
+  readonly Mounts: ReadonlyArray<{ readonly Type?: string; readonly Name: string; readonly Source?: string }>;
+};
 
 const makeApi = (containers: Array<Listed>, options: { readonly honorFilters?: boolean } = {}) => {
   const honorFilters = options.honorFilters === true;

@@ -99,7 +99,7 @@ const makeApi = (input: {
   return { request, removed, helpers, calls };
 };
 
-const down = (api: { request: typeof makeApi extends (...args: never) => infer R ? R["request"] : never }) =>
+const down = (api: ReturnType<typeof makeApi>) =>
   bringDown(plan, {
     api,
     ctx: { providerId: "test", remediation: "retry" },
