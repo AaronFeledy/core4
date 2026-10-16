@@ -85,6 +85,31 @@ For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:
 
 That fixture is the job's only porcelain path; modifying, deleting, or regenerating it as untracked fails the gate. The SDK schema and command-result schema trees, including both indexes, are ignored derived outputs validated by regeneration and semantic comparison rather than by git status. The job regenerates the command reference (`bun run codegen:command-registry-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` with `git diff --exit-code`. It then regenerates the Compose key matrix (`bun run codegen:compose-key-matrix`) and applies the same check to `docs/reference/compose-key-matrix.mdx`. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
 
+## Update the paired Tomcat catalog
+
+Run the explicit network updater from the repository root:
+
+```bash
+bun run update:tomcat
+```
+
+It resolves the public Docker Hub `9-jre21`, `10-jre21`, and `11-jre21` indexes without a container daemon, verifies manifest/config bytes and both Linux architectures, checks a consistent Tomcat version and distribution environment, and verifies that each exact version tag resolves to the same index. Registry blob redirects are restricted to Docker's `production.cloudfront.docker.com` storage host, with no pull token forwarded. It fetches `server.xml` from the matching Apache release tag's immutable commit. All three candidates must validate before any pin or baseline is written. Same-version image rebuilds count as updates. Network or validation failures leave the previous files untouched.
+
+Review `plugins/service-lando/tomcat/pins.json` and all three `server-*.xml` files together. Keep the Apache notices. The report separates upstream baseline changes from Lando's single intentional HTTP-port substitution. Comments-only classification requires byte-identical active text; formatting changes still require review. A new active config shape fails closed until the local template contract is reviewed.
+
+Regenerate and run the focused checks:
+
+```bash
+bun run codegen:tomcat-catalog
+bun run codegen:service-type-reference
+bun test plugins/service-lando/test/tomcat.test.ts plugins/service-lando/test/tomcat-port.test.ts core/test/scripts/tomcat-update.test.ts core/test/scripts/tomcat-catalog.test.ts core/test/build/tomcat-bump-workflow.test.ts
+LANDO_TEST_PODMAN_SOCKET=/path/to/podman.sock bun test plugins/service-lando/test/tomcat-config.integration.test.ts
+```
+
+The live test builds and starts each major at the default and nondefault ports, checks ROOT content and authored startup, and verifies the old port is closed. It needs a running Podman-compatible provider socket. A skipped live test is not compatibility evidence.
+
+Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
+
 ## Library API and recipe test layers
 
 CI runs the Alpha library API and recipe layers as separate branch-protectable jobs:
