@@ -19,7 +19,6 @@ export const RUBY_FEATURE_PRIORITY = 600;
 const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset> = {
   rails: {
     port: 3000,
-    defaultCommand: ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"],
     webroot: "public",
     env: new Map([
       ["RAILS_ENV", "development"],
@@ -28,7 +27,6 @@ const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset>
   },
   none: {
     port: 3000,
-    defaultCommand: null,
     webroot: ".",
     env: new Map(),
   },
@@ -39,7 +37,6 @@ const RubyFeatureConfigSchema = Schema.Struct({
   version: Schema.Literals([...SUPPORTED_RUBY_VERSIONS]),
   port: Schema.Number,
   webroot: Schema.optionalKey(Schema.String),
-  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type RubyFeatureConfig = typeof RubyFeatureConfigSchema.Type;
 const configFor = (ctx: ServiceFeatureContext): RubyFeatureConfig => ctx.config as RubyFeatureConfig;

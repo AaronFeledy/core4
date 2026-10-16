@@ -82,6 +82,7 @@ import {
   resolvedServiceCacheInput,
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
+import { validateAuthoredWebroot } from "./webroot-policy.ts";
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   pluginRegistry: Context.Service.Shape<typeof PluginRegistry>,
@@ -269,6 +270,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
       })),
     ].map((featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef);
+    yield* validateAuthoredWebroot(seed, featureRefs, landofilePath);
     if (
       sshAgentIntent.mode === "host" &&
       featureRefs.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&

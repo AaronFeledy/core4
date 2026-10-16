@@ -200,6 +200,8 @@ Core performs one deterministic pipeline:
 
 Features MUST emit provider-neutral intent. The app-plan cache input MUST include base, ordered `FeatureRef`s, and `AppFeature` contributions.
 
+An explicitly authored service `webroot` MUST have at least one final `FeatureRef.config.webroot` that is a non-empty string. This is a semantic declaration that the composed feature handles the effective root, as server configuration or context, not proof of HTTP serving. The declaring plugin MUST implement that meaning and own path validation; undefined, null, numeric, and empty values are not declarations. Core MUST check the original authored field after inherited feature config deep-merge and final planner substitutions, before capability checks, cache-key construction, and cache lookup. Unsupported explicit input MUST fail with `LandofileValidationError`, the Landofile path, an issue at `services.<name>.webroot`, and actionable remediation. No language/provider blacklist or cache epoch change is needed.
+
 Every type MUST name `l337` or `lando`, return `ServiceTypeResolution`, and satisfy `runServiceCompositionContract`. `lando` receives `lando.env`; `l337` receives no injected environment or scaffolding. Only `lando.env` may invoke `buildLandoEnv`.
 
 Contributed `logSources` MUST have unique ids, absolute paths, and compatible strategies; `console` is reserved. `redirect` requires an owned build, while a BYO/`l337` service may use only `follow`. Feature ordering and inheritance are replay-stable.
@@ -312,7 +314,7 @@ Every canonical or plugin type MUST declare its base, resolve through features, 
 
 #### 6.12.2 Framework presets
 
-Language types may expose `framework:` presets as ordinary overridable config. A preset's default webroot is relative to the app mount, like an authored `webroot`, and is omitted when `appMount` is `false`. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
+Language types may expose `framework:` presets as ordinary overridable config. A preset's implicit default webroot is relative to the app mount and is omitted when `appMount` is `false`; this MUST NOT silently discard an explicitly authored root. Ruby supplies root context only (`rails` defaults to `public`, `none` to `.`), with authored-over-preset precedence. Its built-in context requires an active mount, so an explicit relative or absolute root with `appMount: false` MUST fail unless another composed feature declares support. Genuine webservers may still use an absolute root without the app mount and without `LANDO_WEBROOT`. Python and Go have no built-in webroot declaration. Framework selection does not start an application server: Ruby, Python, and Go keep their keep-alive command unless the author supplies `command`, and preserve authored `entrypoint`. Unused language command hints are not part of preset config or extensions. Recipes materialize the framework settings they need as concrete service config and tooling. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
 
 Canonical PHP does not interpret framework ids. It uses `webroot` (§6.12.1) and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
 

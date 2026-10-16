@@ -1,4 +1,4 @@
-# Rails
+# Start a Rails project
 
 `lando init --recipe rails` scaffolds Ruby on Rails, PostgreSQL, Redis, plus `rails`, `bundle`, and `rake` tooling.
 
@@ -9,7 +9,9 @@ lando start
 lando info
 ```
 
-The named init creates `my-rails-app/`. Change into it before app commands. `lando start` prints the app URL. `lando info` repeats it.
+The named init creates `my-rails-app/`. Change into it before app commands. `lando start` keeps the web container running for project setup; it does not start a Rails server. After creating your Rails project and installing its bundle, run `lando rails server -b 0.0.0.0` and open the route shown by `lando info`.
+
+The generated Landofile keeps `framework: rails` and writes `webroot: public`, port `3000`, `RAILS_ENV: development`, and `RAILS_LOG_TO_STDOUT: "true"` on `web`. Edit those fields directly. `webroot` is Ruby service context, not Rails server configuration.
 
 After start, run app tooling inside the web service:
 
@@ -37,13 +39,19 @@ Set `password:` on the same service to require authentication. Configure your Ra
 lando init --recipe rails --name=my-rails-app --yes
 ```
 
-## 2. start
+## 2. inspect-config
+
+```bash
+lando app:config --format=json
+```
+
+## 3. start
 
 ```bash
 lando start
 ```
 
-## 3. info
+## 4. info
 
 ```bash
 lando info
