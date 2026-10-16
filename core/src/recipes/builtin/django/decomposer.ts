@@ -14,6 +14,7 @@ export const djangoDecomposer = makeOptionBearingDecomposer({
           framework: "django",
           port: 8000,
           environment: {
+            DJANGO_SETTINGS_MODULE: "config.settings",
             DATABASE_URL:
               "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
             REDIS_URL: "redis://cache:6379",
@@ -31,6 +32,7 @@ export const djangoDecomposer = makeOptionBearingDecomposer({
                 command: "celery -A app worker --loglevel=info",
                 restart: "unless-stopped",
                 environment: {
+                  DJANGO_SETTINGS_MODULE: "config.settings",
                   DATABASE_URL:
                     "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
                   REDIS_URL: "redis://cache:6379",

@@ -30,7 +30,7 @@ files:
     template: false
 postInit:
   - type: message
-    text: Run 'lando start' inside the new app directory to bring Rails up.
+    text: Run 'lando start' inside the new app directory to start the containers. Once Rails is installed, run 'lando rails server -b 0.0.0.0' to serve the app.
 
 ${railsSnapshotYaml}
 `;

@@ -24,7 +24,7 @@ files:
     template: false
 postInit:
   - type: message
-    text: Run 'lando start' inside the new app directory to bring Rails up.
+    text: Run 'lando start' inside the new app directory to start the containers. Once Rails is installed, run 'lando rails server -b 0.0.0.0' to serve the app.
 
 snapshot:
   identity:
@@ -32,7 +32,7 @@ snapshot:
     packageName: "@lando/recipe-rails"
     recipeId: "rails"
     manifestVersion: "0.1.0"
-    contentDigest: "sha256:40ea29207e5bc22ee5d67e1b83b0ed38682f7dc538aab8846954cafd73c4b504"
+    contentDigest: "sha256:69ccb9f104fce3c49f12c08c7e2b2abe6bcc9ba28755e92f5aae9dbfc41cee1d"
   optionTypes:
   defaults:
   template:
@@ -59,6 +59,10 @@ snapshot:
                       value:
                         kind: "Literal"
                         value: "rails"
+                    - key: "webroot"
+                      value:
+                        kind: "Literal"
+                        value: "public"
                     - key: "port"
                       value:
                         kind: "Literal"
@@ -67,6 +71,14 @@ snapshot:
                       value:
                         kind: "ObjectLiteral"
                         entries:
+                          - key: "RAILS_ENV"
+                            value:
+                              kind: "Literal"
+                              value: "development"
+                          - key: "RAILS_LOG_TO_STDOUT"
+                            value:
+                              kind: "Literal"
+                              value: "true"
                           - key: "DATABASE_URL"
                             value:
                               kind: "Literal"

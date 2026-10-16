@@ -1,0 +1,5 @@
+name: python-unsupported-webroot
+services:
+  app:
+    type: "python:3.12"
+    webroot: public

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
   computeRecipeContentDigest,
   fullRecipeMigratability,
@@ -39,6 +40,20 @@ const manifest = Schema.decodeUnknownSync(RecipeManifest)(
 );
 
 describe("django decomposition", () => {
+  test("preserves authored settings on web and worker when a local layer overrides the scaffold", () => {
+    // Given a worker-enabled scaffold and distinct settings modules.
+    const local = {
+      services: {
+        web: { environment: { DJANGO_SETTINGS_MODULE: "project.web_settings" } },
+        worker: { environment: { DJANGO_SETTINGS_MODULE: "project.worker_settings" } },
+      },
+    };
+    // When the local Landofile layer is applied.
+    const merged = mergeLandofiles([authoringOf(withWorker), local]);
+    // Then both services keep the authored module, not the recipe default.
+    expect(merged).toMatchObject(local);
+  });
+
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
     await Effect.runPromise(
       runRecipeDecomposerContractSuite({
@@ -68,6 +83,7 @@ describe("django decomposition", () => {
           framework: "django",
           port: 8000,
           environment: {
+            DJANGO_SETTINGS_MODULE: "config.settings",
             DATABASE_URL:
               "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
             REDIS_URL: "redis://cache:6379",
@@ -105,6 +121,7 @@ describe("django decomposition", () => {
       command: "celery -A app worker --loglevel=info",
       restart: "unless-stopped",
       environment: {
+        DJANGO_SETTINGS_MODULE: "config.settings",
         DATABASE_URL:
           "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
         REDIS_URL: "redis://cache:6379",
@@ -119,6 +136,7 @@ describe("django decomposition", () => {
       // Given the Celery option, when the recipe is decomposed.
       const result = decompose(options);
       const environment = {
+        DJANGO_SETTINGS_MODULE: "config.settings",
         DATABASE_URL:
           "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
         REDIS_URL: "redis://cache:6379",

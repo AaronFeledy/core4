@@ -26,7 +26,9 @@ The `web` container stays up. The Rails server does not start on its own.
 | `cache` | `type: redis` |
 | Tooling | `lando rails`, `lando bundle`, and `lando rake` on `web` |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
+The Landofile writes `webroot: public`, port `3000`, `RAILS_ENV: development`, and `RAILS_LOG_TO_STDOUT: "true"` on `web`. Edit those fields directly for your app. `webroot` is Ruby service context, not a Rails server setting; Rails still controls how it serves `public/`.
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They reach Rails only after you start its server.
 
 ## Init, start, and tear down
 
@@ -38,6 +40,9 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"RAILS_ENV\":\\s*\"development\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"RAILS_LOG_TO_STDOUT\":\\s*\"true\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"ruby:3\\.3\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />

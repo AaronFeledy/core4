@@ -1,4 +1,4 @@
-# Django
+# Start a Django project
 
 `lando init --recipe django` scaffolds Django on Python with PostgreSQL, Redis, and an optional Celery worker.
 
@@ -35,11 +35,13 @@ lando django migrate
 lando pip install -r requirements.txt
 ```
 
-`lando django` wraps `python manage.py`, so `lando django runserver` and `lando django createsuperuser` work the way you expect.
+`lando django` wraps `python manage.py`. After creating your project and installing its dependencies, run `lando django runserver 0.0.0.0:8000` to serve it through the proxy.
 
 `web` (and `worker`, if you added it) starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. Parse `DATABASE_URL` with `dj-database-url` or `urllib.parse` in `settings.py`; nothing there needs to name the host or password. `lando info` shows the user and database name and redacts the rest.
 
-`lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
+The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit either value if your project uses another module. Port `8000` is editable on `web`; keep the server bind in sync.
+
+`lando start` keeps the web container running for project setup; it does not start Django's server. The route from `lando info` reaches your app only while the server is running.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
@@ -51,25 +53,31 @@ For the day-to-day path (`django-admin`, `DATABASE_URL` in settings, `runserver`
 lando init --recipe django --name=my-django-celery --yes
 ```
 
-## 2. start
+## 2. inspect-config
+
+```bash
+lando app:config --format=json
+```
+
+## 3. start
 
 ```bash
 lando start
 ```
 
-## 3. info
+## 4. info
 
 ```bash
 lando info
 ```
 
-## 4. init
+## 5. init
 
 ```bash
 lando init --recipe django --name=my-django-celery --yes --answer=celery=true
 ```
 
-## 5. inspect
+## 6. inspect
 
 ```bash
 lando app:config --format=json

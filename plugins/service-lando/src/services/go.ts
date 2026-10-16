@@ -20,7 +20,6 @@ const GoFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_GO_FRAMEWORKS]),
   version: Schema.Literals([...SUPPORTED_GO_VERSIONS]),
   port: Schema.Number,
-  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type GoFeatureConfig = typeof GoFeatureConfigSchema.Type;
 const configFor = (ctx: ServiceFeatureContext): GoFeatureConfig => ctx.config as GoFeatureConfig;
@@ -32,7 +31,7 @@ const runtime = makeLanguageRuntime({
   artifacts: GO_ARTIFACTS,
   artifactFor: (version) => `golang:${version}`,
   frameworks: SUPPORTED_GO_FRAMEWORKS,
-  presets: { none: { port: 8080, defaultCommand: null } },
+  presets: { none: { port: 8080 } },
   baseEnv: { GOPATH: "/go", GOCACHE: "/root/.cache/go-build", CGO_ENABLED: "0" },
   mountExcludes: [],
   includeWebrootInFeatureConfig: false,

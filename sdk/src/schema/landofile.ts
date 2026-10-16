@@ -652,7 +652,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:
-        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. With appMount: false it must be absolute.',
+        "Root whose meaning and defaults are determined by the selected features: webservers use it as their document root; Ruby provides context only and does not start a server. An explicit value requires a final feature declaration of support. Relative paths resolve against the app mount. Built-in Ruby context is unavailable with appMount: false, while a webserver can still use an absolute container root without an app mount.",
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",

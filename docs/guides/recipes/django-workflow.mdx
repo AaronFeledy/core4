@@ -13,7 +13,7 @@ cd django-demo
 lando start
 ```
 
-`--yes` keeps Celery off. The named init creates `django-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis. Drop a Django project in so `manage.py` exists, then serve it.
+`--yes` keeps Celery off. The named init creates `django-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis. The web container stays up without starting Django. Drop a Django project in so `manage.py` exists, then serve it.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -27,7 +27,9 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 | `worker` (optional) | `python:3.12`, `framework: django`, `command: celery -A app worker --loglevel=info` with `--answer=celery=true`; same `DATABASE_URL` and `REDIS_URL` |
 | Tooling | `lando django` (`python manage.py`) and `lando pip` on `web` |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. `framework: django` sets `DJANGO_SETTINGS_MODULE=config.settings` on `web`.
+The Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit those fields if your project uses a different settings module. Port `8000` is also editable on `web`; keep your server bind in sync.
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They reach Django only after you start its server.
 
 ## Init, start, and tear down
 
@@ -39,6 +41,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. `framew
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DJANGO_SETTINGS_MODULE\":\\s*\"config.settings\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"python:3\\.12\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"django\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />

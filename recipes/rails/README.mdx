@@ -5,7 +5,7 @@ timeout: 60000
 tags: [recipe, rails, ruby]
 ---
 
-# Rails
+# Start a Rails project
 
 `lando init --recipe rails` scaffolds Ruby on Rails, PostgreSQL, Redis, plus `rails`, `bundle`, and `rake` tooling.
 
@@ -16,7 +16,9 @@ lando start
 lando info
 ```
 
-The named init creates `my-rails-app/`. Change into it before app commands. `lando start` prints the app URL. `lando info` repeats it.
+The named init creates `my-rails-app/`. Change into it before app commands. `lando start` keeps the web container running for project setup; it does not start a Rails server. After creating your Rails project and installing its bundle, run `lando rails server -b 0.0.0.0` and open the route shown by `lando info`.
+
+The generated Landofile keeps `framework: rails` and writes `webroot: public`, port `3000`, `RAILS_ENV: development`, and `RAILS_LOG_TO_STDOUT: "true"` on `web`. Edit those fields directly. `webroot` is Ruby service context, not Rails server configuration.
 
 After start, run app tooling inside the web service:
 
@@ -43,6 +45,12 @@ Set `password:` on the same service to require authentication. Configure your Ra
     <Step name="scaffold">
       <Variable name="appName" value="rails" display="my-rails-app" />
       <Run command="lando init --recipe rails --name={{appName}} --yes" />
+    </Step>
+    <Step name="inspect-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"RAILS_ENV\":\\s*\"development\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"RAILS_LOG_TO_STDOUT\":\\s*\"true\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
@@ -8,6 +9,7 @@ import { makeLanguageRuntime } from "../src/services/_language-runtime.ts";
 import { go122ServiceType, goServiceFeature } from "../src/services/go.ts";
 import { python312ServiceType, pythonServiceFeature } from "../src/services/python.ts";
 import { ruby33ServiceType, rubyServiceFeature } from "../src/services/ruby.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 const fixtures = [
@@ -27,7 +29,7 @@ const fixtures = [
       features: [
         {
           id: "service-lando.go",
-          config: { framework: "none", version: "1.22", port: 8080, defaultCommand: null },
+          config: { framework: "none", version: "1.22", port: 8080 },
         },
         { id: "lando.env", config: {} },
         { id: "lando.app-mount", config: { target: "/app", excludes: [] } },
@@ -62,7 +64,7 @@ const fixtures = [
       features: [
         {
           id: "service-lando.python",
-          config: { framework: "none", version: "3.12", port: 8000, defaultCommand: null },
+          config: { framework: "none", version: "3.12", port: 8000 },
         },
         { id: "lando.env", config: {} },
         {
@@ -100,7 +102,7 @@ const fixtures = [
       features: [
         {
           id: "service-lando.ruby",
-          config: { framework: "none", version: "3.3", port: 3000, webroot: "/app", defaultCommand: null },
+          config: { framework: "none", version: "3.3", port: 3000, webroot: "/app" },
         },
         { id: "lando.env", config: { webroot: "/app" } },
         { id: "lando.app-mount", config: { target: "/app", excludes: [".bundle"] } },
@@ -119,7 +121,6 @@ const FeatureConfig = Schema.Struct({
   framework: Schema.Literal("none"),
   version: Schema.String,
   port: Schema.Number,
-  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
   webroot: Schema.optionalKey(Schema.String),
 });
 
@@ -157,7 +158,6 @@ for (const fixture of fixtures) {
     presets: {
       none: {
         port: fixture.resolution.features[0].config.port,
-        defaultCommand: null,
         webroot: "/app",
         env: new Map(),
       },
@@ -196,6 +196,44 @@ for (const fixture of fixtures) {
       // Then
       expect(mounts).toEqual(fixture.mounts);
       expect(JSON.stringify(mounts)).toBe(JSON.stringify(fixture.mounts));
+    });
+
+    test(`${fixture.language} ${source} intermediate composition projects webroot only when enabled`, async () => {
+      // Given: an authored webroot on each shared-runtime consumer.
+      const input = inputFor(serviceType);
+      const service = { ...input.service, webroot: PortablePath.make("frontend/public") };
+      // When: the real service features compose the plan.
+      const plan = await composeServicePlan({
+        serviceType,
+        service,
+        appRoot: input.appRoot,
+        metadata: input.metadata,
+      });
+      // Then: only webroot-enabled consumers project it into env and extension metadata.
+      const expected = fixture.includeWebroot ? { webroot: "/app/frontend/public" } : {};
+      expect<string | undefined>(plan.environment.LANDO_WEBROOT).toBe(expected.webroot);
+      expect(plan.extensions[`lando-service-${fixture.language}`]).toEqual({
+        ...fixture.resolution.features[0].config,
+        ...expected,
+      });
+    });
+
+    test(`${fixture.language} ${source} preserves authored process fields over keep-alive`, async () => {
+      // Given
+      const input = inputFor(serviceType);
+      const command = ["run-app", "--foreground"];
+      const entrypoint = ["/usr/local/bin/boot-app"];
+      // When
+      const plan = await composeServicePlan({
+        serviceType,
+        service: { ...input.service, command, entrypoint, workingDirectory: PortablePath.make("/workspace") },
+        appRoot: input.appRoot,
+        metadata: input.metadata,
+      });
+      // Then
+      expect(plan.command).toEqual(command);
+      expect(plan.entrypoint).toEqual(entrypoint);
+      expect(String(plan.workingDirectory)).toBe("/workspace");
     });
   }
 

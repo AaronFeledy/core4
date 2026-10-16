@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const DJANGO_RECIPE_VERSION = "0.1.0";
 export const DJANGO_CONTENT_DIGEST =
-  "sha256:4b7dd06177a1404c4043991a8956ce7465d45e7b24197982fcc4169ca7bd70fb";
+  "sha256:d225c00e3555519cbaa3294a9ec84c7d60e2007e1f8205c4392ef4639d9faa9a";
 export const djangoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-django",
@@ -22,6 +22,7 @@ const celeryEnabled = (): ExpressionNode => ({
 const backingDependencies = (): ExpressionNode => arr(lit("database"), lit("cache"));
 const environment = (): ExpressionNode =>
   obj([
+    ["DJANGO_SETTINGS_MODULE", lit("config.settings")],
     [
       "DATABASE_URL",
       lit(

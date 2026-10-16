@@ -13,6 +13,10 @@ Django scaffold with PostgreSQL, Redis, and an optional Celery worker.
 The `web` service and optional Celery `worker` receive `DATABASE_URL` for
 PostgreSQL and `REDIS_URL` for Redis. Database credentials resolve from the
 database service at plan time.
+The Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` on both services.
+Edit their `environment` fields for another settings module. The web service's
+port `8000` is also editable. It stays up for project setup without starting a
+Django server; run `lando django runserver 0.0.0.0:8000` after installing the app.
 
 Before the application and dependencies exist, start warns about the `restarting`
 worker. The engine retries it automatically; it starts on its own after installation.
@@ -25,8 +29,8 @@ Check `lando logs --service=worker`.
 
 ## Alpha limitations
 
-- The recipe writes a Landofile only; project bootstrap (`django-admin
-  startproject .`) runs through the generated tooling after start.
+- The recipe writes a Landofile only; after installing Django, bootstrap the
+  project with `lando exec web -- django-admin startproject config .`.
 - Channels / ASGI workers and additional broker backends beyond Redis are
   deferred to Beta.
 
