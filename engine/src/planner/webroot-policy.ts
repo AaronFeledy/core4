@@ -3,7 +3,7 @@ import { type ServiceConfig, validationIssue } from "@lando/sdk/schema";
 import type { FeatureRef } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-export const validateAuthoredWebroot = Effect.fn("AppPlanner.validateAuthoredWebroot")(function* (
+export const validateAuthoredWebroot = Effect.fnUntraced(function* (
   service: { readonly name: string; readonly authoredService: ServiceConfig },
   featureRefs: readonly FeatureRef[],
   landofilePath: string,
