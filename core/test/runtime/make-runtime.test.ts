@@ -180,15 +180,11 @@ describe("makeLandoRuntime", () => {
       Effect.scoped(
         Effect.gen(function* () {
           yield* Layer.build(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }));
-          expect(process.listenerCount("SIGINT")).toBe(
-            beforeSigint + (defaults.includes("SIGINT") ? 1 : 0),
-          );
+          expect(process.listenerCount("SIGINT")).toBe(beforeSigint + (defaults.includes("SIGINT") ? 1 : 0));
           expect(process.listenerCount("SIGTERM")).toBe(
             beforeSigterm + (defaults.includes("SIGTERM") ? 1 : 0),
           );
-          expect(process.listenerCount("SIGHUP")).toBe(
-            beforeSighup + (defaults.includes("SIGHUP") ? 1 : 0),
-          );
+          expect(process.listenerCount("SIGHUP")).toBe(beforeSighup + (defaults.includes("SIGHUP") ? 1 : 0));
         }),
       ),
     );

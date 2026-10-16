@@ -6,12 +6,16 @@ import { defaultInterruptSignals, installSignalHandlers } from "../../src/runtim
 describe("default interrupt signals", () => {
   test("includes SIGBREAK on Windows and the gated POSIX set", () => {
     expect(defaultInterruptSignals("win32")).toEqual(["SIGINT", "SIGTERM", "SIGBREAK"]);
-    expect(
-      defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 0n }),
-    ).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
-    expect(
-      defaultInterruptSignals("darwin", { stdinIsTTY: true, stdoutIsTTY: true }),
-    ).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
+    expect(defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 0n })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+    ]);
+    expect(defaultInterruptSignals("darwin", { stdinIsTTY: true, stdoutIsTTY: true })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+    ]);
   });
 
   test("installs an explicit SIGHUP handler that interrupts the fiber", async () => {

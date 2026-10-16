@@ -229,10 +229,9 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   });
   const processAbortSignal = options.signal ?? getActiveProcessAbortSignal();
   // Subscribe before command writes; raceFirst waits for interrupted scope finalizers.
-  const commandEffect = interruptOnAbort(
-    Effect.raceFirst(brokenPipeSignal, effect),
-    processAbortSignal,
-  ).pipe(Effect.withErrorReporting({ defectsOnly: true }));
+  const commandEffect = interruptOnAbort(Effect.raceFirst(brokenPipeSignal, effect), processAbortSignal).pipe(
+    Effect.withErrorReporting({ defectsOnly: true }),
+  );
   const renderContext: RenderContext = {
     mode: options.rendererMode,
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,

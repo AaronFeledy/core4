@@ -96,6 +96,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly plainTaskEvents?: "detail-only";
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
+    readonly suppressInterruptionDiagnostics?: boolean;
     readonly successExitCode?: (value: A) => number | undefined;
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Codec<unknown, unknown>;
@@ -152,6 +153,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
+    ...(options.suppressInterruptionDiagnostics === true ? { suppressInterruptionDiagnostics: true } : {}),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     ...(successExitCode === undefined ? {} : { successExitCode }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),

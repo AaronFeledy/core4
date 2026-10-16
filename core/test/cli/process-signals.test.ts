@@ -100,7 +100,7 @@ describe("CLI process signal re-raise", () => {
     expect(killed).toEqual([]);
     expect(exitCode).toBe(SIGINT_EXIT_CODE);
 
-    exitCode = undefined;
+    let termCode: number | undefined;
     await runWithProcessSignalReraise(
       async () => {
         events.emit("SIGTERM");
@@ -114,12 +114,12 @@ describe("CLI process signal re-raise", () => {
           killed.push([pid, signal]);
         },
         setExitCode: (code) => {
-          exitCode = code;
+          termCode = code;
         },
       },
     );
     expect(killed).toEqual([]);
-    expect(exitCode).toBe(SIGTERM_EXIT_CODE);
+    expect(termCode).toBe(SIGTERM_EXIT_CODE);
   });
 
   test("does not register SIGHUP when neither stdio stream is a TTY", async () => {

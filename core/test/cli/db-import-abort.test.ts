@@ -41,9 +41,8 @@ describe("db import abort cleanup", () => {
   });
 
   afterEach(async () => {
-    if (previousSetRaw === undefined) delete stdin.setRawMode;
-    else stdin.setRawMode = previousSetRaw;
-    if (previousIsRaw === undefined) delete (stdin as { isRaw?: boolean }).isRaw;
+    stdin.setRawMode = previousSetRaw;
+    if (previousIsRaw === undefined) Reflect.deleteProperty(stdin, "isRaw");
     else Object.defineProperty(stdin, "isRaw", previousIsRaw);
     process.exitCode = 0;
     await rm(root, { recursive: true, force: true });
@@ -80,7 +79,6 @@ describe("db import abort cleanup", () => {
           ),
           Layer.empty,
           () => undefined,
-          { suppressInterruptionDiagnostics: true },
         ),
       { signals: ["SIGINT"] },
     );

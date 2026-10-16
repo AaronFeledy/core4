@@ -41,10 +41,8 @@ export const parseSigIgnMask = (status: string): bigint | undefined => {
   }
 };
 
-export const isInheritedSignalIgnored = (
-  signalNumber: number,
-  sigIgn: bigint | undefined,
-): boolean => sigIgn !== undefined && (sigIgn & (1n << BigInt(signalNumber - 1))) !== 0n;
+export const isInheritedSignalIgnored = (signalNumber: number, sigIgn: bigint | undefined): boolean =>
+  sigIgn !== undefined && (sigIgn & (1n << BigInt(signalNumber - 1))) !== 0n;
 
 export const readLinuxSigIgnMask = (
   readStatus: () => string | undefined = readProcSelfStatus,
@@ -81,8 +79,14 @@ export const defaultInterruptSignals = (
   const stdoutIsTTY = options.stdoutIsTTY ?? process.stdout.isTTY === true;
   const sigIgn = resolveSigIgn(options, platform);
   return POSIX_INTERRUPT_SIGNALS.filter((signal) => {
-    if (signal === "SIGHUP") return shouldHandleSIGHUP({ stdinIsTTY, stdoutIsTTY, sigIgn });
-    if (signal === "SIGINT") return shouldHandleSIGINT({ sigIgn });
+    if (signal === "SIGHUP") {
+      return shouldHandleSIGHUP({
+        stdinIsTTY,
+        stdoutIsTTY,
+        ...(sigIgn === undefined ? {} : { sigIgn }),
+      });
+    }
+    if (signal === "SIGINT") return shouldHandleSIGINT(sigIgn === undefined ? {} : { sigIgn });
     return true;
   });
 };

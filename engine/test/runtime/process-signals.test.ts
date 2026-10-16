@@ -51,21 +51,27 @@ describe("process signal policy", () => {
     // When the default set is computed.
     // Then win32 keeps BREAK, POSIX gates HUP and INT, and TERM remains.
     expect(defaultInterruptSignals("win32")).toEqual(["SIGINT", "SIGTERM", "SIGBREAK"]);
-    expect(
-      defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 0n }),
-    ).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
-    expect(
-      defaultInterruptSignals("linux", { stdinIsTTY: false, stdoutIsTTY: false, sigIgn: 0n }),
-    ).toEqual(["SIGINT", "SIGTERM"]);
-    expect(
-      defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 1n }),
-    ).toEqual(["SIGINT", "SIGTERM"]);
-    expect(
-      defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 2n }),
-    ).toEqual(["SIGTERM", "SIGHUP"]);
-    expect(
-      defaultInterruptSignals("darwin", { stdinIsTTY: false, stdoutIsTTY: false }),
-    ).toEqual(["SIGINT", "SIGTERM"]);
+    expect(defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 0n })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+    ]);
+    expect(defaultInterruptSignals("linux", { stdinIsTTY: false, stdoutIsTTY: false, sigIgn: 0n })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+    ]);
+    expect(defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 1n })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+    ]);
+    expect(defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 2n })).toEqual([
+      "SIGTERM",
+      "SIGHUP",
+    ]);
+    expect(defaultInterruptSignals("darwin", { stdinIsTTY: false, stdoutIsTTY: false })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+    ]);
     expect(
       defaultInterruptSignals({
         platform: "linux",
