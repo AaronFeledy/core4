@@ -1,0 +1,7 @@
+name: shop-feature
+services:
+  web:
+    appMount:
+      target: /app
+      includes:
+        - .git
