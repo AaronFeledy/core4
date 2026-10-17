@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { Effect, Schema, type Scope, Stream } from "effect";
 
-import { CapabilityError, DataEndpointUnsupportedError } from "../errors/index.ts";
+import { CapabilityError, DataEndpointUnsupportedError, ProviderCapabilityError } from "../errors/index.ts";
 import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
 import {
   AbsolutePath,
@@ -51,7 +51,6 @@ export interface ProviderDataPlaneContractInput {
   readonly factory: () => Effect.Effect<RuntimeProviderShape, unknown>;
   readonly observations?: {
     readonly usedNativeVolumeSnapshot?: () => boolean;
-    readonly usedCopyVolumeSnapshot?: () => boolean;
     readonly usedNativeServiceFileCopy?: () => boolean;
   };
 }
@@ -183,11 +182,6 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   const artifactPayload = sampleBytes(4, 5, 6, 7, 8, 9);
 
   yield* requireContract(
-    provider.capabilities.volumeSnapshot !== "none",
-    "data-plane provider declares volume snapshot support",
-    provider.capabilities,
-  );
-  yield* requireContract(
     provider.capabilities.serviceFileCopy !== "none",
     "data-plane provider declares service file copy support",
     provider.capabilities,
@@ -248,58 +242,58 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
     actual: Array.from(exportedVolume),
   });
 
-  const snapshot = yield* provider
-    .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
-    .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
-  if (
-    provider.capabilities.volumeSnapshot === "native" &&
-    input.observations?.usedNativeVolumeSnapshot !== undefined
-  ) {
-    yield* requireContract(
-      input.observations.usedNativeVolumeSnapshot(),
-      "native volume snapshots use the provider-native path",
-      provider.capabilities,
+  if (provider.capabilities.volumeSnapshot === "native") {
+    const snapshot = yield* provider
+      .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
+      .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
+    if (input.observations?.usedNativeVolumeSnapshot !== undefined) {
+      yield* requireContract(
+        input.observations.usedNativeVolumeSnapshot(),
+        "native volume snapshots use the provider-native path",
+        provider.capabilities,
+      );
+    }
+    yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
+      Effect.mapError(
+        mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
+      ),
     );
-  }
-  if (
-    provider.capabilities.volumeSnapshot === "copy" &&
-    input.observations?.usedCopyVolumeSnapshot !== undefined
-  ) {
-    yield* requireContract(
-      input.observations.usedCopyVolumeSnapshot(),
-      "copy-mode volume snapshots use the verified archive path",
-      provider.capabilities,
+    yield* provider
+      .restoreVolume({
+        snapshot,
+        target: { app: TEST_APP_ID, store },
+        expectedTargetGeneration: targetGeneration,
+        overwrite: true,
+      })
+      .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
+    const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
+      Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
     );
-  }
-  yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
-    Effect.mapError(
-      mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
-    ),
-  );
-  yield* provider
-    .restoreVolume({
-      snapshot,
-      target: { app: TEST_APP_ID, store },
-      expectedTargetGeneration: targetGeneration,
-      overwrite: true,
-    })
-    .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
-  const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
-    Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
-  );
-  if (provider.removeVolumeSnapshot !== undefined) {
+    if (provider.removeVolumeSnapshot === undefined) {
+      return yield* contractFailure("native snapshot providers implement removeVolumeSnapshot", provider.id);
+    }
     yield* provider
       .removeVolumeSnapshot(snapshot)
       .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds")));
     yield* provider
       .removeVolumeSnapshot(snapshot)
       .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot is idempotent")));
+    yield* requireContract(
+      bytesEqual(restoredVolume, volumePayload),
+      "snapshot -> mutate -> restore restores volume bytes",
+      { expected: Array.from(volumePayload), actual: Array.from(restoredVolume) },
+    );
+  } else {
+    const result = yield* provider
+      .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
+      .pipe(Effect.result);
+    yield* requireContract(
+      result._tag === "Failure" &&
+        (result.failure instanceof ProviderCapabilityError || result.failure instanceof CapabilityError),
+      "unsupported volume snapshots fail with a typed capability error",
+      result,
+    );
   }
-  yield* requireContract(
-    bytesEqual(restoredVolume, volumePayload),
-    "snapshot -> mutate -> restore restores volume bytes",
-    { expected: Array.from(volumePayload), actual: Array.from(restoredVolume) },
-  );
 
   yield* withTempCopySource(servicePayload, (sourcePath) =>
     provider.copyToService(serviceTarget, { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true }),

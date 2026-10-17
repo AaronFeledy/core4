@@ -1297,6 +1297,17 @@ export const makeDataMoverService = (
         ),
       ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
+      if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
+        return yield* Effect.fail(
+          new DataEndpointUnsupportedError({
+            message: `Provider ${provider.id} does not support native volume snapshots.`,
+            fromEndpoint: "volume",
+            toEndpoint: "nativeSnapshot",
+            remediation:
+              "Use a provider with native volume snapshots or select volumeSnapshot: copy for a host archive.",
+          }),
+        );
+      }
       const snapshotId = randomUUID();
       let rollbackInfo: SnapshotInfo | undefined;
       let rollbackNative: VolumeSnapshotRef | undefined;

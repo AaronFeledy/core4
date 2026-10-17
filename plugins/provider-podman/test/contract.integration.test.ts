@@ -714,14 +714,6 @@ describe("provider-podman RuntimeProvider contract", () => {
             Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
           ),
         observations: {
-          usedCopyVolumeSnapshot: () =>
-            fake.calls.some(
-              (call) =>
-                call.path.startsWith("/containers/create?name=") &&
-                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").includes(
-                  "tar -C /lando-data -cf",
-                ),
-            ),
           usedNativeServiceFileCopy: () =>
             fake.calls.some(
               (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),

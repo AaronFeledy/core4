@@ -57,7 +57,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `logs` | Streams raw, source-tagged service logs; redaction occurs at output boundaries. |
 | `inspect` | Returns `ServiceRuntimeInfo` for a selected service. |
 | `list` | Lists provider instances matching a `ListFilter`. |
-| `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Creates, restores, and removes provider volume snapshots. A provider that returns snapshot references MUST remove them: removal dispatches on the reference's stored format, rejects another provider's reference before mutation, and succeeds when the artifact is already gone. |
+| `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Creates, restores, and removes snapshots only when the provider declares native snapshot support; otherwise fails with a typed capability error. The shared container data plane accepts only native-format references, rejects another provider's reference before mutation, and removes artifacts idempotently. Plugin providers may implement other reference formats. |
 | `listVolumes`, `removeVolume` | Enumerates and removes selected volumes. |
 | `copyToService`, `copyFromService` | Transfers bytes to or from a service. |
 | `exportArtifact`, `importArtifact` | Streams artifacts across the provider boundary. |
@@ -112,7 +112,7 @@ Capabilities are schema-validated claims. Providers MUST report them truthfully,
 | `composeServiceFields` | Exact supported preserved service field families. |
 | `composeProjectFields` | Exact supported preserved project fields. |
 | `composePreservedPaths` | Exact supported preserved descendant paths. |
-| `volumeSnapshot` | Volume snapshots are `native`, `copy`, or `none`. |
+| `volumeSnapshot` | Volume snapshots are `native` or `none`. DataMover owns the host-archive fallback. |
 | `serviceFileCopy` | Service copy is `native`, `exec`, or `none`. |
 | `artifactExport`, `artifactImport` | Supports streaming artifacts out and in. |
 | `ephemeralMounts` | Ephemeral `run` honors declared mounts. |

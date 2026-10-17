@@ -148,6 +148,7 @@ const compressedTarFixture = async (
 
 const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
   ...TestRuntimeProvider.capabilities,
+  volumeSnapshot: "none",
   ...overrides,
 });
 
@@ -169,7 +170,7 @@ const providerLayer = (
         ...TestRuntimeProvider,
         pullArtifact: verifyingPullArtifact,
         ...overrides,
-        capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
+        capabilities: overrides.capabilities ?? dataPlaneCapabilities(),
       }),
     ),
   );
@@ -1191,6 +1192,70 @@ describe("BunDataMover.layer", () => {
       expect(payload).not.toContain("secret-token");
       expect(payload).toContain("[redacted]");
     });
+  });
+
+  test("rejects forced native snapshots before provider action when unsupported", async () => {
+    const calls: string[] = [];
+    const capture = captureEvents();
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mover = yield* DataMover;
+          return yield* mover
+            .snapshot(
+              { app, store: "data" },
+              {
+                volumeSnapshot: "native",
+                metadata: {
+                  sourceRoot: absolute("/app"),
+                  volumeInstanceId: "generation",
+                  service,
+                  family: "mysql",
+                  version: "8.0",
+                  imageIdentity: "mysql@sha256:source",
+                  recoveryReason: "manual",
+                },
+              },
+            )
+            .pipe(Effect.result);
+        }),
+      ).pipe(
+        Effect.provide(BunDataMover.layer),
+        Effect.provide(
+          providerLayer({
+            listVolumes: () =>
+              Effect.sync(() => {
+                calls.push("listVolumes");
+                return [];
+              }),
+            snapshotVolume: (spec) => {
+              calls.push("snapshotVolume");
+              return TestRuntimeProvider.snapshotVolume(spec);
+            },
+            run: (spec) => {
+              calls.push("run");
+              return TestRuntimeProvider.run(spec);
+            },
+            runStream: (spec) => {
+              calls.push("runStream");
+              return TestRuntimeProvider.runStream(spec);
+            },
+          }),
+        ),
+        Effect.provide(Layer.merge(capture.layer, redactionLayer)),
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DataEndpointUnsupportedError",
+        fromEndpoint: "volume",
+        toEndpoint: "nativeSnapshot",
+        remediation: expect.any(String),
+      },
+    });
+    expect(calls).toEqual([]);
+    expect(capture.events()).toEqual([]);
   });
 
   test("publishes volume snapshot lifecycle events", async () => {
