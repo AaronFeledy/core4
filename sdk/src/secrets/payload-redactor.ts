@@ -41,6 +41,7 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
       }
       previous = values;
     }
+    if (root.children.size === 0 && pending.length === 0) return chunk;
     const input = pending.length === 0 ? chunk : new Uint8Array(pending.length + chunk.length);
     if (pending.length > 0) {
       input.set(pending);

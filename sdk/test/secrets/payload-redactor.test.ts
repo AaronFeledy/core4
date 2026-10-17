@@ -110,4 +110,17 @@ describe("payload byte redaction", () => {
     expect(empty.length).toBe(0);
     expect(output).toEqual(input);
   });
+
+  test("passes chunks through untouched with no registered secrets", () => {
+    // Given
+    const redactor = createPayloadRedactor(() => []);
+    const input = Uint8Array.of(0xff, 0x00, 0x80, 0x0a);
+
+    // When
+    const output = redactor.write(input);
+
+    // Then
+    expect(output).toEqual(input);
+    expect(redactor.flush().length).toBe(0);
+  });
 });
