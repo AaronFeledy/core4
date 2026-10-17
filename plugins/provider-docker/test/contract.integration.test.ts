@@ -1196,6 +1196,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/lando-myapp-web/stop",
       "DELETE /containers/lando-myapp-web?force=true",
       "DELETE /networks/lando-myapp",
+      "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.role%3Ddata-helper%22%2C%22dev.lando.app%3Dmyapp%22%2C%22dev.lando.provider%3Ddocker%22%5D%7D",
     ]);
   });
 
@@ -1721,6 +1722,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/lando-myapp-web/stop",
       "DELETE /containers/lando-myapp-web?force=true",
       "DELETE /networks/lando-myapp",
+      "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.role%3Ddata-helper%22%2C%22dev.lando.app%3Dmyapp%22%2C%22dev.lando.provider%3Ddocker%22%5D%7D",
     ]);
   });
 

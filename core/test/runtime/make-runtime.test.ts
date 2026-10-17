@@ -161,16 +161,19 @@ describe("makeLandoRuntime", () => {
   test("does not install process signal handlers by default", async () => {
     const beforeSigint = process.listenerCount("SIGINT");
     const beforeSigterm = process.listenerCount("SIGTERM");
+    const beforeSighup = process.listenerCount("SIGHUP");
 
     await Effect.runPromise(Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "minimal" }))));
 
     expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
     expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+    expect(process.listenerCount("SIGHUP")).toBe(beforeSighup);
   });
 
   test("installs and removes process signal handlers when explicitly requested", async () => {
     const beforeSigint = process.listenerCount("SIGINT");
     const beforeSigterm = process.listenerCount("SIGTERM");
+    const beforeSighup = process.listenerCount("SIGHUP");
 
     await Effect.runPromise(
       Effect.scoped(
@@ -178,12 +181,14 @@ describe("makeLandoRuntime", () => {
           yield* Layer.build(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }));
           expect(process.listenerCount("SIGINT")).toBe(beforeSigint + 1);
           expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm + 1);
+          expect(process.listenerCount("SIGHUP")).toBe(beforeSighup + 1);
         }),
       ),
     );
 
     expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
     expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+    expect(process.listenerCount("SIGHUP")).toBe(beforeSighup);
   });
 
   test("installed signal handlers interrupt the running fiber", async () => {

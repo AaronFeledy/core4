@@ -21,6 +21,15 @@ import type {
 } from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
 import { parseJsonOrUndefined } from "../engine-json.ts";
+import {
+  isVolumeInUse,
+  listVolumeHolders,
+  namedHolders,
+  releaseVolumeHolders,
+  removeEphemeralDataHelpers,
+  volumeInUseMessage,
+  volumeInUseRemediation,
+} from "../ephemeral-data-helpers.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
@@ -200,18 +209,50 @@ const removeVolume = Effect.fnUntraced(function* (
   if (labels === undefined || !volumeMatchesFilters(labels, planVolumeFilters(plan, [volumeClass]))) {
     return false;
   }
+  const requester = deps.api.request;
+  if (requester !== undefined) {
+    yield* releaseVolumeHolders((input) => requester(input), {
+      appId: String(plan.id),
+      providerId: deps.options.ctx.providerId,
+      volumeName: name,
+    }).pipe(Effect.catch(() => Effect.succeed([])));
+  }
   const response = yield* request(deps, {
     method: "DELETE",
     path: `/volumes/${encodeURIComponent(name)}`,
   });
-  if (response.status === 200 || response.status === 204) return true;
-  if (response.status === 404) return false;
+  const status = response.status;
+  const body = response.body;
+  if (status === 200 || status === 204) return true;
+  if (status === 404) return false;
+  if (isVolumeInUse(response)) {
+    const holders =
+      requester === undefined
+        ? []
+        : yield* listVolumeHolders((input) => requester(input), name).pipe(
+            Effect.catch(() => Effect.succeed([])),
+          );
+    const names = holders.map((holder) => holder.name);
+    return yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: deps.options.ctx.providerId,
+        operation: "bringDown.volume",
+        message: volumeInUseMessage(
+          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${status}.`,
+          names,
+          response,
+        ),
+        remediation: volumeInUseRemediation(namedHolders(holders, deps.options.ctx.providerId)),
+        details: redactDetails({ name, body, status }),
+      }),
+    );
+  }
   return yield* Effect.fail(
     podmanFailure(
       deps,
       "bringDown.volume",
-      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
-      { name, body: response.body },
+      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${status}.`,
+      { name, body },
     ),
   );
 });
@@ -301,6 +342,18 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   const networkRemoved = yield* removeNetwork(deps, plan);
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
+    const requester = api.request;
+    if (requester !== undefined) {
+      const stores = plan.stores.flatMap((store) => {
+        if (store.kind === "cache") return options.purgeCaches === true ? [store.name] : [];
+        return store.scope === "global" || options.volumes !== true ? [] : [store.name];
+      });
+      yield* removeEphemeralDataHelpers((input) => requester(input), {
+        appId: String(plan.id),
+        providerId: options.ctx.providerId,
+        ...(stores.length === 0 ? {} : { stores }),
+      }).pipe(Effect.catch(() => Effect.succeed({ removed: [], remaining: [] })));
+    }
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan);
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
       const pruned = yield* pruneAppScopedVolumes(deps, plan);

@@ -1,10 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { tryParseJson } from "./engine-json.ts";
+import {
+  ephemeralDataHelperLabels,
+  isVolumeInUse,
+  listVolumeHolders,
+  namedHolders,
+  releaseVolumeHolders,
+  volumeInUseMessage,
+  volumeInUseRemediation,
+} from "./ephemeral-data-helpers.ts";
 import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
-import { redactString, withApiReason } from "./redact.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
 import {
@@ -26,6 +34,7 @@ export {
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
+export { isVolumeInUse, volumeInUseRemediation } from "./ephemeral-data-helpers.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
 
@@ -250,14 +259,6 @@ const copyModeSnapshotStore = (providerId: string): string => `lando-${sanitize(
 const copyModeSnapshotFile = (snapshotId: string): string => `${sanitize(snapshotId)}.tar`;
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
-
-const isVolumeInUse = (details: unknown): details is { readonly body: string } => {
-  if (typeof details !== "object" || details === null) return false;
-  if (!("body" in details) || typeof details.body !== "string") return false;
-  return (
-    ("status" in details && details.status === 409) || /\b(?:in use|being used by)\b/i.test(details.body)
-  );
-};
 
 const volumeError = (
   options: ProviderDataPlaneOptions,
@@ -522,6 +523,12 @@ const createEphemeralContainer = (
 ) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
+  const app = spec.owner === undefined ? undefined : String(spec.owner.app);
+  const labels = ephemeralDataHelperLabels({
+    providerId: options.providerId,
+    ...(app === undefined ? {} : { app }),
+    ...(mount === undefined ? {} : { store: mount.store }),
+  });
   const binds = dataStoreMounts(spec).flatMap((mount) =>
     requiresLongMountSyntax(mount.target)
       ? []
@@ -546,6 +553,7 @@ const createEphemeralContainer = (
     body: {
       Image: spec.image,
       Cmd: spec.command,
+      Labels: labels,
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
       ...(witnessSource === undefined
         ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
@@ -782,9 +790,15 @@ const commitNativeSnapshot = (
   );
 };
 
-const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: string, snapshotId: string) =>
+const snapshotVolumeWithCommit = (
+  options: ProviderDataPlaneOptions,
+  store: string,
+  snapshotId: string,
+  owner?: { readonly app: AppId; readonly plan?: AppPlan },
+) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
+      ...(owner === undefined ? {} : { owner }),
       image: copyModeHelperImage,
       command: [
         "sh",
@@ -936,7 +950,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const name = volumeName(store);
       const id = spec.snapshotId ?? `${name}-snapshot-${randomUUID()}`;
       if (options.snapshotMode === "native") {
-        return snapshotVolumeWithCommit(options, store, id).pipe(
+        return snapshotVolumeWithCommit(options, store, id, { app: spec.volume.app }).pipe(
           Effect.flatMap((snapshot) =>
             request(options, "snapshotVolume", {
               method: "GET",
@@ -991,6 +1005,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const snapshotStore = copyModeSnapshotStore(options.providerId);
       const snapshotFile = copyModeSnapshotFile(id);
       return runBytes(options, {
+        owner: { app: spec.volume.app },
         image: copyModeHelperImage,
         command: [
           "sh",
@@ -1074,6 +1089,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           ),
           Effect.andThen(
             runBytes(options, {
+              owner: { app: spec.target.app },
               image: nativeSnapshotImage(spec.snapshot.id),
               command: ["sh", "-c", command],
               mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
@@ -1113,6 +1129,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       }).pipe(
         Effect.andThen(
           runBytes(options, {
+            owner: { app: spec.target.app },
             image: copyModeHelperImage,
             command: [
               "sh",
@@ -1192,41 +1209,64 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     removeVolume: ((ref, expectedGeneration) =>
       verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
         Effect.andThen(
-          request(options, "removeVolume", {
-            method: "DELETE",
-            path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
+          Effect.gen(function* () {
+            const requester = options.api.request;
+            if (requester !== undefined) {
+              yield* releaseVolumeHolders((input) => requester(input), {
+                appId: String(ref.app),
+                providerId: options.providerId,
+                volumeName: volumeName(ref.store),
+              }).pipe(Effect.catch(() => Effect.succeed([])));
+            }
+            const response = yield* request(options, "removeVolume", {
+              method: "DELETE",
+              path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
+            });
+            if (response.status >= 200 && response.status < 300) return;
+            if (isVolumeInUse(response)) {
+              const holders =
+                requester === undefined
+                  ? []
+                  : yield* listVolumeHolders((input) => requester(input), volumeName(ref.store)).pipe(
+                      Effect.catch(() => Effect.succeed([])),
+                    );
+              const names = holders.map((holder) => holder.name);
+              return yield* Effect.fail(
+                new VolumeOperationError({
+                  providerId: options.providerId,
+                  operation: "removeVolume",
+                  store: ref.store,
+                  message: volumeInUseMessage("Provider volume remove failed.", names, response),
+                  remediation: volumeInUseRemediation(namedHolders(holders, options.providerId)),
+                  details: options.redactDetails(response),
+                }),
+              );
+            }
+            return yield* Effect.fail(
+              volumeError(
+                options,
+                "removeVolume",
+                "Provider volume remove failed.",
+                response,
+                undefined,
+                ref.store,
+              ),
+            );
           }),
         ),
-        Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
-        Effect.mapError((cause) => {
-          const details = cause instanceof VolumeOperationError ? cause.details : undefined;
-          if (isVolumeInUse(details)) {
-            const base = "Provider volume remove failed.";
-            const message = withApiReason(base, details);
-            return new VolumeOperationError({
-              providerId: options.providerId,
-              operation: "removeVolume",
-              store: ref.store,
-              message:
-                message === base && details.body.trim().length > 0
-                  ? `${base} ${redactString(details.body.trim())}`
-                  : message,
-              remediation:
-                "A container still uses this volume. Remove that container first (for a Lando app, run lando destroy for it; lando doctor lists leftovers), then retry.",
-              details: options.redactDetails(details),
-              cause,
-            });
-          }
-          return volumeError(
-            options,
-            "removeVolume",
-            "Provider volume remove failed.",
-            undefined,
-            cause,
-            ref.store,
-          );
-        }),
+        Effect.mapError((cause) =>
+          cause instanceof VolumeOperationError
+            ? cause
+            : volumeError(
+                options,
+                "removeVolume",
+                "Provider volume remove failed.",
+                undefined,
+                cause,
+                ref.store,
+              ),
+        ),
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
