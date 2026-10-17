@@ -426,7 +426,6 @@ export interface ToolingOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
-  readonly renderProgress?: boolean;
   /** Explicitly request a provider PTY. Omission remains noninteractive. */
   readonly tty?: boolean;
 }
@@ -437,7 +436,6 @@ export interface ToolingResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
-  readonly rendered?: boolean;
 }
 
 export type ToolingError =

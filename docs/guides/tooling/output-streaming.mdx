@@ -2,7 +2,7 @@
 id: output-streaming
 provider: test
 platforms: [linux, darwin, win32, wsl]
-timeout: 60000
+timeout: 300000
 tags: [beta, docs, tooling, renderer, task-tree]
 ---
 
@@ -24,7 +24,7 @@ lando composer install < /dev/null
 
 Redirected input still reaches the command as plain bytes, with no terminal in between, so `lando psql < dump.sql` runs the dump and exits.
 
-The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. The command's own output prints as it arrives.
+The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. Command output does not ride that tree as per-line `task.detail` events. Host and container tools share one sink: bytes print as they arrive, value-only redacted and byte-exact, including a last line with no trailing newline.
 
 Redirect stdout and the file or pipe gets the command's output and nothing else. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
 
@@ -33,9 +33,15 @@ lando gen > out.txt
 lando gen | wc -l
 ```
 
-The same split applies to `:host` tasks, `.bun.sh` scripts, `lando exec`, and `lando run`. Output with no trailing newline stays that way. Every other command follows it too: `lando start > start.log` keeps the ready summary and leaves the progress on your terminal.
+The same split applies to `:host` tasks, `.bun.sh` scripts, `lando exec`, and `lando run`. Every other command follows it too: `lando start > start.log` keeps the ready summary and leaves the progress on your terminal.
 
 A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts.
+
+## Secrets on the wire
+
+Human formats mask only registered secret values on the live byte stream, including values split across writes. Lando holds only a trailing prefix that could complete a registered value. It leaves assignments, URLs, arbitrary binary bytes, and line endings alone otherwise. stdout and stderr follow the same rule on a terminal or in a file.
+
+Live JSON commands such as `lando exec --format=json` first mask registered values across byte boundaries. They emit a frame for each complete line, flushing a partial line at end of stream or at 64 KiB. Invalid UTF-8 becomes the replacement character. The full secrets profile then masks the frame text, so pattern matching restarts at each capped fragment. Registered-value matching spans those fragments.
 
 ## Pick a renderer mode
 
@@ -43,10 +49,10 @@ A non-zero exit follows the same shape. Stderr still streams. The failing child 
 | --- | --- | --- |
 | `lando` (default) | Live task tree on the stderr terminal, even when you redirect stdout to a file. Piped stdout or a non-terminal stderr gets one line per event on stderr. | stdout |
 | `verbose` | Human line plus the full event payload for every event, on stderr. | stdout |
-| `plain` | One line per event on stderr, no tree, no spinners. Tooling prints no tree lines. | stdout |
-| `json` | Structured events and messages on stderr. | JSON envelope on stdout |
+| `plain` | One line per event on stderr, no tree, no spinners. | stdout |
+| `json` | Structured events and messages on stderr. | stdout; the result format selects raw payload or machine output |
 
-`--format=json` wraps the command result in a JSON envelope on stdout. Progress and messages stay on stderr.
+Tooling `--format=json` and `--format=yaml` collect stdout and stderr into one result envelope instead of printing the payload separately. Library, MCP, and event invocations also return collected output. Collection uses memory proportional to the output; human live output does not keep a second copy. Progress and messages stay on stderr under the `json` renderer; live JSON commands put events in stream frames instead.
 
 When both streams reach your terminal, Lando erases the live tree, writes each payload chunk to stdout, then repaints the tree on stderr. Redirect stdout to a file and the live tree stays on your terminal. Pipe stdout into another command and Lando prints one progress line per event instead, since that command writes to the same terminal and a repaint would wipe its output. Redirect stderr and you get only the command output on your terminal. Interactive prompts also draw on stderr, so redirecting stdout does not disable them.
 
@@ -57,7 +63,7 @@ When both streams reach your terminal, Lando erases the live tree, writes each p
       <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-script">
-      <Verify command="lando gen" expect={{ stdout: "alpha\nbeta\n", stderr: { regex: "complete" } }} />
+      <Verify command="lando gen" expect={{ stdout: "alpha\nbeta\ngamma", stderr: { regex: "complete" } }} />
     </Step>
     <Step name="cleanup-script">
       <Cleanup />
@@ -67,10 +73,24 @@ When both streams reach your terminal, Lando erases the live tree, writes each p
     <Step name="prepare-verbose-script">
       <UseFixture name="clean-output" />
       <Run command="lando app:cache:refresh" />
-      <Verify command="lando gen --renderer=verbose" expect={{ stdout: "alpha\nbeta\n", stderr: { regex: "task.tree.complete" } }} />
+      <Verify command="lando gen --renderer=verbose" expect={{ stdout: "alpha\nbeta\ngamma", stderr: { regex: "task.tree.complete" } }} />
     </Step>
     <Step name="cleanup-verbose-script">
       <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="real-container-exact-stdout" layer="e2e" render>
+    <Step name="start-container">
+      <UseFixture name="stream-container" />
+      <Run command="lando start" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-gen">
+      <Verify command="lando gen" expect={{ stdout: "alpha\nbeta\ngamma" }} />
+    </Step>
+    <Step name="cleanup-container">
+      <Cleanup />
+      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 </Guide>

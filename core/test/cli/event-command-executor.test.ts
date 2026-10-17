@@ -31,6 +31,7 @@ import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import {
   RedactionService,
+  createPayloadValues,
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
@@ -88,6 +89,8 @@ const makeHarness = (): Harness => {
   } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
     registerValues: registerRedactionValues,
+    payloadValues: (options?: Parameters<typeof createStandaloneRedactor>[1]) =>
+      Effect.succeed(createPayloadValues([], options)),
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],
@@ -926,7 +929,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(harness.presentation).toEqual([]);
   });
 
-  test("redacts canonical tooling env secrets from detail and nonzero failure output", async () => {
+  test("omits canonical tooling details and redacts nonzero failure output", async () => {
     // Given
     const harness = makeHarness();
     const secret = "TOOLING-ENV-SECRET";
@@ -970,10 +973,11 @@ describe("EventCommandExecutorLayer.layer", () => {
     if (error._tag !== "LandofileEventStepFailedError") throw error;
     expect(error.outputTail).toBe("stdout:[redacted]\nstderr:[redacted]");
     const details = harness.events.filter((event) => event._tag === "task.detail");
-    expect(details).toHaveLength(2);
+    expect(details).toEqual([]);
     const payload = JSON.stringify(details);
     expect(payload).not.toContain(secret);
-    expect(payload).toContain("[redacted]");
+    expect(JSON.stringify(error)).toContain("[redacted]");
+    expect(JSON.stringify(error)).not.toContain(secret);
     expect(harness.presentation).toEqual([]);
   });
 

@@ -115,7 +115,6 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   /** Resolved `LandoCommandSpec.documentOutput` match for this invocation. */
   readonly documentOutput?: boolean;
   readonly io?: RendererIO;
-  readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
@@ -247,13 +246,15 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
+  // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
+  const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
   const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format, io).pipe(
     Layer.provide(
       Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
     ),
   );
   const commandLayer = (
-    liveStreaming
+    attachLiveSink
       ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer, commandWarningsLayer)
       : Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer)
   ) as Layer.Layer<R, RE>;
@@ -319,7 +320,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           error,
         } as const;
         const emit = (next: typeof outcome) => (framedJson ? emitStreamResult(next) : emitJsonResult(next));
-        if (framedJson && !liveStreaming) yield* replayBufferedEvents();
+        if (framedJson && !attachLiveSink) yield* replayBufferedEvents();
         const emitted = yield* emit(outcome).pipe(Effect.result);
         if (emitted._tag === "Failure") {
           if (!(emitted.failure instanceof JqExpressionError)) {
@@ -381,7 +382,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         return { _tag: "handled-failure" } as const;
       }
       yield* applySuccessExitCode(commandExit.value);
-      if (liveStreaming) {
+      if (attachLiveSink) {
         if (envelopeFormat) {
           const tokens = options.redactionTokens?.(commandExit.value) ?? [];
           // A live run already wrote frames, so its terminal result stays a frame
@@ -410,11 +411,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         if (code !== undefined && code !== 0) setExitCode(code);
       });
     let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
-    if (!(framedJson && !liveStreaming)) {
+    if (!(framedJson && !attachLiveSink)) {
       if (!envelopeFormat) {
         eventConsumerLayer = RendererOutput.layerEventConsumerForMode(options.rendererMode, io, {
           landoRenderer,
-          ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
         });
       } else {
         eventConsumerLayer = RendererOutput.layerNotificationConsumerForMode(

@@ -203,6 +203,7 @@ describe("piped exec binary archives", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
       }),
     );

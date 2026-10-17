@@ -12,6 +12,7 @@ import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import {
   RedactionService,
   collectSecretEnvValues,
+  createPayloadValues,
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
@@ -53,6 +54,12 @@ const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
         RedactionService.of({
           registerValues: (values) =>
             service._tag === "Some" ? service.value.registerValues(values) : registerRedactionValues(values),
+          payloadValues: (options) => {
+            const scoped = { ...options, redactionTokens: [...(options?.redactionTokens ?? []), ...tokens] };
+            return service._tag === "Some"
+              ? service.value.payloadValues(scoped)
+              : Effect.succeed(createPayloadValues([], scoped));
+          },
           forProfile: (profile, options) => {
             const scoped = {
               ...options,

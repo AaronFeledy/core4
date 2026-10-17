@@ -20,6 +20,7 @@ const redaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: () => Effect.void,
+    payloadValues: () => Effect.succeed(() => ["private-token"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["private-token"] })),
   }),
 );

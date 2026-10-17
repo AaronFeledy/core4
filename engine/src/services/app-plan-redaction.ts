@@ -43,11 +43,12 @@ export const collectAppPlanRedactionTokens = (
 /** Registered plan secrets reach generation-aware redactors already built by stream sinks. */
 export const registerAppPlanRedactionTokens = Effect.fnUntraced(function* (
   plan: AppPlan,
+  extraTokens: ReadonlyArray<string> = [],
 ): Effect.fn.Return<void> {
   const redaction = yield* Effect.serviceOption(RedactionService);
   yield* Option.match(redaction, {
     onNone: () => Effect.void,
-    onSome: (service) => service.registerValues(collectAppPlanRedactionTokens(plan)),
+    onSome: (service) => service.registerValues([...collectAppPlanRedactionTokens(plan), ...extraTokens]),
   });
 });
 

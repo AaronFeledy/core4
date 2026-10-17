@@ -23,6 +23,8 @@ export interface RedactionForProfileOptions {
 
 export interface RedactionServiceShape {
   readonly registerValues: (values: ReadonlyArray<string>) => Effect.Effect<void>;
+  /** Snapshot the store once, then read process registrations live by generation. */
+  readonly payloadValues: (options?: RedactionForProfileOptions) => Effect.Effect<() => Iterable<string>>;
   readonly forProfile: (
     profile: RedactionProfile,
     options?: RedactionForProfileOptions,
@@ -170,6 +172,9 @@ const dedupeValues = (values: Iterable<string>): string[] => {
   return [...deduped];
 };
 
+export const collectForwardedEnvValues = (env: Readonly<Record<string, string>> | undefined): string[] =>
+  dedupeValues(Object.values(env ?? {})).filter((value) => !isPublicDefaultCredential(value));
+
 const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
@@ -240,10 +245,30 @@ export const createStandaloneRedactor = (
   options?: RedactionForProfileOptions,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => makeRegisteredRedactor(profile, [], options);
 
+export const createPayloadValues = (
+  secretValues: Iterable<string>,
+  options?: RedactionForProfileOptions,
+): (() => Iterable<string>) => {
+  const initial = [...secretValues, ...collectOptionValues(options), ...(options?.authoritativeTokens ?? [])];
+  let generation = -1;
+  let values = new RedactionValues();
+  return () => {
+    if (generation !== registeredGeneration) {
+      values = new RedactionValues([...initial, ...registeredValues]);
+      generation = registeredGeneration;
+    }
+    return values;
+  };
+};
+
 export const makeRedactionService = (
   secretStore: Context.Service.Shape<typeof SecretStore>,
 ): RedactionServiceShape => ({
   registerValues: registerRedactionValues,
+  payloadValues: Effect.fnUntraced(function* (options?: RedactionForProfileOptions) {
+    const storeValues = yield* collectSecretStoreValues(secretStore);
+    return createPayloadValues(storeValues, options);
+  }),
   forProfile: Effect.fnUntraced(function* (profile: RedactionProfile, options?: RedactionForProfileOptions) {
     const secretValues = yield* collectSecretStoreValues(secretStore);
     return makeRegisteredRedactor(profile, secretValues, options);

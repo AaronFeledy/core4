@@ -29,9 +29,10 @@ import type {
   ToolingStepRunners,
 } from "../tooling/step-runner.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
+import { publishEventCmdProgress } from "./event-cmd-progress.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
-import { emitToolingOutputProgress } from "./tooling-progress.ts";
+import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 const OUTPUT_TAIL_LENGTH = 4_000;
 
@@ -236,7 +237,7 @@ const runTask = Effect.fnUntraced(function* (
   const variableRedaction = yield* options.redactorFor([leaf.vars]);
   if (task === undefined) {
     const script = yield* runBunShellTooling(
-      { name: leaf.task, cwd: String(options.plan.root), renderProgress: false },
+      { name: leaf.task, cwd: String(options.plan.root) },
       String(options.plan.root),
     ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
     if (script !== undefined) {
@@ -267,15 +268,21 @@ const runTask = Effect.fnUntraced(function* (
 });
 
 const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execution: EventLeafResult) {
-  return yield* emitToolingOutputProgress({
-    events: options.events,
-    tool: `${options.event}:${execution.leaf.authoredIndex + 1}`,
-    service: String(execution.result.service),
-    stdout: execution.redactor.redactString(execution.result.stdout),
-    stderr: execution.redactor.redactString(execution.result.stderr),
-    exitCode: execution.result.exitCode,
-    durationMs: (yield* Clock.currentTimeMillis) - execution.startedAt,
-  });
+  const durationMs = (yield* Clock.currentTimeMillis) - execution.startedAt;
+  if (execution.leaf.kind === "cmd") {
+    return yield* publishEventCmdProgress({
+      events: options.events,
+      task: `${options.event}:${execution.leaf.authoredIndex + 1}`,
+      service: String(execution.result.service),
+      stdout: execution.redactor.redactString(execution.result.stdout),
+      stderr: execution.redactor.redactString(execution.result.stderr),
+      exitCode: execution.result.exitCode,
+      durationMs,
+    });
+  }
+  const tree = beginLiveToolingTree(options.events, `${options.event}:${execution.leaf.authoredIndex + 1}`);
+  yield* tree.start;
+  yield* tree.finish(execution.result.exitCode, durationMs);
 });
 
 const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {

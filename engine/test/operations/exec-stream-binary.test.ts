@@ -17,6 +17,7 @@ const identityRedaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
   }),
 );
@@ -130,5 +131,50 @@ describe("collectExecStream binary frames", () => {
     // Then: flush still writes the held tail so abc E2 82 is not truncated to abc.
     expect(Exit.isFailure(exit)).toBe(true);
     expect(io.stdoutBytes()).toEqual(input);
+  });
+
+  test("does not collect stdout or stderr when a live sink is present", async () => {
+    // Given
+    const frames: StreamFrameSinkFrame[] = [];
+    const sink = StreamFrameSink.of({
+      emit: (frame) => Effect.sync(() => frames.push(frame)),
+    });
+    const text = new TextEncoder().encode("hello");
+
+    // When
+    const result = await Effect.runPromise(
+      collectExecStream(
+        Stream.fromIterable([
+          { kind: "stdout" as const, chunk: text },
+          { kind: "stderr" as const, chunk: text },
+          { exitCode: 0 },
+        ]),
+        Option.some(sink),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+    expect(frames).toHaveLength(2);
+  });
+
+  test("collects stdout and stderr when no sink is present", async () => {
+    // Given
+    const text = new TextEncoder().encode("hello");
+
+    // When
+    const result = await Effect.runPromise(
+      collectExecStream(
+        Stream.fromIterable([
+          { kind: "stdout" as const, chunk: text },
+          { kind: "stderr" as const, chunk: new TextEncoder().encode("err") },
+          { exitCode: 0 },
+        ]),
+        Option.none(),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "hello", stderr: "err" });
   });
 });

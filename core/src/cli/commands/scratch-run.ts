@@ -27,7 +27,7 @@ import {
   findPrimaryServiceName,
   readScratchLandofile,
 } from "@lando/engine/scratch-app/service";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, collectForwardedEnvValues } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { finishCommandProgress } from "../command-progress";
@@ -96,13 +96,6 @@ export const defaultScratchRunDeps: ScratchRunDeps = {
       Effect.flatMap((privateFileAccess) => detachScratchApp(id, privateFileAccess)),
     ),
   readLandofile: readScratchLandofile,
-};
-
-const MIN_REDACTION_TOKEN_LENGTH = 8;
-
-const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> => {
-  if (env === undefined) return [];
-  return Object.values(env).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
 };
 
 export const scratchRunRedactionTokens = (result: ScratchRunResult): ReadonlyArray<string> =>
@@ -186,7 +179,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
       });
       // Chunks stream before the result exists, so forwarded values must reach sinks already built.
       const redaction = yield* Effect.serviceOption(RedactionService);
-      if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokensFromEnv(env));
+      if (Option.isSome(redaction)) yield* redaction.value.registerValues(collectForwardedEnvValues(env));
       const cliTextOutput = options.hostIo === "cli" && options.envelopeFormat !== true;
       if (cliTextOutput) yield* finishCommandProgress();
       const sink = yield* Effect.serviceOption(StreamFrameSink);
@@ -223,7 +216,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         kept: options.keep,
         stdout: result.stdout,
         stderr: result.stderr,
-        redactionTokens: redactionTokensFromEnv(env),
+        redactionTokens: collectForwardedEnvValues(env),
       } satisfies ScratchRunResult;
     }),
   );
