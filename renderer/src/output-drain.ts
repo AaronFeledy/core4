@@ -6,7 +6,7 @@ import { outputStreams } from "./output-streams.ts";
 
 const awaitOutputDrain = (stream: NodeJS.WriteStream): Effect.Effect<void> =>
   Effect.callback<void>((resume) => {
-    if (stream.destroyed || stream.writableEnded || !stream.writableNeedDrain) {
+    if (stream.destroyed || stream.writableEnded) {
       resume(Effect.void);
       return;
     }
@@ -40,5 +40,7 @@ export const waitForRendererOutput = (
 ): Effect.Effect<void> =>
   Effect.suspend(() => {
     const output = outputStreams.get(destination === "stdout" ? io.writeStdout : io.writeStderr);
-    return output === undefined || output.isBroken() ? Effect.void : awaitOutputDrain(output.stream);
+    return output === undefined || output.isBroken() || !output.isBlocked()
+      ? Effect.void
+      : awaitOutputDrain(output.stream);
   });

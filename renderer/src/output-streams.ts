@@ -5,6 +5,7 @@ export const outputStreams = new WeakMap<
   {
     readonly stream: NodeJS.WriteStream;
     readonly isBroken: () => boolean;
+    readonly isBlocked: () => boolean;
   }
 >();
 

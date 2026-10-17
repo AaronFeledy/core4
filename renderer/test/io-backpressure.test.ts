@@ -25,6 +25,7 @@ const stalledStream = () => {
     getColorDepth: () => 1,
     hasColors: () => false,
   });
+  Object.defineProperty(stream, "writableNeedDrain", { get: () => false });
   return {
     stream,
     started: started.promise,
@@ -66,7 +67,7 @@ for (const makeRenderer of [makePlainRenderer, makeJsonRenderer, makeVerboseRend
               yield* Fiber.join(fiber);
               expect(produced).toBe(256);
               expect(target.stream.writableLength).toBe(0);
-              expect(target.stream.listenerCount("drain")).toBe(0);
+              expect(target.stream.listenerCount("drain")).toBe(1);
             }),
           ),
         );
@@ -100,7 +101,7 @@ for (const end of ["close", "EPIPE", "error", "interrupt"] as const) {
             const exit = yield* Fiber.await(fiber);
             // Then
             expect(Exit.isFailure(exit)).toBe(end === "error" || end === "interrupt");
-            expect(target.stream.listenerCount("drain")).toBe(0);
+            expect(target.stream.listenerCount("drain")).toBe(1);
             expect(target.stream.listenerCount("error")).toBe(1);
           }),
         ),
