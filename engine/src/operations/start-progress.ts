@@ -6,3 +6,4 @@ export const startSshAgentTreeId = (planId: string): string => `start-ssh-agent-
 export const startSshSidecarTreeId = (planId: string): string => `start-ssh-sidecar-${planId}`;
 export const startFileSyncTreeId = (planId: string): string => `start-file-sync-${planId}`;
 export const startRoutesTreeId = (planId: string): string => `start-routes-${planId}`;
+export const startScanTreeId = (planId: string): string => `start-scan-${planId}`;

@@ -259,6 +259,7 @@ import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScop
 import {
   AppRef,
   CertificatePlan,
+  CheckResult,
   DependencyPlan,
   EndpointPlan,
   HealthcheckPlan,
@@ -541,6 +542,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   HealthcheckPlan,
   ScannerConfig,
   ScanPlan,
+  CheckResult,
   CertificatePlan,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -999,6 +1001,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
   ScannerConfig: "Post-start URL scan settings, or false to skip scanning.",
   ScanPlan: "Fully resolved post-start URL scan settings for a service.",
+  CheckResult: "An owner-classified post-start HTTP check.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
