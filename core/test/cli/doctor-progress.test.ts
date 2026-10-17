@@ -122,6 +122,15 @@ describe("doctor progress outcomes", () => {
     expect(appConfigOutcome(undefined)).toEqual({ summary: "app-config · skipped" });
     expect(appConfigOutcome({ app: "a", file: "f", valid: true, violations: [] })).toEqual({});
     expect(
+      appConfigOutcome({
+        app: "a",
+        file: "f",
+        valid: true,
+        violations: [],
+        warnings: [{ path: ["env_file", 0], message: "decoded" }],
+      }),
+    ).toEqual({ summary: "app-config · 1 warning", warned: true });
+    expect(
       appConfigOutcome({ app: "a", file: "f", valid: false, violations: [{ path: ["x"], message: "m" }] }),
     ).toEqual({ summary: "app-config · 1 violation", failed: true });
   });

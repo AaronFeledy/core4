@@ -9,12 +9,21 @@ export const renderConfigLintResult = (
   result: ConfigLintResult,
   _format: AppConfigLintFormat = "text",
 ): string => {
+  const warnings = result.warnings ?? [];
+  const warningLines =
+    warnings.length === 0
+      ? []
+      : [
+          `${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`,
+          ...warnings.map(renderConfigLintViolation),
+        ];
   if (result.valid) {
-    return `${result.file}: no canonical-schema violations.`;
+    const clean = `${result.file}: no canonical-schema violations.`;
+    return warningLines.length === 0 ? clean : [clean, ...warningLines].join("\n");
   }
   const header = `${result.file}: ${result.violations.length} canonical-schema violation${
     result.violations.length === 1 ? "" : "s"
   }.`;
   const lines = result.violations.map(renderConfigLintViolation);
-  return [header, ...lines].join("\n");
+  return [header, ...lines, ...warningLines].join("\n");
 };

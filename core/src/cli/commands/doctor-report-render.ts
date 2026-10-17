@@ -203,15 +203,23 @@ const appConfigSection = (
   result: ConfigLintResult,
   options: DoctorRenderOptions,
 ): SummarySection | undefined => {
+  const warnings = result.warnings ?? [];
   if (result.valid) {
-    return options.all === true
-      ? { title: "app config", rows: [{ label: "lint", tone: "ok", value: "pass" }] }
-      : undefined;
+    if (warnings.length === 0) {
+      return options.all === true
+        ? { title: "app config", rows: [{ label: "lint", tone: "ok", value: "pass" }] }
+        : undefined;
+    }
+    return {
+      title: "app config",
+      rows: [{ label: "lint", tone: "warn", fields: [{ label: "file", value: result.file }] }],
+      notes: warnings.map(renderConfigLintViolation),
+    };
   }
   return {
     title: "app config",
     rows: [{ label: "lint", tone: "error", fields: [{ label: "file", value: result.file }] }],
-    notes: result.violations.map(renderConfigLintViolation),
+    notes: [...result.violations, ...warnings].map(renderConfigLintViolation),
   };
 };
 
@@ -262,6 +270,7 @@ export const countDoctorChecks = (
 } => {
   const checks = allChecks(report);
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const appConfigWarnings = report.appConfig?.warnings?.length ?? 0;
   const selfChecks = report.self?.checks ?? [];
   const deprecations = report.deprecations?.entries ?? [];
   const deprecationWarnings = deprecations.filter((entry) => entry.severity === "warn").length;
@@ -275,7 +284,10 @@ export const countDoctorChecks = (
       (appConfigInvalid ? 1 : 0) +
       selfChecks.length +
       deprecationErrors,
-    warned: checks.filter((check) => check.status === "warn").length + deprecationWarnings,
+    warned:
+      checks.filter((check) => check.status === "warn").length +
+      deprecationWarnings +
+      (report.appConfig?.valid === true && appConfigWarnings > 0 ? 1 : 0),
   };
 };
 
@@ -405,8 +417,13 @@ const renderSelfSection = (report: DoctorSelfReport): string => {
 };
 
 const renderAppConfigSection = (result: ConfigLintResult): string => {
+  const warnings = result.warnings ?? [];
   const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
   lines.push(...result.violations.map(renderConfigLintViolation));
+  if (warnings.length > 0) {
+    lines.push(`${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`);
+    lines.push(...warnings.map(renderConfigLintViolation));
+  }
   return lines.join("\n");
 };
 

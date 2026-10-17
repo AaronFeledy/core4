@@ -28,7 +28,7 @@ export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 
 /**
  * The full result of linting one Landofile against the canonical schema.
- * `valid` is `true` iff `violations` is empty.
+ * `valid` is `true` iff `violations` is empty. Warnings never flip `valid`.
  */
 export const ConfigLintResult = Schema.Struct({
   /** The linted app name (the Landofile `name:`, "" when unset). */
@@ -39,5 +39,9 @@ export const ConfigLintResult = Schema.Struct({
   valid: Schema.Boolean,
   /** Ordered list of violations (empty when `valid`). */
   violations: Schema.Array(ConfigLintViolation),
+  /** Non-blocking diagnostics that do not flip `valid`. */
+  warnings: Schema.optionalKey(Schema.Array(ConfigLintViolation)).annotate({
+    description: "Non-blocking diagnostics that do not flip valid.",
+  }),
 });
 export type ConfigLintResult = typeof ConfigLintResult.Type;

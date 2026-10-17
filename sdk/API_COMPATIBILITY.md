@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ConfigLintResult` additively accepts optional `warnings`, a list of `ConfigLintViolation` values that never flip `valid`. Env-file quoting now decodes double-quoted escapes (`\a` `\b` `\f` `\n` `\r` `\t` `\v` `\$` `\"` `\\` and `\0NNN`); other escapes keep the backslash. Values stay uninterpolated. Lint warns when a double-quoted value decodes differently from its raw text or when an unquoted or double-quoted value contains `${`, and a bare `NAME` line remains an error whose remediation is `environment: { NAME: "{{ env.NAME }}" }`.
+
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.

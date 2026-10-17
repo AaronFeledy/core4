@@ -388,6 +388,54 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("doctor --app renders env-file lint warnings in text and ndjson", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-env-warn-")));
+    await writeFile(join(dir, ".lando.yml"), "name: doctor-env-warn\nenv_file: [runtime.env]\n");
+    await writeFile(join(dir, "runtime.env"), 'PATH="C:\\new"\n');
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const report = await Effect.runPromise(
+        collectDoctorReport({
+          options: { app: true, env: {} },
+          provider: doctor({ app: true, env: {} }, []),
+          deprecations: doctorDeprecations(),
+          appConfig: appConfigForReport().pipe(
+            Effect.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
+          ),
+        }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      expect(report.appConfig?.valid).toBe(true);
+      expect(report.appConfig?.warnings).toEqual([
+        expect.objectContaining({
+          message: expect.stringContaining("decodes differently from its raw text"),
+        }),
+      ]);
+
+      const text = renderDoctorReport(report);
+      expect(text).toContain("app-config-lint: pass");
+      expect(text).toContain("1 warning.");
+      expect(text).toContain("decodes differently from its raw text");
+
+      const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
+      const payload = eventPayloads(ndjson).find((line) => line.name === "app-config-lint");
+      expect(payload?.severity).toBe("warn");
+      expect(payload?.warnings).toEqual([
+        expect.objectContaining({
+          message: expect.stringContaining("decodes differently from its raw text"),
+        }),
+      ]);
+      expect(payload?.context).toEqual(expect.objectContaining({ warnings: "1" }));
+      expect(resultEnvelope(ndjson).result).toMatchObject({ failed: 0 });
+      expect((resultEnvelope(ndjson).result as { warned: number }).warned).toBeGreaterThan(0);
+    } finally {
+      process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("doctor --app reports an unsatisfied lando version constraint", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-")));

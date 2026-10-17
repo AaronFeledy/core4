@@ -72,6 +72,31 @@ describe("renderConfigLintResult", () => {
     });
   });
 
+  test("a valid result with warnings renders the warning tier without flipping the exit code", () => {
+    const result: ConfigLintResult = {
+      app: "ok",
+      file: "/x/.lando.yml",
+      valid: true,
+      violations: [],
+      warnings: [
+        {
+          path: ["env_file", 0],
+          message: "Double-quoted value for PATH decodes differently from its raw text.",
+          suggestion: "Quote the value with single quotes to keep the raw text.",
+          line: 1,
+        },
+      ],
+    };
+    restoreExitCode(() => {
+      const before = process.exitCode;
+      const text = renderConfigLintResult(result, "text");
+      expect(text).toContain("no canonical-schema violations");
+      expect(text).toContain("1 warning.");
+      expect(text).toContain("decodes differently from its raw text");
+      expect(process.exitCode).toBe(before);
+    });
+  });
+
   test("an invalid result renders violations without changing process.exitCode", () => {
     const result: ConfigLintResult = {
       app: "bad",

@@ -15,19 +15,23 @@ import { appVersionConstraintCheckPayload } from "./doctor-version-constraint";
 const doctorCheckFrameLine = (payload: Record<string, unknown>): string =>
   Effect.runSync(encodeStreamEventFrame({ event: "doctor.check", payload, redactor: identityRedactor }));
 
-const appConfigCheckLine = (result: ConfigLintResult): string =>
-  doctorCheckFrameLine({
+const appConfigCheckLine = (result: ConfigLintResult): string => {
+  const warnings = result.warnings ?? [];
+  return doctorCheckFrameLine({
     _tag: "doctor.check",
     name: "app-config-lint",
     status: result.valid ? "pass" : "fail",
-    severity: result.valid ? "info" : "error",
+    severity: result.valid ? (warnings.length > 0 ? "warn" : "info") : "error",
     context: {
       file: result.file,
       valid: String(result.valid),
       violations: String(result.violations.length),
+      warnings: String(warnings.length),
     },
     violations: result.violations,
+    warnings,
   });
+};
 
 const deprecationsCheckLine = (result: DoctorDeprecationReport): string =>
   doctorCheckFrameLine({
@@ -94,6 +98,7 @@ export const renderDoctorReportAsNdjson = (
   ];
   const deprecationsCheckCount = report.deprecations === undefined ? 0 : 1;
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const appConfigWarned = report.appConfig?.valid === true && (report.appConfig.warnings?.length ?? 0) > 0;
   const summary = {
     timestamp,
     checks:
@@ -102,7 +107,7 @@ export const renderDoctorReportAsNdjson = (
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
       selfChecks.length,
-    warned: checks.filter((check) => check.status === "warn").length,
+    warned: checks.filter((check) => check.status === "warn").length + (appConfigWarned ? 1 : 0),
   };
   lines.push(
     Effect.runSync(

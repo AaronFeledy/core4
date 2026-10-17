@@ -100,7 +100,7 @@ lando app:config:lint --format=json
 lando app:cache:refresh
 ```
 
-Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so put the expression in `environment:`.
+Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so `${NAME}` stays literal and lint warns unless the value is single-quoted; put the expression in `environment:`.
 
 The password still redacts in `lando info` and in logs, because the database service carries the same value under `POSTGRES_PASSWORD` / `LANDO_DB_PASSWORD`.
 
