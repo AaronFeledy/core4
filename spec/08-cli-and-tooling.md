@@ -621,7 +621,7 @@ Built-in `RenderEvent` names are:
 
 `task.tree.start` identifies parent, label, children, and optional layout mode. `task.detail` identifies task, stdout/stderr stream, and line. Detail expand/collapse are renderer input events, not caller output events.
 
-The default renderer is plugin `@lando/renderer-lando`, id `lando`. Core fallbacks are `json`, `plain`, and `verbose`. Selection precedence MUST be `--renderer` → `LANDO_RENDERER` → global `renderer:` → default `lando`, including non-TTY and CI. The `lando` renderer MUST degrade to line mode when stderr is not a terminal. Redirecting stdout MUST NOT disable the live tree. Typed messages and schemas are published from `@lando/sdk`.
+The default renderer is plugin `@lando/renderer-lando`, id `lando`. Core fallbacks are `json`, `plain`, and `verbose`. Selection precedence MUST be `--renderer` → `LANDO_RENDERER` → global `renderer:` → default `lando`, including non-TTY and CI. The `lando` renderer MUST degrade to line mode when stderr is not a terminal. Redirecting stdout to a regular file MUST NOT disable the live tree; a pipe or socket on stdout selects line mode (§8.9.2). Typed messages and schemas are published from `@lando/sdk`.
 
 #### 8.9.1 First-paint contract
 
@@ -636,7 +636,7 @@ Renderers MUST meet §2.1 policy:
 | Completion | Final line within 50 ms of terminal event |
 | Level `none` | Direct native output; `Renderer` is not involved |
 
-The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. All narration, including live regions and every `message.*` contract, MUST use stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. A terminal stdout payload MUST suspend and erase the stderr live frame, write the original payload bytes to stdout, then repaint on stderr. A redirected stdout payload MUST NOT interact with the live frame. Result decoration and table width MUST use stdout TTY state and dimensions. JSON emits exactly one stdout result and structured stderr events, with a first stderr event inside the meaningful-line budget.
+The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. All narration, including live regions and every `message.*` contract, MUST use stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. A terminal stdout payload MUST suspend and erase the stderr live frame, write the original payload bytes to stdout, then repaint on stderr. A redirected stdout payload MUST NOT interact with the live frame. Result decoration and table width MUST use stdout TTY state and dimensions. Non-streaming JSON emits one stdout envelope; streaming JSON follows §8.11.3. JSON emits structured stderr events, with a first stderr event inside the meaningful-line budget.
 
 #### 8.9.2 Concurrent task tree contract
 
@@ -769,7 +769,7 @@ Published schema contracts are `PromptType`, `PromptChoice`, `PromptValidate`, `
 
 #### 8.10.3 Answer-source precedence and interactivity mode
 
-Per prompt precedence is explicit answers → defaults when `--yes` or non-interactive → interactive prompt → `InteractionRequiredError`. `auto` is interactive only with TTY stdin and stderr; `--interactive` forces line prompts that read answers from stdin. Prompt text and controls MUST use stderr; redirecting stdout MUST NOT disable prompts. CI and non-interactive fail-fast behavior MUST remain intact. CLI defaults to `auto`; library mode defaults non-interactive (§16.3).
+Per prompt precedence is explicit answers → defaults when `--yes` or non-interactive → interactive prompt → `InteractionRequiredError`. `auto` is interactive only with TTY stdin and stderr; `--interactive` forces prompting; when stdin or stderr is not a TTY it uses line input. Prompt text and controls MUST use stderr; redirecting stdout MUST NOT disable prompts. CI and non-interactive fail-fast behavior MUST remain intact. CLI defaults to `auto`; library mode defaults non-interactive (§16.3).
 
 One shared parser owns repeated `--answer`, `--answers`, `--yes`, `--no-interactive`, and `--interactive` for both entries. Scratch `--option` merges into the same answer source (§21.10.1).
 
