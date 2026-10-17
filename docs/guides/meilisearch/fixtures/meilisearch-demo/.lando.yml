@@ -2,3 +2,22 @@ name: meilisearch-demo
 services:
   search:
     type: meilisearch
+  app:
+    type: "node:22"
+    primary: true
+    endpoints: []
+tooling:
+  meili:
+    service: search
+    description: Call the Meilisearch HTTP API with curl.
+    cmd: [curl, -sf]
+  node:
+    service: app
+    cmd: [node]
+    description: Run Node inside the app service.
+    dir: /app
+  npm:
+    service: app
+    cmd: [npm]
+    description: Run npm inside the app service.
+    dir: /app
