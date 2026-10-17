@@ -292,14 +292,14 @@ test.each([
     ],
   },
   { service: ":target", flags: { target: { default: "web" } }, cmd: "provider" },
-] satisfies ToolingTaskShape[])("does not replay provider or mixed body output: %j", async (task) => {
+] satisfies ToolingTaskShape[])("delivers returned provider and mixed body output once: %j", async (task) => {
   // Given a body with at least one resolved provider invocation.
   const h = harness(task);
   // When invoked with a sink.
   const result = await h.run();
-  // Then provider body is not replayed at the bracket boundary; only host steps stream.
+  // Then every invocation delivers its channel once, whether streamed or returned.
   expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
   if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
   const hasHost = JSON.stringify(task).includes(":host");
-  expect(joined(h.frames, "stdout")).toBe(hasHost ? "host" : "");
+  expect(joined(h.frames, "stdout")).toBe(hasHost ? "hostprovider" : "provider");
 });

@@ -106,7 +106,9 @@ export interface ToolingInvocation {
 /**
  * Result of executing a tooling invocation: the exit code of the last
  * command that ran plus the aggregated stdout/stderr captured across all
- * commands.
+ * commands. An engine may instead emit a channel to the invocation's output
+ * sink. Per channel, emitted output owns delivery and returned content is
+ * ignored; when nothing was emitted, returned content is delivered once.
  */
 export interface ToolingEngineResult {
   readonly tool: string;
@@ -126,6 +128,8 @@ export interface ToolingEngineResult {
  * Engines receive a fully-normalized invocation (argv form, resolved service
  * name still authored as the task `service:` value, etc.) and an `AppPlan`
  * for any plan-level data they need (primary-service lookup, provider id).
+ * Both returning and streaming engines MUST pass the contract suite. Streaming
+ * adapters MUST preserve returning-engine output independently on each channel.
  */
 export class ToolingEngine extends Context.Service<
   ToolingEngine,
