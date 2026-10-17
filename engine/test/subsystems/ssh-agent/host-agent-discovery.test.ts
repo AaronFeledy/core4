@@ -406,7 +406,7 @@ test("auto-discovery probes a plain-file SSH_AUTH_SOCK", async () => {
       env: { SSH_AUTH_SOCK: "C:\\Users\\test\\agent.sock" },
       inspect: () => Effect.succeed({ kind: "other" }),
       probe: (upstream) => {
-        probed.push(upstream.path);
+        if (upstream._tag === "unix") probed.push(upstream.path);
         return Effect.succeed({ identities: 1 });
       },
     }),
