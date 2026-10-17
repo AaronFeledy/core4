@@ -89,11 +89,14 @@ export const endpointsOf = (
 };
 
 export type ScriptedRequestResult =
-  | { readonly kind: "status"; readonly status: number }
+  | { readonly kind: "status"; readonly status: number; readonly headers?: Readonly<Record<string, string>> }
   | { readonly kind: "failure"; readonly message: string }
   | { readonly kind: "sleep"; readonly duration: Duration.Input; readonly status: number };
 
-export const httpStatus = (status: number): ScriptedRequestResult => ({ kind: "status", status });
+export const httpStatus = (
+  status: number,
+  headers?: Readonly<Record<string, string>>,
+): ScriptedRequestResult => ({ kind: "status", status, ...(headers === undefined ? {} : { headers }) });
 
 export const httpFailure = (message: string): ScriptedRequestResult => ({ kind: "failure", message });
 
@@ -133,7 +136,13 @@ export const requestSequence = (
     switch (scripted.kind) {
       case "status":
         return Effect.succeed(
-          HttpClientResponse.fromWeb(request, new Response(null, { status: scripted.status })),
+          HttpClientResponse.fromWeb(
+            request,
+            new Response(null, {
+              status: scripted.status,
+              ...(scripted.headers === undefined ? {} : { headers: scripted.headers }),
+            }),
+          ),
         );
       case "failure":
         return Effect.fail(

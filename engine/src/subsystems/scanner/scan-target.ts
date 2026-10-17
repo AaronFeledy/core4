@@ -1,4 +1,4 @@
-import { Duration, Effect, Ref } from "effect";
+import { Clock, Duration, Effect, Ref } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 
@@ -13,7 +13,7 @@ import type {
   ServiceName,
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import type { ScanEndpoint } from "@lando/sdk/services";
+import type { ScanAttempt, ScanEndpoint, ScanVerdict } from "@lando/sdk/services";
 
 import { RequestPolicy } from "@lando/http-client/live";
 
@@ -21,8 +21,7 @@ export const SCANNER_ID = "http-probe";
 
 /**
  * Scanner tuning knobs. `retry` is the TOTAL attempt count including the
- * first attempt. A response is accepted (`green`) when its status is 2xx or
- * listed in `okCodes`; any other response is `yellow`; no response is `red`.
+ * first attempt. App-owned answers are final; infrastructure errors retry.
  * Redirect policy is binary: `0` sends `redirect: "manual"` (a redirect
  * surfaces as its 3xx status), any positive value sends `redirect: "follow"`.
  */
@@ -70,10 +69,11 @@ export type ScanSourceEndpoint = PublishedEndpoint & {
 export interface UrlScannerDeps {
   readonly http: HttpClient.HttpClient;
   readonly listEndpoints: (appId: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
+  readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
 }
 
 type AttemptStatus =
-  | { readonly _tag: "response"; readonly status: number }
+  | { readonly _tag: "response"; readonly status: number; readonly routerMarker?: string }
   | { readonly _tag: "transport"; readonly message: string }
   | { readonly _tag: "timeout" };
 
@@ -124,20 +124,34 @@ const transportMessage = (error: HttpClientError.HttpClientError): string => {
 const makeAttempt = Effect.fnUntraced(function* (
   deps: UrlScannerDeps,
   config: UrlScanConfig,
-  url: string,
-  status: Ref.Ref<AttemptStatus>,
+  state: {
+    readonly target: ScanTarget;
+    readonly status: Ref.Ref<AttemptStatus>;
+    readonly attempts: Ref.Ref<number>;
+    readonly redactor: Redactor;
+    readonly verdict: Ref.Ref<ScanVerdict>;
+    readonly startedAt: number;
+  },
 ): Effect.fn.Return<ProbeOutcome> {
+  const { target, status } = state;
   const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
   const completed = yield* Effect.timeoutOrElse(
     Effect.map(
       Effect.result(
         Effect.scoped(
-          deps.http.get(url).pipe(
+          deps.http.get(target.url).pipe(
             Effect.provideService(RequestPolicy, {
               redirect: config.maxRedirects > 0 ? "follow" : "manual",
               callerId: "url-scanner",
             }),
-            Effect.map((response) => response.status),
+            Effect.map((response): AttemptStatus => {
+              const routerMarker = response.headers["x-lando-router"];
+              return {
+                _tag: "response",
+                status: response.status,
+                ...(routerMarker === undefined ? {} : { routerMarker }),
+              };
+            }),
           ),
         ),
       ),
@@ -148,27 +162,52 @@ const makeAttempt = Effect.fnUntraced(function* (
 
   if (completed === "timeout") {
     yield* Ref.set(status, { _tag: "timeout" });
-    return "red";
-  }
-
-  if (completed._tag === "Failure") {
-    const failure = completed.failure;
-    const message =
-      typeof failure === "object" &&
-      failure !== null &&
-      "_tag" in failure &&
-      (failure as { _tag: string })._tag === "HttpClientError"
-        ? transportMessage(failure as HttpClientError.HttpClientError)
-        : failure instanceof Error
-          ? failure.message
-          : String(failure);
+  } else if (completed._tag === "Failure") {
+    const message = transportMessage(completed.failure);
     yield* Ref.set(status, { _tag: "transport", message });
-    return "red";
+  } else {
+    yield* Ref.set(status, completed.success);
   }
-
-  yield* Ref.set(status, { _tag: "response", status: completed.success });
-  return isAccepted(completed.success, config.okCodes) ? "green" : "yellow";
+  const finalStatus = yield* Ref.get(status);
+  const verdict = classify(finalStatus, config.okCodes);
+  yield* Ref.set(state.verdict, verdict);
+  const outcome = finalStatus._tag === "response" ? (verdict === "ready" ? "green" : "yellow") : "red";
+  const attempt = yield* Ref.updateAndGet(state.attempts, (count) => count + 1);
+  const observedAt = yield* Clock.currentTimeMillis;
+  const onAttempt = deps.onAttempt;
+  if (onAttempt !== undefined) {
+    yield* Effect.suspend(() =>
+      onAttempt({
+        ...target,
+        attempt,
+        maxAttempts: Math.max(1, config.retry),
+        outcome,
+        verdict,
+        willRetry:
+          (verdict === "lando-error" || verdict === "service-error") &&
+          attempt < Math.max(1, config.retry) &&
+          (config.deadlineMs === undefined ||
+            observedAt + config.delaySeconds * 1000 < state.startedAt + config.deadlineMs),
+        ...(finalStatus._tag === "response" ? { statusCode: finalStatus.status } : {}),
+        detail: state.redactor.redactString(redDetail(finalStatus, timeoutMs)),
+      }),
+    ).pipe(Effect.catchCause(() => Effect.void));
+  }
+  // runProbe stops only on green. Final app answers stop it without losing their real verdict.
+  return verdict === "ready" || verdict === "app-error" ? "green" : outcome;
 });
+
+const classify = (status: AttemptStatus, okCodes: ReadonlyArray<number>): ScanVerdict => {
+  switch (status._tag) {
+    case "transport":
+    case "timeout":
+      return "lando-error";
+    case "response":
+      if (status.routerMarker !== undefined) return "lando-error";
+      if (isAccepted(status.status, okCodes)) return "ready";
+      return status.status >= 502 && status.status <= 504 ? "service-error" : "app-error";
+  }
+};
 
 const probeRunError = (url: string, cause: unknown, redactor: Redactor): ScannerError =>
   new ScannerError({
@@ -200,6 +239,9 @@ export const scanTarget = Effect.fnUntraced(function* (
     _tag: "transport",
     message: "URL probe did not run",
   });
+  const attempts = yield* Ref.make(0);
+  const verdictRef = yield* Ref.make<ScanVerdict>("lando-error");
+  const startedAt = yield* Clock.currentTimeMillis;
 
   const result = yield* runProbe(
     {
@@ -215,42 +257,34 @@ export const scanTarget = Effect.fnUntraced(function* (
         failure: () => "red",
       },
     },
-    makeAttempt(deps, config, target.url, status),
+    makeAttempt(deps, config, { target, status, attempts, redactor, verdict: verdictRef, startedAt }),
   ).pipe(Effect.mapError((cause) => probeRunError(target.url, cause, redactor)));
   const finalStatus = yield* Ref.get(status);
   const statusCode = finalStatus._tag === "response" ? finalStatus.status : undefined;
 
-  if (result.outcome === "green") {
-    return {
-      service: target.service,
-      url: target.url,
-      reachable: true,
-      ...(statusCode === undefined ? {} : { statusCode }),
-      outcome: "green" as const,
-    };
-  }
-
-  if (result.outcome === "yellow") {
-    return {
-      service: target.service,
-      url: target.url,
-      reachable: true,
-      ...(statusCode === undefined ? {} : { statusCode }),
-      outcome: "yellow" as const,
-      detail: redactor.redactString(`HTTP ${statusCode}`),
-    };
-  }
-
+  const deadline =
+    result.lastError instanceof ProbeTimeoutError ||
+    (result.outcome !== "green" && config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs);
+  const verdict = deadline ? "lando-error" : yield* Ref.get(verdictRef);
+  const response = !deadline && finalStatus._tag === "response";
   return {
     service: target.service,
     url: target.url,
-    reachable: false,
-    outcome: "red" as const,
-    detail: redactor.redactString(
-      result.lastError instanceof ProbeTimeoutError ||
-        (config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs)
-        ? `deadline exceeded after ${result.elapsedMs}ms`
-        : redDetail(finalStatus, result.elapsedMs),
-    ),
+    reachable: response,
+    verdict,
+    ...(response && statusCode !== undefined ? { statusCode } : {}),
+    ...(response && finalStatus.routerMarker !== undefined
+      ? { routerMarker: redactor.redactString(finalStatus.routerMarker) }
+      : {}),
+    outcome: response ? (verdict === "ready" ? "green" : "yellow") : "red",
+    ...(verdict === "ready"
+      ? {}
+      : {
+          detail: redactor.redactString(
+            deadline || (config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs)
+              ? `deadline exceeded after ${result.elapsedMs}ms`
+              : redDetail(finalStatus, result.elapsedMs),
+          ),
+        }),
   };
 });
