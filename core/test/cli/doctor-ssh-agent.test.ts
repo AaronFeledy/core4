@@ -205,6 +205,36 @@ describe("SSH agent doctor posture", () => {
     }
   });
 
+  test("host doctor dangling env without another agent names the reconnect fix", async () => {
+    // Given a dangling SSH_AUTH_SOCK and no other host agent.
+    const root = await mkdtemp(join(tmpdir(), "doctor-ssh-dangling-fix-"));
+    const dangling = join(root, "gone.sock");
+    await symlink(join(root, "absent"), dangling);
+    try {
+      // When doctor inspects host mode.
+      const check = await Effect.runPromise(
+        sshAgentPostureCheck({
+          ...inputs(),
+          globalConfig: { sshAgent: { sidecar: false } },
+          env: { SSH_AUTH_SOCK: dangling },
+          discovery: { home: root },
+        }),
+      );
+      // Then the reconnect remediation is the host fix.
+      expect(check).toMatchObject({
+        status: "warn",
+        details: {
+          mode: "host",
+          upstream: { reachable: false, reason: "env-socket-dangling", socketPath: dangling },
+        },
+      });
+      expect(check.solutions[0]?.description).toContain("Open a new terminal");
+      expect(check.solutions[0]?.description).toContain("no longer exists");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("host mode without an agent is degraded with remediation naming sshAgent.socket", async () => {
     // Given
     const input = { ...inputs(), globalConfig: { sshAgent: { sidecar: false } } };

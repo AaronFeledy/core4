@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { expect, spyOn, test } from "bun:test";
+import { chown, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -259,6 +259,202 @@ test("explicit socket owned by another user is socket-owner-mismatch", async () 
   if (result._tag !== "Failure") throw new Error("expected failure");
   expect(result.failure.message).toContain(`uid ${foreignUid}`);
 });
+
+test("explicit symlink whose target is owned by another user is socket-owner-mismatch", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given a link we own that points at a socket owned by someone else.
+  const self = process.getuid?.() ?? 0;
+  const foreignUid = self + 12_345;
+  // When discovery inspects that explicit symlink.
+  const result = await Effect.runPromise(
+    Effect.result(
+      discoverHostSshAgent({
+        platform: "linux",
+        home: "/home/test",
+        env: {},
+        explicitSocket: "/link.sock",
+        inspect: () =>
+          Effect.succeed({ kind: "symlink", uid: self, targetUid: foreignUid, targetKind: "socket" }),
+        probe: alive,
+      }),
+    ),
+  );
+  // Then the target owner is named even though the link uid matches.
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { reason: "socket-owner-mismatch", socketPath: "/link.sock" },
+  });
+  if (result._tag !== "Failure") throw new Error("expected failure");
+  expect(result.failure.message).toBe(
+    `The configured SSH agent socket is owned by uid ${foreignUid}, not the current user.`,
+  );
+});
+
+test("explicit symlink owned by another user is socket-owner-mismatch", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given a foreign-owned link that points at a socket we own.
+  const self = process.getuid?.() ?? 0;
+  const foreignUid = self + 12_345;
+  // When discovery inspects that explicit symlink.
+  const result = await Effect.runPromise(
+    Effect.result(
+      discoverHostSshAgent({
+        platform: "linux",
+        home: "/home/test",
+        env: {},
+        explicitSocket: "/link.sock",
+        inspect: () =>
+          Effect.succeed({ kind: "symlink", uid: foreignUid, targetUid: self, targetKind: "socket" }),
+        probe: alive,
+      }),
+    ),
+  );
+  // Then the link owner is named even though the target uid matches.
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { reason: "socket-owner-mismatch", socketPath: "/link.sock" },
+  });
+  if (result._tag !== "Failure") throw new Error("expected failure");
+  expect(result.failure.message).toContain(`uid ${foreignUid}`);
+});
+
+test("env SSH_AUTH_SOCK owned by another user is still selected", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given SSH_AUTH_SOCK pointing at a live socket owned by another uid.
+  const foreignUid = (process.getuid?.() ?? 0) + 12_345;
+  // When auto-discovery inspects that env socket.
+  const result = await Effect.runPromise(
+    discoverHostSshAgent({
+      platform: "linux",
+      home: "/home/test",
+      env: { SSH_AUTH_SOCK: "/run/host-services/ssh-auth.sock" },
+      inspect: () => Effect.succeed({ kind: "socket", uid: foreignUid }),
+      probe: alive,
+    }),
+  );
+  // Then env wins; owner checks apply only to sshAgent.socket.
+  expect(result.upstream).toEqual({
+    _tag: "unix",
+    path: "/run/host-services/ssh-auth.sock",
+    source: "env",
+  });
+});
+
+test("win32 non-pipe SSH_AUTH_SOCK is selected even with a foreign uid", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given a unix SSH_AUTH_SOCK on win32 whose inspect reports another owner.
+  const foreignUid = (process.getuid?.() ?? 0) + 12_345;
+  // When auto-discovery runs.
+  const result = await Effect.runPromise(
+    discoverHostSshAgent({
+      platform: "win32",
+      home: "C:\\Users\\test",
+      env: { SSH_AUTH_SOCK: "C:\\Users\\test\\agent.sock" },
+      inspect: () => Effect.succeed({ kind: "socket", uid: foreignUid }),
+      probe: alive,
+    }),
+  );
+  // Then the env unix socket is used instead of skipping to the named pipe.
+  expect(result.upstream).toEqual({
+    _tag: "unix",
+    path: "C:\\Users\\test\\agent.sock",
+    source: "env",
+  });
+});
+
+test("a dangling 1Password socket is not env-socket-dangling", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given a dangling 1Password agent path and no SSH_AUTH_SOCK.
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-password-dangling-"));
+  await mkdir(join(root, ".1password"));
+  await symlink(join(root, "absent"), join(root, ".1password", "agent.sock"));
+  try {
+    // When discovery finds no env socket and the 1Password path does not resolve.
+    const result = await Effect.runPromise(
+      Effect.result(discoverHostSshAgent({ platform: "linux", home: root, env: {} })),
+    );
+    // Then that dangling candidate is not reported as a stale SSH_AUTH_SOCK.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "host-agent-not-found" },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.reason).not.toBe("env-socket-dangling");
+    expect(result.failure.socketPath).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("explicit dangling symlink is socket-missing, not socket-not-socket", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given an explicit symlink whose target is gone.
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-explicit-dangling-"));
+  const link = join(root, "link.sock");
+  await symlink(join(root, "absent"), link);
+  try {
+    // When discovery inspects that explicit path.
+    const result = await Effect.runPromise(
+      Effect.result(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: root,
+          env: { SSH_AUTH_SOCK: join(root, "env.sock") },
+          explicitSocket: link,
+        }),
+      ),
+    );
+    // Then the missing link is socket-missing, not a non-socket.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "socket-missing", socketPath: link },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.reason).not.toBe("socket-not-socket");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === "win32")(
+  "env SSH_AUTH_SOCK owned by another user is selected without an inspector",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    // Given a live env socket whose owner does not match getuid, with no inspect/exists override.
+    const root = await mkdtemp(join(tmpdir(), "ssh-agent-foreign-env-"));
+    const socket = join(root, "agent.sock");
+    const agent = await listen(socket);
+    const self = process.getuid?.() ?? 0;
+    let restoreGetuid: (() => void) | undefined;
+    try {
+      if (self === 0) {
+        await chown(socket, 1, 1);
+        expect((await lstat(socket)).uid).toBe(1);
+      } else {
+        const spy = spyOn(process, "getuid").mockImplementation(() => self + 1);
+        restoreGetuid = () => spy.mockRestore();
+        expect((await lstat(socket)).uid).toBe(self);
+        expect(process.getuid?.()).toBe(self + 1);
+      }
+      // When auto-discovery uses real lstat.
+      const result = await Effect.runPromise(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: root,
+          env: { SSH_AUTH_SOCK: socket },
+        }),
+      );
+      // Then the foreign-owned env socket is still selected.
+      expect(result.upstream).toEqual({ _tag: "unix", path: socket, source: "env" });
+    } finally {
+      restoreGetuid?.();
+      await agent.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("explicit symlink to a non-socket is socket-not-socket", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
