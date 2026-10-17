@@ -1,5 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { REDACTED, createPayloadRedactor } from "@lando/sdk/secrets";
+import {
+  REDACTED,
+  createPayloadRedactor,
+  isPublicDefaultCredential,
+  isUsableExactRedactionValue,
+} from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import {
   collectForwardedEnvValues,
@@ -37,23 +42,23 @@ test("payload values combine the store, tokens and late registrations without he
 });
 
 test.each([
-  ["lando", false],
-  ["landolando", false],
-  ["", false],
-  [" \t", false],
-  ["32", false],
-  ["1234", false],
-  ["38;2;255;0;0", false],
-  ["a", true],
-  ["☃", true],
-  ["12345678", true],
-  ["private-value", true],
-  ["LANDO", true],
-  [" lando ", true],
-] as const)("string and payload layers share eligibility for %j", async (value, eligible) => {
+  "lando",
+  "landolando",
+  "",
+  " \t",
+  "32",
+  "1234",
+  "38;2;255;0;0",
+  "a",
+  "☃",
+  "12345678",
+  "private-value",
+  "LANDO",
+  " lando ",
+] as const)("payload masks exactly the usable values the string layer masks for %j", async (value) => {
   // Given
   const text = `<>${value}<>`;
-  const expected = eligible ? `<>${REDACTED}<>` : text;
+  const masked = `<>${REDACTED}<>`;
   for (const source of ["store", "plan", "env", "registered", "forwarded"] as const) {
     resetRegisteredRedactionValuesForTesting();
     const service = makeRedactionService({
@@ -78,8 +83,15 @@ test.each([
     const first = payload.write(bytes.subarray(0, 9));
     const second = payload.write(bytes.subarray(9));
     const output = Buffer.concat([first, second, payload.flush()]).toString();
-    // Then
-    expect(strings.redactString(text)).toBe(expected);
-    expect(output).toBe(expected);
+    // Then: heuristic sources drop public defaults; explicit sources keep them.
+    const heuristic = source === "env" || source === "forwarded";
+    const eligible =
+      value.trim().length > 0 &&
+      isUsableExactRedactionValue(value) &&
+      !(heuristic && isPublicDefaultCredential(value));
+    expect(output).toBe(eligible ? masked : text);
+    if (eligible) expect(strings.redactString(text)).toBe(masked);
+    else if (source === "store" && value.length > 0) expect(strings.redactString(text)).toBe(REDACTED);
+    else expect(strings.redactString(text)).toBe(text);
   }
 });

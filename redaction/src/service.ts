@@ -83,9 +83,6 @@ export class RedactionValues extends Inspectable.Class implements Redactable.Red
 const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;
 
-const isEligibleValue = (value: string): boolean =>
-  isUsableExactRedactionValue(value) && !isPublicDefaultCredential(value);
-
 const SECRET_ENV_KEY_PARTS = new Set([
   "apikey",
   "apikeys",
@@ -132,7 +129,12 @@ export const collectSecretEnvValues = (
       .filter(nonEmpty);
     const carriesSecret =
       key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
-    if (carriesSecret && value !== undefined && isEligibleValue(value)) {
+    if (
+      carriesSecret &&
+      nonEmpty(value) &&
+      !isPublicDefaultCredential(value) &&
+      isUsableExactRedactionValue(value)
+    ) {
       values.push(value);
     }
   }
@@ -165,25 +167,26 @@ const collectOptionValues = (options: RedactionForProfileOptions | undefined): s
 const dedupeValues = (values: Iterable<string>): string[] => {
   const deduped = new Set<string>();
   for (const value of values) {
-    if (isEligibleValue(value)) deduped.add(value);
+    if (nonEmpty(value) && isUsableExactRedactionValue(value)) deduped.add(value);
   }
   return [...deduped];
 };
 
+/** Forwarded agent values are heuristic, so they drop the published default credentials. */
 export const collectForwardedEnvValues = (env: Readonly<Record<string, string>> | undefined): string[] =>
-  dedupeValues(Object.values(env ?? {}));
+  dedupeValues(Object.values(env ?? {})).filter((value) => !isPublicDefaultCredential(value));
 
-const collectValueLayer = (secretValues: Iterable<string>, options: RedactionForProfileOptions | undefined) =>
-  dedupeValues([...secretValues, ...collectOptionValues(options), ...(options?.authoritativeTokens ?? [])]);
-
+/**
+ * Explicit values (secret store, registrations, authoritative tokens) are authoritative: an
+ * unusable one suppresses any string that contains it. Heuristic sources drop public defaults
+ * when they are collected, never here.
+ */
 const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => ({
-  values: collectValueLayer([...secretValues, ...registeredValues], options),
-  authoritativeValues: [...(options?.authoritativeTokens ?? [])].filter(
-    (value) => !isPublicDefaultCredential(value),
-  ),
+  values: dedupeValues(collectOptionValues(options)),
+  authoritativeValues: [...secretValues, ...registeredValues, ...(options?.authoritativeTokens ?? [])],
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 
@@ -193,7 +196,7 @@ let registeredGeneration = 0;
 export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
   Effect.sync(() => {
     for (const value of values) {
-      if (!isEligibleValue(value) || registeredValues.has(value)) continue;
+      if (!isUsableExactRedactionValue(value) || registeredValues.has(value)) continue;
       registeredValues.add(value);
       registeredGeneration += 1;
     }
@@ -246,7 +249,9 @@ export const createPayloadValues = (
   secretValues: Iterable<string>,
   options?: RedactionForProfileOptions,
 ): (() => Iterable<string>) => {
-  const initial = collectValueLayer(secretValues, options);
+  // Every usable value the string redactor masks. A byte stream cannot suppress a whole detail,
+  // so unusable authoritative values have no payload equivalent.
+  const initial = [...collectOptionValues(options), ...secretValues, ...(options?.authoritativeTokens ?? [])];
   let generation = -1;
   let values = new RedactionValues();
   return () => {
