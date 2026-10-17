@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `SshAgentUnavailableError.reason` adds `socket-not-socket`, `socket-owner-mismatch`, and `env-socket-dangling`. An explicit host socket may be a symlink to a same-uid socket; the authored path is what is relayed. A dangling `SSH_AUTH_SOCK` is reported when no other host agent is found. Consumers matching on `reason` must handle the new literals.
+
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.

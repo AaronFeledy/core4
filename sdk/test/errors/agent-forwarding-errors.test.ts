@@ -3,6 +3,26 @@ import { Result, Schema } from "effect";
 
 import * as errors from "@lando/sdk/errors";
 
+test.each(["socket-not-socket", "socket-owner-mismatch", "env-socket-dangling"] as const)(
+  "SshAgentUnavailableError encodes %s",
+  (reason) => {
+    // Given
+    const fields = {
+      message: "Agent unavailable",
+      mode: "host",
+      reason,
+      socketPath: "/tmp/agent.sock",
+      remediation: "Start the agent.",
+    } as const;
+    // When
+    const encoded = Schema.encodeSync(errors.SshAgentUnavailableError)(
+      new errors.SshAgentUnavailableError(fields),
+    );
+    // Then
+    expect(encoded).toEqual({ ...fields, _tag: "SshAgentUnavailableError" });
+  },
+);
+
 test("SshAgentUnavailableError and GpgAgentUnavailableError encode tag, reason and remediation", () => {
   // Given
   const fields = {
