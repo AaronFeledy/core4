@@ -13,14 +13,15 @@ import * as RendererOutput from "@lando/renderer/output";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { resetInteractivePromptDegradationForTest } from "../../src/interaction/interactive-driver.ts";
 import {
+  type InteractionServiceDeps,
   makeDefaultResolveInteractionDriver,
-  makeInteractionService,
+  makeInteractionService as makeStdioInteractionService,
 } from "../../src/interaction/service.ts";
 
 type RendererService = Context.Service.Shape<typeof Renderer>;
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
-  Readable.from(lines.map((line) => `${line}\n`));
+  Object.assign(Readable.from(lines.map((line) => `${line}\n`)), { isTTY: true });
 
 const neverStdin = (): NodeJS.ReadableStream =>
   new Readable({
@@ -37,7 +38,7 @@ const capturingWritable = () => {
       callback();
     },
   });
-  return { stream, text: () => text };
+  return { stream: Object.assign(stream, { isTTY: true }), text: () => text };
 };
 
 const capturingRenderer = (id = "plain") => {
@@ -60,6 +61,9 @@ const capturingRenderer = (id = "plain") => {
   });
   return { service, out: () => out, err: () => err };
 };
+
+const makeInteractionService = (deps: InteractionServiceDeps = {}) =>
+  makeStdioInteractionService({ stderr: capturingWritable().stream, ...deps });
 
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));
@@ -111,6 +115,7 @@ describe("InteractionServiceLive — answer-source precedence", () => {
   test("sequential batches on one service share a single stdin reader (no lost buffered input)", async () => {
     // One push delivers BOTH answers: a per-call reader would strand "second" at EOF.
     const single = new Readable();
+    Object.assign(single, { isTTY: true });
     single.push("first\nsecond\n");
     single.push(null);
     const service = makeInteractionService({ stdin: single, stdout: capturingWritable().stream });
@@ -176,10 +181,37 @@ describe("InteractionServiceLive — answer-source precedence", () => {
   test("isInteractive uses structural TTY detection for injected streams", async () => {
     const fakeTty = new Readable({ read() {} });
     Object.assign(fakeTty, { isTTY: true });
-    const service = makeInteractionService({ stdin: fakeTty });
+    const service = makeInteractionService({ stdin: fakeTty, stderr: capturingWritable().stream });
 
     await expect(Effect.runPromise(service.isInteractive)).resolves.toBe(true);
   });
+
+  for (const inputTTY of [true, false]) {
+    for (const stderrTTY of [true, false]) {
+      for (const stdoutTTY of [true, false]) {
+        test(`prompts require stdin=${inputTTY} stderr=${stderrTTY}, independently of stdout=${stdoutTTY}`, async () => {
+          const output = capturingWritable();
+          const narration = capturingWritable();
+          const service = makeInteractionService({
+            stdin: Object.assign(scriptedStdin(["typed"]), { isTTY: inputTTY }),
+            stdout: Object.assign(output.stream, { isTTY: stdoutTTY }),
+            stderr: Object.assign(narration.stream, { isTTY: stderrTTY }),
+          });
+          const exit = await runScopedExit(
+            service.promptAll([{ name: "app", type: "text", message: "App?" }], { interactive: true }),
+          );
+          if (inputTTY && stderrTTY) {
+            expect(Exit.isSuccess(exit) && exit.value).toEqual({ app: "typed" });
+            expect(narration.text().length).toBeGreaterThan(0);
+          } else {
+            expect(failureTag(exit)).toBe("InteractionRequiredError");
+            expect(narration.text()).toBe("");
+          }
+          expect(output.text()).toBe("");
+        });
+      }
+    }
+  }
 
   test("answersFile is merged below explicit answers", async () => {
     const { tmpdir } = await import("node:os");
@@ -345,6 +377,7 @@ describe("InteractionServiceLive — rich driver wiring", () => {
     const service = makeInteractionService({
       stdin: ttyStdin,
       stdout: capturingWritable().stream,
+      stderr: capturingWritable().stream,
       resolveDriver: async (gate) => {
         await gate.debug?.("OpenTUI prompts degraded to line input for this process.", {
           cause: new Error("native renderer init failed"),
@@ -382,6 +415,7 @@ describe("InteractionServiceLive — rich driver wiring", () => {
     Object.assign(ttyStdin, { isTTY: true });
     const service = makeInteractionService({
       stdin: ttyStdin,
+      stderr: capturingWritable().stream,
       resolveDriver: async () => {
         resolveAttempts += 1;
         return { readRaw: async () => "rich-answer" };
@@ -390,7 +424,10 @@ describe("InteractionServiceLive — rich driver wiring", () => {
     const renderer = capturingRenderer(id);
     const baselineStdin = scriptedStdin(["line-answer"]);
     Object.assign(baselineStdin, { isTTY: true });
-    const baselineService = makeInteractionService({ stdin: baselineStdin });
+    const baselineService = makeInteractionService({
+      stdin: baselineStdin,
+      stderr: capturingWritable().stream,
+    });
     const baselineRenderer = capturingRenderer(id);
 
     const answer = await runScoped(
@@ -414,7 +451,7 @@ describe("InteractionServiceLive — rich driver wiring", () => {
 describe("InteractionServiceLive — secret redaction", () => {
   test("secret returns a Redacted value and never echoes the input", async () => {
     const capture = capturingWritable();
-    const service = makeInteractionService({ stdin: scriptedStdin(["hunter2"]), stdout: capture.stream });
+    const service = makeInteractionService({ stdin: scriptedStdin(["hunter2"]), stderr: capture.stream });
     const value = await runScoped(service.secret({ message: "Password?", interactive: true }));
     expect(Redacted.value(value)).toBe("hunter2");
     expect(String(value)).not.toContain("hunter2");
@@ -443,7 +480,7 @@ describe("InteractionServiceLive — confirm and select", () => {
 });
 
 describe("InteractionServiceLive — renderer coordination", () => {
-  test("prompt chrome routes through Renderer.output.stdout when a renderer is present", async () => {
+  test("prompt chrome routes through Renderer.output.stderr when a renderer is present", async () => {
     const renderer = capturingRenderer();
     const directStdout = capturingWritable();
     const service = makeInteractionService({
@@ -455,7 +492,8 @@ describe("InteractionServiceLive — renderer coordination", () => {
         .promptAll([{ name: "app", type: "text", message: "Routed?" }], { interactive: true })
         .pipe(Effect.provideService(Renderer, Renderer.of(renderer.service))),
     );
-    expect(renderer.out()).toContain("Routed?");
+    expect(renderer.err()).toContain("Routed?");
+    expect(renderer.out()).toBe("");
     expect(directStdout.text()).toBe("");
   });
 
@@ -463,7 +501,7 @@ describe("InteractionServiceLive — renderer coordination", () => {
     const directStdout = capturingWritable();
     const service = makeInteractionService({
       stdin: scriptedStdin(["typed-value"]),
-      stdout: directStdout.stream,
+      stderr: directStdout.stream,
     });
     await runScoped(
       service.promptAll([{ name: "app", type: "text", message: "Direct?" }], { interactive: true }),
@@ -492,7 +530,10 @@ describe("InteractionServiceLive — renderer coordination", () => {
 
 describe("InteractionServiceLive — interruption", () => {
   test("Effect.interrupt surfaces InteractionCancelledError", async () => {
-    const service = makeInteractionService({ stdin: neverStdin(), stdout: capturingWritable().stream });
+    const service = makeInteractionService({
+      stdin: Object.assign(neverStdin(), { isTTY: true }),
+      stdout: capturingWritable().stream,
+    });
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(
@@ -530,6 +571,7 @@ describe("InteractionServiceLive — interruption", () => {
     const service = makeInteractionService({
       stdin: fakeTty,
       stdout: capturingWritable().stream,
+      stderr: capturingWritable().stream,
       resolveDriver: async () => ({
         readRaw: async (_request, signal) => {
           receivedSignal = signal;

@@ -41,12 +41,14 @@ A non-zero exit follows the same shape. Stderr still streams. The failing child 
 
 | Mode | Progress and messages | Command output |
 | --- | --- | --- |
-| `lando` (default) | Live task tree when stdout is a terminal. Otherwise one line per event on stderr. | stdout |
+| `lando` (default) | Live task tree on the stderr terminal, even when you redirect stdout. Otherwise one line per event on stderr. | stdout |
 | `verbose` | Human line plus the full event payload for every event, on stderr. | stdout |
 | `plain` | One line per event on stderr, no tree, no spinners. Tooling prints no tree lines. | stdout |
 | `json` | Structured events and messages on stderr. | JSON envelope on stdout |
 
 `--format=json` wraps the command result in a JSON envelope on stdout. Progress and messages stay on stderr.
+
+When both streams reach your terminal, Lando erases the live tree, writes each payload chunk to stdout, then repaints the tree on stderr. Redirect stdout and payload writes leave the live tree alone. Redirect stderr and you get only the command output on your terminal. Interactive prompts also use stderr and require terminal stdin and stderr; redirecting stdout does not disable them.
 
 <Guide>
   <Scenario id="clean-script-stdout" render>

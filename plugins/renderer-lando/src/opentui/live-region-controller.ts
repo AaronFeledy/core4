@@ -50,7 +50,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.onStdoutResize = (): void => {
       const columns = options.stdout.columns;
       const rows = options.stdout.rows;
-      if (typeof columns === "number" && typeof rows === "number") this.applyResize(columns, rows);
+      if (typeof columns === "number" && typeof rows === "number") this.resize(columns, rows);
     };
     options.stdout.on("resize", this.onStdoutResize);
   }
@@ -66,6 +66,25 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   }
 
   rememberScrollback(_text: string): void {}
+
+  suspendOutput(text: string, write: () => void): void {
+    const session = this.fullTail;
+    const renderer = session?.renderer;
+    renderer?.suspend?.();
+    if (session === undefined) this.inline.paint([]);
+    try {
+      write();
+    } finally {
+      // Keep a partial payload line open until its next chunk terminates it.
+      if (text.length > 0) this.openLine = !text.endsWith("\n");
+      renderer?.resume?.();
+      if (session !== undefined) {
+        paintFullTailFooter(session, this.footerLines, this.width, this.height);
+      } else if (!this.openLine && this.footerLines.length > 0) {
+        this.inline.paint(this.footerLines);
+      }
+    }
+  }
 
   noteInPlaceOutput(): void {
     this.openLine = true;
@@ -124,6 +143,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   async enterFullTail(): Promise<void> {
     if (this.fullTail !== undefined || this.enteringFullTail) return;
     this.enteringFullTail = true;
+    this.inline.paint([]);
     try {
       this.fullTail = await acquireFullTail(this.options, this.deps, (width, height) => {
         this.applyResize(width, height);
@@ -151,7 +171,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     leaveFullTail(session);
     this.fullTail = undefined;
     for (const source of drained) this.inline.commitAbove(source);
-    if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
+    if (this.footerLines.length > 0 && !this.openLine) this.inline.paint(this.footerLines);
   }
 
   async reset(): Promise<void> {

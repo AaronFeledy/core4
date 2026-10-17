@@ -82,6 +82,7 @@ export async function acquireLiveRegionSubstrate(
         exitOnCtrlC: false,
         externalOutputMode: "passthrough",
         stdout: options.stdout,
+        remote: false,
         width: options.width,
         height: options.height,
       }));

@@ -7,7 +7,7 @@
  *
  * Renderer-boundary carve-out: this module owns the Live-layer stdin reader
  * and the no-renderer fallback writer. Prompt output
- * routes through `Renderer.output.stdout`/`stderr` whenever a `Renderer` is
+ * routes through `Renderer.output.stderr` whenever a `Renderer` is
  * resolvable via `Effect.serviceOption`; only with no renderer active does it
  * fall back to a direct stdio write (via the reused `createStdioPromptIO`).
  */
@@ -205,6 +205,7 @@ const resolveGate = (
     const mode = options?.mode ?? defaultMode;
     interactive = mode === "interactive" ? true : mode === "non-interactive" ? false : isTty;
   }
+  interactive = interactive && isTty;
   return { yes, nonInteractive: !interactive, interactive };
 };
 
@@ -223,6 +224,9 @@ const readAnswersFileJson = async (path: string): Promise<Record<string, string>
 
 export const makeInteractionService = (deps: InteractionServiceDeps = {}): InteractionServiceShape => {
   const stdin = deps.stdin ?? process.stdin;
+  const stderr = deps.stderr ?? process.stderr;
+  const isInteractiveTerminal = (): boolean =>
+    isTtyStdin(stdin) && "isTTY" in stderr && stderr.isTTY === true;
   const id = deps.id ?? STDIO_INTERACTION_ID;
   const defaultMode: PromptMode = deps.defaultMode ?? "auto";
   // One reader per service instance: buffered-ahead stdin survives across batches.
@@ -234,7 +238,6 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     const base = createStdioPromptIO({
       stdin,
       lineReader,
-      ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
       ...(deps.stderr === undefined ? {} : { stderr: deps.stderr }),
       signal,
     });
@@ -244,7 +247,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       isTTY: base.isTTY,
       readLine: base.readLine,
       write: (chunk) => {
-        Effect.runSync(renderer.output.stdout(chunk));
+        Effect.runSync(renderer.output.stderr(chunk));
       },
       writeError: (chunk) => {
         Effect.runSync(renderer.output.stderr(chunk));
@@ -331,7 +334,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     const rendererOption = yield* Effect.serviceOption(Renderer);
     const loggerOption = yield* Effect.serviceOption(Logger);
     const runtime = yield* Effect.context<never>();
-    const tty = isTtyStdin(stdin);
+    const tty = isInteractiveTerminal();
     const gate = resolveGate(options, tty, defaultMode);
     const cwd = options?.cwd ?? process.cwd();
     const explicit = options?.answers ?? {};
@@ -428,7 +431,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
 
   return InteractionService.of({
     id,
-    isInteractive: Effect.sync(() => isTtyStdin(stdin)),
+    isInteractive: Effect.sync(isInteractiveTerminal),
     prompt,
     promptAll,
     confirm,

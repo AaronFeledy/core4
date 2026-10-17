@@ -18,6 +18,8 @@ export type {
 
 declare const __LANDO_OPENTUI_NATIVE_ROOT__: string;
 
+const processEvents: NodeJS.EventEmitter = process;
+
 const publishLoaderProbe = (phase: "attempt" | "ready"): void => {
   const probe = Reflect.get(globalThis, Symbol.for("@lando/test/opentui-loader-probe"));
   if (typeof probe !== "function") return;
@@ -91,12 +93,14 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
 
       let mod: OpenTuiModuleLike;
       let renderer: RendererLike;
+      const terminal = deps.stdout ?? process.stderr;
       try {
         mod = await loadModule();
         renderer = await (deps.createRenderer?.(mod) ??
           mod.createCliRenderer({
             stdin: deps.stdin,
-            stdout: deps.stdout,
+            stdout: terminal,
+            remote: false,
             exitOnCtrlC: false,
             screenMode: "main-screen",
             useMouse: false,
@@ -112,6 +116,9 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
         );
       }
 
+      const onResize = (): void => renderer.resize?.(terminal.columns, terminal.rows);
+      terminal.on("resize", onResize);
+      if (terminal === process.stderr) process.on("SIGWINCH", onResize);
       let cancelListener: ((key: KeyEventLike) => void) | undefined;
       let abortListener: (() => void) | undefined;
       let disposePrompt: PromptDisposer | undefined;
@@ -168,6 +175,8 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
       }
 
       let cleanupCause: unknown;
+      terminal.off("resize", onResize);
+      if (terminal === process.stderr) processEvents.off("SIGWINCH", onResize);
       try {
         if (cancelListener !== undefined) removeListener(renderer.keyInput, "keypress", cancelListener);
       } catch (cause) {

@@ -8,24 +8,41 @@ import {
 } from "@lando/renderer/io";
 
 describe("renderer IO output stream seam", () => {
-  test("stdio IO exposes process stdout by default", () => {
+  test("stdio IO exposes process stderr by default", () => {
     const io = createStdioRendererIO();
 
-    expect(io.externalOutputStream).toBe(process.stdout);
+    expect(io.externalOutputStream?.isTTY).toBe(process.stderr.isTTY);
   });
 
-  test("stdio IO exposes the injected stdout stream", () => {
-    const stdout = process.stderr;
+  test("stdio IO exposes the injected narration stream", () => {
+    const stderr = process.stdout;
 
-    const io = createStdioRendererIO(stdout);
+    const io = createStdioRendererIO(process.stdout, stderr);
 
-    expect(io.externalOutputStream).toBe(stdout);
+    expect(io.externalOutputStream?.isTTY).toBe(stderr.isTTY);
   });
 
   test("buffered IO omits the external output stream", () => {
     const io = createBufferedRendererIO();
 
     expect(io.externalOutputStream).toBeUndefined();
+  });
+
+  test("forwards native stderr resize signals and unregisters the listener", () => {
+    const io = createStdioRendererIO();
+    let resized = 0;
+    const listener = () => {
+      resized += 1;
+    };
+    const before = process.listenerCount("SIGWINCH");
+    io.externalOutputStream?.on("resize", listener);
+    try {
+      process.emit("SIGWINCH");
+      expect(resized).toBe(1);
+    } finally {
+      io.externalOutputStream?.off("resize", listener);
+    }
+    expect(process.listenerCount("SIGWINCH")).toBe(before);
   });
 });
 
@@ -73,7 +90,7 @@ describe("native terminal line endings", () => {
 
     expect(stdout.writes.join("")).toBe("Started\r\n  app is ready\r\nURLs\r\n  https://app.test\r\n");
     expect(stderr.writes.join("")).toBe("Error\r\n  remediation\r\nprogress\r");
-    expect(io.externalOutputStream).toBe(stdout.stream);
+    expect(io.externalOutputStream?.columns).toBe(stderr.stream.columns);
   });
 
   test.each([

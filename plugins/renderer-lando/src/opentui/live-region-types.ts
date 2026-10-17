@@ -45,6 +45,8 @@ export interface LiveRegionRendererLike {
   footerHeight: number;
   resetSplitFooterForReplay(options: { readonly clearSavedLines: boolean }): void;
   destroy(): void;
+  suspend?(): void;
+  resume?(): void;
 }
 
 interface RenderableConstructorLike {
