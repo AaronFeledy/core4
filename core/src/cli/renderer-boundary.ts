@@ -248,11 +248,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const liveStreaming = options.streamingMode === "live";
   // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
   const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
-  const commandLayer = Layer.mergeAll(
-    options.runtime,
-    rendererLayer,
-    commandWarningsLayer,
-  ) as Layer.Layer<R, RE>;
+  const commandLayer = Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer) as Layer.Layer<
+    R,
+    RE
+  >;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
   const invocation =
