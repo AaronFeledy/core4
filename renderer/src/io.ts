@@ -1,6 +1,6 @@
 import { fstatSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
-import { guardedWrite, isOutputBroken } from "./native-stdio.ts";
+import { guardedWrite, isOutputBlocked, isOutputBroken } from "./native-stdio.ts";
 import { outputStreams } from "./output-streams.ts";
 
 export {
@@ -152,8 +152,16 @@ export const createStdioRendererIO = (
     createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
-  outputStreams.set(io.writeStdout, { stream: stdout, isBroken: () => isOutputBroken(stdout) });
-  outputStreams.set(io.writeStderr, { stream: stderr, isBroken: () => isOutputBroken(stderr) });
+  outputStreams.set(io.writeStdout, {
+    stream: stdout,
+    isBroken: () => isOutputBroken(stdout),
+    isBlocked: () => isOutputBlocked(stdout),
+  });
+  outputStreams.set(io.writeStderr, {
+    stream: stderr,
+    isBroken: () => isOutputBroken(stderr),
+    isBlocked: () => isOutputBlocked(stderr),
+  });
   return io;
 };
 
