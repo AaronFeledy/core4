@@ -450,7 +450,7 @@ describe("runAppEvent tooling-step kernel", () => {
     ]);
   });
 
-  test("runs resolved task variables without publishing their payload as detail events", async () => {
+  test("publishes resolved task output only after redacting task variables", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const plan = attachEffectiveTooling(
@@ -473,7 +473,8 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     const published = JSON.stringify(details);
     expect(published).not.toContain("resolved-secret-value");
-    expect(details).toEqual([]);
+    expect(details).toHaveLength(1);
+    expect(details[0]?.line).toContain("[redacted]");
     expect(invocations[0]?.commands[0]?.[2]).toContain("resolved-secret-value");
   });
 
@@ -509,11 +510,11 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(published.pre).toHaveLength(1);
     expect(published.post).toHaveLength(1);
-    expect(published.details).toEqual([]);
+    expect(published.details.map((detail) => detail.line)).toEqual(["[redacted]:unset", "[redacted]"]);
     expect(published.pre[0]?.command).toContain("[redacted]");
     expect(published.post[0]?.command).toContain("[redacted]");
-    expect(published.post[0]?.stdout).toBe("[redacted]:unset");
-    expect(published.post[0]?.stderr).toBe("[redacted]");
+    expect(published.post[0]?.stdout).toBe("");
+    expect(published.post[0]?.stderr).toBe("");
     const payload = JSON.stringify(published);
     expect(payload).not.toContain(secret);
     expect(payload).toContain("[redacted]");
