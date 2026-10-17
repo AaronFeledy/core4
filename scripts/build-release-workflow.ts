@@ -41,7 +41,12 @@ const sha256sumBlock = (): string =>
   }).join(`\n${YAML_RUN_INDENT}`);
 
 const releaseAssetArgs = (): string =>
-  [...CI_PLATFORMS.map((platform) => `dist/${releaseBinaryFileName(platform)}`), "dist/SHA256SUMS"].join(" ");
+  [
+    ...CI_PLATFORMS.map((platform) => `dist/${releaseBinaryFileName(platform)}`),
+    "dist/SHA256SUMS",
+    "plugins/service-lando/tomcat/LICENSE",
+    "plugins/service-lando/tomcat/NOTICE",
+  ].join(" ");
 
 export const renderReleaseWorkflow = (): string => `${GENERATED_HEADER}
 ${SCOPE_COMMENT}
@@ -63,6 +68,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
+        with:
+          ref: \${{ github.event.workflow_run.head_sha }}
 
       - name: Setup Bun
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2

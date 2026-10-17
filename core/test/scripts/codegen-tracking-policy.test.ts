@@ -13,6 +13,11 @@ type CodegenCatalogModule = {
 
 const derivedTypeScriptPolicies = [
   {
+    ids: ["tomcat-catalog"],
+    ignoreProbe: "plugins/service-lando/src/services/generated/tomcat-catalog.ts",
+    trackingPath: "plugins/service-lando/src/services/generated/tomcat-catalog.ts",
+  },
+  {
     ids: ["command-registry-manifest"],
     ignoreProbe: "core/src/cli/allowlists/recipe-post-init.ts",
     trackingPath: "core/src/cli/allowlists/recipe-post-init.ts",
@@ -72,6 +77,7 @@ const committedWorkflowPolicies = [
   { id: "runtime-bundle-workflow", path: ".github/workflows/runtime-bundle.yml" },
   { id: "php-base-workflow", path: ".github/workflows/php-base-images.yml" },
   { id: "compose-vendor-bump-workflow", path: ".github/workflows/compose-vendor-bump.yml" },
+  { id: "tomcat-bump-workflow", path: ".github/workflows/tomcat-bump.yml" },
   { id: "platform-readiness-workflow", path: ".github/workflows/platform-readiness.yml" },
   { id: "drupal-journey-workflow", path: ".github/workflows/drupal-journey.yml" },
   { id: "rails-journey-workflow", path: ".github/workflows/rails-journey.yml" },

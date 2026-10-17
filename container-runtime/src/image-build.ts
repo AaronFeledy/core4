@@ -40,9 +40,20 @@ const runInstruction = (command: string | ReadonlyArray<string>, providerId: str
     ? validateDockerfileToken(command, "Build step shell command", providerId).pipe(
         Effect.as(`RUN ${command}`),
       )
-    : Effect.forEach(command, (part) => validateDockerfileToken(part, "Build step argv token", providerId), {
-        discard: true,
-      }).pipe(Effect.as(`RUN ${JSON.stringify(command)}`));
+    : Effect.forEach(
+        command,
+        (part) =>
+          part.includes("\0")
+            ? Effect.fail(
+                new ProviderInternalError({
+                  providerId,
+                  operation: "buildArtifact",
+                  message: "Build step argv token cannot contain NUL.",
+                }),
+              )
+            : Effect.void,
+        { discard: true },
+      ).pipe(Effect.as(`RUN ${JSON.stringify(command)}`));
 
 type DerivedDockerfileInput = {
   readonly providerId: string;

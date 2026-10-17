@@ -21,7 +21,15 @@
     ".": "./src/index.ts",
     "./php-internals": "./src/php-internals.ts"
   },
-  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml", "./README.md"],
+  "files": [
+    "./src",
+    "./dist",
+    "!./dist/**/*.tsbuildinfo",
+    "./plugin.yaml",
+    "./README.md",
+    "./tomcat/LICENSE",
+    "./tomcat/NOTICE"
+  ],
   "keywords": ["lando", "lando-plugin"],
   "lando": {
     "manifest": "./plugin.yaml"
