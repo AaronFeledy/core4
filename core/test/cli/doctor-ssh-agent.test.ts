@@ -186,16 +186,14 @@ describe("SSH agent doctor posture", () => {
       expect(check).toMatchObject({
         status: "pass",
         severity: "info",
-        context: {
-          danglingEnvSocket: dangling,
-          note: expect.stringContaining("1Password"),
-        },
+        context: { danglingEnvSocket: dangling },
         details: {
           mode: "host",
           upstream: { source: "1password", reachable: true, danglingEnvSocket: dangling },
         },
       });
       expect(check.context.note).toContain("no longer exists");
+      expect(check.context.note).toContain("1Password");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
