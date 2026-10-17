@@ -2,18 +2,18 @@ import { randomUUID } from "node:crypto";
 import { Effect, Exit } from "effect";
 
 import { SqlSeedStateError } from "@lando/sdk/errors";
-import type { VolumeRef } from "@lando/sdk/schema";
+import type { SnapshotInfo, VolumeRef } from "@lando/sdk/schema";
 
 import { type SqlExec, runImport } from "./actions.ts";
 import { parseCount } from "./command-input.ts";
 import { countCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
-import { requireCompatibleSnapshot } from "./snapshot-compatibility.ts";
+import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
 
 export const executeSeed = Effect.fn("Sql.seed")(function* (
   deps: SqlRecoveryDeps & { readonly exec: SqlExec },
   context: SqlRecoveryContext,
-  input: Parameters<typeof runImport>[2] & { readonly snapshotId?: string; readonly store: VolumeRef },
+  input: Parameters<typeof runImport>[2] & { readonly snapshot?: SnapshotInfo; readonly store: VolumeRef },
 ) {
   const reject = (status: SqlSeedStateError["status"]) =>
     new SqlSeedStateError({
@@ -40,12 +40,9 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       }),
     );
   }
-  const seedSnapshotId = input.snapshotId;
-  if (seedSnapshotId !== undefined) {
-    const source = (yield* deps.listSnapshots({ id: seedSnapshotId })).find(
-      (candidate) => candidate.id === seedSnapshotId,
-    );
-    yield* requireCompatibleSnapshot(source, context);
+  const seedSnapshotId = input.snapshot?.id;
+  if (input.snapshot !== undefined) {
+    yield* requireSeedCompatibleSnapshot(input.snapshot, context);
   }
   const operationId = randomUUID();
   return yield* Effect.uninterruptibleMask((restore) =>
@@ -58,7 +55,11 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
           : Effect.gen(function* () {
               if (context.running) yield* context.suspend;
               yield* context.verifyVolume;
-              yield* deps.restore(seedSnapshotId, { ...input.store, store: identity.nativeName });
+              yield* deps.restore(
+                seedSnapshotId,
+                { ...input.store, store: identity.nativeName },
+                { mode: "seed" },
+              );
               if (context.running) yield* context.resume;
               return undefined;
             });

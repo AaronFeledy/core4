@@ -56,18 +56,9 @@ Save this as `.lando.local.yml` in the worktree. The committed Landofile stays u
 
 ```yaml
 name: shop-feature
-services:
-  web:
-    appMount:
-      target: /app
-      includes:
-        - .git
 ```
 
-| Key | Why |
-| --- | --- |
-| `name: shop-feature` | Gives the worktree its own containers, volumes, database, and hostname |
-| `appMount.includes: [.git]` | In a worktree, `.git` is a one-line file that points back at the main checkout. Lando keeps `.git` out of app mounts with an empty volume overlay, which needs a directory. Including `.git` mounts the file as-is. Repeat it for every service that mounts your code. Database services have no app mount |
+The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs.
 
 Check the layer took:
 
@@ -105,12 +96,18 @@ lando psql -tAc 'SELECT count(*) FROM products;'
 
 `db:seed` reads a dump from outside the app root, like the main checkout's folder, but it only loads into a database Lando freshly created that nothing has written to yet. No prompt, no `--yes`.
 
-Seed once. A second `db:seed` fails with `SqlSeedStateError`, and so does a seed into a database volume left behind by a start that failed partway. To reseed, delete the worktree's volumes and start fresh. This throws away the worktree's database:
+Seed once. A second `db:seed` fails with `SqlSeedStateError`. Snapshot the seeded database so you can get back to it without the dump:
+
+```sh
+lando db:snapshot --label seeded
+```
+
+To reseed, delete the worktree's volumes, start fresh, and seed from that snapshot. This throws away the worktree's database:
 
 ```sh
 lando destroy -y --volumes
 lando start
-lando db:seed ../shop/baseline.sql.gz
+lando db:seed --snapshot seeded
 ```
 
 ## Snapshot before risky work
@@ -120,14 +117,10 @@ Take a snapshot before a migration, list it, and roll back when the migration ea
 ```sh
 lando db:snapshot --label before-migration
 lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-migration --yes
 ```
 
-`db:restore` takes the snapshot id, the first line of each entry in `db:snapshots`, not the label. In a script, pull the id from JSON:
-
-```sh
-lando db:snapshots --format=json | jq -r '.result.snapshots[] | select(.label == "before-migration") | .id'
-```
+`db:restore` takes a label or the id `db:snapshots` prints first in each entry. Reused a label? Restore fails with `SnapshotAmbiguousError` and lists the matching ids, newest first. Pass one of those.
 
 Snapshots belong to the checkout that took them. To see what the main checkout has saved, list its snapshots from the worktree:
 
@@ -135,7 +128,7 @@ Snapshots belong to the checkout that took them. To see what the main checkout h
 lando db:snapshots --from-app shop
 ```
 
-`--from-app` only matches checkouts of the same Git repository. `--from-path ../shop` selects the main checkout by folder instead. Listing is as far as it goes: restoring the main checkout's snapshot into the worktree fails with `SqlRecoveryUnavailableError`, because a snapshot is a physical copy of the volume that made it. Move data between checkouts with `db:export` and `db:seed`.
+`--from-app` only matches checkouts of the same Git repository. `--from-path ../shop` selects the main checkout by folder instead. Listing is as far as it goes: passing one of those ids to `db:restore` or `db:seed --snapshot` in the worktree fails with `SqlRecoveryUnavailableError`, because a snapshot is a physical copy of another checkout's database. Move data between checkouts with `db:export` and `db:seed <file>`.
 
 ## Remove the worktree
 
@@ -161,7 +154,6 @@ lando destroy --root /path/to/shop-feature -y --volumes
     <Step name="confirm-config">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"shop-feature\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"includes\":\\s*\\[\\s*\"\\.git\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DB_NAME\":\\s*\"\\{\\{ services\\.database\\.creds\\.database \\}\\}\"" } }} />
     </Step>
     <Step name="cleanup">

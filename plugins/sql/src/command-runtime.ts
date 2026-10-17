@@ -43,7 +43,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       plan,
       transfer: (spec) => Effect.scoped(mover.transfer(spec)),
       snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
-      restore: (id, store) => Effect.scoped(mover.restore(id, store)),
+      restore: (id, store, opts) => Effect.scoped(mover.restore(id, store, opts)),
       listSnapshots: (filter) => mover.listSnapshots(filter),
       pruneSnapshots: (policy) => mover.pruneSnapshots(policy),
       canonicalizeSourcePath: (path) =>

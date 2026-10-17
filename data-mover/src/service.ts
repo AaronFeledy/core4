@@ -68,6 +68,7 @@ import { findRealpathAncestor } from "@lando/state-store/paths";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
+import { requireSnapshotSeedTarget } from "./snapshot-seed.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";
 import { sharedVolumeInitialization } from "./volume-initialization.ts";
 
@@ -1441,21 +1442,23 @@ export const makeDataMoverService = (
         ),
       );
     }),
-    restore: Effect.fn("DataMover.restore")(function* (handle, store) {
+    restore: Effect.fn("DataMover.restore")(function* (handle, store, opts) {
       const info = yield* findSnapshotInfo(
         persistence,
         typeof handle === "string" ? handle : handle.id,
         typeof handle === "string" ? store : handle.store,
       );
       if (info.native === undefined) {
-        if (info.metadata !== undefined) {
+        if (info.metadata !== undefined || opts?.mode === "seed") {
           const targets = yield* provider
             .listVolumes({ app: store.app, store: store.store })
             .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
           const target = targets.find(
             (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
           );
-          if (!matchesSnapshotSource(target, info.metadata)) {
+          if (opts?.mode === "seed") {
+            yield* requireSnapshotSeedTarget(persistence.stateStore, info, { volume: target, store });
+          } else if (info.metadata !== undefined && !matchesSnapshotSource(target, info.metadata)) {
             return yield* Effect.fail(
               new SnapshotOwnershipError({
                 message: "Physical snapshot ownership does not match the target volume instance.",
@@ -1516,6 +1519,9 @@ export const makeDataMoverService = (
         (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
       );
       const targetGeneration = physicalVolumeGeneration(target);
+      if (opts?.mode === "seed") {
+        yield* requireSnapshotSeedTarget(persistence.stateStore, info, { volume: target, store });
+      }
       if (targetGeneration === undefined) {
         return yield* Effect.fail(
           new SnapshotOwnershipError({
@@ -1527,7 +1533,7 @@ export const makeDataMoverService = (
         );
       }
       if (info.metadata !== undefined) {
-        if (!matchesSnapshotSource(target, info.metadata)) {
+        if (opts?.mode !== "seed" && !matchesSnapshotSource(target, info.metadata)) {
           return yield* Effect.fail(
             new SnapshotOwnershipError({
               message: "Physical snapshot ownership does not match the target volume instance.",
@@ -1647,7 +1653,8 @@ export const layer: Layer.Layer<
         transferStream: (spec) =>
           Stream.unwrap(service().pipe(Effect.map((mover) => mover.transferStream(spec)))),
         snapshot: (store, opts) => service().pipe(Effect.flatMap((mover) => mover.snapshot(store, opts))),
-        restore: (handle, store) => service().pipe(Effect.flatMap((mover) => mover.restore(handle, store))),
+        restore: (handle, store, opts) =>
+          service().pipe(Effect.flatMap((mover) => mover.restore(handle, store, opts))),
         listSnapshots: (filter) => service().pipe(Effect.flatMap((mover) => mover.listSnapshots(filter))),
         removeSnapshot: (id, store) =>
           service().pipe(Effect.flatMap((mover) => mover.removeSnapshot(id, store))),

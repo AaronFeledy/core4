@@ -250,7 +250,9 @@ Alternative air-gapped, audited, recording, or different-engine plugins MAY repl
 SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the reference implementation.
 
 - Database plugins expose discovery metadata and contribute import/export commands; gzip is supported when declared; replacement imports require confirmation by default.
-- `@lando/sql` contributes `db:import`, `db:export`, `db:snapshot`, `db:restore`, and `db:reset` for supported credential-bearing databases. It MUST use `DataMover`, provider data-plane ports, renderer progress, machine output, `RedactionService`, and unambiguous service selection.
+- `@lando/sql` contributes `db:import`, `db:export`, `db:snapshot`, `db:snapshots`, `db:snapshots:prune`, `db:restore`, `db:reset`, and `db:seed` for supported credential-bearing databases. It MUST use `DataMover`, provider data-plane ports, renderer progress, machine output, `RedactionService`, and unambiguous service selection.
+- `db:restore <snapshot>` and `db:seed --snapshot <snapshot>` resolve an exact snapshot id first, then a label within the current app, owner, and target store. Labels are not unique: several matches fail with `SnapshotAmbiguousError` carrying the candidate ids newest first, and no match fails with `SnapshotNotFoundError` naming `lando db:snapshots`. Resolution never bypasses physical compatibility.
+- Physical restore and snapshot seed require matching family, observed version, immutable image identity, owner key, service, and source root; only restore also requires the same physical volume generation. Seed targets only a Lando-created, fresh, empty volume claimed under the physical-volume lock. Cross-root movement uses logical export and `db:seed <file>`.
 
 ### 10.8 Setup and host integration
 
@@ -327,7 +329,7 @@ Other tagged errors are `HostProxyOpenUrlSchemeError`, `HostProxyCommandNotAllow
 
 #### 10.11.1 `DataEndpoint` and `DataMover`
 
-`DataEndpoint` tags are `hostPath`, `hostArchive`, `stream`, `volume`, `servicePath`, `serviceCmd`, and `artifact`; `ArchiveFormat` covers supported archive forms. `DataMover` exposes scoped `transfer`, `transferStream`, `snapshot`, `restore`, `listSnapshots`, `removeSnapshot`, and `pruneSnapshots` over `DataTransferSpec`, `DataTransferResult`, `DataTransferProgress`, `VolumeRef`, `SnapshotOptions`, `SnapshotHandle`, `SnapshotId`, `SnapshotInfo`, `SnapshotFilter`, and `PrunePolicy`; failures use `DataMoverError`.
+`DataEndpoint` tags are `hostPath`, `hostArchive`, `stream`, `volume`, `servicePath`, `serviceCmd`, and `artifact`; `ArchiveFormat` covers supported archive forms. `DataMover` exposes scoped `transfer`, `transferStream`, `snapshot`, `restore`, `listSnapshots`, `removeSnapshot`, and `pruneSnapshots` over `DataTransferSpec`, `DataTransferResult`, `DataTransferProgress`, `VolumeRef`, `SnapshotOptions`, `SnapshotRestoreOptions`, `SnapshotHandle`, `SnapshotId`, `SnapshotInfo`, `SnapshotFilter`, and `PrunePolicy`; failures use `DataMoverError`. `restore` defaults to `mode: restore`, which requires the snapshot's recorded physical volume generation. `mode: seed` MAY cross generations only with verified snapshot metadata, the snapshot's own app, store, and canonical owner root, and an in-progress initialization claim on the target volume.
 
 - Native provider data-plane capability wins; otherwise a generic helper path is used; otherwise `DataEndpointUnsupportedError` fails with remediation. Capability honesty is mandatory.
 - Helper artifacts are pinned, verified, cached, and reusable offline.
@@ -335,13 +337,13 @@ Other tagged errors are `HostProxyOpenUrlSchemeError`, `HostProxyCommandNotAllow
 - Archive and snapshot writes record SHA-256 and restores verify it. There is no skip-verification flag.
 - Redaction uses `RedactionService`; credentials use environment, never argv.
 - Events are `pre-data-transfer`, `data-transfer-progress`, `post-data-transfer`, `pre-volume-snapshot`, and `post-volume-snapshot`.
-- Host endpoints MUST remain within the app root or explicit base. Destructive restore/import requires `overwrite: true`.
+- Host endpoints MUST remain within the app root or explicit base. A caller MAY mark an explicitly selected `hostPath` source trusted to read outside that boundary; trust never extends to destinations. Destructive restore/import requires `overwrite: true`.
 
 #### 10.11.2 Snapshot store and errors
 
 Snapshots live under `<userDataRoot>/snapshots/<app-id>/<store>/` through `PathsService` and are indexed by `StateStore`. Native providers persist a provider snapshot reference; copy mode persists an archive and metadata. Plain destroy keeps snapshots; `lando destroy --purge` removes them. Destructive teardown MAY take a safety snapshot unless opted out.
 
-Tagged errors are `DataTransferError`, `DataEndpointUnsupportedError`, `DataChecksumMismatchError`, `DataSourceOutsideRootError`, `DataTargetExistsError`, `SnapshotNotFoundError`, `VolumeNotFoundError`, and `ArchiveFormatError`; provider causes may include `VolumeOperationError`, `ServiceCopyError`, and `ArtifactTransferError` (§5.7). `TestDataMover` supports contract testing.
+Tagged errors are `DataTransferError`, `DataEndpointUnsupportedError`, `DataChecksumMismatchError`, `DataSourceOutsideRootError`, `DataTargetExistsError`, `SnapshotNotFoundError`, `SnapshotAmbiguousError`, `SnapshotOwnershipError`, `VolumeNotFoundError`, and `ArchiveFormatError`; provider causes may include `VolumeOperationError`, `ServiceCopyError`, and `ArtifactTransferError` (§5.7). `TestDataMover` supports contract testing.
 
 ### 10.12 Remote data sync (`RemoteSource` + `Dataset`)
 

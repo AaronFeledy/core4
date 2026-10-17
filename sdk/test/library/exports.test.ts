@@ -3,6 +3,29 @@ import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
+  test("snapshot restore options distinguish explicit seed from default restore", async () => {
+    const { SnapshotRestoreOptions } = await import("@lando/sdk/schema");
+    const decode = Schema.decodeUnknownSync(SnapshotRestoreOptions);
+    expect(decode({})).toEqual({});
+    expect(decode({ mode: "restore" })).toEqual({ mode: "restore" });
+    expect(decode({ mode: "seed" })).toEqual({ mode: "seed" });
+    expect(() => decode({ mode: "override" })).toThrow();
+  });
+
+  test("snapshot ambiguity preserves optional candidate ids through its public codec", async () => {
+    const { SnapshotAmbiguousError } = await import("@lando/sdk/errors");
+    const decode = Schema.decodeUnknownSync(SnapshotAmbiguousError);
+    const original = {
+      _tag: "SnapshotAmbiguousError" as const,
+      message: "Ambiguous snapshot",
+      snapshotId: "baseline",
+      matchCount: 2,
+    };
+    expect(decode(original).candidateIds).toBeUndefined();
+    const candidates = { ...original, candidateIds: ["newer", "older"] };
+    expect(Schema.encodeSync(SnapshotAmbiguousError)(decode(candidates))).toEqual(candidates);
+  });
+
   test("standard schema subpath resolves independently", async () => {
     const standard = await import("@lando/sdk/schema/standard");
     expect(await standard.LandofileStandardSchema["~standard"].validate({ name: "demo" })).toEqual({
@@ -130,6 +153,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.PrunePolicy).toBeDefined();
     expect(schema.SnapshotId).toBeDefined();
     expect(schema.SnapshotOptions).toBeDefined();
+    expect(schema.SnapshotRestoreOptions).toBeDefined();
     expect(schema.LabelMap).toBeDefined();
     expect(schema.RemoteCapabilities).toBeDefined();
     expect(schema.RemoteConfig).toBeDefined();
