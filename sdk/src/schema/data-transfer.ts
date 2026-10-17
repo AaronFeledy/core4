@@ -115,6 +115,41 @@ export const VolumeSnapshotRef = Schema.Struct({
 });
 export type VolumeSnapshotRef = typeof VolumeSnapshotRef.Type;
 
+/** Provider-observed snapshot image, independent of the host snapshot index. */
+export const VolumeSnapshotArtifact = Schema.Struct({
+  ref: VolumeSnapshotRef.annotate({ description: "Immutable provider snapshot reference." }),
+  createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
+  labels: LabelMap.annotate({ description: "Labels carried by the snapshot image." }),
+});
+export type VolumeSnapshotArtifact = typeof VolumeSnapshotArtifact.Type;
+
+export const SnapshotGcOrphan = Schema.Struct({
+  id: Schema.String.annotate({ description: "Provider snapshot identifier." }),
+  provider: Schema.String.annotate({ description: "Provider that holds the snapshot image." }),
+  sizeBytes: Schema.Number.annotate({ description: "Provider image size in bytes." }),
+  createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
+  app: Schema.optionalKey(Schema.String).annotate({ description: "Owning app label when present." }),
+});
+export const SnapshotGcProviderReport = Schema.Struct({
+  provider: Schema.String.annotate({ description: "Provider inspected for orphaned images." }),
+  status: Schema.Literals(["checked", "unavailable"]).annotate({
+    description: "Whether the runtime could be inspected without starting it.",
+  }),
+  orphans: Schema.Array(SnapshotGcOrphan).annotate({
+    description: "Unindexed snapshot images eligible for removal.",
+  }),
+});
+export const SnapshotGcReport = Schema.Struct({
+  providers: Schema.Array(SnapshotGcProviderReport).annotate({
+    description: "Inspection result for each native-snapshot provider.",
+  }),
+  totalCount: Schema.Number.annotate({ description: "Number of eligible orphaned snapshot images." }),
+  totalBytes: Schema.Number.annotate({ description: "Total provider image size of eligible orphans." }),
+  removedCount: Schema.Number.annotate({ description: "Number of orphan removal operations completed." }),
+  prune: Schema.Boolean.annotate({ description: "Whether removal was requested." }),
+});
+export type SnapshotGcReport = typeof SnapshotGcReport.Type;
+
 /**
  * Request to snapshot a volume natively.
  */

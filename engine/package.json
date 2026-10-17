@@ -89,6 +89,7 @@
     "./operations/restart": "./src/operations/restart.ts",
     "./operations/service-readiness": "./src/operations/service-readiness.ts",
     "./operations/share": "./src/operations/share.ts",
+    "./operations/snapshot-gc": "./src/operations/snapshot-gc.ts",
     "./operations/start": "./src/operations/start.ts",
     "./operations/stop": "./src/operations/stop.ts",
     "./operations/stream-frame-sink": "./src/operations/stream-frame-sink.ts",

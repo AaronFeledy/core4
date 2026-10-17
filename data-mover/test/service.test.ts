@@ -1756,6 +1756,7 @@ describe("BunDataMover.layer", () => {
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
       const generation = "00000000-0000-4000-8000-000000000009";
+      let snapshotLabels: Readonly<Record<string, string>> | undefined;
 
       try {
         // When: DataMover rechecks the source through the provider's canonical witness projection.
@@ -1798,14 +1799,16 @@ describe("BunDataMover.layer", () => {
                       provenance: "legacy",
                     },
                   ]),
-                snapshotVolume: ({ snapshotId }) =>
-                  Effect.succeed({
+                snapshotVolume: ({ snapshotId, labels }) => {
+                  snapshotLabels = labels;
+                  return Effect.succeed({
                     provider: ProviderId.make("test"),
                     id: snapshotId ?? "snapshot",
                     digest: sha256("adopted-volume"),
                     sizeBytes: bytes("adopted-volume").byteLength,
                     format: "native",
-                  }),
+                  });
+                },
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -1814,6 +1817,10 @@ describe("BunDataMover.layer", () => {
 
         // Then: snapshot creation proceeds with the witness generation without inventing a creation id.
         expect(handle.store).toEqual({ app, store: "data" });
+        expect(snapshotLabels).toMatchObject({
+          "dev.lando.app-root": dir,
+          "dev.lando.snapshot-store": sha256(join(dir, "data", "snapshots")),
+        });
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;

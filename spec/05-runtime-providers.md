@@ -58,6 +58,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `inspect` | Returns `ServiceRuntimeInfo` for a selected service. |
 | `list` | Lists provider instances matching a `ListFilter`. |
 | `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Creates, restores, and removes snapshots only when the provider declares native snapshot support; otherwise fails with a typed capability error. The shared container data plane accepts only native-format references, rejects another provider's reference before mutation, and removes artifacts idempotently. Plugin providers may implement other reference formats. |
+| `listVolumeSnapshots` (optional) | Lists provider snapshot artifacts with immutable reference, creation time, and labels, independently of host indexes. Non-native providers return an empty list. Listing MUST NOT start a stopped runtime. |
 | `listVolumes`, `removeVolume` | Enumerates and removes selected volumes. |
 | `copyToService`, `copyFromService` | Transfers bytes to or from a service. |
 | `exportArtifact`, `importArtifact` | Streams artifacts across the provider boundary. |

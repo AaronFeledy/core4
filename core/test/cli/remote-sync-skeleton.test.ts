@@ -268,6 +268,8 @@ describe("remote sync command skeleton", () => {
         listSnapshots: () => Effect.succeed([]),
         removeSnapshot: () => Effect.void,
         pruneSnapshots: () => Effect.succeed([]),
+        findOrphanedSnapshots: Effect.succeed([]),
+        removeOrphanedSnapshot: () => Effect.void,
       });
       let confirms = 0;
       const confirm = () =>
@@ -839,6 +841,8 @@ describe("remote sync command skeleton", () => {
         listSnapshots: () => Effect.succeed([]),
         removeSnapshot: () => Effect.void,
         pruneSnapshots: () => Effect.succeed([]),
+        findOrphanedSnapshots: Effect.succeed([]),
+        removeOrphanedSnapshot: () => Effect.void,
       });
       const plan = TestDataset.context.plan;
       const result = (await Effect.runPromise(

@@ -64,6 +64,10 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
 });
 
 const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
+  listVolumeSnapshots: () => {
+    calls.push({ name: "listVolumeSnapshots", args: [] });
+    return Effect.succeed([]);
+  },
   locateVolume: (ref) => {
     calls.push({ name: "locateVolume", args: [ref] });
     return Effect.succeed({ coordinationKey: '["endpoint:test","data"]', nativeName: ref.store });
@@ -145,6 +149,31 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  // destroy --purge removes snapshot images before teardown, so removal must start a stopped runtime.
+  test("removes snapshot images after the runtime-starting before hook", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    if (ops.removeVolumeSnapshot === undefined) throw new Error("Expected snapshot removal adapter");
+    const snapshot = {
+      provider: "test",
+      id: "snap",
+      digest: "sha256:snap",
+      sizeBytes: 1,
+      format: "native" as const,
+    };
+    await Effect.runPromise(Effect.scoped(ops.removeVolumeSnapshot(snapshot)));
+    expect(calls.map((call) => call.name)).toEqual(["before", "removeVolumeSnapshot"]);
+  });
+  test("lists snapshot images without invoking the runtime-starting before hook", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps({
+      ...makeInput(calls),
+      before: Effect.die("must not start runtime"),
+    });
+    if (ops.listVolumeSnapshots === undefined) throw new Error("Expected snapshot listing adapter");
+    expect(await Effect.runPromise(ops.listVolumeSnapshots())).toEqual([]);
+    expect(calls).toEqual([{ name: "listVolumeSnapshots", args: [] }]);
+  });
   test("adoption requires canonical ownership rather than falling back to plan root", async () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
@@ -336,7 +365,7 @@ describe("resolved provider operations", () => {
     expect(calls.filter((call) => call.name !== "before").every((call) => call.args[0] === plan)).toBe(true);
   });
 
-  test("runs before and delegates all data-plane members with their arguments", async () => {
+  test("delegates data-plane members with their arguments and startup policy", async () => {
     // Given
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));

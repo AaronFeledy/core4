@@ -1195,6 +1195,18 @@ Flags:
 | --- | --- |
 | `--shell` | Defaults to PowerShell on Windows and POSIX on other platforms. (one of `posix`, `powershell`, `pwsh`) |
 
+## `lando meta:snapshots:gc`
+
+Inspect orphaned native volume snapshots.
+
+Aliases: `lando snapshots:gc`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--prune` | Remove orphaned snapshot images after rechecking the snapshot index. |
+
 ## `lando meta:uninstall`
 
 Remove Lando-owned installed files after confirmation.

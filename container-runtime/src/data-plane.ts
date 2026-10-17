@@ -1,10 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { tryParseJson } from "./engine-json.ts";
-import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
+import {
+  APP_LABEL,
+  PROVIDER_LABEL,
+  SNAPSHOT_ID_LABEL,
+  STORAGE_SCOPE_LABEL,
+  STORE_LABEL,
+  VOLUME_INSTANCE_LABEL,
+  VOLUME_SNAPSHOT_LABEL,
+} from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
 import { redactString, withApiReason } from "./redact.ts";
+import { listNativeSnapshots } from "./snapshot-images.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
 import {
@@ -744,19 +753,23 @@ const commitNativeSnapshot = (
   options: ProviderDataPlaneOptions,
   containerName: string,
   snapshotId: string,
-  store: string,
+  spec: { readonly store: string; readonly labels: Readonly<Record<string, string>> },
 ) => {
   const tag = sanitize(snapshotId).toLowerCase();
   return request(options, "snapshotVolume", {
     method: "POST",
     path: `/commit?container=${encodeURIComponent(containerName)}&repo=${encodeURIComponent(nativeSnapshotRepo)}&tag=${encodeURIComponent(tag)}`,
+    body: { Labels: spec.labels },
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "snapshotVolume", response, store)),
+    Effect.tap((response) => ensure2xx(options, "snapshotVolume", response, spec.store)),
     Effect.as({ provider: ProviderId.make(options.providerId), id: snapshotId }),
   );
 };
 
-const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: string, snapshotId: string) =>
+const snapshotVolumeWithCommit = (
+  options: ProviderDataPlaneOptions,
+  spec: { readonly store: string; readonly id: string; readonly labels: Readonly<Record<string, string>> },
+) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
       image: snapshotHelperImage,
@@ -765,7 +778,7 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
         "-c",
         `mkdir -p /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /snapshot/' sh {} +`,
       ],
-      mounts: [{ store: volumeName(store), target: snapshotDataMountTarget, readOnly: true }],
+      mounts: [{ store: volumeName(spec.store), target: snapshotDataMountTarget, readOnly: true }],
       remove: true,
     }),
     (name) =>
@@ -774,12 +787,12 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/start`,
         });
-        yield* ensure2xx(options, "snapshotVolume", start, store);
+        yield* ensure2xx(options, "snapshotVolume", start, spec.store);
         const wait = yield* request(options, "snapshotVolume", {
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/wait`,
         });
-        yield* ensure2xx(options, "snapshotVolume", wait, store);
+        yield* ensure2xx(options, "snapshotVolume", wait, spec.store);
         const parsed = wait.body.length === 0 ? {} : (JSON.parse(wait.body) as { StatusCode?: number });
         if (parsed.StatusCode !== undefined && parsed.StatusCode !== 0) {
           return yield* Effect.fail(
@@ -789,11 +802,11 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
               "Provider volume snapshot helper failed.",
               wait,
               undefined,
-              store,
+              spec.store,
             ),
           );
         }
-        return yield* commitNativeSnapshot(options, name, snapshotId, store);
+        return yield* commitNativeSnapshot(options, name, spec.id, spec);
       }),
     (name) => removeEphemeralContainer(options, name, true),
   );
@@ -924,7 +937,18 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       if (options.capabilities.volumeSnapshot !== "native") {
         return Effect.fail(unsupportedSnapshot("snapshotVolume"));
       }
-      return snapshotVolumeWithCommit(options, store, id).pipe(
+      return snapshotVolumeWithCommit(options, {
+        store,
+        id,
+        labels: {
+          ...spec.labels,
+          [VOLUME_SNAPSHOT_LABEL]: "TRUE",
+          [SNAPSHOT_ID_LABEL]: id,
+          [APP_LABEL]: String(spec.volume.app),
+          [STORE_LABEL]: store,
+          [PROVIDER_LABEL]: options.providerId,
+        },
+      }).pipe(
         Effect.flatMap((snapshot) =>
           request(options, "snapshotVolume", {
             method: "GET",
@@ -969,6 +993,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
       );
     }) satisfies RuntimeProviderShape["snapshotVolume"],
+    listVolumeSnapshots: () => listNativeSnapshots(options),
     removeVolumeSnapshot: Effect.fn("ProviderDataPlane.removeVolumeSnapshot")(function* (
       snapshot: VolumeSnapshotRef,
     ): Effect.fn.Return<void, ProviderError, Scope.Scope> {

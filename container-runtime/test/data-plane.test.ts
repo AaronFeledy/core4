@@ -431,10 +431,12 @@ describe("provider data plane", () => {
 
   test("treats native snapshot wait responses without StatusCode as successful", async () => {
     const paths: string[] = [];
+    const commits: unknown[] = [];
     const api: DataPlaneApiClient = {
       request: (request) => {
         paths.push(request.path);
         if (request.path.startsWith("/commit?")) {
+          commits.push(request.body);
           return Effect.succeed({ status: 201, body: JSON.stringify({ Id: "sha256:native-snapshot" }) });
         }
         if (request.path.startsWith("/images/")) {
@@ -456,7 +458,15 @@ describe("provider data plane", () => {
 
     const snapshot = await Effect.runPromise(
       Effect.scoped(
-        provider.snapshotVolume({ volume: { app: AppId.make("app"), store: "data" }, snapshotId: "snap" }),
+        provider.snapshotVolume({
+          volume: { app: AppId.make("app"), store: "data" },
+          snapshotId: "snap",
+          labels: {
+            custom: "value",
+            "dev.lando.snapshot-store": "store-key",
+            "dev.lando.volume-snapshot": "FALSE",
+          },
+        }),
       ),
     );
 
@@ -464,6 +474,19 @@ describe("provider data plane", () => {
     expect(snapshot.id).toBe("snap");
     expect(snapshot).toMatchObject({ digest: "sha256:native-snapshot", sizeBytes: 4096, format: "native" });
     expect(paths.some((path) => path.includes("/commit?"))).toBe(true);
+    expect(commits).toEqual([
+      {
+        Labels: {
+          custom: "value",
+          "dev.lando.snapshot-store": "store-key",
+          "dev.lando.volume-snapshot": "TRUE",
+          "dev.lando.snapshot-id": "snap",
+          "dev.lando.app": "app",
+          "dev.lando.store": "data",
+          "dev.lando.provider": "test",
+        },
+      },
+    ]);
   });
 
   test("closes ephemeral attach streams after stdin is consumed", async () => {

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import {
   Cause,
@@ -64,10 +66,11 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
-import { findRealpathAncestor } from "@lando/state-store/paths";
+import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
+import { orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";
 import { sharedVolumeInitialization } from "./volume-initialization.ts";
 
@@ -587,6 +590,17 @@ const realpathNearestExisting = async (path: string): Promise<string> => {
   if (found === null) throw new Error(`No existing ancestor for ${path}`);
   return found.realAncestor;
 };
+
+const snapshotStoreIdentity = (persistence: SnapshotPersistence) =>
+  resolveStatePath(
+    { path: absolutePath(persistence.paths.snapshotsDir) },
+    undefined,
+    "snapshot-identity",
+    "canonicalize",
+  ).pipe(
+    Effect.map(({ rootReal }) => sha256Hex(rootReal)),
+    Effect.mapError((cause) => stateFailure("canonicalize", cause)),
+  );
 
 const resolveAppRoot = async (paths: ReadonlyArray<string>): Promise<string> => {
   const cwdRoot = await findAppRoot(process.cwd());
@@ -1352,7 +1366,11 @@ export const makeDataMoverService = (
                 volume: store,
                 snapshotId,
                 ...(opts?.label === undefined ? {} : { label: opts.label }),
-                ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
+                labels: {
+                  ...opts?.labels,
+                  [SNAPSHOT_STORE_LABEL]: yield* snapshotStoreIdentity(persistence),
+                  ...(opts?.metadata === undefined ? {} : { [APP_ROOT_LABEL]: opts.metadata.sourceRoot }),
+                },
               })
               .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)))
           : undefined;
@@ -1567,6 +1585,11 @@ export const makeDataMoverService = (
         .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
     }),
     listSnapshots: Effect.fn("DataMover.listSnapshots")((filter) => listSnapshotInfos(persistence, filter)),
+    ...orphanedSnapshotMethods({
+      provider,
+      storeIdentity: snapshotStoreIdentity(persistence),
+      index: listSnapshotInfos(persistence, {}),
+    }),
     removeSnapshot: Effect.fn("DataMover.removeSnapshot")(function* (id, store) {
       const info = yield* findSnapshotInfo(persistence, id, store);
       if (info.native !== undefined) {
@@ -1679,6 +1702,9 @@ export const layer: Layer.Layer<
         snapshot: (store, opts) => service().pipe(Effect.flatMap((mover) => mover.snapshot(store, opts))),
         restore: (handle, store) => service().pipe(Effect.flatMap((mover) => mover.restore(handle, store))),
         listSnapshots: (filter) => service().pipe(Effect.flatMap((mover) => mover.listSnapshots(filter))),
+        findOrphanedSnapshots: service().pipe(Effect.flatMap((mover) => mover.findOrphanedSnapshots)),
+        removeOrphanedSnapshot: (artifact) =>
+          service().pipe(Effect.flatMap((mover) => mover.removeOrphanedSnapshot(artifact))),
         removeSnapshot: (id, store) =>
           service().pipe(Effect.flatMap((mover) => mover.removeSnapshot(id, store))),
         pruneSnapshots: (policy) => service().pipe(Effect.flatMap((mover) => mover.pruneSnapshots(policy))),
