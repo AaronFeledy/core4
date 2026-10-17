@@ -302,28 +302,27 @@ const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {
   return execution.leaf.silent ? failure : publish(options, execution).pipe(Effect.andThen(failure));
 };
 
-const withStreamedTail = (
+const withStreamedTail = Effect.fnUntraced(function* (
   effect: Effect.Effect<EventLeafResult, unknown>,
-): Effect.Effect<EventLeafResult, unknown> =>
-  Effect.gen(function* () {
-    const live = yield* Effect.serviceOption(StreamFrameSink);
-    if (Option.isNone(live)) return yield* effect;
-    const tail = { stdout: "", stderr: "" };
-    const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
-    const tee: StreamFrameSinkShape = {
-      emit: (frame) =>
-        Effect.sync(() => {
-          const text =
-            typeof frame.chunk === "string"
-              ? frame.chunk
-              : decoders[frame._tag].decode(frame.chunk, { stream: true });
-          tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
-        }).pipe(Effect.andThen(live.value.emit(frame))),
-      ...(live.value.flush === undefined ? {} : { flush: live.value.flush }),
-    };
-    const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
-    return { ...execution, streamedTail: tail };
-  });
+): Effect.fn.Return<EventLeafResult, unknown> {
+  const live = yield* Effect.serviceOption(StreamFrameSink);
+  if (Option.isNone(live)) return yield* effect;
+  const tail = { stdout: "", stderr: "" };
+  const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+  const tee: StreamFrameSinkShape = {
+    emit: (frame) =>
+      Effect.sync(() => {
+        const text =
+          typeof frame.chunk === "string"
+            ? frame.chunk
+            : decoders[frame._tag].decode(frame.chunk, { stream: true });
+        tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
+      }).pipe(Effect.andThen(live.value.emit(frame))),
+    ...(live.value.flush === undefined ? {} : { flush: live.value.flush }),
+  };
+  const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
+  return { ...execution, streamedTail: tail };
+});
 
 export const makeEventStepRunners = (
   options: EventRuntimeOptions,
