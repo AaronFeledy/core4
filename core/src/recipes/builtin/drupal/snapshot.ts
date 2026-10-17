@@ -31,7 +31,7 @@ export const drupalDefaults = {
 export const DRUPAL_SCAFFOLD_AUTHORING_COMMAND = drupalScaffoldCommand("{{ recipe.drupal }}");
 const { usesNginx, databaseService, apacheAppserver, fpmAppserver, edgeService } = phpSiteSnapshotBuilders({
   framework: "drupal",
-  edgeFields: [["noScripts", arr(lit(DRUPAL_NGINX_NO_SCRIPTS[0]))]],
+  edgeFields: [["noScripts", arr(...DRUPAL_NGINX_NO_SCRIPTS.map((path) => lit(path)))]],
 });
 export const drupalSnapshot: RecipeSnapshot = {
   identity: drupalProducer,
