@@ -1,14 +1,14 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import { phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
+import { DRUPAL_NGINX_NO_SCRIPTS, phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
 import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
-import { cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { arr, cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:7cbb3ec383cb13f76defc11dba2a8aecfadcc5af1160e84a58529a1d32f08b25";
+  "sha256:874f31b7a87af5ecff38d7c113b9f9b798be5cfd6bfc57d01c86a96c7590385e";
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal",
@@ -31,6 +31,7 @@ export const drupalDefaults = {
 export const DRUPAL_SCAFFOLD_AUTHORING_COMMAND = drupalScaffoldCommand("{{ recipe.drupal }}");
 const { usesNginx, databaseService, apacheAppserver, fpmAppserver, edgeService } = phpSiteSnapshotBuilders({
   framework: "drupal",
+  edgeFields: [["noScripts", arr(lit(DRUPAL_NGINX_NO_SCRIPTS[0]))]],
 });
 export const drupalSnapshot: RecipeSnapshot = {
   identity: drupalProducer,

@@ -155,6 +155,30 @@ describe("PHP site snapshot builders", () => {
     });
   }
 
+  test("edge fields copy nested nodes onto the shared nginx edge", () => {
+    const noScripts: ExpressionNode = {
+      kind: "ArrayLiteral",
+      elements: [{ kind: "Literal", value: "sites/*/files" }],
+    };
+    const builders = phpSiteSnapshotBuilders({
+      framework: "drupal",
+      edgeFields: [["noScripts", noScripts]],
+    });
+    const actual = builders.edgeService();
+    expect(actual).toEqual({
+      kind: "ObjectLiteral",
+      entries: [
+        { key: "type", value: { kind: "Literal", value: "nginx" } },
+        { key: "backend", value: { kind: "Literal", value: "appserver" } },
+        { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
+        { key: "noScripts", value: noScripts },
+        { key: "routes", value: routes },
+      ],
+    });
+    if (actual.kind !== "ObjectLiteral") throw new TypeError("Expected edge object expression");
+    expect(actual.entries.find(({ key }) => key === "noScripts")?.value).not.toBe(noScripts);
+  });
+
   test("database fields copy nested nodes instead of retaining caller references", () => {
     const nested: ExpressionNode = { kind: "ArrayLiteral", elements: [databaseName] };
     const builders = phpSiteSnapshotBuilders({ framework: "drupal", databaseFields: [["extra", nested]] });
