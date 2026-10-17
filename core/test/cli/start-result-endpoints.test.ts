@@ -121,6 +121,38 @@ describe("renderStartAppResult endpoint hyperlinks", () => {
       "https://my-app.lndo.site/beta 500 from your app",
     ]);
   });
+  test("gives a route the verdict of its own check, not a longer sibling route's", () => {
+    // Given: /api/v2's check is listed first and also starts with /api's prefix.
+    const service = ServiceName.make("web");
+    const urls = ["https://my-app.lndo.site/api", "https://my-app.lndo.site/api/v2"];
+    const result: StartAppResult = {
+      app: "my-app",
+      servicesStarted: [{ name: service, state: "running", endpoints: urls }],
+      checks: [
+        {
+          id: `http:web:${urls[1]}/`,
+          kind: "http",
+          service,
+          url: `${urls[1]}/`,
+          verdict: "app-error",
+          statusCode: 500,
+        },
+        {
+          id: `http:web:${urls[0]}/`,
+          kind: "http",
+          service,
+          url: `${urls[0]}/`,
+          verdict: "ready",
+          statusCode: 200,
+        },
+      ],
+    };
+    // When/Then: each URL row shows its own status.
+    expect(buildStartSummary(result).sections[0]?.rows.map((row) => row.label)).toEqual([
+      "https://my-app.lndo.site/api 200",
+      "https://my-app.lndo.site/api/v2 500 from your app",
+    ]);
+  });
   test.each([
     ["ready", 200, " 200"],
     ["app-error", 500, " 500 from your app"],
