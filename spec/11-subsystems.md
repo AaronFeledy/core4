@@ -33,6 +33,7 @@ User surfaces say **router** and **routes**. Service `routes:` is preferred; top
 - Router plugins reconcile stale routes on rebuild and destroy. `stop` durably removes all app route definitions without stopping unrelated global services; `status` reports that durable state.
 - `RouteFilter` contributions translate provider-neutral filters. Bundled filters are `stripPrefix`, `addPrefix`, `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `auth.basic`, and `rateLimit` (§6.6). Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Path routes MUST NOT strip implicitly.
 - `router.enabled: false`, resolved by normal precedence (§7.4, §7.5), MUST prevent router startup and publication for the app. `lando info` reports only published endpoints.
+- A router MUST set `X-Lando-Router: <reason>` (`no-route`, `upstream-unreachable`) on every error response it generates itself, and MUST NOT set it on a response proxied from a service, so `http` checks attribute router pages to Lando (§10.5.2).
 - Route priority is one shared space across every app, derived from the route alone under §6.6. A router that publishes its own routers (dashboard, diagnostics, fallback) MUST pin them outside the app bands defined there: diagnostic fallbacks at `ROUTE_PRIORITY_DIAGNOSTIC`, router-owned hostnames above `ROUTE_PRIORITY_MAX`. Otherwise an app that claims the same hostname captures them.
 - `RouterService.revalidateStartup` re-observes the running router's startup against its live state and refreshes whatever persisted startup observation the implementation keeps. It is distinct from `setup`: it acquires no ports, starts no services, and takes no `Scope`. It fails with `ProxyError` or `RouterWatcherError`. An unavailable router implements it as a no-op, so a record left by an earlier router stays reported until a selected router revalidates it.
 - `applyRoutes` and `removeRoutes` MUST NOT require `setup` in the same process. Global lifecycle commands publish routes without it (§20.6.5), so `applyRoutes` reports authorities and maintains TLS for the router state the last `setup` established.
@@ -97,7 +98,7 @@ The default router publishes one host-global HTTP/HTTPS pair on `127.0.0.1`; URL
 
 #### 10.3.1 Corporate proxies and outbound trust
 
-All Lando-owned egress MUST work behind corporate HTTP(S) proxies and custom CA chains, including runtime, plugin, include, recipe, update, telemetry, helper, tunnel, scanner, MCP, and provider-initiated artifact traffic. In-service trust inheritance is owned by §6.8.
+All Lando-owned egress MUST work behind corporate HTTP(S) proxies and custom CA chains, including runtime, plugin, include, recipe, update, telemetry, helper, tunnel, check, MCP, and provider-initiated artifact traffic. In-service trust inheritance is owned by §6.8.
 
 - The canonical network-trust resolver is a pure `@lando/sdk` module consumed by `HttpClient`, providers, `lando setup`, and `BunSelfRunner`. `BunSelfRunner` is the only package-manager exception to the `HttpClient` path.
 - Explicit global `network.proxy` precedes `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`.
@@ -178,7 +179,7 @@ The fixed `@lando/sdk` tool-provisioning helper installs pinned host executables
 
 ### 10.5 Healthchecks and scanner
 
-`HealthcheckRunner`, `UrlScanner`, `DoctorService`, downloader retry, and setup readiness use the shared probe primitive.
+`HealthcheckRunner`, `CheckRunner`, `DoctorService`, downloader retry, and setup readiness use the shared probe primitive.
 
 #### 10.5.1 Probe primitive (`@lando/sdk/probe`)
 
@@ -200,12 +201,28 @@ Healthchecks accept disabled, string, string-array, and object forms, including 
 - The default `HealthcheckRunner` uses the selected `RuntimeProvider.exec` plus `runProbe`, probing immediately. Start-period failures do not count against retries; the first success completes the check. Subsequent attempts follow the configured retry interval and per-attempt timeout.
 - `target` is `service` by default or `host`. Host targets use `ShellRunner`; native plugin runners MAY bypass shell. Unsupported targets fail at planning with `HealthcheckTargetUnsupportedError`.
 
-`UrlScanner` rules:
+#### 10.5.2 App checks
 
-- Published URLs MUST be probed after start through bounded `runProbe` execution.
-- Global and service config accept `scanner: false | { path?, okCodes?, retries?, timeout? }`; omitted values use finite defaults.
-- Results are green/yellow/red. Non-green MUST warn and MUST NOT fail start. All details MUST be redacted.
-- The default scanner uses `HttpClient`; plugin scanners MAY use `ShellRunner` while preserving verdict and bound semantics.
+Checks report whether the application works once the whole app is up. They are not healthchecks: a healthcheck gates one service's readiness, while a check runs after every service is running and routes are applied, MUST NOT fail start, and exists to say what answered, who owns the result, and what to do next. `CheckRunner` executes the app's `CheckPlan` (§7) after `post-start` and on demand through `app:check` (§8.2.7).
+
+A check is a **kind** plus a target plus declarative **rules**. The kind observes; the rules judge.
+
+| Kind | Observes | Rule fields |
+|---|---|---|
+| `http` | status, headers, bounded body | `status`, `header`, `body`, `url`, `service` |
+| `command` | exit code, bounded stdout/stderr, duration | `exitCode`, `stdout`, `stderr` |
+| `tcp` | whether the endpoint accepted a connection | `connected` |
+| plugin kinds | the observation fields the kind declares | the declared fields |
+
+- One `http` check is generated per published `http`/`https` endpoint of a service unless the service sets `checks: false`; `tcp` checks and other kind defaults are contributed by service types (§6.6). Authored checks live under app-level `checks.run` (§7.4). A check runs on the primary service unless it names `tooling:` (inheriting that task's service, user, env, and cwd), `service:`, or `target: host`.
+- `CheckKind` is the only code extension point (`checkKinds:`, §4). A kind declares an observation schema; a rule field the kind does not declare fails planning with `CheckPlanError`. Judging is declarative only: core MUST NOT accept classifier code from plugins, recipes, or Landofiles.
+- Rules are `{ when, verdict, message?, next?, extract?, retry? }`. `when` matches status codes or ranges, header presence or `contains`, `exitCode`, and `contains`/`startsWith` on bounded text. Regular expressions are not accepted. `extract` names an HTML selector (evaluated by streaming rewrite, never a DOM) or a bounded stdout/stderr slice. Rules evaluate first match wins in §7.4 precedence; a matched rule carries provenance `{source, index}` into events and results.
+- Verdicts are `ready`, `expected`, `app-error`, `service-error`, and `lando-error`. `expected` means Lando succeeded and the user has a next step (first run, empty database); renderers MUST present it as its own neutral state, neither warning nor plain success (§8.9.2). Only `lando-error` becomes a `CommandWarning`; `app-error` and `service-error` are result data.
+- Lando-owned failures are classified before any rule runs, and no rule may override them: connection failure, DNS failure, TLS trust failure, a router response carrying the router error marker (§10.2), a container that is not running, a provider `exec` failure, and an unresolvable tooling task are `lando-error`; exit `126`/`127` from a `command` check is `service-error`.
+- Retry follows the verdict through `runProbe`: `ready`, `expected`, and `app-error` are final on the first observation; `service-error` and unclassified observations retry within the check's bounded budget; a rule MAY set `retry: true`.
+- Bodies and command output are read only when a rule needs them and MUST be capped. Only the extracted snippet, capped and redacted through `RedactionService`, reaches events, results, or renderers; full bodies and output MUST NOT reach telemetry, transcripts, or JSON. `command` checks run without a TTY or stdin, and documentation MUST state they are read-only; core cannot enforce that.
+- `checks.profiles` resolve at plan time from `checkProfiles:` contributions (§9.4); an unknown profile is a `CheckPlanError` with remediation. Every check has an id: authored ids are explicit or derived (`<tooling>:<args…>`, or the first command token, with `-N` on collision); profile checks are `<profile>/<id>`; generated `http` checks are `http:<service>:<url>` (the full probed URL, since one service can publish an `http`/`https` pair or a route beside a port). A collision between derived ids fails planning naming both entries. Ids key `--only`, profile overrides, task-tree children, and the `checks[]` result array.
+- `CheckRunner` publishes one task tree per run with one child per check; §8.9 renderers paint verdicts without further classification. A cancelled run interrupts start; kind, check, and event-bus failures become `lando-error` results, never start failures.
 
 ### 10.6 Files and performance
 

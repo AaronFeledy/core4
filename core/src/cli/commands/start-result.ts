@@ -1,5 +1,6 @@
 /** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
+import type { CheckResult } from "@lando/sdk/schema";
 
 import { type SummaryDocument, formatQuietSummary } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
@@ -26,6 +27,20 @@ const uniqueEndpoints = (services: StartAppResult["servicesStarted"]): ReadonlyA
 };
 
 const isWebUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
+
+const endpointPrefix = (url: string): string => new URL(url.endsWith("/") ? url : `${url}/`).href;
+
+// A check probes its endpoint plus the service's scan path, so a check URL can
+// also start with a shorter sibling route (`/api` vs `/api/v2`). The endpoint
+// that owns a check is the longest published URL of its service that prefixes it.
+const checkEndpoint = (result: StartAppResult, check: CheckResult): string | undefined =>
+  result.servicesStarted
+    .find((service) => service.name === check.service)
+    ?.endpoints.filter((endpoint) => isWebUrl(endpoint) && check.url.startsWith(endpointPrefix(endpoint)))
+    .reduce<string | undefined>(
+      (longest, endpoint) => (longest === undefined || endpoint.length > longest.length ? endpoint : longest),
+      undefined,
+    );
 
 const serviceNoun = (count: number): string => (count === 1 ? "service" : "services");
 
@@ -56,8 +71,32 @@ export const buildStartSummary = (
         rows: urls.map((url) => {
           const httpRest = url.startsWith("http://") ? url.slice("http://".length) : undefined;
           const muted = httpRest !== undefined && httpsRests.has(httpRest);
+          const check = isWebUrl(url)
+            ? result.checks?.find((check) => checkEndpoint(result, check) === url)
+            : undefined;
+          let suffix = "";
+          if (check !== undefined) {
+            switch (check.verdict) {
+              case "ready":
+                suffix = check.statusCode === undefined ? "" : ` ${check.statusCode}`;
+                break;
+              case "app-error":
+                suffix = ` ${check.statusCode} from your app`;
+                break;
+              case "service-error":
+                suffix = ` ${check.statusCode} from the web server`;
+                break;
+              case "lando-error":
+                suffix = " unreachable";
+                break;
+              default: {
+                const unreachable: never = check.verdict;
+                return unreachable;
+              }
+            }
+          }
           return {
-            label: url,
+            label: `${url}${suffix}`,
             ...(isWebUrl(url) ? { href: url } : {}),
             ...(muted ? { muted: true } : {}),
           };

@@ -35,6 +35,7 @@ rail chrome, the active moving spinner glyph, and the opt-in brand icon, never a
 | Brand icon | `--rail-pink` | `95` | Opt-in Lando logo, using native terminal palette slot 13 |
 | Title text | `--text-bold` | `1` | Bold identity text in default foreground |
 | Success | `--status-success` | `32` | `✓` rows |
+| Info completion | `--text-dim` | `2` | `•` rows for neutral, reader-owned results; counted as succeeded |
 | Failure | `--status-error` | `31` | `✗` rows |
 | Live / cached | `--status-info` | `36` | Running labels, wrap continuations, static `·`, `cached` |
 | Pending | `--status-warning` | `33` | `◌` rows (ANSI yellow) |
@@ -106,6 +107,7 @@ keep their original bytes.
   - pending: `│ ◌ {label}`
   - running: `│ {spinner|·} {label}` plus `│    {detail}`
   - success: `│ ✓ {label}{duration}`
+  - info: `│ • {label}{duration}` in dim default foreground, never success or warning color
   - cached: `│ ✓ {label}  cached{duration}`
   - skipped: `│ – {label}  skipped{duration}`
   - failed: `│ ✗ {label}{exitSuffix}{duration}` plus `│    ↳ {remediation}`

@@ -184,6 +184,23 @@ const STANDARD_WIDTHS = [80, 100, 120] as const;
 
 export const TREE_FIXTURES: ReadonlyArray<TreeFixture> = [
   {
+    id: "info",
+    widths: [40, 80],
+    events: [
+      treeStart("App checks", ["web"]),
+      start("web", "Web response"),
+      Schema.decodeUnknownSync(TaskCompleteEvent)({
+        _tag: "task.complete",
+        taskId: "web",
+        outcome: "info",
+        summary: "HTTP 500 from the application's own endpoint",
+        durationMs: 42,
+        timestamp: ts,
+      }),
+      treeComplete("App checks", 1, 0),
+    ],
+  },
+  {
     id: "success",
     widths: STANDARD_WIDTHS,
     events: [

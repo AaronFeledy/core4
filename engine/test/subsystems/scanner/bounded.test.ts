@@ -64,6 +64,7 @@ describe("bounded scanner", () => {
     const timed = await runExitUnderClock(scanner.scan(appId), "1 second");
     // Then: status alone decides the verdict and scope cleanup still runs.
     expect(successOf(timed.exit).endpoints[0]?.outcome).toBe("green");
+    expect(successOf(timed.exit).endpoints[0]?.verdict).toBe("ready");
     expect(streamAccessed).toBe(0);
     expect(closed).toBe(1);
     expect(timed.elapsedMs).toBe(0);
@@ -151,7 +152,7 @@ describe("bounded scanner", () => {
             Effect.gen(function* () {
               attempts += 1;
               if (attempts === 1)
-                return HttpClientResponse.fromWeb(request, new Response(null, { status: 503 }));
+                return HttpClientResponse.fromWeb(request, new Response(null, { status: 502 }));
               yield* Effect.addFinalizer(() => Effect.sleep(`${cleanupMs} millis`));
               return yield* Effect.never;
             }),
@@ -161,9 +162,10 @@ describe("bounded scanner", () => {
       );
       // When: the overall deadline interrupts the second attempt.
       const timed = await runExitUnderClock(scanner.scan(appId), "1 second");
-      // Then: the deadline, not stale HTTP 503 or configured five seconds, is reported.
+      // Then: the deadline, not stale HTTP 502 or configured five seconds, is reported.
       expect(successOf(timed.exit).endpoints[0]).toMatchObject({
         outcome: "red",
+        verdict: "lando-error",
         detail: `deadline exceeded after ${250 + cleanupMs}ms`,
       });
       expect(timed.elapsedMs).toBe(250 + cleanupMs);
