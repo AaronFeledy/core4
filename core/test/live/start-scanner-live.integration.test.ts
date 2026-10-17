@@ -58,7 +58,7 @@ describe.serial("live start scanner", () => {
               expect(result.warnings).toEqual([]);
               expect(result.result.checks).toMatchObject([
                 {
-                  verdict: path === "/fail" ? "service-error" : "ready",
+                  verdict: path === "/fail" ? "app-error" : "ready",
                   statusCode: path === "/fail" ? 503 : 200,
                 },
               ]);
