@@ -168,8 +168,8 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
   },
   "@lando/renderer-lando": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/renderer", "@lando/paths"],
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],
+    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/paths"],
   },
   "@lando/service-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
