@@ -547,7 +547,7 @@ Flags:
 | `--checksum` | Expected SHA-256 of a --source=tarball archive (64 hex chars). |
 | `--full` | Use full recipe defaults instead of prompts. |
 | `--id` | Recipe id for --source=registry. |
-| `--interactive` | Enable interactive prompting when stdin and stderr are terminals. |
+| `--interactive` | Force interactive prompting even when stdin or stderr is not a terminal. |
 | `--name` | App name (slugified for the project id). |
 | `--no-interactive` | Disable interactive prompting. Missing required answers fail with RecipeMissingAnswerError. |
 | `--option` | Recipe option in key=value form (repeatable). |
@@ -682,7 +682,7 @@ Flags:
 | `--fork` | Use the current app as the scratch source. |
 | `--from` | Recipe reference to materialize as a scratch app. |
 | `--hostname` | Keep this exact planned route hostname unchanged (repeatable). |
-| `--interactive` | Enable interactive prompting when stdin and stderr are terminals. |
+| `--interactive` | Force interactive prompting even when stdin or stderr is not a terminal. |
 | `--isolate` | Scratch isolation mode; 'none' is a legacy alias for 'cwd'. (one of `none`, `full`, `baked`, `cwd`) |
 | `--keep-on-failure` | Keep the scratch root and registry entry when startup fails. |
 | `--mount-cwd` | Mount the current working directory into the scratch app's primary service. |

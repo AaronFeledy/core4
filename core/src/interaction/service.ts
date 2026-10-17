@@ -205,7 +205,6 @@ const resolveGate = (
     const mode = options?.mode ?? defaultMode;
     interactive = mode === "interactive" ? true : mode === "non-interactive" ? false : isTty;
   }
-  interactive = interactive && isTty;
   return { yes, nonInteractive: !interactive, interactive };
 };
 

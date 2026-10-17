@@ -7,13 +7,13 @@ const childSource = String.raw`
   import { makeInteractionService } from "./core/src/interaction/service.ts";
 
   const service = makeInteractionService({ defaultMode: "interactive" });
-  const outcome = await Effect.runPromise(
-    Effect.scoped(service.confirm({ message: "Proceed?" })).pipe(Effect.result),
+  const confirmed = await Effect.runPromise(
+    Effect.scoped(service.confirm({ message: "Proceed?" })),
   );
-  process.stdout.write(outcome._tag === "Failure" ? outcome.failure._tag + "\n" : "unexpected-success\n");
+  process.stdout.write("D11_CONFIRM_COMPLETE:" + String(confirmed) + "\n");
 `;
 
-test("interactive confirm fails fast with redirected terminals while parent keeps stdin open", async () => {
+test("interactive confirm child exits naturally after reading a line while parent keeps stdin open", async () => {
   // Given
   const proc = Bun.spawn([process.execPath, "--eval", childSource], {
     cwd: resolve(import.meta.dir, "../../.."),
@@ -28,8 +28,10 @@ test("interactive confirm fails fast with redirected terminals while parent keep
 
   try {
     // When
+    proc.stdin.write("y\n");
+    await proc.stdin.flush();
     const completionMarker = (async (): Promise<void> => {
-      while (!stdout.includes("InteractionRequiredError")) {
+      while (!stdout.includes("D11_CONFIRM_COMPLETE:true")) {
         const chunk = await stdoutReader.read();
         if (chunk.done) throw new Error(`child stdout ended before completion marker: ${stdout}`);
         stdout += decoder.decode(chunk.value, { stream: true });
