@@ -465,6 +465,8 @@ describe("provider data plane", () => {
             custom: "value",
             "dev.lando.snapshot-store": "store-key",
             "dev.lando.volume-snapshot": "FALSE",
+            "dev.lando.volume-owner": "/forged/root",
+            "dev.lando.volume-selector": "forged",
           },
         }),
       ),

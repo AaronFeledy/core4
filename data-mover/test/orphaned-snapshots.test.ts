@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, type SnapshotInfo, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Clock, DateTime, Effect } from "effect";
 import { TestClock } from "effect/testing";
@@ -89,9 +91,15 @@ test("rechecks the current index before removing a previously discovered orphan"
 test("removes an eligible image but refuses young and foreign images", async () => {
   const removed: string[] = [];
   const now = await Effect.runPromise(Clock.currentTimeMillis);
+  const images = [
+    artifact("old", 2 * SNAPSHOT_ORPHAN_GRACE_MS, owned),
+    { ...artifact("young", 0, owned), createdAt: DateTime.makeUnsafe(now) },
+    artifact("foreign", 2 * SNAPSHOT_ORPHAN_GRACE_MS, { ...owned, "dev.lando.snapshot-store": "theirs" }),
+  ];
   const mover = orphanedSnapshotMethods({
     provider: {
       ...TestRuntimeProvider,
+      listVolumeSnapshots: () => Effect.succeed(images),
       removeVolumeSnapshot: (ref) =>
         Effect.sync(() => {
           removed.push(ref.id);
@@ -101,15 +109,48 @@ test("removes an eligible image but refuses young and foreign images", async () 
     index: Effect.succeed([]),
   });
   const results = await Effect.runPromise(
-    Effect.forEach(
-      [
-        artifact("old", 2 * SNAPSHOT_ORPHAN_GRACE_MS, owned),
-        { ...artifact("young", 0, owned), createdAt: DateTime.makeUnsafe(now) },
-        artifact("foreign", 2 * SNAPSHOT_ORPHAN_GRACE_MS, { ...owned, "dev.lando.snapshot-store": "theirs" }),
-      ],
-      (image) => Effect.result(mover.removeOrphanedSnapshot(image)),
-    ),
+    Effect.forEach(images, (image) => Effect.result(mover.removeOrphanedSnapshot(image))),
   );
   expect(removed).toEqual(["old"]);
   expect(results.map((result) => result._tag)).toEqual(["Success", "Failure", "Failure"]);
+});
+
+test("refuses removal when the tag now names another image or the runtime stopped", async () => {
+  const removed: string[] = [];
+  const reported = artifact("retagged", 2 * SNAPSHOT_ORPHAN_GRACE_MS, owned);
+  const removal = (listVolumeSnapshots: NonNullable<RuntimeProviderShape["listVolumeSnapshots"]>) =>
+    orphanedSnapshotMethods({
+      provider: {
+        ...TestRuntimeProvider,
+        listVolumeSnapshots,
+        removeVolumeSnapshot: (ref) =>
+          Effect.sync(() => {
+            removed.push(ref.id);
+          }),
+      },
+      storeIdentity: Effect.succeed("ours"),
+      index: Effect.succeed([]),
+    }).removeOrphanedSnapshot(reported);
+  const retagged = await Effect.runPromise(
+    Effect.result(
+      removal(() =>
+        Effect.succeed([{ ...reported, ref: { ...reported.ref, digest: "sha256:replacement" } }]),
+      ),
+    ),
+  );
+  const stopped = await Effect.runPromise(
+    Effect.result(
+      removal(() =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "test",
+            operation: "listVolumeSnapshots",
+            message: "runtime stopped",
+          }),
+        ),
+      ),
+    ),
+  );
+  expect([retagged._tag, stopped._tag]).toEqual(["Failure", "Failure"]);
+  expect(removed).toEqual([]);
 });

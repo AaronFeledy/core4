@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- Native snapshot reconciliation adds `VolumeSnapshotArtifact`, optional `RuntimeProvider.listVolumeSnapshots`, and `DataMover.findOrphanedSnapshots` / `removeOrphanedSnapshot`. Reconciliation is scoped to the canonical snapshot-store identity, includes unmarked legacy images, and excludes images younger than one hour. Provider snapshot listing and removal never start a stopped runtime; a failed orphan eligibility recheck returns a tagged failure rather than a successful removal receipt.
+- Native snapshot reconciliation adds `VolumeSnapshotArtifact`, optional `RuntimeProvider.listVolumeSnapshots`, and `DataMover.findOrphanedSnapshots` / `removeOrphanedSnapshot`. Reconciliation is scoped to the canonical snapshot-store identity, includes unmarked legacy images, and excludes images younger than one hour. Snapshot image listing and orphan GC never start a stopped runtime, while `removeVolumeSnapshot` may start one for purge-before-teardown; a failed orphan eligibility recheck returns a tagged failure rather than a successful removal receipt.
 
 - `PrunePolicy` additively accepts optional `recovery`: omitted or false prunes only manual/unclassified snapshots, while true prunes only automatic recovery snapshots (import, reset, restore, or seed). Optional `retainSnapshotId` reserves one place in the `keepLatest` budget for a matching snapshot regardless of timestamps, so a newly captured undo point survives clock rollback or ties. Omitted `keepLatest` still removes nothing. SQL automatically keeps three recovery points per database after successful protected operations; retention failure warns without failing the completed operation.
 

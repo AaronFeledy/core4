@@ -8,6 +8,8 @@ import {
   STORAGE_SCOPE_LABEL,
   STORE_LABEL,
   VOLUME_INSTANCE_LABEL,
+  VOLUME_OWNER_LABEL,
+  VOLUME_SELECTOR_LABEL,
   VOLUME_SNAPSHOT_LABEL,
 } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
@@ -941,7 +943,12 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         store,
         id,
         labels: {
-          ...spec.labels,
+          // Volume ownership labels prove a live volume's owner; they must never appear on an image.
+          ...Object.fromEntries(
+            Object.entries(spec.labels ?? {}).filter(
+              ([key]) => key !== VOLUME_OWNER_LABEL && key !== VOLUME_SELECTOR_LABEL,
+            ),
+          ),
           [VOLUME_SNAPSHOT_LABEL]: "TRUE",
           [SNAPSHOT_ID_LABEL]: id,
           [APP_LABEL]: String(spec.volume.app),

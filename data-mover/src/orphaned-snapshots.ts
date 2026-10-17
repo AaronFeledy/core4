@@ -38,18 +38,24 @@ export const orphanedSnapshotMethods = (options: {
       (info) => info.native?.provider === artifact.ref.provider && info.native.id === artifact.ref.id,
     );
   });
+  const listArtifacts = (options.provider.listVolumeSnapshots?.() ?? Effect.succeed([])).pipe(
+    Effect.mapError(failure),
+  );
   return {
     findOrphanedSnapshots: Effect.gen(function* () {
-      const artifacts = yield* (options.provider.listVolumeSnapshots?.() ?? Effect.succeed([])).pipe(
-        Effect.mapError(failure),
-      );
+      const artifacts = yield* listArtifacts;
       const index = yield* options.index;
       return yield* Effect.filter(artifacts, (artifact) => eligible(artifact, index));
     }),
     removeOrphanedSnapshot: Effect.fn("DataMover.removeOrphanedSnapshot")(function* (
       artifact: VolumeSnapshotArtifact,
     ) {
-      if (!(yield* eligible(artifact, yield* options.index))) {
+      // Re-observe instead of trusting the report: removal deletes by tag, so the image must still be
+      // the one reported, and listing fails rather than starting a runtime that stopped meanwhile.
+      const current = (yield* listArtifacts).find(
+        (observed) => observed.ref.id === artifact.ref.id && observed.ref.digest === artifact.ref.digest,
+      );
+      if (current === undefined || !(yield* eligible(current, yield* options.index))) {
         return yield* Effect.fail(
           new DataTransferError({
             operation: "removeOrphanedSnapshot",
