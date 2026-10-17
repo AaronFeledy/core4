@@ -12,7 +12,7 @@ This page is a contributor design-token dump for the bundled `lando` renderer. I
 
 Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat the TTY rail, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
 
-You get a compact live task tree on the stderr terminal, even when you redirect stdout. plain, json, non-TTY, and CI output stay undecorated. All narration, prompts, and notification controls use stderr, leaving stdout for command results and output. Result summaries use stdout's terminal width and styling. A missing native binding never fails the command. The process falls back to line input.
+You get a compact live task tree on the stderr terminal, even when you redirect stdout to a file. Piping stdout into another command switches to one line per event. plain, json, non-TTY, and CI output stay undecorated. All narration, prompts, and notification controls use stderr, leaving stdout for command results and output. Result summaries use stdout's terminal width and styling. A missing native binding never fails the command. The process falls back to line input.
 
 Redirect stderr to hide the tree without hiding your result summary. Prompts need terminal stdin and stderr, but still work with stdout redirected. Expand a task with Enter and collapse it with Escape; the alternate-screen tail and resize handling use the stderr terminal too.
 

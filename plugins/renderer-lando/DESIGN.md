@@ -92,6 +92,8 @@ Viewport: the live tree paints on stderr at the current cursor, immediately unde
 typed command. It grows and shrinks in place. Logs commit above the tree, then
 the tree is rewritten below. Do not pin the tree to the terminal footer.
 Full-tail expand uses the alternate screen; leaving it returns to inline paint.
+When stdout is a pipe or socket the tree does not paint; another process may be
+writing to the same terminal, so narration stays append-only lines on stderr.
 Native Windows TTY text writes use CRLF so every new line starts at column zero,
 including summaries printed after the live region closes. Existing CRLF and
 carriage-return progress remain intact; machine output and redirected streams
