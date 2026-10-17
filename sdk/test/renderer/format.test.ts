@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { TaskCompleteEvent } from "@lando/sdk/events";
-import { formatPlainEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "@lando/sdk/renderer";
+import { renderJsonLine, renderPlainLine, renderVerboseLine } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 import { Schema } from "effect";
 
@@ -67,7 +67,7 @@ describe("neutral task completion", () => {
 
   test("uses a neutral glyph when plain output formats an info result", () => {
     // Given / When
-    const line = formatPlainEvent(event);
+    const line = renderPlainLine(event);
     // Then
     expect(line).toBe("[web] • complete: HTTP 500 (12ms)");
   });

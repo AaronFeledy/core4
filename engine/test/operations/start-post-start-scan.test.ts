@@ -49,8 +49,8 @@ test("start probes published URLs through UrlScanner with the plan", async () =>
   ]);
   const scanTreeId = `start-scan-${plan.id}`;
   const trees = byTag(harness.events, "task.tree.start");
-  expect(trees.map((tree) => tree.parentId).indexOf(scanTreeId)).toBeGreaterThan(
-    trees.map((tree) => tree.parentId).indexOf(`apply-${plan.id}`),
+  expect(trees.findIndex((tree) => tree.parentId === scanTreeId)).toBeGreaterThan(
+    trees.findIndex((tree) => tree.parentId === `apply-${plan.id}`),
   );
   expect(trees.find((tree) => tree.parentId === scanTreeId)).toMatchObject({
     label: `Checking ${plan.name}`,

@@ -100,3 +100,47 @@ describe("startupScanUrls", () => {
     ]);
   });
 });
+
+test("publishes no tree and never probes disabled or non-HTTP targets", async () => {
+  // Given a disabled HTTP service and a non-HTTP target.
+  let scans = 0;
+  let publications = 0;
+  const scanner: UrlScannerShape = {
+    id: "stub",
+    scan: () =>
+      Effect.sync(() => {
+        scans++;
+        return { appId: plan.id, endpoints: [] };
+      }),
+    detectCollisions: () => Effect.succeed([]),
+  };
+  const disabledPlan = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        scanner: { enabled: false, path: "/", okCodes: [], retries: 0, timeoutMs: 1000 },
+      },
+    },
+  };
+  // When scanning the supplied targets.
+  await Effect.runPromise(
+    runPostStartScan({
+      scanner,
+      plan: disabledPlan,
+      events: {
+        publish: () =>
+          Effect.sync(() => {
+            publications++;
+          }),
+      },
+      urls: [
+        { service: web.name, url: "http://localhost:8080/" },
+        { service: ServiceName.make("db"), url: "tcp://localhost:5432" },
+      ],
+    }),
+  );
+  // Then no probe or progress publication occurs.
+  expect(publications).toBe(0);
+  expect(scans).toBe(0);
+});

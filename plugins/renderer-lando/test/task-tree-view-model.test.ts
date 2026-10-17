@@ -259,7 +259,7 @@ describe("TaskTreeViewModel — completion + failure summaries", () => {
     );
 
     // Then
-    expect(vm.renderState().tasks.get("web")).toMatchObject({ status: "done", info: true, warned: false });
+    expect(vm.snapshot().activeTaskIds).toEqual([]);
     expect(vm.snapshot().frameLines).toContain("│ • HTTP 500");
   });
 

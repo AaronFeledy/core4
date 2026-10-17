@@ -67,7 +67,7 @@ export const runPostStartScan = Effect.fnUntraced(function* (
       Effect.suspend(() => input.events.publish(event)).pipe(Effect.catchCause(() => Effect.void)),
   };
   const tree = makeTaskTree(events, {
-    parentId: startScanTreeId(String(input.plan.id)),
+    parentId: startScanTreeId(input.plan.id),
     label: redact(`Checking ${input.plan.name}`),
     children: targets.map((target) => ({ id: target.id, label: redact(target.label) })),
     prefixChildIds: true,
@@ -162,10 +162,9 @@ export const runPostStartScan = Effect.fnUntraced(function* (
       ).length;
       const unreachable = checks.filter((check) => check.verdict === "lando-error").length;
       const urls = (count: number) => `${count} URL${count === 1 ? "" : "s"}`;
-      const parts = [
-        ...(errors === 0 ? [] : [`${urls(errors)} returned errors`]),
-        ...(unreachable === 0 ? [] : [`${unreachable} unreachable`]),
-      ];
+      const parts: string[] = [];
+      if (errors > 0) parts.push(`${urls(errors)} returned errors`);
+      if (unreachable > 0) parts.push(`${unreachable} unreachable`);
       return tree.settleSuccess(
         redact(
           parts.length === 0

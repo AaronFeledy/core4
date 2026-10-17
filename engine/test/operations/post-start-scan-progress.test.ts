@@ -25,6 +25,29 @@ const scannerReturning = (endpoint: ScanEndpoint): UrlScannerShape => ({
   detectCollisions: () => Effect.succeed([]),
 });
 
+test("progress publish defects do not prevent probing or fail start", async () => {
+  // Given a failing progress publisher and an unreachable URL.
+  let calls = 0;
+  const scanner: UrlScannerShape = {
+    id: "stub",
+    scan: () =>
+      Effect.sync(() => {
+        calls++;
+        return {
+          appId: plan.id,
+          endpoints: [{ ...target, outcome: "red", verdict: "lando-error", reachable: false }],
+        };
+      }),
+    detectCollisions: () => Effect.succeed([]),
+  };
+  // When the scan runs despite publication defects.
+  await Effect.runPromise(
+    runPostStartScan({ scanner, plan, events: { publish: () => Effect.die("bus down") }, urls: [target] }),
+  );
+  // Then probing still completes successfully.
+  expect(calls).toBe(1);
+});
+
 test("redacts scanner detail before task and envelope publication", async () => {
   const harness = makeHarness();
   const scanner: UrlScannerShape = {
@@ -48,21 +71,32 @@ test("redacts scanner detail before task and envelope publication", async () => 
         };
       }),
   };
-  await Effect.runPromise(runPostStartScan({ scanner, plan, urls: [target], events: harness }));
+  const checks = await Effect.runPromise(
+    runPostStartScan({ scanner, plan, urls: [target], events: harness }),
+  );
   expect(JSON.stringify(harness.events)).not.toContain("abc123");
+  expect(JSON.stringify(checks)).not.toContain("abc123");
+  expect(checks[0]?.message).toContain("[redacted]");
   expect(byTag(harness.events, "task.detail")[0]?.line).toContain("[redacted]");
   expect(byTag(harness.events, "task.complete")[0]?.summary).toContain("[redacted]");
   expect(byTag(harness.events, "message.warn")[0]?.body).toContain("[redacted]");
 });
 
-test.each([true, false])("scan progress uses owner verdict for reachable=%s", async (reachable) => {
+test.each([
+  { verdict: "ready", reachable: false, outcome: undefined, message: "200" },
+  { verdict: "app-error", reachable: false, outcome: "info", message: "your app returned 200" },
+  { verdict: "service-error", reachable: true, outcome: "warn", message: "web server returned 200" },
+  { verdict: "lando-error", reachable: true, outcome: "warn", message: "unreachable: no response reported" },
+] as const)("scan progress uses $verdict independently of reachability", async (row) => {
+  // Given a verdict that cannot be inferred from reachability.
   const harness = makeHarness();
-  await Effect.runPromise(
+  // When the URL check settles.
+  const checks = await Effect.runPromise(
     runPostStartScan({
       scanner: scannerReturning({
         ...target,
-        reachable,
-        verdict: reachable ? "ready" : "lando-error",
+        reachable: row.reachable,
+        verdict: row.verdict,
         statusCode: 200,
       }),
       plan,
@@ -70,11 +104,11 @@ test.each([true, false])("scan progress uses owner verdict for reachable=%s", as
       events: harness,
     }),
   );
+  // Then both progress and result data preserve the owning verdict.
   const completed = byTag(harness.events, "task.complete");
-  expect(completed[0]?.outcome).toBe(reachable ? undefined : "warn");
-  expect(completed[0]?.summary).toBe(
-    reachable ? `web ${target.url} · 200` : `web ${target.url} · unreachable: no response reported`,
-  );
+  expect(completed[0]?.outcome).toBe(row.outcome);
+  expect(completed[0]?.summary).toBe(`web ${target.url} · ${row.message}`);
+  expect(checks[0]).toMatchObject({ verdict: row.verdict, message: `web ${target.url} · ${row.message}` });
 });
 
 test("only four URL rows start at once and each settles when its own probe returns", async () => {
