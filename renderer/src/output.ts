@@ -72,8 +72,9 @@ export const layerNotificationConsumerForMode = (
       return RendererRuntime.layerJsonNotification(io);
     case "lando":
       return landoRenderer.makeEventConsumer({
-        writeStdout: () => {},
-        writeStderr: () => {},
+        writeStderr: io.writeStderr,
+        terminalColumns: io.terminalColumns,
+        terminalRows: io.terminalRows,
         ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
       });
     case "plain":
@@ -234,7 +235,7 @@ export const layerStreamFrameSink = (
       const renderer = yield* Renderer;
       const redaction = yield* RedactionService;
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-      const isTty = io?.isTTY === true;
+      const isTty = io?.stdoutIsTTY === true;
       const stdoutUtf8 = createStreamingUtf8Decoder(!isTty);
       const stderrUtf8 = createStreamingUtf8Decoder(!isTty);
       const jsonStdout = createStreamingUtf8Decoder(false);

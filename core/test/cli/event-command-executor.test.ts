@@ -42,6 +42,7 @@ import { metaXSpec } from "../../src/cli/command-specs/meta/x.ts";
 import { defaultBunSelfSpawner } from "../../src/cli/commands/bun-self-runner.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
+import { ResultTerminal } from "../../src/cli/result-terminal.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
@@ -155,6 +156,30 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("EventCommandExecutorLayer.layer", () => {
+  test("uses the retained result terminal instead of narration capabilities or process stdout", async () => {
+    const harness = makeHarness();
+    const spec = {
+      ...testSpec(() => Effect.succeed("done")),
+      render: (
+        _value: unknown,
+        _input: unknown,
+        ctx?: { readonly isTTY: boolean; readonly columns: number | undefined },
+      ) => `${ctx?.isTTY}:${ctx?.columns}`,
+    } satisfies LandoCommandSpec;
+    const context = harness.context.pipe(Context.add(ResultTerminal, { isTTY: true, columns: 37 }));
+    const executor = makeEventCommandExecutor(context, [entryFor(spec)]);
+    await Effect.runPromise(
+      executor.run({
+        command: spec.id,
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+    expect(harness.presentation).toContain("stdout:true:37\n");
+  });
+
   test("retains the executor when a canonical command enters another command-backed lifecycle event", async () => {
     // Given
     const harness = makeHarness();

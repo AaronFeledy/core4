@@ -106,6 +106,7 @@ type ControllerCall =
   | { readonly kind: "setFooter"; readonly lines: ReadonlyArray<string> }
   | { readonly kind: "commitScrollback"; readonly text: string }
   | { readonly kind: "rememberScrollback"; readonly text: string }
+  | { readonly kind: "suspendOutput"; readonly text: string }
   | { readonly kind: "requestLive" }
   | { readonly kind: "dropLive" }
   | { readonly kind: "enterFullTail" }
@@ -125,6 +126,10 @@ class FakeController {
   }
   rememberScrollback(text: string): void {
     this.calls.push({ kind: "rememberScrollback", text });
+  }
+  suspendOutput(text: string, write: () => void): void {
+    this.calls.push({ kind: "suspendOutput", text });
+    write();
   }
   requestLive(): void {
     this.calls.push({ kind: "requestLive" });
@@ -204,8 +209,13 @@ class FakeTranscriptReader implements TranscriptTailReaderShape {
 
 const ttyIo = () => {
   const stdout: string[] = [];
-  const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
-  const streamStub = process.stdout;
+  const io = createBufferedRendererIO({
+    isTTY: true,
+    stdoutIsTTY: true,
+    terminalColumns: 80,
+    terminalRows: 24,
+  });
+  const streamStub = process.stderr;
   return {
     io: { ...io, externalOutputStream: streamStub, writeStdout: (chunk: string) => stdout.push(chunk) },
     stdout: () => stdout.join(""),
@@ -506,9 +516,17 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
             const events = yield* EventService;
             yield* events.publish(treeStart(["web"]));
             yield* events.publish(taskStart("web", transcriptPath));
-            for (let attempt = 0; attempt < 40 && inject === undefined; attempt += 1) {
+            let taskPainted = false;
+            for (let attempt = 0; attempt < 40; attempt += 1) {
+              taskPainted = controller.calls.some(
+                (call) =>
+                  call.kind === "setFooter" &&
+                  call.lines.some((line) => line.includes("web") && !line.includes("◌")),
+              );
+              if (inject !== undefined && taskPainted) break;
               yield* Effect.sleep("25 millis");
             }
+            expect(taskPainted).toBe(true);
             const sendInput = inject;
             if (sendInput === undefined) {
               throw new Error("interactive input subscription was not installed");
@@ -540,8 +558,8 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     }
   });
 
-  test("journals imperative renderer output for split-footer replay", async () => {
-    const { io } = ttyIo();
+  test("journals narration without rerouting imperative stdout through scrollback", async () => {
+    const { io, stdout } = ttyIo();
     const controller = new FakeController();
     await Effect.runPromise(
       Effect.scoped(
@@ -572,7 +590,9 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
 
     const remembered = controller.calls.find((call) => call.kind === "rememberScrollback");
     expect(remembered?.kind === "rememberScrollback" && remembered.text).toContain("before tree");
-    expect(controller.calls).toContainEqual({ kind: "commitScrollback", text: "after tree\n" });
+    expect(controller.calls).not.toContainEqual({ kind: "commitScrollback", text: "after tree\n" });
+    expect(controller.calls).toContainEqual({ kind: "suspendOutput", text: "after tree\n" });
+    expect(stdout()).toBe("after tree\n");
   });
 
   test("expanded content comes from the transcript reader and live appends refresh it", async () => {

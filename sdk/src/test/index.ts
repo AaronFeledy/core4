@@ -44,6 +44,7 @@ export * from "./doctor-tooling-plugin-source.ts";
 export * from "./http-client-contract.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./renderer-panel-contract.ts";
+export * from "./renderer-contract.ts";
 /**
  * collectImportBoundaryViolations arguments:
  * - packageRoot: plugin package directory (has package.json + src/).

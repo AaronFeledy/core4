@@ -88,7 +88,7 @@ Base unit is one terminal cell.
 Grid: one column, wrap by display width in `task-tree-frame.ts`. No right rail.
 CJK orphan rebalancing stays in the framer, not the grammar.
 
-Viewport: the live tree paints at the current cursor, immediately under the
+Viewport: the live tree paints on stderr at the current cursor, immediately under the
 typed command. It grows and shrinks in place. Logs commit above the tree, then
 the tree is rewritten below. Do not pin the tree to the terminal footer.
 Full-tail expand uses the alternate screen; leaving it returns to inline paint.
@@ -133,16 +133,17 @@ keep their original bytes.
 - **Copy**: `╰─ executing {tool}{duration}` using the quiet duration grammar (`  400ms` / `  12.4s`).
 - **Color**: pink rail chrome on `╰─`; dim footer copy, including the duration. No spinner in this footer.
 - **Lifecycle**: appears when a TTY tooling command starts; the elapsed duration ticks in place; the line is erased when the command completes. It does not remain as scrollback.
-- **Layout**: inline at the cursor, not pinned to the terminal bottom. Streaming stdout commits above, then the footer is rewritten below.
+- **Layout**: inline on stderr at the cursor, not pinned to the terminal bottom. For terminal stdout payloads, erase the footer on stderr, write the original bytes to stdout, then repaint on stderr. Redirected stdout never interacts with the footer. Partial payload lines defer repaint until their terminating newline.
 
 ### Machine modes
 
 plain, JSON, verbose, non-TTY, and CI stay undecorated. They do not use this
 rail, these glyphs, or these colors.
 
-Line-mode narration and every renderer message go to stderr. stdout carries
-only command results and payloads. The TTY live region is the exception: it
-paints on terminal stdout and commits interleaved output through journal scrollback.
+Every renderer message, live tree, prompt, alternate-screen tail, and OSC 99
+notification uses stderr. stdout carries only command results and payloads.
+Narration capabilities and dimensions describe stderr; result summaries use
+stdout's own terminal state and width. Prompts require terminal stdin and stderr.
 
 ### Lando logo
 
