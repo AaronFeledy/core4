@@ -13,6 +13,7 @@ export const orphanedSnapshotsDoctor = Effect.fnUntraced(function* (redact: (tex
     Effect.provideService(RuntimeProviderRegistry, registry.value),
     Effect.provideService(DataMover, mover.value),
   );
+  const failed = report.providers.filter((provider) => provider.status === "failed");
   const context = {
     count: String(report.totalCount),
     size: snapshotBytes(report.totalBytes),
@@ -26,20 +27,33 @@ export const orphanedSnapshotsDoctor = Effect.fnUntraced(function* (redact: (tex
           ),
         }
       : {}),
+    ...(failed.length === 0
+      ? {}
+      : {
+          failed: redact(
+            failed.map((provider) => `${provider.provider}: ${provider.error ?? "unknown error"}`).join("; "),
+          ),
+        }),
   };
   const check: DoctorSubsystemCheck =
-    report.totalCount === 0
+    report.totalCount === 0 && failed.length === 0
       ? passCheckNamed({ name: "orphaned-volume-snapshots", recovery: "manual", context })
       : warnCheck({
           name: "orphaned-volume-snapshots",
           recovery: "manual",
           context,
           solutions: [
-            {
-              kind: "manual",
-              description: "Remove snapshot images no snapshot index references.",
-              command: "lando snapshots:gc --prune",
-            },
+            failed.length > 0 && report.totalCount === 0
+              ? {
+                  kind: "manual",
+                  description: "Fix the reported provider error, then check snapshot images again.",
+                  command: "lando snapshots:gc",
+                }
+              : {
+                  kind: "manual",
+                  description: "Remove snapshot images no snapshot index references.",
+                  command: "lando snapshots:gc --prune",
+                },
           ],
         });
   return [check];

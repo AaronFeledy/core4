@@ -127,6 +127,32 @@ describe("automatic SQL recovery retention", () => {
     },
   );
 
+  test("restore keeps the automatic recovery snapshot it restored from", async () => {
+    // Given: five automatic recovery points, the oldest of which is the restore source.
+    const fixture = makeRetentionTestDeps();
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const old: string[] = [];
+        for (let index = 0; index < 5; index += 1) {
+          yield* TestClock.setTime(1000 + index);
+          old.push((yield* fixture.snapshot("reset")).id);
+        }
+        const [source, , , , newest] = old;
+        if (source === undefined || newest === undefined) throw new Error("missing recovery points");
+
+        // When: the user restores from that oldest automatic snapshot.
+        yield* TestClock.setTime(10000);
+        yield* executeDbCommand(fixture.deps, { action: "restore", yes: true, snapshotId: source });
+        return { source, newest, listed: yield* fixture.mover.listSnapshots({}) };
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    );
+
+    // Then: the source and the new undo point use two of the three places; the newest old one fills the third.
+    expect(outcome.listed.map((snapshot) => snapshot.id).sort()).toEqual(
+      [outcome.source, outcome.newest, ...fixture.captured].sort(),
+    );
+  });
+
   test("retention failure emits a warning without failing the completed reset", async () => {
     // Given: pruning is unavailable after a successful reset.
     const fixture = makeRetentionTestDeps();

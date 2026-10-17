@@ -193,6 +193,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
     resumeAfterSnapshot: boolean,
     preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
+    retainSnapshotIds?: ReadonlyArray<string>,
   ) =>
     runPhysicalOperation({
       deps: { ...deps, resume: resumeDatabase },
@@ -213,6 +214,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       publish: deps.publish,
       resumeAfterSnapshot,
       ...(preflight === undefined ? {} : { preflight }),
+      ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
       body,
     });
   switch (action) {
@@ -275,6 +277,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
             }),
           false,
           (context) => requireCompatibleSnapshot(restoreSource, context),
+          // The snapshot just restored from may itself be an automatic recovery snapshot.
+          restoreSource === undefined ? [] : [restoreSource.id],
         );
       }
       break;

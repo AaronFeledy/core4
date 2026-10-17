@@ -5,6 +5,7 @@ import { DataMover, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import {
+  failOnFailedProvider,
   metaSnapshotsGcSpec,
   snapshotGcOptionsFromInput,
 } from "../../src/cli/command-specs/meta/snapshots/gc";
@@ -87,4 +88,25 @@ test("doctor passes with a note when a provider is stopped", async () => {
   const checks = await runDoctor([orphan], false);
   expect(checks).toMatchObject([{ status: "pass", context: { count: "0" } }]);
   expect(checks[0]?.context.note).toContain("test");
+});
+
+test("GC fails with a tagged error when a provider could not be checked or cleaned", async () => {
+  const report: SnapshotGcReport = {
+    providers: [
+      { provider: "broken", status: "failed", error: "image listing failed", orphans: [] },
+      { provider: "test", status: "checked", orphans: [] },
+    ],
+    totalCount: 0,
+    totalBytes: 0,
+    removedCount: 0,
+    prune: true,
+  };
+  const result = await Effect.runPromise(Effect.result(failOnFailedProvider(report)));
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "DataTransferError", operation: "snapshotGc" },
+  });
+  if (result._tag === "Failure") expect(result.failure.message).toContain("broken: image listing failed");
+  const healthy = { ...report, providers: [{ provider: "test", status: "checked" as const, orphans: [] }] };
+  expect(await Effect.runPromise(failOnFailedProvider(healthy))).toBe(healthy);
 });

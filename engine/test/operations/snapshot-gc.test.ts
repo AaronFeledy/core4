@@ -35,7 +35,7 @@ test("reports providers unavailable when registry construction cannot reach thei
       }),
     ),
   );
-  expect(report.providers).toEqual([{ provider: "offline", status: "unavailable", orphans: [] }]);
+  expect(report.providers).toMatchObject([{ provider: "offline", status: "unavailable", orphans: [] }]);
 });
 
 test("reports a stopped native provider as unavailable without invoking data-plane or startup", async () => {
@@ -126,7 +126,46 @@ test("does not issue a successful removal report when the orphan recheck refuses
     ),
   );
   expect(result).toMatchObject({
-    _tag: "Failure",
-    failure: { _tag: "DataTransferError", operation: "removeOrphanedSnapshot" },
+    _tag: "Success",
+    success: {
+      removedCount: 0,
+      providers: [{ status: "failed", error: "Snapshot became indexed.", orphans: [{ id: "orphan" }] }],
+    },
   });
+});
+
+test("reports a failing provider without hiding another provider's orphans", async () => {
+  const healthy = { ...TestRuntimeProvider, id: "healthy" };
+  const broken = { ...TestRuntimeProvider, id: "broken" };
+  const mover = {
+    ...emptySnapshots,
+    findOrphanedSnapshots: Effect.gen(function* () {
+      const provider = yield* Effect.serviceOption(RuntimeProvider);
+      if (Option.isSome(provider) && provider.value.id === "broken")
+        return yield* Effect.fail(
+          new DataTransferError({
+            operation: "orphanedSnapshots",
+            message: "image listing failed",
+            remediation: "Retry.",
+          }),
+        );
+      return [orphan];
+    }),
+  };
+  const registry = RuntimeProviderRegistry.of({
+    list: Effect.succeed([ProviderId.make("broken"), ProviderId.make("healthy")]),
+    capabilities: Effect.succeed(healthy.capabilities),
+    select: (target) => Effect.succeed(String(target) === "broken" ? broken : healthy),
+  });
+  const report = await Effect.runPromise(
+    snapshotGc().pipe(
+      Effect.provideService(RuntimeProviderRegistry, registry),
+      Effect.provideService(DataMover, mover),
+    ),
+  );
+  expect(report.providers).toMatchObject([
+    { provider: "broken", status: "failed", error: "image listing failed", orphans: [] },
+    { provider: "healthy", status: "checked", orphans: [{ id: "orphan" }] },
+  ]);
+  expect(report.totalCount).toBe(1);
 });

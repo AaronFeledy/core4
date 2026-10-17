@@ -1,5 +1,5 @@
 import { APP_LABEL } from "@lando/container-runtime/labels";
-import { SnapshotGcReport } from "@lando/sdk/schema";
+import { SnapshotGcReport, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import { DataMover, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -14,36 +14,51 @@ export const snapshotGc = Effect.fn("Operations.snapshotGc")(function* (
   const providers: Array<SnapshotGcReport["providers"][number]> = [];
   let removedCount = 0;
   for (const id of ids) {
-    const provider = yield* registry
-      .select(id)
-      .pipe(Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(undefined)));
-    if (provider === undefined) {
-      providers.push({ provider: String(id), status: "unavailable", orphans: [] });
+    const selected = yield* Effect.result(registry.select(id));
+    if (selected._tag === "Failure") {
+      providers.push({
+        provider: String(id),
+        status: "unavailable",
+        orphans: [],
+        error: selected.failure.message,
+      });
       continue;
     }
+    const provider = selected.success;
     if (provider.capabilities.volumeSnapshot !== "native") continue;
-    const running = yield* provider.isAvailable.pipe(
-      Effect.flatMap((available) =>
-        available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+    const running = yield* Effect.result(
+      provider.isAvailable.pipe(
+        Effect.flatMap((available) =>
+          available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+        ),
       ),
-      Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(false)),
     );
-    if (!running) {
-      providers.push({ provider: provider.id, status: "unavailable", orphans: [] });
+    if (running._tag === "Failure" || !running.success) {
+      providers.push({
+        provider: provider.id,
+        status: "unavailable",
+        orphans: [],
+        ...(running._tag === "Failure" ? { error: running.failure.message } : {}),
+      });
       continue;
     }
-    const artifacts = yield* mover.findOrphanedSnapshots.pipe(
-      Effect.provideService(RuntimeProvider, provider),
+    // One provider's broken API must not hide the others' results, so failures stay per provider.
+    let artifacts: ReadonlyArray<VolumeSnapshotArtifact> = [];
+    const inspected = yield* Effect.result(
+      Effect.gen(function* () {
+        artifacts = yield* mover.findOrphanedSnapshots;
+        if (options.prune !== true) return;
+        for (const artifact of artifacts) {
+          yield* mover.removeOrphanedSnapshot(artifact);
+          removedCount++;
+        }
+      }).pipe(Effect.provideService(RuntimeProvider, provider)),
     );
-    if (options.prune === true) {
-      for (const artifact of artifacts) {
-        yield* mover.removeOrphanedSnapshot(artifact).pipe(Effect.provideService(RuntimeProvider, provider));
-        removedCount++;
-      }
-    }
     providers.push({
       provider: provider.id,
-      status: "checked",
+      ...(inspected._tag === "Failure"
+        ? { status: "failed" as const, error: inspected.failure.message }
+        : { status: "checked" as const }),
       orphans: artifacts.map(({ ref, createdAt, labels }) => ({
         id: ref.id,
         provider: ref.provider,

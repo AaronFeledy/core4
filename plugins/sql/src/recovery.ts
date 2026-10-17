@@ -2,7 +2,7 @@ import { DateTime, Effect, Exit } from "effect";
 
 import { SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { SnapshotMetadata } from "@lando/sdk/schema";
+import { SnapshotId, type SnapshotMetadata } from "@lando/sdk/schema";
 
 import type { SqlPublisher } from "./progress.ts";
 import { resolveLockedPhysicalTarget } from "./recovery-adoption.ts";
@@ -20,6 +20,8 @@ type SqlPhysicalOperation<A, E> = SqlPhysicalContextInput & {
   readonly reason: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
   readonly resumeAfterSnapshot: boolean;
   readonly publish: SqlPublisher;
+  /** Snapshots retention must keep besides the one this operation takes, such as a restore source. */
+  readonly retainSnapshotIds?: ReadonlyArray<string>;
   readonly body: (context: SqlRecoveryContext, recoveryId: string) => Effect.Effect<A, E>;
 };
 
@@ -104,7 +106,9 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
             },
             recovery: true,
             keepLatest: DEFAULT_SNAPSHOT_KEEP_LATEST,
-            retainSnapshotId: recovery.id,
+            retainSnapshotIds: [recovery.id, ...(input.retainSnapshotIds ?? [])].map((id) =>
+              SnapshotId.make(id),
+            ),
           })
           .pipe(
             Effect.catch(() =>

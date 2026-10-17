@@ -1640,6 +1640,7 @@ export const makeDataMoverService = (
           if (policy.keepLatest === undefined) {
             return [];
           }
+          const retained = new Set(policy.retainSnapshotIds?.map(String));
           return [...infos]
             .filter((info) => {
               const manual =
@@ -1648,7 +1649,7 @@ export const makeDataMoverService = (
             })
             .sort(
               (left, right) =>
-                Number(right.id === policy.retainSnapshotId) - Number(left.id === policy.retainSnapshotId) ||
+                Number(retained.has(String(right.id))) - Number(retained.has(String(left.id))) ||
                 DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
             )
             .slice(policy.keepLatest);

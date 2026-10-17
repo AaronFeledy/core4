@@ -1699,7 +1699,7 @@ describe("BunDataMover.layer", () => {
                 filter: { app, store: "data" },
                 keepLatest: automatic === true ? 1 : 0,
                 ...(automatic === undefined ? {} : { recovery: automatic }),
-                ...(retainOldest ? { retainSnapshotId: recovery.id } : {}),
+                ...(retainOldest ? { retainSnapshotIds: [recovery.id] } : {}),
               });
               const listed = yield* dataMover.listSnapshots({ app, store: "data" });
               return { recoveries, manual, ordinary, pruned, listed };

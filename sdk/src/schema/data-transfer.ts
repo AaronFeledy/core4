@@ -132,8 +132,12 @@ export const SnapshotGcOrphan = Schema.Struct({
 });
 export const SnapshotGcProviderReport = Schema.Struct({
   provider: Schema.String.annotate({ description: "Provider inspected for orphaned images." }),
-  status: Schema.Literals(["checked", "unavailable"]).annotate({
-    description: "Whether the runtime could be inspected without starting it.",
+  status: Schema.Literals(["checked", "unavailable", "failed"]).annotate({
+    description:
+      "checked: inspected; unavailable: not running or not reachable without starting it; failed: inspection or removal errored.",
+  }),
+  error: Schema.optionalKey(Schema.String).annotate({
+    description: "Why the provider was unavailable or failed, when known.",
   }),
   orphans: Schema.Array(SnapshotGcOrphan).annotate({
     description: "Unindexed snapshot images eligible for removal.",
@@ -321,9 +325,9 @@ export const PrunePolicy = Schema.Struct({
     description:
       "Prune automatic recovery snapshots instead of manual or unclassified snapshots. Defaults to false.",
   }),
-  retainSnapshotId: Schema.optionalKey(SnapshotId).annotate({
+  retainSnapshotIds: Schema.optionalKey(Schema.Array(SnapshotId)).annotate({
     description:
-      "Keep this snapshot first within the selected bucket's keepLatest budget, regardless of timestamp.",
+      "Keep these snapshots first within the selected bucket's keepLatest budget, regardless of timestamp.",
   }),
 });
 export type PrunePolicy = typeof PrunePolicy.Type;
