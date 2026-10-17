@@ -506,12 +506,29 @@ describe("nginx noScripts glob translation", () => {
     expect(nginxNoScriptRegex("sites/default.files")).toBe("sites/default\\.files");
   });
 
-  test("rejects an unsafe path instead of interpolating it", () => {
-    expect(() => nginxNoScriptRegex("files; } location / {")).toThrow(
-      /nginx noScripts path is not a safe webroot-relative URI/,
-    );
-    expect(() => nginxNoScriptRegex("sites/**/files")).toThrow(
-      /nginx noScripts path is not a safe webroot-relative URI/,
-    );
+  test.each([
+    "files; } location / {",
+    "sites/**/files",
+    "files;x",
+    "files#x",
+    "files\nx",
+    "files\rx",
+    "fïles",
+    "files%x",
+    "files,x",
+    "files~x",
+    "files=x",
+    "files@x",
+    "files!x",
+    "files&x",
+    "files:x",
+    "files<x",
+    "files`x",
+    ".",
+    "a/./b",
+    "a//b",
+    "*",
+  ])("rejects %j instead of interpolating it", (path) => {
+    expect(() => nginxNoScriptRegex(path)).toThrow(/nginx noScripts path is not a safe webroot-relative URI/);
   });
 });

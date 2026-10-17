@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 
 import {
   LandofileShape,
@@ -21,6 +21,15 @@ const decodeLandofileService = (raw: unknown): ServiceConfig => {
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return service;
+};
+
+const issueCount = (
+  result: ReturnType<typeof Schema.decodeUnknownResult<typeof NginxNoScriptPath>>,
+): number => {
+  if (!Result.isFailure(result)) {
+    throw new Error("expected NginxNoScriptPath decode to fail");
+  }
+  return SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.length;
 };
 
 const rejectedPaths = [
@@ -48,6 +57,25 @@ const rejectedPaths = [
   "files]x",
   "files}x",
   "files x",
+  "files;x",
+  "files#x",
+  "files\nx",
+  "files\rx",
+  "fïles",
+  "files%x",
+  "files,x",
+  "files~x",
+  "files=x",
+  "files@x",
+  "files!x",
+  "files&x",
+  "files:x",
+  "files<x",
+  "files`x",
+  ".",
+  "a/./b",
+  "a//b",
+  "*",
 ] as const;
 
 describe("NginxNoScriptPath", () => {
@@ -55,13 +83,15 @@ describe("NginxNoScriptPath", () => {
     "accepts %j",
     (path) => {
       expect(isNginxNoScriptPath(path)).toBe(true);
+      expect(NGINX_NO_SCRIPT_PATH_PATTERN.test(path)).toBe(true);
       expect(Schema.decodeUnknownSync(NginxNoScriptPath)(path)).toBe(path);
     },
   );
 
   test.each([...rejectedPaths])("rejects %j", (path) => {
     expect(isNginxNoScriptPath(path)).toBe(false);
-    expect(Result.isFailure(Schema.decodeUnknownResult(NginxNoScriptPath)(path))).toBe(true);
+    expect(NGINX_NO_SCRIPT_PATH_PATTERN.test(path)).toBe(false);
+    expect(issueCount(Schema.decodeUnknownResult(NginxNoScriptPath)(path))).toBe(1);
     expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ noScripts: [path] }))).toBe(true);
     expect(
       Result.isFailure(

@@ -594,23 +594,31 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
 /**
  * One `noScripts` entry: a webroot-relative URI path nginx must not execute as
  * PHP. The allowlist is the only characters interpolated into a generated
- * `location` regex; `*` is a single path segment. Empty values, a leading or
- * trailing `/`, `..`, `**`, spaces, and nginx metacharacters are rejected so a
- * Landofile cannot close the server block or inject another location.
+ * `location` regex; `*` is a single path segment. Empty values, a bare `*`, a
+ * leading or trailing `/`, empty / `.` / `..` segments, `**`, spaces, and
+ * nginx metacharacters are rejected so a Landofile cannot close the server
+ * block, inject another location, or author a path nginx would normalize away.
  */
-export const NGINX_NO_SCRIPT_PATH_PATTERN = /^(?!\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)[A-Za-z0-9._/*-]+$/u;
+export const NGINX_NO_SCRIPT_PATH_PATTERN =
+  /^(?!\/)(?!\*$)(?!.*\/\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)(?!(?:^|.*\/)\.(?:\/|$))[A-Za-z0-9._/*-]+$/u;
 
-export const isNginxNoScriptPath = (value: string): boolean => NGINX_NO_SCRIPT_PATH_PATTERN.test(value);
+const NGINX_NO_SCRIPT_PATH_CHARS = /^[A-Za-z0-9._/*-]+$/u;
+
+export const isNginxNoScriptPath = (value: string): boolean => {
+  if (value === "*" || !NGINX_NO_SCRIPT_PATH_CHARS.test(value)) {
+    return false;
+  }
+  if (value.includes("**") || value.includes("..")) {
+    return false;
+  }
+  return value.split("/").every((segment) => segment !== "" && segment !== ".");
+};
 
 export const NginxNoScriptPath = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter(isNginxNoScriptPath, {
       message:
-        "noScripts entries must be non-empty webroot-relative URI paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot start or end with '/', contain '..' or '**', or include spaces or nginx metacharacters.",
-    }),
-  ),
-  Schema.check(
-    Schema.isPattern(NGINX_NO_SCRIPT_PATH_PATTERN, {
+        "noScripts entries must be non-empty webroot-relative URI paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or nginx metacharacters.",
       toJsonSchema: () => ({ pattern: NGINX_NO_SCRIPT_PATH_PATTERN.source }),
     }),
   ),
@@ -687,7 +695,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     noScripts: Schema.optionalKey(Schema.Array(NginxNoScriptPath)).annotate({
       description:
-        "Webroot-relative URI paths where an nginx FastCGI front must not execute PHP. Each path may use a single-segment '*' and cannot start or end with '/', contain '..' or '**', or include nginx metacharacters.",
+        "Webroot-relative URI paths where an nginx FastCGI front must not execute PHP. Each path may use a single-segment '*' and cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include nginx metacharacters.",
     }),
     allowOverride: Schema.optionalKey(Schema.Boolean).annotate({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
