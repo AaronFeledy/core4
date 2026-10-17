@@ -241,7 +241,6 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
           if (source === "env") danglingEnvSocket = path;
           return undefined;
         }
-        if (!isUsableSocket(inspection)) return undefined;
       }
     }
     const probed = yield* probe(upstream).pipe(Effect.result);
