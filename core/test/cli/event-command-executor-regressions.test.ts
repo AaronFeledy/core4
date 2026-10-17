@@ -44,8 +44,10 @@ const makeHarness = (): Harness => {
       error: (body: string) => Effect.sync(() => output.push(body)),
     },
     output: {
-      stdout: (chunk: string) => Effect.sync(() => output.push(chunk)),
-      stderr: (chunk: string) => Effect.sync(() => output.push(chunk)),
+      stdout: (chunk: string | Uint8Array) =>
+        Effect.sync(() => output.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))),
+      stderr: (chunk: string | Uint8Array) =>
+        Effect.sync(() => output.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))),
     },
   } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
@@ -244,7 +246,7 @@ describe("event command executor regressions", () => {
       expect(embedded.exitCode).toBe(17);
       expect(process.exitCode).toBe(73);
     } finally {
-      process.exitCode = previousExitCode;
+      process.exitCode = previousExitCode ?? 0;
     }
   });
 });

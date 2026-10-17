@@ -248,7 +248,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const liveStreaming = options.streamingMode === "live";
   // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
   const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
-  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format, io).pipe(
+  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format).pipe(
     Layer.provide(
       Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
     ),

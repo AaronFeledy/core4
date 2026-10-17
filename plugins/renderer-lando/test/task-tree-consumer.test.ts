@@ -106,7 +106,7 @@ type ControllerCall =
   | { readonly kind: "setFooter"; readonly lines: ReadonlyArray<string> }
   | { readonly kind: "commitScrollback"; readonly text: string }
   | { readonly kind: "rememberScrollback"; readonly text: string }
-  | { readonly kind: "suspendOutput"; readonly text: string }
+  | { readonly kind: "suspendOutput"; readonly text: string | Uint8Array }
   | { readonly kind: "requestLive" }
   | { readonly kind: "dropLive" }
   | { readonly kind: "enterFullTail" }
@@ -127,7 +127,7 @@ class FakeController {
   rememberScrollback(text: string): void {
     this.calls.push({ kind: "rememberScrollback", text });
   }
-  suspendOutput(text: string, write: () => void): void {
+  suspendOutput(text: string | Uint8Array, write: () => void): void {
     this.calls.push({ kind: "suspendOutput", text });
     write();
   }
@@ -217,7 +217,12 @@ const ttyIo = () => {
   });
   const streamStub = process.stderr;
   return {
-    io: { ...io, externalOutputStream: streamStub, writeStdout: (chunk: string) => stdout.push(chunk) },
+    io: {
+      ...io,
+      externalOutputStream: streamStub,
+      writeStdout: (chunk: string | Uint8Array) =>
+        stdout.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)),
+    },
     stdout: () => stdout.join(""),
   };
 };
@@ -1185,7 +1190,11 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
   test("a TTY IO without externalOutputStream never constructs the controller and writes line output", async () => {
     const stdout: string[] = [];
     const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
-    const io = { ...base, writeStdout: (chunk: string) => stdout.push(chunk) };
+    const io = {
+      ...base,
+      writeStdout: (chunk: string | Uint8Array) =>
+        stdout.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)),
+    };
     let created = false;
     await Effect.runPromise(
       drive(

@@ -191,8 +191,14 @@ export const pluginOwnedCommandEffect = <A, E, R>(
                       ),
                   },
                   output: {
-                    stdout: (chunk) => renderer.output.stdout(redactor.redactString(chunk)),
-                    stderr: (chunk) => renderer.output.stderr(redactor.redactString(chunk)),
+                    stdout: (chunk) =>
+                      renderer.output.stdout(
+                        typeof chunk === "string" ? redactor.redactString(chunk) : chunk,
+                      ),
+                    stderr: (chunk) =>
+                      renderer.output.stderr(
+                        typeof chunk === "string" ? redactor.redactString(chunk) : chunk,
+                      ),
                   },
                 }),
               ),

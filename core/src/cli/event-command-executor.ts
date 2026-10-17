@@ -87,8 +87,8 @@ const withRedaction = (
         renderer.message.error(redact(body), remediation === undefined ? undefined : redact(remediation)),
     },
     output: {
-      stdout: (chunk) => renderer.output.stdout(redact(chunk)),
-      stderr: (chunk) => renderer.output.stderr(redact(chunk)),
+      stdout: (chunk) => renderer.output.stdout(typeof chunk === "string" ? redact(chunk) : chunk),
+      stderr: (chunk) => renderer.output.stderr(typeof chunk === "string" ? redact(chunk) : chunk),
     },
   });
 

@@ -40,6 +40,8 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
     for (const stdoutIsTTY of [false, true]) {
       let stdout = "";
       let stderr = "";
+      const stdoutBytes: number[] = [];
+      const stderrBytes: number[] = [];
       const io: RendererIO = {
         isTTY,
         stdoutIsTTY,
@@ -47,10 +49,12 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
         terminalRows: 20,
         stdoutColumns: 100,
         writeStdout: (chunk) => {
-          stdout += chunk;
+          if (typeof chunk === "string") stdout += chunk;
+          else stdoutBytes.push(...chunk);
         },
         writeStderr: (chunk) => {
-          stderr += chunk;
+          if (typeof chunk === "string") stderr += chunk;
+          else stderrBytes.push(...chunk);
         },
         subscribeInput: () => () => {},
       };
@@ -116,6 +120,22 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
           yield* requireContract(
             stderr === `${before}diagnostic\npartial`,
             "stderr output is verbatim passthrough",
+          );
+          const bytes = new Uint8Array([0xff, 0, 0x0a, 0xe2, 0x82]);
+          yield* renderer.output.stdout(bytes.subarray(0, 3));
+          yield* renderer.output.stdout(bytes.subarray(3));
+          yield* renderer.output.stderr(bytes);
+          yield* requireContract(
+            stdout === payload &&
+              stdoutBytes.length === bytes.length &&
+              bytes.every((byte, index) => stdoutBytes[index] === byte),
+            "stdout preserves invalid UTF-8 and final partial bytes without text conversion",
+          );
+          yield* requireContract(
+            stderr === `${before}diagnostic\npartial` &&
+              stderrBytes.length === bytes.length &&
+              bytes.every((byte, index) => stderrBytes[index] === byte),
+            "stderr preserves invalid UTF-8 and final partial bytes without text conversion",
           );
         }),
       );

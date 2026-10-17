@@ -51,7 +51,12 @@ describe("RendererCapabilities matrix", () => {
   for (const isTTY of [true, false]) {
     test(`service and event consumer agree on the first notification when isTTY is ${String(isTTY)}`, async () => {
       const writes: string[] = [];
-      const io = { isTTY, writeStderr: (text: string) => writes.push(text), writeStdout: () => undefined };
+      const io = {
+        isTTY,
+        writeStderr: (text: string | Uint8Array) =>
+          writes.push(typeof text === "string" ? text : new TextDecoder().decode(text)),
+        writeStdout: () => undefined,
+      };
       const consumer = landoRendererContribution.makeEventConsumer(io);
       if (consumer === undefined) throw new Error("Lando renderer must provide an event consumer");
       const runtime = ManagedRuntime.make(
