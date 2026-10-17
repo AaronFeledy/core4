@@ -1,5 +1,4 @@
 import { lstat, realpath } from "node:fs/promises";
-import { userInfo } from "node:os";
 import { posix, win32 } from "node:path";
 import { SshAgentUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
@@ -14,6 +13,7 @@ export type HostAgentPathKind = "missing" | "socket" | "symlink" | "other";
 export interface HostAgentInspection {
   readonly kind: HostAgentPathKind;
   readonly uid?: number;
+  readonly targetUid?: number;
   readonly dangling?: boolean;
   readonly targetKind?: "socket" | "other";
 }
@@ -76,14 +76,19 @@ const unavailable = (reason: DiscoveryReason, socketPath?: string, owner?: strin
             : DEFAULT_REMEDIATION,
   });
 
-const socketOwnerLabel = (uid: number): string => {
-  try {
-    const current = userInfo();
-    if (current.uid === uid) return current.username;
-  } catch {
-    // Directory services and restricted environments can refuse userInfo().
+const socketOwnerLabel = (uid: number): string => `uid ${uid}`;
+
+const explicitOwnerMismatch = (
+  inspection: HostAgentInspection,
+  path: string,
+): SshAgentUnavailableError | undefined => {
+  const self = process.getuid?.();
+  if (self === undefined) return undefined;
+  for (const uid of [inspection.uid, inspection.targetUid]) {
+    if (uid !== undefined && uid !== self)
+      return unavailable("socket-owner-mismatch", path, socketOwnerLabel(uid));
   }
-  return `uid ${uid}`;
+  return undefined;
 };
 
 const isUsableSocket = (inspection: HostAgentInspection): boolean =>
@@ -98,12 +103,13 @@ const nodeInspect = (path: string): Effect.Effect<HostAgentInspection, never> =>
           const target = await lstat(await realpath(path));
           return {
             kind: "symlink",
-            uid: target.uid,
+            uid: stats.uid,
+            targetUid: target.uid,
             targetKind: target.isSocket() ? "socket" : "other",
           };
         } catch (cause: unknown) {
-          if (isErrnoCode(cause, "ENOENT")) return { kind: "symlink", dangling: true };
-          return { kind: "symlink", targetKind: "other" };
+          if (isErrnoCode(cause, "ENOENT")) return { kind: "symlink", uid: stats.uid, dangling: true };
+          return { kind: "symlink", uid: stats.uid, targetKind: "other" };
         }
       }
       if (stats.isSocket()) return { kind: "socket", uid: stats.uid };
@@ -227,12 +233,8 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
           return yield* Effect.fail(unavailable("socket-missing", path));
         }
         if (!isUsableSocket(inspection)) return yield* Effect.fail(unavailable("socket-not-socket", path));
-        const self = process.getuid?.();
-        if (self !== undefined && inspection.uid !== undefined && inspection.uid !== self) {
-          return yield* Effect.fail(
-            unavailable("socket-owner-mismatch", path, socketOwnerLabel(inspection.uid)),
-          );
-        }
+        const mismatch = explicitOwnerMismatch(inspection, path);
+        if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       } else {
         if (inspection.kind === "missing") return undefined;
         if (inspection.dangling === true) {
@@ -240,8 +242,6 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
           return undefined;
         }
         if (!isUsableSocket(inspection)) return undefined;
-        const self = process.getuid?.();
-        if (self !== undefined && inspection.uid !== undefined && inspection.uid !== self) return undefined;
       }
     }
     const probed = yield* probe(upstream).pipe(Effect.result);
