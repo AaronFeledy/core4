@@ -237,6 +237,39 @@ const findSnapshotInfo = Effect.fnUntraced(function* (
   return match;
 });
 
+const resolveSnapshotInfo = Effect.fnUntraced(function* (
+  persistence: SnapshotPersistence,
+  reference: string,
+  scope: SnapshotFilter,
+): Effect.fn.Return<SnapshotInfo, SnapshotNotFoundError | SnapshotAmbiguousError | DataTransferError> {
+  const byId = yield* listSnapshotInfos(persistence, { id: reference });
+  const exact = byId[0];
+  if (exact !== undefined) return exact;
+  const matches = (yield* listSnapshotInfos(persistence, { ...scope, label: reference })).toSorted(
+    (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
+  );
+  if (matches.length > 1) {
+    return yield* Effect.fail(
+      new SnapshotAmbiguousError({
+        message: `Snapshot label ${reference} matches ${matches.length} snapshots.`,
+        snapshotId: reference,
+        matchCount: matches.length,
+        candidateIds: matches.map((entry) => entry.id),
+        remediation: "Run `lando db:snapshots` and retry with one of the matching snapshot ids.",
+      }),
+    );
+  }
+  const match = matches[0];
+  if (match !== undefined) return match;
+  return yield* Effect.fail(
+    new SnapshotNotFoundError({
+      message: `Snapshot ${reference} was not found.`,
+      snapshotId: reference,
+      remediation: "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
+    }),
+  );
+});
+
 const writeSnapshotSidecar = (persistence: SnapshotPersistence, info: SnapshotInfo) =>
   Schema.encodeUnknownEffect(SnapshotInfoSchema)(info).pipe(
     Effect.mapError((cause) => stateFailure("encode-sidecar", cause)),
@@ -1591,6 +1624,9 @@ export const makeDataMoverService = (
         .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
     }),
     listSnapshots: Effect.fn("DataMover.listSnapshots")((filter) => listSnapshotInfos(persistence, filter)),
+    resolveSnapshot: Effect.fn("DataMover.resolveSnapshot")((reference, scope) =>
+      resolveSnapshotInfo(persistence, reference, scope),
+    ),
     ...orphanedSnapshotMethods({
       provider,
       storeIdentity: snapshotStoreIdentity(persistence),
@@ -1710,6 +1746,8 @@ export const layer: Layer.Layer<
         restore: (handle, store, opts) =>
           service().pipe(Effect.flatMap((mover) => mover.restore(handle, store, opts))),
         listSnapshots: (filter) => service().pipe(Effect.flatMap((mover) => mover.listSnapshots(filter))),
+        resolveSnapshot: (reference, scope) =>
+          service().pipe(Effect.flatMap((mover) => mover.resolveSnapshot(reference, scope))),
         findOrphanedSnapshots: service().pipe(Effect.flatMap((mover) => mover.findOrphanedSnapshots)),
         removeOrphanedSnapshot: (artifact) =>
           service().pipe(Effect.flatMap((mover) => mover.removeOrphanedSnapshot(artifact))),

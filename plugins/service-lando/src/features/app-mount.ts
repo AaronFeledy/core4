@@ -13,6 +13,7 @@ const AppMountConfig = Schema.Struct({
   target: Schema.optionalKey(Schema.String),
   readOnly: Schema.optionalKey(Schema.Boolean),
   excludes: Schema.optionalKey(Schema.Array(Schema.String)),
+  includes: Schema.optionalKey(Schema.Array(Schema.String)),
   workingDirectory: Schema.optionalKey(Schema.String),
 });
 
@@ -55,7 +56,7 @@ export const landoAppMountFeature: ServiceFeatureDefinition = {
               ...excludes,
               ...(authored?.excludes ?? []).filter((entry) => !excludes.includes(entry)),
             ],
-            includes: authored?.includes ?? [],
+            includes: [...new Set([...(config.includes ?? []), ...(authored?.includes ?? [])])],
           });
         }
         if (ctx.base === "lando") {

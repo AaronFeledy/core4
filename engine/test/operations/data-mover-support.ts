@@ -7,6 +7,7 @@ export const emptySnapshots = DataMover.of({
   snapshot: () => Effect.die("snapshot is not used by teardown"),
   restore: () => Effect.die("restore is not used by teardown"),
   listSnapshots: () => Effect.succeed([]),
+  resolveSnapshot: () => Effect.die("resolveSnapshot is not used by teardown"),
   removeSnapshot: () => Effect.die("no snapshots to remove"),
   pruneSnapshots: () => Effect.die("pruneSnapshots is not used by teardown"),
   findOrphanedSnapshots: Effect.succeed([]),

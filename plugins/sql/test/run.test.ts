@@ -19,8 +19,9 @@ import {
 import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 
 import { dumpCommand, loadCommand } from "../src/families.ts";
-import { dbInputFromCommand, executeDbCommand } from "../src/run.ts";
+import { type SqlCommandDeps, dbInputFromCommand, executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { sourcePlan } from "./support/source-plan.ts";
 
 const SECRET = "s3cret-pass";
 
@@ -41,6 +42,246 @@ const run = (
 ) => Effect.runPromiseExit(Effect.scoped(executeDbCommand(deps, input)));
 
 describe("executeDbCommand", () => {
+  test("maps app seed source flags at the command boundary", () => {
+    // Given: command flags selecting a source app and service.
+    const command = {
+      argv: [],
+      parsedArgv: [],
+      flags: { "from-app": "shop", "from-service": "analytics" },
+      args: {},
+    };
+    // When: the command boundary produces SQL input.
+    const input = dbInputFromCommand("seed", command);
+    // Then: both selectors survive with their distinct meanings.
+    expect(input).toMatchObject({ action: "seed", fromApp: "shop", fromService: "analytics" });
+  });
+
+  test("inspects the applied source plan before any target database access", async () => {
+    // Given: a source inspection that records both identity and ordering.
+    const source = sourcePlan("/shop");
+    const inspected: Array<Parameters<SqlCommandDeps["inspectSource"]>[0]> = [];
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      appliedPlans: Effect.succeed([source]),
+      inspectSource: (target) =>
+        Effect.sync(() => {
+          inspected.push(target);
+          expect(harness.countAttempts()).toBe(0);
+          expect(harness.lifecycle()).toEqual([]);
+          return { app: target.app, service: target.service, providerId: source.provider, status: "running" };
+        }),
+    });
+    // When: seeding from the applied source.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: inspection uses the exact source selector rather than the target plan.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(inspected).toEqual([{ app: source.id, service: ServiceName.make("database"), plan: source }]);
+  });
+
+  for (const family of ["mysql", "mariadb", "postgres", "mongodb"] as const) {
+    test(`seeds ${family} from a running app through one logical transfer`, async () => {
+      // Given: an unrelated running source app and a fresh target with distinct credentials.
+      const source = sourcePlan("/unrelated/shop", `${family}:8.0`);
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        type: `${family}:8.0`,
+        ...(family === "mariadb" ? { observedVersion: "8.0-MariaDB" } : {}),
+        environment: {
+          MYSQL_PASSWORD: SECRET,
+          POSTGRES_PASSWORD: SECRET,
+          MONGO_INITDB_ROOT_PASSWORD: SECRET,
+        },
+        appliedPlans: Effect.succeed([source]),
+      });
+      // When: seeding by app id.
+      const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+      // Then: a single credential-safe transfer crosses app ids and preserves seed semantics.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) return;
+      expect(exit.value.seedStatus).toBe("seeded");
+      expect(harness.transfers()).toHaveLength(1);
+      const transfer = harness.transfers()[0];
+      if (transfer?.from._tag !== "serviceCmd" || transfer.to._tag !== "serviceCmd")
+        throw new Error("expected command transfer");
+      expect([transfer.from.app, transfer.to.app]).toEqual([AppId.make("shop"), AppId.make("sql-app")]);
+      expect(transfer.from.command).toEqual(
+        dumpCommand(family, { user: "source-user", database: "source-db" }),
+      );
+      expect(transfer.to.command).toEqual(
+        loadCommand(family, { user: "lando", database: "sql-app" }, "source-db"),
+      );
+      expect(Object.values(transfer.from.env ?? {}).join(" ")).toContain("source-secret");
+      expect(Object.values(transfer.to.env ?? {}).join(" ")).toContain(SECRET);
+      expect([...transfer.from.command, ...transfer.to.command].join(" ")).not.toContain("source-secret");
+      expect([...transfer.from.command, ...transfer.to.command].join(" ")).not.toContain(SECRET);
+      expect(harness.lifecycle()).toEqual(["lock"]);
+      expect(harness.snapshots()).toEqual([]);
+    });
+  }
+
+  test("remaps mongodb namespaces when the source and target databases differ", async () => {
+    // Given: a worktree target database seeded from a source app with a different database name.
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mongodb:7",
+      environment: { MONGO_INITDB_ROOT_PASSWORD: SECRET },
+      appliedPlans: Effect.succeed([sourcePlan("/shop", "mongodb:7")]),
+    });
+    // When: seeding by app id.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: the restore selects the source namespace and renames it into the target database.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const transfer = harness.transfers()[0];
+    if (transfer?.to._tag !== "serviceCmd") throw new Error("expected command transfer");
+    const command =
+      typeof transfer.to.command === "string" ? transfer.to.command : transfer.to.command.join(" ");
+    expect(command).toContain("--nsInclude='source-db.*' --nsFrom='source-db.*' --nsTo='sql-app.*'");
+    expect(command).not.toContain(SECRET);
+    expect(command).not.toContain("source-secret");
+  });
+
+  test("matches a source checkout by canonical root", async () => {
+    // Given: a path containing dot segments identifies an applied source root.
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const source = sourcePlan(harness.root);
+    const deps = { ...harness.deps, appliedPlans: Effect.succeed([source]) };
+    // When: seeding by path instead of id.
+    const exit = await run(deps, { action: "seed", fromPath: `${harness.root}/.`, yes: false });
+    // Then: the source app id comes from the applied plan.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.transfers()[0]?.from).toMatchObject({ _tag: "serviceCmd", app: "shop" });
+  });
+
+  for (const [names, requested, expected] of [
+    [["database", "other"], undefined, "database"],
+    [["only"], undefined, "only"],
+    [["database", "other"], "other", "other"],
+  ] as const) {
+    test(`selects source service ${expected} from ${names.join(",")} with override ${requested}`, async () => {
+      // Given: a source with matching-name, sole-service, or explicitly selected candidates.
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        appliedPlans: Effect.succeed([sourcePlan("/shop", "mysql:8.0", names)]),
+      });
+      // When: seeding with the optional source service selector.
+      const exit = await run(harness.deps, {
+        action: "seed",
+        fromApp: "shop",
+        yes: false,
+        ...(requested === undefined ? {} : { fromService: requested }),
+      });
+      // Then: the selected source command targets the expected service.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(harness.transfers()[0]?.from).toMatchObject({ service: expected });
+    });
+  }
+
+  test("reports source SQL service ambiguity without touching the target", async () => {
+    // Given: neither of two source services matches the target name.
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      appliedPlans: Effect.succeed([sourcePlan("/shop", "mysql:8.0", ["one", "two"])]),
+    });
+    // When: no source service is selected.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: source candidates and the source-specific selector are exposed.
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+      _tag: "SqlServiceAmbiguousError",
+      available: ["one", "two"],
+      remediation: "Pass --from-service <name>.",
+    });
+    expect(harness.lifecycle()).toEqual([]);
+  });
+
+  for (const [scenario, sourceType, remediation] of [
+    ["unknown", "mysql:8.0", "--from-path"],
+    ["unavailable", "mysql:8.0", "db:export"],
+    ["stopped", "mysql:8.0", "--from-path"],
+    ["mismatch", "postgres:16", "same family"],
+    ["mssql", "mssql:2022", "db:export"],
+    ["two-sources", "mysql:8.0", "--from-path"],
+  ] as const) {
+    test(`rejects ${scenario} app seed before touching the target`, async () => {
+      // Given: an invalid source or unsupported source/target combination.
+      const source = sourcePlan("/shop", sourceType);
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        ...(scenario === "mssql" ? { type: "mssql:2022" } : {}),
+        ...(scenario === "unavailable"
+          ? {}
+          : { appliedPlans: Effect.succeed(scenario === "unknown" ? [] : [source]) }),
+        ...(scenario === "stopped"
+          ? {
+              inspectSource: (target) =>
+                Effect.succeed({
+                  app: target.app,
+                  service: target.service,
+                  providerId: source.provider,
+                  status: "stopped",
+                }),
+            }
+          : {}),
+      });
+      // When: the invalid source is requested.
+      const exit = await run(harness.deps, {
+        action: "seed",
+        fromApp: "shop",
+        yes: false,
+        ...(scenario === "two-sources" ? { file: "dump.sql" } : {}),
+      });
+      // Then: a tagged source failure gives actionable remediation and no mutation occurs.
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(SqlSeedSourceError);
+      if (!(error instanceof SqlSeedSourceError)) return;
+      expect(error.remediation).toContain(remediation);
+      if (scenario === "unknown" || scenario === "stopped")
+        expect(error.remediation).toContain("lando start");
+      if (scenario === "unknown") expect(error.message).toBe("No applied source app matches shop.");
+      if (scenario === "unavailable") {
+        expect(error.message).toContain("Provider test");
+        expect(error.remediation).toContain("lando db:seed <file>");
+        expect(error.remediation).not.toContain("lando start");
+      }
+      expect(harness.lifecycle()).toEqual([]);
+      expect(harness.transfers()).toEqual([]);
+      expect(harness.countAttempts()).toBe(0);
+    });
+  }
+
+  for (const status of ["in-progress", "seeded", "failed"] as const) {
+    test(`rejects app seed when target initialization is ${status}`, async () => {
+      // Given: a running source but a target already claimed or consumed.
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        seedStatus: status,
+        appliedPlans: Effect.succeed([sourcePlan("/shop")]),
+      });
+      // When: app seeding is requested.
+      const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+      // Then: the existing freshness gate prevents transfer.
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlSeedStateError);
+      expect(harness.transfers()).toEqual([]);
+    });
+  }
+
+  test("rejects app seed when a fresh target contains data", async () => {
+    // Given: initialization says fresh but the target database is populated.
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      countStdout: "1",
+      appliedPlans: Effect.succeed([sourcePlan("/shop")]),
+    });
+    // When: app seeding is requested.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: the emptiness gate prevents transfer.
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlSeedStateError);
+    expect(harness.transfers()).toEqual([]);
+  });
+
   test("maps the db:seed snapshot flag to its physical source", () => {
     const input = dbInputFromCommand("seed", {
       argv: [],

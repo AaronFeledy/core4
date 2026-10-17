@@ -4,6 +4,12 @@
 
 ## Compatibility notes
 
+- `ServiceConfig.appMount` and `AppMountPlan` keep `excludes`/`includes`: excludes own per-service volume overlays and are never synced on accelerated binds; includes cancels exact whole entries. Defaults are `node_modules`, `vendor`, and `tmp`, plus service-type presets. The exported `appMountSyncIgnores` helper derives ordered, deduplicated ignores from effective excludes, finalized storage and non-bind mounts under the app target, then `VCS_SYNC_IGNORES` (`[".git"]`). The fixed Git rule never creates an overlay and can be canceled with `includes: [".git"]`. Authored `!` entries in excludes or includes are rejected at the entry path with includes remediation. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
+
+- `DataMover.resolveSnapshot(reference, scope)` is additive. Resolution is id-first (global id match) then label-scoped within `scope` (newest `createdAt` first). A unique match returns `SnapshotInfo`. Multiple label matches fail with `SnapshotAmbiguousError` (`candidateIds` newest first; `snapshotId` is the caller reference). Zero matches fail with `SnapshotNotFoundError`. Existing `listSnapshots`/`restore`/`removeSnapshot` behavior is unchanged.
+
+- `SqlSeedSourceError` additively carries optional `sourceApp`, `sourceRoot`, `sourceService`, `sourceFamily`, and `targetFamily` fields for logical app-to-app database seeding. The existing tag, `service`, `message`, and `remediation` remain unchanged; machine failure envelopes preserve the source context without credentials.
+
 - Native snapshot reconciliation adds `VolumeSnapshotArtifact`, optional `RuntimeProvider.listVolumeSnapshots`, and `DataMover.findOrphanedSnapshots` / `removeOrphanedSnapshot`. Reconciliation is scoped to the canonical snapshot-store identity, includes unmarked legacy images, and excludes images younger than one hour. Snapshot image listing and orphan GC never start a stopped runtime, while `removeVolumeSnapshot` may start one for purge-before-teardown; a failed orphan eligibility recheck returns a tagged failure rather than a successful removal receipt.
 
 - `PrunePolicy` additively accepts optional `recovery`: omitted or false prunes only manual/unclassified snapshots, while true prunes only automatic recovery snapshots (import, reset, restore, or seed). Optional `retainSnapshotIds` reserve places in the `keepLatest` budget for the listed snapshots regardless of timestamps, so a newly captured undo point and a restore source survive clock rollback or ties. Omitted `keepLatest` still removes nothing. SQL automatically keeps three recovery points per database after successful protected operations; retention failure warns without failing the completed operation.
@@ -547,6 +553,8 @@ It registers no JSON Schema.
 - `StringImportRef`
 - `AbsolutePath`
 - `AppMountPlan`
+- `appMountSyncIgnores`
+- `VCS_SYNC_IGNORES`
 - `ArtifactBuildSpec`
 - `ArtifactManifestEntry`
 - `ArtifactRef`

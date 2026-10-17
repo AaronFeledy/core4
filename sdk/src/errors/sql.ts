@@ -96,5 +96,27 @@ export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("
 export class SqlSeedSourceError extends Schema.TaggedError<SqlSeedSourceError>()("SqlSeedSourceError", {
   message: Schema.String,
   service: Schema.String,
+  sourceApp: Schema.optional(
+    Schema.String.annotate({
+      description: "Source app id requested with --from-app or resolved from the source checkout.",
+    }),
+  ),
+  sourceRoot: Schema.optional(
+    Schema.String.annotate({
+      description:
+        "Canonical root of the source checkout requested with --from-path or resolved from the source app.",
+    }),
+  ),
+  sourceService: Schema.optional(
+    Schema.String.annotate({
+      description: "Database service in the source app that would provide the seed dump.",
+    }),
+  ),
+  sourceFamily: Schema.optional(
+    Schema.String.annotate({ description: "Database family of the source service." }),
+  ),
+  targetFamily: Schema.optional(
+    Schema.String.annotate({ description: "Database family of the target service being seeded." }),
+  ),
   remediation: Schema.String,
 }) {}

@@ -518,6 +518,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       plan,
       versionConstraints,
       shadowHostChecks: finalized.shadowHostChecks,
+      gitHostChecks: finalized.gitHostChecks,
     }).pipe(
       Effect.provideService(CacheService, cacheService),
       Effect.catch(() => Effect.void),
