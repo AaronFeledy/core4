@@ -9,6 +9,8 @@ import {
   PHP_INDEX,
   apacheCases,
   nginxFpmCases,
+  nginxNoScriptCases,
+  nginxNoScriptFixtureFiles,
   phpFixtureFiles,
   staticCases,
   staticFixtureFiles,
@@ -30,6 +32,7 @@ const suites: ReadonlyArray<{
   { server: "static", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx-fpm", files: phpFixtureFiles, cases: nginxFpmCases },
+  { server: "nginx-fpm-noscripts", files: nginxNoScriptFixtureFiles, cases: nginxNoScriptCases },
   {
     server: "apache",
     files: {

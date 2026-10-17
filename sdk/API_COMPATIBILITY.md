@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ServiceConfig.noScripts` is an additive optional list of webroot-relative URI paths. An nginx FastCGI front renders each as a case-insensitive deny location before the PHP location. Omitted or empty lists keep the previous FastCGI wire. Drupal and Drupal CMS recipes author `sites/*/files` on their nginx edge; other recipes do not.
+
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.
@@ -462,6 +464,9 @@ It registers no JSON Schema.
 - `ABSOLUTE_CONTAINER_PATH_PATTERN`
 - `AbsoluteContainerPath`
 - `isAbsoluteContainerPath`
+- `NGINX_NO_SCRIPT_PATH_PATTERN`
+- `NginxNoScriptPath`
+- `isNginxNoScriptPath`
 - `HostTerminal`
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
@@ -1083,6 +1088,8 @@ It registers no JSON Schema.
   `.logging`, `.gpus`, and `.deploy` are new additive optional fields carrying the preserved Compose
   per-container runtime knobs under their Compose spellings. Values canonicalize to one long form;
   keys are never renamed.
+- `ServiceConfig.noScripts` is a new additive optional list of webroot-relative URI paths where an
+  nginx FastCGI front must not execute PHP. Each entry is `NginxNoScriptPath`.
 - `PreRestartEvent.services` and `PostRestartEvent.services` are new additive optional fields. A
   full-app restart omits them so existing payloads stay unchanged.
 

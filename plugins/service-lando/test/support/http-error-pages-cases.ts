@@ -24,6 +24,8 @@ export const staticFixtureFiles: Readonly<Record<string, string>> = {
 
 export const PATHINFO_OK = "PATHINFO_OK\n";
 export const PHAR_EXECUTED = "PHAR_EXECUTED\n";
+export const INSTALL_OK = "INSTALL_OK\n";
+export const UPLOAD_EXECUTED = "UPLOAD_EXECUTED\n";
 
 /** Dumps RFC 3875 PATH_INFO so nginx+FPM and Apache-via can be compared. */
 export const PATHINFO_SCRIPT = [
@@ -46,6 +48,13 @@ export const phpFixtureFiles: Readonly<Record<string, string>> = {
   "pathinfo.php": PATHINFO_SCRIPT,
   // `strrev` so a static download of the source cannot look like PHP ran.
   "uploads/x.phar": "<?php\necho strrev('DETUCEXE_RAHP') . \"\\n\";\n",
+};
+
+/** Drupal-shaped upload tree used to prove noScripts cannot execute PHP. */
+export const nginxNoScriptFixtureFiles: Readonly<Record<string, string>> = {
+  ...phpFixtureFiles,
+  "install.php": `<?php\necho ${JSON.stringify(INSTALL_OK)};\n`,
+  "sites/default/files/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
 };
 
 /** Response headers the app set itself and the server must pass through. */
@@ -146,6 +155,32 @@ export const nginxFpmCases: ReadonlyArray<ErrorPageCase> = [
   ...phpCommonCases,
   request("front-controls a missing path to index.php", "/missing.html", 200, { exact: PHP_INDEX }),
   request("explains a missing script with the Lando 404 page", "/missing.php", 404, { page: 404 }),
+];
+
+export const nginxNoScriptCases: ReadonlyArray<ErrorPageCase> = [
+  request("serves the PHP index", "/", 200, { exact: PHP_INDEX }, { headers: { marker: "index" } }),
+  request("keeps index.php PATH_INFO on the front controller", "/index.php/node/1", 200, {
+    exact: PHP_INDEX,
+  }),
+  request("serves install.php outside the denied tree", "/install.php", 200, { exact: INSTALL_OK }),
+  request(
+    "falls through a missing image-style derivative to index.php",
+    "/sites/default/files/styles/thumbnail/public/missing.jpg",
+    200,
+    { exact: PHP_INDEX },
+  ),
+  request("denies PHP under sites/*/files", "/sites/default/files/x.php", 403, { page: 403 }),
+  request("denies PATH_INFO under sites/*/files", "/sites/default/files/x.php/extra", 403, { page: 403 }),
+  request("denies a %2e segment under sites/*/files", "/sites/default/files/%2e/x.php", 403, {
+    page: 403,
+  }),
+  request("denies a .. segment that stays under sites/*/files", "/sites/default/files/foo/../x.php", 403, {
+    page: 403,
+  }),
+  request("denies doubled slashes under sites/*/files", "/sites/default/files//x.php", 403, { page: 403 }),
+  request("denies a case-folded .PHP under sites/*/files", "/sites/default/files/x.PHP", 403, {
+    page: 403,
+  }),
 ];
 
 export const apacheCases: ReadonlyArray<ErrorPageCase> = [

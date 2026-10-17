@@ -155,6 +155,28 @@ describe("PHP site snapshot builders", () => {
     });
   }
 
+  test("edge fields copy nested nodes onto the shared nginx edge", () => {
+    const noScripts: ExpressionNode = {
+      kind: "ArrayLiteral",
+      elements: [{ kind: "Literal", value: "sites/*/files" }],
+    };
+    const builders = phpSiteSnapshotBuilders({
+      framework: "drupal",
+      edgeFields: [["noScripts", noScripts]],
+    });
+    const actual = builders.edgeService();
+    if (actual.kind !== "ObjectLiteral") throw new TypeError("Expected edge object expression");
+    expect(actual.entries.map(({ key }) => key)).toEqual([
+      "type",
+      "backend",
+      "webroot",
+      "noScripts",
+      "routes",
+    ]);
+    expect(actual.entries.find(({ key }) => key === "noScripts")?.value).toEqual(noScripts);
+    expect(actual.entries.find(({ key }) => key === "noScripts")?.value).not.toBe(noScripts);
+  });
+
   test("database fields copy nested nodes instead of retaining caller references", () => {
     const nested: ExpressionNode = { kind: "ArrayLiteral", elements: [databaseName] };
     const builders = phpSiteSnapshotBuilders({ framework: "drupal", databaseFields: [["extra", nested]] });

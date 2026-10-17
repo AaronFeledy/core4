@@ -122,6 +122,7 @@ describe("drupal decomposition", () => {
       type: "nginx",
       backend: "appserver",
       webroot: "{{ recipe.webroot }}",
+      noScripts: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
   });

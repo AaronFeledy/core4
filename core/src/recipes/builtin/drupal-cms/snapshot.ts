@@ -1,7 +1,7 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import { phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
+import { DRUPAL_NGINX_NO_SCRIPTS, phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
 import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
 import { recipeAssetDigest } from "../snapshot-asset.ts";
 import { arr, call, cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
@@ -11,7 +11,7 @@ import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET 
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:83b2f937875e51e229a082996523e92aee288e6996bddb83c718e0e49140337b";
+  "sha256:8d975c1d651ee2027f6f6169b3e92c8b7cd94eca01f8feaed6ccd933fca1e04d";
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal-cms",
@@ -39,6 +39,7 @@ const usesPostgres = (): ExpressionNode =>
   );
 const { usesNginx, databaseService, apacheAppserver, fpmAppserver, edgeService } = phpSiteSnapshotBuilders({
   framework: "drupal",
+  edgeFields: [["noScripts", arr(...DRUPAL_NGINX_NO_SCRIPTS.map((path) => lit(path)))]],
   databaseFields: [["database", lit("{{ app.name }}")]],
   appserverMounts: () =>
     arr(
