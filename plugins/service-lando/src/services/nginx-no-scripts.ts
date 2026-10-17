@@ -17,7 +17,5 @@ export const nginxNoScriptRegex = (path: string): string => {
  * trees cannot execute `.php` (including PATH_INFO). `~*` keeps the match
  * case-insensitive on macOS bind mounts.
  */
-export const nginxNoScriptDenyLocations = (
-  paths: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
+export const nginxNoScriptDenyLocations = (paths: ReadonlyArray<string> | undefined): ReadonlyArray<string> =>
   (paths ?? []).map((path) => `  location ~* ^/${nginxNoScriptRegex(path)}/.*\\.php(/|$) { deny all; }`);

@@ -3,8 +3,8 @@ import { Result, Schema } from "effect";
 
 import {
   LandofileShape,
-  NginxNoScriptPath,
   NGINX_NO_SCRIPT_PATH_PATTERN,
+  NginxNoScriptPath,
   ServiceConfig,
   ServiceName,
   isNginxNoScriptPath,
@@ -59,7 +59,7 @@ describe("NginxNoScriptPath", () => {
     },
   );
 
-  test.each(rejectedPaths)("rejects %j", (path) => {
+  test.each([...rejectedPaths])("rejects %j", (path) => {
     expect(isNginxNoScriptPath(path)).toBe(false);
     expect(Result.isFailure(Schema.decodeUnknownResult(NginxNoScriptPath)(path))).toBe(true);
     expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ noScripts: [path] }))).toBe(true);

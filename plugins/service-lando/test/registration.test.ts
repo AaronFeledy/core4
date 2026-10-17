@@ -8,8 +8,8 @@ import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
-import { firstEndpointPort } from "./support/endpoint.ts";
 import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
 const providerCapabilities = {

@@ -9,6 +9,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
+import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
 import {
   NGINX_FEATURE_ID,
   nginxPhpFpmWireFeature,
@@ -17,7 +18,6 @@ import {
 } from "../src/services/nginx.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
-import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
 const metadata = {

@@ -50,7 +50,7 @@ export const phpFixtureFiles: Readonly<Record<string, string>> = {
   "uploads/x.phar": "<?php\necho strrev('DETUCEXE_RAHP') . \"\\n\";\n",
 };
 
-/** Drupal-shaped tree used to prove `noScripts: [sites/*/files]` cannot execute PHP. */
+/** Drupal-shaped upload tree used to prove noScripts cannot execute PHP. */
 export const nginxNoScriptFixtureFiles: Readonly<Record<string, string>> = {
   ...phpFixtureFiles,
   "install.php": `<?php\necho ${JSON.stringify(INSTALL_OK)};\n`,
