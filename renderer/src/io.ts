@@ -1,5 +1,6 @@
 import { fstatSync, writeSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
+import { outputDrainWaiters, outputStreams } from "./output-streams.ts";
 
 export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 
@@ -82,7 +83,10 @@ const guardedWrite = (
     guardedStreams.add(stream);
     if (typeof stream.on === "function") {
       stream.on("error", (error) => {
-        if (!isBrokenPipeError(error)) throw error;
+        if (!isBrokenPipeError(error)) {
+          if ((outputDrainWaiters.get(stream) ?? 0) > 0) return;
+          throw error;
+        }
         markBrokenPipe(destination, stream);
       });
     }
@@ -243,6 +247,8 @@ export const createStdioRendererIO = (
     createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
+  outputStreams.set(io.writeStdout, { stream: stdout, isBroken: () => brokenStreams.has(stdout) });
+  outputStreams.set(io.writeStderr, { stream: stderr, isBroken: () => brokenStreams.has(stderr) });
   return io;
 };
 

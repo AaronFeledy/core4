@@ -41,9 +41,11 @@ export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}
   return {
     writeStdout: (chunk) => {
       stdoutChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+      return true;
     },
     writeStderr: (chunk) => {
       stderrChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+      return true;
     },
     stdout: () => new TextDecoder().decode(concatBytes(stdoutChunks)),
     stderr: () => new TextDecoder().decode(concatBytes(stderrChunks)),

@@ -22,6 +22,7 @@
     "./console-layout": "./src/console-layout.ts",
     "./io": "./src/io.ts",
     "./output": "./src/output.ts",
+    "./output-drain": "./src/output-drain.ts",
     "./runtime": "./src/runtime.ts",
     "./stdio": "./src/stdio.ts",
     "./summary": "./src/summary.ts",
