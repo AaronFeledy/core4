@@ -202,7 +202,7 @@ test("stale SSH_AUTH_SOCK falls through to a live 1Password agent", async () => 
   }
 });
 
-test("explicit symlink is socket-missing and does not fall through", async () => {
+test("explicit live symlink is accepted and relayed by authored path", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given an explicit symlink to a live agent and another live SSH_AUTH_SOCK.
   const root = await mkdtemp(join(tmpdir(), "ssh-agent-symlink-"));
@@ -213,20 +213,138 @@ test("explicit symlink is socket-missing and does not fall through", async () =>
   try {
     // When the explicit socket is that symlink.
     const result = await Effect.runPromise(
+      discoverHostSshAgent({
+        platform: "linux",
+        home: root,
+        env: { SSH_AUTH_SOCK: live },
+        explicitSocket: link,
+      }),
+    );
+    // Then the authored symlink path is selected, not the resolved socket.
+    expect(result.upstream).toMatchObject({ source: "explicit", path: link, _tag: "unix" });
+    expect(result.upstream.path).not.toBe(live);
+    expect(result.identities).toBe(0);
+  } finally {
+    await agent.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("explicit socket owned by another user is socket-owner-mismatch", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given an explicit socket whose target is owned by another uid.
+  const foreignUid = (process.getuid?.() ?? 0) + 12_345;
+  // When discovery inspects that socket.
+  const result = await Effect.runPromise(
+    Effect.result(
+      discoverHostSshAgent({
+        platform: "linux",
+        home: "/home/test",
+        env: {},
+        explicitSocket: "/foreign.sock",
+        inspect: () => Effect.succeed({ kind: "socket", uid: foreignUid }),
+        probe: alive,
+      }),
+    ),
+  );
+  // Then host mode names the target owner and does not fall through.
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "SshAgentUnavailableError",
+      reason: "socket-owner-mismatch",
+      socketPath: "/foreign.sock",
+    },
+  });
+  if (result._tag !== "Failure") throw new Error("expected failure");
+  expect(result.failure.message).toContain(`uid ${foreignUid}`);
+});
+
+test("explicit symlink to a non-socket is socket-not-socket", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given an explicit symlink whose target is a regular file.
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-not-socket-"));
+  const file = join(root, "plain");
+  const link = join(root, "link.sock");
+  await writeFile(file, "not-a-socket");
+  await symlink(file, link);
+  try {
+    // When discovery inspects that explicit path.
+    const result = await Effect.runPromise(
       Effect.result(
         discoverHostSshAgent({
           platform: "linux",
           home: root,
-          env: { SSH_AUTH_SOCK: live },
+          env: { SSH_AUTH_SOCK: file },
           explicitSocket: link,
         }),
       ),
     );
-    // Then host mode fails closed.
+    // Then host mode fails closed as not a socket.
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "SshAgentUnavailableError", reason: "socket-missing", socketPath: link },
+      failure: { _tag: "SshAgentUnavailableError", reason: "socket-not-socket", socketPath: link },
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("dangling SSH_AUTH_SOCK is env-socket-dangling when no other agent is found", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given SSH_AUTH_SOCK as a dangling symlink and no other host agent.
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-dangling-"));
+  const dangling = join(root, "gone.sock");
+  await symlink(join(root, "absent"), dangling);
+  try {
+    // When discovery finds no other candidate.
+    const result = await Effect.runPromise(
+      Effect.result(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: root,
+          env: { SSH_AUTH_SOCK: dangling },
+        }),
+      ),
+    );
+    // Then the dangling env socket is the reported failure.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "SshAgentUnavailableError",
+        reason: "env-socket-dangling",
+        socketPath: dangling,
+      },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.message).toContain("no longer exists");
+    expect(result.failure.remediation).toContain("Open a new terminal");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("dangling SSH_AUTH_SOCK is remembered when a live 1Password agent is selected", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given a dangling env socket and a live 1Password agent.
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-dangling-fallback-"));
+  const dangling = join(root, "gone.sock");
+  const password = join(root, ".1password", "agent.sock");
+  await mkdir(join(root, ".1password"));
+  await symlink(join(root, "absent"), dangling);
+  const agent = await listen(password);
+  try {
+    // When discovery falls through past SSH_AUTH_SOCK.
+    const result = await Effect.runPromise(
+      discoverHostSshAgent({
+        platform: "linux",
+        home: root,
+        env: { SSH_AUTH_SOCK: dangling },
+      }),
+    );
+    // Then 1Password is selected and the dangling env socket is retained.
+    expect(result.upstream).toMatchObject({ source: "1password", path: password, _tag: "unix" });
+    expect(result.danglingEnvSocket).toBe(dangling);
   } finally {
     await agent.close();
     await rm(root, { recursive: true, force: true });

@@ -1,4 +1,5 @@
-import { lstat } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
+import { userInfo } from "node:os";
 import { posix, win32 } from "node:path";
 import { SshAgentUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
@@ -10,9 +11,16 @@ export type HostSshAgentUpstream = AgentRelayUpstream & {
   readonly source: "explicit" | "env" | "1password" | "gpg" | "yubikey-agent" | "windows-openssh";
 };
 export type HostAgentPathKind = "missing" | "socket" | "symlink" | "other";
+export interface HostAgentInspection {
+  readonly kind: HostAgentPathKind;
+  readonly uid?: number;
+  readonly dangling?: boolean;
+  readonly targetKind?: "socket" | "other";
+}
 export interface DiscoveredHostSshAgent {
   readonly upstream: HostSshAgentUpstream;
   readonly identities: number;
+  readonly danglingEnvSocket?: string;
 }
 export interface HostAgentDiscoveryOptions {
   readonly platform: string;
@@ -22,50 +30,104 @@ export interface HostAgentDiscoveryOptions {
   /** Presence override for tests. Real discovery lstats when this is omitted. */
   readonly exists?: (path: string) => Promise<boolean>;
   readonly runGpgconf?: () => Promise<string | undefined>;
-  readonly inspect?: (path: string) => Effect.Effect<HostAgentPathKind, never>;
+  readonly inspect?: (path: string) => Effect.Effect<HostAgentInspection, never>;
   readonly probe?: (upstream: AgentRelayUpstream) => Effect.Effect<{ readonly identities: number }, unknown>;
   readonly gpgSocket?: Effect.Effect<string | undefined, never>;
   readonly probeTimeoutMs?: number;
   readonly gpgTimeoutMs?: number;
 }
 
-const unavailable = (reason: "socket-missing" | "host-agent-not-found", socketPath?: string) =>
+type DiscoveryReason =
+  | "socket-missing"
+  | "socket-not-socket"
+  | "socket-owner-mismatch"
+  | "env-socket-dangling"
+  | "host-agent-not-found";
+
+const DEFAULT_REMEDIATION =
+  "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path.";
+const ENV_DANGLING_REMEDIATION =
+  "The shell's agent socket points at one that no longer exists (common after VS Code or SSH reconnects). Open a new terminal, then restart the app.";
+const OWNER_MISMATCH_REMEDIATION = "Point sshAgent.socket at an SSH agent socket owned by your user.";
+const NOT_SOCKET_REMEDIATION = "Set sshAgent.socket to an SSH agent socket path.";
+
+const unavailable = (reason: DiscoveryReason, socketPath?: string, owner?: string) =>
   new SshAgentUnavailableError({
     message:
       reason === "socket-missing"
         ? "The configured SSH agent socket is unavailable."
-        : "No host SSH agent was found.",
+        : reason === "socket-not-socket"
+          ? "The configured SSH agent socket is not a socket."
+          : reason === "socket-owner-mismatch"
+            ? `The configured SSH agent socket is owned by ${owner ?? "another user"}, not the current user.`
+            : reason === "env-socket-dangling"
+              ? "The shell's SSH_AUTH_SOCK points at a socket that no longer exists."
+              : "No host SSH agent was found.",
     mode: "host",
     reason,
     ...(socketPath === undefined ? {} : { socketPath }),
-    remediation: "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path.",
+    remediation:
+      reason === "env-socket-dangling"
+        ? ENV_DANGLING_REMEDIATION
+        : reason === "socket-owner-mismatch"
+          ? OWNER_MISMATCH_REMEDIATION
+          : reason === "socket-not-socket"
+            ? NOT_SOCKET_REMEDIATION
+            : DEFAULT_REMEDIATION,
   });
 
-const nodeInspect = (path: string): Effect.Effect<HostAgentPathKind, never> =>
+const socketOwnerLabel = (uid: number): string => {
+  try {
+    const current = userInfo();
+    if (current.uid === uid) return current.username;
+  } catch {
+    // Directory services and restricted environments can refuse userInfo().
+  }
+  return `uid ${uid}`;
+};
+
+const isUsableSocket = (inspection: HostAgentInspection): boolean =>
+  inspection.kind === "socket" || (inspection.kind === "symlink" && inspection.targetKind === "socket");
+
+const nodeInspect = (path: string): Effect.Effect<HostAgentInspection, never> =>
   Effect.tryPromise({
-    try: () => lstat(path),
+    try: async (): Promise<HostAgentInspection> => {
+      const stats = await lstat(path);
+      if (stats.isSymbolicLink()) {
+        try {
+          const target = await lstat(await realpath(path));
+          return {
+            kind: "symlink",
+            uid: target.uid,
+            targetKind: target.isSocket() ? "socket" : "other",
+          };
+        } catch (cause: unknown) {
+          if (isErrnoCode(cause, "ENOENT")) return { kind: "symlink", dangling: true };
+          return { kind: "symlink", targetKind: "other" };
+        }
+      }
+      if (stats.isSocket()) return { kind: "socket", uid: stats.uid };
+      return { kind: "other", uid: stats.uid };
+    },
     catch: (cause: unknown) => cause,
   }).pipe(
-    Effect.map((stats): HostAgentPathKind => {
-      if (stats.isSymbolicLink()) return "symlink";
-      if (stats.isSocket()) return "socket";
-      return "other";
-    }),
     Effect.catch((cause) => {
-      const kind: HostAgentPathKind = isErrnoCode(cause, "ENOENT") ? "missing" : "other";
-      return Effect.succeed(kind);
+      const inspection: HostAgentInspection = isErrnoCode(cause, "ENOENT")
+        ? { kind: "missing" }
+        : { kind: "other" };
+      return Effect.succeed(inspection);
     }),
   );
 
 const existsInspect =
   (exists: (path: string) => Promise<boolean>) =>
-  (path: string): Effect.Effect<HostAgentPathKind, never> =>
+  (path: string): Effect.Effect<HostAgentInspection, never> =>
     Effect.tryPromise({
       try: () => exists(path),
       catch: () => false,
     }).pipe(
       Effect.catch(() => Effect.succeed(false)),
-      Effect.map((present): HostAgentPathKind => (present ? "socket" : "missing")),
+      Effect.map((present): HostAgentInspection => (present ? { kind: "socket" } : { kind: "missing" })),
     );
 
 const nonempty = (value: string | undefined): string | undefined => {
@@ -113,6 +175,25 @@ const onePasswordPath = (options: HostAgentDiscoveryOptions): string | undefined
   }
 };
 
+export const hostSshAgentSourceLabel = (source: HostSshAgentUpstream["source"]): string => {
+  switch (source) {
+    case "1password":
+      return "1Password";
+    case "gpg":
+      return "gpg-agent";
+    case "yubikey-agent":
+      return "yubikey-agent";
+    case "windows-openssh":
+      return "Windows OpenSSH";
+    case "env":
+      return "SSH_AUTH_SOCK";
+    case "explicit":
+      return "sshAgent.socket";
+    default:
+      return source satisfies never;
+  }
+};
+
 export const discoverHostSshAgent = Effect.fnUntraced(function* (
   options: HostAgentDiscoveryOptions,
 ): Effect.fn.Return<DiscoveredHostSshAgent, SshAgentUnavailableError> {
@@ -125,6 +206,9 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
           catch: (cause: unknown) => cause,
         })
       : options.probe(upstream);
+  let danglingEnvSocket: string | undefined;
+  const withDangling = (found: DiscoveredHostSshAgent): DiscoveredHostSshAgent =>
+    danglingEnvSocket === undefined ? found : { ...found, danglingEnvSocket };
   const tryCandidate = Effect.fnUntraced(function* (
     path: string,
     source: HostSshAgentUpstream["source"],
@@ -137,9 +221,26 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
       source,
     };
     if (!namedPipe) {
-      const kind = yield* inspect(path);
-      if (authoritative && kind !== "socket") return yield* Effect.fail(unavailable("socket-missing", path));
-      if (!authoritative && kind === "missing") return undefined;
+      const inspection = yield* inspect(path);
+      if (authoritative) {
+        if (inspection.kind === "missing" || inspection.dangling === true) {
+          return yield* Effect.fail(unavailable("socket-missing", path));
+        }
+        if (!isUsableSocket(inspection)) return yield* Effect.fail(unavailable("socket-not-socket", path));
+        const self = process.getuid?.();
+        if (self !== undefined && inspection.uid !== undefined && inspection.uid !== self) {
+          return yield* Effect.fail(unavailable("socket-owner-mismatch", path, socketOwnerLabel(inspection.uid)));
+        }
+      } else {
+        if (inspection.kind === "missing") return undefined;
+        if (inspection.dangling === true) {
+          if (source === "env") danglingEnvSocket = path;
+          return undefined;
+        }
+        if (!isUsableSocket(inspection)) return undefined;
+        const self = process.getuid?.();
+        if (self !== undefined && inspection.uid !== undefined && inspection.uid !== self) return undefined;
+      }
     }
     const probed = yield* probe(upstream).pipe(Effect.result);
     if (probed._tag === "Success") return { upstream, identities: probed.success.identities };
@@ -155,17 +256,17 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
   const envSocket = nonempty(options.env.SSH_AUTH_SOCK);
   if (envSocket !== undefined) {
     const found = yield* tryCandidate(envSocket, "env", false);
-    if (found !== undefined) return found;
+    if (found !== undefined) return withDangling(found);
   }
   const password = onePasswordPath(options);
   if (password !== undefined) {
     const found = yield* tryCandidate(password, "1password", false);
-    if (found !== undefined) return found;
+    if (found !== undefined) return withDangling(found);
   }
   const gpg = yield* readGpgSocket(options);
   if (gpg !== undefined) {
     const found = yield* tryCandidate(gpg, "gpg", false);
-    if (found !== undefined) return found;
+    if (found !== undefined) return withDangling(found);
   }
   const runtimeDir = nonempty(options.env.XDG_RUNTIME_DIR);
   if (runtimeDir !== undefined) {
@@ -175,11 +276,15 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
       "yubikey-agent",
       false,
     );
-    if (found !== undefined) return found;
+    if (found !== undefined) return withDangling(found);
   }
   if (options.platform === "win32") {
     const found = yield* tryCandidate(String.raw`\\.\pipe\openssh-ssh-agent`, "windows-openssh", false);
-    if (found !== undefined) return found;
+    if (found !== undefined) return withDangling(found);
   }
-  return yield* Effect.fail(unavailable("host-agent-not-found"));
+  return yield* Effect.fail(
+    danglingEnvSocket === undefined
+      ? unavailable("host-agent-not-found")
+      : unavailable("env-socket-dangling", danglingEnvSocket),
+  );
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,6 +150,48 @@ for (const [label, caps, reason] of [
     expect(warnings[0]).toContain(reason);
   });
 }
+
+test("dangling SSH_AUTH_SOCK with a live 1Password agent publishes an info note", async () => {
+  // Given a dangling env socket and a live 1Password agent.
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-info-dangling-"));
+  const dangling = join(root, "gone.sock");
+  const password = join(root, ".1password", "agent.sock");
+  await mkdir(join(root, ".1password"));
+  await symlink(join(root, "absent"), dangling);
+  const server = createServer((socket) =>
+    socket.once("data", () => socket.end(Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0]))),
+  );
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(password, resolve);
+  });
+  try {
+    // When host-mode discovery selects 1Password.
+    const notes: string[] = [];
+    const upstream = await run(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        const result = yield* operation.resolveSshAgentUpstream({
+          appId: plan.id,
+          intent: { mode: "host" },
+          platform: "linux",
+          env: { SSH_AUTH_SOCK: dangling },
+          home: root,
+        });
+        notes.push(...(yield* events.query("message.info")).map((event) => event.body));
+        return result;
+      }),
+    );
+    // Then the selected path is 1Password and start info names the dangling env socket.
+    expect(upstream).toMatchObject({ source: "1password", path: password, _tag: "unix" });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("no longer exists");
+    expect(notes[0]).toContain("1Password");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("host mode with no agent fails host-agent-not-found and never spawns a worker", async () => {
   // Given / When
