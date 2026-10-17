@@ -90,7 +90,7 @@ export const MountInput = Schema.Union([
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
-    /** Excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
+    /** Overlay excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
     excludes: Schema.optionalKey(Schema.Array(Schema.String)),
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -716,6 +716,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
           target: Schema.String,
           readOnly: Schema.optionalKey(Schema.Boolean),
           excludes: Schema.optionalKey(Schema.Array(Schema.String)),
+          syncExcludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+            description: "Additional sync-only excludes for accelerated app mounts; never volume overlays.",
+          }),
           includes: Schema.optionalKey(Schema.Array(Schema.String)),
         }),
       ]),

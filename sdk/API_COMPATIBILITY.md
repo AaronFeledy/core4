@@ -4,6 +4,12 @@
 
 ## Compatibility notes
 
+- `ServiceConfig.appMount` additively accepts `syncExcludes`; `AppMountPlan` carries `syncExcludes` as a required decoded string array with an empty decoding default. Overlay `excludes` default to `node_modules`, `vendor`, and `tmp`; sync-only excludes default to `.git`. `includes` removes exact entries from both effective lists. `effectiveAppMountSyncExcludes` is an additive pure export from `@lando/sdk/schema` that derives ordered, deduplicated session ignores while preserving negations. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
+
+- `DataMover.resolveSnapshot(reference, scope)` is additive. Resolution is id-first (global id match) then label-scoped within `scope` (newest `createdAt` first). A unique match returns `SnapshotInfo`. Multiple label matches fail with `SnapshotAmbiguousError` (`candidateIds` newest first; `snapshotId` is the caller reference). Zero matches fail with `SnapshotNotFoundError`. Existing `listSnapshots`/`restore`/`removeSnapshot` behavior is unchanged.
+
+- `SqlSeedSourceError` additively carries optional `sourceApp`, `sourceRoot`, `sourceService`, `sourceFamily`, and `targetFamily` fields for logical app-to-app database seeding. The existing tag, `service`, `message`, and `remediation` remain unchanged; machine failure envelopes preserve the source context without credentials.
+
 - `DataMover.restore` adds an optional third `opts?: SnapshotRestoreOptions` argument. Omitted options and `mode: "restore"` keep strict physical-volume generation checks. `mode: "seed"` permits a new generation only for the snapshot's own app, store, and owner root, with verified snapshot metadata and an in-progress volume initialization claim. `SnapshotAmbiguousError` adds optional `candidateIds`, ordered newest first, for id-or-label resolution; `snapshotId` retains the reference supplied by the caller.
 
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
@@ -537,6 +543,7 @@ It registers no JSON Schema.
 - `StringImportRef`
 - `AbsolutePath`
 - `AppMountPlan`
+- `effectiveAppMountSyncExcludes`
 - `ArtifactBuildSpec`
 - `ArtifactManifestEntry`
 - `ArtifactRef`

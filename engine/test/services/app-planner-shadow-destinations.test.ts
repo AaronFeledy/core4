@@ -122,7 +122,14 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
         name: "shadowapp",
         runtime: 4,
         services: {
-          web: { type: "node:22", home: false, appMount: { target: "/app", excludes: [effectiveExclude] } },
+          web: {
+            type: "node:22",
+            home: false,
+            appMount: {
+              target: "/app",
+              excludes: exclude === ".git" ? [] : [effectiveExclude],
+            },
+          },
         },
       });
       const planner = AppPlannerLayer.layer.pipe(
@@ -148,14 +155,17 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
       // Then only directories (and missing paths) get volumes, without dropping ignores.
       const web = plan.services[ServiceName.make("web")];
       const shadow = web?.storage.find((mount) => String(mount.target) === `/app/${effectiveExclude}`);
-      const shadowed = kind === "directory" || kind === "directory-link";
+      const shadowed = kind === "directory-link";
       expect(shadow !== undefined).toBe(shadowed);
       if (shadow !== undefined) expect(plan.stores.some((store) => store.name === shadow.store)).toBe(true);
       if (!shadowed)
         expect(
           plan.stores.some((store) => store.name.includes(kind === "gitfile" ? "app-git-" : "app-authored-")),
         ).toBe(false);
-      expect(web?.appMount?.excludes).toContain(effectiveExclude);
+      expect(exclude === ".git" ? web?.appMount?.syncExcludes : web?.appMount?.excludes).toContain(
+        effectiveExclude,
+      );
+      expect(web?.mounts.some((mount) => mount.source === "/elsewhere/.git/worktrees/x")).toBe(false);
       expect(web?.storage.some((mount) => String(mount.target) === "/app/node_modules")).toBe(true);
       expect(plan.fileSync.some(({ session }) => session.excludes.includes(effectiveExclude))).toBe(true);
     } finally {
@@ -164,8 +174,8 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
   },
 );
 
-test("invalidates a cached directory shadow when .git becomes a worktree gitfile", async () => {
-  // Given a cache-enabled planner and a directory-backed .git shadow.
+test("invalidates cached Git mounts when .git changes between directory and gitfile", async () => {
+  // Given a cache-enabled planner and a normal checkout.
   const appRoot = await mkdtemp(join(tmpdir(), "lando-shadow-cache-"));
   const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
   process.env.LANDO_USER_CACHE_ROOT = join(appRoot, "cache");
@@ -206,22 +216,41 @@ test("invalidates a cached directory shadow when .git becomes a worktree gitfile
     const first = await runPlan();
     expect(
       first.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
-    ).toBe(true);
+    ).toBe(false);
     await runPlan();
     expect(writes).toBe(1);
+    const metadata = join(appRoot, "worktree-meta");
+    await Bun.write(join(metadata, "HEAD"), "ref: refs/heads/main\n");
     await rm(join(appRoot, ".git"), { recursive: true });
-    await Bun.write(join(appRoot, ".git"), "gitdir: /elsewhere/.git/worktrees/x\n");
+    await Bun.write(join(appRoot, ".git"), `gitdir: ${metadata}\n`);
 
     // When the same app is planned after only the host entry changes.
     const second = await runPlan();
 
-    // Then the stale cache is replaced and the gitfile remains excluded without a shadow.
+    // Then the stale cache is replaced with a Git metadata bind, never a shadow.
     expect(writes).toBe(2);
     expect(
       second.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
     ).toBe(false);
     expect(second.stores.some((store) => store.name.includes("app-git-"))).toBe(false);
-    expect(second.services[ServiceName.make("web")]?.appMount?.excludes).toContain(".git");
+    expect(second.services[ServiceName.make("web")]?.appMount?.syncExcludes).toContain(".git");
+    expect(second.services[ServiceName.make("web")]?.mounts).toContainEqual({
+      type: "bind",
+      source: metadata,
+      target: PortablePath.make(metadata),
+      readOnly: false,
+      createHostPath: false,
+      realization: "passthrough",
+    });
+    await runPlan();
+    expect(writes).toBe(2);
+    await rm(join(appRoot, ".git"));
+    await mkdir(join(appRoot, ".git"));
+    const third = await runPlan();
+    expect(writes).toBe(3);
+    expect(third.services[ServiceName.make("web")]?.mounts.some((mount) => mount.source === metadata)).toBe(
+      false,
+    );
   } finally {
     if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;

@@ -13,9 +13,15 @@ export const AppMountPlan = Schema.Struct({
   target: PortablePath,
   /** Read-only? */
   readOnly: Schema.Boolean,
-  /** Excludes (gitignore-flavoured patterns). */
+  /** Overlay excludes: per-service empty directories, also ignored during sync. */
   excludes: Schema.Array(Schema.String),
-  /** Includes — entries matched here override `excludes`. */
+  /** Sync-only excludes; native binds remain untouched. */
+  syncExcludes: Schema.Array(Schema.String)
+    .annotate({
+      description: "Sync-only excludes for accelerated app mounts; native binds remain untouched.",
+    })
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+  /** Includes — exact entries here override both exclude lists. */
   includes: Schema.Array(Schema.String),
   /**
    * `passthrough` — provider-native bind mount.
@@ -24,6 +30,14 @@ export const AppMountPlan = Schema.Struct({
   realization: Schema.Literals(["passthrough", "accelerated"]),
 });
 export type AppMountPlan = typeof AppMountPlan.Type;
+
+/** Ordered, deduplicated sync ignores, preserving negation patterns. */
+export const effectiveAppMountSyncExcludes = (appMount: AppMountPlan): readonly string[] => {
+  const includes = new Set(appMount.includes);
+  return [...new Set([...appMount.excludes, ...appMount.syncExcludes])].filter(
+    (entry) => !includes.has(entry),
+  );
+};
 
 /**
  * Generic mount plan — any non-app, non-storage mount.

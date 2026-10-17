@@ -17,6 +17,7 @@ import {
   type Scope,
   Stream,
 } from "effect";
+import { TestClock } from "effect/testing";
 
 import { providerImages } from "@lando/data-mover/provider-images";
 import * as BunDataMover from "@lando/data-mover/service";
@@ -32,6 +33,8 @@ import {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   ProviderUnavailableError,
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
   SnapshotOwnershipError,
   StateStoreError,
 } from "@lando/sdk/errors";
@@ -671,6 +674,52 @@ describe("BunDataMover.layer", () => {
       expect(observedStdinMode).toBeUndefined();
       expect(observedStdin).toBe("service-input");
       expect(await readFile(target, "utf8")).toBe("service-output");
+    });
+  });
+
+  test("transfers serviceCmd source into a serviceCmd target", async () => {
+    await withTempDir(async (_dir) => {
+      // Given: a dump command streams bytes and a restore command consumes stdin.
+      let dumpCommand: ReadonlyArray<string> | undefined;
+      let restoreCommand: ReadonlyArray<string> | undefined;
+      let restoreStdin = "";
+      const dumpChunks: ExecChunk[] = [{ kind: "stdout", chunk: bytes("pipe-payload") }, { exitCode: 0 }];
+
+      // When: DataMover pipes serviceCmd -> serviceCmd.
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "serviceCmd", app, service, command: ["export-db"] },
+              to: { _tag: "serviceCmd", app, service, command: ["import-db"] },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            providerLayer({
+              exec: (_target, command) =>
+                Effect.promise(async () => {
+                  restoreCommand = command.command;
+                  for await (const chunk of command.stdinStream ?? []) restoreStdin += text(chunk);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+              execStream: (_target, command) => {
+                dumpCommand = command.command;
+                return Stream.fromIterable(dumpChunks);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      // Then: dump streamed and restore received the same payload off argv.
+      expect(dumpCommand).toEqual(["export-db"]);
+      expect(restoreCommand).toEqual(["import-db"]);
+      expect(restoreStdin).toBe("pipe-payload");
     });
   });
 
@@ -2394,6 +2443,204 @@ describe("BunDataMover.layer", () => {
           _tag: "SnapshotNotFoundError",
           snapshotId: "missing",
         });
+      }
+    });
+  });
+
+  test("resolveSnapshot prefers an exact id over a matching label", async () => {
+    await withTempDir(async (dir) => {
+      // Given: one snapshot id and another snapshot whose label equals that id.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "resolve-id-payload");
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const byId = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "other" },
+              );
+              yield* dataMover.snapshot({ app, store: "data" }, { format: "tar", label: byId.id });
+              const resolved = yield* dataMover.resolveSnapshot(byId.id, {
+                app: AppId.make("other-app"),
+                store: "other-store",
+              });
+              return { byId, resolved };
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: the id match wins over the label collision.
+        expect(result.resolved.id).toBe(result.byId.id);
+        expect(result.resolved.label).toBe("other");
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("resolveSnapshot returns a unique label match within scope", async () => {
+    await withTempDir(async (dir) => {
+      // Given: an unrelated label precedes the single matching snapshot in scope.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "resolve-unique-payload");
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              yield* dataMover.snapshot({ app, store: "data" }, { format: "tar", label: "unrelated" });
+              const handle = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "baseline" },
+              );
+              // When: resolving the label rather than the first indexed snapshot.
+              const resolved = yield* dataMover.resolveSnapshot("baseline", { app, store: "data" });
+              return { handle, resolved };
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: the unique label resolves to that snapshot id.
+        expect(result.resolved.id).toBe(result.handle.id);
+        expect(result.resolved.label).toBe("baseline");
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("resolveSnapshot reports ambiguous labels with newest matching ids first", async () => {
+    await withTempDir(async (dir) => {
+      // Given: two independently addressable snapshots sharing a label in scope.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "resolve-ambiguous-payload");
+
+      try {
+        const expectedIds = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              yield* TestClock.setTime(1_000);
+              const older = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "baseline" },
+              );
+              yield* TestClock.setTime(2_000);
+              const newer = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "baseline" },
+              );
+              return [newer.id, older.id];
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            Effect.provide(TestClock.layer()),
+          ),
+        );
+
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.resolveSnapshot("baseline", { app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: ambiguity is actionable with newest-first candidate ids.
+        expect(expectedIds).toHaveLength(2);
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+          expect(error).toBeInstanceOf(SnapshotAmbiguousError);
+          expect(error).toMatchObject({
+            snapshotId: "baseline",
+            matchCount: 2,
+            candidateIds: expectedIds,
+          });
+        }
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("resolveSnapshot reports unknown references as not found", async () => {
+    await withTempDir(async (dir) => {
+      // Given: an empty snapshot store for the app.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.resolveSnapshot("no-such-snapshot", { app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: the typed failure names the missing reference.
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+          expect(error).toBeInstanceOf(SnapshotNotFoundError);
+          expect(error).toMatchObject({
+            snapshotId: "no-such-snapshot",
+            remediation: expect.stringContaining("lando db:snapshots"),
+          });
+        }
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       }
     });
   });

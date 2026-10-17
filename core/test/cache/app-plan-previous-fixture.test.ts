@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { readCachedAppPlan } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 
-test.each([19, 20])(
+test.each([19, 20, 21])(
   "app-plan returns a cache miss when the persisted fixture is revision %i",
   async (revision) => {
     // Given the unchanged previous-revision bytes at the real cache path.

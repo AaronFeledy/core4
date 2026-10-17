@@ -45,13 +45,17 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
       restore: (id, store, opts) => Effect.scoped(mover.restore(id, store, opts)),
       listSnapshots: (filter) => mover.listSnapshots(filter),
+      resolveSnapshot: (reference, scope) => mover.resolveSnapshot(reference, scope),
       pruneSnapshots: (policy) => mover.pruneSnapshots(policy),
+      providerId: planned.provider,
+      ...(provider.appliedPlans === undefined ? {} : { appliedPlans: provider.appliedPlans }),
+      inspectSource: (target) => provider.inspect(target),
       canonicalizeSourcePath: (path) =>
         Effect.tryPromise({
           try: () => realpath(path),
           catch: () =>
             new SqlRecoveryUnavailableError({
-              message: `Cannot resolve snapshot source path ${path}.`,
+              message: `Cannot resolve source path ${path}.`,
               service: earlyTarget.success.name,
               reason: "The selected source path does not exist or is not accessible.",
               remediation: "Pass an existing app root with --from-path.",

@@ -148,7 +148,11 @@ export const dumpCommand = (
   }
 };
 
-export const loadCommand = (family: SqlFamily, creds: SqlCommandCreds): ReadonlyArray<string> => {
+export const loadCommand = (
+  family: SqlFamily,
+  creds: SqlCommandCreds,
+  sourceDatabase?: string,
+): ReadonlyArray<string> => {
   switch (family) {
     case "mysql":
     case "mariadb":
@@ -156,7 +160,12 @@ export const loadCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonly
     case "postgres":
       return postgresClient(creds, []);
     case "mongodb":
-      return mongoTool("mongorestore --archive", `--nsInclude=${quoteShell(`${creds.database}.*`)}`);
+      return mongoTool(
+        "mongorestore --archive",
+        sourceDatabase === undefined
+          ? `--nsInclude=${quoteShell(`${creds.database}.*`)}`
+          : `--nsInclude=${quoteShell(`${sourceDatabase}.*`)} --nsFrom=${quoteShell(`${sourceDatabase}.*`)} --nsTo=${quoteShell(`${creds.database}.*`)}`,
+      );
     case "mssql":
       return mssqlRestoreCommand(creds.database);
     default:

@@ -30,6 +30,7 @@ import {
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
 import { routerEnabled } from "../config/router-config.ts";
+import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
@@ -39,7 +40,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 21n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 22n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -47,6 +48,7 @@ interface AppPlanCachePayload {
   readonly key: string;
   readonly versionConstraints: ReadonlyArray<VersionConstraintEntry>;
   readonly shadowHostChecks: readonly ShadowHostCheck[];
+  readonly gitHostChecks: readonly GitHostCheck[];
   readonly generatedAtMs: number;
   readonly plan: unknown;
 }
@@ -260,6 +262,11 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   for (const check of payload.shadowHostChecks) {
     if ((yield* canShadowHostPath(check.path, input.fileSystem)) !== check.shadowed) return null;
   }
+  if (!Schema.is(Schema.Array(GitHostCheck))(payload.gitHostChecks)) return null;
+  for (const check of payload.gitHostChecks) {
+    const current = yield* readGitDirectories(check.path, check.target, input.fileSystem);
+    if (!sameGitDirectories(current, check.directories)) return null;
+  }
   return yield* Effect.try({
     try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
     catch: (cause) =>
@@ -281,6 +288,7 @@ export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly now?: () => number;
   readonly shadowHostChecks?: readonly ShadowHostCheck[];
+  readonly gitHostChecks?: readonly GitHostCheck[];
 }): Effect.fn.Return<string, CacheError, CacheService> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   const cache = yield* CacheService;
@@ -293,6 +301,7 @@ export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
       key: input.key,
       versionConstraints: input.versionConstraints ?? [],
       shadowHostChecks: input.shadowHostChecks ?? [],
+      gitHostChecks: input.gitHostChecks ?? [],
       generatedAtMs,
       plan: Schema.encodeSync(AppPlan)(input.plan),
     }),

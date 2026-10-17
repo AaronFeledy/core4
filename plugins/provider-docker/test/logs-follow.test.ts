@@ -40,6 +40,7 @@ const node: ServicePlan = {
     target: PortablePath.make("/app"),
     readOnly: false,
     excludes: [],
+    syncExcludes: [],
     includes: [],
     realization: "passthrough",
   },

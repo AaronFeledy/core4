@@ -32,6 +32,7 @@ const service = (name: string): ServicePlan => ({
     readOnly: false,
     realization: "accelerated",
     excludes: [],
+    syncExcludes: [],
     includes: [],
   },
   mounts: [],

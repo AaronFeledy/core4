@@ -21,7 +21,11 @@ import {
 } from "../planner/authored.ts";
 import { attachEffectiveEvents, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
+import {
+  DEFAULT_APP_MOUNT_EXCLUDES,
+  DEFAULT_APP_MOUNT_SYNC_EXCLUDES,
+  mergeDefaultExcludes,
+} from "../planner/file-sync.ts";
 import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../planner/landofile-scopes.ts";
 import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
@@ -32,7 +36,8 @@ export {
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
   DEFAULT_PROXY_DOMAIN,
-  FILE_SYNC_DEFAULT_EXCLUDES,
+  DEFAULT_APP_MOUNT_EXCLUDES,
+  DEFAULT_APP_MOUNT_SYNC_EXCLUDES,
   mergeDefaultExcludes,
   validateAuthoredAppMount,
 };

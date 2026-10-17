@@ -32,6 +32,7 @@ const planWithFileSync: AppPlan = {
         readOnly: false,
         realization: "accelerated",
         excludes: [],
+        syncExcludes: [],
         includes: [],
       },
     },

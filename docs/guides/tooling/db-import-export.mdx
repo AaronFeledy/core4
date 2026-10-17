@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, database]
 
 # Import and export app databases
 
-Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump or a snapshot.
+Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
 A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
 
@@ -57,7 +57,14 @@ lando start
 lando db:seed --snapshot before-change
 ```
 
-`db:seed` reads a dump from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`. Use `db:import` to load data into a database that's already in use.
+`db:seed` also copies straight from another running Lando app of the same database type. `--from-app` takes the source app's id (its Landofile `name`), `--from-path` takes its folder, and `--from-service` picks the source's database service when it has more than one. Lando streams the dump between the two containers through a checked temp file in its own scratch space; nothing lands in your checkout and credentials stay off the command line:
+
+```sh
+lando db:seed --from-app shop
+lando db:seed --from-path ../shop --from-service database
+```
+
+A dump file works from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`. Use `db:import` to load data into a database that's already in use.
 
 ```sh
 lando db:seed ../shared/baseline.sql.gz

@@ -65,6 +65,10 @@ export class DataMover extends Context.Service<
     readonly listSnapshots: (
       filter: SnapshotFilter,
     ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+    readonly resolveSnapshot: (
+      reference: string,
+      scope: SnapshotFilter,
+    ) => Effect.Effect<SnapshotInfo, DataMoverError>;
     readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
     readonly pruneSnapshots: (
       policy: PrunePolicy,

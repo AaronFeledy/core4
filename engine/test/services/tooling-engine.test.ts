@@ -240,6 +240,7 @@ describe("ProviderExecToolingEngine.layer", () => {
         readOnly: false,
         realization: "passthrough",
         excludes: [],
+        syncExcludes: [],
         includes: [],
       },
     } satisfies ServicePlan;
@@ -268,6 +269,7 @@ describe("ProviderExecToolingEngine.layer", () => {
         readOnly: false,
         realization: "passthrough",
         excludes: [],
+        syncExcludes: [],
         includes: [],
       },
     } satisfies ServicePlan;
@@ -294,6 +296,7 @@ describe("ProviderExecToolingEngine.layer", () => {
         readOnly: false,
         realization: "passthrough",
         excludes: [],
+        syncExcludes: [],
         includes: [],
       },
     } satisfies ServicePlan;
@@ -323,6 +326,7 @@ describe("ProviderExecToolingEngine.layer", () => {
         readOnly: false,
         realization: "passthrough",
         excludes: [],
+        syncExcludes: [],
         includes: [],
       },
     } satisfies ServicePlan;

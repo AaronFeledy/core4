@@ -216,6 +216,7 @@ const stableBuildInput = (
                 target: service.appMount.target,
                 readOnly: service.appMount.readOnly,
                 excludes: service.appMount.excludes,
+                syncExcludes: service.appMount.syncExcludes,
                 includes: service.appMount.includes,
                 realization: service.appMount.realization,
               },

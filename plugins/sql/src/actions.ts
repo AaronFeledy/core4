@@ -49,6 +49,10 @@ export type SqlMover = {
     opts?: SnapshotRestoreOptions,
   ) => Effect.Effect<void, unknown>;
   readonly listSnapshots: (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, unknown>;
+  readonly resolveSnapshot: (
+    reference: string,
+    scope: SnapshotFilter,
+  ) => Effect.Effect<SnapshotInfo, unknown>;
   readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, unknown>;
 };
 

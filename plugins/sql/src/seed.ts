@@ -2,18 +2,31 @@ import { randomUUID } from "node:crypto";
 import { Effect, Exit } from "effect";
 
 import { SqlSeedStateError } from "@lando/sdk/errors";
-import type { SnapshotInfo, VolumeRef } from "@lando/sdk/schema";
+import {
+  AppId,
+  type DataTransferSpec,
+  ServiceName,
+  type SnapshotInfo,
+  type VolumeRef,
+} from "@lando/sdk/schema";
 
 import { type SqlExec, runImport } from "./actions.ts";
 import { parseCount } from "./command-input.ts";
-import { countCommand } from "./families.ts";
+import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
 import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
 
 export const executeSeed = Effect.fn("Sql.seed")(function* (
   deps: SqlRecoveryDeps & { readonly exec: SqlExec },
   context: SqlRecoveryContext,
-  input: Parameters<typeof runImport>[2] & { readonly snapshot?: SnapshotInfo; readonly store: VolumeRef },
+  input: Parameters<typeof runImport>[2] & {
+    readonly snapshot?: SnapshotInfo;
+    readonly source?: {
+      readonly endpoint: Extract<DataTransferSpec["from"], { readonly _tag: "serviceCmd" }>;
+      readonly database: string;
+    };
+    readonly store: VolumeRef;
+  },
 ) {
   const reject = (status: SqlSeedStateError["status"]) =>
     new SqlSeedStateError({
@@ -50,6 +63,19 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       if (!(yield* state.begin(operationId))) return yield* Effect.fail(reject("in-progress"));
       const seeded = Effect.gen(function* () {
         yield* context.verifyVolume;
+        if (input.source !== undefined) {
+          return yield* deps.transfer({
+            from: input.source.endpoint,
+            to: {
+              _tag: "serviceCmd",
+              app: AppId.make(input.plan.id),
+              service: ServiceName.make(input.service),
+              command: loadCommand(input.family, input.creds, input.source.database),
+              env: input.env,
+            },
+            overwrite: true,
+          });
+        }
         return yield* seedSnapshotId === undefined
           ? runImport(deps, deps.exec, input)
           : Effect.gen(function* () {

@@ -128,6 +128,7 @@ export const toAppFeatureDraft = (
           target: servicePlan.appMount.target,
           readOnly: servicePlan.appMount.readOnly,
           excludes: servicePlan.appMount.excludes,
+          syncExcludes: servicePlan.appMount.syncExcludes,
           includes: servicePlan.appMount.includes,
         },
       }),

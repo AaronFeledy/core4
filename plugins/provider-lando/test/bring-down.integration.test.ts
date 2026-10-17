@@ -57,6 +57,7 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: [],
+          syncExcludes: [],
           includes: [],
           realization: "passthrough",
         },

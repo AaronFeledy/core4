@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, git, database]
 
 # Run a git worktree as its own Lando app
 
-Give each `git worktree` its own app name, URL, and database, then load the main checkout's data into it. A feature branch, a hotfix, and a coding agent can each run a copy of the same repo at once. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
+Give each `git worktree` its own app name, URL, and database, then copy the main checkout's data into it with one command. A feature branch, a hotfix, and a coding agent can each run a copy of the same repo at once. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
 
 The commands below use `shop` as the main checkout and `shop-feature` as the worktree, side by side in one parent folder. This is the main checkout's `.lando.yml`:
 
@@ -24,22 +24,13 @@ services:
     type: postgres
 ```
 
-Ignore the per-checkout files once, in the main checkout's `.gitignore`. Every worktree shares it:
+Ignore the per-checkout file once, in the main checkout's `.gitignore`. Every worktree shares it:
 
 ```text
 .lando.local.yml
-*.sql.gz
 ```
 
-## Export the main checkout's database
-
-With the main app running, dump its database into the app root:
-
-```sh
-lando db:export baseline.sql.gz
-```
-
-`db:export` writes inside the app root only. A destination like `../baseline.sql.gz` fails with `DataSourceOutsideRootError`, so export in place and read the file from the worktree.
+Keep the main app running. The worktree copies its database straight from the running containers, so there is no dump file to manage.
 
 ## Add the worktree
 
@@ -58,7 +49,7 @@ Save this as `.lando.local.yml` in the worktree. The committed Landofile stays u
 name: shop-feature
 ```
 
-The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs.
+The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs. In a worktree, `.git` is a one-line file that points at the main checkout's `.git` directory; on Linux, Lando mounts that directory into the container at the same path, so `git` works at `/app` like it does in the main checkout. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx#git-worktrees).
 
 Check the layer took:
 
@@ -87,16 +78,16 @@ That prints `shop-feature` here and `shop` in the main checkout. Build connectio
 
 ## Seed the worktree's database
 
-Load the main checkout's dump, then count rows in a table you know is there. This sample's database has a `products` table:
+Copy the main checkout's database into the worktree, then count rows in a table you know is there. This sample's database has a `products` table:
 
 ```sh
-lando db:seed ../shop/baseline.sql.gz
+lando db:seed --from-app shop
 lando psql -tAc 'SELECT count(*) FROM products;'
 ```
 
-`db:seed` reads a dump from outside the app root, like the main checkout's folder, but it only loads into a database Lando freshly created that nothing has written to yet. No prompt, no `--yes`.
+`--from-app` names a running app by its id, the `name` in its Landofile. Lando streams a logical dump out of that app's database container, through a checked temp file in its own scratch space, and into this one. Nothing lands in either checkout, and credentials never hit the command line. `--from-path ../shop` picks the source by folder instead, and `--from-service` picks the database service when the source has more than one. Both apps need the same database type.
 
-Seed once. A second `db:seed` fails with `SqlSeedStateError`. Snapshot the seeded database so you can get back to it without the dump:
+`db:seed` only loads into a database Lando freshly created that nothing has written to yet. No prompt, no `--yes`. Seed once. A second `db:seed` fails with `SqlSeedStateError`. Snapshot the seeded database so you can get back to it without the main checkout:
 
 ```sh
 lando db:snapshot --label seeded
@@ -128,7 +119,7 @@ Snapshots belong to the checkout that took them. To see what the main checkout h
 lando db:snapshots --from-app shop
 ```
 
-`--from-app` only matches checkouts of the same Git repository. `--from-path ../shop` selects the main checkout by folder instead. Listing is as far as it goes: passing one of those ids to `db:restore` or `db:seed --snapshot` in the worktree fails with `SqlRecoveryUnavailableError`, because a snapshot is a physical copy of another checkout's database. Move data between checkouts with `db:export` and `db:seed <file>`.
+For snapshots, `--from-app` only matches checkouts of the same Git repository, and `--from-path ../shop` selects the main checkout by folder instead. Listing is as far as it goes: passing one of those ids to `db:restore` or `db:seed --snapshot` in the worktree fails with `SqlRecoveryUnavailableError`, because a snapshot is a physical copy of another checkout's database. Move data between checkouts with `db:seed --from-app`, or with `db:export` and `db:seed <file>` when the source isn't running.
 
 ## Remove the worktree
 

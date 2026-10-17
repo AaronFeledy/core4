@@ -8,7 +8,15 @@ import { validateAuthoredAppMount } from "../../src/planner/authored.ts";
 describe("authored app-mount validation", () => {
   test("accepts authored policy without composing a mount", () => {
     // Given
-    const service = { appMount: { target: "/site", readOnly: true, excludes: ["dist"], includes: ["src"] } };
+    const service = {
+      appMount: {
+        target: "/site",
+        readOnly: true,
+        excludes: ["dist"],
+        syncExcludes: [".git"],
+        includes: ["src"],
+      },
+    };
     // When
     const result = validateAuthoredAppMount(service, "/srv/project", "web");
     // Then

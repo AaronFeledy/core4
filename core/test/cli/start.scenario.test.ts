@@ -200,6 +200,7 @@ const fileSyncWeb: ServicePlan = {
     readOnly: false,
     realization: "accelerated",
     excludes: [],
+    syncExcludes: [],
     includes: [],
   },
 };

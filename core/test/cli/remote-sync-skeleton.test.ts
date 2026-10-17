@@ -17,6 +17,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
+import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import { type SyncResult, SyncResult as SyncResultSchema } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
 import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
@@ -266,6 +267,15 @@ describe("remote sync command skeleton", () => {
           }),
         restore: () => Effect.void,
         listSnapshots: () => Effect.succeed([]),
+        resolveSnapshot: (reference) =>
+          Effect.fail(
+            new SnapshotNotFoundError({
+              message: `Snapshot ${reference} was not found.`,
+              snapshotId: reference,
+              remediation:
+                "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
+            }),
+          ),
         removeSnapshot: () => Effect.void,
         pruneSnapshots: () => Effect.succeed([]),
       });
@@ -837,6 +847,15 @@ describe("remote sync command skeleton", () => {
           }),
         restore: () => Effect.void,
         listSnapshots: () => Effect.succeed([]),
+        resolveSnapshot: (reference) =>
+          Effect.fail(
+            new SnapshotNotFoundError({
+              message: `Snapshot ${reference} was not found.`,
+              snapshotId: reference,
+              remediation:
+                "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
+            }),
+          ),
         removeSnapshot: () => Effect.void,
         pruneSnapshots: () => Effect.succeed([]),
       });

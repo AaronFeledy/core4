@@ -68,7 +68,7 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
       path: PortablePath.make("/app"),
     },
     mode: "two-way-safe",
-    excludes: [],
+    excludes: ["node_modules", ".git"],
   };
   return {
     id,
@@ -84,8 +84,9 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
           target: PortablePath.make("/app"),
           readOnly: false,
           realization: "accelerated",
-          excludes: [],
-          includes: [],
+          excludes: ["node_modules", "vendor"],
+          syncExcludes: [".git", "vendor"],
+          includes: ["vendor"],
         },
       },
     },

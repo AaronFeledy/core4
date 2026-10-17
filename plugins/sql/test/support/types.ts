@@ -10,6 +10,8 @@ import type { SqlCommandDeps } from "../../src/run.ts";
 export type ExtraSqlService = { readonly name: string; readonly type: string };
 export type SqlTestOptions = {
   readonly password: string;
+  readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
+  readonly inspectSource?: SqlCommandDeps["inspectSource"];
   readonly rootPassword?: string;
   readonly type?: string;
   readonly environment?: Readonly<Record<string, string>>;

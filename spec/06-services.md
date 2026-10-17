@@ -70,7 +70,9 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 
 Template mounts use app-root-relative `source`, optional `engine`, `vars`, and `mode`. Sources obey include containment (§7.7.6). Engine selection is explicit, then extension-based, then `lando`; values resolve through the standard expression context. Providers receive only rendered `inline` mounts. Rendered output uses the `<userCacheRoot>/templates/<engineId>/...` `template-render` cache (§12.1).
 
-For bind excludes, planning creates storage shadows; `!` entries re-include paths. A shadow overlays a directory: an exclude whose host path exists as a non-directory, such as a Git worktree's `.git` file, gets no shadow and stays visible through passthrough binds. Copy includes become binds. Ordering preserves nested-path semantics.
+App mounts carry two exclude lists. `excludes` (default `node_modules`, `vendor`, `tmp`, plus service-type presets) are per-service directories: planning creates a service-scoped storage shadow for each, and accelerated engines also receive them as exclusion patterns. `syncExcludes` (default `.git`) are sync-only: accelerated engines receive them as exclusion patterns and passthrough binds leave them untouched, so a checkout's `.git` directory is visible to the container on native binds. `includes` remove an entry from both lists; `!` entries re-include paths. A shadow overlays a directory: an exclude whose host path exists as a non-directory gets no shadow and stays visible through passthrough binds. Copy includes become binds. Ordering preserves nested-path semantics.
+
+When a passthrough app mount's `.git` is a gitfile (a Git worktree or submodule checkout), planning bind-mounts the resolved common git directory, and the worktree git directory when it lies outside it, so git works at the app mount. An absolute `gitdir` mounts at the same container path; a relative one mounts where the gitfile resolves from the container app mount target, so git follows the file unchanged. Planning verifies each directory is a Git directory (it holds `HEAD`) before mounting; a gitfile alone never authorizes a host path. The binds are read-only when the app mount is read-only, never file-sync sessions, never override an authored mount or storage at the same destination, and are skipped when a host path is not a POSIX absolute path. Shared metadata is writable by every worktree's containers, as on the host.
 
 Every bind `MountPlan` has `realization: passthrough | accelerated` selected from `bindMountPerformance` (§5.4):
 
@@ -78,7 +80,7 @@ Every bind `MountPlan` has `realization: passthrough | accelerated` selected fro
 - `slow` uses a provider-managed `lando-sync-<app-id>-<service>-<mountKeyHash>` volume and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
 - `none` fails with `CapabilityError`.
 
-The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive every exclude, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
+The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive every effective exclude from both lists, including non-directory paths; otherwise planning retains storage shadows for `excludes`. Exclude entries stay in mount intent and are never silently dropped.
 
 `mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, `file-sync-sessions` cache, and lifecycle events. Changing excludes changes the key.
 

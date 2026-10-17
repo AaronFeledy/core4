@@ -101,6 +101,7 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
     target: PortablePath.make("/app"),
     readOnly: false,
     excludes: [],
+    syncExcludes: [],
     includes: [],
     realization: "passthrough",
   },

@@ -18,6 +18,7 @@ const validPlanInput = {
     target: PortablePath.make("/app"),
     readOnly: false,
     excludes: [],
+    syncExcludes: [],
     includes: [],
     realization: "passthrough",
   },

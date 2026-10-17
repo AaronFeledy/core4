@@ -46,8 +46,9 @@ const acceleratedService: ServicePlan = {
     target: PortablePath.make("/app"),
     readOnly: false,
     realization: "accelerated",
-    excludes: [],
-    includes: [],
+    excludes: ["node_modules", "vendor"],
+    syncExcludes: [".git", "vendor"],
+    includes: ["vendor"],
   },
   mounts: [
     {
@@ -73,7 +74,7 @@ const acceleratedPlan: AppPlan = {
         source: plan.root,
         target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: ["node_modules", ".git"],
       },
     },
     {

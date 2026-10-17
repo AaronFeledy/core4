@@ -93,6 +93,7 @@ describe("container plan helpers", () => {
           readOnly: true,
           realization,
           excludes: [],
+          syncExcludes: [],
           includes: [],
         },
         mounts: [
