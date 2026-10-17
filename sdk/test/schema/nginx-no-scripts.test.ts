@@ -23,9 +23,8 @@ const decodeLandofileService = (raw: unknown): ServiceConfig => {
   return service;
 };
 
-const issueCount = (
-  result: ReturnType<typeof Schema.decodeUnknownResult<typeof NginxNoScriptPath>>,
-): number => {
+const nginxNoScriptIssueCount = (path: string): number => {
+  const result = Schema.decodeUnknownResult(NginxNoScriptPath)(path);
   if (!Result.isFailure(result)) {
     throw new Error("expected NginxNoScriptPath decode to fail");
   }
@@ -91,7 +90,7 @@ describe("NginxNoScriptPath", () => {
   test.each([...rejectedPaths])("rejects %j", (path) => {
     expect(isNginxNoScriptPath(path)).toBe(false);
     expect(NGINX_NO_SCRIPT_PATH_PATTERN.test(path)).toBe(false);
-    expect(issueCount(Schema.decodeUnknownResult(NginxNoScriptPath)(path))).toBe(1);
+    expect(nginxNoScriptIssueCount(path)).toBe(1);
     expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ noScripts: [path] }))).toBe(true);
     expect(
       Result.isFailure(
