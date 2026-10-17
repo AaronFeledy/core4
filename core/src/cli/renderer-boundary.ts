@@ -248,15 +248,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const liveStreaming = options.streamingMode === "live";
   // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
   const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
-  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format).pipe(
-    Layer.provide(
-      Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
-    ),
-  );
-  const commandLayer = (
-    attachLiveSink
-      ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer, commandWarningsLayer)
-      : Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer)
+  const commandLayer = Layer.mergeAll(
+    options.runtime,
+    rendererLayer,
+    commandWarningsLayer,
   ) as Layer.Layer<R, RE>;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
@@ -424,13 +419,18 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }
     }
+    // Construct the sink inside the command runtime so it captures that runtime's
+    // SecretStore-backed redaction service, not the diagnostic fallback.
+    const executeWithLiveSink = attachLiveSink
+      ? Effect.provide(executeCommand, RendererOutput.layerStreamFrameSink(renderContext.format))
+      : executeCommand;
     const executeWithEventConsumer = Effect.scoped(
       Effect.gen(function* () {
-        if (eventConsumerLayer === undefined) return yield* executeCommand;
+        if (eventConsumerLayer === undefined) return yield* executeWithLiveSink;
         const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
         const consumerContext = yield* Layer.buildWithScope(eventConsumerLayer, consumerScope);
         const finish = yield* Effect.cached(Scope.close(consumerScope, Exit.void));
-        return yield* executeCommand.pipe(
+        return yield* executeWithLiveSink.pipe(
           Effect.provide(consumerContext),
           Effect.provideService(FinishCommandProgress, finish),
         );
