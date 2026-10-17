@@ -1,8 +1,10 @@
-import { Effect, Exit } from "effect";
+import { DateTime, Effect, Exit } from "effect";
 
 import { SqlRecoveryOperationError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import type { SnapshotMetadata } from "@lando/sdk/schema";
 
+import type { SqlPublisher } from "./progress.ts";
 import { resolveLockedPhysicalTarget } from "./recovery-adoption.ts";
 import {
   type SqlPhysicalContextInput,
@@ -10,12 +12,14 @@ import {
   resolvePhysicalContext,
   resolvePhysicalTarget,
 } from "./recovery-target.ts";
+import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 
 export type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery-target.ts";
 
 type SqlPhysicalOperation<A, E> = SqlPhysicalContextInput & {
   readonly reason: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
   readonly resumeAfterSnapshot: boolean;
+  readonly publish: SqlPublisher;
   readonly body: (context: SqlRecoveryContext, recoveryId: string) => Effect.Effect<A, E>;
 };
 
@@ -74,7 +78,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
         }),
       );
       if (input.resumeAfterSnapshot && context.running) yield* context.resume;
-      return yield* input.body(context, recovery.id).pipe(
+      const result = yield* input.body(context, recovery.id).pipe(
         Effect.mapError((cause) =>
           input.reason === "manual"
             ? cause
@@ -88,5 +92,38 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
               }),
         ),
       );
+      if (input.reason !== "manual") {
+        yield* input.deps
+          .pruneSnapshots({
+            filter: {
+              app: context.volume.app,
+              store: context.volume.store,
+              sourceRoot: context.metadata.sourceRoot,
+              service: context.metadata.service,
+              ...(context.metadata.ownerKey === undefined ? {} : { ownerKey: context.metadata.ownerKey }),
+            },
+            recovery: true,
+            keepLatest: DEFAULT_SNAPSHOT_KEEP_LATEST,
+            retainSnapshotId: recovery.id,
+          })
+          .pipe(
+            Effect.catch(() =>
+              DateTime.now.pipe(
+                Effect.flatMap((timestamp) =>
+                  input.publish(
+                    MessageWarnEvent.make({
+                      body: `Database ${input.serviceName} was updated, but older recovery snapshots could not be pruned. Lando retries after the next import, reset, or restore; run lando db:snapshots to see them.`,
+                      timestamp,
+                    }),
+                  ),
+                ),
+                Effect.catch(() =>
+                  Effect.logWarning("Could not publish recovery snapshot retention warning."),
+                ),
+              ),
+            ),
+          );
+      }
+      return result;
     }),
   });

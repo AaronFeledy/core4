@@ -282,5 +282,13 @@ export type SnapshotFilter = typeof SnapshotFilter.Type;
 export const PrunePolicy = Schema.Struct({
   filter: Schema.optionalKey(SnapshotFilter),
   keepLatest: Schema.optionalKey(Schema.Number),
+  recovery: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Prune automatic recovery snapshots instead of manual or unclassified snapshots. Defaults to false.",
+  }),
+  retainSnapshotId: Schema.optionalKey(SnapshotId).annotate({
+    description:
+      "Keep this snapshot first within the selected bucket's keepLatest budget, regardless of timestamp.",
+  }),
 });
 export type PrunePolicy = typeof PrunePolicy.Type;

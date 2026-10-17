@@ -17,6 +17,7 @@ import {
   type Scope,
   Stream,
 } from "effect";
+import { TestClock } from "effect/testing";
 
 import { providerImages } from "@lando/data-mover/provider-images";
 import * as BunDataMover from "@lando/data-mover/service";
@@ -1616,7 +1617,12 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("pruneSnapshots preserves automatic recovery points while pruning manual snapshots", async () => {
+  test.each([
+    { name: "manual by default", recovery: undefined, retainOldest: false },
+    { name: "manual when recovery is false", recovery: false, retainOldest: false },
+    { name: "automatic when recovery is true", recovery: true, retainOldest: false },
+    { name: "automatic with a reserved undo point", recovery: true, retainOldest: true },
+  ])("pruneSnapshots selects $name", async ({ recovery: automatic, retainOldest }) => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       await writeFile(join(dir, "seed.txt"), "seed-payload");
@@ -1628,6 +1634,7 @@ describe("BunDataMover.layer", () => {
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
+              yield* TestClock.setTime(1000);
               yield* dataMover.transfer({
                 from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
                 to: { _tag: "volume", app, store: "data" },
@@ -1648,6 +1655,27 @@ describe("BunDataMover.layer", () => {
                   },
                 },
               );
+              const recoveries = [recovery];
+              for (const [index, recoveryReason] of (["import", "restore", "seed"] as const).entries()) {
+                yield* TestClock.setTime(2000 + index);
+                recoveries.push(
+                  yield* dataMover.snapshot(
+                    { app, store: "data" },
+                    {
+                      format: "tar",
+                      metadata: {
+                        sourceRoot: AbsolutePath.make(dir),
+                        service: ServiceName.make("database"),
+                        volumeInstanceId: "00000000-0000-4000-8000-000000000001",
+                        family: "mysql",
+                        version: "8.0",
+                        imageIdentity: "sha256:mysql-runtime",
+                        recoveryReason,
+                      },
+                    },
+                  ),
+                );
+              }
               const manual = yield* dataMover.snapshot(
                 { app, store: "data" },
                 {
@@ -1669,10 +1697,12 @@ describe("BunDataMover.layer", () => {
               );
               const pruned = yield* dataMover.pruneSnapshots({
                 filter: { app, store: "data" },
-                keepLatest: 0,
+                keepLatest: automatic === true ? 1 : 0,
+                ...(automatic === undefined ? {} : { recovery: automatic }),
+                ...(retainOldest ? { retainSnapshotId: recovery.id } : {}),
               });
               const listed = yield* dataMover.listSnapshots({ app, store: "data" });
-              return { recovery, manual, ordinary, pruned, listed };
+              return { recoveries, manual, ordinary, pruned, listed };
             }),
           ).pipe(
             Effect.provide(BunDataMover.layer),
@@ -1696,11 +1726,23 @@ describe("BunDataMover.layer", () => {
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            Effect.provide(TestClock.layer()),
           ),
         );
 
-        expect([...result.pruned].sort()).toEqual([result.manual.id, result.ordinary.id].sort());
-        expect(result.listed.map((entry) => entry.id)).toEqual([result.recovery.id]);
+        const automaticIds = result.recoveries.map((snapshot) => snapshot.id);
+        const retainedId = retainOldest ? automaticIds[0] : automaticIds[3];
+        if (retainedId === undefined) throw new Error("expected automatic snapshot fixture");
+        expect([...result.pruned].sort()).toEqual(
+          automatic === true
+            ? automaticIds.filter((id) => id !== retainedId).sort()
+            : [result.manual.id, result.ordinary.id].sort(),
+        );
+        expect(result.listed.map((entry) => entry.id).sort()).toEqual(
+          automatic === true
+            ? [retainedId, result.manual.id, result.ordinary.id].sort()
+            : automaticIds.sort(),
+        );
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;

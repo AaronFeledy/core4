@@ -1618,14 +1618,15 @@ export const makeDataMoverService = (
             return [];
           }
           return [...infos]
-            .filter(
-              (info) =>
-                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual",
-            )
+            .filter((info) => {
+              const manual =
+                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual";
+              return policy.recovery === true ? !manual : manual;
+            })
             .sort(
               (left, right) =>
-                Date.parse(DateTime.formatIso(right.createdAt)) -
-                Date.parse(DateTime.formatIso(left.createdAt)),
+                Number(right.id === policy.retainSnapshotId) - Number(left.id === policy.retainSnapshotId) ||
+                DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
             )
             .slice(policy.keepLatest);
         }),

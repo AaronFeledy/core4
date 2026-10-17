@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `PrunePolicy` additively accepts optional `recovery`: omitted or false prunes only manual/unclassified snapshots, while true prunes only automatic recovery snapshots (import, reset, restore, or seed). Optional `retainSnapshotId` reserves one place in the `keepLatest` budget for a matching snapshot regardless of timestamps, so a newly captured undo point survives clock rollback or ties. Omitted `keepLatest` still removes nothing. SQL automatically keeps three recovery points per database after successful protected operations; retention failure warns without failing the completed operation.
+
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.

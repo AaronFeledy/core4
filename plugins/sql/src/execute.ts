@@ -18,6 +18,7 @@ import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
 import { executeSeed } from "./seed.ts";
 import { requireCompatibleSnapshot } from "./snapshot-compatibility.ts";
+import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -151,7 +152,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       hostCwd: input.hostCwd ?? process.cwd(),
       canonicalizePath: deps.canonicalizeSourcePath,
     });
-    const keepLatest = input.keepLatest ?? 3;
+    const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
     const snapshots = yield* deps.listSnapshots(filter);
     prunePolicy = { filter, keepLatest };
     pruneCandidates = [...snapshots]
@@ -209,6 +210,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
               input.compression === "gzip" ? "tar.gz" : input.compression === "zstd" ? "tar.zst" : "tar",
           }),
       reason,
+      publish: deps.publish,
       resumeAfterSnapshot,
       ...(preflight === undefined ? {} : { preflight }),
       body,
