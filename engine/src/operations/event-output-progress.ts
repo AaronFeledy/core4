@@ -1,8 +1,7 @@
 import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 import { Effect } from "effect";
 
-// Lifecycle cmd diagnostics remain redacted narration; named tooling never enters this presenter.
-export const publishEventCmdProgress = Effect.fnUntraced(function* (input: {
+export const publishEventOutputProgress = Effect.fnUntraced(function* (input: {
   readonly events: ProgressEmitter;
   readonly task: string;
   readonly service: string;

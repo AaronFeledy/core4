@@ -29,7 +29,7 @@ import type {
   ToolingStepRunners,
 } from "../tooling/step-runner.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
-import { publishEventCmdProgress } from "./event-cmd-progress.ts";
+import { publishEventOutputProgress } from "./event-output-progress.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
@@ -273,8 +273,8 @@ const runTask = Effect.fnUntraced(function* (
 
 const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execution: EventLeafResult) {
   const durationMs = (yield* Clock.currentTimeMillis) - execution.startedAt;
-  if (execution.leaf.kind === "cmd") {
-    return yield* publishEventCmdProgress({
+  if (execution.leaf.kind === "cmd" || execution.leaf.kind === "task") {
+    return yield* publishEventOutputProgress({
       events: options.events,
       task: `${options.event}:${execution.leaf.authoredIndex + 1}`,
       service: String(execution.result.service),
