@@ -9,6 +9,7 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { type DbCommandInput, dbCommandRedactionTokens, executeDbCommand } from "../src/run.ts";
 import { DbCommandResult } from "../src/schemas.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { sourcePlan } from "./support/source-plan.ts";
 
 afterEach(cleanupSqlTestDeps);
 
@@ -27,6 +28,41 @@ const successInputs: ReadonlyArray<{ readonly command: string; readonly input: D
 ];
 
 describe("db command machine output", () => {
+  test("preserves app seed source diagnostics in the machine error", async () => {
+    // Given: a source database from a different family.
+    const harness = makeSqlTestDeps({
+      password: "target-secret",
+      appliedPlans: Effect.succeed([sourcePlan("/shop", "postgres:16")]),
+    });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(executeDbCommand(harness.deps, { action: "seed", fromApp: "shop", yes: false })),
+    );
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    // When: the real command failure is encoded for machine consumers.
+    const encoded = await Effect.runPromise(
+      encodeCommandResult({
+        command: "db:seed",
+        resultSchema: DbCommandResult,
+        outcome: { _tag: "failure", error },
+        redactor: identityRedactor,
+      }),
+    );
+    // Then: source context, the tag, and remediation survive without credentials.
+    expect(decodeEnvelope(encoded).error).toMatchObject({
+      _tag: "SqlSeedSourceError",
+      sourceApp: "shop",
+      sourceRoot: "/shop",
+      sourceService: "database",
+      sourceFamily: "postgres",
+      targetFamily: "mysql",
+      message: expect.any(String),
+      remediation: expect.stringContaining("same family"),
+    });
+    expect(encoded).not.toContain("source-secret");
+    expect(encoded).not.toContain("target-secret");
+  });
+
   test("preserves export file paths containing the public default password", async () => {
     const harness = makeSqlTestDeps({ password: "lando" });
     const exit = await Effect.runPromiseExit(

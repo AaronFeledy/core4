@@ -90,7 +90,7 @@ export const MountInput = Schema.Union([
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
-    /** Excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
+    /** Overlay excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
     excludes: Schema.optionalKey(Schema.Array(Schema.String)),
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -595,6 +595,14 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
+const AppMountEntry = Schema.String.check(
+  Schema.makeFilter((entry) =>
+    entry.startsWith("!")
+      ? `Use includes: [${entry.slice(1)}] to keep ${entry.slice(1)}; \`!\` entries are not supported.`
+      : undefined,
+  ),
+);
+
 const ServiceConfigWithExtensions = Schema.StructWithRest(
   Schema.Struct({
     api: Schema.optionalKey(Schema.Literal(4)),
@@ -715,8 +723,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         Schema.Struct({
           target: Schema.String,
           readOnly: Schema.optionalKey(Schema.Boolean),
-          excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-          includes: Schema.optionalKey(Schema.Array(Schema.String)),
+          excludes: Schema.optionalKey(Schema.Array(AppMountEntry)),
+          includes: Schema.optionalKey(Schema.Array(AppMountEntry)),
         }),
       ]),
     ).annotate({

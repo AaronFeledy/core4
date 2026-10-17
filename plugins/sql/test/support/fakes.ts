@@ -5,7 +5,11 @@ import { gzipSync } from "node:zlib";
 
 import { DateTime, Effect } from "effect";
 
-import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import {
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
+  SqlRecoveryUnavailableError,
+} from "@lando/sdk/errors";
 import type {
   DataTransferResult,
   DataTransferSpec,
@@ -14,7 +18,7 @@ import type {
   VolumeInfo,
   VolumeInitializationRecord,
 } from "@lando/sdk/schema";
-import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
@@ -104,6 +108,48 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const deps: SqlCommandDeps = {
     landofile,
     plan,
+    providerId: "test",
+    ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
+    inspectSource:
+      options.inspectSource ??
+      ((target) =>
+        Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId: ProviderId.make("test"),
+          status: "running",
+        })),
+    resolveSnapshot(reference, scope) {
+      const list = this.listSnapshots;
+      return Effect.gen(function* () {
+        const exact = (yield* list({ id: reference })).find((entry) => entry.id === reference);
+        if (exact !== undefined) return exact;
+        const matches = (yield* list({ ...scope, label: reference }))
+          .filter((entry) => entry.label === reference)
+          .toSorted(
+            (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
+          );
+        if (matches.length > 1)
+          return yield* Effect.fail(
+            new SnapshotAmbiguousError({
+              message: `Snapshot label ${reference} is ambiguous.`,
+              snapshotId: reference,
+              matchCount: matches.length,
+              candidateIds: matches.map((entry) => entry.id),
+              remediation: "Run `lando db:snapshots` and retry with a snapshot id.",
+            }),
+          );
+        const match = matches[0];
+        if (match !== undefined) return match;
+        return yield* Effect.fail(
+          new SnapshotNotFoundError({
+            message: `Snapshot ${reference} was not found.`,
+            snapshotId: reference,
+            remediation: "Run `lando db:snapshots` to list snapshot ids and labels.",
+          }),
+        );
+      });
+    },
     transfer: (spec) =>
       Effect.sync((): DataTransferResult => {
         transfers.push(spec);
@@ -175,7 +221,10 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("SHOW server_version") ||
         joined.includes("db.version()") ||
         joined.includes("SERVERPROPERTY('ProductVersion')");
-      const isCount = joined.includes("information_schema") || joined.includes("COUNT(*)");
+      const isCount =
+        joined.includes("information_schema") ||
+        joined.includes("COUNT(*)") ||
+        joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
         return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });

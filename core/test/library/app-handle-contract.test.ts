@@ -112,7 +112,7 @@ const planWithFileSync = (root: string): AppPlan => ({
         source: AbsolutePath.make(root),
         target: { _tag: "volume", name: "embedded-app-cache-app-mount", path: PortablePath.make("/app") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: [".git"],
       },
     },
   ],

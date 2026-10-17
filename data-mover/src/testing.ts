@@ -1,5 +1,6 @@
 import { Effect, Stream } from "effect";
 
+import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import type { DataTransferSpec } from "@lando/sdk/schema";
 import { DataMover, type DataMoverShape } from "@lando/sdk/services";
 
@@ -30,6 +31,15 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
     snapshot: (store) => Effect.succeed({ id: `test-${store.store}`, store }),
     restore: () => Effect.void,
     listSnapshots: () => Effect.succeed([]),
+    resolveSnapshot: (reference, _scope) =>
+      Effect.fail(
+        new SnapshotNotFoundError({
+          message: `Snapshot ${reference} was not found.`,
+          snapshotId: reference,
+          remediation:
+            "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
+        }),
+      ),
     removeSnapshot: (_id, _store?) => Effect.void,
     pruneSnapshots: () => Effect.succeed([]),
   });

@@ -32,7 +32,12 @@ describe("lando.app-mount", () => {
           includes: ["src"],
         },
       },
-      config: { target: "/app", readOnly: true, excludes: ["cache", ".venv"] },
+      config: {
+        target: "/app",
+        readOnly: true,
+        excludes: ["cache", ".venv"],
+        includes: ["assets", "src", "assets"],
+      },
     });
 
     // When
@@ -47,7 +52,7 @@ describe("lando.app-mount", () => {
           target: "/workspace",
           readOnly: false,
           excludes: ["cache", ".venv", "vendor"],
-          includes: ["src"],
+          includes: ["assets", "src"],
         },
       ],
       ["addEnv", "LANDO_APP_ROOT", "/workspace"],
@@ -81,6 +86,7 @@ describe("lando.app-mount", () => {
     { target: 42 },
     { readOnly: "yes" },
     { excludes: [3] },
+    { includes: [3] },
     { unexpected: true },
     { target: "/app", realization: "passthrough" },
   ])("rejects malformed feature config %j before applying it", async (config) => {

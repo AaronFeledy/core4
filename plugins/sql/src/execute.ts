@@ -16,9 +16,9 @@ import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
+import { resolveSeedSource } from "./seed-source.ts";
 import { executeSeed } from "./seed.ts";
 import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
-import { resolveSnapshotReference } from "./snapshot-reference.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -60,21 +60,29 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   });
   const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
     deps.resume(serviceName, identity).pipe(Effect.andThen(waitForDatabase));
-  if (input.action === "seed" && (input.file === undefined) === (input.snapshotId === undefined)) {
+  if (
+    input.action === "seed" &&
+    [input.file, input.snapshotId, input.fromApp, input.fromPath].filter((source) => source !== undefined)
+      .length !== 1
+  ) {
     return yield* Effect.fail(
       new SqlSeedSourceError({
         message: `Seed ${target.name} requires exactly one source.`,
         service: target.name,
-        remediation: "Pass one dump file or --snapshot <id>.",
+        remediation: "Pass exactly one dump file, --snapshot <id>, --from-app <id>, or --from-path <dir>.",
       }),
     );
   }
+  const seedSource =
+    input.action === "seed" && (input.fromApp !== undefined || input.fromPath !== undefined)
+      ? yield* resolveSeedSource(deps, input, target)
+      : undefined;
   const file = hostFile(deps.plan, { ...input, service: target.name });
   const action = input.action;
   let restoreSource: SnapshotInfo | undefined;
   const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
   const dump =
-    action === "import" || (action === "seed" && input.snapshotId === undefined)
+    action === "import" || (action === "seed" && input.file !== undefined)
       ? yield* ensureReadableDump(file, deps.plan.root)
       : undefined;
   const expectedDigest = dump?.digest;
@@ -122,7 +130,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     );
   }
   if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
-    restoreSource = yield* resolveSnapshotReference(deps, input.snapshotId ?? "", {
+    const scope = yield* resolveSnapshotSource({
       app: deps.plan.id,
       ...(store === undefined ? {} : { store: store.store }),
       ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
@@ -130,6 +138,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       hostCwd: input.hostCwd ?? process.cwd(),
       canonicalizePath: deps.canonicalizeSourcePath,
     });
+    restoreSource = yield* deps.resolveSnapshot(input.snapshotId ?? "", scope);
   }
 
   let prunePolicy: PrunePolicy | undefined;
@@ -287,6 +296,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
             ...io,
             store: context.volume,
             ...(restoreSource === undefined ? {} : { snapshot: restoreSource }),
+            ...(seedSource === undefined ? {} : { source: seedSource }),
           }),
       });
       seedStatus = "seeded";
@@ -300,7 +310,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     service: target.name,
     family: target.family,
     steps,
-    redactionTokens: tokens,
+    redactionTokens: [...tokens, ...(seedSource?.redactionTokens ?? [])],
     ...(action === "import" || action === "export" ? { file } : {}),
     ...(snapshotId === undefined ? {} : { snapshotId }),
     ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
