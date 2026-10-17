@@ -30,6 +30,7 @@ import type {
 } from "../tooling/step-runner.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { publishEventCmdProgress } from "./event-cmd-progress.ts";
+import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
@@ -67,6 +68,8 @@ interface EventLeafResult {
   readonly startedAt: number;
   readonly result: ToolingEngineResult;
   readonly redactor: Redactor;
+  /** Bounded copy of output that a live sink already delivered; the result holds none of it. */
+  readonly streamedTail?: { readonly stdout: string; readonly stderr: string };
 }
 
 type EventLeafError = EventRuntimeError;
@@ -108,6 +111,7 @@ const nonzeroFailure = (
   options: EventRuntimeOptions,
   leaf: ResolvedToolingStepLeaf,
   result: ToolingEngineResult,
+  output: { readonly stdout: string; readonly stderr: string } = result,
 ): LandofileEventStepFailedError => {
   const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
   return new LandofileEventStepFailedError({
@@ -118,8 +122,8 @@ const nonzeroFailure = (
     ...(String(result.service) === "" ? {} : { service: String(result.service) }),
     exitCode: result.exitCode,
     outputTail: outputTail(
-      options.redactor.redactString(result.stdout),
-      options.redactor.redactString(result.stderr),
+      options.redactor.redactString(output.stdout),
+      options.redactor.redactString(output.stderr),
     ),
     remediation: `Fix ${label}, then rerun the lifecycle command.`,
   });
@@ -288,10 +292,38 @@ const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execu
 const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {
   if (execution.result.exitCode === 0) return Effect.succeed(execution);
   const failure = Effect.fail(
-    nonzeroFailure({ ...options, redactor: execution.redactor }, execution.leaf, execution.result),
+    nonzeroFailure(
+      { ...options, redactor: execution.redactor },
+      execution.leaf,
+      execution.result,
+      execution.streamedTail,
+    ),
   );
   return execution.leaf.silent ? failure : publish(options, execution).pipe(Effect.andThen(failure));
 };
+
+const withStreamedTail = (
+  effect: Effect.Effect<EventLeafResult, unknown>,
+): Effect.Effect<EventLeafResult, unknown> =>
+  Effect.gen(function* () {
+    const live = yield* Effect.serviceOption(StreamFrameSink);
+    if (Option.isNone(live)) return yield* effect;
+    const tail = { stdout: "", stderr: "" };
+    const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+    const tee: StreamFrameSinkShape = {
+      emit: (frame) =>
+        Effect.sync(() => {
+          const text =
+            typeof frame.chunk === "string"
+              ? frame.chunk
+              : decoders[frame._tag].decode(frame.chunk, { stream: true });
+          tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
+        }).pipe(Effect.andThen(live.value.emit(frame))),
+      ...(live.value.flush === undefined ? {} : { flush: live.value.flush }),
+    };
+    const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
+    return { ...execution, streamedTail: tail };
+  });
 
 export const makeEventStepRunners = (
   options: EventRuntimeOptions,
@@ -300,7 +332,7 @@ export const makeEventStepRunners = (
     leaf: ResolvedToolingStepLeaf,
     effect: Effect.Effect<EventLeafResult, unknown>,
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
-    effect.pipe(
+    withStreamedTail(effect).pipe(
       Effect.catch((error) =>
         isEventRuntimeError(error) ? Effect.fail(error) : Effect.fail(stepFailure(options, leaf, error)),
       ),
