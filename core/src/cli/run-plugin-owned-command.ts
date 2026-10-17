@@ -234,7 +234,7 @@ const dispatchPluginOwnedCommand = async (
   const spec = exit.value;
   if (spec === undefined) return "not-found";
   if (argv.includes("--help") || argv.includes("-h")) {
-    emitResultLine(renderPluginOwnedCommandHelp(spec));
+    await emitResultLine(renderPluginOwnedCommandHelp(spec));
     return "dispatched";
   }
   // A plugin-owned command declares no opt-in format, so it honors exactly the
@@ -245,7 +245,7 @@ const dispatchPluginOwnedCommand = async (
     await renderPluginOwnedPreCommandFailure(flagError);
     return "dispatched";
   }
-  if (emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
+  if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
   await runPluginOwnedCommand(spec, argv);
   return "dispatched";
 };
