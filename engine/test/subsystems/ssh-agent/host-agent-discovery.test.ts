@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
-import { chown, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { lstatSync } from "node:fs";
+import { chown, lstat, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +18,20 @@ const listen = async (path: string): Promise<{ readonly close: () => Promise<voi
   });
   return { close: () => new Promise((resolve) => server.close(() => resolve())) };
 };
+
+const rootOwnedSystemSocket = (): string | undefined => {
+  const self = process.getuid?.();
+  if (process.platform === "win32" || self === undefined || self === 0) return undefined;
+  for (const path of ["/run/dbus/system_bus_socket", "/run/host-services/ssh-auth.sock"]) {
+    try {
+      const stats = lstatSync(path);
+      if (stats.isSocket() && stats.uid === 0) return path;
+    } catch {}
+  }
+  return undefined;
+};
+
+const explicitRootOwnedTarget = rootOwnedSystemSocket();
 
 test("prefers explicit socket, then SSH_AUTH_SOCK, then 1Password path per platform", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
@@ -318,6 +333,45 @@ test("explicit symlink owned by another user is socket-owner-mismatch", async ()
   expect(result.failure.message).toContain(`uid ${foreignUid}`);
 });
 
+test.skipIf(explicitRootOwnedTarget === undefined)(
+  "explicit symlink to a root-owned socket is socket-owner-mismatch",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    // Given a link we own pointing at a uid-0 system socket, with no inspect override.
+    const target = explicitRootOwnedTarget as string;
+    const self = process.getuid?.() ?? 0;
+    const root = await mkdtemp(join(tmpdir(), "ssh-agent-root-owned-"));
+    const link = join(root, "link.sock");
+    await symlink(target, link);
+    try {
+      expect((await lstat(link)).uid).toBe(self);
+      expect((await lstat(await realpath(link))).uid).toBe(0);
+      // When the explicit socket is that symlink.
+      const result = await Effect.runPromise(
+        Effect.result(
+          discoverHostSshAgent({
+            platform: "linux",
+            home: root,
+            env: {},
+            explicitSocket: link,
+          }),
+        ),
+      );
+      // Then the target owner is named; reading the target uid from the link would pass.
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { reason: "socket-owner-mismatch", socketPath: link },
+      });
+      if (result._tag !== "Failure") throw new Error("expected failure");
+      expect(result.failure.message).toContain("uid 0");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test("env SSH_AUTH_SOCK owned by another user is still selected", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given SSH_AUTH_SOCK pointing at a live socket owned by another uid.
@@ -336,6 +390,32 @@ test("env SSH_AUTH_SOCK owned by another user is still selected", async () => {
   expect(result.upstream).toEqual({
     _tag: "unix",
     path: "/run/host-services/ssh-auth.sock",
+    source: "env",
+  });
+});
+
+test("auto-discovery probes a plain-file SSH_AUTH_SOCK", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  // Given Windows AF_UNIX SSH_AUTH_SOCK reported as a regular file, not a socket.
+  const probed: string[] = [];
+  // When auto-discovery inspects that env path as kind other.
+  const result = await Effect.runPromise(
+    discoverHostSshAgent({
+      platform: "win32",
+      home: "C:\\Users\\test",
+      env: { SSH_AUTH_SOCK: "C:\\Users\\test\\agent.sock" },
+      inspect: () => Effect.succeed({ kind: "other" }),
+      probe: (upstream) => {
+        probed.push(upstream.path);
+        return Effect.succeed({ identities: 1 });
+      },
+    }),
+  );
+  // Then the env path is probed and selected instead of skipped as not a socket.
+  expect(probed).toEqual(["C:\\Users\\test\\agent.sock"]);
+  expect(result.upstream).toEqual({
+    _tag: "unix",
+    path: "C:\\Users\\test\\agent.sock",
     source: "env",
   });
 });
