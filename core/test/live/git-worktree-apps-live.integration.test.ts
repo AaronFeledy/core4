@@ -143,8 +143,14 @@ describe.serial("live git-worktree apps", () => {
             expect(worktreeGit.trimStart().startsWith("gitdir:")).toBe(true);
             expect(worktreeGit).toContain("initial shop");
             const mounts = worktreeGit.split("\n").map((line) => line.split(" "));
+            // mountinfo's root field is relative to the source filesystem, so on a host where /tmp is its
+            // own tmpfs it is a suffix of the host path rather than the whole path.
+            const commonGitDir = join(shop, ".git");
             expect(
-              mounts.some((fields) => fields[3] === join(shop, ".git") && fields[4] === join(shop, ".git")),
+              mounts.some(
+                (fields) =>
+                  fields[4] === commonGitDir && fields[3] !== undefined && commonGitDir.endsWith(fields[3]),
+              ),
             ).toBe(true);
             expect(
               mounts.some(
