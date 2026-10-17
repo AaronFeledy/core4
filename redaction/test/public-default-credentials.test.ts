@@ -38,28 +38,28 @@ test("keeps ordinary Lando output visible when source environment uses published
   expect(redacted).toBe(output);
 });
 
-test("masks a published default when explicitly registered after standalone construction", async () => {
+test("keeps a published default visible when registered after standalone construction", async () => {
   // Given
   const redactor = createStandaloneRedactor("secrets");
   // When
   await Effect.runPromise(registerRedactionValues(["lando"]));
   // Then
-  expect(redactor.redactString("hello lando world")).toBe("hello [redacted] world");
+  expect(redactor.redactString("hello lando world")).toBe("hello lando world");
 });
 
 test.each(["redactionTokens", "authoritativeTokens"] as const)(
-  "masks published defaults supplied through %s",
+  "keeps published defaults supplied through %s visible",
   (option) => {
     // Given
     const redactor = createStandaloneRedactor("secrets", { [option]: ["lando", "landolando"] });
     // When
     const output = redactor.redactString("lando landolando");
     // Then
-    expect(output).toBe("[redacted] [redacted]");
+    expect(output).toBe("lando landolando");
   },
 );
 
-test("masks published defaults retrieved from a secret store", async () => {
+test("keeps published defaults retrieved from a secret store visible", async () => {
   // Given
   const service = makeRedactionService({
     id: "defaults",
@@ -70,7 +70,7 @@ test("masks published defaults retrieved from a secret store", async () => {
   // When
   const redactor = await Effect.runPromise(service.forProfile("secrets"));
   // Then
-  expect(redactor.redactString("hello lando world")).toBe("hello [redacted] world");
+  expect(redactor.redactString("hello lando world")).toBe("hello lando world");
 });
 
 test("preserves pattern and deep-key masking for published defaults", () => {
