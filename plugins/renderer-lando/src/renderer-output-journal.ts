@@ -1,4 +1,4 @@
-import type { RendererNarrationIO } from "@lando/sdk/renderer";
+import { type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
 
 interface LiveRegionOutput {
   readonly commitScrollback: (text: string) => void;
@@ -60,10 +60,12 @@ class RendererOutputJournal {
 
 const journals = new WeakMap<RendererNarrationIO, RendererOutputJournal>();
 
+/** Keyed by the cached narration view, so full service IO and its consumer view share one journal. */
 export const outputJournalFor = (io: RendererNarrationIO): RendererOutputJournal => {
-  const existing = journals.get(io);
+  const narration = narrationIO(io);
+  const existing = journals.get(narration);
   if (existing !== undefined) return existing;
-  const journal = new RendererOutputJournal(io);
-  journals.set(io, journal);
+  const journal = new RendererOutputJournal(narration);
+  journals.set(narration, journal);
   return journal;
 };

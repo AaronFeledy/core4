@@ -1,7 +1,12 @@
 import { Arbitrary, Context, Effect, Layer, type Schema } from "effect";
 
 import { LandoEvent } from "../events/union.ts";
-import type { RendererCapabilities, RendererContribution, RendererIO } from "../renderer/index.ts";
+import {
+  type RendererCapabilities,
+  type RendererContribution,
+  type RendererIO,
+  narrationIO,
+} from "../renderer/index.ts";
 import { EventService, Renderer } from "../services/index.ts";
 import { ContractFailure, requireContract } from "./_shared.ts";
 
@@ -69,7 +74,13 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
           );
           yield* Effect.scoped(
             Effect.gen(function* () {
-              yield* Layer.build(harness.contribution.makeEventConsumer(io));
+              const consumerIO = narrationIO(io);
+              yield* requireContract(
+                !("writeStdout" in consumerIO) && !("writeStdoutBytes" in consumerIO),
+                "event consumers receive narration-only IO without stdout writers",
+                { keys: Object.keys(consumerIO) },
+              );
+              yield* Layer.build(harness.contribution.makeEventConsumer(consumerIO));
               for (const event of fixtures) yield* events.publish(event);
               yield* renderer.message.info("imperative-info");
               yield* renderer.message.warn("imperative-warn");

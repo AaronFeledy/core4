@@ -1,5 +1,5 @@
 import { fstatSync, writeSync } from "node:fs";
-import type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
+import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
 
 export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 
@@ -131,6 +131,10 @@ export interface StdioRendererIOOptions {
 }
 
 const stdioFactories = new WeakMap<RendererNarrationIO, (terminalNewlines: boolean) => RendererIO>();
+const narrationFactories = new WeakMap<
+  RendererNarrationIO,
+  (terminalNewlines: boolean) => RendererNarrationIO
+>();
 
 const terminalNewlineNormalizer = (enabled: boolean): ((chunk: string) => string) => {
   let previousCarriageReturn = false;
@@ -154,7 +158,7 @@ export function withStdioTerminalNewlines(
   io: RendererNarrationIO,
   terminalNewlines: boolean,
 ): RendererNarrationIO {
-  return stdioFactories.get(io)?.(terminalNewlines) ?? io;
+  return stdioFactories.get(io)?.(terminalNewlines) ?? narrationFactories.get(io)?.(terminalNewlines) ?? io;
 }
 
 /**
@@ -241,9 +245,10 @@ export const createStdioRendererIO = (
       };
     },
   };
-  stdioFactories.set(io, (translate) =>
-    createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate }),
-  );
+  const translated = (translate: boolean) =>
+    createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
+  stdioFactories.set(io, translated);
+  narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
   return io;
 };
 

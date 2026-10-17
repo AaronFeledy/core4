@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
+import { narrationIO } from "@lando/sdk/renderer";
 import { LiveRegionController } from "../src/opentui/live-region-controller.ts";
 import { outputJournalFor } from "../src/renderer-output-journal.ts";
 import { createTestLiveRegionController, makeLiveRegionFixture } from "./live-region-test-kit.ts";
@@ -74,4 +75,15 @@ test("full-tail payload suspension never emits inline cursor controls and restor
   await controller.exitFullTail();
   expect(fixture.writes).toEqual([]);
   await controller.dispose();
+});
+
+test("service IO and its consumer narration view share one journal", () => {
+  // Given
+  const io = { writeStderr: () => {}, writeStdout: () => {} };
+
+  // When
+  const consumerIO = narrationIO(io);
+
+  // Then
+  expect(outputJournalFor(consumerIO)).toBe(outputJournalFor(io));
 });

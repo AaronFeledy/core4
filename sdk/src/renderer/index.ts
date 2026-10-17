@@ -87,6 +87,44 @@ export interface RendererNarrationIO {
   readonly subscribeInput?: (onKey: (raw: string) => void) => () => void;
 }
 
+const NARRATION_OPTIONAL_KEYS = [
+  "externalOutputStream",
+  "isTTY",
+  "terminalColumns",
+  "terminalRows",
+  "subscribeInput",
+] as const satisfies ReadonlyArray<keyof RendererNarrationIO>;
+
+const narrationViews = new WeakMap<RendererNarrationIO, RendererNarrationIO>();
+const narrationViewSet = new WeakSet<RendererNarrationIO>();
+
+/**
+ * Cached narration-only view of an IO object. The view has no stdout writer at
+ * runtime, reads stderr metadata live from its source, and is stable per
+ * source, so state keyed by IO identity stays shared between a Renderer
+ * service and its event consumer. A view projects to itself.
+ */
+export const narrationIO = (io: RendererNarrationIO): RendererNarrationIO => {
+  if (narrationViewSet.has(io)) return io;
+  const cached = narrationViews.get(io);
+  if (cached !== undefined) return cached;
+  const view: RendererNarrationIO = { writeStderr: (chunk) => io.writeStderr(chunk) };
+  for (const key of NARRATION_OPTIONAL_KEYS) {
+    if (!(key in io)) continue;
+    Object.defineProperty(view, key, {
+      enumerable: true,
+      get: () => {
+        const value: unknown = Reflect.get(io, key);
+        return typeof value === "function" ? value.bind(io) : value;
+      },
+    });
+  }
+  Object.freeze(view);
+  narrationViews.set(io, view);
+  narrationViewSet.add(view);
+  return view;
+};
+
 /** Full service IO. Only the Renderer output channel owns stdout. */
 export interface RendererIO extends RendererNarrationIO {
   readonly writeStdout: (chunk: string) => void;
