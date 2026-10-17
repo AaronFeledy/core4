@@ -1,6 +1,7 @@
 import { fstatSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
-import { guardedWrite } from "./native-stdio.ts";
+import { guardedWrite, isOutputBroken } from "./native-stdio.ts";
+import { outputStreams } from "./output-streams.ts";
 
 export {
   BROKEN_PIPE_EXIT_CODE,
@@ -151,6 +152,8 @@ export const createStdioRendererIO = (
     createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
+  outputStreams.set(io.writeStdout, { stream: stdout, isBroken: () => isOutputBroken(stdout) });
+  outputStreams.set(io.writeStderr, { stream: stderr, isBroken: () => isOutputBroken(stderr) });
   return io;
 };
 

@@ -4,6 +4,7 @@ import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sd
 import type { RendererCapabilities, RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
+import { waitForRendererOutput } from "@lando/renderer/output-drain";
 import { renderLandoLine } from "./format.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 
@@ -72,9 +73,11 @@ export const makeLandoService = (
           stdout: (chunk: string | Uint8Array) =>
             Effect.sync(() =>
               output.writeOutput(chunk, () => io.writeStdout(chunk), io.stdoutIsTTY === true),
-            ),
+            ).pipe(Effect.andThen(waitForRendererOutput(io, "stdout"))),
           stderr: (chunk: string | Uint8Array) =>
-            Effect.sync(() => output.writeOutput(chunk, () => io.writeStderr(chunk), io.isTTY === true)),
+            Effect.sync(() => output.writeOutput(chunk, () => io.writeStderr(chunk), io.isTTY === true)).pipe(
+              Effect.andThen(waitForRendererOutput(io, "stderr")),
+            ),
         },
       });
     })(),

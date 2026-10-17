@@ -16,6 +16,8 @@ import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
  * and process-level diagnostics. Unlike `message.*`, it performs no glyph or
  * newline injection: results go to `output.stdout`, failure diagnostics go to
  * `output.stderr`, regardless of the active mode.
+ * Output effects complete only when the destination can accept more bytes,
+ * propagating backpressure to producers without retaining the remaining body.
  *
  * `capabilities` is a getter returning the current immutable snapshot object
  * (at most two snapshots per run: initial, then optional monotonic promotion).

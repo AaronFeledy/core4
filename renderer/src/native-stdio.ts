@@ -1,4 +1,5 @@
 import { writeSync } from "node:fs";
+import { outputDrainWaiters } from "./output-streams.ts";
 
 export const BROKEN_PIPE_EXIT_CODE = 141;
 
@@ -19,6 +20,7 @@ export const isBrokenPipeError = (error: unknown): boolean => {
 };
 
 const brokenStreams = new WeakSet<OutputStream>();
+export const isOutputBroken = (stream: OutputStream): boolean => brokenStreams.has(stream);
 const guardedStreams = new WeakSet<OutputStream>();
 const notifiedDestinations = new Set<StdioDestination>();
 const brokenPipeListeners = new Set<(destination: StdioDestination) => void>();
@@ -76,7 +78,10 @@ export const guardedWrite = (
     guardedStreams.add(stream);
     if (typeof stream.on === "function") {
       stream.on("error", (error) => {
-        if (!isBrokenPipeError(error)) throw error;
+        if (!isBrokenPipeError(error)) {
+          if ((outputDrainWaiters.get(stream) ?? 0) > 0) return;
+          throw error;
+        }
         markBrokenPipe(destination, stream);
       });
     }
