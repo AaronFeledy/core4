@@ -54,7 +54,7 @@ for (const terminalStdout of [true, false]) {
   });
 }
 
-test("full-tail payload suspension never emits inline cursor controls and restores the expanded footer", async () => {
+const createSuspendableFullTail = async () => {
   const fixture = makeLiveRegionFixture();
   const controller = await createTestLiveRegionController(fixture);
   fixture.renderer.suspend = () => {
@@ -67,14 +67,78 @@ test("full-tail payload suspension never emits inline cursor controls and restor
   await controller.enterFullTail();
   fixture.writes.length = 0;
   fixture.calls.length = 0;
-  controller.suspendOutput("partial", () => {
-    fixture.calls.push("stdout:partial");
-  });
+  const payload = (text: string) =>
+    controller.suspendOutput(text, () => {
+      fixture.calls.push(`stdout:${text}`);
+    });
+  return { fixture, controller, payload };
+};
+
+test("full-tail stays suspended across a partial payload line and repaints once it completes", async () => {
+  // Given
+  const { fixture, controller, payload } = await createSuspendableFullTail();
+
+  // When
+  payload("part");
+  payload("ial");
+  const whileOpen = [...fixture.calls];
+  payload(" done\n");
+
+  // Then
+  expect(whileOpen).toEqual(["suspend", "stdout:part", "stdout:ial"]);
+  expect(fixture.calls.slice(whileOpen.length)).toEqual(["stdout: done\n", "resume", "footer:expanded-tail"]);
   expect(fixture.writes).toEqual([]);
-  expect(fixture.calls).toEqual(["suspend", "stdout:partial", "resume", "footer:expanded-tail"]);
   await controller.exitFullTail();
-  expect(fixture.writes).toEqual([]);
   await controller.dispose();
+});
+
+test("full-tail footer and resize updates wait for the open payload line", async () => {
+  // Given
+  const { fixture, controller, payload } = await createSuspendableFullTail();
+  payload("partial");
+
+  // When
+  controller.setFooter(["updated-tail"]);
+  controller.resize(100, 30);
+  const whileOpen = [...fixture.calls];
+  payload("\n");
+
+  // Then
+  expect(whileOpen).toEqual(["suspend", "stdout:partial", "resize:100x30"]);
+  expect(fixture.calls.slice(whileOpen.length)).toEqual(["stdout:\n", "resume", "footer:updated-tail"]);
+  await controller.exitFullTail();
+  await controller.dispose();
+});
+
+test("collapsing full-tail during an open payload line leaves the inline frame erased until the line ends", async () => {
+  // Given
+  const { fixture, controller, payload } = await createSuspendableFullTail();
+  payload("partial");
+
+  // When
+  await controller.exitFullTail();
+  const afterCollapse = fixture.writes.join("");
+  payload(" done\n");
+
+  // Then
+  expect(fixture.calls).not.toContain("resume");
+  expect(afterCollapse).toBe("");
+  expect(fixture.writes.join("")).toBe("expanded-tail\r\n");
+  await controller.dispose();
+});
+
+test("retiring the tree after a partial payload line leaves a clean frame", async () => {
+  // Given
+  const { fixture, controller, payload } = await createSuspendableFullTail();
+  payload("partial");
+
+  // When
+  controller.clearFooter();
+  await controller.dispose();
+
+  // Then
+  expect(fixture.calls).toEqual(["suspend", "stdout:partial"]);
+  expect(fixture.writes).toEqual([]);
 });
 
 test("service IO and its consumer narration view share one journal", () => {
