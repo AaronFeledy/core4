@@ -33,7 +33,6 @@ export const acceleratedPlan: AppPlan = {
         readOnly: false,
         realization: "accelerated",
         excludes: [],
-        syncExcludes: [],
         includes: [],
       },
     },

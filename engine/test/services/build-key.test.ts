@@ -44,8 +44,8 @@ const key = (plan: ServicePlan, runtime: RuntimeProviderShape = provider()) =>
   Effect.runPromise(buildKeyForService(runtime, plan));
 
 describe("buildKeyForService", () => {
-  test("invalidates when sync-only app mount policy changes", async () => {
-    // Given the same service and native app mount with different sync-only policy.
+  test("invalidates when app mount includes change", async () => {
+    // Given the same service and native app mount with different include policy.
     const appMount = {
       source: AbsolutePath.make("/workspace/app"),
       target: PortablePath.make("/app"),
@@ -53,11 +53,10 @@ describe("buildKeyForService", () => {
       realization: "passthrough" as const,
       excludes: [],
       includes: [],
-      syncExcludes: [".git"],
     };
     // When deriving the service build keys.
     const before = await key(service({ appMount }));
-    const after = await key(service({ appMount: { ...appMount, syncExcludes: [".git", "logs"] } }));
+    const after = await key(service({ appMount: { ...appMount, includes: [".git"] } }));
     // Then policy changes invalidate the cached service artifact.
     expect(after).not.toBe(before);
   });

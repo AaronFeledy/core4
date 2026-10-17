@@ -210,7 +210,7 @@ Healthchecks accept disabled, string, string-array, and object forms, including 
 ### 10.6 Files and performance
 
 - Providers expose app root, user home, and config root when supported. `MountPlan` remains provider-neutral; excludes/includes belong to each mount.
-- Heavy directories may be excluded from live sync. Sync-only excludes (`syncExcludes`, default `.git`) affect only accelerated realizations; overlay excludes also shadow (§6.4). `includes` remove an entry from both lists before the engine sees them. Windows/WSL handling is provider setup and documentation, not core logic.
+- Heavy directories may be excluded from live sync. The engine's exclusion patterns are derived from what is overlaid under the app mount plus VCS metadata (§6.4); `includes` cancels an entry before the engine sees it. Windows/WSL handling is provider setup and documentation, not core logic.
 - Bind realization is `passthrough` or `accelerated`, derived from `bindMountPerformance` (§5.4, §6.4), without changing the Landofile.
 - `FileSyncEngine` is the pluggable accelerated path. `passthrough` is the no-op default; `@lando/file-sync-mutagen` is bundled for slow-IO providers.
 

@@ -86,7 +86,6 @@ const acceleratedPlanFor = (root: AbsolutePath): AppPlan => {
           readOnly: false,
           realization: "accelerated",
           excludes: [],
-          syncExcludes: [],
           includes: [],
         },
       },

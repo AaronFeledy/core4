@@ -80,7 +80,6 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
     target: PortablePath.make("/app"),
     readOnly: false,
     excludes: [],
-    syncExcludes: [],
     includes: [],
     realization: "accelerated",
   },

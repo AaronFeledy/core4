@@ -111,7 +111,6 @@ const fakeServiceType = makeLegacyServiceTypeFake({
         target: PortablePath.make("/app"),
         readOnly: false,
         excludes: [],
-        syncExcludes: [],
         includes: [],
         realization: "passthrough",
       },

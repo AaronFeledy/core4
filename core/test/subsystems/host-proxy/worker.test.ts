@@ -76,7 +76,6 @@ const servicePlan = (name: string, target: string, eligible = true): ServicePlan
     target: PortablePath.make(target),
     readOnly: false,
     excludes: [],
-    syncExcludes: [],
     includes: [],
     realization: "passthrough",
   },

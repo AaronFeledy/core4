@@ -78,7 +78,6 @@ const service = (appRoot: string): ServicePlan => ({
     target: PortablePath.make("/app"),
     readOnly: false,
     excludes: [],
-    syncExcludes: [],
     includes: [],
     realization: "passthrough",
   },

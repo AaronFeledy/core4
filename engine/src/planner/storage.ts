@@ -151,7 +151,7 @@ export const expandExcludesToShadows = (
   if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
 
   const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
-  const shadowTargets = new Set<string>();
+  const shadowTargets = new Set<string>(servicePlan.storage.map((mount) => String(mount.target)));
   const shadowMounts: Array<{
     readonly store: string;
     readonly target: PortablePath;

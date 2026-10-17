@@ -8,18 +8,13 @@ tags: [beta, docs, file-sync, excludes, setup]
 
 # Exclude paths from the app mount
 
-Every service gets its own empty `node_modules`, `vendor`, and `tmp`, so dependencies you install through Lando tooling live in the service, not on the host. `.git` syncs nowhere on macOS and Windows, and mounts as-is on Linux, so `git` works inside the container.
-
-Lando keeps two lists:
-
-| List | Default | What it does |
-| --- | --- | --- |
-| `appMount.excludes` | `node_modules`, `vendor`, `tmp` | Each service gets its own empty copy of the directory. Host files for that path are never read. On macOS and Windows the path is also left out of file sync |
-| `appMount.syncExcludes` | `.git` | Left out of file sync on macOS and Windows. On Linux, where the app mounts straight through, nothing changes and the container sees the directory |
+Every service gets its own empty `node_modules`, `vendor`, and `tmp`. Dependencies you install through Lando tooling live in the service, not on the host, and those directories never go through file sync on macOS and Windows. Excluded paths belong to the service. `includes` takes one back.
 
 ## Add your own excludes
 
-Add per-service patterns under `services.<name>.appMount` in your Landofile. Your patterns are appended after the defaults. Duplicates are removed.
+Add per-service patterns under `services.<name>.appMount.excludes` in your Landofile. Your patterns are appended after the defaults. Duplicates are removed.
+
+If a path must stay on the host even though a default or a preset excludes it, add it to `services.<name>.appMount.includes`. Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
 
 ```yaml
 services:
@@ -31,19 +26,11 @@ services:
       excludes:
         - dist
         - coverage
-      syncExcludes:
-        - .cache
       includes:
         - vendor
 ```
 
-| Key | Use it for |
-| --- | --- |
-| `excludes` | A directory the service builds or installs for itself, like `dist` or `.venv` |
-| `syncExcludes` | A big directory you want to keep off the file-sync path on macOS and Windows, but still see on Linux |
-| `includes` | A path that must stay in the mount even though a default or preset excludes it. It comes off both lists |
-
-Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
+Lando 3's `!vendor` spelling is not accepted; `includes` is the one way to keep a path. The Lando 3 translator rewrites it for you.
 
 An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it.
 
@@ -53,13 +40,19 @@ Set `appMount: false` when a service does not use your app's code. Lando mounts 
 
 Some service types add their own excludes on top of the defaults. Python adds `__pycache__`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes.
 
+## How an exclude works
+
 An excluded directory gets an empty volume overlay, one per service, so two services never share an excluded directory. When a second service needs the same `vendor/` or `node_modules/`, include it on both.
+
+A volume you mount yourself inside the app mount works the same way, so `storage: [/app/node_modules]` and `excludes: [node_modules]` give the same result. Use `storage` when you want to name the volume or share it across services with `scope: app`. A `tmpfs` entry under `mounts:` is the throwaway version.
 
 An overlay can only cover a directory. When an excluded path is a file on the host, Lando skips the overlay and the file mounts as-is. File sync still leaves it out on macOS and Windows.
 
-## Git worktrees
+## Git
 
-In a `git worktree`, `.git` is a one-line file that points at the main checkout's `.git` directory. On Linux, Lando mounts that directory into the container at the same path, so `git status`, `git log`, and anything that shells out to git work at `/app`. Inside the container, `git worktree list` shows the worktree as `prunable` because the container can't see the worktree folder at its host path, and a plain `git worktree prune` there drops the worktree's entry. Prune from the host. `git gc` is safe: it only prunes worktrees idle for months. A checkout that is itself a git submodule is different: its git config pins the working tree to the host path, so git stays a host-side tool there. On macOS and Windows, `.git` stays off the sync path, so git is a host-side tool there too.
+Lando never syncs `.git` on macOS and Windows and never hides it on Linux, where the app mounts straight through and the container sees the directory. `git status`, `git log`, and anything that shells out to git work at `/app` there. If you need `.git` synced on macOS, `includes: [.git]` turns the rule off; it's slow on a big repo.
+
+In a `git worktree`, `.git` is a one-line file that points at the main checkout's `.git` directory. On Linux, Lando mounts that directory into the container at the same path, so git works in the worktree too. Inside the container, `git worktree list` shows the worktree as `prunable` because the container can't see the worktree folder at its host path, and a plain `git worktree prune` there drops the worktree's entry. Prune from the host. `git gc` is safe: it only prunes worktrees idle for months. A checkout that is itself a git submodule is different: its git config pins the working tree to the host path, so git stays a host-side tool there.
 
 ## Verify
 

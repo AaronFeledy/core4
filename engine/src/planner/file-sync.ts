@@ -5,7 +5,7 @@ import {
   type FileSyncSessionSpec,
   ServiceName,
   type ServicePlan,
-  effectiveAppMountSyncExcludes,
+  appMountSyncIgnores,
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
@@ -13,7 +13,6 @@ import {
 import { type ContributionRef, contributionId } from "./service-types.ts";
 
 export const DEFAULT_APP_MOUNT_EXCLUDES = ["node_modules", "vendor", "tmp"] as const;
-export const DEFAULT_APP_MOUNT_SYNC_EXCLUDES = [".git"] as const;
 
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
   const appMount = servicePlan.appMount;
@@ -23,7 +22,6 @@ export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
     appMount: {
       ...appMount,
       excludes: [...new Set([...DEFAULT_APP_MOUNT_EXCLUDES, ...appMount.excludes])],
-      syncExcludes: [...new Set([...DEFAULT_APP_MOUNT_SYNC_EXCLUDES, ...appMount.syncExcludes])],
     },
   };
 };
@@ -53,7 +51,7 @@ export const collectFileSyncEntries = (params: {
         path: appMount.target,
       },
       mode: "two-way-safe",
-      excludes: effectiveAppMountSyncExcludes(appMount),
+      excludes: appMountSyncIgnores(servicePlan),
     };
     entries.push({ engineId, session });
   }

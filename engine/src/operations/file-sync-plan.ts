@@ -1,12 +1,7 @@
 import { Effect } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
-import {
-  type AppPlan,
-  effectiveAppMountSyncExcludes,
-  fileSyncVolumeName,
-  sameAppMountTarget,
-} from "@lando/sdk/schema";
+import { type AppPlan, appMountSyncIgnores, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
 import { type AppliedFileSyncInspection, FileSyncEngine } from "@lando/sdk/services";
 
 const hasAcceleratedMounts = (plan: AppPlan): boolean =>
@@ -34,7 +29,7 @@ const hasCompleteFileSyncCoverage = (plan: AppPlan): boolean => {
         source: appMount.source,
         targetPath: appMount.target,
         volumeName: fileSyncVolumeName(plan.name, serviceName, "app-mount"),
-        excludes: effectiveAppMountSyncExcludes(appMount),
+        excludes: appMountSyncIgnores(service),
       });
     }
     for (const [index, mount] of service.mounts.entries()) {

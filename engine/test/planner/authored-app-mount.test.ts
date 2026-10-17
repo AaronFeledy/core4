@@ -13,7 +13,6 @@ describe("authored app-mount validation", () => {
         target: "/site",
         readOnly: true,
         excludes: ["dist"],
-        syncExcludes: [".git"],
         includes: ["src"],
       },
     };

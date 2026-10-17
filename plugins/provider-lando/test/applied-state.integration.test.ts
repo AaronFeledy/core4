@@ -241,7 +241,6 @@ describe("provider-lando applied state persistence", () => {
               readOnly: false,
               realization: "accelerated",
               excludes: [],
-              syncExcludes: [],
               includes: [],
             },
           },

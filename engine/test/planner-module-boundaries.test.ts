@@ -5,7 +5,6 @@ const EXPECTED_RUNTIME_EXPORTS = [
   "layer",
   "DEFAULT_PROXY_DOMAIN",
   "DEFAULT_APP_MOUNT_EXCLUDES",
-  "DEFAULT_APP_MOUNT_SYNC_EXCLUDES",
   "applyAuthoredDependencies",
   "applyAuthoredHealthcheck",
   "mergeDefaultExcludes",

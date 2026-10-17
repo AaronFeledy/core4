@@ -162,9 +162,7 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
         expect(
           plan.stores.some((store) => store.name.includes(kind === "gitfile" ? "app-git-" : "app-authored-")),
         ).toBe(false);
-      expect(exclude === ".git" ? web?.appMount?.syncExcludes : web?.appMount?.excludes).toContain(
-        effectiveExclude,
-      );
+      if (exclude !== ".git") expect(web?.appMount?.excludes).toContain(effectiveExclude);
       expect(web?.mounts.some((mount) => mount.source === "/elsewhere/.git/worktrees/x")).toBe(false);
       expect(web?.storage.some((mount) => String(mount.target) === "/app/node_modules")).toBe(true);
       expect(plan.fileSync.some(({ session }) => session.excludes.includes(effectiveExclude))).toBe(true);
@@ -233,7 +231,6 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
       second.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
     ).toBe(false);
     expect(second.stores.some((store) => store.name.includes("app-git-"))).toBe(false);
-    expect(second.services[ServiceName.make("web")]?.appMount?.syncExcludes).toContain(".git");
     expect(second.services[ServiceName.make("web")]?.mounts).toContainEqual({
       type: "bind",
       source: metadata,

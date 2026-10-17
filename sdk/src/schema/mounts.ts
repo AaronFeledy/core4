@@ -15,13 +15,7 @@ export const AppMountPlan = Schema.Struct({
   readOnly: Schema.Boolean,
   /** Overlay excludes: per-service empty directories, also ignored during sync. */
   excludes: Schema.Array(Schema.String),
-  /** Sync-only excludes; native binds remain untouched. */
-  syncExcludes: Schema.Array(Schema.String)
-    .annotate({
-      description: "Sync-only excludes for accelerated app mounts; native binds remain untouched.",
-    })
-    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
-  /** Includes — exact entries here override both exclude lists. */
+  /** Includes — exact entries here cancel excludes and fixed VCS ignores. */
   includes: Schema.Array(Schema.String),
   /**
    * `passthrough` — provider-native bind mount.
@@ -30,14 +24,6 @@ export const AppMountPlan = Schema.Struct({
   realization: Schema.Literals(["passthrough", "accelerated"]),
 });
 export type AppMountPlan = typeof AppMountPlan.Type;
-
-/** Ordered, deduplicated sync ignores, preserving negation patterns. */
-export const effectiveAppMountSyncExcludes = (appMount: AppMountPlan): readonly string[] => {
-  const includes = new Set(appMount.includes);
-  return [...new Set([...appMount.excludes, ...appMount.syncExcludes])].filter(
-    (entry) => !includes.has(entry),
-  );
-};
 
 /**
  * Generic mount plan — any non-app, non-storage mount.
@@ -98,3 +84,30 @@ export const DataStoreMountPlan = Schema.Struct({
   subpath: Schema.optionalKey(Schema.String),
 });
 export type DataStoreMountPlan = typeof DataStoreMountPlan.Type;
+
+/** Fixed sync-only ignores; these never create volume overlays. */
+export const VCS_SYNC_IGNORES = [".git"] as const;
+
+/** Ordered sync ignores derived from the finalized service's app mount and non-bind overlays. */
+export const appMountSyncIgnores = (service: {
+  readonly appMount?: AppMountPlan | undefined;
+  readonly storage: readonly (string | DataStoreMountPlan)[];
+  readonly mounts: readonly MountPlan[];
+}): readonly string[] => {
+  const { appMount } = service;
+  if (appMount === undefined) return [];
+  const includes = new Set(appMount.includes);
+  const ignores = new Set(appMount.excludes.filter((entry) => !includes.has(entry)));
+  const prefix = `${appMount.target.replace(/\/+$/u, "")}/`;
+  const targets = [
+    ...service.storage.map((entry) => (typeof entry === "string" ? entry : entry.target)),
+    ...service.mounts.filter((mount) => mount.type !== "bind").map((mount) => mount.target),
+  ];
+  for (const target of targets) {
+    if (target.startsWith(prefix)) ignores.add(target.slice(prefix.length));
+  }
+  for (const entry of VCS_SYNC_IGNORES) {
+    if (!includes.has(entry)) ignores.add(entry);
+  }
+  return [...ignores];
+};

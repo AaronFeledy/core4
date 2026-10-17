@@ -43,7 +43,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
-import { DEFAULT_APP_MOUNT_EXCLUDES, DEFAULT_APP_MOUNT_SYNC_EXCLUDES } from "../../src/services/planner.ts";
+import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -321,7 +321,6 @@ const appMountOnlyServiceType = makeLegacyServiceTypeFake({
         target: PortablePath.make("/app"),
         readOnly: false,
         excludes: [],
-        syncExcludes: [],
         includes: [],
         realization: "passthrough",
       },
@@ -1806,7 +1805,6 @@ describe("AppPlannerLayer.layer", () => {
               target: PortablePath.make("/app"),
               readOnly: false,
               excludes: [],
-              syncExcludes: [],
               includes: [],
               realization: "passthrough",
             },
@@ -1930,7 +1928,6 @@ describe("AppPlannerLayer.layer", () => {
               target: PortablePath.make("/app"),
               readOnly: false,
               excludes: [],
-              syncExcludes: [],
               includes: [],
               realization: "passthrough",
             },
@@ -2936,7 +2933,6 @@ describe("AppPlannerLayer.layer", () => {
               target: PortablePath.make("/app"),
               readOnly: false,
               excludes: [],
-              syncExcludes: [],
               includes: [],
               realization: "passthrough",
             },
@@ -3454,7 +3450,6 @@ describe("AppPlannerLayer.layer", () => {
       });
       const web = appPlan.services[ServiceName.make("web")];
       expect(web?.appMount?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
-      expect(web?.appMount?.syncExcludes).toEqual(DEFAULT_APP_MOUNT_SYNC_EXCLUDES);
     });
   });
 
@@ -3551,7 +3546,6 @@ describe("AppPlannerLayer.layer", () => {
         PortablePath.make("/app/vendor"),
       ]);
       expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
-      expect(web?.appMount?.syncExcludes).toEqual([".git"]);
     });
   });
 

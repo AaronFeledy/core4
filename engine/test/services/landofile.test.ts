@@ -583,8 +583,6 @@ describe("LandofileService layer — mounts, storage, and excludes (US-014)", ()
           "      excludes:",
           "        - node_modules",
           "        - vendor",
-          "      syncExcludes:",
-          "        - .git",
           "    mounts:",
           "      - ./config:/etc/app:ro",
           "      - type: volume",
@@ -606,7 +604,6 @@ describe("LandofileService layer — mounts, storage, and excludes (US-014)", ()
       if (web?.appMount !== false) {
         expect(web?.appMount?.target).toBe("/app");
         expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
-        expect(web?.appMount?.syncExcludes).toEqual([".git"]);
       }
       expect(web?.mounts?.[0]).toBe("./config:/etc/app:ro");
       const volumeMount = web?.mounts?.[1];

@@ -49,7 +49,7 @@ Save this as `.lando.local.yml` in the worktree. The committed Landofile stays u
 name: shop-feature
 ```
 
-The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs. In a worktree, `.git` is a one-line file that points at the main checkout's `.git` directory; on Linux, Lando mounts that directory into the container at the same path, so `git` works at `/app` like it does in the main checkout. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx#git-worktrees).
+The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs. In a worktree, `.git` is a one-line file that points at the main checkout's `.git` directory; on Linux, Lando mounts that directory into the container at the same path, so `git` works at `/app` like it does in the main checkout. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx#git).
 
 Check the layer took:
 

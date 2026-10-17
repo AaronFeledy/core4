@@ -95,7 +95,6 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: ["node_modules"],
-          syncExcludes: [],
           includes: [],
           realization: "passthrough" as const,
         },
@@ -200,7 +199,6 @@ describe("Podman Compose emission", () => {
           readOnly: true,
           realization,
           excludes: [],
-          syncExcludes: [],
           includes: [],
         },
         mounts: [

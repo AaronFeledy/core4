@@ -85,7 +85,6 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
           readOnly: false,
           realization: "accelerated",
           excludes: ["node_modules", "vendor"],
-          syncExcludes: [".git", "vendor"],
           includes: ["vendor"],
         },
       },
@@ -100,6 +99,29 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
 };
 
 describe("verifiedFileSyncSessions", () => {
+  test("accepts storage-only overlays when their relative targets are ignored", () => {
+    // Given a session covering node_modules without an app-mount exclude.
+    const prior = acceleratedPlan(AbsolutePath.make("/repo"), AbsolutePath.make("/repo"));
+    const service = prior.services[web.name];
+    if (service?.appMount === undefined) throw new Error("Expected app mount");
+    const stored: AppPlan = {
+      ...prior,
+      services: {
+        [web.name]: {
+          ...service,
+          appMount: { ...service.appMount, excludes: [] },
+          storage: [
+            { store: "dependencies", target: PortablePath.make("/app/node_modules"), readOnly: false },
+          ],
+        },
+      },
+    };
+    // When verifying the persisted sessions.
+    const sessions = verifiedFileSyncSessions(stored);
+    // Then the storage overlay is recognized as covered.
+    expect(sessions).toEqual(prior.fileSync.map(({ session }) => session));
+  });
+
   test("accepts a session recorded under a realpath-equivalent legacy root", async () => {
     const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-applied-sync-"))));
     const legacy = AbsolutePath.make(`${canonical}-short`);

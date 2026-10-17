@@ -7,7 +7,7 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
   type AppPlan,
   type FileSyncSessionSpec,
-  effectiveAppMountSyncExcludes,
+  appMountSyncIgnores,
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
@@ -33,7 +33,7 @@ export const verifiedFileSyncSessions = (plan: AppPlan): ReadonlyArray<FileSyncS
         source: appMount.source,
         target: appMount.target,
         volume: fileSyncVolumeName(plan.name, serviceName, "app-mount"),
-        excludes: effectiveAppMountSyncExcludes(appMount),
+        excludes: appMountSyncIgnores(service),
       });
     }
     for (const [index, mount] of service.mounts.entries()) {

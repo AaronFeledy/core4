@@ -47,7 +47,6 @@ const acceleratedService: ServicePlan = {
     readOnly: false,
     realization: "accelerated",
     excludes: ["node_modules", "vendor"],
-    syncExcludes: [".git", "vendor"],
     includes: ["vendor"],
   },
   mounts: [
@@ -128,6 +127,36 @@ const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, caus
 };
 
 describe("file-sync mount realization before provider apply", () => {
+  test("retains acceleration when storage-only overlays have complete sync coverage", async () => {
+    // Given a storage-only node_modules overlay covered by the existing session.
+    const service: ServicePlan = {
+      ...acceleratedService,
+      appMount: {
+        ...acceleratedService.appMount,
+        source: plan.root,
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "accelerated",
+        excludes: [],
+        includes: [],
+      },
+      storage: [{ store: "dependencies", target: PortablePath.make("/app/node_modules"), readOnly: false }],
+    };
+    const planned: AppPlan = { ...acceleratedPlan, services: { [web.name]: service } };
+    // When checking coverage with an available engine.
+    const realized = await Effect.runPromise(
+      resolveFileSyncMountPlan(planned).pipe(
+        Effect.provideService(FileSyncEngine, {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          isAvailable: Effect.succeed(true),
+        }),
+      ),
+    );
+    // Then the service is not downgraded to an ordinary bind.
+    expect(realized).toBe(planned);
+  });
+
   test("unavailable adapter gives provider host binds and no empty sync-backed volume", async () => {
     const applied: AppPlan[] = [];
     const harness = makeHarness({

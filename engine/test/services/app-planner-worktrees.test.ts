@@ -11,6 +11,7 @@ import {
   PortablePath,
   type ProviderCapabilities,
   ServiceName,
+  appMountSyncIgnores,
 } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -23,12 +24,11 @@ const planAt = (
   root: string,
   appMount: {
     readonly excludes?: readonly string[];
-    readonly syncExcludes?: readonly string[];
     readonly includes?: readonly string[];
     readonly readOnly?: boolean;
   },
   capabilities: ProviderCapabilities = TestRuntimeProvider.capabilities,
-  service: { readonly mounts?: readonly unknown[] } = {},
+  service: { readonly mounts?: readonly unknown[]; readonly storage?: readonly unknown[] } = {},
 ) => {
   const landofile = rememberLandofileAppRoot(
     Schema.decodeUnknownSync(LandofileShape)({
@@ -216,8 +216,8 @@ test.each(["directory", "malformed", "empty", "windows", "root", "etc", "non-git
   },
 );
 
-test("sync-only excludes never shadow and includes removes both overlay and sync ignores", async () => {
-  // Given authored file, overlay, sync-only, include, and negation policies.
+test("includes removes both overlay and sync ignores while files never shadow", async () => {
+  // Given an excluded file and an included default exclude.
   const root = await mkdtemp(join(tmpdir(), "lando-sync-policy-"));
   try {
     await Bun.write(join(root, "some-file"), "file");
@@ -226,15 +226,16 @@ test("sync-only excludes never shadow and includes removes both overlay and sync
     const plan = await planAt(
       root,
       {
-        excludes: ["some-file", "!keep"],
-        syncExcludes: ["logs", "vendor", "!keep"],
-        includes: ["vendor", "logs"],
+        excludes: ["some-file"],
+        includes: ["vendor"],
       },
       { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
     );
     const web = plan.services[ServiceName.make("web")];
-    // Then ignores retain files and negations, but included entries and Git binds are absent.
-    expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "tmp", "some-file", "!keep", ".git"]);
+    // Then ignores retain files, but included entries and Git binds are absent.
+    expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "tmp", "some-file", ".git"]);
+    if (web === undefined) throw new Error("Expected planned web service");
+    expect(plan.fileSync[0]?.session.excludes).toEqual(appMountSyncIgnores(web));
     expect(web?.storage.map((mount) => String(mount.target)).sort()).toEqual([
       "/app/node_modules",
       "/app/tmp",
@@ -245,21 +246,50 @@ test("sync-only excludes never shadow and includes removes both overlay and sync
   }
 });
 
-test("authored sync-only entries reach sessions without overlays", async () => {
-  // Given an additional sync-only directory.
+test.each([false, true])(
+  "derives ignores from finalized storage with authored overlay=%s",
+  async (overlay) => {
+    // Given default policy and optionally an explicitly authored storage overlay.
+    const root = await mkdtemp(join(tmpdir(), "lando-storage-sync-"));
+    try {
+      // When planning an accelerated service with no authored excludes.
+      const plan = await planAt(
+        root,
+        {},
+        { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
+        overlay ? { storage: ["/app/node_modules", "/app/public/uploads"] } : {},
+      );
+      // Then storage-only paths join defaults before the fixed Git ignore.
+      const web = plan.services[ServiceName.make("web")];
+      if (web === undefined) throw new Error("Expected planned web service");
+      expect(plan.fileSync[0]?.session.excludes).toEqual(
+        overlay
+          ? ["node_modules", "vendor", "tmp", "public/uploads", ".git"]
+          : ["node_modules", "vendor", "tmp", ".git"],
+      );
+      expect(plan.fileSync[0]?.session.excludes).toEqual(appMountSyncIgnores(web));
+      expect(web.storage.filter((mount) => mount.target === "/app/node_modules")).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("including Git cancels its fixed ignore without creating an overlay", async () => {
+  // Given an included Git directory.
   const root = await mkdtemp(join(tmpdir(), "lando-sync-only-"));
   try {
-    await mkdir(join(root, "logs"));
+    await mkdir(join(root, ".git"));
     // When planning slow binds.
     const plan = await planAt(
       root,
-      { syncExcludes: ["logs", ".git"] },
+      { includes: [".git"] },
       { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
     );
-    // Then the session sees both lists in order and logs never gets a shadow.
-    expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "vendor", "tmp", ".git", "logs"]);
+    // Then Git is synchronized without a shadow.
+    expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "vendor", "tmp"]);
     expect(
-      plan.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/logs"),
+      plan.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
     ).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });

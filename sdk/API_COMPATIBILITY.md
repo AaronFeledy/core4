@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `ServiceConfig.appMount` additively accepts `syncExcludes`; `AppMountPlan` carries `syncExcludes` as a required decoded string array with an empty decoding default. Overlay `excludes` default to `node_modules`, `vendor`, and `tmp`; sync-only excludes default to `.git`. `includes` removes exact entries from both effective lists. `effectiveAppMountSyncExcludes` is an additive pure export from `@lando/sdk/schema` that derives ordered, deduplicated session ignores while preserving negations. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
+- `ServiceConfig.appMount` and `AppMountPlan` keep `excludes`/`includes`: excludes own per-service volume overlays and are never synced on accelerated binds; includes cancels exact whole entries. Defaults are `node_modules`, `vendor`, and `tmp`, plus service-type presets. The exported `appMountSyncIgnores` helper derives ordered, deduplicated ignores from effective excludes, finalized storage and non-bind mounts under the app target, then `VCS_SYNC_IGNORES` (`[".git"]`). The fixed Git rule never creates an overlay and can be canceled with `includes: [".git"]`. Authored `!` entries in excludes or includes are rejected at the entry path with includes remediation. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
 
 - `DataMover.resolveSnapshot(reference, scope)` is additive. Resolution is id-first (global id match) then label-scoped within `scope` (newest `createdAt` first). A unique match returns `SnapshotInfo`. Multiple label matches fail with `SnapshotAmbiguousError` (`candidateIds` newest first; `snapshotId` is the caller reference). Zero matches fail with `SnapshotNotFoundError`. Existing `listSnapshots`/`restore`/`removeSnapshot` behavior is unchanged.
 
@@ -543,7 +543,8 @@ It registers no JSON Schema.
 - `StringImportRef`
 - `AbsolutePath`
 - `AppMountPlan`
-- `effectiveAppMountSyncExcludes`
+- `appMountSyncIgnores`
+- `VCS_SYNC_IGNORES`
 - `ArtifactBuildSpec`
 - `ArtifactManifestEntry`
 - `ArtifactRef`

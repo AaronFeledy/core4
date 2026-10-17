@@ -595,6 +595,14 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
+const AppMountEntry = Schema.String.check(
+  Schema.makeFilter((entry) =>
+    entry.startsWith("!")
+      ? `Use includes: [${entry.slice(1)}] to keep ${entry.slice(1)}; \`!\` entries are not supported.`
+      : undefined,
+  ),
+);
+
 const ServiceConfigWithExtensions = Schema.StructWithRest(
   Schema.Struct({
     api: Schema.optionalKey(Schema.Literal(4)),
@@ -715,11 +723,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         Schema.Struct({
           target: Schema.String,
           readOnly: Schema.optionalKey(Schema.Boolean),
-          excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-          syncExcludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-            description: "Additional sync-only excludes for accelerated app mounts; never volume overlays.",
-          }),
-          includes: Schema.optionalKey(Schema.Array(Schema.String)),
+          excludes: Schema.optionalKey(Schema.Array(AppMountEntry)),
+          includes: Schema.optionalKey(Schema.Array(AppMountEntry)),
         }),
       ]),
     ).annotate({

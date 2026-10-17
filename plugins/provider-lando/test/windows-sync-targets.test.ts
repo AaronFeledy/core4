@@ -38,7 +38,6 @@ const service = (name: "web" | "worker"): ServicePlan => ({
     readOnly: false,
     realization: "accelerated",
     excludes: [],
-    syncExcludes: [],
     includes: [],
   },
   mounts: [],

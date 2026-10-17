@@ -340,7 +340,6 @@ describe("composeAppFeatures idempotency and conflicts", () => {
       target: "/app" as ServiceAppMountIntent["target"],
       readOnly: false,
       excludes: [],
-      syncExcludes: [],
       includes: [],
     });
     const a: AppFeatureDefinition = {

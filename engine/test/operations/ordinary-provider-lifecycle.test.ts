@@ -23,7 +23,6 @@ const planned: AppPlan = {
         readOnly: false,
         realization: "accelerated",
         excludes: [],
-        syncExcludes: [],
         includes: [],
       },
     },

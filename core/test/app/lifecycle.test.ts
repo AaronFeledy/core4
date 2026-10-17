@@ -76,7 +76,6 @@ const planWithFileSync = (root: string): AppPlan => ({
         readOnly: false,
         realization: "accelerated",
         excludes: [],
-        syncExcludes: [],
         includes: [],
       },
     },
