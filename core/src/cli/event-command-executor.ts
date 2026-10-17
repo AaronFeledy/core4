@@ -23,6 +23,7 @@ import { makeNestedCommandInvocation, runCommandLifecycle } from "./command-life
 import { notImplementedErrorForSpec } from "./deferred-commands";
 import { validateEventCommandInput } from "./event-command-input";
 import { resolveEventCommandTarget } from "./event-command-target";
+import { withRedactedRenderer } from "./redacted-renderer";
 import { DEFAULT_RENDERER_MODE, isRendererMode } from "./renderer-selection";
 import { ResultTerminal } from "./result-terminal";
 
@@ -72,25 +73,6 @@ const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
         }),
     ),
   );
-
-const withRedaction = (
-  renderer: Context.Service.Shape<typeof Renderer>,
-  redact: (value: string) => string,
-): Context.Service.Shape<typeof Renderer> =>
-  Renderer.of({
-    id: renderer.id,
-    capabilities: renderer.capabilities,
-    message: {
-      info: (body) => renderer.message.info(redact(body)),
-      warn: (body) => renderer.message.warn(redact(body)),
-      error: (body, remediation) =>
-        renderer.message.error(redact(body), remediation === undefined ? undefined : redact(remediation)),
-    },
-    output: {
-      stdout: (chunk) => renderer.output.stdout(typeof chunk === "string" ? redact(chunk) : chunk),
-      stderr: (chunk) => renderer.output.stderr(typeof chunk === "string" ? redact(chunk) : chunk),
-    },
-  });
 
 export const makeEventCommandExecutor = (
   runtimeContext: Context.Context<unknown>,
@@ -151,8 +133,7 @@ export const makeEventCommandExecutor = (
         const inputRedactor = yield* redactorFor(redactionTokens);
         const lifecycleRedaction = yield* redactionServiceFor(redactionTokens);
         const baseRenderer = yield* Renderer;
-        const renderer =
-          resolved.silent === true ? silentRenderer : withRedaction(baseRenderer, inputRedactor.redactString);
+        const renderer = resolved.silent === true ? silentRenderer : baseRenderer;
 
         const operation = target.spec.run(input).pipe(Effect.provideService(RuntimeCwd, resolved.cwd));
         const inCwd = target.spec.namespace === "app" ? withResolvedCwd(resolved.cwd, operation) : operation;
@@ -172,7 +153,9 @@ export const makeEventCommandExecutor = (
         );
         const streamingCommand =
           streamingMode === "live" ? inCwd.pipe(Effect.provide(streamFrameSinkLayer)) : inCwd;
-        const command = streamingCommand.pipe(Effect.provideService(Renderer, renderer));
+        const command = withRedactedRenderer(streamingCommand, { redactionTokens }).pipe(
+          Effect.provideService(Renderer, renderer),
+        );
         const redactedCommand = withShellRedactionTokens(redactionTokens, command);
         const invocation = yield* makeNestedCommandInvocation(target.spec.id, {
           argv: input.argv,
@@ -191,8 +174,7 @@ export const makeEventCommandExecutor = (
           if (resolved.silent !== true) {
             const resultTokens =
               target.kind === "built-in" ? (target.spec.redactionTokens?.(exit.value) ?? []) : [];
-            const outputRedactor = yield* redactorFor([...redactionTokens, ...resultTokens]);
-            const outputRenderer = withRedaction(yield* Renderer, outputRedactor.redactString);
+            const outputRenderer = yield* Renderer;
             if (target.kind === "built-in" && target.spec.render !== undefined) {
               const rendered = target.spec.render(exit.value, input, {
                 mode: isRendererMode(outputRenderer.id) ? outputRenderer.id : DEFAULT_RENDERER_MODE,
@@ -202,12 +184,16 @@ export const makeEventCommandExecutor = (
                 env: process.env,
               });
               if (rendered !== undefined && rendered.length > 0) {
-                yield* outputRenderer.output.stdout(`${rendered}\n`);
+                yield* withRedactedRenderer(
+                  Effect.flatMap(Renderer, (current) => current.output.stdout(`${rendered}\n`)),
+                  { redactionTokens: [...redactionTokens, ...resultTokens] },
+                );
               }
             } else if (target.kind === "plugin" && target.spec.render !== undefined) {
-              yield* target.spec
-                .render({ input, result: exit.value, stdout: "", stderr: "", exitCode })
-                .pipe(Effect.provideService(Renderer, outputRenderer));
+              yield* withRedactedRenderer(
+                target.spec.render({ input, result: exit.value, stdout: "", stderr: "", exitCode }),
+                { redactionTokens: [...redactionTokens, ...resultTokens] },
+              );
             }
           }
           return {
