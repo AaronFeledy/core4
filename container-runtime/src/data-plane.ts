@@ -39,6 +39,7 @@ import {
   type ServiceName,
   type StorageScope,
   type VolumeInfo,
+  type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
 import type {
   ArtifactRef,
@@ -1024,6 +1025,61 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
       );
     }) satisfies RuntimeProviderShape["snapshotVolume"],
+    removeVolumeSnapshot: Effect.fn("ProviderDataPlane.removeVolumeSnapshot")(function* (
+      snapshot: VolumeSnapshotRef,
+    ): Effect.fn.Return<void, ProviderError, Scope.Scope> {
+      if (snapshot.provider !== options.providerId) {
+        return yield* Effect.fail(
+          new VolumeOperationError({
+            providerId: options.providerId,
+            operation: "removeVolumeSnapshot",
+            message: "Snapshot belongs to a different provider.",
+            remediation: `Remove this snapshot with provider ${snapshot.provider}.`,
+          }),
+        );
+      }
+      switch (snapshot.format) {
+        case "native": {
+          const response = yield* request(options, "removeVolumeSnapshot", {
+            method: "DELETE",
+            path: `/images/${encodeURIComponent(nativeSnapshotImage(snapshot.id))}`,
+          });
+          if (response.status !== 404) yield* ensure2xx(options, "removeVolumeSnapshot", response);
+          return;
+        }
+        case "tar": {
+          const store = copyModeSnapshotStore(options.providerId);
+          const response = yield* request(options, "removeVolumeSnapshot", {
+            method: "GET",
+            path: `/volumes/${encodeURIComponent(store)}`,
+          });
+          if (response.status === 404) return;
+          yield* ensure2xx(options, "removeVolumeSnapshot", response, store);
+          const result = yield* runBytes(options, {
+            image: copyModeHelperImage,
+            command: ["rm", "-f", "--", `${copyModeSnapshotMountPath}/${copyModeSnapshotFile(snapshot.id)}`],
+            mounts: [{ store, target: copyModeSnapshotMountTarget, readOnly: false }],
+            remove: true,
+          });
+          if (result.exitCode !== 0)
+            return yield* Effect.fail(
+              volumeError(
+                options,
+                "removeVolumeSnapshot",
+                "Provider snapshot removal helper failed.",
+                result,
+                undefined,
+                store,
+              ),
+            );
+          return;
+        }
+        default: {
+          const unreachable: never = snapshot.format;
+          return unreachable;
+        }
+      }
+    }),
     restoreVolume: ((spec) => {
       const store = spec.target.store;
       const name = volumeName(store);

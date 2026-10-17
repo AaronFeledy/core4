@@ -34,6 +34,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { beginAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
@@ -317,6 +318,7 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
+    emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
@@ -628,6 +630,7 @@ describe("applied-state teardown", () => {
         outcome: "unchanged",
         servicesDestroyed: [],
         volumesRemoved: false,
+        snapshotsRemoved: 0,
       });
       expect(harness.destroyCalls).toEqual([]);
       expect(harness.desiredLoads).toEqual([]);
@@ -764,6 +767,7 @@ describe("applied-state teardown", () => {
         outcome: "unchanged",
         servicesDestroyed: [],
         volumesRemoved: false,
+        snapshotsRemoved: 0,
       });
       expect(second).toEqual(first);
       expect(harness.destroyCalls).toEqual([]);
@@ -822,6 +826,7 @@ describe("applied-state teardown", () => {
         outcome: "destroyed",
         servicesDestroyed: [],
         volumesRemoved: true,
+        snapshotsRemoved: 0,
       });
       expect(harness.removedVolumes).toEqual([{ store: "database", generation: "generation-database" }]);
     });

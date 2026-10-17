@@ -57,7 +57,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `logs` | Streams raw, source-tagged service logs; redaction occurs at output boundaries. |
 | `inspect` | Returns `ServiceRuntimeInfo` for a selected service. |
 | `list` | Lists provider instances matching a `ListFilter`. |
-| `snapshotVolume`, `restoreVolume` | Creates and restores provider volume snapshots. |
+| `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Creates, restores, and removes provider volume snapshots. A provider that returns snapshot references MUST remove them: removal dispatches on the reference's stored format, rejects another provider's reference before mutation, and succeeds when the artifact is already gone. |
 | `listVolumes`, `removeVolume` | Enumerates and removes selected volumes. |
 | `copyToService`, `copyFromService` | Transfers bytes to or from a service. |
 | `exportArtifact`, `importArtifact` | Streams artifacts across the provider boundary. |
@@ -69,7 +69,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
 
-1. No applied plan and no owned runtime resources: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says.
+1. No applied plan and no owned runtime resources: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
 2. An applied plan exists: tear down from the applied plan.
 3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
 
@@ -186,7 +186,7 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `ServiceNotFoundError` | Selected service does not exist. |
 | `ProviderConfigError` | Provider extension configuration is invalid. |
 | `ProviderInternalError` | Provider failed outside a more specific category. |
-| `VolumeOperationError` | Volume list, remove, snapshot, or restore failed. |
+| `VolumeOperationError` | Volume list, remove, snapshot, restore, or snapshot removal failed. |
 | `ServiceCopyError` | Service file transfer failed. |
 | `ArtifactTransferError` | Artifact export or import failed. |
 

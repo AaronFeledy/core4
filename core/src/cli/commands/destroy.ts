@@ -4,10 +4,8 @@ import { teardownLine, unchangedLine, volumesTrailer } from "./service-summary";
 
 export const renderDestroyAppResult = (result: DestroyAppResult): string => {
   if (result.outcome === "unchanged") return unchangedLine(result.app);
-  return teardownLine(
-    "destroyed",
-    result.app,
-    result.servicesDestroyed,
-    volumesTrailer(result.volumesRemoved),
-  );
+  const trailer = volumesTrailer(result.volumesRemoved, result.snapshotsRemoved);
+  if (result.servicesDestroyed.length === 0 && result.snapshotsRemoved > 0)
+    return `destroyed: ${result.app} (${trailer})`;
+  return teardownLine("destroyed", result.app, result.servicesDestroyed, trailer);
 };

@@ -156,10 +156,13 @@ const pinnedHelper = providerImages.images.dataHelper;
 const verifyingPullArtifact: Context.Service.Shape<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
   Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
 
-const providerLayer = (overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {}) =>
+const providerLayer = (
+  overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {},
+  paths = makeLandoPaths(),
+) =>
   Layer.mergeAll(
     stateStoreLayer,
-    Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
+    Layer.succeed(PathsService, PathsService.of(paths)),
     Layer.succeed(
       RuntimeProvider,
       RuntimeProvider.of({
@@ -2088,6 +2091,131 @@ describe("BunDataMover.layer", () => {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       }
+    });
+  });
+
+  test.each([false, true])(
+    "removes provider artifacts before persistence (provider fails: %s)",
+    async (fails) => {
+      await withTempDir(async (dir) => {
+        const dataRoot = join(dir, "snapshots-data");
+        const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {} });
+        let providerSawPersistence = false;
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const mover = yield* DataMover;
+              const handle = yield* mover.snapshot({ app, store: "data" }, { volumeSnapshot: "native" });
+              const removal = yield* mover.removeSnapshot(handle.id, handle.store).pipe(Effect.result);
+              const indexed = yield* mover.listSnapshots({ app });
+              return { handle, removal, indexed };
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(
+              providerLayer(
+                {
+                  capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                  removeVolumeSnapshot: (snapshot) =>
+                    Effect.gen(function* () {
+                      providerSawPersistence = yield* Effect.promise(
+                        async () =>
+                          (await Bun.file(join(paths.appSnapshotsDir(app), "index.bin")).exists()) &&
+                          (await Bun.file(
+                            join(paths.appSnapshotsDir(app), "data", `${snapshot.id}.json`),
+                          ).exists()),
+                      );
+                      if (fails)
+                        return yield* Effect.fail(
+                          new ProviderUnavailableError({
+                            providerId: "test",
+                            operation: "removeVolumeSnapshot",
+                            message: "provider offline",
+                          }),
+                        );
+                    }),
+                },
+                paths,
+              ),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+        expect(providerSawPersistence).toBe(true);
+        expect(result.removal._tag).toBe(fails ? "Failure" : "Success");
+        expect(result.indexed.map((info) => info.id)).toEqual(fails ? [result.handle.id] : []);
+        expect(
+          await Bun.file(join(paths.appSnapshotsDir(app), "data", `${result.handle.id}.json`)).exists(),
+        ).toBe(fails);
+        if (!fails) expect(await readdir(paths.appSnapshotsDir(app))).not.toContain("data");
+      });
+    },
+  );
+
+  test("removeSnapshot keeps the snapshot when the provider cannot remove its artifact", async () => {
+    await withTempDir(async (dir) => {
+      const paths = makeLandoPaths({ userDataRoot: join(dir, "snapshots-data"), env: {} });
+      const support = Layer.merge(captureEvents().layer, redactionLayer);
+      const handle = await Effect.runPromise(
+        Effect.scoped(
+          DataMover.pipe(
+            Effect.flatMap((mover) => mover.snapshot({ app, store: "data" }, { volumeSnapshot: "native" })),
+          ),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            providerLayer({ capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }) }, paths),
+          ),
+          Effect.provide(support),
+        ),
+      );
+      const { removeVolumeSnapshot: _unsupported, ...withoutRemoval } = TestRuntimeProvider;
+      const result = await Effect.runPromise(
+        DataMover.pipe(
+          Effect.flatMap((mover) =>
+            mover.removeSnapshot(handle.id, handle.store).pipe(
+              Effect.flip,
+              Effect.flatMap((error) =>
+                mover.listSnapshots({ app }).pipe(Effect.map((listed) => ({ error, listed }))),
+              ),
+            ),
+          ),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            Layer.mergeAll(
+              stateStoreLayer,
+              Layer.succeed(PathsService, PathsService.of(paths)),
+              Layer.succeed(RuntimeProvider, RuntimeProvider.of(withoutRemoval)),
+            ),
+          ),
+          Effect.provide(support),
+        ),
+      );
+      expect(result.error._tag).toBe("DataTransferError");
+      expect(result.listed.map((info) => info.id)).toEqual([handle.id]);
+      expect(await Bun.file(join(paths.appSnapshotsDir(app), "data", `${handle.id}.json`)).exists()).toBe(
+        true,
+      );
+    });
+  });
+
+  test("listSnapshots fails when the snapshot root cannot be read", async () => {
+    await withTempDir(async (dir) => {
+      const paths = makeLandoPaths({ userDataRoot: join(dir, "snapshots-data"), env: {} });
+      await mkdir(dirname(paths.snapshotsDir), { recursive: true });
+      await writeFile(paths.snapshotsDir, "not a directory");
+      const error = await Effect.runPromise(
+        DataMover.pipe(
+          Effect.flatMap((mover) => mover.listSnapshots({ sourceRoot: AbsolutePath.make(dir) })),
+          Effect.flip,
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(providerLayer({}, paths)),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+      expect(error._tag).toBe("DataTransferError");
     });
   });
 

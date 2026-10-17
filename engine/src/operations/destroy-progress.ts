@@ -24,10 +24,10 @@ export const withDestroyProgress = <A, E, R>(input: {
 }): Effect.Effect<A, E, R> => {
   const children: TaskSpec[] = [
     ...(input.children.fileSync ? [{ id: "file-sync", label: "Stop file sync" }] : []),
+    ...(input.children.snapshots ? [{ id: "snapshots", label: "Remove snapshots" }] : []),
     { id: "provider", label: "Destroy services" },
     { id: "host-proxy", label: "Clean host-proxy state" },
     ...(input.children.proxy ? [{ id: "routes", label: "Remove routes" }] : []),
-    ...(input.children.snapshots ? [{ id: "snapshots", label: "Remove snapshots" }] : []),
   ];
   return runWithTaskTree(
     makeTaskTree(input.events, {

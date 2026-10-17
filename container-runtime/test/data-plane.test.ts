@@ -47,6 +47,113 @@ const volumeGeneration = "00000000-0000-4000-8000-000000000001";
 const adoptedGeneration = "00000000-0000-4000-8000-000000000009";
 const replacementGeneration = "00000000-0000-4000-8000-000000000010";
 const adoptedOwnerRoot = AbsolutePath.make("/canonical/app");
+const removableSnapshot = {
+  provider: "test",
+  id: "SNAP/name",
+  digest: "sha256:snap",
+  sizeBytes: 1,
+  format: "native" as const,
+};
+
+describe("snapshot artifact removal", () => {
+  test.each([200, 204, 404])("native removal accepts HTTP %s regardless of current mode", async (status) => {
+    const requests: string[] = [];
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+      api: {
+        request: (request) => {
+          requests.push(`${request.method} ${request.path}`);
+          return Effect.succeed({ status, body: "" });
+        },
+      },
+    });
+    await Effect.runPromise(Effect.scoped(plane.removeVolumeSnapshot(removableSnapshot)));
+    expect(requests).toEqual(["DELETE /images/localhost%2Flando-volume-snapshot%3Asnap-name"]);
+  });
+
+  test("native removal fails tagged on an image in use", async () => {
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      snapshotMode: "native",
+      redactDetails: (value) => value,
+      api: { request: () => Effect.succeed({ status: 409, body: "image in use" }) },
+    });
+    const result = await Effect.runPromise(
+      Effect.scoped(plane.removeVolumeSnapshot(removableSnapshot)).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "VolumeOperationError", operation: "removeVolumeSnapshot" },
+    });
+  });
+
+  test("foreign provider snapshots fail without HTTP requests", async () => {
+    let requests = 0;
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      snapshotMode: "native",
+      redactDetails: (value) => value,
+      api: {
+        request: () => {
+          requests += 1;
+          return Effect.succeed({ status: 204, body: "" });
+        },
+      },
+    });
+    const result = await Effect.runPromise(
+      Effect.scoped(plane.removeVolumeSnapshot({ ...removableSnapshot, provider: "docker" })).pipe(
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "VolumeOperationError", remediation: "Remove this snapshot with provider docker." },
+    });
+    expect(requests).toBe(0);
+  });
+
+  test.each([0, 1, 404])("tar removal uses a helper or skips an absent store (%s)", async (exitCode) => {
+    const requests: Array<{ readonly method: string; readonly path: string; readonly body?: unknown }> = [];
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      snapshotMode: "native",
+      redactDetails: (value) => value,
+      api: {
+        request: (request) => {
+          requests.push(request);
+          if (request.path.startsWith("/volumes/"))
+            return Effect.succeed({ status: exitCode === 404 ? 404 : 200, body: "{}" });
+          if (request.path.endsWith("/json"))
+            return Effect.succeed({ status: 200, body: JSON.stringify({ State: { ExitCode: exitCode } }) });
+          if (request.path.endsWith("/wait"))
+            return Effect.succeed({ status: 200, body: JSON.stringify({ StatusCode: exitCode }) });
+          return Effect.succeed({ status: 201, body: "{}" });
+        },
+        stream: () => Stream.empty,
+      },
+    });
+    const result = await Effect.runPromise(
+      Effect.scoped(plane.removeVolumeSnapshot({ ...removableSnapshot, format: "tar" })).pipe(Effect.result),
+    );
+    expect(result._tag).toBe(exitCode === 1 ? "Failure" : "Success");
+    expect(requests[0]).toEqual({ method: "GET", path: "/volumes/lando-test-copy-snapshots" });
+    expect(requests.some((request) => request.method === "POST" && request.path === "/volumes/create")).toBe(
+      false,
+    );
+    if (exitCode === 404) expect(requests).toHaveLength(1);
+    else {
+      expect(requests.find((request) => request.path.startsWith("/containers/create"))?.body).toMatchObject({
+        Cmd: ["rm", "-f", "--", "/lando-snapshots/SNAP-name.tar"],
+        HostConfig: { Binds: ["lando-test-copy-snapshots:/lando-snapshots"] },
+      });
+      expect(
+        requests.some((request) => request.method === "DELETE" && request.path.startsWith("/containers/")),
+      ).toBe(true);
+    }
+  });
+});
 const plan = {
   id: appId,
   name: "App Name",

@@ -63,7 +63,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
 | `app:config:migrate` | none | `plugins` | Commit recipe migrations; `--yes`, `--dry-run`, `--format json` |
 | `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; never plans or contacts a provider |
-| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes` |
+| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |

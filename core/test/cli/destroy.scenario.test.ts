@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 
-import { chmod, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
@@ -29,13 +29,19 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
-  StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
+import * as BunDataMover from "@lando/data-mover/service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
-import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { CommandResultEnvelope, SnapshotInfo } from "@lando/sdk/schema";
+import { DataMover, RuntimeProvider } from "@lando/sdk/services";
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -203,10 +209,15 @@ const makeDestroyLayer = (
     readonly plannedApp?: AppPlan;
     readonly appliedPlanEvidence?: boolean;
     readonly appliedFileSync?: AppliedFileSyncInspection;
+    readonly removeSnapshotEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly absent?: boolean;
+    readonly orphanEvidence?: boolean;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
   const appliedFileSync = options.appliedFileSync;
+  const stateStore = makeTestStateStore();
+  const removedSnapshots: string[] = [];
 
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
@@ -221,6 +232,17 @@ const makeDestroyLayer = (
     version: "0.0.0",
     platform: "linux",
     capabilities,
+    ...(options.orphanEvidence === true
+      ? { removeObservedService: () => Effect.succeed({ kind: "removed" as const }) }
+      : {}),
+    removeVolumeSnapshot: (snapshot) =>
+      (options.removeSnapshotEffect ?? Effect.void).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            removedSnapshots.push(snapshot.id);
+          }),
+        ),
+      ),
     ...(appliedFileSync === undefined
       ? {}
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
@@ -301,15 +323,14 @@ const makeDestroyLayer = (
       stop: Effect.void,
     }),
   );
-  const commandLayer = Layer.mergeAll(
+  const baseCommandLayer = Layer.mergeAll(
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
-    Layer.succeed(StateStore, makeTestStateStore().service),
+    stateStore.layer,
     Layer.succeed(
       LandofileService,
       LandofileService.of({ discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     ),
-    makeTestStateStore().layer,
     Layer.succeed(
       PathsService,
       makeLandoPaths({
@@ -325,6 +346,32 @@ const makeDestroyLayer = (
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
+        ...(options.absent === true ? { resolveAppliedPlan: () => Effect.succeed(undefined) } : {}),
+        ...(options.orphanEvidence === true
+          ? {
+              resolveTeardownEvidence: () =>
+                Effect.succeed({
+                  kind: "orphans" as const,
+                  groups: [
+                    {
+                      providerId,
+                      appId: plannedApp.id,
+                      volumes: [],
+                      services: [
+                        {
+                          app: plannedApp.id,
+                          appRoot: plannedApp.root,
+                          providerId,
+                          service: ServiceName.make("orphan"),
+                          status: "stopped" as const,
+                          containerId: "orphan-container",
+                        },
+                      ],
+                    },
+                  ],
+                }),
+            }
+          : {}),
         ...(options.appliedPlanEvidence === true
           ? {
               resolveTeardownEvidence: (root: AbsolutePath) => {
@@ -356,6 +403,23 @@ const makeDestroyLayer = (
       query: () => Effect.succeed([]),
     }),
   );
+  const moverLayer = BunDataMover.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        baseCommandLayer,
+        eventLayer,
+        Layer.succeed(
+          RedactionService,
+          RedactionService.of({
+            registerValues: registerRedactionValues,
+            forProfile: (profile) => Effect.succeed(createStandaloneRedactor(profile)),
+          }),
+        ),
+        Layer.succeed(RuntimeProvider, provider),
+      ),
+    ),
+  );
+  const commandLayer = Layer.merge(baseCommandLayer, moverLayer);
   const layer = Layer.merge(commandLayer, eventLayer);
 
   return {
@@ -367,6 +431,8 @@ const makeDestroyLayer = (
     routeRemovals,
     volumes,
     evidenceRoots,
+    stateStore: stateStore.service,
+    removedSnapshots,
   };
 };
 
@@ -388,6 +454,56 @@ const runDestroyCli = (
     io,
     formatError: (error) => commandErrorMessage(error, "app:destroy"),
   }).finally(clearActiveCommandInvocation);
+};
+
+const seedSnapshot = async (
+  harness: ReturnType<typeof makeDestroyLayer>,
+  dataRoot: string,
+  input: { readonly id: string; readonly sourceRoot?: string },
+) => {
+  const info = Schema.decodeUnknownSync(SnapshotInfo)({
+    id: input.id,
+    store: { app: plan.id, store: "data" },
+    digest: "sha256:snapshot",
+    sizeBytes: 42,
+    createdAt: "2026-05-15T00:00:00Z",
+    native: { provider: "docker", id: input.id, digest: "sha256:snapshot", sizeBytes: 42, format: "native" },
+    ...(input.sourceRoot === undefined
+      ? {}
+      : {
+          metadata: {
+            sourceRoot: input.sourceRoot,
+            service: "database",
+            volumeInstanceId: "volume-instance",
+            family: "postgres",
+            version: "16",
+            imageIdentity: "sha256:postgres",
+            recoveryReason: "manual",
+          },
+        }),
+  });
+  const appDir = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).appSnapshotsDir(
+    plan.id,
+  );
+  await mkdir(join(appDir, "data"), { recursive: true });
+  const sidecar = join(appDir, "data", `${info.id}.json`);
+  await writeFile(sidecar, JSON.stringify(Schema.encodeSync(SnapshotInfo)(info)));
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const bucket = yield* harness.stateStore.open({
+        root: { path: AbsolutePath.make(appDir) },
+        key: "index.bin",
+        schema: Schema.Array(SnapshotInfo),
+        version: 1,
+        codec: "json",
+        lock: "advisory",
+        onCorrupt: "quarantine",
+        default: [],
+      });
+      yield* bucket.update((current) => [...(current ?? []), info]);
+    }),
+  );
+  return { info, sidecar };
 };
 
 const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
@@ -460,6 +576,7 @@ describe("lando destroy", () => {
         app: "test-destroy",
         servicesDestroyed: ["database", "web"],
         volumesRemoved: false,
+        snapshotsRemoved: 0,
       })}\n`,
     );
   });
@@ -650,30 +767,112 @@ describe("lando destroy", () => {
     expect(renderDestroyAppResult(result)).toContain("volumes removed");
   });
 
-  test("still emits post-destroy when snapshot subtree removal fails after provider teardown", async () => {
-    const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-rm-fail-"));
-    const snapshotRoot = makeLandoPaths({
-      userDataRoot: dataRoot,
-      env: {},
-      platform: "linux",
-    }).appSnapshotsDir(String(plan.id));
-    await mkdir(join(snapshotRoot, "data"), { recursive: true });
-    await chmod(snapshotRoot, 0o000);
-
-    try {
+  test("--purge removes only this folder's snapshots and provider artifacts", async () => {
+    await withTempCwd(async (dataRoot) => {
       const harness = makeDestroyLayer({ userDataRoot: dataRoot });
+      const owned = await seedSnapshot(harness, dataRoot, { id: "owned", sourceRoot: plan.root });
+      const sibling = await seedSnapshot(harness, dataRoot, {
+        id: "sibling",
+        sourceRoot: join(dataRoot, "other-worktree"),
+      });
+      const legacy = await seedSnapshot(harness, dataRoot, { id: "legacy" });
       const result = await Effect.runPromise(
-        destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)),
+        runDestroyCommand({ flags: { purge: true, yes: true } }).pipe(Effect.provide(harness.layer)),
       );
-
-      expectDestroyLifecycleWithTasks(harness.events);
-      expect(harness.destroyCalls).toHaveLength(1);
-      expect(renderDestroyAppResult(result)).toContain("volumes removed");
-    } finally {
-      await chmod(snapshotRoot, 0o700).catch(() => undefined);
-      await rm(dataRoot, { recursive: true, force: true });
-    }
+      expect(result.snapshotsRemoved).toBe(1);
+      expect(harness.destroyCalls[0]?.options.volumes).toBe(true);
+      expect(harness.removedSnapshots).toEqual([owned.info.id]);
+      expect(await Bun.file(owned.sidecar).exists()).toBe(false);
+      expect(await Bun.file(sibling.sidecar).exists()).toBe(true);
+      expect(await Bun.file(legacy.sidecar).exists()).toBe(true);
+      const listed = await Effect.runPromise(
+        DataMover.use((mover) => mover.listSnapshots({ app: plan.id })).pipe(Effect.provide(harness.layer)),
+      );
+      expect(listed.map((info) => info.id)).toEqual([sibling.info.id, legacy.info.id]);
+      expect(renderDestroyAppResult(result)).toBe(
+        "destroyed: test-destroy - database, web (volumes and 1 snapshot removed)",
+      );
+    });
   });
+
+  test("snapshot purge failure preserves retry handles and prevents provider teardown", async () => {
+    await withTempCwd(async (dataRoot) => {
+      const failure = new ProviderUnavailableError({
+        providerId: "docker",
+        operation: "removeVolumeSnapshot",
+        message: "offline",
+      });
+      const harness = makeDestroyLayer({
+        userDataRoot: dataRoot,
+        removeSnapshotEffect: Effect.fail(failure),
+      });
+      const owned = await seedSnapshot(harness, dataRoot, { id: "retry", sourceRoot: plan.root });
+      const result = await Effect.runPromise(
+        destroyApp({ purgeSnapshots: true }).pipe(Effect.provide(harness.layer), Effect.result),
+      );
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "DataTransferError" } });
+      expect(harness.destroyCalls).toEqual([]);
+      expect(harness.events).not.toContain("post-destroy");
+      expect(await Bun.file(owned.sidecar).exists()).toBe(true);
+      const listed = await Effect.runPromise(
+        DataMover.use((mover) => mover.listSnapshots({ app: plan.id })).pipe(Effect.provide(harness.layer)),
+      );
+      expect(listed.map((info) => info.id)).toEqual([owned.info.id]);
+    });
+  });
+
+  test.each([false, true])(
+    "purges snapshots without runtime resources (missing root: %s)",
+    async (missingRoot) => {
+      await withTempCwd(async (dataRoot) => {
+        const root = missingRoot ? join(dataRoot, "gone") : testAppRoot;
+        const desired = { ...plan, root: AbsolutePath.make(root) };
+        const harness = makeDestroyLayer({ userDataRoot: dataRoot, plannedApp: desired, absent: true });
+        const owned = await seedSnapshot(harness, dataRoot, { id: "snapshot-only", sourceRoot: root });
+        const result = await Effect.runPromise(
+          (missingRoot
+            ? runDestroyCommand({ flags: { root, purge: true, yes: true } })
+            : destroyApp({ purgeSnapshots: true })
+          ).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result).toMatchObject({ outcome: "destroyed", servicesDestroyed: [], snapshotsRemoved: 1 });
+        expect(harness.destroyCalls).toEqual([]);
+        expect(await Bun.file(owned.sidecar).exists()).toBe(false);
+        expect(renderDestroyAppResult(result)).toBe(`destroyed: ${result.app} (1 snapshot removed)`);
+      });
+    },
+  );
+
+  test.each([false, true])(
+    "purges snapshots alongside orphan teardown (missing root: %s)",
+    async (missingRoot) => {
+      await withTempCwd(async (dataRoot) => {
+        const root = missingRoot ? join(dataRoot, "gone") : testAppRoot;
+        const harness = makeDestroyLayer({
+          userDataRoot: dataRoot,
+          plannedApp: { ...plan, root: AbsolutePath.make(root) },
+          orphanEvidence: true,
+        });
+        const owned = await seedSnapshot(harness, dataRoot, { id: "orphan-snapshot", sourceRoot: root });
+        const result = missingRoot
+          ? await Effect.runPromise(
+              runDestroyCommand({ flags: { root, purge: true, yes: true } }).pipe(
+                Effect.provide(harness.layer),
+              ),
+            )
+          : await withCwd(root, () =>
+              Effect.runPromise(destroyApp({ purgeSnapshots: true }).pipe(Effect.provide(harness.layer))),
+            );
+        expect(result).toMatchObject({
+          outcome: "destroyed",
+          servicesDestroyed: ["orphan"],
+          snapshotsRemoved: 1,
+        });
+        expect(harness.removedSnapshots).toEqual([owned.info.id]);
+        expect(await Bun.file(owned.sidecar).exists()).toBe(false);
+      });
+    },
+  );
 
   test("plain destroy preserves snapshots across volume and cache removal", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-"));
@@ -706,6 +905,35 @@ describe("lando destroy", () => {
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }
+  });
+
+  test.each([{}, { volumes: true }, { purgeCaches: true }])(
+    "keeps indexed snapshots without purgeSnapshots (%j)",
+    async (options) => {
+      await withTempCwd(async (dataRoot) => {
+        const harness = makeDestroyLayer({ userDataRoot: dataRoot });
+        const owned = await seedSnapshot(harness, dataRoot, { id: "preserved", sourceRoot: plan.root });
+        const result = await Effect.runPromise(destroyApp(options).pipe(Effect.provide(harness.layer)));
+        expect(result.snapshotsRemoved).toBe(0);
+        expect(harness.removedSnapshots).toEqual([]);
+        expect(await Bun.file(owned.sidecar).exists()).toBe(true);
+        const listed = await Effect.runPromise(
+          DataMover.use((mover) => mover.listSnapshots({ sourceRoot: plan.root })).pipe(
+            Effect.provide(harness.layer),
+          ),
+        );
+        expect(listed.map((info) => info.id)).toEqual([owned.info.id]);
+      });
+    },
+  );
+
+  test.each([1, 2])("renders snapshot-only and combined removal counts (%s)", (count) => {
+    const result = { app: "shop", servicesDestroyed: [], volumesRemoved: false, snapshotsRemoved: count };
+    const snapshots = `${count} snapshot${count === 1 ? "" : "s"}`;
+    expect(renderDestroyAppResult(result)).toBe(`destroyed: shop (${snapshots} removed)`);
+    expect(
+      renderDestroyAppResult({ ...result, servicesDestroyed: ["database", "web"], volumesRemoved: true }),
+    ).toBe(`destroyed: shop - database, web (volumes and ${snapshots} removed)`);
   });
 
   test("compiled CLI accepts lando destroy --volumes before missing Landofile resolution", async () => {
@@ -756,6 +984,7 @@ describe("lando destroy", () => {
         outcome: "unchanged",
         servicesDestroyed: [],
         volumesRemoved: false,
+        snapshotsRemoved: 0,
       }),
     ).toBe("unchanged: test-destroy - no services");
   });

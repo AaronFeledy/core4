@@ -20,6 +20,7 @@ import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type DataMover,
   EventService,
   FileSyncEngine,
   FileSystem,
@@ -56,6 +57,7 @@ import {
   withTeardownResolution,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
+import { purgeAppSnapshots, snapshotOnlyDestroy } from "./destroy-snapshots.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
@@ -69,10 +71,12 @@ export const DestroyAppResultSchema = Schema.Struct({
   outcome: Schema.optionalKey(Schema.Literals(["destroyed", "unchanged"])),
   servicesDestroyed: Schema.Array(Schema.String),
   volumesRemoved: Schema.Boolean,
+  snapshotsRemoved: Schema.Number,
 });
 
 type DestroyAppServices =
   | AppPlanner
+  | DataMover
   | EventService
   | LandofileService
   | PathsService
@@ -88,6 +92,7 @@ const unchangedResult = (app: string): DestroyAppResult => ({
   outcome: "unchanged",
   servicesDestroyed: [],
   volumesRemoved: false,
+  snapshotsRemoved: 0,
 });
 
 const removeStrayAppContainers = Effect.fnUntraced(function* (provider: RuntimeProviderShape, plan: AppPlan) {
@@ -266,13 +271,13 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     yield* publishAndRunAppEvent(plan, "pre-destroy", preDestroy);
   }
 
-  yield* withDestroyProgress({
+  const snapshotsRemoved = yield* withDestroyProgress({
     events,
     plan,
     children: {
       fileSync: fileSyncApplicable,
       proxy: proxy._tag === "Some",
-      snapshots: false,
+      snapshots: resolvedOptions.purgeSnapshots === true,
     },
     work: Effect.fnUntraced(function* (tree) {
       if (fileSyncApplicable) yield* tree.startTask("file-sync");
@@ -309,6 +314,16 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
         yield* terminateFileSyncSessions(ref, sessions);
       }
       if (fileSyncApplicable) yield* tree.completeTask("file-sync");
+
+      let snapshotsRemoved = 0;
+      if (resolvedOptions.purgeSnapshots === true) {
+        yield* tree.startTask("snapshots");
+        snapshotsRemoved = yield* purgeAppSnapshots(
+          plan.identity?.appRoot ?? plan.root,
+          resolvedOptions,
+        ).pipe(Effect.tapError(() => tree.failTask("snapshots")));
+        yield* tree.completeTask("snapshots");
+      }
 
       yield* tree.startTask("provider");
       const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
@@ -356,6 +371,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
         );
         yield* providerDestroy;
       }
+      return snapshotsRemoved;
     }),
   });
 
@@ -374,6 +390,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
       .reverse()
       .map((service) => String(service.name)),
     volumesRemoved: volumes || resolvedOptions.purgeCaches === true,
+    snapshotsRemoved,
   };
 });
 
@@ -395,7 +412,11 @@ const destroyAppWithResolvedTarget = (
         if (appliedPlan === undefined) {
           const { pending } = yield* readDiscardableStart(validatedTarget.app);
           if (pending === null || pending.phase === "completed")
-            return unchangedResult(validatedTarget.plan.name);
+            return yield* snapshotOnlyDestroy(
+              validatedTarget.plan.name,
+              validatedTarget.plan.identity?.appRoot ?? validatedTarget.plan.root,
+              options,
+            );
         }
       }
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
@@ -419,27 +440,30 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
   );
 });
 
-const destroyOrphans = (
+const destroyOrphans = Effect.fnUntraced(function* (
   options: DestroyAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
-): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
-  tearDownOrphans({
+): Effect.fn.Return<DestroyAppResult, DestroyAppError, DestroyAppServices> {
+  const snapshotsRemoved = yield* purgeAppSnapshots(resolution.root, options);
+  return yield* tearDownOrphans({
     root: resolution.root,
     groups: resolution.groups,
     options: { volumes: options.volumes === true, purgeCaches: options.purgeCaches === true },
   }).pipe(
     Effect.map(
       (removed): DestroyAppResult =>
-        removed.services.length === 0 && !removed.volumesRemoved
+        removed.services.length === 0 && !removed.volumesRemoved && snapshotsRemoved === 0
           ? unchangedResult(removed.app)
           : {
               app: removed.app,
               outcome: "destroyed",
               servicesDestroyed: removed.services,
               volumesRemoved: removed.volumesRemoved,
+              snapshotsRemoved,
             },
     ),
   );
+});
 
 const destroyDesiredOrUnchanged = (
   options: DestroyAppOptions,
@@ -449,6 +473,12 @@ const destroyDesiredOrUnchanged = (
     resolution,
     (desired) => destroyAppWithResolvedTarget(options, desired, false, true),
     unchangedResult,
+  ).pipe(
+    Effect.flatMap((result) =>
+      result.outcome === "unchanged"
+        ? snapshotOnlyDestroy(result.app, resolution.root, options)
+        : Effect.succeed(result),
+    ),
   );
 
 export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
@@ -584,13 +614,21 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
           outcome: "destroyed" as const,
           servicesDestroyed: [...new Set([...result.servicesDestroyed, ...removed.servicesDestroyed])],
           volumesRemoved: result.volumesRemoved || removed.volumesRemoved,
+          snapshotsRemoved: result.snapshotsRemoved + removed.snapshotsRemoved,
         };
       }
       return { ...result, outcome: "destroyed" as const };
     }
     case "orphans":
       return yield* destroyOrphans(options, resolution);
-    case "absent":
-      return unchangedResult(basename(root));
+    case "absent": {
+      const counts = yield* Effect.forEach(candidates, (candidate) => purgeAppSnapshots(candidate, options));
+      const snapshotsRemoved = counts.reduce((total, count) => total + count, 0);
+      return {
+        ...unchangedResult(basename(root)),
+        snapshotsRemoved,
+        outcome: snapshotsRemoved > 0 ? "destroyed" : "unchanged",
+      };
+    }
   }
 });

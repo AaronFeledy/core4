@@ -42,6 +42,10 @@ lando db:snapshot --label before-change
 lando db:restore before-change
 ```
 
+Snapshots survive `lando destroy` and `lando destroy --volumes`. Use `lando destroy --purge` to delete this folder's snapshots, including their provider-stored snapshot data. Snapshots from another folder or Git worktree stay put, even when the apps share a name.
+
+`lando db:snapshots:prune` removes old snapshots and frees their provider storage, not just their entries in the snapshot list.
+
 ## Confirm destructive work
 
 `db:import` into a non-empty database and every `db:reset` ask first. `--yes` skips the prompt. Non-interactive runs without `--yes` fail with `SqlConfirmRequiredError` and list the steps.

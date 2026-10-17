@@ -51,6 +51,7 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
   const options = {
     volumes,
     purgeCaches: booleanFlag(flags, "purge-caches"),
+    purgeSnapshots: booleanFlag(flags, "purge"),
     yes: booleanFlag(flags, "yes"),
   };
   return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
@@ -73,7 +74,8 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
       default: false,
     }),
     purge: Flags.boolean({
-      description: "Also remove app/service-scoped storage volumes and snapshots.",
+      description:
+        "Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data.",
       default: false,
     }),
     "purge-caches": Flags.boolean({

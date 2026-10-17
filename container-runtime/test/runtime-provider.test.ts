@@ -98,6 +98,10 @@ const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
     calls.push({ name: "restoreVolume", args: [spec] });
     return Effect.void;
   },
+  removeVolumeSnapshot: (snapshot) => {
+    calls.push({ name: "removeVolumeSnapshot", args: [snapshot] });
+    return Effect.void;
+  },
   listVolumes: (filter) => {
     calls.push({ name: "listVolumes", args: [filter] });
     return Effect.succeed([]);
@@ -361,6 +365,8 @@ describe("resolved provider operations", () => {
     await Effect.runPromise(Effect.scoped(ops.runStream(runSpec).pipe(Stream.runDrain)));
     await Effect.runPromise(Effect.scoped(ops.snapshotVolume(snapshotSpec)));
     await Effect.runPromise(Effect.scoped(ops.restoreVolume(restoreSpec)));
+    if (ops.removeVolumeSnapshot === undefined) throw new TypeError("missing snapshot removal");
+    await Effect.runPromise(Effect.scoped(ops.removeVolumeSnapshot(restoreSpec.snapshot)));
     await Effect.runPromise(ops.listVolumes({ app }));
     await Effect.runPromise(ops.locateVolume(volume));
     await Effect.runPromise(ops.removeVolume(volume, generation));
@@ -370,12 +376,13 @@ describe("resolved provider operations", () => {
     await Effect.runPromise(Effect.scoped(ops.importArtifact(data)));
 
     // Then
-    expect(calls.filter(({ name }) => name === "before")).toHaveLength(11);
+    expect(calls.filter(({ name }) => name === "before")).toHaveLength(12);
     expect(calls.filter(({ name }) => name !== "before").map(({ name }) => name)).toEqual([
       "run",
       "runStream",
       "snapshotVolume",
       "restoreVolume",
+      "removeVolumeSnapshot",
       "listVolumes",
       "locateVolume",
       "removeVolume",

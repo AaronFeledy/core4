@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, realpath, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import {
@@ -156,12 +156,16 @@ const openSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
 const snapshotApps = (
   persistence: SnapshotPersistence,
   filter: SnapshotFilter,
-): Effect.Effect<ReadonlyArray<string>> => {
+): Effect.Effect<ReadonlyArray<string>, DataTransferError> => {
   if (filter.app !== undefined) return Effect.succeed([String(filter.app)]);
   return Effect.tryPromise({
     try: () => readdir(persistence.paths.snapshotsDir),
     catch: (cause) => cause,
-  }).pipe(Effect.catch(() => Effect.succeed([])));
+  }).pipe(
+    Effect.catch((cause) =>
+      errnoCode(cause) === "ENOENT" ? Effect.succeed([]) : Effect.fail(stateFailure("list", cause)),
+    ),
+  );
 };
 
 const readSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
@@ -1552,36 +1556,50 @@ export const makeDataMoverService = (
         .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
     }),
     listSnapshots: Effect.fn("DataMover.listSnapshots")((filter) => listSnapshotInfos(persistence, filter)),
-    removeSnapshot: Effect.fn("DataMover.removeSnapshot")((id, store) =>
-      findSnapshotInfo(persistence, id, store).pipe(
-        Effect.flatMap((info) =>
-          openSnapshotIndex(persistence, String(info.store.app)).pipe(
-            Effect.flatMap((bucket) => {
-              const key = snapshotIndexEntryKey(info);
-              return bucket.update((current) =>
-                (current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
-              );
+    removeSnapshot: Effect.fn("DataMover.removeSnapshot")(function* (id, store) {
+      const info = yield* findSnapshotInfo(persistence, id, store);
+      if (info.native !== undefined) {
+        if (provider.removeVolumeSnapshot === undefined) {
+          return yield* Effect.fail(
+            new DataTransferError({
+              message: `Provider ${provider.id} cannot remove snapshot ${info.id}'s provider-stored data.`,
+              operation: "removeVolumeSnapshot",
+              remediation: `Remove the snapshot with provider ${info.native.provider}, which created it.`,
             }),
-            Effect.andThen(removeSnapshotArtifacts(persistence, info)),
-            Effect.flatMap(() => {
-              const removeNative = provider.removeVolumeSnapshot;
-              if (info.native === undefined || removeNative === undefined) {
-                return Effect.void;
-              }
-              return Effect.scoped(
-                removeNative(info.native).pipe(
-                  Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
-                ),
-              );
-            }),
-            Effect.mapError(
-              (cause): DataTransferError =>
-                cause instanceof DataTransferError ? cause : stateFailure("remove", cause),
+          );
+        }
+        yield* Effect.scoped(provider.removeVolumeSnapshot(info.native)).pipe(
+          Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
+        );
+      }
+      yield* Effect.gen(function* () {
+        const bucket = yield* openSnapshotIndex(persistence, String(info.store.app));
+        const key = snapshotIndexEntryKey(info);
+        const remaining = yield* bucket.update((current) =>
+          (current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
+        );
+        yield* removeSnapshotArtifacts(persistence, info);
+        // The index stays even when empty: removing it is a second locked write that could drop an
+        // entry another root sharing this app id adds in between. rmdir only removes an empty dir.
+        if (!remaining.some((entry) => entry.store.store === info.store.store)) {
+          yield* Effect.tryPromise({
+            try: () => rmdir(snapshotStoreDir(persistence, info.store)),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.catch((cause) =>
+              errnoCode(cause) === "ENOENT" || errnoCode(cause) === "ENOTEMPTY"
+                ? Effect.void
+                : Effect.fail(stateFailure("remove-directory", cause)),
             ),
-          ),
+          );
+        }
+      }).pipe(
+        Effect.mapError(
+          (cause): DataTransferError =>
+            cause instanceof DataTransferError ? cause : stateFailure("remove", cause),
         ),
-      ),
-    ),
+      );
+    }),
     pruneSnapshots: Effect.fn("DataMover.pruneSnapshots")((policy: PrunePolicy) =>
       listSnapshotInfos(persistence, policy.filter ?? {}).pipe(
         Effect.map((infos) => {

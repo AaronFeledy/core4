@@ -287,6 +287,14 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
     Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
   );
+  if (provider.removeVolumeSnapshot !== undefined) {
+    yield* provider
+      .removeVolumeSnapshot(snapshot)
+      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds")));
+    yield* provider
+      .removeVolumeSnapshot(snapshot)
+      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot is idempotent")));
+  }
   yield* requireContract(
     bytesEqual(restoredVolume, volumePayload),
     "snapshot -> mutate -> restore restores volume bytes",
