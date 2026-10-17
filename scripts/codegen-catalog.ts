@@ -35,7 +35,7 @@ export const CODEGEN_CATALOG = [
     // Without these edges pin generators and importers run in the same
     // wave and the import can observe the file mid-truncation (`Bun.write` is
     // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
-    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
+    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
@@ -62,6 +62,12 @@ export const CODEGEN_CATALOG = [
     id: "php-msmtp-pins",
     ownership: "committed-pin",
     script: "build-php-msmtp-pins.ts",
+    workspace: "repo",
+  },
+  {
+    id: "tomcat-catalog",
+    ownership: "derived",
+    script: "build-tomcat-catalog.ts",
     workspace: "repo",
   },
   {
@@ -95,7 +101,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Also imports every bundled plugin; see `bundled-plugins`.
-    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
+    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
@@ -175,7 +181,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Imports @lando/service-lando and its PHP msmtp pins; see `bundled-plugins`.
-    dependsOn: ["php-msmtp-pins"],
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
     id: "service-type-reference",
     ownership: "derived",
     script: "build-service-type-reference.ts",
@@ -233,6 +239,12 @@ export const CODEGEN_CATALOG = [
     id: "compose-vendor-bump-workflow",
     ownership: "committed-workflow",
     script: "build-compose-vendor-bump-workflow.ts",
+    workspace: "repo",
+  },
+  {
+    id: "tomcat-bump-workflow",
+    ownership: "committed-workflow",
+    script: "build-tomcat-bump-workflow.ts",
     workspace: "repo",
   },
   {
