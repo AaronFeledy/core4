@@ -32,7 +32,7 @@ const db = ServiceName.make("db");
 describe("makeUrlScanner probe behavior", () => {
   test("overall deadline stops retrying before maxAttempts", async () => {
     // Given a retry delay that crosses the overall deadline.
-    const http = requestSequence([httpStatus(503)]);
+    const http = requestSequence([httpStatus(502)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { http: http.http, listEndpoints: source.listEndpoints },
@@ -81,7 +81,7 @@ describe("makeUrlScanner probe behavior", () => {
   });
 
   test("green on the third attempt after two fixed delays", async () => {
-    const http = requestSequence([httpStatus(503), httpFailure("connection refused"), httpStatus(200)]);
+    const http = requestSequence([httpStatus(502), httpFailure("connection refused"), httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { http: http.http, listEndpoints: source.listEndpoints },

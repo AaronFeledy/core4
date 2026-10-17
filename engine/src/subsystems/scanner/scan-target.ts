@@ -176,16 +176,17 @@ const makeAttempt = Effect.fnUntraced(function* (
   const observedAt = yield* Clock.currentTimeMillis;
   const onAttempt = deps.onAttempt;
   if (onAttempt !== undefined) {
+    const maxAttempts = Math.max(1, config.retry);
     yield* Effect.suspend(() =>
       onAttempt({
         ...target,
         attempt,
-        maxAttempts: Math.max(1, config.retry),
+        maxAttempts,
         outcome,
         verdict,
         willRetry:
           (verdict === "lando-error" || verdict === "service-error") &&
-          attempt < Math.max(1, config.retry) &&
+          attempt < maxAttempts &&
           (config.deadlineMs === undefined ||
             observedAt + config.delaySeconds * 1000 < state.startedAt + config.deadlineMs),
         ...(finalStatus._tag === "response" ? { statusCode: finalStatus.status } : {}),
@@ -205,7 +206,9 @@ const classify = (status: AttemptStatus, okCodes: ReadonlyArray<number>): ScanVe
     case "response":
       if (status.routerMarker !== undefined) return "lando-error";
       if (isAccepted(status.status, okCodes)) return "ready";
-      return status.status >= 502 && status.status <= 504 ? "service-error" : "app-error";
+      // 502 and 504 are gateway statuses a web server sends when it cannot reach the app
+      // runtime; a 503 is usually the app itself (maintenance mode), so it stays app-owned.
+      return status.status === 502 || status.status === 504 ? "service-error" : "app-error";
   }
 };
 

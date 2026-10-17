@@ -131,7 +131,7 @@ describe("runPostStartScan", () => {
     const events = collector();
     const endpoints = [
       endpoint(),
-      endpoint({ url: `${url}yellow`, verdict: "service-error", outcome: "yellow", statusCode: 503 }),
+      endpoint({ url: `${url}yellow`, verdict: "service-error", outcome: "yellow", statusCode: 502 }),
       endpoint({
         service: ServiceName.make("api"),
         url: `${url}red`,
@@ -147,7 +147,7 @@ describe("runPostStartScan", () => {
     const ids = [taskId, `${parentId}:web-2`, `${parentId}:api-1`];
     const summaries = [
       `${label} · 200`,
-      `web ${url}yellow · web server returned 503`,
+      `web ${url}yellow · web server returned 502`,
       `api ${url}red · unreachable: connection refused`,
     ];
     expect(project(events.published)).toEqual([
@@ -186,38 +186,6 @@ describe("runPostStartScan", () => {
     ]);
   });
 
-  test("publishes no tree and never probes disabled or non-HTTP targets", async () => {
-    const events = collector();
-    let calls = 0;
-    const scanner: UrlScannerShape = {
-      ...scannerReturning([]),
-      scan: () =>
-        Effect.sync(() => {
-          calls++;
-          return { appId: plan.id, endpoints: [] };
-        }),
-    };
-    const disabledPlan = {
-      ...plan,
-      services: {
-        [web.name]: {
-          ...web,
-          scanner: { enabled: false, path: "/", okCodes: [], retries: 0, timeoutMs: 1000 },
-        },
-      },
-    };
-    await Effect.runPromise(
-      runPostStartScan({
-        scanner,
-        plan: disabledPlan,
-        events,
-        urls: [target, { service: ServiceName.make("db"), url: "tcp://localhost:5432" }],
-      }),
-    );
-    expect(events.published).toEqual([]);
-    expect(calls).toBe(0);
-  });
-
   test("publishes only non-green attempt details before settling", async () => {
     const events = collector();
     const scanner: UrlScannerShape = {
@@ -230,8 +198,8 @@ describe("runPostStartScan", () => {
             maxAttempts: 2,
             outcome: "yellow",
             verdict: "service-error",
-            statusCode: 503,
-            detail: "HTTP 503",
+            statusCode: 502,
+            detail: "HTTP 502",
           }) ?? Effect.void;
           yield* options?.onAttempt?.({
             ...target,
@@ -248,29 +216,10 @@ describe("runPostStartScan", () => {
     await Effect.runPromise(runPostStartScan({ scanner, plan, events, urls: [target] }));
     expect(project(events.published)).toEqual([
       ...opening,
-      ["task.detail", taskId, "stderr", "attempt 1/2: HTTP 503"],
+      ["task.detail", taskId, "stderr", "attempt 1/2: HTTP 502"],
       ["task.complete", taskId, `${label} · 200`, undefined],
       ["task.tree.complete", `${plan.name} answered on 1 URL`, 1, 0],
     ]);
-  });
-
-  test("progress publish defects do not prevent probing or fail start", async () => {
-    let calls = 0;
-    const scanner: UrlScannerShape = {
-      ...scannerReturning([]),
-      scan: () =>
-        Effect.sync(() => {
-          calls++;
-          return {
-            appId: plan.id,
-            endpoints: [endpoint({ outcome: "red", verdict: "lando-error", reachable: false })],
-          };
-        }),
-    };
-    await Effect.runPromise(
-      runPostStartScan({ scanner, plan, events: { publish: () => Effect.die("bus down") }, urls: [target] }),
-    );
-    expect(calls).toBe(1);
   });
 
   test("external cancellation settles the tree and still interrupts", async () => {

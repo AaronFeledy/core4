@@ -32,11 +32,14 @@ describe("UrlScanner onAttempt", () => {
     [403, undefined, [], "app-error", 1],
     [404, undefined, [], "app-error", 1],
     [500, undefined, [], "app-error", 1],
+    [501, undefined, [], "app-error", 1],
     [502, undefined, [], "service-error", 3],
-    [503, undefined, [], "service-error", 3],
+    [503, undefined, [], "app-error", 1],
     [504, undefined, [], "service-error", 3],
+    [505, undefined, [], "app-error", 1],
     [503, undefined, [503], "ready", 1],
     [200, "no-route", [], "lando-error", 3],
+    [200, "", [], "lando-error", 3],
     [503, "upstream-unreachable", [503], "lando-error", 3],
   ] as const)(
     "classifies status %i marker %s before stopping or retrying",
@@ -68,6 +71,19 @@ describe("UrlScanner onAttempt", () => {
     },
   );
 
+  test("redacts the router marker when returning a router-owned response", async () => {
+    // Given
+    const http = requestSequence([httpStatus(503, { "X-Lando-Router": secret })]);
+    const scanner = makeUrlScanner(
+      { http: http.http, listEndpoints: () => Effect.succeed([]) },
+      { retry: 1 },
+    );
+    // When
+    const result = await drive(withFakeRedaction(scanner.scan(appId, { urls: [target] })));
+    // Then
+    expect(result.endpoints[0]).toMatchObject({ verdict: "lando-error", routerMarker: marker });
+  });
+
   test("TLS trust failures retry and a later ready answer is final", async () => {
     const http = requestSequence([httpFailure("unable to verify the first certificate"), httpStatus(200)]);
     const scanner = makeUrlScanner(
@@ -80,7 +96,7 @@ describe("UrlScanner onAttempt", () => {
   });
 
   test("does not promise a retry when the delay consumes the remaining deadline", async () => {
-    const http = requestSequence([httpStatus(503)]);
+    const http = requestSequence([httpStatus(502)]);
     const attempts: ScanAttempt[] = [];
     const scanner = makeUrlScanner(
       { http: http.http, listEndpoints: () => Effect.succeed([]) },
@@ -102,7 +118,7 @@ describe("UrlScanner onAttempt", () => {
   });
   test("reports every completed response and transport attempt with redacted detail", async () => {
     const http = requestSequence([
-      httpStatus(503),
+      httpStatus(502),
       httpFailure(`connection refused ${secret}`),
       httpStatus(200),
     ]);
@@ -131,8 +147,8 @@ describe("UrlScanner onAttempt", () => {
         outcome: "yellow",
         verdict: "service-error",
         willRetry: true,
-        statusCode: 503,
-        detail: "HTTP 503",
+        statusCode: 502,
+        detail: "HTTP 502",
       },
       {
         ...target,
@@ -192,7 +208,7 @@ describe("UrlScanner onAttempt", () => {
   test.each(["effect defect", "synchronous throw"])(
     "a callback %s does not change retry verdicts",
     async (failure) => {
-      const http = requestSequence([httpStatus(503), httpStatus(200)]);
+      const http = requestSequence([httpStatus(502), httpStatus(200)]);
       const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
       const scanner = makeUrlScanner(
         { http: http.http, listEndpoints: source.listEndpoints },
