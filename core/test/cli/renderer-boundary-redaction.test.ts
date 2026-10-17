@@ -216,7 +216,7 @@ test("start command hints remain usable when a secret explicitly matches the CLI
     expect(output).toContain("lando logs");
     expect(output).toContain("lando exec <service> -- <command>");
     expect(output).toContain("[redacted] is ready");
-    expect(output).toContain("lando  running");
+    expect(output).toContain("[redacted]  running");
     expect(output).not.toContain(customSecret);
     expect(output).not.toContain("[redacted] info");
     expect(io.stderr()).toBe("");

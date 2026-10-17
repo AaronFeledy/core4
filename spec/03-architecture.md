@@ -161,7 +161,7 @@ Both shells MUST provide the generated layer for the resolved level, run with sc
 
 Redaction is one non-replaceable security invariant shared by logs, events, runners, network and data movement, managed files, build and doctor output, telemetry, config translation, caches, and executable-guide transcripts.
 
-1. The string and payload value layers MUST share one value source and eligibility rule for registered values, secret-store values, plan tokens, and forwarded agent environment values. They mask eligible values by literal longest-first match, excluding exact public defaults (`lando`, `landolando`) and values rejected by `isUsableExactRedactionValue`.
+1. The value layer masks known resolved secrets, registry tokens, proxy credentials, caller-supplied tokens, and forwarded agent environment values by literal longest-first match. The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`.
 2. The pattern layer then masks the canonical secret classes (`secretAssignment`, `urlUserinfo`, `bearerToken`, `signedQueryParam`, `secretKeyedField`) and, where the selected profile requires it, the normalization classes `url`, `email`, `uuid`, `hostname`, `posixPath`, `windowsPath`, `uncPath`, `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, `user`, `host`, and `root`.
 
 | Profile | Contract |
@@ -176,7 +176,7 @@ Redaction is one non-replaceable security invariant shared by logs, events, runn
 
 After redaction, the sink MUST deliver human payload bytes only through `Renderer.output.stdout` or `stderr` (§8.9). The renderer owns fd selection and live-region suspension; the sink MUST NOT write raw IO directly.
 
-Value eligibility MUST exclude exact, case-sensitive published default credentials without whitespace normalization, regardless of source. Pattern and deep-key masking MUST remain unchanged. Explicit authoritative diagnostic tokens retain fail-closed detail suppression for unusable values; they MUST NOT turn those values into payload matches.
+Heuristic secret-key collection and forwarded agent environment values MUST exclude exact, case-sensitive matches of the published default credential values (`lando`, `landolando`) exported by `@lando/sdk/secrets`, without whitespace normalization. This exclusion MUST NOT apply to explicit token registration, secret-store values, or resolved `${secret:...}` values, and MUST NOT weaken pattern or deep-key masking. An unusable explicit value suppresses the whole string detail that contains it; a byte stream cannot suppress a detail, so it has no payload match.
 
 Human tool and exec body bytes use the canonical payload redactor (value layer only). Metadata, events, diagnostics, envelopes, JSON data frames, and MCP keep `secrets`; guide capture keeps `transcript`. Consumers MUST NOT weaken the policy assigned to their surface or replace or reimplement its canonical redactor. `redactValue` MUST preserve structure and MUST NOT throw on cyclic or exotic input. The lowercase `[redacted]` sentinel is canonical; transcript placeholders are a separate byte-stable contract. Boundary and fixture gates enforce this ownership (§13.1, §13.4).
 
