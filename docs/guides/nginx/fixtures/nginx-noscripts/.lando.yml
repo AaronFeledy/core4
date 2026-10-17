@@ -1,0 +1,11 @@
+name: nginx-noscripts
+runtime: 4
+services:
+  web:
+    type: nginx
+    backend: app
+    noScripts:
+      - sites/*/files
+  app:
+    type: "php:8.3"
+    via: fpm
