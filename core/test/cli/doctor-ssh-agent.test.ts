@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { LandofileParseError, SshError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -133,6 +137,69 @@ describe("SSH agent doctor posture", () => {
       details: { mode: "host", upstream: { source: "env", reachable: true } },
     });
     expect(JSON.stringify(check)).not.toContain("private-value");
+  });
+
+  test("host doctor surfaces unavailable reason and socket path", async () => {
+    // Given an explicit host socket that does not exist.
+    const input = {
+      ...inputs(),
+      globalConfig: { sshAgent: { sidecar: false, socket: "/missing-agent.sock" } },
+    };
+    // When
+    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    // Then reason and path survive the doctor catch.
+    expect(check).toMatchObject({
+      status: "warn",
+      context: { reason: "socket-missing", socketPath: "/missing-agent.sock" },
+      details: {
+        mode: "host",
+        upstream: { source: "none", reachable: false, reason: "socket-missing", socketPath: "/missing-agent.sock" },
+      },
+    });
+  });
+
+  test("host doctor mentions a dangling SSH_AUTH_SOCK when another agent is picked", async () => {
+    // Given a dangling env socket and a live 1Password agent.
+    const root = await mkdtemp(join(tmpdir(), "doctor-ssh-dangling-"));
+    const dangling = join(root, "gone.sock");
+    const password = join(root, ".1password", "agent.sock");
+    await mkdir(join(root, ".1password"));
+    await symlink(join(root, "absent"), dangling);
+    const server = createServer((socket) =>
+      socket.once("data", () => socket.end(Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0]))),
+    );
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(password, resolve);
+    });
+    try {
+      // When doctor inspects host mode.
+      const check = await Effect.runPromise(
+        sshAgentPostureCheck({
+          ...inputs(),
+          globalConfig: { sshAgent: { sidecar: false } },
+          env: { SSH_AUTH_SOCK: dangling },
+          discovery: { home: root },
+        }),
+      );
+      // Then the selected agent is reported with a note about the dangling env socket.
+      expect(check).toMatchObject({
+        status: "pass",
+        severity: "info",
+        context: {
+          danglingEnvSocket: dangling,
+          note: expect.stringContaining("1Password"),
+        },
+        details: {
+          mode: "host",
+          upstream: { source: "1password", reachable: true, danglingEnvSocket: dangling },
+        },
+      });
+      expect(check.context.note).toContain("no longer exists");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("host mode without an agent is degraded with remediation naming sshAgent.socket", async () => {

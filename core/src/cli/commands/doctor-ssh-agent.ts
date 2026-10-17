@@ -4,7 +4,9 @@ import { probeSshAgent } from "@lando/engine/subsystems/ssh-agent/agent-probe";
 import {
   type HostAgentDiscoveryOptions,
   discoverHostSshAgent,
+  hostSshAgentSourceLabel,
 } from "@lando/engine/subsystems/ssh-agent/host-agent-discovery";
+import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import {
   awaitRuntimeSshAgent,
   runtimeSshAgentReady,
@@ -117,16 +119,25 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           source: discovered.upstream.source,
           reachable: true,
           identities: discovered.identities,
+          ...(discovered.danglingEnvSocket === undefined
+            ? {}
+            : { danglingEnvSocket: discovered.danglingEnvSocket }),
         } satisfies Details["upstream"];
       }
       default:
         return intent.mode satisfies never;
     }
   }).pipe(
-    Effect.catch(() =>
+    Effect.catch((error) =>
       Effect.succeed({
         source: intent.mode === "sidecar" ? "sidecar" : "none",
         reachable: false,
+        ...(error instanceof SshAgentUnavailableError
+          ? {
+              reason: error.reason,
+              ...(error.socketPath === undefined ? {} : { socketPath: error.socketPath }),
+            }
+          : {}),
       } satisfies Details["upstream"]),
     ),
   );
@@ -160,6 +171,19 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   }
   const ready = upstream.reachable && delivery !== "none";
   const recovery = intent.mode === "sidecar" ? "automatic" : "manual";
+  const danglingEnvNote =
+    upstream.danglingEnvSocket === undefined ||
+    upstream.source === "sidecar" ||
+    upstream.source === "none"
+      ? {}
+      : {
+          danglingEnvSocket: upstream.danglingEnvSocket,
+          note: `SSH_AUTH_SOCK points at a socket that no longer exists; using the ${hostSshAgentSourceLabel(upstream.source)} agent instead.`,
+        };
+  const hostSolution =
+    upstream.reason === "env-socket-dangling"
+      ? "The shell's agent socket points at one that no longer exists (common after VS Code or SSH reconnects). Open a new terminal, then restart the app. Select a provider with agentSocket delivery; host forwarding fails closed when unavailable."
+      : "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path. Select a provider with agentSocket delivery; host forwarding fails closed when unavailable.";
   const securityPosture: "sidecar-managed-keys" | "host-signatures" | "host-win32-loopback" =
     intent.mode === "sidecar"
       ? "sidecar-managed-keys"
@@ -202,6 +226,9 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       upstreamSource: upstream.source,
       upstreamReachable: String(upstream.reachable),
       ...(upstream.identities === undefined ? {} : { identities: String(upstream.identities) }),
+      ...(upstream.reason === undefined ? {} : { reason: upstream.reason }),
+      ...(upstream.socketPath === undefined ? {} : { socketPath: upstream.socketPath }),
+      ...danglingEnvNote,
       delivery,
       ...(runtimeVolume === undefined ? {} : { runtimeVolume }),
       securityPosture,
@@ -223,7 +250,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
             kind: input.fix ? "manual" : recovery,
             description:
               intent.mode === "host"
-                ? "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path. Select a provider with agentSocket delivery; host forwarding fails closed when unavailable."
+                ? hostSolution
                 : `${input.fix ? SSH_SPEC.manualRemediation : SSH_SPEC.automaticRemediation} Select a provider with agentSocket delivery if delivery is none. Sidecar forwarding is best-effort.`,
             ...(intent.mode === "sidecar"
               ? { command: input.fix ? "lando setup" : "lando doctor --fix" }
