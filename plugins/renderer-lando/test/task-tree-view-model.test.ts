@@ -241,6 +241,28 @@ describe("TaskTreeViewModel — new tree replaces prior single-tree state", () =
 });
 
 describe("TaskTreeViewModel — completion + failure summaries", () => {
+  test("retains neutral info state when a task completes with a reader-owned result", () => {
+    // Given
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("checks", "Checks", ["web"]));
+    vm.apply(taskStart("web", "Web check", "checks"));
+
+    // When
+    vm.apply(
+      Schema.decodeUnknownSync(TaskCompleteEvent)({
+        _tag: "task.complete",
+        taskId: "web",
+        outcome: "info",
+        summary: "HTTP 500",
+        timestamp: ts,
+      }),
+    );
+
+    // Then
+    expect(vm.renderState().tasks.get("web")).toMatchObject({ status: "done", info: true, warned: false });
+    expect(vm.snapshot().frameLines).toContain("│ • HTTP 500");
+  });
+
   test("failed task renders a blocked summary with exit code and remediation", () => {
     const vm = new TaskTreeViewModel();
     vm.apply(treeStart("build", "Building", ["db"]));
