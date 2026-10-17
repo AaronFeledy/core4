@@ -69,11 +69,11 @@ export const makeLandoService = (
         },
         message: makeMessageContract(io),
         output: {
-          stdout: (chunk: string) =>
+          stdout: (chunk: string | Uint8Array) =>
             Effect.sync(() =>
               output.writeOutput(chunk, () => io.writeStdout(chunk), io.stdoutIsTTY === true),
             ),
-          stderr: (chunk: string) =>
+          stderr: (chunk: string | Uint8Array) =>
             Effect.sync(() => output.writeOutput(chunk, () => io.writeStderr(chunk), io.isTTY === true)),
         },
       });

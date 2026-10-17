@@ -127,10 +127,10 @@ const createFakeTerminalRecorder = (
   const stdoutChunks: string[] = [];
   const io: RendererIO = {
     writeStdout: (chunk) => {
-      stdoutChunks.push(chunk);
+      stdoutChunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
     },
     writeStderr: (chunk) => {
-      chunks.push(chunk);
+      chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
     },
     terminalColumns: options.terminalColumns ?? 80,
     terminalRows: options.terminalRows,

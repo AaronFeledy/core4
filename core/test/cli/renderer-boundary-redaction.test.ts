@@ -186,7 +186,12 @@ test("start command hints remain usable when a secret explicitly matches the CLI
   });
   expect(tokens).not.toContain("lando");
   expect(tokens).toContain(customSecret);
-  const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+  const io = createBufferedRendererIO({
+    isTTY: true,
+    stdoutIsTTY: true,
+    stdoutColumns: 100,
+    terminalColumns: 100,
+  });
   try {
     await runWithRendererHandling(
       Effect.gen(function* () {

@@ -207,7 +207,7 @@ describe("piped exec binary archives", () => {
         forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
       }),
     );
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
 

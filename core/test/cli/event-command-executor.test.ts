@@ -83,8 +83,14 @@ const makeHarness = (): Harness => {
       error: (body: string) => Effect.sync(() => presentation.push(`error:${body}`)),
     },
     output: {
-      stdout: (chunk: string) => Effect.sync(() => presentation.push(`stdout:${chunk}`)),
-      stderr: (chunk: string) => Effect.sync(() => presentation.push(`stderr:${chunk}`)),
+      stdout: (chunk: string | Uint8Array) =>
+        Effect.sync(() =>
+          presentation.push(`stdout:${typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)}`),
+        ),
+      stderr: (chunk: string | Uint8Array) =>
+        Effect.sync(() =>
+          presentation.push(`stderr:${typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)}`),
+        ),
     },
   } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
@@ -454,7 +460,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect(process.exitCode).toBe(91);
     } finally {
       spawn.mockRestore();
-      process.exitCode = priorExitCode;
+      process.exitCode = priorExitCode ?? 0;
     }
   });
 
@@ -486,7 +492,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect(process.exitCode).toBe(92);
     } finally {
       spawn.mockRestore();
-      process.exitCode = priorExitCode;
+      process.exitCode = priorExitCode ?? 0;
     }
   });
 

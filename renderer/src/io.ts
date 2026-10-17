@@ -15,12 +15,6 @@ interface OutputStream {
   readonly on?: (event: "error", listener: (error: unknown) => void) => unknown;
 }
 
-/** Stdio and buffered IO always implement the optional RendererIO byte writers. */
-export type BinaryRendererIO = RendererIO & {
-  readonly writeStdoutBytes: (chunk: Uint8Array) => void;
-  readonly writeStderrBytes: (chunk: Uint8Array) => void;
-};
-
 export const isBrokenPipeError = (error: unknown): boolean => {
   if (typeof error !== "object" || error === null) return false;
   return (
@@ -183,7 +177,7 @@ export const createStdioRendererIO = (
   stderr: NodeJS.WriteStream = process.stderr,
   stdin: RendererInputStream = process.stdin,
   options: StdioRendererIOOptions = {},
-): BinaryRendererIO => {
+): RendererIO => {
   const platform = options.platform ?? process.platform;
   const terminalNewlines = options.terminalNewlines !== false && platform === "win32";
   const stdoutNewlines = terminalNewlineNormalizer(terminalNewlines && stdout.isTTY === true);
@@ -214,11 +208,11 @@ export const createStdioRendererIO = (
       return typeof value === "function" ? value.bind(stream) : value;
     },
   });
-  const io: BinaryRendererIO = {
-    writeStdout: (chunk) => guardedWrite("stdout", stdout, stdoutNewlines(chunk)),
-    writeStderr: (chunk) => guardedWrite("stderr", stderr, stderrNewlines(chunk)),
-    writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
-    writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
+  const io: RendererIO = {
+    writeStdout: (chunk) =>
+      guardedWrite("stdout", stdout, typeof chunk === "string" ? stdoutNewlines(chunk) : chunk),
+    writeStderr: (chunk) =>
+      guardedWrite("stderr", stderr, typeof chunk === "string" ? stderrNewlines(chunk) : chunk),
     ...(stdoutFeedsProcess(stdout) ? {} : { externalOutputStream: narrationTerminal }),
     isTTY: stderr.isTTY === true,
     stdoutIsTTY: stdout.isTTY === true,

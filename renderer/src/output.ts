@@ -119,14 +119,6 @@ export const writeResultLine = (text: string): Effect.Effect<void> =>
 export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(`${text}\n`)));
 
-const byteWriter = (
-  io: RendererIO | undefined,
-  key: "writeStdoutBytes" | "writeStderrBytes",
-): ((chunk: Uint8Array) => void) | undefined => {
-  const write = io?.[key];
-  return typeof write === "function" ? write : undefined;
-};
-
 const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   if (left.byteLength === 0) return right;
   if (right.byteLength === 0) return left;
@@ -138,7 +130,6 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
 
 export const layerStreamFrameSink = (
   format: CommandResultFormat,
-  io?: RendererIO,
 ): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
   Layer.effect(
     StreamFrameSink,
@@ -157,12 +148,6 @@ export const layerStreamFrameSink = (
           pending: Uint8Array;
         }
       >();
-      const writeRaw = (tag: "stdout" | "stderr", bytes: Uint8Array): boolean => {
-        const writeBytes = byteWriter(io, tag === "stderr" ? "writeStderrBytes" : "writeStdoutBytes");
-        if (writeBytes === undefined) return false;
-        writeBytes(bytes);
-        return true;
-      };
       const write = Effect.fnUntraced(function* (
         state: NonNullable<ReturnType<typeof states.get>>,
         bytes: Uint8Array,
@@ -188,9 +173,7 @@ export const layerStreamFrameSink = (
         }
         if (format === "yaml") return;
         if (frame.raw === true) {
-          if (writeRaw(frame._tag, bytes)) return;
-          const chunk = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
-          yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
+          yield* frame._tag === "stderr" ? renderer.output.stderr(bytes) : renderer.output.stdout(bytes);
           return;
         }
         const chunk = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);

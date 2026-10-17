@@ -116,8 +116,8 @@ const makeMessageContract = (formatter: LineFormatter, io: RendererNarrationIO) 
  * results (stdout) and process-level failure diagnostics (stderr).
  */
 const makeOutputChannel = (io: RendererIO) => ({
-  stdout: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStdout(chunk)),
-  stderr: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
+  stdout: (chunk: string | Uint8Array): Effect.Effect<void> => Effect.sync(() => io.writeStdout(chunk)),
+  stderr: (chunk: string | Uint8Array): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
 });
 
 const capabilitiesForFallback = (id: "plain" | "json" | "verbose", io: RendererIO): RendererCapabilities => {

@@ -22,7 +22,7 @@ const store = SecretStore.of({
 const drive = async (format: "text" | "json", chunks: readonly (string | Uint8Array)[]) => {
   const io = createBufferedRendererIO();
   const service = makeRedactionService(store);
-  const layer = layerStreamFrameSink(format, io).pipe(
+  const layer = layerStreamFrameSink(format).pipe(
     Layer.provide(Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, service))),
   );
   await Effect.runPromise(
@@ -47,7 +47,7 @@ describe("payload frames", () => {
   test.each(["text", "json"] as const)("masks split stderr values in %s", async (format) => {
     // Given
     const io = createBufferedRendererIO();
-    const layer = layerStreamFrameSink(format, io).pipe(
+    const layer = layerStreamFrameSink(format).pipe(
       Layer.provide(
         Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, makeRedactionService(store))),
       ),
@@ -108,7 +108,7 @@ describe("payload frames", () => {
     resetRegisteredRedactionValuesForTesting();
     const io = createBufferedRendererIO();
     const service = makeRedactionService(store);
-    const layer = layerStreamFrameSink("text", io).pipe(
+    const layer = layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, service))),
     );
     // When

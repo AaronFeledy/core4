@@ -111,7 +111,7 @@ describe("collectExecStream binary frames", () => {
     // Given: abc plus an unfinished 3-byte sequence, then the stream fails.
     const io = createBufferedRendererIO();
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), identityRedaction)),
     );
 

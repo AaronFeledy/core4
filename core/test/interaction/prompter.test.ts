@@ -28,13 +28,13 @@ const capturingRenderer = (id = "plain") => {
     capabilities: { color: false, interactive: false, animation: false, notifications: false },
     message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
     output: {
-      stdout: (chunk: string) =>
+      stdout: (chunk) =>
         Effect.sync(() => {
-          out += chunk;
+          out += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
         }),
-      stderr: (chunk: string) =>
+      stderr: (chunk) =>
         Effect.sync(() => {
-          err += chunk;
+          err += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
         }),
     },
   });

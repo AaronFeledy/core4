@@ -54,7 +54,10 @@ test("App handle exec passes provider stderr through the captured library Render
         message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
         output: {
           stdout: () => Effect.void,
-          stderr: (chunk) => Effect.sync(() => void stderr.push(chunk)),
+          stderr: (chunk) =>
+            Effect.sync(
+              () => void stderr.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)),
+            ),
         },
       }),
     ),

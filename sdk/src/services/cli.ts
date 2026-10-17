@@ -31,8 +31,8 @@ export class Renderer extends Context.Service<
       readonly error: (body: string, remediation?: string) => Effect.Effect<void, EventError>;
     };
     readonly output: {
-      readonly stdout: (chunk: string) => Effect.Effect<void>;
-      readonly stderr: (chunk: string) => Effect.Effect<void>;
+      readonly stdout: (chunk: string | Uint8Array) => Effect.Effect<void>;
+      readonly stderr: (chunk: string | Uint8Array) => Effect.Effect<void>;
     };
   }
 >()("@lando/core/Renderer") {}

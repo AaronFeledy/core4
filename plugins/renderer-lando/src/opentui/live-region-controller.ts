@@ -68,7 +68,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
 
   rememberScrollback(_text: string): void {}
 
-  suspendOutput(text: string, write: () => void): void {
+  suspendOutput(chunk: string | Uint8Array, write: () => void): void {
     const session = this.fullTail;
     if (session === undefined) this.inline.paint([]);
     else if (!this.fullTailSuspended) {
@@ -79,7 +79,8 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
       write();
     } finally {
       // Both modes stay suspended until a later chunk terminates a partial payload line.
-      if (text.length > 0) this.openLine = !text.endsWith("\n");
+      if (chunk.length > 0)
+        this.openLine = typeof chunk === "string" ? !chunk.endsWith("\n") : chunk.at(-1) !== 10;
       if (!this.openLine) this.repaintAfterOutput();
     }
   }

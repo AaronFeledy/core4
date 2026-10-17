@@ -29,7 +29,7 @@ const emitRaw = async (
   chunk: string | Uint8Array,
   tag: "stdout" | "stderr" = "stdout",
 ) => {
-  const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+  const layer = RendererOutput.layerStreamFrameSink("text").pipe(
     Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
   );
   await Effect.runPromise(
@@ -44,7 +44,7 @@ describe("stream frame redaction", () => {
   test("masks a registered value split across chunks", async () => {
     // Given
     const io = createBufferedRendererIO();
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
     // When
@@ -73,7 +73,7 @@ describe("stream frame redaction", () => {
 
   test("preserves identical binary bytes on terminal and file sinks", async () => {
     // Given
-    const terminal = createBufferedRendererIO({ isTTY: true });
+    const terminal = createBufferedRendererIO({ isTTY: true, stdoutIsTTY: true });
     const file = createBufferedRendererIO();
     // When
     await emitRaw(terminal, payload);
@@ -120,7 +120,7 @@ describe("stream frame redaction", () => {
     // Given
     const io = createBufferedRendererIO();
     const euro = new TextEncoder().encode("pay-€-now");
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
 
@@ -141,7 +141,7 @@ describe("stream frame redaction", () => {
     // Given: abc plus a held 0xe2, then invalid bytes.
     const io = createBufferedRendererIO();
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0xff, 0x00, 0x01]);
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
 
@@ -162,7 +162,7 @@ describe("stream frame redaction", () => {
     // Given: abc plus an unfinished 3-byte sequence at end of stream.
     const io = createBufferedRendererIO();
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
 
@@ -183,7 +183,7 @@ describe("stream frame redaction", () => {
     // Given: a redirected sink and EF BB BF hello, which used to become hellollo.
     const io = createBufferedRendererIO();
     const input = new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x65, 0x6c, 0x6c, 0x6f]);
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
 
@@ -205,7 +205,7 @@ describe("stream frame redaction", () => {
     // Given: a TTY sink and an unfinished sequence.
     const io = createBufferedRendererIO({ isTTY: true, stdoutIsTTY: true });
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
 

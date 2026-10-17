@@ -7,13 +7,7 @@
     "terminalRows",
     "writeStderr"
   ],
-  "rendererOutputIOMembers": [
-    "stdoutColumns",
-    "stdoutIsTTY",
-    "writeStderrBytes",
-    "writeStdout",
-    "writeStdoutBytes"
-  ],
+  "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
   "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
   "publicDefaultCredentialExports": [
     "DEFAULT_PASSWORD",

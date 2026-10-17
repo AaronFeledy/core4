@@ -76,8 +76,21 @@ describe("init recipe output through the command renderer", () => {
           return true;
         },
       });
-      const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 120, terminalRows: 30 });
-      const io = { ...base, externalOutputStream: stdout as unknown as NodeJS.WriteStream };
+      const base = createBufferedRendererIO({
+        isTTY: true,
+        stdoutIsTTY: true,
+        stdoutColumns: 120,
+        terminalColumns: 120,
+        terminalRows: 30,
+      });
+      const io = {
+        ...base,
+        externalOutputStream: stdout as unknown as NodeJS.WriteStream,
+        writeStdout: (chunk: string | Uint8Array) => {
+          base.writeStdout(chunk);
+          chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+        },
+      };
       await runWithRendererHandling(
         Effect.gen(function* () {
           const events = yield* EventService;
@@ -120,7 +133,8 @@ describe("init recipe output through the command renderer", () => {
       expect(screen.indexOf("Run 'lando start'")).toBeLessThan(screen.indexOf("\u256D\u2500 apps:init"));
       expect(screen).toContain("Rendered 2 files");
       expect(screen).toContain("Ran 1 action");
-      expect(base.stdout()).toBe("");
+      expect(base.stdout()).toContain("Run 'lando start'");
+      expect(base.stdout()).not.toContain("\u256D\u2500 apps:init");
     });
   });
 
@@ -190,10 +204,10 @@ describe("init recipe output through the command renderer", () => {
 
   test("post-init waits for asynchronous renderer output before completing", async () => {
     const lines: string[] = [];
-    const delayed = (chunk: string) =>
+    const delayed = (chunk: string | Uint8Array) =>
       Effect.promise(async () => {
         await Bun.sleep(10);
-        lines.push(chunk);
+        lines.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
       });
     const renderer = Renderer.of({
       id: "plain",
