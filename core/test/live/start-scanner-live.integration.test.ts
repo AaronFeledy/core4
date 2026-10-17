@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { CheckResult } from "@lando/sdk/schema";
 import { Effect, Exit, Fiber, Schema } from "effect";
 
 import {
@@ -13,7 +14,9 @@ import {
 
 const envelope = Schema.Struct({
   ok: Schema.Boolean,
+  warnings: Schema.Array(Schema.Unknown),
   result: Schema.Struct({
+    checks: Schema.Array(CheckResult),
     servicesStarted: Schema.Array(
       Schema.Struct({
         name: Schema.String,
@@ -23,12 +26,11 @@ const envelope = Schema.Struct({
     ),
   }),
 });
-const warning = Schema.Struct({ payload: Schema.Struct({ body: Schema.String }) });
 
 describe.serial("live start scanner", () => {
   for (const path of ["/scan", "/fail"] as const) {
     test.skipIf(!liveEnabled)(
-      path === "/scan" ? "scanner-live-published" : "scanner-live-warn",
+      path === "/scan" ? "scanner-live-published" : "scanner-live-service-error",
       async () => {
         await Effect.runPromise(
           Effect.scoped(
@@ -52,13 +54,14 @@ describe.serial("live start scanner", () => {
               const warningLine = cli.stdout
                 .split("\n")
                 .find((line) => line.startsWith('{"_tag":"event","event":"message.warn"'));
-              expect(warningLine !== undefined).toBe(path === "/fail");
-              if (warningLine !== undefined) {
-                const body = Schema.decodeUnknownSync(Schema.fromJsonString(warning))(warningLine).payload
-                  .body;
-                expect(body).toContain(`${url}/fail`);
-                expect(body).toContain("503");
-              }
+              expect(warningLine).toBeUndefined();
+              expect(result.warnings).toEqual([]);
+              expect(result.result.checks).toMatchObject([
+                {
+                  verdict: path === "/fail" ? "service-error" : "ready",
+                  statusCode: path === "/fail" ? 503 : 200,
+                },
+              ]);
               const independent = yield* Effect.promise(() =>
                 fetch(new URL("/independent", url), { signal: AbortSignal.timeout(5000) }),
               );

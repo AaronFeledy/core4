@@ -56,8 +56,37 @@ export const buildStartSummary = (
         rows: urls.map((url) => {
           const httpRest = url.startsWith("http://") ? url.slice("http://".length) : undefined;
           const muted = httpRest !== undefined && httpsRests.has(httpRest);
+          const check = isWebUrl(url)
+            ? result.checks?.find(
+                (check) =>
+                  result.servicesStarted.some(
+                    (service) => service.name === check.service && service.endpoints.includes(url),
+                  ) && check.url.startsWith(new URL(url.endsWith("/") ? url : `${url}/`).href),
+              )
+            : undefined;
+          let suffix = "";
+          if (check !== undefined) {
+            switch (check.verdict) {
+              case "ready":
+                suffix = check.statusCode === undefined ? "" : ` ${check.statusCode}`;
+                break;
+              case "app-error":
+                suffix = ` ${check.statusCode} from your app`;
+                break;
+              case "service-error":
+                suffix = ` ${check.statusCode} from the web server`;
+                break;
+              case "lando-error":
+                suffix = " unreachable";
+                break;
+              default: {
+                const unreachable: never = check.verdict;
+                return unreachable;
+              }
+            }
+          }
           return {
-            label: url,
+            label: `${url}${suffix}`,
             ...(isWebUrl(url) ? { href: url } : {}),
             ...(muted ? { muted: true } : {}),
           };
