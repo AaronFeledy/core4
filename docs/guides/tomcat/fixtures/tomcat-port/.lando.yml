@@ -1,0 +1,5 @@
+name: tomcat-port-demo
+services:
+  appserver:
+    type: tomcat
+    port: 9090

@@ -23,7 +23,7 @@ Bun is the runtime, package manager, test runner, bundler, binary packager, subp
 - `Bun.spawn` is reserved for argv-precise execution through `ProcessRunner`. `node:child_process` is forbidden in core except behind a compatibility adapter.
 - `Bun.$` is reserved for shell-shaped work through `ShellRunner`. Core MUST NOT use `ProcessRunner` to invoke a shell or use `ShellRunner` to re-encode an argv call. Release and codegen scripts outside the runtime Layer built by `makeLandoRuntime` MAY use `Bun.$` directly (§17.1).
 - `Bun.file` and `Bun.write` are the filesystem primitives. `node:fs` is allowed only inside the `FileSystem` adapter when Bun lacks equivalent behavior.
-- Bun `fetch` is available only through `HttpClient`, the single egress chokepoint for Lando-owned network access (§10.3.2). Package-manager work through `BunSelfRunner` and standalone installers are the only carve-outs.
+- Bun `fetch` is available only through `HttpClient`, the single egress chokepoint for shipped Lando runtime and plugin network access (§10.3.2). Package-manager work through `BunSelfRunner` and standalone installers remain carve-outs. Repository-only maintenance scripts outside the shipped runtime MAY fetch upstream inputs directly on an explicit maintainer command or dedicated maintenance workflow; they MUST validate downloaded inputs and MUST NOT introduce network access into ordinary offline codegen (§17.2). This exception does not apply to commands, plugins, or library runtime services.
 - TypeScript executes natively; `tsc --noEmit` is a type gate, not a development build step.
 - Core is ESM-only. Plugins may publish CommonJS through loader interop.
 
