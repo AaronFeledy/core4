@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, database]
 
 # Import and export app databases
 
-Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database.
+Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed <file>` to load a dump into a database Lando freshly created.
 
 A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
 
@@ -39,8 +39,11 @@ Snapshots land in Lando's snapshot store, not next to your dump files. Lando bri
 
 ```sh
 lando db:snapshot --label before-change
-lando db:restore before-change
+lando db:snapshots
+lando db:restore <snapshot-id> --yes
 ```
+
+`db:restore` takes the snapshot id that `db:snapshots` prints, not the label.
 
 ## Confirm destructive work
 
@@ -80,3 +83,7 @@ lando db:reset --yes
     </Step>
   </Scenario>
 </Guide>
+
+## Next
+
+- [Run a git worktree as its own Lando app](./git-worktrees.mdx)

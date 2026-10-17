@@ -1,0 +1,177 @@
+---
+id: git-worktrees
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, git, database]
+---
+
+# Run a git worktree as its own Lando app
+
+Give each `git worktree` its own app name, URL, and database, then load the main checkout's data into it. A feature branch, a hotfix, and a coding agent can each run a copy of the same repo at once. You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman).
+
+The commands below use `shop` as the main checkout and `shop-feature` as the worktree, side by side in one parent folder. This is the main checkout's `.lando.yml`:
+
+```yaml
+name: shop
+services:
+  web:
+    type: php:8.4
+    primary: true
+    environment:
+      DB_HOST: database
+      DB_NAME: "{{ services.database.creds.database }}"
+  database:
+    type: postgres
+```
+
+Ignore the per-checkout files once, in the main checkout's `.gitignore`. Every worktree shares it:
+
+```text
+.lando.local.yml
+*.sql.gz
+```
+
+## Export the main checkout's database
+
+With the main app running, dump its database into the app root:
+
+```sh
+lando db:export baseline.sql.gz
+```
+
+`db:export` writes inside the app root only. A destination like `../baseline.sql.gz` fails with `DataSourceOutsideRootError`, so export in place and read the file from the worktree.
+
+## Add the worktree
+
+```sh
+git worktree add ../shop-feature -b feature
+cd ../shop-feature
+```
+
+The worktree has the same `.lando.yml`, so it also claims `name: shop`. Start it like that and Lando stops with a `VolumeOperationError` that says the two apps share an app name. Two checkouts don't get to fight over one database.
+
+## Rename the worktree in `.lando.local.yml`
+
+Save this as `.lando.local.yml` in the worktree. The committed Landofile stays untouched:
+
+```yaml
+name: shop-feature
+services:
+  web:
+    appMount:
+      target: /app
+      includes:
+        - .git
+```
+
+| Key | Why |
+| --- | --- |
+| `name: shop-feature` | Gives the worktree its own containers, volumes, database, and hostname |
+| `appMount.includes: [.git]` | In a worktree, `.git` is a one-line file that points back at the main checkout. Lando keeps `.git` out of app mounts with an empty volume overlay, which needs a directory. Including `.git` mounts the file as-is. Repeat it for every service that mounts your code. Database services have no app mount |
+
+Check the layer took:
+
+```sh
+lando app:config --format=json
+```
+
+`result.app` reads `shop-feature`.
+
+## Start the worktree
+
+```sh
+lando start
+lando info
+```
+
+The worktree serves at `web.shop-feature.lndo.site` while the main checkout keeps `web.shop.lndo.site`. Both run at the same time. Open the URLs `lando info` prints.
+
+The database name defaults to the app name, so the worktree's database is `shop-feature`. `DB_NAME` comes from the resolved credentials, so it follows along:
+
+```sh
+lando exec web -- printenv DB_NAME
+```
+
+That prints `shop-feature` here and `shop` in the main checkout. Build connection settings from `{{ services.database.creds.* }}` and nothing in your code has to know which checkout it's in.
+
+## Seed the worktree's database
+
+Load the main checkout's dump, then count rows in a table you know is there. This sample's database has a `products` table:
+
+```sh
+lando db:seed ../shop/baseline.sql.gz
+lando psql -tAc 'SELECT count(*) FROM products;'
+```
+
+`db:seed` reads a dump from outside the app root, like the main checkout's folder, but it only loads into a database Lando freshly created that nothing has written to yet. No prompt, no `--yes`.
+
+Seed once. A second `db:seed` fails with `SqlSeedStateError`, and so does a seed into a database volume left behind by a start that failed partway. To reseed, delete the worktree's volumes and start fresh. This throws away the worktree's database:
+
+```sh
+lando destroy -y --volumes
+lando start
+lando db:seed ../shop/baseline.sql.gz
+```
+
+## Snapshot before risky work
+
+Take a snapshot before a migration, list it, and roll back when the migration eats a table:
+
+```sh
+lando db:snapshot --label before-migration
+lando db:snapshots
+lando db:restore <snapshot-id> --yes
+```
+
+`db:restore` takes the snapshot id, the first line of each entry in `db:snapshots`, not the label. In a script, pull the id from JSON:
+
+```sh
+lando db:snapshots --format=json | jq -r '.result.snapshots[] | select(.label == "before-migration") | .id'
+```
+
+Snapshots belong to the checkout that took them. To see what the main checkout has saved, list its snapshots from the worktree:
+
+```sh
+lando db:snapshots --from-app shop
+```
+
+`--from-app` only matches checkouts of the same Git repository. `--from-path ../shop` selects the main checkout by folder instead. Listing is as far as it goes: restoring the main checkout's snapshot into the worktree fails with `SqlRecoveryUnavailableError`, because a snapshot is a physical copy of the volume that made it. Move data between checkouts with `db:export` and `db:seed`.
+
+## Remove the worktree
+
+Destroy the app before you delete its folder. `--volumes` deletes the worktree's database; drop it to keep the data:
+
+```sh
+lando destroy -y --volumes
+cd ../shop
+git worktree remove ../shop-feature
+```
+
+Deleted the folder first? `lando doctor` reports `missing-app-root` for it and prints the cleanup command with the old path:
+
+```sh
+lando destroy --root /path/to/shop-feature -y --volumes
+```
+
+<Guide>
+  <Scenario id="worktree-layer" render>
+    <Step name="scaffold">
+      <UseFixture name="shop-feature" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"shop-feature\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"includes\":\\s*\\[\\s*\"\\.git\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DB_NAME\":\\s*\"\\{\\{ services\\.database\\.creds\\.database \\}\\}\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Import and export app databases](./db-import-export.mdx)
+- [Exclude paths from file sync](../setup/file-sync-excludes.mdx)
