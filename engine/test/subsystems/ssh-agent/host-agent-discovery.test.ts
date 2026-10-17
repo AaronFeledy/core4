@@ -221,8 +221,8 @@ test("explicit live symlink is accepted and relayed by authored path", async () 
       }),
     );
     // Then the authored symlink path is selected, not the resolved socket.
-    expect(result.upstream).toMatchObject({ source: "explicit", path: link, _tag: "unix" });
-    expect(result.upstream.path).not.toBe(live);
+    expect(result.upstream).toEqual({ _tag: "unix", path: link, source: "explicit" });
+    expect(link).not.toBe(live);
     expect(result.identities).toBe(0);
   } finally {
     await agent.close();

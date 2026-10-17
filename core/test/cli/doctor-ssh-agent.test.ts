@@ -153,7 +153,12 @@ describe("SSH agent doctor posture", () => {
       context: { reason: "socket-missing", socketPath: "/missing-agent.sock" },
       details: {
         mode: "host",
-        upstream: { source: "none", reachable: false, reason: "socket-missing", socketPath: "/missing-agent.sock" },
+        upstream: {
+          source: "none",
+          reachable: false,
+          reason: "socket-missing",
+          socketPath: "/missing-agent.sock",
+        },
       },
     });
   });

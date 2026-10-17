@@ -229,7 +229,9 @@ export const discoverHostSshAgent = Effect.fnUntraced(function* (
         if (!isUsableSocket(inspection)) return yield* Effect.fail(unavailable("socket-not-socket", path));
         const self = process.getuid?.();
         if (self !== undefined && inspection.uid !== undefined && inspection.uid !== self) {
-          return yield* Effect.fail(unavailable("socket-owner-mismatch", path, socketOwnerLabel(inspection.uid)));
+          return yield* Effect.fail(
+            unavailable("socket-owner-mismatch", path, socketOwnerLabel(inspection.uid)),
+          );
         }
       } else {
         if (inspection.kind === "missing") return undefined;

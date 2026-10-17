@@ -6,13 +6,13 @@ import {
   discoverHostSshAgent,
   hostSshAgentSourceLabel,
 } from "@lando/engine/subsystems/ssh-agent/host-agent-discovery";
-import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import {
   awaitRuntimeSshAgent,
   runtimeSshAgentReady,
   sidecarSocketState,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
+import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -172,9 +172,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   const ready = upstream.reachable && delivery !== "none";
   const recovery = intent.mode === "sidecar" ? "automatic" : "manual";
   const danglingEnvNote =
-    upstream.danglingEnvSocket === undefined ||
-    upstream.source === "sidecar" ||
-    upstream.source === "none"
+    upstream.danglingEnvSocket === undefined || upstream.source === "sidecar" || upstream.source === "none"
       ? {}
       : {
           danglingEnvSocket: upstream.danglingEnvSocket,
