@@ -51,7 +51,7 @@ describe("RendererCapabilities matrix", () => {
   for (const isTTY of [true, false]) {
     test(`service and event consumer agree on the first notification when isTTY is ${String(isTTY)}`, async () => {
       const writes: string[] = [];
-      const io = { isTTY, writeStdout: (text: string) => writes.push(text), writeStderr: () => undefined };
+      const io = { isTTY, writeStderr: (text: string) => writes.push(text), writeStdout: () => undefined };
       const consumer = landoRendererContribution.makeEventConsumer(io);
       if (consumer === undefined) throw new Error("Lando renderer must provide an event consumer");
       const runtime = ManagedRuntime.make(
@@ -61,8 +61,8 @@ describe("RendererCapabilities matrix", () => {
       );
       const event = NotifyDesktopEvent.make({ title: "Lando\u0007", body: "done\u202E" });
       const notification = Promise.withResolvers<void>();
-      const originalWrite = io.writeStdout;
-      io.writeStdout = (text) => {
+      const originalWrite = io.writeStderr;
+      io.writeStderr = (text) => {
         originalWrite(text);
         notification.resolve();
         return writes.length;
@@ -86,7 +86,7 @@ describe("RendererCapabilities matrix", () => {
     const calls: string[] = [];
     const runtime = ManagedRuntime.make(
       makeLandoEventConsumer(
-        { isTTY: true, writeStdout: () => undefined, writeStderr: () => undefined },
+        { isTTY: true, writeStderr: () => undefined },
         {
           triggerNotification: (message) => {
             calls.push(message);
@@ -123,7 +123,7 @@ describe("RendererCapabilities matrix", () => {
         let loads = 0;
         Reflect.set(globalThis, Symbol.for("@lando/test/opentui-loader-probe"), () => { loads += 1; });
         const { renderer } = await import("./plugins/renderer-lando/src/index.ts");
-        const io = { isTTY: true, externalOutputStream: process.stdout, writeStdout: () => {}, writeStderr: () => {} };
+        const io = { isTTY: true, externalOutputStream: process.stderr, writeStdout: () => {}, writeStderr: () => {} };
         const runtime = ManagedRuntime.make(Layer.merge(renderer.makeService(io), renderer.makeEventConsumer(io)).pipe(Layer.provideMerge(Events.layer)));
         try {
           await runtime.runPromise(Renderer);

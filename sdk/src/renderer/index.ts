@@ -70,18 +70,12 @@ export {
 } from "../schema/renderer-panel.ts";
 
 /**
- * The terminal I/O seam constructed at the CLI command boundary and injected
- * into a renderer's factories. `isTTY` engages the interactive task-tree tail;
- * the column/row hints bound wrapping and the expanded detail pane.
+ * Narration-only terminal access. Event consumers cannot write command stdout.
+ * All terminal metadata describes stderr, independently of redirected results.
  */
-export interface RendererIO {
-  readonly writeStdout: (chunk: string) => void;
+export interface RendererNarrationIO {
   readonly writeStderr: (chunk: string) => void;
-  /** Raw stdout bytes for redirected binary live frames. Omitted writers fall back to UTF-8 text. */
-  readonly writeStdoutBytes?: (chunk: Uint8Array) => void;
-  /** Raw stderr bytes for redirected binary live frames. Omitted writers fall back to UTF-8 text. */
-  readonly writeStderrBytes?: (chunk: Uint8Array) => void;
-  /** Raw stdout stream patched by the capture-stdout substrate; undefined degrades to line mode. */
+  /** Stderr terminal stream; undefined degrades to line mode. */
   readonly externalOutputStream?: NodeJS.WriteStream;
   /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */
   readonly isTTY?: boolean;
@@ -91,6 +85,54 @@ export interface RendererIO {
   readonly terminalRows?: number | undefined;
   /** Subscribe to raw keypress chunks; returns an unsubscribe that restores input state. */
   readonly subscribeInput?: (onKey: (raw: string) => void) => () => void;
+}
+
+const NARRATION_OPTIONAL_KEYS = [
+  "externalOutputStream",
+  "isTTY",
+  "terminalColumns",
+  "terminalRows",
+  "subscribeInput",
+] as const satisfies ReadonlyArray<keyof RendererNarrationIO>;
+
+const narrationViews = new WeakMap<RendererNarrationIO, RendererNarrationIO>();
+const narrationViewSet = new WeakSet<RendererNarrationIO>();
+
+/**
+ * Cached narration-only view of an IO object. The view has no stdout writer at
+ * runtime, reads stderr metadata live from its source, and is stable per
+ * source, so state keyed by IO identity stays shared between a Renderer
+ * service and its event consumer. A view projects to itself.
+ */
+export const narrationIO = (io: RendererNarrationIO): RendererNarrationIO => {
+  if (narrationViewSet.has(io)) return io;
+  const cached = narrationViews.get(io);
+  if (cached !== undefined) return cached;
+  const view: RendererNarrationIO = { writeStderr: (chunk) => io.writeStderr(chunk) };
+  for (const key of NARRATION_OPTIONAL_KEYS) {
+    if (!(key in io)) continue;
+    Object.defineProperty(view, key, {
+      enumerable: true,
+      get: () => {
+        const value: unknown = Reflect.get(io, key);
+        return typeof value === "function" ? value.bind(io) : value;
+      },
+    });
+  }
+  Object.freeze(view);
+  narrationViews.set(io, view);
+  narrationViewSet.add(view);
+  return view;
+};
+
+/** Full service IO. Only the Renderer output channel owns stdout. */
+export interface RendererIO extends RendererNarrationIO {
+  readonly writeStdout: (chunk: string) => void;
+  readonly writeStdoutBytes?: (chunk: Uint8Array) => void;
+  readonly writeStderrBytes?: (chunk: Uint8Array) => void;
+  /** Result formatting and payload suspension use stdout, not the narration terminal. */
+  readonly stdoutIsTTY?: boolean;
+  readonly stdoutColumns?: number | undefined;
 }
 
 export interface InteractivePromptDriver {
@@ -105,6 +147,6 @@ export interface InteractivePromptDriver {
 export interface RendererContribution {
   readonly id: string;
   readonly makeService: (io: RendererIO) => Layer.Layer<Renderer>;
-  readonly makeEventConsumer: (io: RendererIO) => Layer.Layer<never, never, EventService>;
+  readonly makeEventConsumer: (io: RendererNarrationIO) => Layer.Layer<never, never, EventService>;
   readonly loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>;
 }

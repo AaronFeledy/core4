@@ -48,6 +48,7 @@ import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
+import { ResultTerminal } from "./result-terminal";
 import { type TraceSelection, activeTrace } from "./trace-selection";
 
 export {
@@ -231,8 +232,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const renderContext: RenderContext = {
     mode: options.rendererMode,
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
-    columns: io.terminalColumns,
-    isTTY: io.isTTY === true,
+    columns: io.stdoutColumns,
+    isTTY: io.stdoutIsTTY === true,
     env: sourceEnv,
   };
   const rendererLayer = RendererOutput.layerServiceForMode(options.rendererMode, landoRenderer, io);
@@ -340,7 +341,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         });
         message = redactor.redactString(message);
       }
-      if (isDecoratedContext(renderContext)) message = dimBugReportDetails(message);
+      if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
       yield* writeDiagnosticLine(message);
       yield* setFailureExitCode(cause);
     });
@@ -524,6 +525,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       ),
   );
   const diagnosedProgram = tracedProgram.pipe(
+    Effect.provideService(ResultTerminal, { isTTY: renderContext.isTTY, columns: renderContext.columns }),
     Effect.withErrorReporting({ defectsOnly: true }),
     Effect.provide(Layer.merge(failureDiagnosticsLayer, ErrorReporter.layer([reporter]))),
   );

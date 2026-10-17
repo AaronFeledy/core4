@@ -70,7 +70,7 @@ export const PromptSpec = Schema.Struct({
 });
 export type PromptSpec = typeof PromptSpec.Type;
 
-/** Interactivity mode for a prompt batch. `auto` gates interactivity on a TTY stdin. */
+/** Interactivity mode for a prompt batch. `auto` prompts only when stdin and stderr are TTYs. */
 export type PromptMode = "auto" | "interactive" | "non-interactive";
 
 /**
@@ -89,7 +89,7 @@ export interface PromptBatchOptions {
   readonly yes?: boolean;
   /** Force interactive (`true`) or non-interactive (`false`) resolution. */
   readonly interactive?: boolean;
-  /** Interactivity mode; `auto` keys off TTY stdin. */
+  /** Interactivity mode; `auto` prompts only when stdin and stderr are TTYs. */
   readonly mode?: PromptMode;
   /** Working directory used for `path`-type resolution. */
   readonly cwd?: string;

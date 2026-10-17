@@ -27,6 +27,7 @@ export type * from "./live-region-types.ts";
 export class LiveRegionController<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
   private footerLines: ReadonlyArray<string> = [];
   private openLine = false;
+  private fullTailSuspended = false;
   private readonly deferred: DeferredScrollback;
   private readonly inline: ReturnType<typeof createInlineLiveRegionPainter>;
   private readonly onStdoutResize: () => void;
@@ -50,7 +51,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.onStdoutResize = (): void => {
       const columns = options.stdout.columns;
       const rows = options.stdout.rows;
-      if (typeof columns === "number" && typeof rows === "number") this.applyResize(columns, rows);
+      if (typeof columns === "number" && typeof rows === "number") this.resize(columns, rows);
     };
     options.stdout.on("resize", this.onStdoutResize);
   }
@@ -67,6 +68,35 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
 
   rememberScrollback(_text: string): void {}
 
+  suspendOutput(text: string, write: () => void): void {
+    const session = this.fullTail;
+    if (session === undefined) this.inline.paint([]);
+    else if (!this.fullTailSuspended) {
+      session.renderer.suspend?.();
+      this.fullTailSuspended = true;
+    }
+    try {
+      write();
+    } finally {
+      // Both modes stay suspended until a later chunk terminates a partial payload line.
+      if (text.length > 0) this.openLine = !text.endsWith("\n");
+      if (!this.openLine) this.repaintAfterOutput();
+    }
+  }
+
+  private repaintAfterOutput(): void {
+    const session = this.fullTail;
+    if (session === undefined) {
+      if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
+      return;
+    }
+    if (this.fullTailSuspended) {
+      this.fullTailSuspended = false;
+      session.renderer.resume?.();
+    }
+    paintFullTailFooter(session, this.footerLines, this.width, this.height);
+  }
+
   noteInPlaceOutput(): void {
     this.openLine = true;
   }
@@ -75,7 +105,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.footerLines = [...lines];
     const session = this.fullTail;
     if (session !== undefined) {
-      paintFullTailFooter(session, lines, this.width, this.height);
+      if (!this.fullTailSuspended) paintFullTailFooter(session, lines, this.width, this.height);
       return;
     }
     if (this.enteringFullTail) return;
@@ -91,7 +121,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.footerLines = [];
     const session = this.fullTail;
     if (session !== undefined) {
-      paintFullTailFooter(session, [], this.width, this.height);
+      if (!this.fullTailSuspended) paintFullTailFooter(session, [], this.width, this.height);
       return;
     }
     if (this.enteringFullTail) return;
@@ -124,6 +154,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   async enterFullTail(): Promise<void> {
     if (this.fullTail !== undefined || this.enteringFullTail) return;
     this.enteringFullTail = true;
+    this.inline.paint([]);
     try {
       this.fullTail = await acquireFullTail(this.options, this.deps, (width, height) => {
         this.applyResize(width, height);
@@ -150,8 +181,9 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     const drained = await this.deferred.drain();
     leaveFullTail(session);
     this.fullTail = undefined;
+    this.fullTailSuspended = false;
     for (const source of drained) this.inline.commitAbove(source);
-    if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
+    if (this.footerLines.length > 0 && !this.openLine) this.inline.paint(this.footerLines);
   }
 
   async reset(): Promise<void> {
@@ -168,6 +200,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
       if (session !== undefined) {
         leaveFullTail(session);
         this.fullTail = undefined;
+        this.fullTailSuspended = false;
       }
     } catch (cause) {
       recordOpenTuiSubstrateFailure(cause);

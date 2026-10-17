@@ -1,4 +1,4 @@
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 
 import { describe, expect, test } from "bun:test";
 
@@ -32,17 +32,22 @@ const neverStdin = (): NodeJS.ReadableStream =>
     },
   });
 
-const noopWritable = () => {
-  const sink = { write: () => true } as unknown as NodeJS.WritableStream;
-  return sink;
-};
+const noopWritable = (isTTY: boolean) =>
+  Object.assign(
+    new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    }),
+    { isTTY },
+  );
 
 const liveServiceFromSpec = (spec: InteractionServiceSpec): InteractionServiceShape => {
   const baseStdin = spec.neverStdin ? neverStdin() : scriptedStdin(spec.scriptedInput ?? []);
   if (spec.tty === true) Object.assign(baseStdin, { isTTY: true });
   return makeInteractionService({
     stdin: baseStdin,
-    stdout: noopWritable(),
+    stderr: noopWritable(spec.tty === true),
     ...(spec.choicesResult === undefined
       ? {}
       : {
@@ -167,7 +172,7 @@ describe("runInteractionContract rejects weakened implementations", () => {
   test("an implementation that ignores answer precedence is rejected", async () => {
     const ignoresPrecedence: InteractionContractHarness = {
       makeService: () => {
-        const real = makeInteractionService({ stdin: neverStdin(), stdout: noopWritable() });
+        const real = makeInteractionService({ stdin: neverStdin(), stderr: noopWritable(false) });
         return {
           ...real,
           promptAll: (specs: ReadonlyArray<PromptSpec>) =>

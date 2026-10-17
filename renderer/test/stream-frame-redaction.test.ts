@@ -54,7 +54,7 @@ describe("stream frame redaction", () => {
 
   test("redacts a secret on a TTY even when byte writers exist", async () => {
     // Given
-    const io = createBufferedRendererIO({ isTTY: true });
+    const io = createBufferedRendererIO({ isTTY: true, stdoutIsTTY: true });
 
     // When
     await emitRaw(io, new TextEncoder().encode(`token=${secret}`));
@@ -162,7 +162,7 @@ describe("stream frame redaction", () => {
 
   test("does not write raw leftover bytes when flushing a TTY sink", async () => {
     // Given: a TTY sink whose decoder is non-fatal, plus an unfinished sequence.
-    const io = createBufferedRendererIO({ isTTY: true });
+    const io = createBufferedRendererIO({ isTTY: true, stdoutIsTTY: true });
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
     const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),

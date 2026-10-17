@@ -820,6 +820,13 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makeRendererPanelContractSuite).toBeDefined();
   });
 
+  test("test entry point exports the renderer contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRendererContract).toBeDefined();
+    expect(sdkTest.makeRendererContractSuite).toBeDefined();
+  });
+
   test("test entry point export gate lists every make*ContractSuite export", async () => {
     const sdkTest = await import("@lando/sdk/test");
     const testSource = await readFile(import.meta.path, "utf8");

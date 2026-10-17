@@ -10,7 +10,7 @@
 import { Effect, Layer, Option } from "effect";
 
 import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "@lando/sdk/command-result";
-import type { RendererContribution } from "@lando/sdk/renderer";
+import { type RendererContribution, narrationIO } from "@lando/sdk/renderer";
 import type { CommandResultFormat } from "@lando/sdk/schema";
 import { type EventService, Renderer } from "@lando/sdk/services";
 
@@ -48,17 +48,18 @@ export const layerEventConsumerForMode = (
   io: RendererIO,
   options: RendererEventConsumerOptions,
 ): Layer.Layer<never, never, EventService> => {
+  const narration = narrationIO(io);
   switch (mode) {
     case "json":
-      return RendererRuntime.layerJson(io);
+      return RendererRuntime.layerJson(narration);
     case "plain":
       return options.plainTaskEvents === "detail-only"
-        ? RendererRuntime.layerPlainTaskDetail(io)
-        : RendererRuntime.layerPlain(io);
+        ? RendererRuntime.layerPlainTaskDetail(narration)
+        : RendererRuntime.layerPlain(narration);
     case "verbose":
-      return RendererRuntime.layerVerbose(io);
+      return RendererRuntime.layerVerbose(narration);
     case "lando":
-      return options.landoRenderer.makeEventConsumer(io);
+      return options.landoRenderer.makeEventConsumer(narration);
   }
 };
 
@@ -72,8 +73,9 @@ export const layerNotificationConsumerForMode = (
       return RendererRuntime.layerJsonNotification(io);
     case "lando":
       return landoRenderer.makeEventConsumer({
-        writeStdout: () => {},
-        writeStderr: () => {},
+        writeStderr: io.writeStderr,
+        terminalColumns: io.terminalColumns,
+        terminalRows: io.terminalRows,
         ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
       });
     case "plain":
@@ -234,7 +236,7 @@ export const layerStreamFrameSink = (
       const renderer = yield* Renderer;
       const redaction = yield* RedactionService;
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-      const isTty = io?.isTTY === true;
+      const isTty = io?.stdoutIsTTY === true;
       const stdoutUtf8 = createStreamingUtf8Decoder(!isTty);
       const stderrUtf8 = createStreamingUtf8Decoder(!isTty);
       const jsonStdout = createStreamingUtf8Decoder(false);
