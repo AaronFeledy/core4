@@ -1,4 +1,4 @@
-import { writeSync } from "node:fs";
+import { fstatSync, writeSync } from "node:fs";
 import type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 
 export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
@@ -157,6 +157,23 @@ export function withStdioTerminalNewlines(
   return stdioFactories.get(io)?.(terminalNewlines) ?? io;
 }
 
+/**
+ * A pipe or socket on stdout usually feeds a process that writes to the same
+ * terminal. A repainting live region would erase that process's output, so the
+ * narration stays append-only line mode.
+ */
+const stdoutFeedsProcess = (stdout: NodeJS.WriteStream): boolean => {
+  // Node types omit `fd` on `tty.WriteStream`; native and pipe stdio streams carry it.
+  const fd: unknown = Reflect.get(stdout, "fd");
+  if (typeof fd !== "number") return false;
+  try {
+    const stats = fstatSync(fd);
+    return stats.isFIFO() || stats.isSocket();
+  } catch {
+    return false;
+  }
+};
+
 export const createStdioRendererIO = (
   stdout: NodeJS.WriteStream = process.stdout,
   stderr: NodeJS.WriteStream = process.stderr,
@@ -198,7 +215,7 @@ export const createStdioRendererIO = (
     writeStderr: (chunk) => guardedWrite("stderr", stderr, stderrNewlines(chunk)),
     writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
     writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
-    externalOutputStream: narrationTerminal,
+    ...(stdoutFeedsProcess(stdout) ? {} : { externalOutputStream: narrationTerminal }),
     isTTY: stderr.isTTY === true,
     stdoutIsTTY: stdout.isTTY === true,
     get stdoutColumns() {
