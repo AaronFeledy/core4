@@ -189,25 +189,36 @@ describe("InteractionServiceLive — answer-source precedence", () => {
   for (const inputTTY of [true, false]) {
     for (const stderrTTY of [true, false]) {
       for (const stdoutTTY of [true, false]) {
-        test(`prompts require stdin=${inputTTY} stderr=${stderrTTY}, independently of stdout=${stdoutTTY}`, async () => {
-          const output = capturingWritable();
-          const narration = capturingWritable();
-          const service = makeInteractionService({
-            stdin: Object.assign(scriptedStdin(["typed"]), { isTTY: inputTTY }),
-            stdout: Object.assign(output.stream, { isTTY: stdoutTTY }),
-            stderr: Object.assign(narration.stream, { isTTY: stderrTTY }),
-          });
-          const exit = await runScopedExit(
-            service.promptAll([{ name: "app", type: "text", message: "App?" }], { interactive: true }),
-          );
-          if (inputTTY && stderrTTY) {
-            expect(Exit.isSuccess(exit) && exit.value).toEqual({ app: "typed" });
-            expect(narration.text().length).toBeGreaterThan(0);
-          } else {
-            expect(failureTag(exit)).toBe("InteractionRequiredError");
-            expect(narration.text()).toBe("");
-          }
-          expect(output.text()).toBe("");
+        test(`stdin=${inputTTY} stderr=${stderrTTY} stdout=${stdoutTTY}: auto prompts need stdin and stderr terminals; forced prompts use stderr`, async () => {
+          const streams = (): {
+            readonly output: ReturnType<typeof capturingWritable>;
+            readonly narration: ReturnType<typeof capturingWritable>;
+            readonly service: ReturnType<typeof makeInteractionService>;
+          } => {
+            const output = capturingWritable();
+            const narration = capturingWritable();
+            const service = makeInteractionService({
+              stdin: Object.assign(scriptedStdin(["typed"]), { isTTY: inputTTY }),
+              stdout: Object.assign(output.stream, { isTTY: stdoutTTY }),
+              stderr: Object.assign(narration.stream, { isTTY: stderrTTY }),
+            });
+            return { output, narration, service };
+          };
+          const prompt = [{ name: "app", type: "text", message: "App?" }] as const;
+
+          const auto = streams();
+          await expect(Effect.runPromise(auto.service.isInteractive)).resolves.toBe(inputTTY && stderrTTY);
+          const autoExit = await runScopedExit(auto.service.promptAll(prompt));
+          if (inputTTY && stderrTTY)
+            expect(Exit.isSuccess(autoExit) && autoExit.value).toEqual({ app: "typed" });
+          else expect(failureTag(autoExit)).toBe("InteractionRequiredError");
+          expect(auto.output.text()).toBe("");
+
+          const forced = streams();
+          const forcedExit = await runScopedExit(forced.service.promptAll(prompt, { interactive: true }));
+          expect(Exit.isSuccess(forcedExit) && forcedExit.value).toEqual({ app: "typed" });
+          expect(forced.narration.text()).toContain("App?");
+          expect(forced.output.text()).toBe("");
         });
       }
     }

@@ -143,7 +143,7 @@ export const initSpec: LandoCommandSpec<never> = {
     }),
     answers: Flags.string({ description: "Path to a JSON answers file." }),
     interactive: Flags.boolean({
-      description: "Enable interactive prompting when stdin and stderr are terminals.",
+      description: "Force interactive prompting even when stdin or stderr is not a terminal.",
       default: false,
     }),
   },
