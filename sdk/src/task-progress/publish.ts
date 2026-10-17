@@ -95,7 +95,7 @@ export const publishTaskDetail = Effect.fnUntraced(function* (
   );
 });
 
-export type TaskOutcome = "ok" | "warn";
+export type TaskOutcome = "ok" | "warn" | "info";
 
 export interface TaskCompleteArgs {
   readonly taskId: string;
