@@ -145,7 +145,8 @@ rail, these glyphs, or these colors.
 Every renderer message, live tree, prompt, alternate-screen tail, and OSC 99
 notification uses stderr. stdout carries only command results and payloads.
 Narration capabilities and dimensions describe stderr; result summaries use
-stdout's own terminal state and width. Prompts require terminal stdin and stderr.
+stdout's own terminal state and width. Rich prompts need terminal stdin and stderr;
+`--interactive` without them falls back to line prompts.
 
 ### Lando logo
 
