@@ -252,6 +252,7 @@
       "name": "@lando/renderer-lando",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/renderer": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@opentui/core": "^0.4.3",
         "effect": "catalog:",
@@ -259,7 +260,6 @@
       "devDependencies": {
         "@lando/engine": "workspace:*",
         "@lando/paths": "workspace:*",
-        "@lando/renderer": "workspace:*",
       },
     },
     "plugins/secret-store-1password": {
