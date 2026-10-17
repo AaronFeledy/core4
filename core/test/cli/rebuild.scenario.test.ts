@@ -240,6 +240,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
     RedactionService,
     RedactionService.of({
       registerValues: registerRedactionValues,
+      payloadValues: () => Effect.succeed(() => []),
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
   ),

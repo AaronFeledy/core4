@@ -19,6 +19,7 @@ test("MCP builds once per runtime, reuses it for nested provide, and builds fres
         }),
         Layer.succeed(RedactionService, {
           registerValues: registerRedactionValues,
+          payloadValues: () => Effect.succeed(() => []),
           forProfile: () => Effect.succeed(createRedactor("secrets")),
         }),
       ),

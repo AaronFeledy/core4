@@ -211,6 +211,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => ["secret-token"]),
     forProfile: () =>
       Effect.succeed({
         redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),

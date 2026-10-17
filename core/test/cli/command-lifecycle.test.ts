@@ -379,8 +379,9 @@ describe("generic CLI command lifecycle", () => {
     const ordering: Array<string> = [];
     const harness = makeRecordingHarness(ordering);
     const io = {
-      writeStdout: (chunk: string) => {
-        ordering.push(chunk.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
+      writeStdout: (chunk: string | Uint8Array) => {
+        const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+        ordering.push(text.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
       },
       writeStderr: () => undefined,
     };

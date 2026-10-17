@@ -91,7 +91,6 @@ export const runCompiledCommand = <A, E, R, RE>(
   runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>,
   render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
-    readonly plainTaskEvents?: "detail-only";
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
     readonly successExitCode?: (value: A) => number | undefined;
@@ -149,7 +148,6 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
-    ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     ...(successExitCode === undefined ? {} : { successExitCode }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),

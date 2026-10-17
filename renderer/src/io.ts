@@ -1,5 +1,6 @@
 import { fstatSync, writeSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
+import { outputDrainWaiters, outputStreams } from "./output-streams.ts";
 
 export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 
@@ -12,14 +13,8 @@ interface OutputStream {
   readonly isTTY?: boolean;
   readonly fd?: number;
   readonly write: (chunk: string | Uint8Array) => boolean;
-  readonly on?: (event: "error", listener: (error: unknown) => void) => unknown;
+  readonly on?: (event: "error" | "drain", listener: (error: unknown) => void) => unknown;
 }
-
-/** Stdio and buffered IO always implement the optional RendererIO byte writers. */
-export type BinaryRendererIO = RendererIO & {
-  readonly writeStdoutBytes: (chunk: Uint8Array) => void;
-  readonly writeStderrBytes: (chunk: Uint8Array) => void;
-};
 
 export const isBrokenPipeError = (error: unknown): boolean => {
   if (typeof error !== "object" || error === null) return false;
@@ -30,6 +25,8 @@ export const isBrokenPipeError = (error: unknown): boolean => {
 };
 
 const brokenStreams = new WeakSet<OutputStream>();
+// Bun stdio can return false while writableNeedDrain still reports false.
+const blockedStreams = new WeakSet<OutputStream>();
 const guardedStreams = new WeakSet<OutputStream>();
 const notifiedDestinations = new Set<StdioDestination>();
 const brokenPipeListeners = new Set<(destination: StdioDestination) => void>();
@@ -87,8 +84,12 @@ const guardedWrite = (
   if (!guardedStreams.has(stream)) {
     guardedStreams.add(stream);
     if (typeof stream.on === "function") {
+      stream.on("drain", () => blockedStreams.delete(stream));
       stream.on("error", (error) => {
-        if (!isBrokenPipeError(error)) throw error;
+        if (!isBrokenPipeError(error)) {
+          if ((outputDrainWaiters.get(stream) ?? 0) > 0) return;
+          throw error;
+        }
         markBrokenPipe(destination, stream);
       });
     }
@@ -105,7 +106,10 @@ const guardedWrite = (
         offset += writeSync(stream.fd, bytes, offset, bytes.byteLength - offset);
       return true;
     }
-    return stream.write(chunk);
+    blockedStreams.add(stream);
+    const accepted = stream.write(chunk);
+    if (accepted) blockedStreams.delete(stream);
+    return accepted;
   } catch (error) {
     if (!isBrokenPipeError(error)) throw error;
     markBrokenPipe(destination, stream);
@@ -183,7 +187,7 @@ export const createStdioRendererIO = (
   stderr: NodeJS.WriteStream = process.stderr,
   stdin: RendererInputStream = process.stdin,
   options: StdioRendererIOOptions = {},
-): BinaryRendererIO => {
+): RendererIO => {
   const platform = options.platform ?? process.platform;
   const terminalNewlines = options.terminalNewlines !== false && platform === "win32";
   const stdoutNewlines = terminalNewlineNormalizer(terminalNewlines && stdout.isTTY === true);
@@ -214,11 +218,11 @@ export const createStdioRendererIO = (
       return typeof value === "function" ? value.bind(stream) : value;
     },
   });
-  const io: BinaryRendererIO = {
-    writeStdout: (chunk) => guardedWrite("stdout", stdout, stdoutNewlines(chunk)),
-    writeStderr: (chunk) => guardedWrite("stderr", stderr, stderrNewlines(chunk)),
-    writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
-    writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
+  const io: RendererIO = {
+    writeStdout: (chunk) =>
+      guardedWrite("stdout", stdout, typeof chunk === "string" ? stdoutNewlines(chunk) : chunk),
+    writeStderr: (chunk) =>
+      guardedWrite("stderr", stderr, typeof chunk === "string" ? stderrNewlines(chunk) : chunk),
     ...(stdoutFeedsProcess(stdout) ? {} : { externalOutputStream: narrationTerminal }),
     isTTY: stderr.isTTY === true,
     stdoutIsTTY: stdout.isTTY === true,
@@ -249,6 +253,16 @@ export const createStdioRendererIO = (
     createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
+  outputStreams.set(io.writeStdout, {
+    stream: stdout,
+    isBroken: () => brokenStreams.has(stdout),
+    isBlocked: () => blockedStreams.has(stdout),
+  });
+  outputStreams.set(io.writeStderr, {
+    stream: stderr,
+    isBroken: () => brokenStreams.has(stderr),
+    isBlocked: () => blockedStreams.has(stderr),
+  });
   return io;
 };
 

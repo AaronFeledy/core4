@@ -280,6 +280,10 @@ export interface ToolingEngineContractHarness {
   readonly name?: string;
   /** The engine under test. */
   readonly engine: ToolingEngineUnderTest;
+  /** Exercise a streaming adapter while retaining the same per-channel result contract. */
+  readonly captureOutput?: (
+    run: ReturnType<ToolingEngineUnderTest["run"]>,
+  ) => ReturnType<ToolingEngineUnderTest["run"]>;
   /**
    * A scenario whose every command exits zero. The suite asserts ordered
    * execution, the captured command sequence, and the aggregated result.
@@ -362,7 +366,13 @@ export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
   harness: ToolingEngineContractHarness,
 ): Effect.fn.Return<void, ContractFailure> {
   const label = harness.name ?? harness.engine.id;
-  const engine = harness.engine;
+  const engine: ToolingEngineUnderTest = {
+    ...harness.engine,
+    run: (...args) => {
+      const run = harness.engine.run(...args);
+      return harness.captureOutput === undefined ? run : harness.captureOutput(run);
+    },
+  };
 
   yield* requireToolingEngineContract(
     isNonEmptyString(engine.id),

@@ -110,6 +110,7 @@ const redactionLayer = (values: ReadonlyArray<string> = []) =>
     RedactionService,
     RedactionService.of({
       registerValues: registerRedactionValues,
+      payloadValues: () => Effect.succeed(() => values),
       forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
     }),
   );

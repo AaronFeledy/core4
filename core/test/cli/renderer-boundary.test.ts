@@ -133,7 +133,7 @@ describe("runWithRendererHandling", () => {
     expect(io.stdout()).toBe("ready\n");
   });
 
-  test("plain event rendering keeps tooling output flat", async () => {
+  test("plain event consumer publishes the full tooling tree without a detail-only mode", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
       Effect.gen(function* () {
@@ -179,12 +179,14 @@ describe("runWithRendererHandling", () => {
         runtime: Layer.empty,
         rendererMode: "plain",
         io,
-        plainTaskEvents: "detail-only",
         render: () => undefined,
         formatError: () => "should not happen",
       },
     );
-    expect(io.stderr()).toBe("[tooling:composer:appserver] installing\n");
+    // Tree publication is always on; the consumer paints the full plain tree, not detail-only.
+    expect(io.stderr()).toContain("Tooling: composer");
+    expect(io.stderr()).toContain("appserver");
+    expect(io.stderr()).toContain("installing");
     expect(io.stdout()).toBe("");
   });
 

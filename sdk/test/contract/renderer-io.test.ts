@@ -31,10 +31,9 @@ test("renderer IO keeps stdout structurally outside the narration contract", asy
 test("narration view hides stdout at runtime and tracks stderr metadata live", () => {
   // Given
   let columns = 80;
-  const stderr: string[] = [];
+  const stderr: (string | Uint8Array)[] = [];
   const io: RendererIO = {
     writeStdout: () => {},
-    writeStdoutBytes: () => {},
     writeStderr: (chunk) => {
       stderr.push(chunk);
     },
@@ -52,7 +51,6 @@ test("narration view hides stdout at runtime and tracks stderr metadata live", (
 
   // Then
   expect("writeStdout" in view).toBe(false);
-  expect("writeStdoutBytes" in view).toBe(false);
   expect("stdoutIsTTY" in view).toBe(false);
   expect("externalOutputStream" in view).toBe(false);
   expect(view.terminalColumns).toBe(120);

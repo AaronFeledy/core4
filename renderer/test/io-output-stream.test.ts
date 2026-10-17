@@ -114,11 +114,11 @@ describe("native terminal line endings", () => {
     const io = createStdioRendererIO(stdout.stream, stderr.stream, undefined, { platform: "win32" });
     const bytes = new Uint8Array([0xff, 0x0a, 0x0d, 0x0a, 0x00]);
 
-    io.writeStdoutBytes(bytes);
-    io.writeStderrBytes(bytes);
+    io.writeStdout(bytes);
+    io.writeStderr(bytes);
     const machineIO = withStdioTerminalNewlines(io, false);
-    machineIO.writeStdoutBytes?.(bytes);
-    machineIO.writeStderrBytes?.(bytes);
+    machineIO.writeStdout(bytes);
+    machineIO.writeStderr(bytes);
 
     expect(stdout.writes).toEqual([bytes, bytes]);
     expect(stderr.writes).toEqual([bytes, bytes]);

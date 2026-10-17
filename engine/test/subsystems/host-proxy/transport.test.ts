@@ -82,6 +82,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
 );

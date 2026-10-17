@@ -20,6 +20,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => ["topsecret", "proxypass"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
   }),
 );
@@ -137,6 +138,7 @@ describe("runWithRendererHandling redaction", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: () =>
           Effect.succeed({
             redactString: (text: string) => text.split("32").join("[redacted]"),
@@ -184,7 +186,12 @@ test("start command hints remain usable when a secret explicitly matches the CLI
   });
   expect(tokens).not.toContain("lando");
   expect(tokens).toContain(customSecret);
-  const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+  const io = createBufferedRendererIO({
+    isTTY: true,
+    stdoutIsTTY: true,
+    stdoutColumns: 100,
+    terminalColumns: 100,
+  });
   try {
     await runWithRendererHandling(
       Effect.gen(function* () {

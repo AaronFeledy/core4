@@ -321,6 +321,7 @@ export const makeHarness = (
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, redactionOptions) =>
           Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
       }),

@@ -9,7 +9,7 @@ export interface LiveRegionHandle {
   clearFooter(): void;
   commitScrollback(text: string): void;
   rememberScrollback(text: string): void;
-  suspendOutput?(text: string, write: () => void): void;
+  suspendOutput?(chunk: string | Uint8Array, write: () => void): void;
   requestLive(): void;
   dropLive(): void;
   enterFullTail(): void | Promise<void>;

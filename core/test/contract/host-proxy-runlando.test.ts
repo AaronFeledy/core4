@@ -95,6 +95,7 @@ const recordingEventLayer = () => {
 
 const standaloneRedactionService: RedactionServiceShape = {
   registerValues: registerRedactionValues,
+  payloadValues: () => Effect.succeed(() => []),
   forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
 };
 

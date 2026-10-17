@@ -5,7 +5,6 @@ import {
   RENDERER_CAPABILITIES_NONE,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
   type RendererCapabilities,
-  isRenderableTaskTreeEvent,
   renderJsonLine,
   renderPlainLine,
   renderVerboseLine,
@@ -13,6 +12,7 @@ import {
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { type RendererIO, type RendererNarrationIO, withStdioTerminalNewlines } from "./io.ts";
+import { waitForRendererOutput } from "./output-drain.ts";
 
 type LineFormatter = (event: LandoEvent) => string | null;
 
@@ -48,16 +48,8 @@ const layerRenderer = (
     if (line !== null) io.writeStderr(`${line}\n`);
   });
 
-const renderPlainTaskDetailLine = (event: LandoEvent): string | null => {
-  if (isRenderableTaskTreeEvent(event) && event._tag !== "task.detail") return null;
-  return renderPlainLine(event);
-};
-
 export const layerPlain = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderPlainLine, io);
-
-export const layerPlainTaskDetail = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
-  layerRenderer(renderPlainTaskDetailLine, io);
 
 export const layerJson = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderJsonLine, withStdioTerminalNewlines(io, false));
@@ -125,8 +117,10 @@ const makeMessageContract = (formatter: LineFormatter, io: RendererNarrationIO) 
  * results (stdout) and process-level failure diagnostics (stderr).
  */
 const makeOutputChannel = (io: RendererIO) => ({
-  stdout: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStdout(chunk)),
-  stderr: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
+  stdout: (chunk: string | Uint8Array): Effect.Effect<void> =>
+    Effect.sync(() => io.writeStdout(chunk)).pipe(Effect.andThen(waitForRendererOutput(io, "stdout"))),
+  stderr: (chunk: string | Uint8Array): Effect.Effect<void> =>
+    Effect.sync(() => io.writeStderr(chunk)).pipe(Effect.andThen(waitForRendererOutput(io, "stderr"))),
 });
 
 const capabilitiesForFallback = (id: "plain" | "json" | "verbose", io: RendererIO): RendererCapabilities => {

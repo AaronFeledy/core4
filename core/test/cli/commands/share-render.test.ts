@@ -82,7 +82,7 @@ describe("renderShareResult", () => {
               ...renderer.output,
               stdout: (text) =>
                 Effect.sync(() => {
-                  output.push(text);
+                  output.push(typeof text === "string" ? text : new TextDecoder().decode(text));
                 }),
             },
           }),
