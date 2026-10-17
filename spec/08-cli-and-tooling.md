@@ -59,11 +59,12 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | Canonical id | Default alias | Bootstrap | Contract |
 |---|---|---|---|
 | `app:cache:refresh` | none | `app` | Rebuild app plan, tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.bin` without starting services |
+| `app:check` | `check` | `app` | Run the app's checks without restarting (§8.2.7); repeatable `--only <id>`, `--format json` |
 | `app:config` | none | `app` | Read or write the current Landofile (§8.2.1) |
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
 | `app:config:migrate` | none | `plugins` | Commit recipe migrations; `--yes`, `--dry-run`, `--format json` |
 | `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; never plans or contacts a provider |
-| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes` |
+| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |
@@ -93,6 +94,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
 | `meta:config` | `config` | `minimal` | Edit `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
+| `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks the index and removes them. Stopped providers are reported unavailable, never started (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `minimal` | Edit `<userDataRoot>/global/.lando.yml` and plugin enablement |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--purge` includes service/app volumes |
@@ -199,6 +201,10 @@ For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando
 `meta:mcp` serves stdio MCP; streamable HTTP transport is not specified and is sequenced in the ROADMAP (§10.14). Tools derive solely from `LandoCommandSpec` and return §8.11 envelopes. Effective allowance is default `mcpAllowed` plus global `mcp.allow` and `--allow`, minus config or CLI denies. Destructive commands are never default-allowed. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
 
 The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-call events to `pre-mcp-call`/`post-mcp-call`. It MUST NOT be host-proxy or recipe-post-init allowed.
+
+#### 8.2.7 The `app:check` command
+
+`app:check` runs the app's `CheckPlan` (§10.5.2) against a running app and exits `0` whatever the verdicts; a stopped app is `AppNotRunningError`. `--only <id>` selects checks by id. The result is `checks[]` with `{ id, kind, verdict, status?, exitCode?, message?, next?, excerpt?, matchedBy }`; `app:start`, `app:restart`, and `app:rebuild` carry the same array when they ran checks. Only `lando-error` verdicts enter `warnings`. Events are `cli-app:check-*` plus the §10.5.2 task tree.
 
 ### 8.3 Command contract
 
@@ -633,7 +639,7 @@ The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugi
 
 #### 8.9.2 Concurrent task tree contract
 
-`task.tree.start`/`complete` bracket concurrent children. TTY renderers show parent/child state, recent per-task `task.detail`, success/failure summaries, focus navigation, and Enter/Escape expand/collapse. Expanded full-tail view uses persisted §6.13.6/§12.4 transcripts and MUST preserve cancellation and restore the tree. It remains available after completion. Renderers publish `task.detail.expand` and `task.detail.collapse` through `EventService`.
+`task.tree.start`/`complete` bracket concurrent children. TTY renderers show parent/child state, recent per-task `task.detail`, success/failure summaries, focus navigation, and Enter/Escape expand/collapse. Expanded full-tail view uses persisted §6.13.6/§12.4 transcripts and MUST preserve cancellation and restore the tree. It remains available after completion. Renderers publish `task.detail.expand` and `task.detail.collapse` through `EventService`. `task.complete` outcomes are `ok`, `warn`, and `info`; `info` is a neutral completion for results the user owns (app-owned check verdicts, §10.5.2) and MUST NOT be painted as success or warning.
 
 A command that hands the terminal to a foreground child partway through an invocation (`apps:scratch:run`) first retires that invocation's event-rendering consumer and waits for it: delivered events render in order, the open tree paints as a final static frame, and renderer input, the live region, and output interception are released before the child's first byte or keystroke. The handoff is one-way; later events in that invocation are not repainted, and the `Renderer` output service stays usable for the child's raw output.
 

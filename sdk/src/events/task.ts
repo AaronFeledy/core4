@@ -57,9 +57,9 @@ export const TaskCompleteEvent = Schema.TaggedStruct("task.complete", {
   taskId: Schema.String,
   summary: Schema.optional(Schema.String),
   outcome: Schema.optional(
-    Schema.Literals(["ok", "warn"]).annotate({
+    Schema.Literals(["ok", "warn", "info"]).annotate({
       description:
-        "Whether the task finished cleanly or with warnings the reader should look at; absent means ok.",
+        "Whether the task finished cleanly (ok), with warnings the reader should look at (warn), or with a neutral result the reader owns and that is neither success nor warning (info); absent means ok.",
     }),
   ),
   durationMs: Schema.optional(Schema.Number),

@@ -15,7 +15,7 @@ import {
   PreAppStartEvent,
   PreStartEvent,
 } from "@lando/sdk/events";
-import { ServiceName } from "@lando/sdk/schema";
+import { CheckResult, ServiceName } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOptions,
@@ -105,6 +105,7 @@ export const StartedServiceResultSchema = Schema.Struct({
 export const StartAppResultSchema = Schema.Struct({
   app: Schema.String,
   servicesStarted: Schema.Array(StartedServiceResultSchema),
+  checks: Schema.optionalKey(Schema.Array(CheckResult)),
 });
 
 type StartAppServices =
@@ -514,17 +515,17 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 });
                 yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
                 const scanner = yield* Effect.serviceOption(UrlScanner);
-                if (Option.isSome(scanner)) {
-                  yield* runPostStartScan({
-                    scanner: scanner.value,
-                    plan: builtPlan,
-                    events,
-                    urls: startupScanUrls(builtPlan, servicesStarted),
-                  });
-                }
+                const checks = Option.isSome(scanner)
+                  ? yield* runPostStartScan({
+                      scanner: scanner.value,
+                      plan: builtPlan,
+                      events,
+                      urls: startupScanUrls(builtPlan, servicesStarted),
+                    })
+                  : undefined;
                 if (pendingStart !== undefined) yield* pendingStart.clear;
 
-                return { app: plan.name, servicesStarted };
+                return { app: plan.name, servicesStarted, ...(checks === undefined ? {} : { checks }) };
               }).pipe(
                 Effect.catchCause((cause) =>
                   shouldRetainReadinessResources(cause)

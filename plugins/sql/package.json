@@ -27,6 +27,11 @@
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },
+  "devDependencies": {
+    "@lando/data-mover": "workspace:*",
+    "@lando/paths": "workspace:*",
+    "@lando/state-store": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",

@@ -1,0 +1,1 @@
+export const DEFAULT_SNAPSHOT_KEEP_LATEST = 3;

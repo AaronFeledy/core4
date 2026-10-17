@@ -98,6 +98,8 @@ A mutating command that shells out to another `lando` mutate on the same app reu
 Run it again with `--volumes` when you want those volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
 
+Snapshots stay with plain `destroy` and `--volumes`. `--purge` also deletes this folder's snapshots and their provider-stored data, even after the app is already destroyed, without touching another worktree's snapshots.
+
 ```sh
 lando destroy -y
 ```

@@ -36,9 +36,9 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
 | `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`; lazy `CertificateAuthority`, `RouterService`, `DataMover` |
-| `global` | Global-app lifecycle (§20) | `provider` + eager `GlobalAppService` and global-root `LandofileService`; lazy `BuildOrchestrator`, `HealthcheckRunner`, `UrlScanner` |
-| `scratch` | Scoped scratch-app lifecycle (§21) | `provider` + eager `ScratchAppService` and arbitrary-root `LandofileService`; lazy `AppPlanner`, `BuildOrchestrator`, `HealthcheckRunner`, `UrlScanner`, conditional `HostProxyService`, conditional `GlobalAppService` |
-| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, `TunnelService`, `BuildOrchestrator`, and the selected accelerated `FileSyncEngine` |
+| `global` | Global-app lifecycle (§20) | `provider` + eager `GlobalAppService` and global-root `LandofileService`; lazy `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner` |
+| `scratch` | Scoped scratch-app lifecycle (§21) | `provider` + eager `ScratchAppService` and arbitrary-root `LandofileService`; lazy `AppPlanner`, `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner`, conditional `HostProxyService`, conditional `GlobalAppService` |
+| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `CheckRunner`, `HostProxyService`, `TunnelService`, `BuildOrchestrator`, and the selected accelerated `FileSyncEngine` |
 
 The `LandoCommandSpec` registry is canonical for command-to-level assignment (§8.3). Levels `minimal` through `app` emit `pre-bootstrap-<level>` and `post-bootstrap-<level>`, followed by `post-bootstrap` and `ready`; `none` emits no events through the command-base path.
 
@@ -83,7 +83,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `CertificateAuthority` | Issue and trust development certificates (§10.3) |
 | `RouterService` | Realize provider-neutral route plans (§10.2) |
 | `HealthcheckRunner` | Run provider or host health probes (§10.5) |
-| `UrlScanner` | Scan declared URLs through the canonical probe model (§10.5) |
+| `CheckRunner` | Run the app's checks after start and on demand, through the canonical probe model (§10.5.2) |
 | `AppPlanner` | Produce provider-neutral service, route, and app plans (§5–§7) |
 | `BuildOrchestrator` | Build and execute the `BuildPlan` DAG, lifecycle, cache, transcripts, and progress (§6.13) |
 | `EventService` | Typed lifecycle pub/sub, waiting, and bounded history (§11) |
@@ -232,7 +232,7 @@ A cold `app:start` follows this canonical order; optional global and build detai
 7. `cli-app:start-init`
 8. `pre-init`, `post-init`
 9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
-10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and warn-only URL scan, `ready-app`
+10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and app checks (§10.5.2), `ready-app`
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
 

@@ -10,6 +10,10 @@
 
 - `SqlSeedSourceError` additively carries optional `sourceApp`, `sourceRoot`, `sourceService`, `sourceFamily`, and `targetFamily` fields for logical app-to-app database seeding. The existing tag, `service`, `message`, and `remediation` remain unchanged; machine failure envelopes preserve the source context without credentials.
 
+- Native snapshot reconciliation adds `VolumeSnapshotArtifact`, optional `RuntimeProvider.listVolumeSnapshots`, and `DataMover.findOrphanedSnapshots` / `removeOrphanedSnapshot`. Reconciliation is scoped to the canonical snapshot-store identity, includes unmarked legacy images, and excludes images younger than one hour. Snapshot image listing and orphan GC never start a stopped runtime, while `removeVolumeSnapshot` may start one for purge-before-teardown; a failed orphan eligibility recheck returns a tagged failure rather than a successful removal receipt.
+
+- `PrunePolicy` additively accepts optional `recovery`: omitted or false prunes only manual/unclassified snapshots, while true prunes only automatic recovery snapshots (import, reset, restore, or seed). Optional `retainSnapshotIds` reserve places in the `keepLatest` budget for the listed snapshots regardless of timestamps, so a newly captured undo point and a restore source survive clock rollback or ties. Omitted `keepLatest` still removes nothing. SQL automatically keeps three recovery points per database after successful protected operations; retention failure warns without failing the completed operation.
+
 - `DataMover.restore` adds an optional third `opts?: SnapshotRestoreOptions` argument. Omitted options and `mode: "restore"` keep strict physical-volume generation checks. `mode: "seed"` permits a new generation only for the snapshot's own app, store, and owner root, with verified snapshot metadata and an in-progress volume initialization claim. `SnapshotAmbiguousError` adds optional `candidateIds`, ordered newest first, for id-or-label resolution; `snapshotId` retains the reference supplied by the caller.
 
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
@@ -25,6 +29,8 @@
 - `ServiceRuntimeInfo.exitCode` is evidence from terminal `exited` or `dead` containers only; running and never-started `created` containers omit the engine's placeholder zero.
 
 - `ApplyOptions` adds optional `completionPlan`, the full dependency graph used to identify completion-intent services during partial apply. It is classification context, not a replacement applied-state record, so non-reconcile global starts preserve previously built unselected services.
+
+- `ScanEndpoint` and `ScanAttempt` add owner-classified `verdict`; `ScanEndpoint` also adds optional `routerMarker`. `ScanAttempt.willRetry` optionally reports whether another attempt fits the remaining attempt and deadline budgets. `ScanVerdict` is an additive type-only export from schema and services. Existing reachability and probe fields remain available. `CheckResult` is an additive HTTP result schema; start, restart, and rebuild results add optional `checks` arrays. Only Lando-owned failures become command warnings.
 
 - `@lando/sdk/errors` adds `ServiceNotReadyError` (`message`, `app`, `service`, `providerId`, `reason` of `not-running` | `inspect-failed` | `healthcheck-failed` | `healthcheck-timeout`, `remediation`, optional `exitCode`, `state`, `attempts`, `lastStatus`, and `ServiceStartLogTail`-shaped `logTail`). It belongs to `StartAppError` (restart/rebuild inherit), not `ProviderError` or planner channels, and registers no JSON Schema. `ServiceRuntimeInfo` adds optional container `exitCode`. Machine failure envelopes preserve service and readiness evidence. Healthcheck retries count post-start-period attempts, with immediate probes and first-success completion.
 
@@ -168,6 +174,7 @@
 - `@lando/sdk/schema` additively exports `PhpComposerConfig` (optional `version` and `packages`). `ServiceConfig.composer` additively accepts it beside the previously accepted string and `false` forms, and `ServiceConfig.globals` additively accepts a package-name-to-version-specifier map for global npm installs.
 - `AppPlan.router` additively accepts `{ enabled: boolean }`. It stays optional only because persisted cached plans predate the field.
 - `UrlScanner.scan` additively accepts optional `{ plan?: AppPlan; urls?: ReadonlyArray<{ service: ServiceName; url: string }> }`. Per-service settings come from `plan.services[name].scanner`; omitting the plan uses the scanner's own defaults. When `urls` is present, those host-facing URLs are probed instead of rediscovering endpoints. `makeTestUrlScanner` records supplied options alongside the app id while preserving calls without options.
+- `UrlScanner.scan` additively accepts optional `onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>`. The exported plain `ScanAttempt` interface carries `service`, `url`, 1-based `attempt`, `maxAttempts`, `outcome: ProbeOutcome`, and optional `statusCode` and redacted `detail`. Callback failures and defects do not change the verdict; omission preserves existing probe behavior. This is type-only and adds no JSON Schema artifact. `makeTestUrlScanner` records the option without invoking it.
 
 - `@lando/sdk/schema` additively exports the `HostTerminal` schema for attached output-terminal facts. `ToolingOptions` and `ToolingInvocation` add optional PTY intent, while `ToolingInvocation` can separately carry an attached `HostTerminal`; omission remains noninteractive for existing embedding, event, and MCP callers.
 
@@ -329,6 +336,8 @@
 - `PluginRegistry.loadServiceType`'s error union additively gains `ServiceTypeCollisionError` (raised at load when an `extends:` chain points at an unregistered parent, cycles, or exceeds depth 4); the frozen `PluginRegistry` method-signature fixture is updated to match. `ServiceTypeInput` additively gains an optional `parentResolution?: ServiceTypeResolution` so a child resolver can resolve against its parent's resolution. `ServiceTypeCollisionError` is a new `@lando/sdk/errors` tagged error. All three are additive type-only/error changes (no new runtime schema export, no JSON Schema artifact).
 - `EventService` additively gains `waitForAny` (await the first event matching any of several specs) and `query` (scan a bounded redacted in-memory history buffer without blocking). `subscribe`/`waitFor`/`query` become generic over the event `name`: a known `_tag` literal narrows to that union variant, `"*"` resolves to the full `LandoEvent` union, and any other string falls back to the loose structural `LandoEvent`, so existing string-named callers keep compiling. `waitFor`'s second parameter changes from a positional `filter?` to an `options?: { filter?, timeout? }` object that also carries an optional Clock-driven timeout. New type-only exports from `@lando/sdk/services`: `EventFor`, `LandoEventName`, `EventWaitOptions`, `EventWaitAnyOptions`, `EventWaitSpec`, `EventWaitSpecs`. `EventError` additively gains an optional `reason?: "timeout"` field (no JSON Schema artifact; `EventError` is not a registered public schema). The frozen `EventService` method-signature fixture is updated to match.
 - `DataStorePlan` and Landofile `StorageInput` add `kind?: "data" | "cache"` plus optional `key`; omitted `DataStorePlan.kind` decodes as `"data"`. `DestroyAppOptions` and provider `DestroyOptions` add `purgeCaches?: boolean` so cache volumes remain outside regular data-volume destruction unless explicitly purged.
+- `DestroyAppOptions` adds `purgeSnapshots?: boolean`; `DestroyAppResult` requires `snapshotsRemoved` (zero when none). Destroy purges only snapshots whose recorded source root matches the app folder, before provider teardown. `DestroyAppError` includes snapshot storage failures and provider-selection failures. `RuntimeProvider.removeVolumeSnapshot` is idempotent for supported snapshot references.
+- Pre-release removal: `ProviderCapabilities.volumeSnapshot` is now `native | none`; provider-side copy snapshots are removed. Docker and user-installed Podman declare `none`, while `TestRuntimeProvider` declares its implemented native-format snapshots. `SnapshotOptions.volumeSnapshot` remains `copy | native` for DataMover host archives versus provider-native snapshots, and plugin `VolumeSnapshotRef.format` remains unchanged. The shared container data plane rejects unsupported capabilities and non-native formats with `ProviderCapabilityError`; forced native DataMover snapshots fail early with `DataEndpointUnsupportedError` when unsupported.
 - The pre-release SDK-owned `HttpClient` contract is removed in favor of Effect's standard `effect/http` `HttpClient` (implemented by `@lando/http-client`). Removed public surface: schemas `HttpClientCapabilities`, `HttpRequest`, `HttpResponse`, `HttpStreamResponse`, `HttpUploadRequest`; errors `HttpRequestError`, `HttpUploadError`, `HttpClientUnavailableError`; and the `@lando/core/HttpClient` service tag. Retained: `HttpTrustError` (Effect transport cause for TLS/proxy/CA failures), HTTP call lifecycle events (`PreHttpCallEvent`/`PostHttpCallEvent`), and plugin manifest `contributes.httpClients[]` (`HttpClientContribution` without the obsolete `capabilities` property). The `@lando/sdk/test` contract kit (`runHttpClientContract`) now accepts an Effect `HttpClient`.
 - The `ScanEndpoint` service-layer interface additively gains optional `outcome?: ProbeOutcome` and `detail?: string` fields so probe-backed `UrlScanner` implementations can report the probe primitive's green/yellow/red verdict and a redacted structured detail per endpoint. Both fields are optional and type-only (plain interface, no JSON Schema artifact); existing scanners and the `runScannerContract` suite are unaffected.
 - The `ArtifactRef` service-layer interface additively gains an optional `digest?: string` so `RuntimeProvider.pullArtifact` can report the resolved image digest. `DataMover`'s generic-fallback `tar` helper image is pinned in a generated `{ image, digest }` manifest and resolved through `pullArtifact`, digest-verified before the helper container runs. The field is optional and type-only (no JSON Schema artifact).
@@ -465,6 +474,7 @@ It registers no JSON Schema.
 - `resolveLifecycleCommandId`
 - `ScannerConfig`
 - `ScanPlan`
+- `CheckResult`
 - `ServiceFileConfig`
 - `PhpComposerConfig`
 - `ABSOLUTE_CONTAINER_PATH_PATTERN`
@@ -902,6 +912,10 @@ It registers no JSON Schema.
 - `VolumeRef`
 - `VolumeRestoreSpec`
 - `VolumeSnapshotRef`
+- `VolumeSnapshotArtifact`
+- `SnapshotGcReport`
+- `SnapshotGcOrphan`
+- `SnapshotGcProviderReport`
 - `VolumeSnapshotSpec`
 - `ChoicesFrom`
 - `InteractionServiceContribution`
@@ -1088,6 +1102,7 @@ It registers no JSON Schema.
   as a warning instead of `✓`). `@lando/sdk/task-progress` additively exports `TaskOutcome`,
   `TaskCompleteArgs.outcome`, and the controller method `warnTask`, which counts the child as
   succeeded.
+- `TaskCompleteEvent.outcome` additively accepts `"info"`: a neutral, reader-owned result (an app that answered with an error during post-start checks) that renderers MUST paint as neither success nor warning. `TaskOutcome` widens accordingly and the controller additively gains `infoTask`, which counts the child as succeeded.
 - `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
   `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
   `.stop_grace_period`, `.security_opt`, `.group_add`, `.read_only`, `.platform`, `.pull_policy`,

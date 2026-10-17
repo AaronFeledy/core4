@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, realpath, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import {
   Cause,
@@ -64,10 +66,11 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
-import { findRealpathAncestor } from "@lando/state-store/paths";
+import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
+import { orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import { requireSnapshotSeedTarget } from "./snapshot-seed.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";
 import { sharedVolumeInitialization } from "./volume-initialization.ts";
@@ -157,12 +160,16 @@ const openSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
 const snapshotApps = (
   persistence: SnapshotPersistence,
   filter: SnapshotFilter,
-): Effect.Effect<ReadonlyArray<string>> => {
+): Effect.Effect<ReadonlyArray<string>, DataTransferError> => {
   if (filter.app !== undefined) return Effect.succeed([String(filter.app)]);
   return Effect.tryPromise({
     try: () => readdir(persistence.paths.snapshotsDir),
     catch: (cause) => cause,
-  }).pipe(Effect.catch(() => Effect.succeed([])));
+  }).pipe(
+    Effect.catch((cause) =>
+      errnoCode(cause) === "ENOENT" ? Effect.succeed([]) : Effect.fail(stateFailure("list", cause)),
+    ),
+  );
 };
 
 const readSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
@@ -617,6 +624,17 @@ const realpathNearestExisting = async (path: string): Promise<string> => {
   if (found === null) throw new Error(`No existing ancestor for ${path}`);
   return found.realAncestor;
 };
+
+const snapshotStoreIdentity = (persistence: SnapshotPersistence) =>
+  resolveStatePath(
+    { path: absolutePath(persistence.paths.snapshotsDir) },
+    undefined,
+    "snapshot-identity",
+    "canonicalize",
+  ).pipe(
+    Effect.map(({ rootReal }) => sha256Hex(rootReal)),
+    Effect.mapError((cause) => stateFailure("canonicalize", cause)),
+  );
 
 const resolveAppRoot = async (paths: ReadonlyArray<string>): Promise<string> => {
   const cwdRoot = await findAppRoot(process.cwd());
@@ -1327,6 +1345,17 @@ export const makeDataMoverService = (
         ),
       ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
+      if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
+        return yield* Effect.fail(
+          new DataEndpointUnsupportedError({
+            message: `Provider ${provider.id} does not support native volume snapshots.`,
+            fromEndpoint: "volume",
+            toEndpoint: "nativeSnapshot",
+            remediation:
+              "Use a provider with native volume snapshots or select volumeSnapshot: copy for a host archive.",
+          }),
+        );
+      }
       const snapshotId = randomUUID();
       let rollbackInfo: SnapshotInfo | undefined;
       let rollbackNative: VolumeSnapshotRef | undefined;
@@ -1371,7 +1400,11 @@ export const makeDataMoverService = (
                 volume: store,
                 snapshotId,
                 ...(opts?.label === undefined ? {} : { label: opts.label }),
-                ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
+                labels: {
+                  ...opts?.labels,
+                  [SNAPSHOT_STORE_LABEL]: yield* snapshotStoreIdentity(persistence),
+                  ...(opts?.metadata === undefined ? {} : { [APP_ROOT_LABEL]: opts.metadata.sourceRoot }),
+                },
               })
               .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)))
           : undefined;
@@ -1594,51 +1627,72 @@ export const makeDataMoverService = (
     resolveSnapshot: Effect.fn("DataMover.resolveSnapshot")((reference, scope) =>
       resolveSnapshotInfo(persistence, reference, scope),
     ),
-    removeSnapshot: Effect.fn("DataMover.removeSnapshot")((id, store) =>
-      findSnapshotInfo(persistence, id, store).pipe(
-        Effect.flatMap((info) =>
-          openSnapshotIndex(persistence, String(info.store.app)).pipe(
-            Effect.flatMap((bucket) => {
-              const key = snapshotIndexEntryKey(info);
-              return bucket.update((current) =>
-                (current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
-              );
+    ...orphanedSnapshotMethods({
+      provider,
+      storeIdentity: snapshotStoreIdentity(persistence),
+      index: listSnapshotInfos(persistence, {}),
+    }),
+    removeSnapshot: Effect.fn("DataMover.removeSnapshot")(function* (id, store) {
+      const info = yield* findSnapshotInfo(persistence, id, store);
+      if (info.native !== undefined) {
+        if (provider.removeVolumeSnapshot === undefined) {
+          return yield* Effect.fail(
+            new DataTransferError({
+              message: `Provider ${provider.id} cannot remove snapshot ${info.id}'s provider-stored data.`,
+              operation: "removeVolumeSnapshot",
+              remediation: `Remove the snapshot with provider ${info.native.provider}, which created it.`,
             }),
-            Effect.andThen(removeSnapshotArtifacts(persistence, info)),
-            Effect.flatMap(() => {
-              const removeNative = provider.removeVolumeSnapshot;
-              if (info.native === undefined || removeNative === undefined) {
-                return Effect.void;
-              }
-              return Effect.scoped(
-                removeNative(info.native).pipe(
-                  Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
-                ),
-              );
-            }),
-            Effect.mapError(
-              (cause): DataTransferError =>
-                cause instanceof DataTransferError ? cause : stateFailure("remove", cause),
+          );
+        }
+        yield* Effect.scoped(provider.removeVolumeSnapshot(info.native)).pipe(
+          Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
+        );
+      }
+      yield* Effect.gen(function* () {
+        const bucket = yield* openSnapshotIndex(persistence, String(info.store.app));
+        const key = snapshotIndexEntryKey(info);
+        const remaining = yield* bucket.update((current) =>
+          (current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
+        );
+        yield* removeSnapshotArtifacts(persistence, info);
+        // The index stays even when empty: removing it is a second locked write that could drop an
+        // entry another root sharing this app id adds in between. rmdir only removes an empty dir.
+        if (!remaining.some((entry) => entry.store.store === info.store.store)) {
+          yield* Effect.tryPromise({
+            try: () => rmdir(snapshotStoreDir(persistence, info.store)),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.catch((cause) =>
+              errnoCode(cause) === "ENOENT" || errnoCode(cause) === "ENOTEMPTY"
+                ? Effect.void
+                : Effect.fail(stateFailure("remove-directory", cause)),
             ),
-          ),
+          );
+        }
+      }).pipe(
+        Effect.mapError(
+          (cause): DataTransferError =>
+            cause instanceof DataTransferError ? cause : stateFailure("remove", cause),
         ),
-      ),
-    ),
+      );
+    }),
     pruneSnapshots: Effect.fn("DataMover.pruneSnapshots")((policy: PrunePolicy) =>
       listSnapshotInfos(persistence, policy.filter ?? {}).pipe(
         Effect.map((infos) => {
           if (policy.keepLatest === undefined) {
             return [];
           }
+          const retained = new Set(policy.retainSnapshotIds?.map(String));
           return [...infos]
-            .filter(
-              (info) =>
-                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual",
-            )
+            .filter((info) => {
+              const manual =
+                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual";
+              return policy.recovery === true ? !manual : manual;
+            })
             .sort(
               (left, right) =>
-                Date.parse(DateTime.formatIso(right.createdAt)) -
-                Date.parse(DateTime.formatIso(left.createdAt)),
+                Number(retained.has(String(right.id))) - Number(retained.has(String(left.id))) ||
+                DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
             )
             .slice(policy.keepLatest);
         }),
@@ -1694,6 +1748,9 @@ export const layer: Layer.Layer<
         listSnapshots: (filter) => service().pipe(Effect.flatMap((mover) => mover.listSnapshots(filter))),
         resolveSnapshot: (reference, scope) =>
           service().pipe(Effect.flatMap((mover) => mover.resolveSnapshot(reference, scope))),
+        findOrphanedSnapshots: service().pipe(Effect.flatMap((mover) => mover.findOrphanedSnapshots)),
+        removeOrphanedSnapshot: (artifact) =>
+          service().pipe(Effect.flatMap((mover) => mover.removeOrphanedSnapshot(artifact))),
         removeSnapshot: (id, store) =>
           service().pipe(Effect.flatMap((mover) => mover.removeSnapshot(id, store))),
         pruneSnapshots: (policy) => service().pipe(Effect.flatMap((mover) => mover.pruneSnapshots(policy))),

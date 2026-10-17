@@ -62,7 +62,7 @@ Default hostnames move to the new domain, like `web.myapp.lndo.test`, and so do 
 
 Restarting an app with routing enabled also moves the Traefik dashboard to `traefik.lndo.test/dashboard/`. Traefik picks up the change without recreating its container. Global services publish their routes when the global app starts, so run `lando global:restart` to move global Mailpit to `https://mailpit.lndo.test`.
 
-Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with dnsmasq or your resolver, or add each hostname to `/etc/hosts`. Until then, if URL scanning is on, `lando restart` warns that each URL `did not answer` with `ENOTFOUND`.
+Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with dnsmasq or your resolver, or add each hostname to `/etc/hosts`. Until then, if URL checking is on, `lando restart` marks each affected row with `!` and an `unreachable` reason such as `ENOTFOUND`. Those are Lando-side problems. Rows that get an HTTP response say what your app or web server returned; a `•` row is your app's own answer, not a Lando warning.
 
 ## Set router ports
 

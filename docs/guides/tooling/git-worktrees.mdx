@@ -123,7 +123,7 @@ For snapshots, `--from-app` only matches checkouts of the same Git repository, a
 
 ## Remove the worktree
 
-Destroy the app before you delete its folder. `--volumes` deletes the worktree's database; drop it to keep the data:
+Destroy the app before you delete its folder. `--volumes` deletes the worktree's database; drop it to keep the data. The worktree's snapshots outlive both; use `--purge` instead of `--volumes` to delete them too. The main checkout's snapshots stay either way:
 
 ```sh
 lando destroy -y --volumes

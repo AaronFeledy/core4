@@ -46,7 +46,7 @@ test("keeps copy-in tar framing valid when the source grows before upload", asyn
   const provider = makeProviderDataPlane({
     providerId: "test",
     api,
-    snapshotMode: "copy",
+    capabilities: { volumeSnapshot: "none" },
     redactDetails: (value) => value,
   });
   const plan = {
@@ -103,7 +103,7 @@ test("fails copy-in when the source shrinks before upload", async () => {
   const provider = makeProviderDataPlane({
     providerId: "test",
     api,
-    snapshotMode: "copy",
+    capabilities: { volumeSnapshot: "none" },
     redactDetails: (value) => value,
   });
   const plan = {

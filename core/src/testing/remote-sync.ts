@@ -483,6 +483,8 @@ export const makeTestDataset = () =>
         ),
       removeSnapshot: (_id, _store?) => Effect.void,
       pruneSnapshots: () => Effect.succeed([]),
+      findOrphanedSnapshots: Effect.succeed([]),
+      removeOrphanedSnapshot: () => Effect.void,
     };
     const rejectCodeTree = (ctx: DatasetContext) =>
       ctx.binding !== undefined && ctx.binding.path === "."

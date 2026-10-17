@@ -40,6 +40,8 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
             "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
         }),
       ),
+    findOrphanedSnapshots: Effect.succeed([]),
+    removeOrphanedSnapshot: () => Effect.void,
     removeSnapshot: (_id, _store?) => Effect.void,
     pruneSnapshots: () => Effect.succeed([]),
   });
