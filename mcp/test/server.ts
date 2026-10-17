@@ -30,6 +30,7 @@ export const serverLayer = (
           RedactionService,
           RedactionService.of({
             registerValues: registerRedactionValues,
+            payloadValues: () => Effect.succeed(() => secrets),
             forProfile: () => Effect.succeed(createRedactor("secrets", { values: secrets })),
           }),
         ),

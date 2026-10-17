@@ -1,5 +1,4 @@
 # ---
-# desc: Generate two lines
+# desc: Generate three lines without a trailing newline on the last
 # ---
-echo alpha
-echo beta
+printf 'alpha\nbeta\ngamma'

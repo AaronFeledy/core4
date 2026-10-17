@@ -18,6 +18,7 @@ const redaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => [secret]),
     forProfile: () =>
       Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: { DB_PASSWORD: secret } })),
   }),
@@ -40,6 +41,46 @@ const emitRaw = async (
 };
 
 describe("stream frame redaction", () => {
+  test("masks a registered value split across chunks", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
+    );
+    // When
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: secret.slice(0, 7), raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: secret.slice(7), raw: true });
+        if (sink.flush !== undefined) yield* sink.flush();
+      }).pipe(Effect.provide(layer)),
+    );
+    // Then
+    expect(io.stdout()).toBe(REDACTED);
+  });
+
+  test("preserves unregistered assignment payload", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    const text =
+      "PASSWORD=hunter2-not-registered\nhttps://public:pass@example.test/?token=public\nBearer public-token\n";
+    // When
+    await emitRaw(io, text);
+    // Then
+    expect(io.stdout()).toBe(text);
+  });
+
+  test("preserves identical binary bytes on terminal and file sinks", async () => {
+    // Given
+    const terminal = createBufferedRendererIO({ isTTY: true });
+    const file = createBufferedRendererIO();
+    // When
+    await emitRaw(terminal, payload);
+    await emitRaw(file, payload);
+    // Then
+    expect(terminal.stdoutBytes()).toEqual(file.stdoutBytes());
+  });
   test("redacts a secret in redirected UTF-8 exec output", async () => {
     // Given: a real secrets redactor, a password in the env, and a redirected sink.
     const io = createBufferedRendererIO();
@@ -47,7 +88,7 @@ describe("stream frame redaction", () => {
     // When
     await emitRaw(io, new TextEncoder().encode(`password=${secret}\n`));
 
-    // Then: ordinary lando exec text still goes through redactString.
+    // Then
     expect(io.stdout()).toContain(REDACTED);
     expect(io.stdout()).not.toContain(secret);
   });
@@ -93,7 +134,7 @@ describe("stream frame redaction", () => {
     );
 
     // Then
-    expect(io.stdout()).toBe("pay-€-now");
+    expect(io.stdoutBytes()).toEqual(euro);
   });
 
   test("writes held UTF-8 bytes when a redirected stream turns binary", async () => {
@@ -160,8 +201,8 @@ describe("stream frame redaction", () => {
     expect(io.stdoutBytes()).not.toEqual(new TextEncoder().encode("hellollo"));
   });
 
-  test("does not write raw leftover bytes when flushing a TTY sink", async () => {
-    // Given: a TTY sink whose decoder is non-fatal, plus an unfinished sequence.
+  test("preserves trailing invalid UTF-8 bytes on a TTY sink", async () => {
+    // Given: a TTY sink and an unfinished sequence.
     const io = createBufferedRendererIO({ isTTY: true, stdoutIsTTY: true });
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
     const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
@@ -177,8 +218,7 @@ describe("stream frame redaction", () => {
       }).pipe(Effect.provide(layer)),
     );
 
-    // Then: leftover stays off the raw path. Flush must not call writeRaw on a TTY.
-    expect(io.stdout()).toBe("abc");
-    expect(io.stdoutBytes()).toEqual(new TextEncoder().encode("abc"));
+    // Then
+    expect(io.stdoutBytes()).toEqual(input);
   });
 });

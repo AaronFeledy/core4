@@ -342,6 +342,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
     RedactionService,
     RedactionService.of({
       registerValues: registerRedactionValues,
+      payloadValues: () => Effect.succeed(() => []),
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
   ),
@@ -867,6 +868,7 @@ const makeAutoStartLayer = async (options: {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, redactionOptions) =>
           Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
       }),
@@ -1011,7 +1013,7 @@ describe("lando start", () => {
     expect(JSON.stringify(failure)).not.toContain(secret);
   });
 
-  test("named task env secrets are redacted from task detail and tagged failure output", async () => {
+  test("named task output emits no detail and retains redacted tagged failure output", async () => {
     // Given
     const secret = "named-event-task-token";
     const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] });
@@ -1031,8 +1033,7 @@ describe("lando start", () => {
     const details = harness.taskEvents
       .filter((event) => event._tag === "task.detail")
       .map((event) => String(event.line));
-    expect(details).toContain("[redacted]");
-    expect(details).toContain("[redacted] failed");
+    expect(details).toEqual([]);
     expect(failure).toMatchObject({
       _tag: "LandofileEventStepFailedError",
       outputTail: "[redacted]\n[redacted] failed",

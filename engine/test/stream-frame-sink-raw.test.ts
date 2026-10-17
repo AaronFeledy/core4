@@ -16,6 +16,7 @@ const identityRedaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
   }),
 );

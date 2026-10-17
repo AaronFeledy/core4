@@ -136,6 +136,7 @@ const runWithFakes = (
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
       }),
     ),
@@ -234,6 +235,7 @@ const eventRuntime = (
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
       }),
     ),
@@ -448,7 +450,7 @@ describe("runAppEvent tooling-step kernel", () => {
     ]);
   });
 
-  test("redacts secrets introduced by resolved task variables before live event publication", async () => {
+  test("runs resolved task variables without publishing their payload as detail events", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const plan = attachEffectiveTooling(
@@ -471,7 +473,8 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     const published = JSON.stringify(details);
     expect(published).not.toContain("resolved-secret-value");
-    expect(published).toContain("[redacted]");
+    expect(details).toEqual([]);
+    expect(invocations[0]?.commands[0]?.[2]).toContain("resolved-secret-value");
   });
 
   test("redacts resolved task variables from host shell lifecycle events", async () => {
@@ -506,7 +509,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(published.pre).toHaveLength(1);
     expect(published.post).toHaveLength(1);
-    expect(published.details).toHaveLength(2);
+    expect(published.details).toEqual([]);
     expect(published.pre[0]?.command).toContain("[redacted]");
     expect(published.post[0]?.command).toContain("[redacted]");
     expect(published.post[0]?.stdout).toBe("[redacted]:unset");

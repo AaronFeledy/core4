@@ -5,7 +5,6 @@ import {
   RENDERER_CAPABILITIES_NONE,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
   type RendererCapabilities,
-  isRenderableTaskTreeEvent,
   renderJsonLine,
   renderPlainLine,
   renderVerboseLine,
@@ -48,16 +47,8 @@ const layerRenderer = (
     if (line !== null) io.writeStderr(`${line}\n`);
   });
 
-const renderPlainTaskDetailLine = (event: LandoEvent): string | null => {
-  if (isRenderableTaskTreeEvent(event) && event._tag !== "task.detail") return null;
-  return renderPlainLine(event);
-};
-
 export const layerPlain = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderPlainLine, io);
-
-export const layerPlainTaskDetail = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
-  layerRenderer(renderPlainTaskDetailLine, io);
 
 export const layerJson = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderJsonLine, withStdioTerminalNewlines(io, false));

@@ -4,6 +4,7 @@ import { Context, Effect, Queue, Schema, Stream } from "effect";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import {
   RedactionService,
+  createPayloadValues,
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
@@ -49,6 +50,8 @@ const makeHarness = (): Harness => {
   } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
     registerValues: registerRedactionValues,
+    payloadValues: (options?: Parameters<typeof createStandaloneRedactor>[1]) =>
+      Effect.succeed(createPayloadValues([], options)),
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],

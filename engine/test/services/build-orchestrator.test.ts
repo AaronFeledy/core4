@@ -155,6 +155,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => ["topsecret"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
   }),
 );
@@ -921,6 +922,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: (options) => Effect.succeed(() => [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""]),
         forProfile: (_profile, options) =>
           Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
       } satisfies Context.Service.Shape<typeof RedactionService>),
@@ -971,6 +973,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => ["latersecret"]),
         forProfile: () =>
           Effect.sync(() => {
             profileReads += 1;
