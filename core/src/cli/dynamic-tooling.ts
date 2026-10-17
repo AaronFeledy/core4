@@ -76,14 +76,14 @@ const prepareDynamicToolingInvocation = (name: string, argv: ReadonlyArray<strin
   resetActiveCommandInvocation(commandId, argv);
 };
 
-export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
+export const runDynamicTooling = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv[0];
   if (name === undefined) throw new Error("Missing tooling command name");
   const taskArgv = argv.slice(1);
   // The first separator belongs to Lando; subsequent separators belong to the task.
   const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
   prepareDynamicToolingInvocation(name, commandArgv);
-  if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
+  if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
   const { restore, ...hostIo } = attachToolingHostIo(
     !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
@@ -114,14 +114,14 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   ).finally(restore);
 };
 
-const runDynamicBunShellTooling = (
+const runDynamicBunShellTooling = async (
   route: Extract<ToolingRoute, { readonly _tag: "bun-script" }>,
   argv: ReadonlyArray<string>,
 ): Promise<void> => {
   const { name, appRoot, relativePath } = route;
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name, commandArgv);
-  if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
+  if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
   const mode = toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
   return runWithProcessAbortSignal((signal) => {
     const effect = withKeyboardHandoff(
