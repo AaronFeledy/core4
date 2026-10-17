@@ -318,6 +318,7 @@ export type RebuildAppError = StartAppError | AppResolveError;
 export interface DestroyAppOptions {
   readonly volumes?: boolean;
   readonly purgeCaches?: boolean;
+  readonly purgeSnapshots?: boolean;
   readonly yes?: boolean;
 }
 
@@ -326,9 +327,16 @@ export interface DestroyAppResult {
   readonly outcome?: "destroyed" | "unchanged";
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
+  readonly snapshotsRemoved: number;
 }
 
-export type DestroyAppError = StopAppError | ProxyError | StateStoreError | CacheError;
+export type DestroyAppError =
+  | StopAppError
+  | ProxyError
+  | StateStoreError
+  | CacheError
+  | DataMoverError
+  | ProviderSelectionError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;

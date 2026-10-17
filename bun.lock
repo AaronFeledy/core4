@@ -296,6 +296,11 @@
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
       },
+      "devDependencies": {
+        "@lando/data-mover": "workspace:*",
+        "@lando/paths": "workspace:*",
+        "@lando/state-store": "workspace:*",
+      },
     },
     "plugins/ssh-agent": {
       "name": "@lando/ssh-agent",

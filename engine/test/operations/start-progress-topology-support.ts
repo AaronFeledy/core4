@@ -35,6 +35,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { makeLandoPaths } from "@lando/paths";
 import {
@@ -276,6 +277,7 @@ export const makeHarness = (
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
+    emptySnapshotsLayer,
     PrivateFileAccessService.layer,
     Layer.succeed(
       StateStore,

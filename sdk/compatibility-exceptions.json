@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "enum-narrowed",
+    "path": "$.volumeSnapshot",
+    "justification": "Pre-release removal of unimplemented provider copy snapshots. Providers declare native or none; DataMover retains its own host-archive copy option. No compatibility shim is shipped."
+  },
+  {
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "unsupported-keyword",
     "path": "$.error.additionalProperties",

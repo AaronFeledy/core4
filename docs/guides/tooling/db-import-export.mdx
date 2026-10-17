@@ -63,6 +63,14 @@ lando db:seed --snapshot before-change
 lando db:seed ../shared/baseline.sql.gz
 ```
 
+Snapshots survive `lando destroy` and `lando destroy --volumes`. Use `lando destroy --purge` to delete this folder's snapshots, including their provider-stored snapshot data. Snapshots from another folder or Git worktree stay put, even when the apps share a name.
+
+Lando labels native snapshot data so it can find leftovers after an interrupted snapshot write. `lando doctor` reports unindexed images older than one hour; `lando snapshots:gc --prune` removes them. Run `lando snapshots:gc` without `--prune` to inspect them first. Stopped runtimes stay stopped.
+
+Before `db:import`, `db:reset`, or `db:restore` changes your data, Lando takes an automatic recovery snapshot. After a successful operation, Lando keeps the newest 3 recovery snapshots per database automatically, including the one just taken. Failed operations leave every recovery snapshot in place and report the snapshot ID you can restore. Retention stays within this app folder and database; another Git worktree's snapshots stay put.
+
+`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`, not automatic recovery snapshots. It keeps the newest 3 manual snapshots by default. Removing a snapshot frees its provider storage, not just its entry in the snapshot list. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
+
 ## Confirm destructive work
 
 `db:import` into a non-empty database and every `db:reset` ask first. `--yes` skips the prompt. Non-interactive runs without `--yes` fail with `SqlConfirmRequiredError` and list the steps.
@@ -72,6 +80,12 @@ lando db:reset --yes
 ```
 
 <Guide>
+  <Scenario id="inspect-orphaned-snapshots" render>
+    <Step name="report">
+      <Run command="lando snapshots:gc --format=json" />
+      <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
+    </Step>
+  </Scenario>
   <Scenario id="export-help" render>
     <Step name="help">
       <Run command="lando db:export --help" />

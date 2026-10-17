@@ -349,7 +349,7 @@ export const ProviderCapabilities = Schema.Struct({
   bindMountPerformance: Schema.Literals(["native", "slow", "none"]),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
-  volumeSnapshot: Schema.Literals(["native", "copy", "none"]),
+  volumeSnapshot: Schema.Literals(["native", "none"]),
   serviceFileCopy: Schema.Literals(["native", "exec", "none"]),
   artifactExport: Schema.Boolean,
   artifactImport: Schema.Boolean,

@@ -26,6 +26,8 @@ const expectedTopics = {
   scratch: { description: "Short-lived scratch apps." },
   meta: { description: "Operate on Lando itself: config, plugins, host setup." },
   "meta:events": { description: "Lifecycle event diagnostics." },
+  "meta:snapshots": { description: "Inspect and clean up provider snapshot data." },
+  snapshots: { description: "Inspect and clean up provider snapshot data." },
   "meta:global": { description: "Manage the host-level global Lando app." },
   global: { description: "Manage the host-level global Lando app." },
   "meta:plugin": { description: "Plugin install, remove, and authoring commands." },

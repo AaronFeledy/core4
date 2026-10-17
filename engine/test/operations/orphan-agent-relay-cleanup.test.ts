@@ -17,6 +17,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Stream } from "effect";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -70,6 +71,7 @@ const layerFor = (root: string) => {
   return {
     paths,
     layer: Layer.mergeAll(
+      emptySnapshotsLayer,
       PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(PathsService, paths),

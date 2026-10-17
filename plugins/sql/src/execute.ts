@@ -19,6 +19,7 @@ import type { DbCommandStep } from "./schemas.ts";
 import { executeSeed } from "./seed.ts";
 import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { resolveSnapshotReference } from "./snapshot-reference.ts";
+import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -148,7 +149,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       hostCwd: input.hostCwd ?? process.cwd(),
       canonicalizePath: deps.canonicalizeSourcePath,
     });
-    const keepLatest = input.keepLatest ?? 3;
+    const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
     const snapshots = yield* deps.listSnapshots(filter);
     prunePolicy = { filter, keepLatest };
     pruneCandidates = [...snapshots]
@@ -189,6 +190,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
     resumeAfterSnapshot: boolean,
     preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
+    retainSnapshotIds?: ReadonlyArray<string>,
   ) =>
     runPhysicalOperation({
       deps: { ...deps, resume: resumeDatabase },
@@ -206,8 +208,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
               input.compression === "gzip" ? "tar.gz" : input.compression === "zstd" ? "tar.zst" : "tar",
           }),
       reason,
+      publish: deps.publish,
       resumeAfterSnapshot,
       ...(preflight === undefined ? {} : { preflight }),
+      ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
       body,
     });
   switch (action) {
@@ -270,6 +274,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
             }),
           false,
           (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
+          // The snapshot just restored from may itself be an automatic recovery snapshot.
+          restoreSource === undefined ? [] : [restoreSource.id],
         );
       }
       break;

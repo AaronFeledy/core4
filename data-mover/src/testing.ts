@@ -30,6 +30,8 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
     snapshot: (store) => Effect.succeed({ id: `test-${store.store}`, store }),
     restore: () => Effect.void,
     listSnapshots: () => Effect.succeed([]),
+    findOrphanedSnapshots: Effect.succeed([]),
+    removeOrphanedSnapshot: () => Effect.void,
     removeSnapshot: (_id, _store?) => Effect.void,
     pruneSnapshots: () => Effect.succeed([]),
   });
