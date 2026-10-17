@@ -69,6 +69,8 @@ services:
 
 Each entry is a webroot-relative path. No leading slash, no trailing slash, no `..`, and no `**`. Letters, digits, `.`, `_`, `/`, `-`, and a single-segment `*` only. `lando app:config:lint` rejects anything else, including characters that would break out of the generated location.
 
+Write `noScripts: []` to clear the Drupal default. The key is ignored on every other service type.
+
   <Scenario id="authored-noscripts" render>
     <Step name="scaffold">
       <UseFixture name="nginx-noscripts" />
