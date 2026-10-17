@@ -93,6 +93,7 @@ If you are looking for a public surface or policy:
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
+| Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
@@ -150,6 +151,7 @@ If you are looking for a public surface or policy:
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |
+| Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |

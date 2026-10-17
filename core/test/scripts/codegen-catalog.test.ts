@@ -80,7 +80,7 @@ const expectedCatalogRows = [
     "derived",
     "build-bundled-plugins.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
   ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -91,6 +91,7 @@ const expectedCatalogRows = [
     ["core-service-env-catalog"],
   ],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
+  ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
@@ -100,7 +101,7 @@ const expectedCatalogRows = [
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
   ],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
@@ -138,7 +139,13 @@ const expectedCatalogRows = [
   ],
   ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
-  ["service-type-reference", "derived", "build-service-type-reference.ts", "repo", ["php-msmtp-pins"]],
+  [
+    "service-type-reference",
+    "derived",
+    "build-service-type-reference.ts",
+    "repo",
+    ["php-msmtp-pins", "tomcat-catalog"],
+  ],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
@@ -148,6 +155,7 @@ const expectedCatalogRows = [
   ["runtime-bundle-workflow", "committed-workflow", "build-runtime-bundle-workflow.ts", "repo"],
   ["php-base-workflow", "committed-workflow", "build-php-base-workflow.ts", "repo"],
   ["compose-vendor-bump-workflow", "committed-workflow", "build-compose-vendor-bump-workflow.ts", "repo"],
+  ["tomcat-bump-workflow", "committed-workflow", "build-tomcat-bump-workflow.ts", "repo"],
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
   ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
   ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
@@ -221,10 +229,12 @@ describe("codegen catalog", () => {
       waves.findIndex((wave) => wave.some((entry) => entry.id === id));
 
     // When: each pin generator is placed in a wave.
-    const pinWaves = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"].map((id) => ({
-      id,
-      wave: waveIndexOf(id),
-    }));
+    const pinWaves = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"].map(
+      (id) => ({
+        id,
+        wave: waveIndexOf(id),
+      }),
+    );
 
     // Then: the pin is fully written before any importer reads it. Sharing a wave
     // lets the import observe the file mid-truncation, because `Bun.write`
@@ -300,6 +310,7 @@ describe("codegen catalog", () => {
       "runtime-bundle-workflow",
       "php-base-workflow",
       "compose-vendor-bump-workflow",
+      "tomcat-bump-workflow",
       "platform-readiness-workflow",
       "drupal-journey-workflow",
       "rails-journey-workflow",
@@ -315,13 +326,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(34);
+    expect(catalog).toHaveLength(36);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(20);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(12);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -347,6 +358,7 @@ describe("codegen catalog", () => {
 
     // Then: later consumers wait for their inputs, and independent derived work shares a wave.
     expect(waveOf("php-msmtp-pins")).toBeLessThan(waveOf("service-type-reference"));
+    expect(waveOf("tomcat-catalog")).toBeLessThan(waveOf("service-type-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("command-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("schema-snapshot"));
     expect(waveOf("bundled-plugins")).toBeLessThan(waveOf("schema-snapshot"));
