@@ -83,6 +83,9 @@ export class RedactionValues extends Inspectable.Class implements Redactable.Red
 const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;
 
+const isEligibleValue = (value: string): boolean =>
+  isUsableExactRedactionValue(value) && !isPublicDefaultCredential(value);
+
 const SECRET_ENV_KEY_PARTS = new Set([
   "apikey",
   "apikeys",
@@ -129,12 +132,7 @@ export const collectSecretEnvValues = (
       .filter(nonEmpty);
     const carriesSecret =
       key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
-    if (
-      carriesSecret &&
-      nonEmpty(value) &&
-      !isPublicDefaultCredential(value) &&
-      isUsableExactRedactionValue(value)
-    ) {
+    if (carriesSecret && value !== undefined && isEligibleValue(value)) {
       values.push(value);
     }
   }
@@ -167,20 +165,25 @@ const collectOptionValues = (options: RedactionForProfileOptions | undefined): s
 const dedupeValues = (values: Iterable<string>): string[] => {
   const deduped = new Set<string>();
   for (const value of values) {
-    if (nonEmpty(value) && isUsableExactRedactionValue(value)) deduped.add(value);
+    if (isEligibleValue(value)) deduped.add(value);
   }
   return [...deduped];
 };
 
 export const collectForwardedEnvValues = (env: Readonly<Record<string, string>> | undefined): string[] =>
-  dedupeValues(Object.values(env ?? {})).filter((value) => !isPublicDefaultCredential(value));
+  dedupeValues(Object.values(env ?? {}));
+
+const collectValueLayer = (secretValues: Iterable<string>, options: RedactionForProfileOptions | undefined) =>
+  dedupeValues([...secretValues, ...collectOptionValues(options), ...(options?.authoritativeTokens ?? [])]);
 
 const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => ({
-  values: dedupeValues(collectOptionValues(options)),
-  authoritativeValues: [...secretValues, ...(options?.authoritativeTokens ?? [])],
+  values: collectValueLayer([...secretValues, ...registeredValues], options),
+  authoritativeValues: [...(options?.authoritativeTokens ?? [])].filter(
+    (value) => !isPublicDefaultCredential(value),
+  ),
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 
@@ -190,7 +193,7 @@ let registeredGeneration = 0;
 export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
   Effect.sync(() => {
     for (const value of values) {
-      if (!isUsableExactRedactionValue(value) || registeredValues.has(value)) continue;
+      if (!isEligibleValue(value) || registeredValues.has(value)) continue;
       registeredValues.add(value);
       registeredGeneration += 1;
     }
@@ -209,16 +212,10 @@ const makeRegisteredRedactor = (
   options: RedactionForProfileOptions | undefined,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => {
   let generation = registeredGeneration;
-  let redactor = createRedactor(
-    profile,
-    makeRedactorOptions([...secretValues, ...registeredValues], options),
-  );
+  let redactor = createRedactor(profile, makeRedactorOptions(secretValues, options));
   const current = (): Redactor => {
     if (generation !== registeredGeneration) {
-      redactor = createRedactor(
-        profile,
-        makeRedactorOptions([...secretValues, ...registeredValues], options),
-      );
+      redactor = createRedactor(profile, makeRedactorOptions(secretValues, options));
       generation = registeredGeneration;
     }
     return redactor;
@@ -249,12 +246,12 @@ export const createPayloadValues = (
   secretValues: Iterable<string>,
   options?: RedactionForProfileOptions,
 ): (() => Iterable<string>) => {
-  const initial = [...secretValues, ...collectOptionValues(options), ...(options?.authoritativeTokens ?? [])];
+  const initial = collectValueLayer(secretValues, options);
   let generation = -1;
   let values = new RedactionValues();
   return () => {
     if (generation !== registeredGeneration) {
-      values = new RedactionValues([...initial, ...registeredValues]);
+      values = new RedactionValues(dedupeValues([...initial, ...registeredValues]));
       generation = registeredGeneration;
     }
     return values;
