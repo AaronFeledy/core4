@@ -6,6 +6,8 @@
 
 - `DataMover.restore` adds an optional third `opts?: SnapshotRestoreOptions` argument. Omitted options and `mode: "restore"` keep strict physical-volume generation checks. `mode: "seed"` permits a new generation only for the snapshot's own app, store, and owner root, with verified snapshot metadata and an in-progress volume initialization claim. `SnapshotAmbiguousError` adds optional `candidateIds`, ordered newest first, for id-or-label resolution; `snapshotId` retains the reference supplied by the caller.
 
+- `ToolingEngine` output ownership is per channel: emitted bytes take precedence; otherwise returned content is delivered once. The service signature is unchanged. `ToolingEngineContractHarness.captureOutput` optionally exercises streaming adapters against the same returning-engine contract.
+
 - `Renderer.output.stdout` and `stderr` now accept `string | Uint8Array`. Full `RendererIO.writeStdout` and `writeStderr` accept the same union; the optional parallel byte writers are removed. `RendererNarrationIO.writeStderr` remains string-only. Byte payloads pass through unchanged, including invalid UTF-8 and partial lines, while terminal destinations suspend and repaint the stderr live region. The stream sink depends only on `Renderer` and redaction, never raw IO.
 
 - Rich interactive stdio prompts require terminal stdin and stderr; stdout redirection is irrelevant. Explicit interactive mode still prompts without them, using line input. The interaction contract captures stderr independently and replaces `InteractionServiceSpec.stdout` with `stderr` to enforce the same stream ownership for plugin implementations.
