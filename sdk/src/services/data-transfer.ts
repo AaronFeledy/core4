@@ -25,6 +25,7 @@ import type {
   SnapshotId,
   SnapshotInfo,
   SnapshotOptions,
+  SnapshotRestoreOptions,
   VolumeRef,
   VolumeSnapshotArtifact,
 } from "../schema/index.ts";
@@ -60,6 +61,7 @@ export class DataMover extends Context.Service<
     readonly restore: (
       handle: SnapshotHandle | SnapshotId,
       store: VolumeRef,
+      opts?: SnapshotRestoreOptions,
     ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
     readonly listSnapshots: (
       filter: SnapshotFilter,

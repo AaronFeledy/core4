@@ -57,6 +57,8 @@ describe("diagnostic nginx Accept negotiation", () => {
   });
 
   test("keeps both fallback responses exact and labelled utf-8", () => {
+    expect(config).toContain("    add_header X-Lando-Router no-route always;");
+    expect(config.indexOf("add_header X-Lando-Router")).toBeLessThan(config.indexOf("    location /"));
     expect(config).toContain('default_type "text/plain; charset=utf-8";');
     expect(config).toContain('return 404 "404 page not found\\n";');
     // mime.types maps the .txt/.html internal URIs, so only a server-level charset

@@ -83,6 +83,7 @@
     "./operations/plugin-install": "./src/operations/plugin-install.ts",
     "./operations/plugin-link": "./src/operations/plugin-link.ts",
     "./operations/plugin-scaffold": "./src/operations/plugin-scaffold.ts",
+    "./operations/post-start-scan": "./src/operations/post-start-scan.ts",
     "./operations/rebuild": "./src/operations/rebuild.ts",
     "./operations/remote": "./src/operations/remote.ts",
     "./operations/reserved-aliases": "./src/operations/reserved-aliases.ts",

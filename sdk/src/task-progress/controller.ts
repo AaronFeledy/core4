@@ -43,6 +43,11 @@ export interface TaskTreeController {
   readonly completeTask: (localId: string, summary?: string, durationMs?: number) => Effect.Effect<void>;
   /** Settle a child as complete-with-warnings: counted as succeeded, painted as a warning. */
   readonly warnTask: (localId: string, summary?: string, durationMs?: number) => Effect.Effect<void>;
+  /**
+   * Settle a child with a neutral, reader-owned result (an app answered with an
+   * error, for example): counted as succeeded, painted as neither success nor warning.
+   */
+  readonly infoTask: (localId: string, summary?: string, durationMs?: number) => Effect.Effect<void>;
   readonly failTask: (localId: string, summary?: string, options?: TaskFailOptions) => Effect.Effect<void>;
   readonly detail: (localId: string, stream: "stdout" | "stderr", line: string) => Effect.Effect<void>;
   readonly settleSuccess: (summary: string, durationMs?: number) => Effect.Effect<void>;
@@ -172,6 +177,11 @@ export const makeTaskTree = (
     warnTask: (localId, summary, durationMs) =>
       settleChild(localId, "complete", summary, {
         outcome: "warn",
+        ...(durationMs === undefined ? {} : { durationMs }),
+      }),
+    infoTask: (localId, summary, durationMs) =>
+      settleChild(localId, "complete", summary, {
+        outcome: "info",
         ...(durationMs === undefined ? {} : { durationMs }),
       }),
     failTask: (localId, summary, options) => settleChild(localId, "fail", summary, options),

@@ -156,6 +156,24 @@ export const ScanPlan = Schema.Struct({
 });
 export type ScanPlan = typeof ScanPlan.Type;
 
+// ============================================================================
+// HTTP app check results
+// ============================================================================
+const ScanVerdictSchema = Schema.Literals(["ready", "app-error", "service-error", "lando-error"]);
+export type ScanVerdict = typeof ScanVerdictSchema.Type;
+
+export const CheckResult = Schema.Struct({
+  id: Schema.String.annotate({ description: "Stable check identifier: http:<service>:<path>." }),
+  kind: Schema.Literal("http").annotate({ description: "Observation kind." }),
+  service: ServiceName.annotate({ description: "Service that owns the checked endpoint." }),
+  url: Schema.String.annotate({ description: "Checked host-facing URL." }),
+  verdict: ScanVerdictSchema.annotate({ description: "Readiness and ownership of the observation." }),
+  statusCode: Schema.optionalKey(Schema.Int).annotate({ description: "Observed HTTP response status." }),
+  message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
+  detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),
+}).annotate({ identifier: "CheckResult", description: "An owner-classified post-start HTTP check." });
+export type CheckResult = typeof CheckResult.Type;
+
 /**
  * Certificate plan — leaf certs reserved for this service.
  */

@@ -86,6 +86,7 @@ import type {
   AbsolutePath,
   AppPlan,
   AppRef,
+  CheckResult,
   ConfigLintResult,
   DatasetKind,
   LandofileShape,
@@ -199,6 +200,7 @@ export interface StartAppOptions {
 }
 
 export interface StartAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesStarted: ReadonlyArray<{
     readonly name: string;
@@ -292,6 +294,7 @@ export interface RestartAppOptions {
 }
 
 export interface RestartAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
@@ -304,6 +307,7 @@ export interface RebuildAppOptions {
 }
 
 export interface RebuildAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesRebuilt: ReadonlyArray<string>;
   readonly servicesStarted: StartAppResult["servicesStarted"];

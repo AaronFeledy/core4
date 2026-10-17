@@ -147,6 +147,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   HealthcheckPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ScannerConfig: "sdk/test/schema/scanner-config.test.ts",
   ScanPlan: "sdk/test/schema/scan-plan.test.ts",
+  CheckResult: "sdk/test/schema/check-result.test.ts",
   CertificatePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   HostAliasPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceDependencyCondition: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

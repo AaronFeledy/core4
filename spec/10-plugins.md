@@ -71,7 +71,8 @@ The manifest is an Effect Schema validated before module import.
 | `provides.interactionServices` | Prompt and answer transports (§8.10). |
 | `provides.routeFilters` | Provider-neutral route transforms. |
 | `provides.healthcheckRunners` | Healthcheck executors. |
-| `provides.urlScanners` | URL readiness scanners. |
+| `provides.checkKinds` | App check kinds: observation only (§10.5.2). |
+| `provides.checkProfiles` | Named declarative check rule sets and checks (§10.5.2). |
 | `provides.pluginSources` | Plugin distribution adapters. |
 | `provides.secretStores` | Secret resolution stores with owned reference schemes (§9.5.1). |
 | `provides.configTranslators` | Explicit authoring-fragment translators (§7.4.1). |
@@ -104,7 +105,8 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 | `toolingEngines` | Tooling service | Executes compiled tooling graphs. |
 | `httpClients`, `downloaders` | Egress services | Preserves the HTTP/download chokepoints. |
 | `interactionServices` | Interaction service | Implements prompt transport and redaction guarantees. |
-| `routeFilters`, `healthcheckRunners`, `urlScanners` | Runtime subsystems | Implements the corresponding published contract. |
+| `routeFilters`, `healthcheckRunners`, `checkKinds` | Runtime subsystems | Implements the corresponding published contract. |
+| `checkProfiles` | Check planning | Declarative data resolved into `CheckPlan` at plan time; never code. |
 | `pluginSources` | Plugin install | Resolves a distribution source. |
 | `secretStores` | Routed `SecretStore` registry | Resolves the `${secret:...}` references whose scheme it owns, or bare ids when selected as default (§9.5.1). |
 | `configTranslators` | Explicit conversion APIs | Produces authoring fragments, never runtime plans. |
