@@ -130,7 +130,7 @@ describe("assertLandoVersionConstraint", () => {
         resultSchema: Schema.Struct({ checked: Schema.Boolean }),
         io,
         render: () => "",
-        formatError: String,
+        formatError: ({ error }) => String(error),
       },
     );
 

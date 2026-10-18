@@ -61,7 +61,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
       resultSchema: infoSpec.resultSchema,
       io,
       render: (value, ctx) => infoSpec.render?.(value, undefined, ctx),
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
 
     const stdout = io.stdout();
@@ -88,7 +88,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
         resultSchema: infoSpec.resultSchema,
         io,
         render: (value, ctx) => infoSpec.render?.(value, undefined, ctx),
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       return io.stdout();
     };
@@ -107,7 +107,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
       resultSchema: infoSpec.resultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -130,7 +130,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
       resultSchema: infoSpec.resultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
 
     expect(Bun.YAML.parse(io.stdout())).toBeDefined();
@@ -162,7 +162,7 @@ describe("--format=yaml on a live-streaming command", () => {
       streamingMode: "live",
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     return io;
@@ -213,7 +213,7 @@ describe("--format=yaml on a live-streaming command", () => {
         streamingMode: "live",
         io,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
       return io.stdout();
@@ -239,7 +239,7 @@ describe("--format=yaml on a live-streaming command", () => {
       streamingMode: "live",
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -291,7 +291,7 @@ describe("documentOutput keeps a command's own document on success only", () => 
         io,
         ...(options.documentOutput === undefined ? {} : { documentOutput: options.documentOutput }),
         render: () => "name: demo",
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -356,7 +356,7 @@ describe("the machine controls behave the same under yaml as under json", () => 
       resultSchema: ResultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
       ...extra,
     });
@@ -389,7 +389,7 @@ describe("the machine controls behave the same under yaml as under json", () => 
       jqExpression: "this is not jq",
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },

@@ -44,7 +44,7 @@ describe("command result vs message routing under --renderer=json", () => {
         command: "app:info",
         resultSchema: Schema.Struct({ name: Schema.String }),
         io,
-        formatError: String,
+        formatError: ({ error }) => String(error),
       },
     );
 
@@ -120,7 +120,7 @@ describe("command result vs message routing under --renderer=json", () => {
       resultFormat: "json",
       command: "app:start",
       io,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },

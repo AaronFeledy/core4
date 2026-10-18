@@ -49,6 +49,8 @@ import {
 import {
   compensateFailure,
   compensateFailureUnless,
+  mapFailureErrors,
+  mergeFailure,
   runAllAndMergeFailures,
 } from "../lifecycle/failure-compensation.ts";
 import {
@@ -361,7 +363,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       services: neededGlobalServices,
       ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
     }).pipe(
-      Effect.mapError((cause) =>
+      mapFailureErrors((cause) =>
         isReadinessFailure(cause)
           ? cause
           : new GlobalAutoStartError({
@@ -533,7 +535,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                         Effect.uninterruptible,
                         Effect.matchCauseEffect({
                           onSuccess: () => Effect.failCause(cause),
-                          onFailure: (journalCause) => Effect.failCause(Cause.combine(cause, journalCause)),
+                          onFailure: (journalCause) =>
+                            Effect.failCause(mergeFailure(cause, journalCause, "cleanup")),
                         }),
                       )
                     : Effect.failCause(cause),
@@ -581,7 +584,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                     }),
                   );
                   if (Exit.isFailure(cleanupExit)) {
-                    const failure = Cause.combine(exit.cause, cleanupExit.cause);
+                    const failure = mergeFailure(exit.cause, cleanupExit.cause, "rollback");
                     // Without provider rollback, prepared targets survive any cleanup failure.
                     if (
                       (sessionLease.preserveOnFailure ||

@@ -199,6 +199,7 @@ import {
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -816,6 +817,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PromptSpec,
   InteractionServiceContribution,
   CommandResultFormat,
+  FailureRole,
   CommandWarning,
   CommandResultEnvelope,
   CommandTraceSpan,
@@ -1281,6 +1283,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PromptSpec: "Public Lando schema contract for Prompt Spec.",
   InteractionServiceContribution: "Public Lando schema contract for Interaction Service Contribution.",
   CommandResultFormat: "Public Lando schema contract for Command Result Format.",
+  FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",
