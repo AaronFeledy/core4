@@ -42,7 +42,7 @@ Lando keys include `api`, `type`, `primary`, `artifact`, `appMount`, `mounts`, `
 
 `BuildScriptStep` is a command string or `{ run, user? }`; `BuildScript` is one step or an ordered list.
 
-The published boundary retains the named component contracts `ArtifactInput`, `CommandInput`, `UserInput`, `PortablePath`, `AppMountInput`, `MountInput`, `StorageInput`, `EndpointInput`, `RouteInput`, `HealthcheckInput`, `LogSourceInput`, `CertsInput`, `CaInput`, and `ProviderId`.
+The published boundary retains the named component contracts `ArtifactInput` (not yet published; see #1483), `CommandSpec`, `ContainerUser`, `PortablePath`, `AppMountInput`, `MountInput`, `StorageInput`, `EndpointInput`, `RouteInput`, `HealthcheckInput`, `LogSourceInput`, `CertsInput`, `CaInput`, and `ProviderId`.
 
 ### 6.3 Artifact build
 
