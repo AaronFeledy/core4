@@ -11,6 +11,7 @@ docs/.astro/
 test/scenarios/generated/guides/**
 
 # Derived bake-time TypeScript
+/plugins/service-lando/src/services/generated/tomcat-catalog.ts
 /core/src/cli/generated/
 /core/src/cli/allowlists/recipe-post-init.ts
 /docs/reference/recipe-post-init.mdx

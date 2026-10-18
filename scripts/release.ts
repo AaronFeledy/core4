@@ -863,6 +863,8 @@ const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<Re
   );
   if (context.target !== "library") {
     assets.push(
+      "plugins/service-lando/tomcat/LICENSE",
+      "plugins/service-lando/tomcat/NOTICE",
       "dist/update-manifest.json",
       "dist/update-manifest.json.sig",
       "dist/update-manifest.json.crt",

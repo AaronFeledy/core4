@@ -417,6 +417,20 @@ describe("destroy progress topology", () => {
     expect(byTag(harness.events, "message.warn")[0]?.body).toContain("without route cleanup");
   });
 
+  test("purges snapshots before provider teardown when requested", async () => {
+    const harness = makeHarness();
+    const result = await runDestroyTarget(harness, { purgeSnapshots: true });
+    const parentId = destroyTreeId(String(plan.id));
+    const snapshots = startChildTaskId(parentId, "snapshots");
+    const provider = startChildTaskId(parentId, "provider");
+    const children = byTag(harness.events, "task.tree.start")[0]?.children ?? [];
+    expect(children.indexOf(snapshots)).toBeGreaterThanOrEqual(0);
+    expect(children.indexOf(snapshots)).toBeLessThan(children.indexOf(provider));
+    const completed = byTag(harness.events, "task.complete").map((event) => event.taskId);
+    expect(completed.indexOf(snapshots)).toBeLessThan(completed.indexOf(provider));
+    expect(result.snapshotsRemoved).toBe(0);
+  });
+
   test("preserves snapshots when destroying volumes", async () => {
     // Given
     const defaultHarness = makeHarness();

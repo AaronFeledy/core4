@@ -3,13 +3,7 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import { EventService } from "@lando/sdk/services";
 import { DateTime, Effect, Layer } from "effect";
 import { createBufferedRendererIO } from "../src/io.ts";
-import {
-  layerPlain,
-  layerPlainTaskDetail,
-  layerVerbose,
-  makePlainRenderer,
-  makeVerboseRenderer,
-} from "../src/runtime.ts";
+import { layerPlain, layerVerbose, makePlainRenderer, makeVerboseRenderer } from "../src/runtime.ts";
 
 test.each(["plain", "verbose"] as const)(
   "%s sends events and every message severity to stderr",
@@ -38,7 +32,7 @@ test.each(["plain", "verbose"] as const)(
   },
 );
 
-test("plain detail-only narration leaves stdout empty", async () => {
+test("plain task narration leaves stdout empty", async () => {
   // Given
   const io = createBufferedRendererIO();
 
@@ -53,7 +47,7 @@ test("plain detail-only narration leaves stdout empty", async () => {
         line: "detail",
         timestamp: DateTime.nowUnsafe(),
       });
-    }).pipe(Effect.provide(layerPlainTaskDetail(io).pipe(Layer.provideMerge(LandoEventService.layer)))),
+    }).pipe(Effect.provide(layerPlain(io).pipe(Layer.provideMerge(LandoEventService.layer)))),
   );
 
   // Then

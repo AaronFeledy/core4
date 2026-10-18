@@ -1,3 +1,4 @@
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { Flags } from "../../../spec/metadata";
 
 import type { ScratchGcReport } from "@lando/sdk/services";
@@ -16,6 +17,7 @@ export const appsScratchGcSpec: LandoCommandSpec<ScratchGcReport> = {
   aliases: ["scratch:gc"],
   bootstrap: "scratch",
   flags: {
+    yes: nonPromptingYesFlag,
     prune: Flags.boolean({
       description: "Reap orphaned scratch resources after reporting them.",
       default: false,

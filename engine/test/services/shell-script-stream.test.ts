@@ -2,13 +2,67 @@ import { expect, test } from "bun:test";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import {
+  RedactionService,
+  createPayloadValues,
+  makeRedactionService,
+  registerRedactionValues,
+} from "@lando/redaction/service";
+import { createPayloadRedactor, createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Exit, Layer, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
+
+const frameText = (frame: StreamFrameSinkFrame) =>
+  typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+
+test("forwards unregistered assignments and binary script bytes without decoding", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-bytes-"));
+  const script = join(root, "binary.bun.sh");
+  const chunks: Uint8Array[] = [];
+  const redaction = makeRedactionService({
+    id: "empty",
+    list: Effect.succeed([]),
+    get: () => Effect.succeed(""),
+    has: () => Effect.succeed(false),
+  });
+  try {
+    await writeFile(
+      script,
+      `echo PASSWORD=public; bun -e 'process.stdout.write(new Uint8Array([255,0,128]))'\n`,
+    );
+    // When
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shell) => shell.runScript(script)).pipe(
+        Effect.provide(
+          BunShellRunner.layer(() => {
+            throw new TypeError("unused interactive IO");
+          }),
+        ),
+        Effect.provideService(RedactionService, redaction),
+        Effect.provideService(StreamFrameSink, {
+          emit: (frame) =>
+            Effect.sync(() => {
+              expect(frame.chunk).toBeInstanceOf(Uint8Array);
+              chunks.push(
+                typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk,
+              );
+            }),
+        }),
+      ),
+    );
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+    expect(new Uint8Array(chunks.flatMap((chunk) => [...chunk]))).toEqual(
+      new Uint8Array([...new TextEncoder().encode("PASSWORD=public\n"), 255, 0, 128]),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test.each([true, false])(
   "reads inherited piped stdin through EOF when hostIo stdin is %s",
@@ -50,7 +104,7 @@ test.each([true, false])(
   },
 );
 
-test("terminal host IO hands the script Lando's own stdout and stderr", async () => {
+test("terminal host IO inherits input but routes output through the live sink", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-terminal-"));
   const scriptPath = join(root, "prompt.bun.sh");
@@ -61,9 +115,11 @@ test("terminal host IO hands the script Lando's own stdout and stderr", async ()
       import { Effect } from "effect";
       import { ShellRunner } from "@lando/sdk/services";
       import { layer } from ${JSON.stringify(runnerPath)};
+      import { StreamFrameSink } from ${JSON.stringify(resolve(import.meta.dirname, "../../src/operations/stream-frame-sink.ts"))};
       const result = await Effect.runPromise(Effect.flatMap(ShellRunner, shell =>
         shell.runScript(${JSON.stringify(scriptPath)}, { hostIo: "terminal" })
-      ).pipe(Effect.provide(layer(() => { throw new TypeError("unused interactive IO"); }))));
+      ).pipe(Effect.provide(layer(() => { throw new TypeError("unused interactive IO"); })),
+        Effect.provideService(StreamFrameSink, { emit: frame => Effect.sync(() => process[frame._tag].write(frame.chunk)) })));
       process.stdout.write(JSON.stringify({ exitCode: result.exitCode, captured: result.stdout + result.stderr }));
     `;
     // When
@@ -107,7 +163,7 @@ test("kills a running script promptly when its signal aborts", async () => {
       Effect.provideService(StreamFrameSink, {
         emit: (frame) =>
           Effect.sync(() => {
-            if (frame.chunk === "ready\n") ready.resolve();
+            if (frameText(frame).includes("ready\n")) ready.resolve();
           }),
       }),
     );
@@ -174,8 +230,9 @@ test.skipIf(process.platform === "win32").each([
       );
       // Then
       expect(result.exitCode).toBe(exitCode);
-      const stdout = result.stdout;
+      const stdout = mode === "live" ? frames.map(frameText).join("") : result.stdout;
       if (stdout === undefined) throw new TypeError("Missing script output");
+      if (mode === "live") expect(result.stdout).toBe("");
       const lines = stdout.trim().split("\n");
       expect(lines.slice(0, 4)).toEqual(["<unset><unset>", "two words", "x", "[1]"]);
       expect(lines[5]).toBe(script);
@@ -185,7 +242,6 @@ test.skipIf(process.platform === "win32").each([
       expect(await access(dirname(launcherPath)).catch((cause: unknown) => cause)).toMatchObject({
         code: "ENOENT",
       });
-      if (mode === "live") expect(frames.map((frame) => frame.chunk).join("")).toBe(stdout);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -314,24 +370,24 @@ test.each(["collected", "live"] as const)(
             ),
       );
       // Then
-      expect(result).toEqual({
-        exitCode: 0,
-        stdout: `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${root}\ntail`,
-        stderr: "diagnostic\n",
-      });
-      if (mode === "live") {
+      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${root}\ntail`;
+      const expectedStderr = "diagnostic\n";
+      if (mode === "collected") {
+        expect(result).toEqual({ exitCode: 0, stdout: expectedStdout, stderr: expectedStderr });
+      } else {
+        expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
         expect(
           frames
             .filter((frame) => frame._tag === "stdout")
-            .map((frame) => frame.chunk)
+            .map(frameText)
             .join(""),
-        ).toBe(result.stdout);
+        ).toBe(expectedStdout);
         expect(
           frames
             .filter((frame) => frame._tag === "stderr")
-            .map((frame) => frame.chunk)
+            .map(frameText)
             .join(""),
-        ).toBe(result.stderr);
+        ).toBe(expectedStderr);
       }
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -345,6 +401,8 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
   const secret = "scoped-stream-secret";
   const frames: StreamFrameSinkFrame[] = [];
   const events: LandoEvent[] = [];
+  const values = createPayloadValues([]);
+  const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
   const layer = Layer.mergeAll(
     BunShellRunner.layer(() => {
       throw new TypeError("unused interactive IO");
@@ -354,7 +412,14 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
       StreamFrameSink.of({
         emit: (frame) =>
           Effect.sync(() => {
-            frames.push(frame);
+            const bytes =
+              typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
+            frames.push({ ...frame, chunk: payloads[frame._tag].write(bytes) });
+          }),
+        flush: () =>
+          Effect.sync(() => {
+            for (const tag of ["stdout", "stderr"] as const)
+              frames.push({ _tag: tag, chunk: payloads[tag].flush() });
           }),
       }),
     ),
@@ -362,6 +427,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: (options) => Effect.succeed(() => options?.redactionTokens ?? []),
         forProfile: (profile, options) =>
           Effect.succeed(createRedactor(profile, { values: options?.redactionTokens ?? [] })),
       }),
@@ -392,14 +458,20 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
       ).pipe(Effect.provide(layer)),
     );
     // Then
-    expect(result).toEqual({ exitCode: 0, stdout: `${secret}\n${secret}`, stderr: `${secret}\n` });
-    expect(frames.map((frame) => frame.chunk)).toEqual(
-      expect.arrayContaining(["[redacted]\n", "[redacted]"]),
-    );
+    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+    const stdout = frames
+      .filter((frame) => frame._tag === "stdout")
+      .map(frameText)
+      .join("");
+    const stderr = frames
+      .filter((frame) => frame._tag === "stderr")
+      .map(frameText)
+      .join("");
+    expect(stdout).toBe("[redacted]\n[redacted]");
+    expect(stderr).toBe("[redacted]\n");
     expect(JSON.stringify(frames)).not.toContain(secret);
     expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
     expect(JSON.stringify(events)).not.toContain(secret);
-    expect(JSON.stringify(events)).toContain("[redacted]");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

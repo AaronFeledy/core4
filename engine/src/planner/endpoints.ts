@@ -1,5 +1,6 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
-import { Effect, Predicate, Schema } from "effect";
+import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect, Predicate, Schema } from "effect";
 
 import {
   type CapabilityError,
@@ -39,10 +40,12 @@ import {
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
+import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
 import { evaluateRouteHostname } from "./route-hostname.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
+import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
 import { expandExcludesToShadows } from "./storage.ts";
 
 const duplicateEndpointNameError = (
@@ -128,6 +131,8 @@ export const resolveRoute = Effect.fnUntraced(function* (
 });
 
 export interface FinalizedServices {
+  readonly gitHostChecks: readonly GitHostCheck[];
+  readonly shadowHostChecks: readonly ShadowHostCheck[];
   readonly services: Record<string, unknown>;
   readonly serviceHostnames: Record<string, ReadonlyArray<string>>;
   readonly stores: ReadonlyArray<{
@@ -151,6 +156,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
   readonly fileSyncEngineId: string | undefined;
+  readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.fn.Return<
   FinalizedServices,
   | LandofileValidationError
@@ -162,6 +168,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   | RouteInputError
 > {
   const services: Record<string, unknown> = {};
+  const shadowHostChecks: ShadowHostCheck[] = [];
+  const gitHostChecks: GitHostCheck[] = [];
   const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
   const stores: Array<FinalizedServices["stores"][number]> = [];
   const fileSync: Array<FileSyncPlan> = [];
@@ -289,7 +297,19 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
 
     const realization = bindRealization(input.providerCapabilities);
-    const shadowResult = expandExcludesToShadows(input.appSlug, name, withArtifact, input.appRoot);
+    const hostChecks = yield* checkShadowHosts(withArtifact.appMount, input.fileSystem);
+    const shadowableExcludes = new Set<string>();
+    for (const { exclude, ...check } of hostChecks) {
+      shadowHostChecks.push(check);
+      if (check.shadowed) shadowableExcludes.add(exclude);
+    }
+    const shadowResult = expandExcludesToShadows(
+      input.appSlug,
+      name,
+      withArtifact,
+      input.appRoot,
+      shadowableExcludes,
+    );
     if (shadowResult instanceof LandofileValidationError) {
       return yield* Effect.fail(shadowResult);
     }
@@ -303,8 +323,20 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ),
     };
 
+    let gitDirectories: GitHostCheck["directories"] = null;
+    if (realization === "passthrough" && appMount !== undefined) {
+      const gitPath = `${appMount.source}/.git`;
+      gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
+      gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
+    }
     const withHome = applyServiceHome({
-      servicePlan: servicePlanWithCapabilityRealization,
+      servicePlan: {
+        ...servicePlanWithCapabilityRealization,
+        mounts: [
+          ...servicePlanWithCapabilityRealization.mounts,
+          ...worktreeGitMounts(servicePlanWithCapabilityRealization, gitDirectories),
+        ],
+      },
       serviceName: name,
       appSlug: input.appSlug,
       appRoot: input.appRoot,
@@ -442,6 +474,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
   yield* validateServiceDependencies(input.appRoot, services);
   return {
+    gitHostChecks,
+    shadowHostChecks,
     services,
     serviceHostnames,
     stores,

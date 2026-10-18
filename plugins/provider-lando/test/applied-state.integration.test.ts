@@ -259,7 +259,7 @@ describe("provider-lando applied state persistence", () => {
                 path: PortablePath.make("/app"),
               },
               mode: "two-way-safe",
-              excludes: [],
+              excludes: [".git"],
             },
           },
         ],

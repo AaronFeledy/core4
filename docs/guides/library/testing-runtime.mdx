@@ -145,7 +145,7 @@ The fake provider reports the stable provider id test.
 
 The fake provider satisfies the RuntimeProvider contract used by core tests (`valid`).
 
-@lando/sdk/test exposes runProviderDataPlaneContract for provider volume, service file, and artifact byte round trips, including native-vs-copy path observations.
+@lando/sdk/test exposes runProviderDataPlaneContract for provider volume, service file, and artifact byte round trips. It checks native snapshot paths when supported and typed capability failures otherwise.
 
 TestRuntimeProvider implements the data-plane methods in memory so contract tests can run without a live container runtime (`in-memory`).
 

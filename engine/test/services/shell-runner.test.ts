@@ -16,6 +16,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: (options) => Effect.succeed(() => ["topsecret", ...(options?.redactionTokens ?? [])]),
     forProfile: (profile, options) =>
       Effect.succeed(createRedactor(profile, { values: ["topsecret", ...(options?.redactionTokens ?? [])] })),
   }),

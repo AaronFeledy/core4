@@ -48,7 +48,7 @@ import { withStartedGpgAgent } from "./start-gpg-agent.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
-import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
+import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
@@ -58,7 +58,8 @@ export type { RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
 export const RebuildAppResultSchema = Schema.Struct({
   app: Schema.String,
   servicesRebuilt: Schema.Array(Schema.String),
-  servicesStarted: Schema.Array(StartedServiceResultSchema),
+  servicesStarted: StartAppResultSchema.fields.servicesStarted,
+  checks: StartAppResultSchema.fields.checks,
 });
 
 type RebuildAppServices =
@@ -238,6 +239,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
           app: start.app,
           servicesRebuilt: start.servicesStarted.map((service) => service.name),
           servicesStarted: start.servicesStarted,
+          ...(start.checks === undefined ? {} : { checks: start.checks }),
         };
       }, Effect.provide(context)),
     }),

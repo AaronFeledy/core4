@@ -342,6 +342,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
     RedactionService,
     RedactionService.of({
       registerValues: registerRedactionValues,
+      payloadValues: () => Effect.succeed(() => []),
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
   ),
@@ -867,6 +868,7 @@ const makeAutoStartLayer = async (options: {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, redactionOptions) =>
           Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
       }),
@@ -1011,7 +1013,7 @@ describe("lando start", () => {
     expect(JSON.stringify(failure)).not.toContain(secret);
   });
 
-  test("named task env secrets are redacted from task detail and tagged failure output", async () => {
+  test("named task output narrates redacted details and retains redacted tagged failure output", async () => {
     // Given
     const secret = "named-event-task-token";
     const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] });
@@ -1031,8 +1033,7 @@ describe("lando start", () => {
     const details = harness.taskEvents
       .filter((event) => event._tag === "task.detail")
       .map((event) => String(event.line));
-    expect(details).toContain("[redacted]");
-    expect(details).toContain("[redacted] failed");
+    expect(details).toEqual(["[redacted]", "[redacted] failed"]);
     expect(failure).toMatchObject({
       _tag: "LandofileEventStepFailedError",
       outputTail: "[redacted]\n[redacted] failed",
@@ -2041,7 +2042,7 @@ describe("lando start", () => {
               path: PortablePath.make("/app"),
             },
             mode: "two-way-safe",
-            excludes: [],
+            excludes: [".git"],
           },
         },
       ],
@@ -2188,7 +2189,7 @@ describe("lando start", () => {
               path: PortablePath.make("/app"),
             },
             mode: "two-way-safe",
-            excludes: [],
+            excludes: [".git"],
           },
         },
       ],
@@ -2336,7 +2337,7 @@ describe("lando start", () => {
               path: PortablePath.make("/app"),
             },
             mode: "two-way-safe",
-            excludes: [],
+            excludes: [".git"],
           },
         },
       ],
@@ -2483,7 +2484,7 @@ describe("lando start", () => {
               path: PortablePath.make("/app"),
             },
             mode: "two-way-safe",
-            excludes: [],
+            excludes: [".git"],
           },
         },
       ],
@@ -2629,7 +2630,7 @@ describe("lando start", () => {
               path: PortablePath.make("/app"),
             },
             mode: "two-way-safe",
-            excludes: [],
+            excludes: [".git"],
           },
         },
       ],
@@ -2823,7 +2824,7 @@ describe("lando start", () => {
             path: PortablePath.make(mountKey === "app-mount" ? "/app" : "/cache"),
           },
           mode: "two-way-safe" as const,
-          excludes: [],
+          excludes: mountKey === "app-mount" ? [".git"] : [],
         },
       })),
     };
@@ -2983,7 +2984,7 @@ describe("lando start", () => {
             path: PortablePath.make(mountKey === "app-mount" ? "/app" : "/cache"),
           },
           mode: "two-way-safe" as const,
-          excludes: [],
+          excludes: mountKey === "app-mount" ? [".git"] : [],
         },
       })),
     };

@@ -1,7 +1,7 @@
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { TaskDetailRing } from "./task-detail-ring.ts";
 import { wrapFrameLines } from "./task-tree-frame.ts";
-import { PENDING_MARKER, SPINNER_FRAMES, WARNED_MARKER, styleFrame } from "./task-tree-style.ts";
+import { INFO_MARKER, PENDING_MARKER, SPINNER_FRAMES, WARNED_MARKER, styleFrame } from "./task-tree-style.ts";
 
 export type TaskStatus = "pending" | "running" | "done" | "failed";
 
@@ -12,6 +12,7 @@ export interface TaskState {
   status: TaskStatus;
   /** Set on a `done` task that completed with warnings. */
   warned?: boolean;
+  info?: boolean;
   summary: string | undefined;
   durationMs: number | undefined;
   exitCode: number | undefined;
@@ -89,6 +90,7 @@ const doneLine = (task: TaskState): string => {
   const { status, label } = classifyCompletion(task.summary, task.label);
   const duration = formatQuietDuration(task.durationMs);
   if (task.warned === true) return `│ ${WARNED_MARKER} ${label}${duration}`;
+  if (task.info === true) return `│ ${INFO_MARKER} ${task.summary ?? task.label}${duration}`;
   switch (status) {
     case "CACHED":
       return `│ ✓ ${label}  cached${duration}`;

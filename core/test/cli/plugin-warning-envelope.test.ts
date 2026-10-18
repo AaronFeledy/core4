@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Context, DateTime, Effect, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
 import type { EventError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
@@ -14,7 +14,7 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const timestamp = DateTime.makeUnsafe("2026-10-12T00:00:00.000Z");
 const secret = "issue1319-private-warning-token";
-const ResultSchema = Schema.Struct({ done: Schema.Boolean });
+const ResultSchema = Schema.Struct({ done: Schema.Boolean, output: Schema.optional(Schema.String) });
 
 // Like plugin render publishers, this service retains the runtime's EventService
 // before the CLI starts executing the command.
@@ -48,6 +48,7 @@ for (const resultFormat of ["json", "yaml"] as const) {
         const io = createBufferedRendererIO();
         let exitCode = 0;
         const command = Effect.gen(function* () {
+          let output = "";
           const plugin = yield* PluginPublisher;
           const events = yield* EventService;
           yield* recordCommandWarning({
@@ -60,12 +61,13 @@ for (const resultFormat of ["json", "yaml"] as const) {
             yield* events.publish({ _tag: "message.info", body: `later event ${index}`, timestamp });
           }
           if (transport === "live") {
-            const sink = yield* StreamFrameSink;
-            yield* sink.emit({ _tag: "stdout", chunk: "streamed chunk\n" });
+            const sink = yield* Effect.serviceOption(StreamFrameSink);
+            if (Option.isSome(sink)) yield* sink.value.emit({ _tag: "stdout", chunk: "streamed chunk\n" });
+            else output = "streamed chunk\n";
           }
           yield* plugin.warn("last command warning");
           if (fails) return yield* Effect.fail({ _tag: "FixtureFailure", message: "command failed" });
-          return { done: true };
+          return { done: true, output };
         });
 
         // When: the real boundary runs and emits its terminal result.
@@ -84,7 +86,7 @@ for (const resultFormat of ["json", "yaml"] as const) {
           extraRedactionTokens: [secret],
           sourceEnv: {},
           io,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => {
             exitCode = code;
           },
@@ -114,6 +116,9 @@ for (const resultFormat of ["json", "yaml"] as const) {
           { code: "LANDO_MESSAGE_WARN", message: "terminal subscriber warning" },
         ]);
         expect(envelope.ok).toBe(!fails);
+        if (resultFormat === "yaml" && transport === "live" && !fails) {
+          expect(envelope.result).toEqual({ done: true, output: "streamed chunk\n" });
+        }
         expect(exitCode).toBe(fails ? 1 : 0);
         expect(io.stdout()).not.toContain(secret);
         expect(io.stderr()).toBe("");
@@ -138,7 +143,7 @@ test("retains plugin warnings when the runtime publishes during layer acquisitio
     resultFormat: "json",
     resultSchema: ResultSchema,
     io,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => undefined,
   });
   // Then: acquisition warnings reach the same command-local envelope.
@@ -165,7 +170,7 @@ test("retains encoded warning events when using the fallback event service", asy
     resultFormat: "json",
     resultSchema: ResultSchema,
     io,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => undefined,
   });
   // Then: the encoded warning is retained too.
@@ -188,7 +193,7 @@ test("keeps human warning rendering when using a retained plugin publisher", asy
     resultFormat: "text",
     io,
     render: () => "done",
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => undefined,
   });
   // Then: the warning and result use separate streams.

@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
@@ -105,4 +107,4 @@ jobs:
           RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}
         run: |
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}."
+          gh release create "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS plugins/service-lando/tomcat/LICENSE plugins/service-lando/tomcat/NOTICE --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}."

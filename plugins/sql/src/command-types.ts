@@ -2,6 +2,7 @@ import type { Effect } from "effect";
 
 import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
+import type { RuntimeProvider } from "@lando/sdk/services";
 
 import type { SqlExec, SqlMover } from "./actions.ts";
 import type { SqlPublisher } from "./progress.ts";
@@ -28,6 +29,7 @@ export type DbCommandInput = {
   readonly compression?: "gzip" | "zstd" | "none";
   readonly fromApp?: string;
   readonly fromPath?: string;
+  readonly fromService?: string;
   readonly hostCwd?: string;
   readonly keepLatest?: number;
   readonly preview?: boolean;
@@ -38,6 +40,9 @@ export type SqlCommandDeps = SqlMover &
     readonly landofile: SqlLandofile;
     readonly plan: SqlPlan;
     readonly exec: SqlExec;
+    readonly providerId: string;
+    readonly appliedPlans?: RuntimeProvider["Service"]["appliedPlans"];
+    readonly inspectSource: RuntimeProvider["Service"]["inspect"];
     readonly canonicalizeSourcePath: (
       path: string,
     ) => Effect.Effect<AbsolutePath, SqlRecoveryUnavailableError>;

@@ -1,4 +1,4 @@
-import { Cause, type Context, Effect, Exit, Option, Ref, Scope } from "effect";
+import { type Context, Effect, Exit, Option, Ref, Scope } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/task-progress";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import { mergeFailure, runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { startFileSyncTreeId } from "./start-progress.ts";
@@ -342,18 +342,9 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                       : []),
                   managed.onScopeClosedByStartApp ?? Effect.void,
                 ];
-          const cleanupExits = yield* Effect.forEach(cleanupActions, (action) => Effect.exit(action));
-          let cleanupCause: Cause.Cause<FileSyncError> | undefined;
-          for (const cleanupExit of cleanupExits) {
-            if (Exit.isFailure(cleanupExit)) {
-              cleanupCause =
-                cleanupCause === undefined
-                  ? cleanupExit.cause
-                  : Cause.combine(cleanupCause, cleanupExit.cause);
-            }
-          }
-          if (cleanupCause !== undefined) {
-            return yield* Effect.failCause(Cause.combine(exit.cause, cleanupCause));
+          const cleanupExit = yield* Effect.exit(runAllAndMergeFailures(cleanupActions));
+          if (Exit.isFailure(cleanupExit)) {
+            return yield* Effect.failCause(mergeFailure(exit.cause, cleanupExit.cause, "cleanup"));
           }
           const app = plan.fileSync[0]?.session.app;
           if (

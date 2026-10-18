@@ -7,6 +7,7 @@ import {
   SqlConfirmRequiredError,
   SqlDumpCompressionError,
   SqlDumpNotFoundError,
+  SqlSeedSourceError,
   SqlServiceAmbiguousError,
   SqlServiceNotFoundError,
 } from "@lando/sdk/errors";
@@ -164,5 +165,35 @@ describe("SqlDumpCompressionError", () => {
     expect(decoded.path).toBe("/tmp/sql-app/dump.sql.zst");
     expect(decoded.compression).toBe("zstd");
     expect(decoded.operation).toBe("decompress");
+  });
+});
+
+describe("SqlSeedSourceError", () => {
+  test("round-trips every source and family field when app-to-app seeding is rejected", () => {
+    const error = new SqlSeedSourceError({
+      message: "mysql cannot seed postgres.",
+      service: "database",
+      sourceApp: "shop",
+      sourceRoot: "/work/shop",
+      sourceService: "db",
+      sourceFamily: "mysql",
+      targetFamily: "postgres",
+      remediation: "Use a source database of the same family.",
+    });
+
+    const encoded = Schema.encodeUnknownSync(SqlSeedSourceError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlSeedSourceError)(encoded);
+
+    expect(decoded).toBeInstanceOf(SqlSeedSourceError);
+    expect(Schema.encodeUnknownSync(SqlSeedSourceError)(decoded)).toEqual(encoded);
+    expect(decoded).toMatchObject({
+      _tag: "SqlSeedSourceError",
+      service: "database",
+      sourceApp: "shop",
+      sourceRoot: "/work/shop",
+      sourceService: "db",
+      sourceFamily: "mysql",
+      targetFamily: "postgres",
+    });
   });
 });

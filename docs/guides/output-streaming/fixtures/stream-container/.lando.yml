@@ -1,0 +1,19 @@
+name: stream-container-demo
+router:
+  enabled: false
+services:
+  app:
+    type: compose
+    image: alpine:3.20
+    command: sleep infinity
+    home: false
+    primary: true
+tooling:
+  gen:
+    description: Generate three lines without a trailing newline on the last
+    service: app
+    cmd:
+      - sh
+      - -c
+      - "printf 'alpha\\nbeta\\ngamma'"
+      - gen

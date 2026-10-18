@@ -31,7 +31,7 @@ const stateOptions = {
   ctx,
   providerId: ProviderId.make("lando"),
   providerName: "provider-lando",
-  snapshotMode: "native" as const,
+  capabilities: { volumeSnapshot: "native" as const },
   redactDetails: (value: unknown) => value,
   load: () => Effect.succeed(undefined),
   persist: () => Effect.void,

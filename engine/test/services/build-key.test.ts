@@ -44,6 +44,22 @@ const key = (plan: ServicePlan, runtime: RuntimeProviderShape = provider()) =>
   Effect.runPromise(buildKeyForService(runtime, plan));
 
 describe("buildKeyForService", () => {
+  test("invalidates when app mount includes change", async () => {
+    // Given the same service and native app mount with different include policy.
+    const appMount = {
+      source: AbsolutePath.make("/workspace/app"),
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "passthrough" as const,
+      excludes: [],
+      includes: [],
+    };
+    // When deriving the service build keys.
+    const before = await key(service({ appMount }));
+    const after = await key(service({ appMount: { ...appMount, includes: [".git"] } }));
+    // Then policy changes invalidate the cached service artifact.
+    expect(after).not.toBe(before);
+  });
   test("invalidates on recipe and service artifact inputs", async () => {
     const context = await mkdtemp(join(tmpdir(), "lando-build-key-input-a-"));
     const otherContext = await mkdtemp(join(tmpdir(), "lando-build-key-input-b-"));

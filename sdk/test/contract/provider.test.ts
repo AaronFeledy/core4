@@ -417,6 +417,39 @@ describe("RuntimeProvider contract", () => {
     ).resolves.toBeUndefined();
   });
 
+  test.each([true, false])(
+    "data-plane contract requires a typed failure from unsupported snapshots: %s",
+    async (rejects) => {
+      const error = new ProviderCapabilityError({
+        providerId: "test",
+        operation: "snapshotVolume",
+        capability: "volumeSnapshot",
+        requiredValue: "native",
+        actualValue: "none",
+        message: "Native snapshots are unsupported.",
+        remediation: "Use DataMover host archives.",
+      });
+      const result = await Effect.runPromise(
+        runProviderDataPlaneContract({
+          factory: () =>
+            Effect.succeed({
+              ...TestRuntimeProvider,
+              capabilities: { ...TestRuntimeProvider.capabilities, volumeSnapshot: "none" },
+              snapshotVolume: (spec) =>
+                rejects ? Effect.fail(error) : TestRuntimeProvider.snapshotVolume(spec),
+              restoreVolume: () => Effect.die("Unsupported providers must not restore snapshots."),
+              removeVolumeSnapshot: () => Effect.die("Unsupported providers must not remove snapshots."),
+            }),
+        }).pipe(Effect.result),
+      );
+      expect(result._tag).toBe(rejects ? "Success" : "Failure");
+      if (result._tag === "Failure")
+        expect(result.failure.assertion).toBe(
+          "unsupported volume snapshots fail with a typed capability error",
+        );
+    },
+  );
+
   test("data-plane contract uses a unique data-store id for each run", async () => {
     const stores = new Set<string>();
     const provider = {

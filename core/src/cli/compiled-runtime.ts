@@ -9,7 +9,6 @@ import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
 import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
-import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import type { RendererIO } from "@lando/renderer/io";
 import { withCommandTracing } from "./command-tracing";
 import { landoSpecForId } from "./compiled-argv";
@@ -90,10 +89,9 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
 
 export const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
-  runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>,
+  runtime: Layer.Layer<Exclude<R, EventService | Renderer>, RE>,
   render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
-    readonly plainTaskEvents?: "detail-only";
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
     readonly suppressInterruptionDiagnostics?: boolean;
@@ -132,7 +130,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     jqExpression === undefined;
   const rendererOptions = {
     runtime: effectiveRuntime as Layer.Layer<
-      Exclude<R, EventService | Renderer | StreamFrameSink>,
+      Exclude<R, EventService | Renderer>,
       RE | ConfigError | LandoRuntimeBootstrapError
     >,
     rendererMode: activeRendererMode,
@@ -154,13 +152,13 @@ export const runCompiledCommand = <A, E, R, RE>(
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.suppressInterruptionDiagnostics === true ? { suppressInterruptionDiagnostics: true } : {}),
-    ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     ...(successExitCode === undefined ? {} : { successExitCode }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
-    formatError: (error: unknown) => commandErrorMessage(error),
+    formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) =>
+      commandErrorMessage(failure, activeCommandId),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

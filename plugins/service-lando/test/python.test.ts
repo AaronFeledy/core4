@@ -108,12 +108,11 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.extensions["lando-service-python"]).toEqual({
       framework: "none",
       version: "3.12",
-      defaultCommand: null,
       port: 8000,
     });
   });
 
-  test("framework=django sets port 8000, uvicorn default command preset, and django env", async () => {
+  test("framework=django sets port 8000 and django env while keeping the service alive", async () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "django" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8000, protocol: "http", name: "web" }]);
@@ -122,12 +121,11 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "django",
       port: 8000,
-      defaultCommand: ["uvicorn", "--host", "0.0.0.0", "--port", "8000"],
     });
     expect(plan.environment.DJANGO_SETTINGS_MODULE).toBe("config.settings");
   });
 
-  test("framework=fastapi sets port 8000 and uvicorn default command preset", async () => {
+  test("framework=fastapi sets port 8000 while keeping the service alive", async () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "fastapi" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8000, protocol: "http", name: "web" }]);
@@ -136,11 +134,10 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "fastapi",
       port: 8000,
-      defaultCommand: ["uvicorn", "--host", "0.0.0.0", "--port", "8000"],
     });
   });
 
-  test("framework=flask sets port 5000 and gunicorn default command preset", async () => {
+  test("framework=flask sets port 5000 and Flask env while keeping the service alive", async () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "flask" });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5000, protocol: "http", name: "web" }]);
@@ -149,7 +146,6 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "flask",
       port: 5000,
-      defaultCommand: ["gunicorn", "--bind", "0.0.0.0:5000"],
     });
     expect(plan.environment.FLASK_APP).toBe("app");
   });

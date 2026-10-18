@@ -35,7 +35,9 @@ const spec = (
 const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
-    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
+    Effect.catch((error) =>
+      Effect.succeed({ _tag: "failure", error, additionalErrors: [] } satisfies CommandResultOutcome),
+    ),
   ) as Effect.Effect<CommandResultOutcome, never>;
 
 interface Harness {
@@ -458,13 +460,19 @@ describe("dispatchTool", () => {
     const accessorExit = await Effect.runPromiseExit(
       dispatchTool(
         { toolId: "app:unsafe-failure" },
-        { ...deps, execute: () => Effect.succeed({ _tag: "failure", error: accessorError }) },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "failure", error: accessorError, additionalErrors: [] }),
+        },
       ),
     );
     const proxyExit = await Effect.runPromiseExit(
       dispatchTool(
         { toolId: "app:unsafe-failure" },
-        { ...deps, execute: () => Effect.succeed({ _tag: "failure", error: proxyError }) },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "failure", error: proxyError, additionalErrors: [] }),
+        },
       ),
     );
 

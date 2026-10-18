@@ -43,10 +43,15 @@ tooling:
 
 | Framework | Default port | Useful bits |
 | --- | --- | --- |
-| `fastapi` | `8000` | Bind Uvicorn to `0.0.0.0:8000` |
+| `fastapi` | `8000` | Port default only; author the Uvicorn command below |
 | `django` | `8000` | Sets `DJANGO_SETTINGS_MODULE=config.settings` |
 | `flask` | `5000` | Sets `FLASK_APP=app` |
 | `none` (default) | `8000` | Plain Python service |
+
+Python does not interpret `webroot:`. An explicit root fails planning unless
+a composed plugin feature declares and handles it. Set `workingDirectory:`
+to move the process, and configure static-file paths in your application or a
+separate webserver. `framework:` does not start Django, Uvicorn, or Gunicorn.
 
 Start it:
 
@@ -90,6 +95,14 @@ If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unsupported-webroot" render={false} reason="Full planner rejects an explicit root without a supporting feature">
+    <Step name="reject">
+      <UseFixture name="python-unsupported-webroot" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
     </Step>
   </Scenario>
 

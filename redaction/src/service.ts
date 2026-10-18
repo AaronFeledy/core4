@@ -23,6 +23,8 @@ export interface RedactionForProfileOptions {
 
 export interface RedactionServiceShape {
   readonly registerValues: (values: ReadonlyArray<string>) => Effect.Effect<void>;
+  /** Snapshot the store once, then read process registrations live by generation. */
+  readonly payloadValues: (options?: RedactionForProfileOptions) => Effect.Effect<() => Iterable<string>>;
   readonly forProfile: (
     profile: RedactionProfile,
     options?: RedactionForProfileOptions,
@@ -170,12 +172,17 @@ const dedupeValues = (values: Iterable<string>): string[] => {
   return [...deduped];
 };
 
+/**
+ * Explicit values (secret store, registrations, authoritative tokens) are authoritative: an
+ * unusable one suppresses any string that contains it. Heuristic sources drop public defaults
+ * when they are collected, never here.
+ */
 const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => ({
   values: dedupeValues(collectOptionValues(options)),
-  authoritativeValues: [...secretValues, ...(options?.authoritativeTokens ?? [])],
+  authoritativeValues: [...secretValues, ...registeredValues, ...(options?.authoritativeTokens ?? [])],
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 
@@ -204,16 +211,10 @@ const makeRegisteredRedactor = (
   options: RedactionForProfileOptions | undefined,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => {
   let generation = registeredGeneration;
-  let redactor = createRedactor(
-    profile,
-    makeRedactorOptions([...secretValues, ...registeredValues], options),
-  );
+  let redactor = createRedactor(profile, makeRedactorOptions(secretValues, options));
   const current = (): Redactor => {
     if (generation !== registeredGeneration) {
-      redactor = createRedactor(
-        profile,
-        makeRedactorOptions([...secretValues, ...registeredValues], options),
-      );
+      redactor = createRedactor(profile, makeRedactorOptions(secretValues, options));
       generation = registeredGeneration;
     }
     return redactor;
@@ -240,10 +241,32 @@ export const createStandaloneRedactor = (
   options?: RedactionForProfileOptions,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => makeRegisteredRedactor(profile, [], options);
 
+export const createPayloadValues = (
+  secretValues: Iterable<string>,
+  options?: RedactionForProfileOptions,
+): (() => Iterable<string>) => {
+  // Every usable value the string redactor masks. A byte stream cannot suppress a whole detail,
+  // so unusable authoritative values have no payload equivalent.
+  const initial = [...collectOptionValues(options), ...secretValues, ...(options?.authoritativeTokens ?? [])];
+  let generation = -1;
+  let values = new RedactionValues();
+  return () => {
+    if (generation !== registeredGeneration) {
+      values = new RedactionValues(dedupeValues([...initial, ...registeredValues]));
+      generation = registeredGeneration;
+    }
+    return values;
+  };
+};
+
 export const makeRedactionService = (
   secretStore: Context.Service.Shape<typeof SecretStore>,
 ): RedactionServiceShape => ({
   registerValues: registerRedactionValues,
+  payloadValues: Effect.fnUntraced(function* (options?: RedactionForProfileOptions) {
+    const storeValues = yield* collectSecretStoreValues(secretStore);
+    return createPayloadValues(storeValues, options);
+  }),
   forProfile: Effect.fnUntraced(function* (profile: RedactionProfile, options?: RedactionForProfileOptions) {
     const secretValues = yield* collectSecretStoreValues(secretStore);
     return makeRegisteredRedactor(profile, secretValues, options);

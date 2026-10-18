@@ -10,8 +10,7 @@ tags: [beta, docs, ruby, service, runtime]
 Put `type: ruby:3.3` on the primary service. Ruby has no bare `type: ruby` alias, so pin a version.
 Lando currently supports `ruby:3.3`, and the default image is
 `ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app` by
-default, which is also the working directory; set `appMount.target` to move
-both:
+default, which is also the working directory:
 
 ```yaml
 name: ruby-demo
@@ -50,6 +49,56 @@ lando exec app -- bundle exec rails server -b 0.0.0.0
 ```
 
 Ruby publishes its port endpoint but has no default healthcheck, even with an authored `command:`. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+
+## Set the Ruby webroot context
+
+Run `lando rebuild` after adding `framework: rails` and your `webroot:` to the service:
+
+```yaml
+services:
+  app:
+    type: "ruby:3.3"
+    primary: true
+    framework: rails
+    webroot: frontend/public
+```
+
+Rails defaults to `webroot: public`; without a framework, Ruby defaults to `.`.
+Your `webroot:` wins in either case. Relative paths resolve against
+`appMount.target` (default `/app`), so this sets `LANDO_WEBROOT` to
+`/app/frontend/public`. Set `appMount.target: /site` to get
+`/site/frontend/public`, or use an absolute container path such as `/srv/www`.
+Relative paths can't escape the app mount with `..`.
+
+Verify the value inside the running service:
+
+```sh
+lando rebuild
+lando exec app -- printenv LANDO_WEBROOT
+```
+
+The webroot doesn't move the working directory or start a Rails server.
+Use `workingDirectory:` and `command:` for those. The Rails preset supplies
+development environment defaults; an authored environment value still wins.
+With `appMount: false`, Ruby omits its implicit webroot context. If you explicitly
+set a relative or absolute `webroot:`, planning fails instead of silently dropping it.
+Remove `webroot:` or enable the app mount. A plugin can also supply a feature
+that declares and handles the effective root. That declaration means root support,
+not that an HTTP server is running.
+
+Check planning without starting services:
+
+```sh
+lando app:cache:refresh --format=json
+```
+
+  <Scenario id="rejects-unmounted-explicit-root" render={false} reason="Full planner rejects explicit Ruby context without an app mount">
+    <Step name="reject">
+      <UseFixture name="ruby-unmounted-webroot" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+    </Step>
+  </Scenario>
 
 ## Pin a version
 

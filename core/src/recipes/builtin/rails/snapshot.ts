@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { RAILS_GEMFILE } from "./scaffold.ts";
 
 export const RAILS_RECIPE_VERSION = "0.1.0";
-export const RAILS_CONTENT_DIGEST = "sha256:40ea29207e5bc22ee5d67e1b83b0ed38682f7dc538aab8846954cafd73c4b504";
+export const RAILS_CONTENT_DIGEST = "sha256:69ccb9f104fce3c49f12c08c7e2b2abe6bcc9ba28755e92f5aae9dbfc41cee1d";
 export const railsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-rails",
@@ -31,10 +31,13 @@ export const railsSnapshot: RecipeSnapshot = {
             obj([
               ["type", lit("ruby:3.3")],
               ["framework", lit("rails")],
+              ["webroot", lit("public")],
               ["port", lit(3000)],
               [
                 "environment",
                 obj([
+                  ["RAILS_ENV", lit("development")],
+                  ["RAILS_LOG_TO_STDOUT", lit("true")],
                   [
                     "DATABASE_URL",
                     lit(

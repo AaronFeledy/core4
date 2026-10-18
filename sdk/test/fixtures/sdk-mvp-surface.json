@@ -1,4 +1,19 @@
 {
+  "commandResultExports": [
+    "failureOutcomeFromCause",
+    "FailureRoleAnnotation",
+    "commandFailureCause",
+    "primaryFailureReason"
+  ],
+  "rendererNarrationIOMembers": [
+    "externalOutputStream",
+    "isTTY",
+    "subscribeInput",
+    "terminalColumns",
+    "terminalRows",
+    "writeStderr"
+  ],
+  "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
   "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
   "publicDefaultCredentialExports": [
     "DEFAULT_PASSWORD",
@@ -136,6 +151,7 @@
       "openHostProxyBridge?: (input: HostProxyBridgeInput) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>",
       "openAgentSocketBridge?: (input: AgentSocketBridgeInput) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>",
       "listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>",
+      "listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>",
       "locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>",
       "inspectResourceNames?: (query: DoctorResourceNameQuery) => Effect.Effect<ReadonlyArray<string>, ProviderError>",
       "observeVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",

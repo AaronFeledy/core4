@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Args, Flags } from "../../spec/metadata";
 
 import type { InitAppOptions } from "../../commands/init";
@@ -126,7 +127,7 @@ export const initSpec: LandoCommandSpec<never> = {
       description: "Install the Lando agent skill pack into the new app (off by default).",
       default: false,
     }),
-    yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
+    yes: yesFlag("Accept every prompt's default without asking."),
     "no-interactive": Flags.boolean({
       aliases: ["non-interactive"],
       description:
@@ -143,7 +144,7 @@ export const initSpec: LandoCommandSpec<never> = {
     }),
     answers: Flags.string({ description: "Path to a JSON answers file." }),
     interactive: Flags.boolean({
-      description: "Force interactive prompting even when stdin is not detected as a TTY.",
+      description: "Force interactive prompting even when stdin or stderr is not a terminal.",
       default: false,
     }),
   },

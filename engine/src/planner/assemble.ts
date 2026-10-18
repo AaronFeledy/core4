@@ -82,6 +82,7 @@ import {
   resolvedServiceCacheInput,
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
+import { validateAuthoredWebroot } from "./webroot-policy.ts";
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   pluginRegistry: Context.Service.Shape<typeof PluginRegistry>,
@@ -269,6 +270,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
       })),
     ].map((featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef);
+    yield* validateAuthoredWebroot(seed, featureRefs, landofilePath);
     if (
       sshAgentIntent.mode === "host" &&
       featureRefs.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&
@@ -370,9 +372,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     },
   });
   if (cacheService !== undefined) {
-    const cached = yield* readCachedAppPlan({ cacheRoot, appName: appSlug, appRoot, key: cacheKey }).pipe(
-      Effect.catch(() => Effect.succeed(null)),
-    );
+    const cached = yield* readCachedAppPlan({
+      cacheRoot,
+      appName: appSlug,
+      appRoot,
+      key: cacheKey,
+      fileSystem,
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
       yield* validateServiceDependencies(appRoot, cached.services);
       yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
@@ -425,6 +431,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     providerCapabilities,
     metadata,
     fileSyncEngineId,
+    fileSystem,
   });
   if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
     yield* Effect.fail(
@@ -510,6 +517,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       key: cacheKey,
       plan,
       versionConstraints,
+      shadowHostChecks: finalized.shadowHostChecks,
+      gitHostChecks: finalized.gitHostChecks,
     }).pipe(
       Effect.provideService(CacheService, cacheService),
       Effect.catch(() => Effect.void),

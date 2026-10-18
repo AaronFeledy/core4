@@ -17,6 +17,7 @@ const makeTask = (input: {
   readonly label: string;
   readonly status: TaskStatus;
   readonly warned?: boolean;
+  readonly info?: boolean;
   readonly summary?: string;
   readonly durationMs?: number;
   readonly exitCode?: number;
@@ -31,6 +32,7 @@ const makeTask = (input: {
     label: input.label,
     status: input.status,
     ...(input.warned === undefined ? {} : { warned: input.warned }),
+    ...(input.info === undefined ? {} : { info: input.info }),
     summary: input.summary,
     durationMs: input.durationMs,
     exitCode: input.exitCode,
@@ -306,6 +308,24 @@ describe("quiet task-tree grammar", () => {
     );
     expect(frame).toContain("│ ! provider · 2 warnings  12ms");
     expect(styleFrame(frame).join("\n")).toContain(`${csi.amber} ! provider · 2 warnings`);
+  });
+
+  test("paints an info completion as a dim neutral row with a done footer", () => {
+    // Given
+    const state = makeState({
+      tree: makeTree({ label: "Checks", childCount: 1, done: true, succeeded: 1 }),
+      tasks: [makeTask({ id: "web", label: "HTTP 500", status: "done", info: true, durationMs: 12 })],
+    });
+
+    // When
+    const frame = paint(state);
+    const styled = styleFrame(frame);
+
+    // Then
+    expect(frame).toEqual(["╭─ Checks", "│ • HTTP 500  12ms", "╰─ done"]);
+    expect(styled[1]).toBe(
+      `${body(csi.dim, `${csi.dimReset}${csi.reset}`, " • HTTP 500")}${dimDuration("  12ms")}`,
+    );
   });
 
   test("keeps an expanded tail to title, glyph row, and tail footer", () => {

@@ -32,13 +32,13 @@
     "manifest": "./plugin.yaml"
   },
   "dependencies": {
+    "@lando/renderer": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@opentui/core": "^0.4.3",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@lando/engine": "workspace:*",
-    "@lando/renderer": "workspace:*",
     "@lando/paths": "workspace:*"
   },
   "scripts": {

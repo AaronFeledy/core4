@@ -69,6 +69,11 @@ describe("ci workflow", () => {
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
+    const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
+    const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
+    const plugins = bundledCodegen.indexOf("run: bun run codegen:bundled-plugins");
+    expect(catalog).toBeGreaterThanOrEqual(0);
+    expect(plugins).toBeGreaterThan(catalog);
   });
 
   test("keeps generated workflows as the only active workflows", async () => {
@@ -89,6 +94,7 @@ describe("ci workflow", () => {
       "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
+      "tomcat-bump.yml",
       "workflow-performance.yml",
     ]);
   });

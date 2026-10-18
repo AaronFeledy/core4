@@ -28,7 +28,7 @@ test("a source-mode command exits after interrupting a hanging telemetry sink", 
       return "completed";
     }), {
       runtime, rendererMode: "plain", command: "meta:characterize",
-      render: (value) => value, formatError: String,
+      render: (value) => value, formatError: ({ error }) => String(error),
     });
     console.log("closed");
   `;

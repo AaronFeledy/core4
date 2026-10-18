@@ -1,20 +1,38 @@
 import { Effect, Result, Schema } from "effect";
+import type { ProjectedFailure } from "./failure.ts";
+export {
+  FailureRoleAnnotation,
+  failureOutcomeFromCause,
+  commandFailureCause,
+  primaryFailureReason,
+  type ProjectedFailure,
+} from "./failure.ts";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
-import { CommandResultEnvelope, StreamFrame, ValidationIssue } from "@lando/sdk/schema";
+import { CommandResultEnvelope, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { ServiceNotReadyError, ServiceStartError } from "../errors/provider.ts";
 import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
 import { emitYamlDocument } from "../yaml/document.ts";
+import { encodeStreamFrame } from "./frames.ts";
 import { isJsonSafe } from "./json-safe.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
+
+export {
+  identityRedactor,
+  encodeStreamEventFrame,
+  encodeStreamStdoutFrame,
+  encodeStreamStderrFrame,
+  type EncodeStreamEventFrameOptions,
+  type EncodeStreamChunkFrameOptions,
+} from "./frames.ts";
 
 export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";
 
 export type CommandResultOutcome =
   | { readonly _tag: "success"; readonly value: unknown }
-  | { readonly _tag: "failure"; readonly error: unknown };
+  | (ProjectedFailure & { readonly _tag: "failure" });
 
 /** Serializations of the one command result envelope. Stream frames stay JSON. */
 export type CommandResultEnvelopeFormat = "json" | "yaml";
@@ -31,19 +49,6 @@ export interface EncodeCommandResultOptions {
   readonly trace?: CommandTrace;
   /** Envelope serialization. Defaults to `json`; the frame encoders ignore it. */
   readonly format?: CommandResultEnvelopeFormat;
-}
-
-export interface EncodeStreamEventFrameOptions {
-  readonly event: string;
-  readonly payload: unknown;
-  readonly redactor: Redactor;
-}
-
-export interface EncodeStreamChunkFrameOptions {
-  readonly chunk: string;
-  readonly service?: string;
-  readonly source?: string;
-  readonly redactor: Redactor;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -88,6 +93,8 @@ const taggedErrorJson = (
     "service",
     "steps",
     "redactionTokens",
+    "additionalErrors",
+    "role",
   ]);
   const extra = Object.fromEntries(
     Object.keys(record ?? {}).flatMap((key) => {
@@ -159,7 +166,17 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
       : {
           ...base,
           ok: false,
-          error: taggedErrorJson(options.outcome.error),
+          error: {
+            ...taggedErrorJson(options.outcome.error),
+            ...(options.outcome.additionalErrors.length
+              ? {
+                  additionalErrors: options.outcome.additionalErrors.map(({ role, error }) => ({
+                    ...taggedErrorJson(error),
+                    role,
+                  })),
+                }
+              : {}),
+          },
         };
   return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
 });
@@ -191,16 +208,6 @@ const encodeEnvelopeLine = (
   if (format !== "yaml") return json;
   const yaml = emitYamlDocument(JSON.parse(json) as unknown);
   return yaml.endsWith("\n") ? yaml.slice(0, -1) : yaml;
-};
-
-/**
- * No-op redactor for synchronous callers that carry no secret-bearing fields
- * (the doctor NDJSON renderers), letting a pure `=> string` helper route result
- * serialization through the encode seam without an Effect RedactionService lookup.
- */
-export const identityRedactor: Redactor = {
-  redactString: (text: string) => text,
-  redactValue: (value: unknown) => value,
 };
 
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
@@ -235,26 +242,6 @@ export const buildCommandResultEnvelope = (
     ),
   );
 
-const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<string, never> =>
-  Effect.try({
-    try: () => Schema.encodeSync(StreamFrame)(frame as never),
-    catch: (error) => error,
-  }).pipe(
-    Effect.map((encoded) => encodeJsonLine(encoded, redactor)),
-    Effect.catch(() =>
-      Effect.succeed(
-        encodeJsonLine(
-          {
-            _tag: "event",
-            event: "stream-frame-encode-error",
-            payload: { message: "Failed to encode stream frame." },
-          },
-          redactor,
-        ),
-      ),
-    ),
-  );
-
 export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.flatMap((envelope) => encodeStreamFrame({ _tag: "result", envelope }, options.redactor)),
@@ -267,30 +254,3 @@ export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Ef
           ),
     ),
   );
-
-export const encodeStreamEventFrame = (
-  options: EncodeStreamEventFrameOptions,
-): Effect.Effect<string, never> =>
-  encodeStreamFrame({ _tag: "event", event: options.event, payload: options.payload }, options.redactor);
-
-const encodeStreamChunkFrame = (
-  tag: "stdout" | "stderr",
-  options: EncodeStreamChunkFrameOptions,
-): Effect.Effect<string, never> =>
-  encodeStreamFrame(
-    {
-      _tag: tag,
-      chunk: options.chunk,
-      ...(options.service === undefined ? {} : { service: options.service }),
-      ...(options.source === undefined ? {} : { source: options.source }),
-    },
-    options.redactor,
-  );
-
-export const encodeStreamStdoutFrame = (
-  options: EncodeStreamChunkFrameOptions,
-): Effect.Effect<string, never> => encodeStreamChunkFrame("stdout", options);
-
-export const encodeStreamStderrFrame = (
-  options: EncodeStreamChunkFrameOptions,
-): Effect.Effect<string, never> => encodeStreamChunkFrame("stderr", options);

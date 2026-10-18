@@ -2,7 +2,7 @@ import { DateTime, Effect, absurd } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlRecoveryUnavailableError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
@@ -16,8 +16,10 @@ import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
+import { resolveSeedSource } from "./seed-source.ts";
 import { executeSeed } from "./seed.ts";
-import { requireCompatibleSnapshot } from "./snapshot-compatibility.ts";
+import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
+import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -59,21 +61,29 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   });
   const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
     deps.resume(serviceName, identity).pipe(Effect.andThen(waitForDatabase));
-  if (input.action === "seed" && (input.file === undefined) === (input.snapshotId === undefined)) {
+  if (
+    input.action === "seed" &&
+    [input.file, input.snapshotId, input.fromApp, input.fromPath].filter((source) => source !== undefined)
+      .length !== 1
+  ) {
     return yield* Effect.fail(
       new SqlSeedSourceError({
         message: `Seed ${target.name} requires exactly one source.`,
         service: target.name,
-        remediation: "Pass one dump file or --snapshot <id>.",
+        remediation: "Pass exactly one dump file, --snapshot <id>, --from-app <id>, or --from-path <dir>.",
       }),
     );
   }
+  const seedSource =
+    input.action === "seed" && (input.fromApp !== undefined || input.fromPath !== undefined)
+      ? yield* resolveSeedSource(deps, input, target)
+      : undefined;
   const file = hostFile(deps.plan, { ...input, service: target.name });
   const action = input.action;
   let restoreSource: SnapshotInfo | undefined;
   const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
   const dump =
-    action === "import" || (action === "seed" && input.snapshotId === undefined)
+    action === "import" || (action === "seed" && input.file !== undefined)
       ? yield* ensureReadableDump(file, deps.plan.root)
       : undefined;
   const expectedDigest = dump?.digest;
@@ -119,20 +129,17 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       steps,
       `Restore will replace data in ${target.name}.`,
     );
-    const sourceId = input.snapshotId ?? "";
-    const candidates = yield* deps.listSnapshots({ id: sourceId });
-    const source = candidates.find((candidate) => candidate.id === sourceId);
-    if (source === undefined) {
-      return yield* Effect.fail(
-        new SqlRecoveryUnavailableError({
-          message: `Snapshot ${sourceId} is not physically compatible with ${target.name}.`,
-          service: target.name,
-          reason: "Snapshot metadata is unavailable.",
-          remediation: "Use a matching physical snapshot or move data with logical export and import.",
-        }),
-      );
-    }
-    restoreSource = source;
+  }
+  if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
+    const scope = yield* resolveSnapshotSource({
+      app: deps.plan.id,
+      ...(store === undefined ? {} : { store: store.store }),
+      ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+      service: target.name,
+      hostCwd: input.hostCwd ?? process.cwd(),
+      canonicalizePath: deps.canonicalizeSourcePath,
+    });
+    restoreSource = yield* deps.resolveSnapshot(input.snapshotId ?? "", scope);
   }
 
   let prunePolicy: PrunePolicy | undefined;
@@ -151,7 +158,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       hostCwd: input.hostCwd ?? process.cwd(),
       canonicalizePath: deps.canonicalizeSourcePath,
     });
-    const keepLatest = input.keepLatest ?? 3;
+    const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
     const snapshots = yield* deps.listSnapshots(filter);
     prunePolicy = { filter, keepLatest };
     pruneCandidates = [...snapshots]
@@ -192,6 +199,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
     resumeAfterSnapshot: boolean,
     preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
+    retainSnapshotIds?: ReadonlyArray<string>,
   ) =>
     runPhysicalOperation({
       deps: { ...deps, resume: resumeDatabase },
@@ -209,8 +217,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
               input.compression === "gzip" ? "tar.gz" : input.compression === "zstd" ? "tar.zst" : "tar",
           }),
       reason,
+      publish: deps.publish,
       resumeAfterSnapshot,
       ...(preflight === undefined ? {} : { preflight }),
+      ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
       body,
     });
   switch (action) {
@@ -261,7 +271,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       break;
     }
     case "restore":
-      snapshotId = input.snapshotId ?? "";
+      snapshotId = restoreSource?.id ?? "";
       {
         yield* runPhysical(
           "restore",
@@ -272,7 +282,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
               if (context.running) yield* context.resume;
             }),
           false,
-          (context) => requireCompatibleSnapshot(restoreSource, context),
+          (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
+          // The snapshot just restored from may itself be an automatic recovery snapshot.
+          restoreSource === undefined ? [] : [restoreSource.id],
         );
       }
       break;
@@ -289,7 +301,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           executeSeed({ ...deps, resume: resumeDatabase }, context, {
             ...io,
             store: context.volume,
-            ...(input.snapshotId === undefined ? {} : { snapshotId: input.snapshotId }),
+            ...(restoreSource === undefined ? {} : { snapshot: restoreSource }),
+            ...(seedSource === undefined ? {} : { source: seedSource }),
           }),
       });
       seedStatus = "seeded";
@@ -303,7 +316,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     service: target.name,
     family: target.family,
     steps,
-    redactionTokens: tokens,
+    redactionTokens: [...tokens, ...(seedSource?.redactionTokens ?? [])],
     ...(action === "import" || action === "export" ? { file } : {}),
     ...(snapshotId === undefined ? {} : { snapshotId }),
     ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),

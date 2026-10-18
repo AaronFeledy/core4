@@ -219,7 +219,7 @@ describe("lando logs redaction boundary", () => {
           streaming: StreamFrame,
           streamingMode: "live",
           io: textIo,
-          formatError: (error) => String(error),
+          formatError: ({ error }) => String(error),
         },
       );
 
@@ -239,7 +239,7 @@ describe("lando logs redaction boundary", () => {
           streaming: StreamFrame,
           streamingMode: "live",
           io: jsonIo,
-          formatError: (error) => String(error),
+          formatError: ({ error }) => String(error),
         },
       );
 

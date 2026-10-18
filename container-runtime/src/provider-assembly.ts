@@ -43,7 +43,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
         dataPlane: makeProviderDataPlane({
           providerId: options.ctx.providerId,
           api: options.api,
-          snapshotMode: options.snapshotMode,
+          capabilities: options.capabilities,
           redactDetails: options.redactDetails,
           ...(options.prepareWitnessImage === undefined
             ? {}

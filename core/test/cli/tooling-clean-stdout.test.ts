@@ -24,7 +24,7 @@ test.each(["alpha\nbeta\n", "no-newline"])(
 
       // When
       await runWithRendererHandling(
-        runBunShellTooling({ name: "gen", renderProgress: true }, root).pipe(
+        runBunShellTooling({ name: "gen" }, root).pipe(
           Effect.map((result) => {
             if (result === undefined) throw new Error("fixture script missing");
             return result;
@@ -36,15 +36,16 @@ test.each(["alpha\nbeta\n", "no-newline"])(
           streamingMode: "live",
           io,
           render: renderRunToolingResult,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => expect(code).toBe(0),
         },
       );
 
       // Then
       expect(io.stdout()).toBe(payload);
-      expect(io.stderr()).toContain("▼ app:gen (1 step)");
-      expect(io.stderr()).toContain("✓ complete");
+      expect(io.stderr()).toContain("▼");
+      expect(io.stderr()).toContain("complete");
+      expect(io.stdout()).not.toContain("▼");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

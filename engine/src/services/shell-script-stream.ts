@@ -1,9 +1,10 @@
-import { ProcessRunner, type ShellScriptOptions } from "@lando/sdk/services";
+import { ProcessRunner, type ShellCommandOptions, type ShellScriptOptions } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import type { StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
 import { createBunCommandEnv } from "./bun-command-env.ts";
 import * as BunProcessRunner from "./process-runner.ts";
+import { quoteShellPath } from "./shell-quote.ts";
 
 // Scripts run on Lando's own binary as Bun, and Bun Shell exports BUN_BE_BUN and the
 // no-orphans flag to every command with no way to unset them. A nested `lando` would run
@@ -30,53 +31,48 @@ export const streamBunScript = Effect.fnUntraced(
     options: ShellScriptOptions | undefined,
     output: {
       readonly sink: StreamFrameSinkShape | undefined;
-      readonly redact: (text: string) => string;
     },
   ) {
-    const pending = { stdout: "", stderr: "" };
-    const stdoutDecoder = new TextDecoder("utf-8");
-    const stderrDecoder = new TextDecoder("utf-8");
-    const emit = (kind: "stdout" | "stderr", chunk: string) =>
-      output.sink?.emit({ _tag: kind, chunk: output.redact(chunk), raw: true }) ?? Effect.void;
-    const flushPending = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
-      pending.stdout += stdoutDecoder.decode();
-      pending.stderr += stderrDecoder.decode();
-      for (const kind of ["stdout", "stderr"] as const) {
-        if (pending[kind].length > 0) yield* emit(kind, pending[kind]);
-        pending[kind] = "";
-      }
-      if (output.sink?.flush !== undefined) yield* output.sink.flush();
-    });
-    const lineSink: StreamFrameSinkShape = {
-      emit: Effect.fnUntraced(function* (frame) {
-        const decoder = frame._tag === "stdout" ? stdoutDecoder : stderrDecoder;
-        pending[frame._tag] +=
-          typeof frame.chunk === "string" ? frame.chunk : decoder.decode(frame.chunk, { stream: true });
-        let newline = pending[frame._tag].indexOf("\n");
-        while (newline !== -1) {
-          const line = pending[frame._tag].slice(0, newline + 1);
-          pending[frame._tag] = pending[frame._tag].slice(newline + 1);
-          yield* emit(frame._tag, line);
-          newline = pending[frame._tag].indexOf("\n");
-        }
-      }),
-      flush: flushPending,
-    };
     const runner = yield* ProcessRunner;
-    const result = yield* collectExecStream(
+    const sink = Option.fromUndefinedOr(output.sink);
+    return yield* collectExecStream(
       runner.streamWithExit({
         cmd: process.execPath,
         args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), path, ...(options?.argv ?? [])],
         ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
         env: yield* scriptEnv(options),
         ...(options?.hostIo === undefined ? {} : { inheritStdin: true }),
-        ...(options?.hostIo === "terminal" ? { inheritOutput: true } : {}),
         ...(options?.signal === undefined ? {} : { signal: options.signal }),
       }),
-      output.sink === undefined ? Option.none() : Option.some(lineSink),
+      sink,
     );
-    if (output.sink === undefined) yield* flushPending();
-    return result;
+  },
+  Effect.scoped,
+  Effect.provide(BunProcessRunner.layer),
+);
+
+export const streamBunCommand = Effect.fnUntraced(
+  function* (
+    command: string,
+    options: ShellCommandOptions | undefined,
+    sink: Option.Option<StreamFrameSinkShape>,
+  ) {
+    const runner = yield* ProcessRunner;
+    const source = [command, ...(options?.argv ?? []).map(quoteShellPath)].join(" ");
+    return yield* BunProcessRunner.withProcessRedactionTokens(
+      [source],
+      collectExecStream(
+        runner.streamWithExit({
+          cmd: process.execPath,
+          args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), "exec", source],
+          env: yield* scriptEnv(options),
+          ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+          ...(options?.signal === undefined ? {} : { signal: options.signal }),
+          ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
+        }),
+        sink,
+      ),
+    );
   },
   Effect.scoped,
   Effect.provide(BunProcessRunner.layer),

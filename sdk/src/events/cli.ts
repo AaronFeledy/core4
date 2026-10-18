@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { FailureRole } from "../schema/failure-role.ts";
 import { AppRef } from "../schema/networking.ts";
 import { Timestamp } from "./_shared.ts";
 
@@ -57,5 +58,15 @@ export const CliCommandErrorEvent = Schema.Struct({
     description: "Tagged failure identity, or Defect/Interrupted for non-typed failures.",
   }),
   message: Schema.optional(Schema.String),
+  additionalFailures: Schema.optionalKey(
+    Schema.NonEmptyArray(
+      Schema.Struct({
+        failureTag: Schema.String.annotate({ description: "Tagged identity of the additional failure." }),
+        role: FailureRole.annotate({ description: "Relationship to the primary operation failure." }),
+      }),
+    ),
+  ).annotate({
+    description: "Additional failures from the same cause projection, absent when none occurred.",
+  }),
 });
 export type CliCommandErrorEvent = typeof CliCommandErrorEvent.Type;

@@ -6,19 +6,15 @@ timeout: 60000
 tags: [beta, docs, file-sync, excludes, setup]
 ---
 
-# Exclude paths from file sync
+# Exclude paths from the app mount
 
-Every service skips `node_modules`, `vendor`, `.git`, and `tmp` by default. The host copies of those paths are not synced into the container. Install dependencies through Lando tooling so they live in the service volumes.
+Every service gets its own empty `node_modules`, `vendor`, and `tmp`. Dependencies you install through Lando tooling live in the service, not on the host, and those directories never go through file sync on macOS and Windows. Excluded paths belong to the service. `includes` takes one back.
 
 ## Add your own excludes
 
 Add per-service patterns under `services.<name>.appMount.excludes` in your Landofile. Your patterns are appended after the defaults. Duplicates are removed.
 
-If a path must stay synced even when it matches an exclude, add the same pattern to `services.<name>.appMount.includes`. Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
-
-An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it.
-
-Set `appMount: false` when a service does not use your app's code. Lando mounts no app source and sets no `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, or `LANDO_WEBROOT`. The container starts in the image's own working directory unless you set `workingDirectory`. On webroot-serving types (`php`, `nginx`, `apache`, `static`, `tomcat`), a relative or omitted `webroot` fails planning: set an absolute container path or remove `appMount: false`. An absolute `webroot` such as `/var/www/html` serves content the image provides. Data stores already skip the app mount. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
+If a path must stay on the host even though a default or a preset excludes it, add it to `services.<name>.appMount.includes`. Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
 
 ```yaml
 services:
@@ -34,11 +30,29 @@ services:
         - vendor
 ```
 
+Lando 3's `!vendor` spelling is not accepted; `includes` is the one way to keep a path. The Lando 3 translator rewrites it for you.
+
+An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it.
+
+Set `appMount: false` when a service does not use your app's code. Lando mounts no app source and sets no `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, or `LANDO_WEBROOT`. The container starts in the image's own working directory unless you set `workingDirectory`. On webroot-serving types (`php`, `nginx`, `apache`, `static`, `tomcat`), a relative or omitted `webroot` fails planning: set an absolute container path or remove `appMount: false`. An absolute `webroot` such as `/var/www/html` serves content the image provides. Data stores already skip the app mount. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
+
 ## Framework presets
 
 Some service types add their own excludes on top of the defaults. Python adds `__pycache__`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes.
 
-Excluded paths get an empty volume overlay so host files for that path are never read. Each service gets its own overlay, so two services never share an excluded directory. When a second service needs the same `vendor/` or `node_modules/`, include it on both.
+## How an exclude works
+
+An excluded directory gets an empty volume overlay, one per service, so two services never share an excluded directory. When a second service needs the same `vendor/` or `node_modules/`, include it on both.
+
+A volume you mount yourself inside the app mount works the same way, so `storage: [/app/node_modules]` and `excludes: [node_modules]` give the same result. Use `storage` when you want to name the volume or share it across services with `scope: app`. A `tmpfs` entry under `mounts:` is the throwaway version.
+
+An overlay can only cover a directory. When an excluded path is a file on the host, Lando skips the overlay and the file mounts as-is. File sync still leaves it out on macOS and Windows.
+
+## Git
+
+Lando never syncs `.git` on macOS and Windows and never hides it on Linux, where the app mounts straight through and the container sees the directory. `git status`, `git log`, and anything that shells out to git work at `/app` there. If you need `.git` synced on macOS, `includes: [.git]` turns the rule off; it's slow on a big repo.
+
+In a `git worktree`, `.git` is a one-line file that points at the main checkout's `.git` directory. On Linux, Lando mounts that directory into the container at the same path, so git works in the worktree too. Inside the container, `git worktree list` shows the worktree as `prunable` because the container can't see the worktree folder at its host path, and a plain `git worktree prune` there drops the worktree's entry. Prune from the host. `git gc` is safe: it only prunes worktrees idle for months. A checkout that is itself a git submodule is different: its git config pins the working tree to the host path, so git stays a host-side tool there.
 
 ## Verify
 
@@ -48,3 +62,12 @@ After you change excludes, rebuild so the mounts update:
 lando rebuild
 lando doctor
 ```
+
+Then check what the container sees:
+
+```sh
+lando exec app -- ls -A /app/node_modules
+lando exec app -- git -C /app status --short
+```
+
+The first prints nothing on a fresh service. The second works on Linux and fails with `not a git repository` on macOS and Windows.

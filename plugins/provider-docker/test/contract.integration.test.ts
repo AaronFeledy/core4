@@ -1057,14 +1057,6 @@ describe("provider-docker RuntimeProvider contract", () => {
         providerName: "docker",
         factory: () => makeRuntimeProvider({ platform: "linux", dockerApi: fake.api, appliedPlanState }),
         observations: {
-          usedCopyVolumeSnapshot: () =>
-            fake.calls.some(
-              (call) =>
-                call.path.startsWith("/containers/create?name=") &&
-                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").includes(
-                  "tar -C /lando-data -cf",
-                ),
-            ),
           usedNativeServiceFileCopy: () =>
             fake.calls.some(
               (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),

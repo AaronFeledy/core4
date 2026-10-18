@@ -154,7 +154,7 @@ const resolveToolingRouteExit = async (token: string | undefined) => {
 
 const printAllHelp = async (): Promise<void> => {
   const cache = await readAppCommandCacheOrNull();
-  emitResultLine(
+  await emitResultLine(
     renderColdAllHelp({
       thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
       ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
@@ -164,7 +164,7 @@ const printAllHelp = async (): Promise<void> => {
 
 const printTopicHelp = async (topic: HelpTopic): Promise<void> => {
   const cache = await readAppCommandCacheOrNull();
-  emitResultLine(
+  await emitResultLine(
     renderColdTopicHelp(topic, cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
   );
 };
@@ -185,11 +185,11 @@ const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promise<bool
 };
 
 const printRootHelpPage = async (): Promise<void> => {
-  printRootHelp(undefined, await readAppCommandCacheOrNull());
+  await printRootHelp(undefined, await readAppCommandCacheOrNull());
 };
 
 const printHelpCatalogPage = async (): Promise<void> => {
-  printHelpCatalogJson(
+  await printHelpCatalogJson(
     await readAppCommandCacheOrNull(),
     isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
   );
@@ -202,13 +202,13 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
   }
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand !== undefined) {
-    printCommandHelp(helpCommand);
+    await printCommandHelp(helpCommand);
     return;
   }
   const cache = await readAppCommandCacheOrNull();
   const tooling = cache === null ? undefined : toolingHelpEntryForToken(cache, token);
   if (tooling !== undefined) {
-    printToolingHelp(tooling, cache?.aliasPolicy);
+    await printToolingHelp(tooling, cache?.aliasPolicy);
     return;
   }
   if (await tryPluginOwnedCommand(token, ["--help"])) return;
@@ -447,7 +447,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   ) {
     const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
     if (await rejectUnsupportedResultFormat("meta:version", versionSpec)) return;
-    if (emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
+    if (await emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
     await runMetaVersion();
     return;
   }
@@ -469,7 +469,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       });
       return;
     }
-    if (emitJsonListModeIfRequested(found[1].resultSchema)) return;
+    if (await emitJsonListModeIfRequested(found[1].resultSchema)) return;
   }
 
   if (builtInCommand?.status.kind === "deferred") {
@@ -478,7 +478,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
       return;
     }
-    emitDiagnosticLine(commandErrorMessage(error));
+    await emitDiagnosticLine(commandErrorMessage({ error, additionalErrors: [] }));
     process.exitCode = 1;
     return;
   }
