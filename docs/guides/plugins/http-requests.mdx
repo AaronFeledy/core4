@@ -31,7 +31,7 @@ Do not call `fetch` yourself. A bare `fetch` skips the user's proxy, ignores the
 
 ## What Lando adds to every request
 
-- **Proxy and `NO_PROXY`.** Lando reads `network.proxy` from global config plus the usual `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` variables.
+- **Proxy and `NO_PROXY`.** Lando uses explicit `network.proxy` config or resolves `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` (lowercase forms too). Scheme-specific variables win over `ALL_PROXY`; `NO_PROXY` accepts hostnames, `host:port`, bare IPs, and IPv4/IPv6 CIDRs; loopback always bypasses.
 - **Private CAs.** Certificates from `network.ca.certs` or `LANDO_NETWORK_CA_CERTS` are trusted for that request. `network.ca.trustHost: false` drops the system roots and trusts only those certificates.
 - **Fresh trust per request.** Lando resolves trust when the request runs, so a config change applies to the next request without a restart.
 - **Redacted telemetry.** Each request is a span named `HttpClient.request`, with the method and a URL that has credentials and query values stripped. Lifecycle events record the origin and method, not the raw URL.

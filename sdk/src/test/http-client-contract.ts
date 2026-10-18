@@ -15,7 +15,7 @@ const httpErrorLeft = (value: unknown): { readonly _tag?: string } => value as {
 /** A fetch init captured by the harness when its implementation issues a request. */
 export interface HttpClientCapturedInit {
   readonly url: string;
-  readonly proxy?: string;
+  readonly proxy?: BunFetchRequestInit["proxy"];
   readonly tls?: { readonly ca?: ReadonlyArray<string> };
 }
 
@@ -209,7 +209,10 @@ export const runHttpClientContract: <TrustObject>(
       .pipe(Effect.mapError(failWith("a proxied request succeeds")));
     const proxiedInit = yield* trust.lastInit();
     yield* requireHttpClientContract(
-      proxiedInit?.proxy === "http://proxy.https:8443",
+      typeof proxiedInit?.proxy === "object" &&
+        "url" in proxiedInit.proxy &&
+        proxiedInit.proxy.url === "http://proxy.https:8443" &&
+        proxiedInit.proxy.respectNoProxy === false,
       "an https request applies the https proxy",
       proxiedInit,
     );
@@ -228,7 +231,7 @@ export const runHttpClientContract: <TrustObject>(
       .pipe(Effect.mapError(failWith("a NO_PROXY request succeeds")));
     const bypassInit = yield* trust.lastInit();
     yield* requireHttpClientContract(
-      bypassInit?.proxy === undefined,
+      bypassInit?.proxy === false,
       "a NO_PROXY host bypasses the proxy",
       bypassInit,
     );

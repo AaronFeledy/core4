@@ -6,7 +6,7 @@ import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
-import { hostFile, parseCount, secretTokens } from "./command-input.ts";
+import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
@@ -30,6 +30,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   deps: SqlCommandDeps,
   input: DbCommandInput,
 ) {
+  yield* validateExportCompressionLevel(input);
   const resolved = resolveSqlTarget(deps.plan, input.service);
   if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
   const target = resolved.success;
@@ -186,6 +187,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     env,
     file,
     compression,
+    ...(input.action === "export" && input.compressionLevel !== undefined
+      ? { compressionLevel: input.compressionLevel }
+      : {}),
     ...(expectedDigest === undefined ? {} : { expectedDigest }),
   };
   let snapshotId: string | undefined;

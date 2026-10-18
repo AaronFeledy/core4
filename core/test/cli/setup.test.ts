@@ -31,6 +31,7 @@ import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import {
   AmbiguousCertificateAuthoritiesError,
+  HttpTrustError,
   InteractionCancelledError,
   InteractionUnavailableError,
   ProviderUnavailableError,
@@ -1788,6 +1789,44 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("maps HttpTrustError kinds from the HTTP client without re-classifying their text", () => {
+    // Given: trust failures already classified by @lando/http-client, wrapped the way the probe sees them.
+    const tunnel = (status: number) =>
+      new HttpTrustError({
+        message: `Proxy refused to open a tunnel: ${status}`,
+        urlOrigin: "https://github.com",
+        kind: "proxy-tunnel-refused",
+        cause: Object.assign(new Error("tunnel"), { code: "ERR_PROXY_TUNNEL", status }),
+      });
+    const cases = [
+      [tunnel(407), "proxy-authentication", "proxy credentials"],
+      [tunnel(403), "blocked-registry", "network.proxy"],
+      [
+        new HttpTrustError({
+          message: "TLS trust verification failed",
+          urlOrigin: "https://github.com",
+          kind: "missing-custom-ca",
+        }),
+        "tls-interception",
+        "LANDO_NETWORK_CA_CERTS",
+      ],
+      [
+        new HttpTrustError({ message: "blocked", urlOrigin: "https://github.com", kind: "blocked-endpoint" }),
+        "blocked-registry",
+        "network.proxy",
+      ],
+    ] as const;
+
+    // When / Then: each kind maps to setup remediation and keeps the original cause; none recurses.
+    for (const [trust, kind, remediationNeedle] of cases) {
+      const error = classifySetupNetworkFailure(trust);
+      expect(error.kind).toBe(kind);
+      expect(error.remediation).toContain(remediationNeedle);
+      expect(error.cause).toBe(trust);
+    }
+    expect(classifySetupNetworkFailure(tunnel(403)).message).toContain("HTTP 403");
+  });
+
   test("default network trust probe uses resolved proxy and CA settings before setup downloads", async () => {
     const calls: string[] = [];
     const fetchInits: BunFetchRequestInit[] = [];
@@ -1828,7 +1867,10 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["network", "provider"]);
-    expect(fetchInits[0]).toMatchObject({ method: "HEAD", proxy: "http://proxy.example:8080" });
+    expect(fetchInits[0]).toMatchObject({
+      method: "HEAD",
+      proxy: { url: "http://proxy.example:8080", respectNoProxy: false },
+    });
   });
 
   test("default network trust probe classifies blocked registry failures before setup downloads", async () => {

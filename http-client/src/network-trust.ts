@@ -1,11 +1,11 @@
 /**
- * Core-private network-trust seam.
+ * HTTP-client-private network-trust seam.
  *
  * The proxy/CA application logic (`shouldBypassProxy`, `fetchInitForNetwork`)
  * and the resolved-trust shape (`ResolvedNetworkTrust`) are now the canonical
  * pure `@lando/sdk/network-trust` module, consumed by both the HTTP client and
  * `lando setup` preflight. This module re-exports them for core-internal
- * callers and owns core's PEM-loading, service-inject resolution, and ambient
+ * callers and owns PEM-loading, service-inject resolution, and ambient
  * `NetworkTrust` context seams.
  *
  * Trust is carried as an already-resolved, already-loaded object on the
@@ -13,7 +13,7 @@
  * network preflight) provides it around its egress effect; the HTTP client
  * reads it from the requesting fiber and applies Bun `fetch` `proxy`/`tls.ca`
  * options. When the reference is unset the client self-resolves from config/env or
- * stays a bare request.
+ * stays a bare request except for the SDK's unconditional lexical loopback bypass.
  *
  * The tag is intentionally NOT published from `@lando/sdk` and NOT re-exported
  * from `core/src/services/index.ts`: it is the in-process injection mechanism,
@@ -29,7 +29,6 @@ import {
   type NetworkTrustPlan,
   type ResolvedNetworkTrust,
   resolveNetworkTrustPlan,
-  shouldBypassProxy,
 } from "@lando/sdk/network-trust";
 import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
 
@@ -41,17 +40,6 @@ export {
 } from "@lando/sdk/network-trust";
 export { resolveNetworkTrustPlan };
 export type { NetworkTrustPlan };
-
-/**
- * Direct endpoint policy is lexical, not DNS- or caller-based: exact localhost,
- * IPv4 127/8 and IPv6 ::1, or an explicit resolved NO_PROXY match. Unspecified
- * addresses (0.0.0.0), lndo.site and absent proxy settings grant no exemption.
- */
-export const usesDirectEndpoint = (url: URL, trust: ResolvedNetworkTrust | undefined): boolean =>
-  url.hostname === "localhost" ||
-  url.hostname === "[::1]" ||
-  /^127\.\d+\.\d+\.\d+$/u.test(url.hostname) ||
-  (trust !== undefined && shouldBypassProxy(url.href, trust.proxy.noProxy));
 
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,

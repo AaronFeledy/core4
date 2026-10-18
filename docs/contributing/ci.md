@@ -9,12 +9,13 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version` at 1.4.3; the Beta 1 floor is `>=1.4.3`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 
 ```bash
 bun run codegen:check
+bun run check:types
 bun run lint
 bun run audit
 bun run check:boundaries
@@ -23,11 +24,12 @@ bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run check:types` is `bun check`: Bun's built-in type checker follows the root project references like `tsc -b`, emits nothing, and finishes the whole repo in about five seconds, so every platform cell gets a type gate. It reports TypeScript 7 semantics; a construct that only `tsc` 5.x accepts fails here first. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`.
 
-Run typecheck separately:
+`bun run typecheck` stays a separate gate in the runner jobs. It runs `tsc -b`, which also emits the declaration graph under `*/dist` that `engine` and `core` resolve `@lando/sdk` types against and that `bun run build` publishes. Use `check:types` for the inner loop and `typecheck` before you push:
 
 ```bash
+bun run check:types
 bun run typecheck
 ```
 
@@ -165,7 +167,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.2 includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, embeds `--disallow-code-generation-from-strings=strict` through `compile.execArgv`, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.1 fixed cross-platform bytecode and the floor is now 1.4.3; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
 
 ## Local Bun profiling
 
