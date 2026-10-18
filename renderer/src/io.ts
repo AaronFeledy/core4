@@ -1,116 +1,24 @@
-import { fstatSync, writeSync } from "node:fs";
+import { fstatSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
+import { guardedWrite } from "./native-stdio.ts";
+
+export {
+  BROKEN_PIPE_EXIT_CODE,
+  detachStdioWrites,
+  installBrokenPipeExitPolicy,
+  isBrokenPipeError,
+  onStdioBrokenPipe,
+  writeStdioLine,
+} from "./native-stdio.ts";
 
 export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 
-export const BROKEN_PIPE_EXIT_CODE = 141;
-
 const processEvents: NodeJS.EventEmitter = process;
-
-type StdioDestination = "stdout" | "stderr";
-interface OutputStream {
-  readonly isTTY?: boolean;
-  readonly fd?: number;
-  readonly write: (chunk: string | Uint8Array) => boolean;
-  readonly on?: (event: "error", listener: (error: unknown) => void) => unknown;
-}
 
 /** Stdio and buffered IO always implement the optional RendererIO byte writers. */
 export type BinaryRendererIO = RendererIO & {
   readonly writeStdoutBytes: (chunk: Uint8Array) => void;
   readonly writeStderrBytes: (chunk: Uint8Array) => void;
-};
-
-export const isBrokenPipeError = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) return false;
-  return (
-    ("code" in error && (error.code === "EPIPE" || error.code === "EOF")) ||
-    ("message" in error && typeof error.message === "string" && error.message.startsWith("EPIPE"))
-  );
-};
-
-const brokenStreams = new WeakSet<OutputStream>();
-const guardedStreams = new WeakSet<OutputStream>();
-const notifiedDestinations = new Set<StdioDestination>();
-const brokenPipeListeners = new Set<(destination: StdioDestination) => void>();
-
-export const onStdioBrokenPipe = (listener: (destination: StdioDestination) => void): (() => void) => {
-  brokenPipeListeners.add(listener);
-  return () => {
-    brokenPipeListeners.delete(listener);
-  };
-};
-
-const exitPolicies = new WeakMap<object, () => void>();
-
-export const installBrokenPipeExitPolicy = (proc?: {
-  exitCode?: number | undefined;
-  once(event: "exit", listener: () => void): unknown;
-}): (() => void) => {
-  const target = proc ?? process;
-  const installed = exitPolicies.get(target);
-  if (installed) return installed;
-  let active = true;
-  let triggered = false;
-  const unsubscribe = onStdioBrokenPipe(() => {
-    if (triggered) return;
-    triggered = true;
-    target.exitCode = BROKEN_PIPE_EXIT_CODE;
-    target.once("exit", () => {
-      if (active) target.exitCode = BROKEN_PIPE_EXIT_CODE;
-    });
-  });
-  const uninstall = () => {
-    if (!active) return;
-    active = false;
-    unsubscribe();
-    exitPolicies.delete(target);
-  };
-  exitPolicies.set(target, uninstall);
-  return uninstall;
-};
-
-const markBrokenPipe = (destination: StdioDestination, stream: OutputStream): void => {
-  brokenStreams.add(stream);
-  if (notifiedDestinations.has(destination)) return;
-  notifiedDestinations.add(destination);
-  for (const listener of brokenPipeListeners) listener(destination);
-};
-
-// A closed downstream pipe is normal end-of-consumption, not a command failure.
-const guardedWrite = (
-  destination: StdioDestination,
-  stream: OutputStream,
-  chunk: string | Uint8Array,
-): boolean => {
-  if (brokenStreams.has(stream)) return false;
-  if (!guardedStreams.has(stream)) {
-    guardedStreams.add(stream);
-    if (typeof stream.on === "function") {
-      stream.on("error", (error) => {
-        if (!isBrokenPipeError(error)) throw error;
-        markBrokenPipe(destination, stream);
-      });
-    }
-  }
-  try {
-    if (
-      (stream === process.stdout || stream === process.stderr) &&
-      stream.isTTY === true &&
-      stream.fd !== undefined
-    ) {
-      const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-      let offset = 0;
-      while (offset < bytes.byteLength)
-        offset += writeSync(stream.fd, bytes, offset, bytes.byteLength - offset);
-      return true;
-    }
-    return stream.write(chunk);
-  } catch (error) {
-    if (!isBrokenPipeError(error)) throw error;
-    markBrokenPipe(destination, stream);
-    return false;
-  }
 };
 
 interface RendererInputStream {
@@ -250,32 +158,6 @@ export const createStdioRendererIO = (
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
   return io;
-};
-
-export const writeStdioLine = (
-  destination: "stdout" | "stderr",
-  text: string,
-  stream: OutputStream = process[destination],
-): void => {
-  guardedWrite(destination, stream, `${text}\n`);
-};
-
-export const detachStdioWrites = (): void => {
-  const sink: typeof process.stdout.write = ((
-    _chunk: string | Uint8Array,
-    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
-    callback?: (error?: Error | null) => void,
-  ) => {
-    if (typeof encodingOrCallback === "function") encodingOrCallback(null);
-    else if (typeof callback === "function") callback(null);
-    return true;
-  }) as typeof process.stdout.write;
-  try {
-    process.stdout.write = sink;
-    process.stderr.write = sink;
-  } catch {
-    return;
-  }
 };
 
 export {
