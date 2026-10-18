@@ -754,6 +754,43 @@ files:
       expect(error.line).toBeGreaterThan(0);
     }
   });
+
+  test("simple inline flow mapping is rejected with a block rewrite in the message", async () => {
+    const yaml = `id: flow
+title: Flow
+description: rejects flow mappings
+version: 0.0.1
+meta: {a: 1, b: 2}
+`;
+    const exit = await runParse("test://flow-simple", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestParseError);
+    if (error instanceof RecipeManifestParseError) {
+      expect(error.message).toContain("Inline objects are not supported");
+      expect(error.message).toContain(
+        ["Rewrite the flow mapping as a block mapping:", "meta:", "  a: 1", "  b: 2"].join("\n"),
+      );
+    }
+  });
+
+  test("nested inline flow mapping is rejected with a generic block suggestion", async () => {
+    const yaml = `id: flow-nested
+title: Flow nested
+description: rejects nested flow mappings
+version: 0.0.1
+meta: {a: [1, 2]}
+`;
+    const exit = await runParse("test://flow-nested", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestParseError);
+    if (error instanceof RecipeManifestParseError) {
+      expect(error.message).toContain("Inline objects are not supported");
+      expect(error.message).toContain(
+        "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+      );
+      expect(error.message).not.toContain("\n  a:");
+    }
+  });
 });
 
 describe("RecipeManifestService.parse — bundled node-postgres recipe", () => {

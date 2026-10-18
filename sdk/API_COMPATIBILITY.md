@@ -429,6 +429,8 @@
 
 ## Additive YAML exports
 
+- `@lando/sdk/landofile` additively exports `flowMappingRemediation`, `GENERIC_FLOW_MAPPING_REMEDIATION`, and the type-only `FlowMappingRemediationOptions` for concrete block-mapping rewrite suggestions when rejecting populated YAML flow mappings. The pure helper is also available at `@lando/sdk/landofile/flow-mapping-remediation` (Effect-free) for cold-path recipe parsing. No error channel or JSON Schema changes.
+
 - `@lando/sdk/landofile` additively exports `splitComposeCommand` and the type-only `SplitCommand` result. The pure splitter matches Compose/go-shellwords tokenization with environment and command substitution disabled, reports unquoted-operator truncation, accepts empty argv, and returns `undefined` for malformed input. Both native Compose services and Lando 3 translation share this implementation; no error channel or JSON Schema changes.
 
 `@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,

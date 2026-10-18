@@ -64,6 +64,12 @@ export {
   parseLandofile,
   type ParseOptions,
 } from "./parser.ts";
+
+export {
+  GENERIC_FLOW_MAPPING_REMEDIATION,
+  flowMappingRemediation,
+  type FlowMappingRemediationOptions,
+} from "./flow-mapping-remediation.ts";
 export type { ImportRefValue as ImportRef } from "../schema/landofile-reference.ts";
 export {
   isLegacyTagged,
