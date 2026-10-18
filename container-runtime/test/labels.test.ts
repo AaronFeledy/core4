@@ -4,6 +4,8 @@ import {
   AGENT_SESSION_LABEL,
   APP_LABEL,
   APP_ROOT_LABEL,
+  HISTORY_MODE_INSTANCE_LABEL,
+  HISTORY_MODE_LABEL,
   PROVIDER_LABEL,
   SCRATCH_ID_LABEL,
   SCRATCH_LABEL,
@@ -39,6 +41,8 @@ describe("container runtime label constants", () => {
     expect(VOLUME_SELECTOR_LABEL).toBe("dev.lando.volume-selector");
     expect(STORAGE_KIND_LABEL).toBe("dev.lando.storage-kind");
     expect(STORAGE_SCOPE_LABEL).toBe("dev.lando.scope");
+    expect(HISTORY_MODE_LABEL).toBe("dev.lando.history-mode");
+    expect(HISTORY_MODE_INSTANCE_LABEL).toBe("dev.lando.history-mode.instance");
   });
 
   test("re-exports ownership and storage labels from their producers", () => {

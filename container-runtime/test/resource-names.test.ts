@@ -21,6 +21,10 @@ test("filters volume names strictly when the engine returns substring matches", 
             { Name: "xold-a", Labels: { app: "a=b" } },
             { Name: "old-b", Labels: { app: "wrong" } },
             { Name: "old-c", Labels: { app: "a=b", "dev.lando.anything": "" } },
+            {
+              Name: "old-history.verified",
+              Labels: { app: "a=b", "dev.lando.history-mode": "1777" },
+            },
           ],
         }),
       });

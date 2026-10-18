@@ -12,10 +12,11 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 
-import { STORAGE_SCOPE_LABEL } from "../src/labels.ts";
+import { STORAGE_SCOPE_LABEL, VOLUME_INSTANCE_LABEL } from "../src/labels.ts";
 import { inspectMountDestinations } from "../src/podman/bring-up-recreate.ts";
 import { bringUp, historyStoreNamesFromPlan } from "../src/podman/bring-up.ts";
 import {
+  HISTORY_MODE_INSTANCE_LABEL,
   HISTORY_MODE_LABEL,
   HISTORY_MODE_VERIFIED,
   VOLUME_HISTORY_IMAGE,
@@ -26,6 +27,8 @@ import {
 
 const historyStore = "lando-histapp-history";
 const historyMarker = historyModeMarkerName(historyStore);
+const storeInstanceId = "store-instance-1";
+const staleInstanceId = "stale-instance";
 const providerId = ProviderId.make("podman");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -117,7 +120,12 @@ const recordingBringUp = async (input: {
   readonly initWaitStatus?: number;
   readonly initWaitBody?: string;
   readonly modeCheckWaitStatus?: number;
+  readonly modeCheckWaitBody?: string;
   readonly verifiedMarker?: boolean;
+  readonly staleMarker?: boolean;
+  readonly storeInstanceId?: string | false;
+  readonly markerCreateStatus?: number;
+  readonly providerId?: "podman" | "docker";
   readonly ensureImage?: (input: {
     readonly service: { readonly extensions: ServicePlanExtensions };
     readonly ref: string;
@@ -128,9 +136,18 @@ const recordingBringUp = async (input: {
   const calls: CapturedCall[] = [];
   const warnings = input.warnings;
   let lastHelperWasModeCheck = false;
+  let markerExists = input.verifiedMarker === true || input.staleMarker === true;
+  let firstMarkerCreate = true;
+  const existingStore = (input.volumeStatus ?? 201) === 409;
+  const storeInstance =
+    input.storeInstanceId === false ? undefined : (input.storeInstanceId ?? storeInstanceId);
+  const markerPath = `/volumes/${encodeURIComponent(historyMarker)}`;
+  const storePath = `/volumes/${encodeURIComponent(historyStore)}`;
+  const plan = historyPlan();
+  const ctxProvider = input.providerId ?? "podman";
   await Effect.runPromise(
-    bringUp(historyPlan(), {
-      ctx: { providerId: "podman", remediation: "test" },
+    bringUp(ctxProvider === "podman" ? plan : { ...plan, provider: ProviderId.make("docker") }, {
+      ctx: { providerId: ctxProvider, remediation: "test" },
       ...(input.ensureImage === undefined
         ? {}
         : {
@@ -155,24 +172,48 @@ const recordingBringUp = async (input: {
           calls.push({ method: request.method, path: request.path, body: request.body });
           if (request.path === "/volumes/create") {
             const name = (request.body as { Name?: string } | undefined)?.Name;
-            if (name === historyStore && (input.volumeStatus ?? 201) === 409) {
+            if (name === historyStore && existingStore) {
               return Effect.succeed({ status: 409, body: "{}" });
+            }
+            if (name === historyMarker) {
+              const forceFirstConflict = input.markerCreateStatus === 409 && firstMarkerCreate;
+              firstMarkerCreate = false;
+              if (markerExists || forceFirstConflict) {
+                return Effect.succeed({ status: 409, body: "{}" });
+              }
+              markerExists = true;
             }
             return Effect.succeed(echoCreatedVolume(request.body));
           }
+          if (request.method === "DELETE" && request.path.startsWith(`${markerPath}`)) {
+            markerExists = false;
+            return Effect.succeed({ status: 204, body: "" });
+          }
+          if (request.method === "GET" && request.path === markerPath) {
+            if (!markerExists) return Effect.succeed({ status: 404, body: "{}" });
+            const instance = input.staleMarker === true ? staleInstanceId : storeInstance;
+            return Effect.succeed({
+              status: 200,
+              body: JSON.stringify({
+                Name: historyMarker,
+                Labels: {
+                  [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+                  ...(instance === undefined ? {} : { [HISTORY_MODE_INSTANCE_LABEL]: instance }),
+                },
+              }),
+            });
+          }
+          if (request.method === "GET" && request.path === storePath) {
+            if (!existingStore) return Effect.succeed({ status: 404, body: "{}" });
+            return Effect.succeed({
+              status: 200,
+              body: JSON.stringify({
+                Name: historyStore,
+                Labels: storeInstance === undefined ? {} : { [VOLUME_INSTANCE_LABEL]: storeInstance },
+              }),
+            });
+          }
           if (request.method === "GET" && request.path.startsWith("/volumes/")) {
-            if (
-              input.verifiedMarker === true &&
-              request.path === `/volumes/${encodeURIComponent(historyMarker)}`
-            ) {
-              return Effect.succeed({
-                status: 200,
-                body: JSON.stringify({
-                  Name: historyMarker,
-                  Labels: { [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED },
-                }),
-              });
-            }
             return Effect.succeed({ status: 404, body: "{}" });
           }
           if (request.path === `/images/${encodeURIComponent(VOLUME_HISTORY_IMAGE)}/json`) {
@@ -193,6 +234,9 @@ const recordingBringUp = async (input: {
             return Effect.succeed({ status: 204, body: "" });
           }
           if (request.path.includes("/wait")) {
+            if (lastHelperWasModeCheck && input.modeCheckWaitBody !== undefined) {
+              return Effect.succeed({ status: 200, body: input.modeCheckWaitBody });
+            }
             if (!lastHelperWasModeCheck && input.initWaitBody !== undefined) {
               return Effect.succeed({ status: 200, body: input.initWaitBody });
             }
@@ -214,6 +258,30 @@ const recordingBringUp = async (input: {
   );
   return calls;
 };
+
+const markerCreate = (calls: readonly CapturedCall[]) =>
+  calls.find(
+    (call) =>
+      call.path === "/volumes/create" && (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+  );
+
+const markerCreateLabels = (calls: readonly CapturedCall[]) =>
+  (markerCreate(calls)?.body as { Labels?: Readonly<Record<string, string>> } | undefined)?.Labels;
+
+const markerDeleted = (calls: readonly CapturedCall[]) =>
+  calls.some(
+    (call) =>
+      call.method === "DELETE" && call.path.startsWith(`/volumes/${encodeURIComponent(historyMarker)}`),
+  );
+
+const storeCreateInstance = (calls: readonly CapturedCall[]) =>
+  (
+    calls.find(
+      (call) =>
+        call.path === "/volumes/create" &&
+        (call.body as { Name?: string } | undefined)?.Name === historyStore,
+    )?.body as { Labels?: Readonly<Record<string, string>> } | undefined
+  )?.Labels?.[VOLUME_INSTANCE_LABEL];
 
 const succeedingEnsureImage = (ensured: EnsureImageCall[]) => ({
   ensureImage: (request: {
@@ -268,13 +336,8 @@ test("bringUp inits a newly created history volume after ensuring the helper ima
   expect(body.Cmd).toEqual([...volumeHistoryInitCommand()]);
   expect(body.HostConfig?.Binds).toEqual([`${historyStore}:/lando-data`]);
   expect(body.HostConfig?.NetworkMode).toBe("none");
-  expect(
-    calls.some(
-      (call) =>
-        call.path === "/volumes/create" &&
-        (call.body as { Name?: string } | undefined)?.Name === historyMarker,
-    ),
-  ).toBe(true);
+  expect(markerCreateLabels(calls)?.[HISTORY_MODE_LABEL]).toBe(HISTORY_MODE_VERIFIED);
+  expect(markerCreateLabels(calls)?.[HISTORY_MODE_INSTANCE_LABEL]).toBe(storeCreateInstance(calls));
 });
 
 test("bringUp skips history chmod when the existing volume root is already 1777", async () => {
@@ -287,28 +350,29 @@ test("bringUp skips history chmod when the existing volume root is already 1777"
   expect(ensured).toEqual([{ ref: VOLUME_HISTORY_IMAGE, force: false, extensions: {} }]);
   expect(calls.some(isHistoryModeCheckCreate)).toBe(true);
   expect(calls.some(isHistoryInitCreate)).toBe(false);
-  expect(
-    calls.some(
-      (call) =>
-        call.path === "/volumes/create" &&
-        (call.body as { Name?: string } | undefined)?.Name === historyMarker,
-    ),
-  ).toBe(true);
+  expect(markerCreateLabels(calls)?.[HISTORY_MODE_LABEL]).toBe(HISTORY_MODE_VERIFIED);
+  expect(markerCreateLabels(calls)?.[HISTORY_MODE_INSTANCE_LABEL]).toBe(storeInstanceId);
 });
 
-test("bringUp skips helper image and container when history mode is already verified", async () => {
-  const ensured: EnsureImageCall[] = [];
-  const warnings: string[] = [];
-  const calls = await recordingBringUp({
-    volumeStatus: 409,
-    verifiedMarker: true,
-    warnings,
-    ...succeedingEnsureImage(ensured),
-  });
-  expect(ensured).toEqual([]);
-  expect(calls.some(isHistoryHelperCreate)).toBe(false);
-  expect(warnings).toEqual([]);
-});
+test.each(["podman", "docker"] as const)(
+  "bringUp skips helper image and container when history mode is already verified (%s)",
+  async (provider) => {
+    const ensured: EnsureImageCall[] = [];
+    const warnings: string[] = [];
+    const calls = await recordingBringUp({
+      volumeStatus: 409,
+      verifiedMarker: true,
+      providerId: provider,
+      warnings,
+      ...succeedingEnsureImage(ensured),
+    });
+    expect(ensured).toEqual([]);
+    expect(calls.some(isHistoryHelperCreate)).toBe(false);
+    expect(markerDeleted(calls)).toBe(false);
+    expect(markerCreate(calls)).toBeUndefined();
+    expect(warnings).toEqual([]);
+  },
+);
 
 test("missing helper image warns and does not fail bring-up", async () => {
   const warnings: string[] = [];
@@ -390,4 +454,102 @@ test("later bring-up retries history init after a failed first one", async () =>
   });
   expect(second.some(isHistoryModeCheckCreate)).toBe(true);
   expect(second.some(isHistoryInitCreate)).toBe(true);
+});
+
+test.each(["podman", "docker"] as const)(
+  "bringUp replaces a stale marker when a new store is created (%s)",
+  async (provider) => {
+    const ensured: EnsureImageCall[] = [];
+    const calls = await recordingBringUp({
+      staleMarker: true,
+      providerId: provider,
+      ...succeedingEnsureImage(ensured),
+    });
+    expect(ensured).toEqual([{ ref: VOLUME_HISTORY_IMAGE, force: false, extensions: {} }]);
+    expect(markerDeleted(calls)).toBe(true);
+    expect(calls.some(isHistoryInitCreate)).toBe(true);
+    expect(markerCreateLabels(calls)?.[HISTORY_MODE_LABEL]).toBe(HISTORY_MODE_VERIFIED);
+    expect(markerCreateLabels(calls)?.[HISTORY_MODE_INSTANCE_LABEL]).toBe(storeCreateInstance(calls));
+    expect(markerCreateLabels(calls)?.[HISTORY_MODE_INSTANCE_LABEL]).not.toBe(staleInstanceId);
+  },
+);
+
+test.each(["podman", "docker"] as const)(
+  "bringUp deletes a mismatched marker then recreates it after a successful check (%s)",
+  async (provider) => {
+    const calls = await recordingBringUp({
+      volumeStatus: 409,
+      staleMarker: true,
+      modeCheckWaitStatus: 0,
+      providerId: provider,
+      ...succeedingEnsureImage([]),
+    });
+    const deleteIndex = calls.findIndex(
+      (call) =>
+        call.method === "DELETE" && call.path.startsWith(`/volumes/${encodeURIComponent(historyMarker)}`),
+    );
+    const helperIndex = calls.findIndex(isHistoryHelperCreate);
+    const createIndex = calls.findIndex(
+      (call) =>
+        call.path === "/volumes/create" &&
+        (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+    );
+    expect(deleteIndex).toBeGreaterThanOrEqual(0);
+    expect(helperIndex).toBeGreaterThan(deleteIndex);
+    expect(createIndex).toBeGreaterThan(helperIndex);
+    expect(calls.some(isHistoryModeCheckCreate)).toBe(true);
+    expect(calls.some(isHistoryInitCreate)).toBe(false);
+    expect(markerCreateLabels(calls)?.[HISTORY_MODE_INSTANCE_LABEL]).toBe(storeInstanceId);
+  },
+);
+
+test("bringUp never skips or stamps when the store has no instance UUID", async () => {
+  const ensured: EnsureImageCall[] = [];
+  const calls = await recordingBringUp({
+    volumeStatus: 409,
+    verifiedMarker: true,
+    storeInstanceId: false,
+    modeCheckWaitStatus: 0,
+    ...succeedingEnsureImage(ensured),
+  });
+  expect(ensured).toEqual([{ ref: VOLUME_HISTORY_IMAGE, force: false, extensions: {} }]);
+  expect(calls.some(isHistoryModeCheckCreate)).toBe(true);
+  expect(markerDeleted(calls)).toBe(true);
+  expect(markerCreate(calls)).toBeUndefined();
+});
+
+test("unparsed history mode-check wait StatusCode fails closed and runs init", async () => {
+  const warnings: string[] = [];
+  const calls = await recordingBringUp({
+    volumeStatus: 409,
+    modeCheckWaitBody: "{}",
+    initWaitStatus: 0,
+    warnings,
+    ...succeedingEnsureImage([]),
+  });
+  expect(calls.some(isHistoryModeCheckCreate)).toBe(true);
+  expect(calls.some(isHistoryInitCreate)).toBe(true);
+  expect(markerCreateLabels(calls)?.[HISTORY_MODE_INSTANCE_LABEL]).toBe(storeInstanceId);
+  expect(warnings).toEqual([]);
+});
+
+test("bringUp deletes a 409 marker then recreates it with the current instance", async () => {
+  const calls = await recordingBringUp({
+    volumeStatus: 409,
+    modeCheckWaitStatus: 0,
+    markerCreateStatus: 409,
+    ...succeedingEnsureImage([]),
+  });
+  const creates = calls.filter(
+    (call) =>
+      call.path === "/volumes/create" && (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+  );
+  expect(creates).toHaveLength(2);
+  expect(markerDeleted(calls)).toBe(true);
+  expect(creates[1]?.body).toMatchObject({
+    Labels: {
+      [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+      [HISTORY_MODE_INSTANCE_LABEL]: storeInstanceId,
+    },
+  });
 });

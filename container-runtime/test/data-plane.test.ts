@@ -10,6 +10,12 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
+import {
+  HISTORY_MODE_INSTANCE_LABEL,
+  HISTORY_MODE_LABEL,
+  HISTORY_MODE_VERIFIED,
+} from "../src/volume-history-helper.ts";
+
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
 
@@ -996,6 +1002,49 @@ describe("provider data plane", () => {
     expect(volumes.map((volume) => volume.ref.store)).toEqual(["data"]);
     expect(volumes[0]?.instanceId).toBe("volume-instance-1");
     expect(volumes[0]?.provenance).toBe("known");
+  });
+
+  test("omits history mode marker volumes from inventory", async () => {
+    const api: DataPlaneApiClient = {
+      request: () =>
+        Effect.succeed({
+          status: 200,
+          body: JSON.stringify({
+            Volumes: [
+              {
+                Name: "lando-app-history",
+                Labels: {
+                  "dev.lando.app": "app",
+                  "dev.lando.scope": "app",
+                  "dev.lando.store": "lando-app-history",
+                  "dev.lando.volume-instance": "store-instance-1",
+                },
+              },
+              {
+                Name: "lando-app-history.verified",
+                Labels: {
+                  "dev.lando.app": "app",
+                  "dev.lando.scope": "app",
+                  "dev.lando.store": "lando-app-history.verified",
+                  "dev.lando.volume-instance": "marker-instance-1",
+                  [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+                  [HISTORY_MODE_INSTANCE_LABEL]: "store-instance-1",
+                },
+              },
+            ],
+          }),
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      capabilities: { volumeSnapshot: "none" },
+      redactDetails: (value) => value,
+    });
+
+    const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
+
+    expect(volumes.map((volume) => volume.ref.store)).toEqual(["lando-app-history"]);
   });
 
   test("reads Podman bare-array volume listings", async () => {

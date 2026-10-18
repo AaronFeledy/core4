@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  HISTORY_MODE_INSTANCE_LABEL,
+  HISTORY_MODE_LABEL,
+  HISTORY_MODE_VERIFIED,
   VOLUME_HISTORY_MODE,
+  historyModeMarkerIsVerified,
+  historyModeMarkerName,
+  isHistoryModeMarkerVolume,
   volumeHistoryInitCommand,
   volumeHistoryModeCheckCommand,
 } from "../src/volume-history-helper.ts";
@@ -23,6 +29,28 @@ const invoke = async (command: readonly string[]) => {
   ]);
   return { code, stdout, stderr };
 };
+
+test("historyModeMarkerName suffixes the store", () => {
+  expect(historyModeMarkerName("lando-app-history")).toBe("lando-app-history.verified");
+});
+
+test("isHistoryModeMarkerVolume detects the history-mode label", () => {
+  expect(isHistoryModeMarkerVolume({ [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED })).toBe(true);
+  expect(isHistoryModeMarkerVolume({})).toBe(false);
+  expect(isHistoryModeMarkerVolume(undefined)).toBe(false);
+});
+
+test("historyModeMarkerIsVerified requires 1777 and a matching nonempty instance", () => {
+  const labels = {
+    [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+    [HISTORY_MODE_INSTANCE_LABEL]: "uuid-1",
+  };
+  expect(historyModeMarkerIsVerified(labels, "uuid-1")).toBe(true);
+  expect(historyModeMarkerIsVerified(labels, "uuid-2")).toBe(false);
+  expect(historyModeMarkerIsVerified(labels, "")).toBe(false);
+  expect(historyModeMarkerIsVerified({ [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED }, "uuid-1")).toBe(false);
+  expect(historyModeMarkerIsVerified({ ...labels, [HISTORY_MODE_LABEL]: "0777" }, "uuid-1")).toBe(false);
+});
 
 test("chmods the volume root to 1777 without wiping files", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-history-"));
