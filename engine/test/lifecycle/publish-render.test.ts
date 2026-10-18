@@ -18,6 +18,7 @@ describe("plugin render publication", () => {
           const events = Context.get(context, EventService);
           const publish = makePublishRender(events, {
             registerValues: registerRedactionValues,
+            payloadValues: () => Effect.succeed(() => ["topsecret"]),
             forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
           });
 

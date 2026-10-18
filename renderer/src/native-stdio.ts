@@ -1,4 +1,5 @@
 import { writeSync } from "node:fs";
+import { outputDrainWaiters } from "./output-streams.ts";
 
 export const BROKEN_PIPE_EXIT_CODE = 141;
 
@@ -7,7 +8,7 @@ interface OutputStream {
   readonly isTTY?: boolean;
   readonly fd?: number;
   readonly write: (chunk: string | Uint8Array) => boolean;
-  readonly on?: (event: "error", listener: (error: unknown) => void) => unknown;
+  readonly on?: (event: "error" | "drain", listener: (error: unknown) => void) => unknown;
 }
 
 export const isBrokenPipeError = (error: unknown): boolean => {
@@ -19,6 +20,9 @@ export const isBrokenPipeError = (error: unknown): boolean => {
 };
 
 const brokenStreams = new WeakSet<OutputStream>();
+export const isOutputBroken = (stream: OutputStream): boolean => brokenStreams.has(stream);
+const blockedStreams = new WeakSet<OutputStream>();
+export const isOutputBlocked = (stream: OutputStream): boolean => blockedStreams.has(stream);
 const guardedStreams = new WeakSet<OutputStream>();
 const notifiedDestinations = new Set<StdioDestination>();
 const brokenPipeListeners = new Set<(destination: StdioDestination) => void>();
@@ -75,8 +79,12 @@ export const guardedWrite = (
   if (!guardedStreams.has(stream)) {
     guardedStreams.add(stream);
     if (typeof stream.on === "function") {
+      stream.on("drain", () => blockedStreams.delete(stream));
       stream.on("error", (error) => {
-        if (!isBrokenPipeError(error)) throw error;
+        if (!isBrokenPipeError(error)) {
+          if ((outputDrainWaiters.get(stream) ?? 0) > 0) return;
+          throw error;
+        }
         markBrokenPipe(destination, stream);
       });
     }
@@ -93,7 +101,10 @@ export const guardedWrite = (
         offset += writeSync(stream.fd, bytes, offset, bytes.byteLength - offset);
       return true;
     }
-    return stream.write(chunk);
+    blockedStreams.add(stream);
+    const accepted = stream.write(chunk);
+    if (accepted) blockedStreams.delete(stream);
+    return accepted;
   } catch (error) {
     if (!isBrokenPipeError(error)) throw error;
     markBrokenPipe(destination, stream);

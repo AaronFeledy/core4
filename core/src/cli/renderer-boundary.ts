@@ -18,7 +18,6 @@ import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
@@ -100,7 +99,7 @@ export const summaryPaintOptions = (ctx?: RenderContext): FormatSummaryOptions =
 });
 
 export interface RunWithRendererHandlingOptions<A, R, RE> {
-  readonly runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>;
+  readonly runtime: Layer.Layer<Exclude<R, EventService | Renderer>, RE>;
   readonly rendererMode: RendererMode;
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
@@ -115,7 +114,6 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   /** Resolved `LandoCommandSpec.documentOutput` match for this invocation. */
   readonly documentOutput?: boolean;
   readonly io?: RendererIO;
-  readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
@@ -247,16 +245,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
-  const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink(renderContext.format, io).pipe(
-    Layer.provide(
-      Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
-    ),
-  );
-  const commandLayer = (
-    liveStreaming
-      ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer, commandWarningsLayer)
-      : Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer)
-  ) as Layer.Layer<R, RE>;
+  // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
+  const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
+  const commandLayer = Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer) as Layer.Layer<
+    R,
+    RE
+  >;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
   const invocation =
@@ -319,7 +313,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           error,
         } as const;
         const emit = (next: typeof outcome) => (framedJson ? emitStreamResult(next) : emitJsonResult(next));
-        if (framedJson && !liveStreaming) yield* replayBufferedEvents();
+        if (framedJson && !attachLiveSink) yield* replayBufferedEvents();
         const emitted = yield* emit(outcome).pipe(Effect.result);
         if (emitted._tag === "Failure") {
           if (!(emitted.failure instanceof JqExpressionError)) {
@@ -381,7 +375,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         return { _tag: "handled-failure" } as const;
       }
       yield* applySuccessExitCode(commandExit.value);
-      if (liveStreaming) {
+      if (attachLiveSink) {
         if (envelopeFormat) {
           const tokens = options.redactionTokens?.(commandExit.value) ?? [];
           // A live run already wrote frames, so its terminal result stays a frame
@@ -410,11 +404,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         if (code !== undefined && code !== 0) setExitCode(code);
       });
     let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
-    if (!(framedJson && !liveStreaming)) {
+    if (!(framedJson && !attachLiveSink)) {
       if (!envelopeFormat) {
         eventConsumerLayer = RendererOutput.layerEventConsumerForMode(options.rendererMode, io, {
           landoRenderer,
-          ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
         });
       } else {
         eventConsumerLayer = RendererOutput.layerNotificationConsumerForMode(
@@ -424,13 +417,18 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }
     }
+    // Construct the sink inside the command runtime so it captures that runtime's
+    // SecretStore-backed redaction service, not the diagnostic fallback.
+    const executeWithLiveSink = attachLiveSink
+      ? Effect.provide(executeCommand, RendererOutput.layerStreamFrameSink(renderContext.format))
+      : executeCommand;
     const executeWithEventConsumer = Effect.scoped(
       Effect.gen(function* () {
-        if (eventConsumerLayer === undefined) return yield* executeCommand;
+        if (eventConsumerLayer === undefined) return yield* executeWithLiveSink;
         const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
         const consumerContext = yield* Layer.buildWithScope(eventConsumerLayer, consumerScope);
         const finish = yield* Effect.cached(Scope.close(consumerScope, Exit.void));
-        return yield* executeCommand.pipe(
+        return yield* executeWithLiveSink.pipe(
           Effect.provide(consumerContext),
           Effect.provideService(FinishCommandProgress, finish),
         );

@@ -21,6 +21,7 @@ const redaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
   }),
 );
@@ -84,6 +85,7 @@ describe("renderer finite stream completion", () => {
         Effect.gen(function* () {
           const sink = yield* StreamFrameSink;
           yield* Stream.runForEach(stream, sink.emit);
+          if (sink.flush !== undefined) yield* sink.flush();
         }).pipe(Effect.provide(layer)),
       );
 

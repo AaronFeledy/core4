@@ -20,6 +20,7 @@ const redaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: () => Effect.void,
+    payloadValues: () => Effect.succeed(() => ["private-token"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["private-token"] })),
   }),
 );
@@ -85,19 +86,20 @@ describe("init recipe output through the command renderer", () => {
       const base = createBufferedRendererIO({
         isTTY: true,
         stdoutIsTTY: true,
+        stdoutColumns: 120,
         terminalColumns: 120,
         terminalRows: 30,
       });
       const io = {
         ...base,
         externalOutputStream: terminal,
-        writeStdout: (chunk: string) => {
+        writeStdout: (chunk: string | Uint8Array) => {
           base.writeStdout(chunk);
-          chunks.push(chunk);
+          chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
         },
-        writeStderr: (chunk: string) => {
+        writeStderr: (chunk: string | Uint8Array) => {
           base.writeStderr(chunk);
-          chunks.push(chunk);
+          chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
         },
       };
       await runWithRendererHandling(
@@ -213,10 +215,10 @@ describe("init recipe output through the command renderer", () => {
 
   test("post-init waits for asynchronous renderer output before completing", async () => {
     const lines: string[] = [];
-    const delayed = (chunk: string) =>
+    const delayed = (chunk: string | Uint8Array) =>
       Effect.promise(async () => {
         await Bun.sleep(10);
-        lines.push(chunk);
+        lines.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
       });
     const renderer = Renderer.of({
       id: "plain",

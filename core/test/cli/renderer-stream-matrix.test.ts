@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { EventService, Renderer } from "@lando/sdk/services";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const payload = "alpha\nbeta\npartial";
@@ -79,10 +79,12 @@ for (const mode of ["lando", "plain", "json", "verbose"] as const) {
               yield* Effect.yieldNow;
               yield* renderer.message.info("matrix-narration");
               if (shape === "live") {
-                const sink = yield* StreamFrameSink;
-                yield* sink.emit({ _tag: "stdout", chunk: "alpha\nbeta\n", raw: true });
-                yield* sink.emit({ _tag: "stdout", chunk: "partial", raw: true });
-                yield* sink.emit({ _tag: "stderr", chunk: "tool-diagnostic\n", raw: true });
+                const sink = yield* Effect.serviceOption(StreamFrameSink);
+                if (Option.isSome(sink)) {
+                  yield* sink.value.emit({ _tag: "stdout", chunk: "alpha\nbeta\n", raw: true });
+                  yield* sink.value.emit({ _tag: "stdout", chunk: "partial", raw: true });
+                  yield* sink.value.emit({ _tag: "stderr", chunk: "tool-diagnostic\n", raw: true });
+                }
               }
               return { value: "result" };
             }),

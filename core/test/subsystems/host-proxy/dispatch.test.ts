@@ -24,6 +24,7 @@ const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };
 
 const standaloneRedactionService: RedactionServiceShape = {
   registerValues: registerRedactionValues,
+  payloadValues: () => Effect.succeed(() => []),
   forProfile: (_profile, options) => Effect.succeed(createStandaloneRedactor(_profile, options)),
 };
 

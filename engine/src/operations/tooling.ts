@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/errors";
 import type { HostTerminal, LandofileShape } from "@lando/sdk/schema";
 
-import { collectSecretEnvValues } from "@lando/redaction/service";
+import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import {
   AppPlanner,
   ConfigService,
@@ -38,12 +38,11 @@ import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserve
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
-import { emitBufferedToolingOutput, toolingOutputRedactor } from "./tooling-output.ts";
-import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
+import { withToolingOutput } from "./tooling-output.ts";
+import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
@@ -52,7 +51,6 @@ export interface RunToolingOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
-  readonly renderProgress?: boolean;
   readonly tty?: boolean;
   readonly hostTerminal?: HostTerminal;
   readonly stdinStream?: ToolingInvocation["stdinStream"];
@@ -209,36 +207,33 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     agentEnvAllowlist,
   });
   const invocations = compiled.invocations;
-  const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
   const redactionTokens = [
     ...new Set([
       ...collectAppPlanRedactionTokens(plan),
       ...invocations.flatMap((invocation) => collectSecretEnvValues(invocation.env)),
     ]),
   ];
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokens);
 
-  const sink = yield* Effect.serviceOption(StreamFrameSink);
-  const progressEvents = events?._tag === "Some" ? events.value : undefined;
-  const streamedLayer = sink._tag === "Some";
+  const events = yield* Effect.serviceOption(EventService);
+  const progressEvents = Option.getOrUndefined(events);
   const liveTree =
-    streamedLayer && progressEvents !== undefined
-      ? beginLiveToolingTree(progressEvents, options.name)
-      : undefined;
+    progressEvents === undefined ? undefined : beginLiveToolingTree(progressEvents, options.name);
   if (liveTree !== undefined) yield* liveTree.start;
 
   const startedAt = yield* Clock.currentTimeMillis;
   const exit = yield* Effect.result(
-    runBracketedInvocations({
-      plan,
-      tool: options.name,
-      lookupKey: toolingLookupKey,
-      invocations,
-      requiresProvider: requiresProvider(compiled.normalized),
-      redactionTokens,
-      ...(Option.isSome(sink) && invocations.every((invocation) => invocation.service === ":host")
-        ? { onBodyComplete: emitBufferedToolingOutput(sink.value, redactionTokens) }
-        : {}),
-    }),
+    withToolingOutput(
+      runBracketedInvocations({
+        plan,
+        tool: options.name,
+        lookupKey: toolingLookupKey,
+        invocations,
+        requiresProvider: requiresProvider(compiled.normalized),
+        redactionTokens,
+      }),
+    ),
   );
   const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
   if (liveTree !== undefined) {
@@ -248,19 +243,6 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
   const result = exit.success;
 
-  if (progressEvents !== undefined && !streamedLayer) {
-    const redactor = yield* toolingOutputRedactor(redactionTokens);
-    yield* emitToolingOutputProgress({
-      events: progressEvents,
-      tool: result.tool,
-      service: String(result.service),
-      exitCode: result.exitCode,
-      stdout: redactor.redactString(result.stdout),
-      stderr: redactor.redactString(result.stderr),
-      durationMs,
-    });
-  }
-
   return {
     tool: result.tool,
     service: String(result.service),
@@ -268,6 +250,5 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     stdout: result.stdout,
     stderr: result.stderr,
     redactionTokens,
-    ...(progressEvents === undefined && !streamedLayer ? {} : { rendered: true }),
   };
 });

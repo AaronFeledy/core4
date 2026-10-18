@@ -127,9 +127,8 @@ export const narrationIO = (io: RendererNarrationIO): RendererNarrationIO => {
 
 /** Full service IO. Only the Renderer output channel owns stdout. */
 export interface RendererIO extends RendererNarrationIO {
-  readonly writeStdout: (chunk: string) => void;
-  readonly writeStdoutBytes?: (chunk: Uint8Array) => void;
-  readonly writeStderrBytes?: (chunk: Uint8Array) => void;
+  readonly writeStdout: (chunk: string | Uint8Array) => void;
+  readonly writeStderr: (chunk: string | Uint8Array) => void;
   /** Result formatting and payload suspension use stdout, not the narration terminal. */
   readonly stdoutIsTTY?: boolean;
   readonly stdoutColumns?: number | undefined;

@@ -137,7 +137,7 @@ keep their original bytes.
 - **Copy**: `╰─ executing {tool}{duration}` using the quiet duration grammar (`  400ms` / `  12.4s`).
 - **Color**: pink rail chrome on `╰─`; dim footer copy, including the duration. No spinner in this footer.
 - **Lifecycle**: appears when a TTY tooling command starts; the elapsed duration ticks in place; the line is erased when the command completes. It does not remain as scrollback.
-- **Layout**: inline on stderr at the cursor, not pinned to the terminal bottom. For terminal stdout payloads, erase the footer on stderr, write the original bytes to stdout, then repaint on stderr. Redirected stdout never interacts with the footer. Partial payload lines defer repaint until their terminating newline.
+- **Layout**: inline on stderr at the cursor, not pinned to the terminal bottom. The Renderer output channel owns text and byte payloads. For payloads targeting a terminal on either fd, erase the footer on stderr, write the original bytes to their original fd, then repaint on stderr. Redirected stdout never interacts with the footer. Partial payload lines defer repaint until their terminating newline, tracked from the final byte without decoding the payload.
 
 ### Machine modes
 

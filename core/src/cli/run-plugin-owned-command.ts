@@ -1,6 +1,5 @@
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 
-import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RendererIO } from "@lando/renderer/io";
 import {
   type CommandInputValidationError,
@@ -9,7 +8,7 @@ import {
   ToolingCommandLookupError,
 } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { Renderer } from "@lando/sdk/services";
+import type { Renderer } from "@lando/sdk/services";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
@@ -33,6 +32,7 @@ import {
   validateCommandCliFlags,
 } from "./flag-value-validation";
 import { universalFormatFlagDefs } from "./format-flags";
+import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 
 const PLUGIN_OWNED_COMMAND_ID = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
@@ -162,41 +162,19 @@ export const pluginOwnedCommandEffect = <A, E, R>(
   const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
   return validateEventCommandInput(spec, parsed).pipe(
     Effect.flatMap((input) =>
-      spec.run(input).pipe(
+      withRedactedRenderer(spec.run(input)).pipe(
         Effect.tap((result) => {
           if (!renderResult || spec.render === undefined) return Effect.void;
           const render = spec.render;
-          const redactor = createStandaloneRedactor("secrets", {
-            sourceEnv: process.env,
-            redactionTokens: spec.redactionTokens?.(result) ?? [],
-          });
-          return Renderer.pipe(
-            Effect.flatMap((renderer) =>
-              render({
-                input,
-                result,
-                stdout: "",
-                stderr: "",
-                exitCode: spec.successExitCode?.(result, input) ?? 0,
-              }).pipe(
-                Effect.provideService(Renderer, {
-                  ...renderer,
-                  message: {
-                    info: (body) => renderer.message.info(redactor.redactString(body)),
-                    warn: (body) => renderer.message.warn(redactor.redactString(body)),
-                    error: (body, remediation) =>
-                      renderer.message.error(
-                        redactor.redactString(body),
-                        remediation === undefined ? undefined : redactor.redactString(remediation),
-                      ),
-                  },
-                  output: {
-                    stdout: (chunk) => renderer.output.stdout(redactor.redactString(chunk)),
-                    stderr: (chunk) => renderer.output.stderr(redactor.redactString(chunk)),
-                  },
-                }),
-              ),
-            ),
+          return withRedactedRenderer(
+            render({
+              input,
+              result,
+              stdout: "",
+              stderr: "",
+              exitCode: spec.successExitCode?.(result, input) ?? 0,
+            }),
+            { redactionTokens: spec.redactionTokens?.(result) ?? [] },
           );
         }),
       ),
@@ -256,7 +234,7 @@ const dispatchPluginOwnedCommand = async (
   const spec = exit.value;
   if (spec === undefined) return "not-found";
   if (argv.includes("--help") || argv.includes("-h")) {
-    emitResultLine(renderPluginOwnedCommandHelp(spec));
+    await emitResultLine(renderPluginOwnedCommandHelp(spec));
     return "dispatched";
   }
   // A plugin-owned command declares no opt-in format, so it honors exactly the
@@ -267,7 +245,7 @@ const dispatchPluginOwnedCommand = async (
     await renderPluginOwnedPreCommandFailure(flagError);
     return "dispatched";
   }
-  if (emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
+  if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
   await runPluginOwnedCommand(spec, argv);
   return "dispatched";
 };

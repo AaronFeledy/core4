@@ -1,6 +1,6 @@
-import type { BinaryRendererIO } from "./io.ts";
+import type { RendererIO } from "./io.ts";
 
-export interface BufferedRendererIO extends BinaryRendererIO {
+export interface BufferedRendererIO extends RendererIO {
   readonly stdout: () => string;
   readonly stderr: () => string;
   readonly stdoutBytes: () => Uint8Array;
@@ -35,34 +35,24 @@ const concatBytes = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
 };
 
 export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}): BufferedRendererIO => {
-  let stdoutBuffer = "";
-  let stderrBuffer = "";
   const stdoutChunks: Uint8Array[] = [];
   const stderrChunks: Uint8Array[] = [];
   const listeners = new Set<(raw: string) => void>();
   return {
     writeStdout: (chunk) => {
-      stdoutBuffer += chunk;
-      stdoutChunks.push(new TextEncoder().encode(chunk));
+      stdoutChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+      return true;
     },
     writeStderr: (chunk) => {
-      stderrBuffer += chunk;
-      stderrChunks.push(new TextEncoder().encode(chunk));
+      stderrChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+      return true;
     },
-    writeStdoutBytes: (chunk) => {
-      stdoutChunks.push(chunk);
-      stdoutBuffer += Buffer.from(chunk).toString("latin1");
-    },
-    writeStderrBytes: (chunk) => {
-      stderrChunks.push(chunk);
-      stderrBuffer += Buffer.from(chunk).toString("latin1");
-    },
-    stdout: () => stdoutBuffer,
-    stderr: () => stderrBuffer,
+    stdout: () => new TextDecoder().decode(concatBytes(stdoutChunks)),
+    stderr: () => new TextDecoder().decode(concatBytes(stderrChunks)),
     stdoutBytes: () => concatBytes(stdoutChunks),
     stderrBytes: () => concatBytes(stderrChunks),
-    stdoutLines: () => splitLines(stdoutBuffer),
-    stderrLines: () => splitLines(stderrBuffer),
+    stdoutLines: () => splitLines(new TextDecoder().decode(concatBytes(stdoutChunks))),
+    stderrLines: () => splitLines(new TextDecoder().decode(concatBytes(stderrChunks))),
     ...(options.isTTY === undefined ? {} : { isTTY: options.isTTY }),
     ...(options.stdoutIsTTY === undefined ? {} : { stdoutIsTTY: options.stdoutIsTTY }),
     stdoutColumns: options.stdoutColumns,

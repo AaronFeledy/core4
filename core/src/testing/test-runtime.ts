@@ -434,11 +434,17 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     output: {
       stdout: (chunk) =>
         Effect.sync(() => {
-          calls.renderer.push({ stream: "stdout", chunk });
+          calls.renderer.push({
+            stream: "stdout",
+            chunk: typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk),
+          });
         }),
       stderr: (chunk) =>
         Effect.sync(() => {
-          calls.renderer.push({ stream: "stderr", chunk });
+          calls.renderer.push({
+            stream: "stderr",
+            chunk: typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk),
+          });
         }),
     },
   });

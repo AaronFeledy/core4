@@ -68,6 +68,7 @@ test("canonical redaction covers literal secrets in output, events, and history"
               RedactionService,
               RedactionService.of({
                 registerValues: registerRedactionValues,
+                payloadValues: () => Effect.succeed(() => ["topsecret"]),
                 forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
               }),
             ),

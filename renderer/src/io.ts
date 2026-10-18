@@ -1,6 +1,7 @@
 import { fstatSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
-import { guardedWrite } from "./native-stdio.ts";
+import { guardedWrite, isOutputBlocked, isOutputBroken } from "./native-stdio.ts";
+import { outputStreams } from "./output-streams.ts";
 
 export {
   BROKEN_PIPE_EXIT_CODE,
@@ -14,12 +15,6 @@ export {
 export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 
 const processEvents: NodeJS.EventEmitter = process;
-
-/** Stdio and buffered IO always implement the optional RendererIO byte writers. */
-export type BinaryRendererIO = RendererIO & {
-  readonly writeStdoutBytes: (chunk: Uint8Array) => void;
-  readonly writeStderrBytes: (chunk: Uint8Array) => void;
-};
 
 interface RendererInputStream {
   readonly isTTY?: boolean;
@@ -91,7 +86,7 @@ export const createStdioRendererIO = (
   stderr: NodeJS.WriteStream = process.stderr,
   stdin: RendererInputStream = process.stdin,
   options: StdioRendererIOOptions = {},
-): BinaryRendererIO => {
+): RendererIO => {
   const platform = options.platform ?? process.platform;
   const terminalNewlines = options.terminalNewlines !== false && platform === "win32";
   const stdoutNewlines = terminalNewlineNormalizer(terminalNewlines && stdout.isTTY === true);
@@ -122,11 +117,11 @@ export const createStdioRendererIO = (
       return typeof value === "function" ? value.bind(stream) : value;
     },
   });
-  const io: BinaryRendererIO = {
-    writeStdout: (chunk) => guardedWrite("stdout", stdout, stdoutNewlines(chunk)),
-    writeStderr: (chunk) => guardedWrite("stderr", stderr, stderrNewlines(chunk)),
-    writeStdoutBytes: (chunk) => guardedWrite("stdout", stdout, chunk),
-    writeStderrBytes: (chunk) => guardedWrite("stderr", stderr, chunk),
+  const io: RendererIO = {
+    writeStdout: (chunk) =>
+      guardedWrite("stdout", stdout, typeof chunk === "string" ? stdoutNewlines(chunk) : chunk),
+    writeStderr: (chunk) =>
+      guardedWrite("stderr", stderr, typeof chunk === "string" ? stderrNewlines(chunk) : chunk),
     ...(stdoutFeedsProcess(stdout) ? {} : { externalOutputStream: narrationTerminal }),
     isTTY: stderr.isTTY === true,
     stdoutIsTTY: stdout.isTTY === true,
@@ -157,6 +152,16 @@ export const createStdioRendererIO = (
     createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
+  outputStreams.set(io.writeStdout, {
+    stream: stdout,
+    isBroken: () => isOutputBroken(stdout),
+    isBlocked: () => isOutputBlocked(stdout),
+  });
+  outputStreams.set(io.writeStderr, {
+    stream: stderr,
+    isBroken: () => isOutputBroken(stderr),
+    isBlocked: () => isOutputBlocked(stderr),
+  });
   return io;
 };
 

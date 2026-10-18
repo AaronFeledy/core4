@@ -26,6 +26,7 @@ import {
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
+import { withToolingOutput } from "./tooling-output.ts";
 
 const POSITIONAL_PARAMETER = /\$(?:@|[1-9]|\{(?:@|[1-9]))/u;
 
@@ -199,23 +200,25 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     stderr: "",
   };
   for (const invocation of input.invocations) {
-    const result = yield* invocation.service === ":host"
-      ? Effect.gen(function* () {
-          const shell = yield* Effect.serviceOption(ShellRunner);
-          if (Option.isNone(shell)) {
-            return yield* Effect.fail(
-              new ToolingCompileError({
-                message: `ShellRunner is unavailable for tooling command ${input.tool}.`,
-                tool: input.tool,
-              }),
-            );
-          }
-          const hostRun = runHostToolingWith(shell.value, invocation, input.plan, provider);
-          return yield* input.redactionTokens === undefined
-            ? hostRun
-            : withShellRedactionTokens(input.redactionTokens, hostRun);
-        })
-      : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
+    const result = yield* withToolingOutput(
+      invocation.service === ":host"
+        ? Effect.gen(function* () {
+            const shell = yield* Effect.serviceOption(ShellRunner);
+            if (Option.isNone(shell)) {
+              return yield* Effect.fail(
+                new ToolingCompileError({
+                  message: `ShellRunner is unavailable for tooling command ${input.tool}.`,
+                  tool: input.tool,
+                }),
+              );
+            }
+            const hostRun = runHostToolingWith(shell.value, invocation, input.plan, provider);
+            return yield* input.redactionTokens === undefined
+              ? hostRun
+              : withShellRedactionTokens(input.redactionTokens, hostRun);
+          })
+        : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider)),
+    );
     combined = {
       ...result,
       stdout: combined.stdout + result.stdout,
