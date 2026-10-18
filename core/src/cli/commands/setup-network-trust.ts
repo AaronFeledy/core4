@@ -113,30 +113,48 @@ const unwrapTransportCause = (error: unknown): unknown => {
   return error;
 };
 
+const tlsInterceptionError = (cause: unknown): SetupNetworkTrustError =>
+  new SetupNetworkTrustError({
+    kind: "tls-interception",
+    message: "TLS validation failed while checking setup download access.",
+    remediation: `If a corporate TLS interceptor is present, add its root certificate to network.ca.certs or LANDO_NETWORK_CA_CERTS, then rerun \`lando setup\`. ${platformNetworkHint()}`,
+    cause,
+  });
+
+const proxyReplyStatus = (trust: HttpTrustError): number | undefined => {
+  const reply = trust.cause;
+  return typeof reply === "object" && reply !== null && "status" in reply && typeof reply.status === "number"
+    ? reply.status
+    : undefined;
+};
+
+/** The HTTP client already classified the failure; map its kind instead of re-parsing text. */
+const classifyTrustError = (trust: HttpTrustError, cause: unknown): SetupNetworkTrustError => {
+  switch (trust.kind) {
+    case "proxy-authentication":
+      return proxyAuthError(cause);
+    case "proxy-tunnel-refused": {
+      const status = proxyReplyStatus(trust);
+      return status === 407
+        ? proxyAuthError(cause)
+        : blockedRegistryError({ cause, ...(status === undefined ? {} : { status }) });
+    }
+    case "tls-interception":
+    case "missing-custom-ca":
+      return tlsInterceptionError(cause);
+    case "blocked-endpoint":
+      return blockedRegistryError({ cause });
+  }
+};
+
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const unwrapped = unwrapTransportCause(cause);
-  if (
-    unwrapped instanceof HttpTrustError ||
-    (typeof unwrapped === "object" &&
-      unwrapped !== null &&
-      (unwrapped as { _tag?: string })._tag === "HttpTrustError")
-  ) {
-    return classifySetupNetworkFailure(
-      unwrapped instanceof Error
-        ? unwrapped
-        : new Error(String((unwrapped as { message?: unknown }).message ?? unwrapped)),
-    );
-  }
+  if (Schema.is(HttpTrustError)(unwrapped)) return classifyTrustError(unwrapped, cause);
   const text = unwrapped instanceof Error ? `${unwrapped.name} ${unwrapped.message}` : String(unwrapped);
   const lower = text.toLowerCase();
   if (lower.includes("407") || lower.includes("proxy authentication")) return proxyAuthError(cause);
   if (lower.includes("certificate") || lower.includes("tls") || lower.includes("self signed")) {
-    return new SetupNetworkTrustError({
-      kind: "tls-interception",
-      message: "TLS validation failed while checking setup download access.",
-      remediation: `If a corporate TLS interceptor is present, add its root certificate to network.ca.certs or LANDO_NETWORK_CA_CERTS, then rerun \`lando setup\`. ${platformNetworkHint()}`,
-      cause,
-    });
+    return tlsInterceptionError(cause);
   }
   return blockedRegistryError({ cause });
 };
