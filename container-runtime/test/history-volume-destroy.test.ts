@@ -14,6 +14,7 @@ import {
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
+import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
 
 const historyStore = "lando-histapp-history";
 const historyPlan = {
@@ -57,7 +58,17 @@ const historyPlan = {
   extensions: {},
 } as AppPlan;
 
-const recordingApi = (): { readonly api: EngineHttpApi; readonly requests: EngineHttpRequest[] } => {
+const historyVolumePath = `/volumes/${encodeURIComponent(historyStore)}`;
+const historyStoreEntry = historyPlan.stores.find((store) => store.name === historyStore) ?? {
+  name: historyStore,
+  scope: "app" as const,
+  kind: "data" as const,
+};
+const historyLabels = volumeOwnershipLabels(historyPlan, historyStoreEntry);
+
+const recordingApi = (
+  present = false,
+): { readonly api: EngineHttpApi; readonly requests: EngineHttpRequest[] } => {
   const requests: EngineHttpRequest[] = [];
   return {
     requests,
@@ -65,6 +76,15 @@ const recordingApi = (): { readonly api: EngineHttpApi; readonly requests: Engin
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
+          if (present && request.method === "GET" && request.path === historyVolumePath) {
+            return {
+              status: 200,
+              body: JSON.stringify({ Name: historyStore, Labels: historyLabels }),
+            };
+          }
+          if (present && request.method === "DELETE" && request.path === historyVolumePath) {
+            return { status: 204, body: "" };
+          }
           return { status: 404, body: "{}" };
         }),
     },
@@ -72,10 +92,10 @@ const recordingApi = (): { readonly api: EngineHttpApi; readonly requests: Engin
 };
 
 const historyVolumeRequests = (requests: ReadonlyArray<EngineHttpRequest>) =>
-  requests.filter((request) => request.path.includes(`/volumes/${encodeURIComponent(historyStore)}`));
+  requests.filter((request) => request.path === historyVolumePath);
 
 test("plain destroy keeps the app-scoped history volume", async () => {
-  const { api, requests } = recordingApi();
+  const { api, requests } = recordingApi(true);
   await Effect.runPromise(
     bringDown(historyPlan, {
       api,
@@ -86,8 +106,8 @@ test("plain destroy keeps the app-scoped history volume", async () => {
   expect(historyVolumeRequests(requests)).toEqual([]);
 });
 
-test("destroy --volumes inspects the history volume for removal", async () => {
-  const { api, requests } = recordingApi();
+test("destroy --volumes issues DELETE for the history volume", async () => {
+  const { api, requests } = recordingApi(true);
   await Effect.runPromise(
     bringDown(historyPlan, {
       api,
@@ -97,10 +117,24 @@ test("destroy --volumes inspects the history volume for removal", async () => {
     }),
   );
   expect(historyVolumeRequests(requests).some((request) => request.method === "GET")).toBe(true);
+  expect(historyVolumeRequests(requests).some((request) => request.method === "DELETE")).toBe(true);
+});
+
+test("destroy --purge issues DELETE for the history volume", async () => {
+  const { api, requests } = recordingApi(true);
+  await Effect.runPromise(
+    bringDown(historyPlan, {
+      api,
+      ctx: { providerId: "docker", remediation: "retry" },
+      dialect: dockerLifecycleDialect,
+      volumes: true,
+    }),
+  );
+  expect(historyVolumeRequests(requests).some((request) => request.method === "DELETE")).toBe(true);
 });
 
 test("destroy --purge-caches leaves the history data volume", async () => {
-  const { api, requests } = recordingApi();
+  const { api, requests } = recordingApi(true);
   await Effect.runPromise(
     bringDown(historyPlan, {
       api,

@@ -5,6 +5,7 @@ import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { appFeatures } from "./app-features/index.ts";
+import { historyDoctorCheck } from "./doctor/history.ts";
 import { SERVICE_FEATURE_IDS, serviceFeatures as bundledServiceFeatures } from "./features/index.ts";
 import mailpitGlobalService from "./global-services/mailpit.ts";
 import { apacheServiceType } from "./services/apache.ts";
@@ -191,4 +192,5 @@ export const plugin = definePlugin({
   serviceFeatures,
   appFeatures,
   globalServices,
+  doctorChecks: [historyDoctorCheck],
 });

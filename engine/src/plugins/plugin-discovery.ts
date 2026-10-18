@@ -38,24 +38,12 @@ const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
   typeof value.apply === "function";
 
 /**
- * An app feature must declare at least one of `activatedBy` or `selectors`.
- * An entry with neither is unscoped (it would run on every service draft) and
- * is rejected at load.
+ * Omitted `selectors` select every service draft; `apply` may still filter.
+ * Omitted `activatedBy` means the feature is not a cycle-gated trigger.
  */
-const isScopedAppFeature = (feature: AppFeatureDefinition): boolean =>
-  feature.activatedBy !== undefined || feature.selectors !== undefined;
-
 export const ensureScopedAppFeature = (
   feature: AppFeatureDefinition,
-): Effect.Effect<AppFeatureDefinition, PluginLoadError> =>
-  isScopedAppFeature(feature)
-    ? Effect.succeed(feature)
-    : Effect.fail(
-        new PluginLoadError({
-          message: `App feature ${feature.id} declares neither activatedBy nor selectors; it must declare at least one.`,
-          pluginName: "@lando/core",
-        }),
-      );
+): Effect.Effect<AppFeatureDefinition, PluginLoadError> => Effect.succeed(feature);
 
 export const externalAppFeature = (
   plugin: DiscoveredPlugin,

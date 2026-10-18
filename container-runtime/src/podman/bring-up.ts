@@ -8,7 +8,7 @@ import {
   ServiceStartError,
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
-import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
+import { MessageWarnEvent, PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type AppRef,
@@ -439,6 +439,54 @@ const historyInitFailure = (deps: BringUpDeps, storeName: string, message: strin
     remediation: deps.remediation,
   });
 
+const warnHistoryInit = (deps: BringUpDeps, message: string): Effect.Effect<void, ProviderInternalError> =>
+  deps.options.eventService === undefined
+    ? Effect.void
+    : deps.options.eventService
+        .publish(MessageWarnEvent.make({ body: message, timestamp: DateTime.nowUnsafe() }))
+        .pipe(Effect.catch(() => Effect.void));
+
+const ensureHistoryHelperImage = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  const service = Object.values(plan.services)[0];
+  if (service !== undefined && deps.options.ensureImage !== undefined) {
+    yield* deps.options
+      .ensureImage({ service, ref: VOLUME_HISTORY_IMAGE, force: false })
+      .pipe(
+        Effect.catch((error) =>
+          Effect.fail(
+            historyInitFailure(
+              deps,
+              VOLUME_HISTORY_IMAGE,
+              error instanceof Error
+                ? error.message
+                : `History helper image ${VOLUME_HISTORY_IMAGE} could not be pulled.`,
+            ),
+          ),
+        ),
+      );
+    return;
+  }
+  const inspected = yield* request(deps, {
+    method: "GET",
+    path: `/images/${encodeURIComponent(VOLUME_HISTORY_IMAGE)}/json`,
+  });
+  if (inspected.status === 200) return;
+  return yield* Effect.fail(
+    historyInitFailure(
+      deps,
+      VOLUME_HISTORY_IMAGE,
+      withApiReason(
+        `provider-${deps.options.ctx.providerId} history helper image ${VOLUME_HISTORY_IMAGE} is missing (HTTP ${inspected.status}).`,
+        { status: inspected.status, body: inspected.body },
+      ),
+      { status: inspected.status, body: inspected.body },
+    ),
+  );
+});
+
 const initializeHistoryVolume = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   storeName: string,
@@ -533,9 +581,28 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
 const initializeHistoryVolumes = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
-): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
-  for (const storeName of historyStoreNamesFromPlan(plan)) {
-    yield* initializeHistoryVolume(deps, storeName);
+  createdStores: ReadonlySet<string>,
+): Effect.fn.Return<void, ProviderInternalError> {
+  const stores = historyStoreNamesFromPlan(plan).filter((name) => createdStores.has(name));
+  if (stores.length === 0) return;
+  const imageReady = yield* Effect.result(ensureHistoryHelperImage(deps, plan));
+  if (imageReady._tag === "Failure") {
+    const message =
+      imageReady.failure instanceof Error
+        ? imageReady.failure.message
+        : `History helper image ${VOLUME_HISTORY_IMAGE} could not be pulled. Interactive history may be unwritable until the next rebuild.`;
+    yield* warnHistoryInit(deps, message);
+    return;
+  }
+  for (const storeName of stores) {
+    const init = yield* Effect.result(initializeHistoryVolume(deps, storeName));
+    if (init._tag === "Failure") {
+      const message =
+        init.failure instanceof Error
+          ? init.failure.message
+          : `History volume ${storeName} could not be initialized. Interactive history may be unwritable until the next rebuild.`;
+      yield* warnHistoryInit(deps, message);
+    }
   }
 });
 
@@ -1166,10 +1233,14 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const createdVolumes: VolumeCreationFact[] = [];
+  const createdHistoryStores = new Set<string>();
+  const historyStores = new Set(historyStoreNamesFromPlan(plan));
   for (const store of plan.stores) {
-    createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
+    const facts = yield* ensureVolume(deps, plan, store);
+    createdVolumes.push(...facts);
+    if (facts.length > 0 && historyStores.has(store.name)) createdHistoryStores.add(store.name);
   }
-  yield* initializeHistoryVolumes(deps, plan);
+  yield* initializeHistoryVolumes(deps, plan, createdHistoryStores);
   const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {

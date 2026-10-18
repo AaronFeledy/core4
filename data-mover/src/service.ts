@@ -405,11 +405,13 @@ const historyVolumeUnsupported = (store: string, toEndpoint: string): DataEndpoi
     remediation: "Choose a database or other data volume. Interactive history is kept out of snapshots.",
   });
 
-const refuseHistoryStore = (store: string, toEndpoint: string) =>
-  isHistoryStoreName(store) ? Effect.fail(historyVolumeUnsupported(store, toEndpoint)) : Effect.void;
+const refuseHistoryStore = (volume: { readonly app: unknown; readonly store: string }, toEndpoint: string) =>
+  isHistoryStoreName(volume.store, String(volume.app))
+    ? Effect.fail(historyVolumeUnsupported(volume.store, toEndpoint))
+    : Effect.void;
 
 const refuseHistoryEndpoint = (endpoint: DataEndpoint, toEndpoint: string) =>
-  endpoint._tag === "volume" ? refuseHistoryStore(endpoint.store, toEndpoint) : Effect.void;
+  endpoint._tag === "volume" ? refuseHistoryStore(endpoint, toEndpoint) : Effect.void;
 
 const providerFailure = (operation: string, cause: unknown): DataTransferError =>
   new DataTransferError({
@@ -1362,7 +1364,7 @@ export const makeDataMoverService = (
         ),
       ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
-      yield* refuseHistoryStore(store.store, "snapshot");
+      yield* refuseHistoryStore(store, "snapshot");
       if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(
           new DataEndpointUnsupportedError({
@@ -1527,7 +1529,7 @@ export const makeDataMoverService = (
       );
     }),
     restore: Effect.fn("DataMover.restore")(function* (handle, store, opts) {
-      yield* refuseHistoryStore(store.store, "restore");
+      yield* refuseHistoryStore(store, "restore");
       const info = yield* findSnapshotInfo(
         persistence,
         typeof handle === "string" ? handle : handle.id,

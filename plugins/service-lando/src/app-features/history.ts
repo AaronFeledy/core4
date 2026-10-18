@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 
 import {
-  HISTORY_DEFAULT_SERVICE_TYPES,
   HISTORY_FEATURE_ID,
   HISTORY_MOUNT_TARGET,
   PortablePath,
@@ -11,8 +10,6 @@ import {
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 
 import { appNameFor } from "../app-name.ts";
-import { LANDO_BOOT_FEATURE_ID } from "../features/boot.ts";
-import { COMPOSE_FEATURE_ID } from "../services/compose.ts";
 
 export { HISTORY_FEATURE_ID };
 
@@ -21,11 +18,9 @@ const historyMountTarget = PortablePath.make(HISTORY_MOUNT_TARGET);
 export const historyVolumeFeature: AppFeatureDefinition = {
   id: HISTORY_FEATURE_ID,
   // No activatedBy: an explicit boot trigger cycles with php.db-client wiring.
+  // No selectors: empty-match would throw for apps whose types are not compose
+  // or default-history, and would ignore `history: true` on those services.
   priority: 110,
-  selectors: {
-    types: [...HISTORY_DEFAULT_SERVICE_TYPES],
-    hasFeature: [LANDO_BOOT_FEATURE_ID, COMPOSE_FEATURE_ID],
-  },
   apply: Effect.fn("HistoryVolumeFeature.apply")((ctx) =>
     Effect.sync(() => {
       const store = historyStoreName(appNameFor(ctx));

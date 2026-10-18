@@ -29,7 +29,7 @@ test("creates no generated stores when Redis persistence is disabled", async () 
       Effect.provide(PluginRegistryLayer.layer),
     ),
   );
-  // Then — Redis data is skipped; the app-scoped history volume still mounts.
+  // Then. Redis data is skipped; the app-scoped history volume still mounts.
   const historyStore = historyStoreName("ephemeral");
   expect(plan.stores).toEqual([{ name: historyStore, scope: "app", kind: "data" }]);
   expect(Object.values(plan.services).flatMap((service) => service.storage)).toEqual([

@@ -15,6 +15,8 @@ import {
   ServiceCreds,
   type ServiceName,
   type ServicePlan,
+  historyStatusFromPlan,
+  isHistoryMountTarget,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
@@ -33,7 +35,7 @@ import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./auth
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
-export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
+export type { InfoAppHistory, InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
@@ -66,6 +68,7 @@ export const AppInfoServiceSchema = Schema.Struct({
   endpoints: Schema.Array(Schema.String),
   logSources: Schema.optionalKey(Schema.Array(AppInfoLogSourceSchema)),
   creds: Schema.optionalKey(ServiceCreds),
+  history: Schema.optionalKey(Schema.Boolean),
 });
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
@@ -80,11 +83,17 @@ const AppInfoHostProxySchema = Schema.Struct({
   }),
 });
 
+export const AppInfoHistorySchema = Schema.Struct({
+  volume: Schema.optionalKey(Schema.String),
+  services: Schema.Array(Schema.Struct({ service: Schema.String, enabled: Schema.Boolean })),
+});
+
 export const AppInfoResultSchema = Schema.Struct({
   app: Schema.String,
   services: Schema.Array(AppInfoServiceSchema),
   agentEnv: Schema.optionalKey(AppInfoAgentEnvSchema),
   hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
+  history: Schema.optionalKey(AppInfoHistorySchema),
 });
 
 const statusText = (status: string | undefined): InfoServiceStatus => {
@@ -161,6 +170,7 @@ const toServiceInfo = (
     };
   });
   const creds = credsFromEnvironment(service.environment);
+  const history = service.storage.some((mount) => isHistoryMountTarget(String(mount.target)));
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -170,6 +180,7 @@ const toServiceInfo = (
     primary: service.primary,
     status,
     endpoints,
+    history,
     ...(logSources.length === 0 ? {} : { logSources }),
     ...(creds === undefined ? {} : { creds }),
   };
@@ -213,7 +224,19 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   );
 
   const hostProxy = hostProxyPlanExtension(plan);
-  return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
+  const history = historyStatusFromPlan({
+    appName: plan.name,
+    services: Object.values(plan.services).map((service) => ({
+      name: String(service.name),
+      storage: service.storage,
+    })),
+  });
+  return {
+    app: plan.name,
+    services,
+    history,
+    ...(hostProxy === undefined ? {} : { hostProxy }),
+  };
 });
 
 export const infoApp = Effect.fn("AppOperation.info")(function* (

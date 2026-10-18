@@ -277,9 +277,11 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       provider,
       target,
       serviceName: String(service.name),
+      user: options.user ?? service.user,
       serviceEnv: service.environment,
       env: agentEnv,
       tty: true,
+      enabled: options.noHistory !== true,
     });
     const spec: CommandSpec = {
       command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,

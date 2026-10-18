@@ -161,6 +161,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     provider,
     target,
     serviceName: String(service.name),
+    user: invocation.user ?? service.user,
     serviceEnv: service.environment,
     env: agentEnv,
     tty,

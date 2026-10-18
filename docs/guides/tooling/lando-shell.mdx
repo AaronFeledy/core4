@@ -24,7 +24,9 @@ lando shell --service appserver
 
 ## Keep shell and client history across rebuilds
 
-Interactive `lando shell --service` and TTY `lando exec` sessions write history into one app-scoped volume mounted at `/run/lando/history`. Files are flat: `appserver.bash_history`, `db.mysql_history`, plus `psql`, `redis`, `sqlite`, `node`, and `python` client files named the same way. Python honors `PYTHON_HISTORY` only on 3.13 and newer.
+Interactive `lando shell --service` and TTY `lando exec` sessions write history into one app-scoped volume mounted at `/run/lando/history`. Files are flat per service and user: `appserver.www-data.bash_history`, `db.mysql.mysql_history`, plus `psql`, `redis`, `sqlite`, `node`, and `python` client files named the same way. Python honors `PYTHON_HISTORY` only on 3.13 and newer.
+
+`sh`-only images still start `sh -l`. Dash on Debian does not write `HISTFILE`. Persistent bash history for those shells needs the bash-preferring service shell from #1478.
 
 This is on by default for mysql, mariadb, postgres, redis, php, node, and python services. Opt one service out, opt a non-default type in, or turn the whole app off:
 
@@ -48,7 +50,7 @@ Plain `lando destroy` keeps the history volume. `lando destroy --volumes` or `--
 
 Treat those files as secrets. `psql` and bash history can record passwords. Concurrent sessions are last-writer-wins; two shells on the same service can clobber each other.
 
-History env is injected at exec time, and only when the running container already has the `/run/lando/history` mount. Existing apps pick it up on the next rebuild. Non-TTY `lando exec` does not write history. A service `environment` (or env_file) value for a histfile variable wins over Lando's default.
+History env is injected at exec time, and only when the running container already has the `/run/lando/history` mount. Existing apps pick it up on the next rebuild. Non-TTY `lando exec` does not write history. `lando shell --service --no-history` skips injection. A service `environment` (or env_file) value for a histfile variable wins over Lando's default. `lando info` shows the history volume and per-service enabled/disabled state. `lando doctor` reports whether that volume is present.
 
 ## Forward agent-context env
 

@@ -45,12 +45,10 @@ const planApp = (landofile: typeof LandofileShape.Type, config?: GlobalConfig) =
 };
 
 describe("service-lando.history AppFeature", () => {
-  test("declares default-type selectors without an explicit boot trigger", () => {
+  test("omits selectors and an explicit boot trigger", () => {
     expect(historyVolumeFeature.id).toBe(HISTORY_FEATURE_ID);
     expect(historyVolumeFeature.activatedBy).toBeUndefined();
-    expect(historyVolumeFeature.selectors?.hasFeature).toContain(LANDO_BOOT_FEATURE_ID);
-    expect(historyVolumeFeature.selectors?.types).toContain("mysql");
-    expect(historyVolumeFeature.selectors?.types).toContain("php:8.3");
+    expect(historyVolumeFeature.selectors).toBeUndefined();
   });
 
   test("satisfies runAppFeatureContract", async () => {
@@ -122,6 +120,33 @@ describe("service-lando.history AppFeature", () => {
     });
     const plan = await planApp(landofile);
     expect(plan.stores.some((store) => store.name === historyStoreName("nginxonly"))).toBe(false);
+  });
+
+  test("does not throw for an app with only non-compose services", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "cacheonly",
+      services: { cache: { type: "memcached", home: false } },
+    });
+    const plan = await planApp(landofile);
+    expect(plan.stores.some((store) => store.name === historyStoreName("cacheonly"))).toBe(false);
+    expect(
+      plan.services[ServiceName.make("cache")]?.storage.some(
+        (mount) => mount.target === PortablePath.make(HISTORY_MOUNT_TARGET),
+      ),
+    ).toBe(false);
+  });
+
+  test("honors history: true on a non-compose service", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "cachehist",
+      services: { cache: { type: "memcached", home: false, history: true } },
+    });
+    const plan = await planApp(landofile);
+    const store = historyStoreName("cachehist");
+    expect(plan.stores).toEqual(expect.arrayContaining([{ name: store, scope: "app", kind: "data" }]));
+    expect(plan.services[ServiceName.make("cache")]?.storage).toEqual(
+      expect.arrayContaining([{ store, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }]),
+    );
   });
 
   test("honors global history.enabled false", async () => {

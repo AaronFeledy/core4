@@ -90,4 +90,11 @@ describe("history volume is excluded from snapshots and exports", () => {
       await runMover(Effect.flatMap(DataMover, (mover) => mover.restore("snap-id", { app, store }))),
     );
   });
+
+  test("does not treat another app's history volume name as this app's store", async () => {
+    const exit = await runMover(
+      Effect.flatMap(DataMover, (mover) => mover.snapshot({ app, store: historyStoreName("other") })),
+    );
+    expect(exit._tag).toBe("Success");
+  });
 });

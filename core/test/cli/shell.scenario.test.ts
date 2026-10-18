@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  HISTORY_MOUNT_TARGET,
   type LandofileShape,
   PortablePath,
   type ProviderCapabilities,
@@ -139,7 +140,13 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
     run: () => Effect.die("not used"),
     runStream: () => Effect.die("not used") as never,
     logs: () => Effect.die("not used") as never,
-    inspect: () => Effect.die("not used"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running" as const,
+      }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
@@ -392,6 +399,63 @@ describe("shellApp — shell modes", () => {
     );
 
     expect(captured).toEqual({ CLAUDECODE: "1" });
+  });
+
+  test("service mode calls mergeHistoryExecEnv and injects HISTFILE when the mount is present", async () => {
+    let captured: Readonly<Record<string, string>> | undefined;
+    const provider = fakeProvider({
+      inspect: () =>
+        Effect.succeed({
+          app: plan.id,
+          service: web.name,
+          providerId,
+          status: "running" as const,
+          mountDestinations: [HISTORY_MOUNT_TARGET],
+        }),
+      execStream: (_target, command) => {
+        captured = command.env;
+        return Stream.make({ exitCode: 0 as const });
+      },
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        user: "www-data",
+        io: { writeStdout: () => {}, writeStderr: () => {} },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(captured?.HISTFILE).toBe(`${HISTORY_MOUNT_TARGET}/web.www-data.bash_history`);
+  });
+
+  test("service mode --no-history skips histfile injection", async () => {
+    let captured: Readonly<Record<string, string>> | undefined;
+    const provider = fakeProvider({
+      inspect: () =>
+        Effect.succeed({
+          app: plan.id,
+          service: web.name,
+          providerId,
+          status: "running" as const,
+          mountDestinations: [HISTORY_MOUNT_TARGET],
+        }),
+      execStream: (_target, command) => {
+        captured = command.env;
+        return Stream.make({ exitCode: 0 as const });
+      },
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        noHistory: true,
+        user: "www-data",
+        io: { writeStdout: () => {}, writeStderr: () => {} },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(captured?.HISTFILE).toBeUndefined();
   });
 
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {

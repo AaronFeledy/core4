@@ -64,9 +64,31 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       },
       ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
       ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
+      ...(service.history === undefined
+        ? []
+        : [{ label: "history", value: service.history ? "enabled" : "disabled" }]),
     ],
   }));
   const hasLogSources = result.services.some((service) => (service.logSources?.length ?? 0) > 0);
+  const historySection =
+    result.history === undefined
+      ? []
+      : [
+          {
+            title: "history",
+            rows: [
+              {
+                label: "volume",
+                tone: "info" as SummaryTone,
+                value: result.history.volume ?? "(none)",
+                fields: result.history.services.map((entry) => ({
+                  label: entry.service,
+                  value: entry.enabled ? "enabled" : "disabled",
+                })),
+              },
+            ],
+          },
+        ];
   const agentEnvSection =
     result.agentEnv === undefined
       ? []
@@ -123,10 +145,22 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
               ],
             },
           ]),
+      ...historySection,
       ...agentEnvSection,
     ],
     footer: `${result.services.length} services`,
   };
+};
+
+const historyLines = (result: InfoAppResult): ReadonlyArray<string> => {
+  if (result.history === undefined) return [];
+  const volume = result.history.volume ?? "(none)";
+  return [
+    `history\tvolume\t${volume}`,
+    ...result.history.services.map(
+      (entry) => `history\t${entry.service}\t${entry.enabled ? "enabled" : "disabled"}`,
+    ),
+  ];
 };
 
 const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
@@ -153,7 +187,7 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
-  const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
+  const extra = [...hostProxyLines(result), ...historyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
     const renderedEndpoints = endpointText(service.endpoints);
@@ -164,7 +198,11 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
-    return [base, ...logRows, ...credsRows];
+    const historyRows =
+      service.history === undefined
+        ? []
+        : [`${service.service}\thistory\t${service.history ? "enabled" : "disabled"}`];
+    return [base, ...logRows, ...credsRows, ...historyRows];
   });
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
 };

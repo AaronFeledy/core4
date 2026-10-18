@@ -66,7 +66,7 @@
 - `RuntimeProviderRegistry.select(target?: AppPlan | ProviderId)` accepts an explicit provider ID for planless resource observation and cleanup. Real plans still select their provider; omitting the target still selects the configured default.
 
 - `RestartAppOptions` additively accepts optional `services` for a scoped restart of named planned services with no dependency pull-in. Unknown names fail with the existing `ServiceNotFoundError`. Bare restart (no `services`) is unchanged. `RestartAppError` additively includes `ProviderError` so scoped restart can surface inspect, stop, apply, and `ServiceRestartWouldRecreateError`. `PreRestartEvent` and `PostRestartEvent` additively accept optional `services`; a full-app restart omits the field. `ApplyOptions.forbidRecreate` asks bring-up to fail instead of recreating on publish-port, bind-source, or network drift, or on host-port bind-rejection recovery. Combining it with `reconcile: true` fails. `ServiceRuntimeInfo` additively reports optional `publishFingerprint`, `bindSources`, `networkNames`, and `mountDestinations` when inspect can read them.
-- `HistoryConfig` is a new public schema export; `GlobalConfig.history` is a new additive optional field (`history.enabled`, default true) for the rebuild-surviving container history volume. `ServiceConfig.history` is a new additive optional boolean to opt a service in or out. `@lando/sdk/schema` also exports history volume constants (`HISTORY_FEATURE_ID`, `HISTORY_MOUNT_TARGET`, `HISTORY_DEFAULT_SERVICE_TYPES`, `historyStoreName`, `isHistoryStoreName`, and related helpers).
+- `HistoryConfig` is a new public schema export; `GlobalConfig.history` is a new additive optional field (`history.enabled`, default true) for the rebuild-surviving container history volume. `ServiceConfig.history` is a new additive optional boolean to opt a service in or out. `@lando/sdk/schema` also exports history volume constants (`HISTORY_FEATURE_ID`, `HISTORY_MOUNT_TARGET`, `HISTORY_DEFAULT_SERVICE_TYPES`, `historyStoreName`, `isHistoryStoreName(name, appName)` matching the planned `lando-<app>-history` volume, `historyStatusFromPlan`, and related helpers). `InfoAppService.history` and `InfoAppResult.history` are additive optional fields for `lando info` (volume name and per-service enabled/disabled).
 
 - `ToolingInvocation` adds optional `stdinStream`, `terminalResize`, and `signal` using the provider exec contract's types. Keyboard input must be re-iterable for sequential container steps. Omission preserves idle PTY input and noninteractive embedding/event behavior; no service signature or JSON Schema changes.
 
@@ -951,7 +951,7 @@ It registers no JSON Schema.
 - `HISTORY_FEATURE_ID`
 - `HISTORY_MOUNT_TARGET`
 - `HISTORY_DEFAULT_SERVICE_TYPES`
-- `HISTORY_STORE_NAME_PATTERN`
+- `HISTORY_DEFAULT_USER`
 - `HISTORY_CLIENT_FILES`
 - `HISTORY_CLIENT_ENV_NAMES`
 - `historyStoreName`
@@ -960,6 +960,8 @@ It registers no JSON Schema.
 - `historyServiceTypeFamily`
 - `isHistoryDefaultServiceType`
 - `historyFilePath`
+- `sanitizeHistoryUser`
+- `historyStatusFromPlan`
 - `shouldAttachHistoryVolume`
 - `AppIdentity`
 - `NotifyConfig`

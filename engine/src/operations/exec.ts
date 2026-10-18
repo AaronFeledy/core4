@@ -134,6 +134,7 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
     provider,
     target,
     serviceName: String(service.name),
+    user: options.user ?? service.user ?? target.user,
     serviceEnv: service.environment,
     env: terminalEnv,
     tty,

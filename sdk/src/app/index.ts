@@ -375,6 +375,12 @@ export interface InfoAppService {
   readonly endpoints: ReadonlyArray<string>;
   readonly logSources?: ReadonlyArray<InfoLogSource>;
   readonly creds?: ServiceCreds;
+  readonly history?: boolean;
+}
+
+export interface InfoAppHistory {
+  readonly volume?: string;
+  readonly services: ReadonlyArray<{ readonly service: string; readonly enabled: boolean }>;
 }
 
 export interface InfoAppAgentEnv {
@@ -386,6 +392,7 @@ export interface InfoAppResult {
   readonly app: string;
   readonly services: ReadonlyArray<InfoAppService>;
   readonly agentEnv?: InfoAppAgentEnv;
+  readonly history?: InfoAppHistory;
 }
 
 export type InfoAppError =
