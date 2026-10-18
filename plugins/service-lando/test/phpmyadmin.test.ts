@@ -258,21 +258,25 @@ describe("phpMyAdmin AppFeature", () => {
     expect(captures.get("database")?.deps).toEqual([]);
   });
 
-  test("waits for a healthy sibling when that sibling has a healthcheck", async () => {
+  test.each([
+    {
+      healthcheck: { kind: "command", command: ["mysqladmin", "ping"] } as const,
+      condition: "service_healthy",
+    },
+    { healthcheck: false as const, condition: "service_started" },
+  ])("uses $condition when the sibling healthcheck is $healthcheck", async ({ healthcheck, condition }) => {
     const { context, captures } = applyWire([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
       viewOf({
         serviceName: "database",
         serviceType: "mysql",
-        healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+        healthcheck,
       }),
     ]);
 
     await Effect.runPromise(phpMyAdminWireFeature.apply(context));
 
-    expect(captures.get("pma")?.deps).toEqual([
-      { service: "database", condition: "service_healthy", required: true },
-    ]);
+    expect(captures.get("pma")?.deps).toEqual([{ service: "database", condition, required: true }]);
   });
 
   test("uses explicit MYSQL_USER and MYSQL_PASSWORD for the single-db case", async () => {

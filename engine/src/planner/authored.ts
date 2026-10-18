@@ -41,13 +41,32 @@ export const validateAuthoredAppMount = (
     "appMount",
     "target",
   ]);
-  return target instanceof LandofileValidationError ? target : undefined;
+  if (!(target instanceof LandofileValidationError)) return;
+  return new LandofileValidationError({
+    message: target.message,
+    file: target.file,
+    issues: target.issues.map((issue) => ({
+      ...issue,
+      suggestion:
+        "Set appMount to an absolute container path such as /app, or false to disable the app mount.",
+    })),
+  });
 };
 
 export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.healthcheck;
   if (authored === undefined) return servicePlan;
   const existing = servicePlan.healthcheck;
+  if (authored === false)
+    return {
+      ...servicePlan,
+      healthcheck: {
+        kind: "none",
+        intervalSeconds: existing?.intervalSeconds ?? 10,
+        timeoutSeconds: existing?.timeoutSeconds ?? 5,
+        retries: existing?.retries ?? 5,
+      },
+    };
   const command = authored.command ?? existing?.command;
   const url = authored.url ?? existing?.url;
   const port = authored.port ?? existing?.port;

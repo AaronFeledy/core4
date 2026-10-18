@@ -190,7 +190,7 @@ The fixed `@lando/sdk` tool-provisioning helper installs pinned host executables
 - `ProbeError` and `ProbeTimeoutError` are exported from `@lando/sdk/probe`, not the frozen errors barrel.
 - Core MUST NOT introduce separate provider- or host-probe retry loops.
 
-Healthchecks accept disabled, string, string-array, and object forms, including computed `load()` values (§7.3). Object fields are `command`, `user`, `retry`, `delay`, `timeout`, and `target`.
+Healthchecks accept disabled, string, string-array, and object forms through `HealthcheckInput` (§6.7), including computed `load()` values (§7.3). Canonical object fields are `kind`, `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, `startPeriodSeconds`, and `startInterval`, plus `user` and `target` (below). Compose `test`, `disable`, and duration spellings normalize through the same codec; Lando 3 `retry` and `delay` are translated (§7.4).
 
 - Start, restart, rebuild (full or selected), and global-service start MUST pass the readiness barrier before post-start subscribers run (§6.7). Success rows are `ready`, `running`, `completed`, or warning-toned `restarting`; non-instant waits MUST publish per-service progress.
 - Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, including service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Applied resources MUST remain available for diagnosis; readiness failures MUST NOT roll them back.

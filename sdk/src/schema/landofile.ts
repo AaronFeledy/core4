@@ -5,7 +5,7 @@ import validRange from "semver/ranges/valid.js";
 
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
-import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
+import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
@@ -112,9 +112,7 @@ export const StorageInput = Schema.Union([
 ]);
 export type StorageInput = typeof StorageInput.Type;
 
-/** Canonical Lando healthcheck schema; Compose-capable authoring is accepted by `ServiceConfig`. */
-export const HealthcheckInput = HealthcheckCanonicalBase;
-export type HealthcheckInput = typeof HealthcheckInput.Type;
+export { HealthcheckInput } from "./compose-healthcheck.ts";
 
 export const ServiceDependency = Schema.Struct({
   service: Schema.String,
@@ -603,6 +601,44 @@ const AppMountEntry = Schema.String.check(
   ),
 );
 
+const AppMountObject = Schema.Struct({
+  target: Schema.String.annotate({ description: "Container destination for application source." }),
+  readOnly: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Mount application source read-only.",
+  }),
+  excludes: Schema.optionalKey(Schema.Array(AppMountEntry)).annotate({
+    description: "Paths excluded from application source synchronization.",
+  }),
+  includes: Schema.optionalKey(Schema.Array(AppMountEntry)).annotate({
+    description: "Excluded paths to include explicitly.",
+  }),
+});
+const AppMountCanonical = Schema.Union([Schema.Literal(false), AppMountObject]);
+const APP_MOUNT_DESCRIPTION =
+  "Application source mount as a destination string or configuration object, or false to disable the app mount.";
+export const AppMountInput = Schema.Union([
+  Schema.String,
+  Schema.Literal(false),
+  AppMountObject.pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Never),
+      source: Schema.optionalKey(Schema.Never),
+    }),
+  ),
+])
+  .annotate({ description: APP_MOUNT_DESCRIPTION })
+  .pipe(
+    Schema.decodeTo(
+      AppMountCanonical,
+      SchemaTransformation.transform({
+        decode: (input) => (typeof input === "string" ? { target: input } : input),
+        encode: (input) => input,
+      }),
+    ),
+  )
+  .annotate({ description: APP_MOUNT_DESCRIPTION });
+export type AppMountInput = typeof AppMountInput.Type;
+
 const ServiceConfigWithExtensions = Schema.StructWithRest(
   Schema.Struct({
     api: Schema.optionalKey(Schema.Literal(4)),
@@ -717,19 +753,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
     }),
 
-    appMount: Schema.optionalKey(
-      Schema.Union([
-        Schema.Literal(false),
-        Schema.Struct({
-          target: Schema.String,
-          readOnly: Schema.optionalKey(Schema.Boolean),
-          excludes: Schema.optionalKey(Schema.Array(AppMountEntry)),
-          includes: Schema.optionalKey(Schema.Array(AppMountEntry)),
-        }),
-      ]),
-    ).annotate({
-      description: "Application source mount configuration, or false to disable the app mount.",
-    }),
+    appMount: Schema.optionalKey(AppMountInput),
     mounts: Schema.optionalKey(layerMerge(Schema.Array(MountInput), REPLACE)).annotate({
       description: "Additional host or managed-file mounts attached to the service.",
     }),
@@ -761,7 +785,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
-    healthcheck: Schema.optionalKey(HealthcheckField),
+    healthcheck: Schema.optionalKey(HealthcheckInput),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),

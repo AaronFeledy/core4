@@ -8,6 +8,7 @@ export const SCHEMA_POLARITY_BY_ID: Readonly<Record<string, SchemaPolarity>> = {
   AgentEnvConfig: "input",
   GlobalConfig: "input",
   HealthcheckInput: "input",
+  AppMountInput: "input",
   KeymapConfig: "input",
   LandofileShape: "input",
   McpConfig: "input",

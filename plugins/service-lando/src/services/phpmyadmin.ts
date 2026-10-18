@@ -104,7 +104,7 @@ const discoveredSiblings = (
 
 const siblingHasHealthProbe = (sibling: AppFeatureServiceView): boolean => {
   const healthcheck = sibling.normalizedConfig.healthcheck;
-  return healthcheck !== undefined && healthcheck.kind !== "none";
+  return healthcheck !== undefined && healthcheck !== false;
 };
 
 const addSiblingDependencies = (

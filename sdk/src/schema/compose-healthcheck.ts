@@ -7,9 +7,9 @@ import { CommandSpec } from "./primitives.ts";
 
 const ComposeTest = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 
-// JSON Schema publishes the encoded side, so both sides of HealthcheckField carry the description.
+// JSON Schema publishes the encoded side, so both sides carry the description.
 const HEALTHCHECK_FIELD_DESCRIPTION =
-  "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.";
+  "Healthcheck accepts false, a non-empty command string, a non-empty argv array, or an object with Lando fields or Compose test, disable, and duration spellings.";
 
 const ComposeHealthcheckAccepted = Schema.Struct({
   kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
@@ -29,13 +29,8 @@ const ComposeHealthcheckAccepted = Schema.Struct({
   start_interval: Schema.optionalKey(Schema.String),
 }).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });
 
-/**
- * Canonical Lando healthcheck fields, re-exported by `landofile.ts` as the
- * public `HealthcheckInput`. It lives here so the Compose canonical schema
- * can extend it without an import cycle back through `landofile.ts`.
- */
-export const HealthcheckCanonicalBase = Schema.Struct({
-  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
+const HealthcheckCanonicalBase = Schema.Struct({
+  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp"])),
   command: Schema.optionalKey(CommandSpec),
   url: Schema.optionalKey(Schema.String),
   port: Schema.optionalKey(Schema.Number),
@@ -45,19 +40,22 @@ export const HealthcheckCanonicalBase = Schema.Struct({
   startPeriodSeconds: Schema.optionalKey(Schema.Number),
 });
 
-const ComposeHealthcheckCanonical = HealthcheckCanonicalBase.pipe(
+const HealthcheckCanonicalObject = HealthcheckCanonicalBase.pipe(
   Schema.fieldsAssign({
     startInterval: Schema.optionalKey(Schema.String).annotate({
       description: "Raw Compose start_interval duration preserved losslessly for runtime extensions.",
     }),
   }),
 );
+const ComposeHealthcheckCanonical = Schema.Union([Schema.Literal(false), HealthcheckCanonicalObject]);
 
 type AcceptedHealthcheck = typeof ComposeHealthcheckAccepted.Type;
-type NormalizedTest = Readonly<{
-  kind?: "command" | "none";
-  command?: typeof CommandSpec.Type;
-}>;
+type NormalizedTest =
+  | false
+  | Readonly<{
+      kind?: "command";
+      command?: typeof CommandSpec.Type;
+    }>;
 
 const normalizeTest = (test: AcceptedHealthcheck["test"]): NormalizedTest => {
   if (test === undefined) return {};
@@ -72,7 +70,7 @@ const normalizeTest = (test: AcceptedHealthcheck["test"]): NormalizedTest => {
           test,
         );
       }
-      return { kind: "none" };
+      return false;
     case "CMD":
       if (test.length < 2) {
         throw new SchemaIssue.InvalidValue(
@@ -136,12 +134,7 @@ const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | und
 };
 
 const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthcheckCanonical.Type => {
-  const retries = normalizeRetries(input.retries);
-  const startInterval = input.startInterval ?? input.start_interval;
-  const shared = {
-    ...(retries === undefined ? {} : { retries }),
-    ...(startInterval === undefined ? {} : { startInterval }),
-  };
+  if (input.kind === "none") return false;
   const landoWins =
     "kind" in input ||
     "command" in input ||
@@ -150,6 +143,15 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
     "intervalSeconds" in input ||
     "timeoutSeconds" in input ||
     "startPeriodSeconds" in input;
+  if (!landoWins && normalizeDisable(input.disable) === true) return false;
+  const test = landoWins ? {} : normalizeTest(input.test);
+  if (test === false) return false;
+  const retries = normalizeRetries(input.retries);
+  const startInterval = input.startInterval ?? input.start_interval;
+  const shared = {
+    ...(retries === undefined ? {} : { retries }),
+    ...(startInterval === undefined ? {} : { startInterval }),
+  };
 
   if (landoWins) {
     const kind = input.kind ?? (input.command === undefined ? undefined : "command");
@@ -165,14 +167,12 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
     };
   }
 
-  const disable = normalizeDisable(input.disable);
-  const test = normalizeTest(input.test);
   const intervalSeconds = input.interval === undefined ? undefined : parseComposeDuration(input.interval);
   const timeoutSeconds = input.timeout === undefined ? undefined : parseComposeDuration(input.timeout);
   const startPeriodSeconds =
     input.start_period === undefined ? undefined : parseComposeDuration(input.start_period);
   return {
-    ...(disable === true ? { kind: "none" as const } : test),
+    ...test,
     ...(intervalSeconds === undefined ? {} : { intervalSeconds }),
     ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
     ...(startPeriodSeconds === undefined ? {} : { startPeriodSeconds }),
@@ -181,7 +181,7 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
 };
 
 const encodeHealthcheck = (
-  input: typeof ComposeHealthcheckCanonical.Type,
+  input: typeof HealthcheckCanonicalObject.Type,
 ): typeof ComposeHealthcheckAccepted.Type => ({
   ...(input.kind === undefined ? {} : { kind: input.kind }),
   ...(input.command === undefined ? {} : { command: input.command }),
@@ -194,11 +194,27 @@ const encodeHealthcheck = (
   ...(input.startInterval === undefined ? {} : { start_interval: input.startInterval }),
 });
 
-export const HealthcheckField = ComposeHealthcheckAccepted.pipe(
+const EMPTY_HEALTHCHECK_COMMAND =
+  "Healthcheck command must not be empty; use healthcheck: false to disable the probe.";
+
+const HealthcheckAccepted = Schema.Union([
+  Schema.Literal(false),
+  Schema.String.check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
+  Schema.Array(Schema.String).check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
+  ComposeHealthcheckAccepted,
+]).annotate({
+  description: HEALTHCHECK_FIELD_DESCRIPTION,
+  expected: "false, a command string, an argv array, or a healthcheck object",
+});
+
+export const HealthcheckInput = HealthcheckAccepted.pipe(
   Schema.decodeTo(
     ComposeHealthcheckCanonical,
     SchemaTransformation.transformEffect({
-      decode: (input) => {
+      decode: (input): Effect.Effect<typeof ComposeHealthcheckCanonical.Type, SchemaIssue.Issue> => {
+        if (input === false) return Effect.succeed(false);
+        if (typeof input === "string" || "length" in input)
+          return Effect.succeed({ kind: "command" as const, command: input });
         try {
           return Effect.succeed(decodeHealthcheck(input));
         } catch (error) {
@@ -206,7 +222,8 @@ export const HealthcheckField = ComposeHealthcheckAccepted.pipe(
           throw error;
         }
       },
-      encode: (input) => Effect.succeed(encodeHealthcheck(input)),
+      encode: (input) => Effect.succeed(input === false ? false : encodeHealthcheck(input)),
     }),
   ),
 ).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });
+export type HealthcheckInput = typeof HealthcheckInput.Type;
