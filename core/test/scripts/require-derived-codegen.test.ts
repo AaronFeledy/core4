@@ -8,6 +8,7 @@ import {
   DERIVED_CODEGEN_SENTINELS,
   assertDerivedCodegen,
   derivedCodegenMessage,
+  isModuleResolveError,
   missingDerivedCodegen,
 } from "../../bin/derived-codegen.ts";
 
@@ -56,6 +57,18 @@ describe("require-derived-codegen", () => {
     // When / Then: assert passes.
     expect(() => assertDerivedCodegen(root)).not.toThrow();
     expect(missingDerivedCodegen(root)).toEqual([]);
+  });
+
+  test("isModuleResolveError matches Bun cannot-find-module messages without path shape", () => {
+    // Given: Bun's recipes resolve failure and a non-resolve error.
+    const recipesMsg =
+      "Cannot find module './bundled' imported from …/core/src/recipes/catalog.ts";
+    const other = new Error("something else failed");
+
+    // When / Then: only the module-resolve shape is true.
+    expect(isModuleResolveError(new Error(recipesMsg))).toBe(true);
+    expect(isModuleResolveError(other)).toBe(false);
+    expect(isModuleResolveError("Cannot find module")).toBe(false);
   });
 
   test(

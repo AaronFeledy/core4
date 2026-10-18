@@ -15,7 +15,7 @@ import { resolveLandoRoots } from "@lando/paths";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 import { cliUserArgv } from "../src/cli/user-argv";
-import { derivedCodegenMessage, missingDerivedCodegen } from "./derived-codegen.ts";
+import { derivedCodegenMessage, isModuleResolveError, missingDerivedCodegen } from "./derived-codegen.ts";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
@@ -50,11 +50,6 @@ const entryLocator =
       ? import.meta.url
       : "";
 const isCompiledEntry = entryLocator.includes("$bunfs") || entryLocator.includes("~BUN");
-
-const isMissingGeneratedModuleError = (error: unknown): boolean =>
-  error instanceof Error &&
-  /Cannot find module/.test(error.message) &&
-  /\/generated\/|recipes\/bundled/.test(error.message);
 
 const LANDOFILE_BASENAMES = [
   ".lando.base",
@@ -185,7 +180,7 @@ const main = async (): Promise<void> => {
 main().catch(async (error: unknown) => {
   const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/native-stdio");
   if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
-  if (!isCompiledEntry && isMissingGeneratedModuleError(error)) {
+  if (!isCompiledEntry && isModuleResolveError(error)) {
     const missing = missingDerivedCodegen(join(import.meta.dir, "../.."));
     if (missing.length > 0) {
       await writeLine("stderr", derivedCodegenMessage(missing));

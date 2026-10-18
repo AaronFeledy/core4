@@ -25,6 +25,10 @@ export const missingDerivedCodegen = (repoRoot: string): string[] =>
 export const derivedCodegenMessage = (missing: string[]): string =>
   `Generated modules are missing (${missing.length} of ${DERIVED_CODEGEN_SENTINELS.length}): ${missing.join(", ")}. Run \`bun run codegen\` from the repo root, then retry.`;
 
+/** Bun module-resolve failures (no path-shape heuristic; callers gate on missing sentinels). */
+export const isModuleResolveError = (error: unknown): boolean =>
+  error instanceof Error && /Cannot find module/.test(error.message);
+
 export const assertDerivedCodegen = (repoRoot: string): void => {
   const missing = missingDerivedCodegen(repoRoot);
   if (missing.length > 0) {
