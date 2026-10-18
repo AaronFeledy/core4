@@ -56,6 +56,19 @@ test("compares union members after reference expansion and annotation normalizat
   expect(findings).toMatchObject([{ verdict: "compatible", changeKind: "union-widened" }]);
 });
 
+test("keeps a union finding when a later construct also changes", () => {
+  // Given
+  const before: JsonSchema = { anyOf: oldMembers, allOf: [{ type: "object" }] };
+  const after: JsonSchema = { anyOf: newMembers, allOf: [{ type: "object", minProperties: 1 }] };
+  // When
+  const findings = classifySchemaChange(before, after, "output");
+  // Then
+  expect(findings).toMatchObject([
+    { verdict: "breaking", changeKind: "union-widened" },
+    { verdict: "unknown", changeKind: "unsupported-construct" },
+  ]);
+});
+
 test.each([
   ...JSON_SCHEMA_NAMES.filter((name) => name.endsWith("ServiceConfig")),
   "ServiceConfigInput",

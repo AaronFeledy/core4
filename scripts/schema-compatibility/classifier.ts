@@ -196,6 +196,7 @@ const compareNode = (
         }
       }
       return [
+        ...findings,
         finding(
           "unknown",
           "unsupported-construct",
@@ -207,20 +208,27 @@ const compareNode = (
   }
   if (!jsonEquals(before.$ref, after.$ref)) {
     return [
+      ...findings,
       finding("unknown", "ref-changed", childPath(context.path, "$ref"), "A JSON Schema reference changed."),
     ];
   }
   if (!jsonEquals(before.type, after.type)) {
-    return [finding("breaking", "type-changed", context.path, "The JSON Schema type changed.")];
+    return [...findings, finding("breaking", "type-changed", context.path, "The JSON Schema type changed.")];
   }
   if (!jsonEquals(before.enum, after.enum)) {
     if (Array.isArray(before.enum) && Array.isArray(after.enum)) {
-      return [compareEnum(before.enum, after.enum, context)];
+      return [...findings, compareEnum(before.enum, after.enum, context)];
     }
-    return [finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed.")];
+    return [
+      ...findings,
+      finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed."),
+    ];
   }
   if (!jsonEquals(before.const, after.const)) {
-    return [finding("breaking", "const-changed", context.path, "A constant value constraint changed.")];
+    return [
+      ...findings,
+      finding("breaking", "const-changed", context.path, "A constant value constraint changed."),
+    ];
   }
 
   if (!jsonEquals(before.properties, after.properties) || !jsonEquals(before.required, after.required)) {
