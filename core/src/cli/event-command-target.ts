@@ -57,20 +57,38 @@ const loadPluginSpec = (
       if (!Schema.is(BootstrapLevel)(spec.bootstrap))
         issues.push(`bootstrap ${String(spec.bootstrap)} is not valid`);
       if (!Schema.isSchema(spec.resultSchema)) issues.push("resultSchema is not a schema instance");
+      const yes = spec.flags?.yes;
+      const compatibleYes =
+        yes === undefined ||
+        (yes.type === "boolean" &&
+          (yes.default === undefined || yes.default === false) &&
+          yes.multiple === undefined &&
+          yes.parse === undefined &&
+          yes.options === undefined &&
+          yes.required === undefined &&
+          yes.valueType === undefined);
+      if (!compatibleYes) issues.push("flag yes must be an optional boolean defaulting to false");
       if (issues.length > 0) {
         throw new PluginDescriptorMismatchError({
           pluginName,
           kind: "commands",
-          declared: [`id=${id}`, `namespace=${namespace}`, "bootstrap=valid", "resultSchema=schema"],
+          declared: [
+            `id=${id}`,
+            `namespace=${namespace}`,
+            "bootstrap=valid",
+            "resultSchema=schema",
+            "flags.yes=absent-or-optional-boolean-default-false",
+          ],
           provided: [
             `id=${String(spec.id)}`,
             `namespace=${String(spec.namespace)}`,
             `bootstrap=${String(spec.bootstrap)}`,
             `resultSchema=${Schema.isSchema(spec.resultSchema) ? "schema" : "non-schema"}`,
+            `flags.yes=${yes === undefined ? "absent" : compatibleYes ? "optional-boolean-default-false" : "incompatible"}`,
           ],
           message: `Plugin ${pluginName} command loader ${id} returned an invalid executable command spec: ${issues.join("; ")}.`,
           remediation:
-            "Return an executable command spec whose id, namespace, bootstrap, and resultSchema match the manifest declaration.",
+            "Return a spec whose id, namespace, bootstrap, and resultSchema match the manifest declaration, and declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.",
         });
       }
       if (cached === undefined) loaderCache.set(load, Promise.resolve(spec));

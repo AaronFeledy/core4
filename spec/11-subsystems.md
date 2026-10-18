@@ -275,7 +275,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 ### 10.8 Setup and host integration
 
-`lando setup` supports `--yes`, `--provider`, `--skip-provider`, `--no-interactive`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, and `--skip-file-sync`. The default installs the managed runtime; `docker` and `podman` select existing system runtimes.
+`lando setup` supports `--yes`/`-y`, `--provider`, `--skip-provider`, `--no-interactive`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, and `--skip-file-sync`. The default installs the managed runtime; `docker` and `podman` select existing system runtimes.
 
 - Plugins add setup flags through `setup.flags`; elevation uses `PrivilegeService`.
 - Provider setup MUST follow non-mutating inspect/plan, core-owned consent through `InteractionService`, then apply. Apply MUST NOT discover new mutations.

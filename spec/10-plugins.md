@@ -96,7 +96,7 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 | `serviceFeatures` | Service planner | Mutates one service through published context. |
 | `appFeatures` | App planner | Mutates selected services through published context. |
 | `globalServices` | `GlobalAppService` | Contributes global-app services (§20.4). |
-| `commands` | Command registry | Obeys namespace and alias rules (§8.1). |
+| `commands` | Command registry | Obeys namespace and alias rules (§8.1); a declared `yes` flag follows §8.3.1. |
 | `initSources` | Init command | Supplies app initialization sources. |
 | `routerServices`, `tunnelServices` | Networking subsystems | Implements routing or sharing contracts. |
 | `remoteSources`, `datasets` | Remote-sync subsystem | Contract-only; implementation is sequenced in the ROADMAP (§10.12). |
