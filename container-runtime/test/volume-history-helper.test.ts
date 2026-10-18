@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -44,6 +44,19 @@ test("mode check exits 0 only when the volume root is 1777", async () => {
     expect((await invoke(volumeHistoryModeCheckCommand(root))).code).not.toBe(0);
     expect((await invoke(volumeHistoryInitCommand(root))).code).toBe(0);
     expect((await invoke(volumeHistoryModeCheckCommand(root))).code).toBe(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("mode check treats 0777 without the sticky bit as needing chmod", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-history-0777-"));
+  try {
+    await chmod(root, 0o0777);
+    expect((await stat(root)).mode & 0o7777).toBe(0o0777);
+    expect((await invoke(volumeHistoryModeCheckCommand(root))).code).not.toBe(0);
+    expect((await invoke(volumeHistoryInitCommand(root))).code).toBe(0);
+    expect((await stat(root)).mode & 0o7777).toBe(VOLUME_HISTORY_MODE);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

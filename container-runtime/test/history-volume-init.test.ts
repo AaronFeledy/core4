@@ -16,12 +16,16 @@ import { STORAGE_SCOPE_LABEL } from "../src/labels.ts";
 import { inspectMountDestinations } from "../src/podman/bring-up-recreate.ts";
 import { bringUp, historyStoreNamesFromPlan } from "../src/podman/bring-up.ts";
 import {
+  HISTORY_MODE_LABEL,
+  HISTORY_MODE_VERIFIED,
   VOLUME_HISTORY_IMAGE,
+  historyModeMarkerName,
   volumeHistoryInitCommand,
   volumeHistoryModeCheckCommand,
 } from "../src/volume-history-helper.ts";
 
 const historyStore = "lando-histapp-history";
+const historyMarker = historyModeMarkerName(historyStore);
 const providerId = ProviderId.make("podman");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -111,7 +115,9 @@ const recordingBringUp = async (input: {
   readonly imageStatus?: number;
   readonly helperCreateStatus?: number;
   readonly initWaitStatus?: number;
+  readonly initWaitBody?: string;
   readonly modeCheckWaitStatus?: number;
+  readonly verifiedMarker?: boolean;
   readonly ensureImage?: (input: {
     readonly service: { readonly extensions: ServicePlanExtensions };
     readonly ref: string;
@@ -148,8 +154,26 @@ const recordingBringUp = async (input: {
         request: (request) => {
           calls.push({ method: request.method, path: request.path, body: request.body });
           if (request.path === "/volumes/create") {
-            if ((input.volumeStatus ?? 201) === 409) return Effect.succeed({ status: 409, body: "{}" });
+            const name = (request.body as { Name?: string } | undefined)?.Name;
+            if (name === historyStore && (input.volumeStatus ?? 201) === 409) {
+              return Effect.succeed({ status: 409, body: "{}" });
+            }
             return Effect.succeed(echoCreatedVolume(request.body));
+          }
+          if (request.method === "GET" && request.path.startsWith("/volumes/")) {
+            if (
+              input.verifiedMarker === true &&
+              request.path === `/volumes/${encodeURIComponent(historyMarker)}`
+            ) {
+              return Effect.succeed({
+                status: 200,
+                body: JSON.stringify({
+                  Name: historyMarker,
+                  Labels: { [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED },
+                }),
+              });
+            }
+            return Effect.succeed({ status: 404, body: "{}" });
           }
           if (request.path === `/images/${encodeURIComponent(VOLUME_HISTORY_IMAGE)}/json`) {
             return Effect.succeed({ status: input.imageStatus ?? 200, body: "{}" });
@@ -169,6 +193,9 @@ const recordingBringUp = async (input: {
             return Effect.succeed({ status: 204, body: "" });
           }
           if (request.path.includes("/wait")) {
+            if (!lastHelperWasModeCheck && input.initWaitBody !== undefined) {
+              return Effect.succeed({ status: 200, body: input.initWaitBody });
+            }
             const statusCode = lastHelperWasModeCheck
               ? (input.modeCheckWaitStatus ?? 0)
               : (input.initWaitStatus ?? 0);
@@ -241,6 +268,13 @@ test("bringUp inits a newly created history volume after ensuring the helper ima
   expect(body.Cmd).toEqual([...volumeHistoryInitCommand()]);
   expect(body.HostConfig?.Binds).toEqual([`${historyStore}:/lando-data`]);
   expect(body.HostConfig?.NetworkMode).toBe("none");
+  expect(
+    calls.some(
+      (call) =>
+        call.path === "/volumes/create" &&
+        (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+    ),
+  ).toBe(true);
 });
 
 test("bringUp skips history chmod when the existing volume root is already 1777", async () => {
@@ -253,6 +287,27 @@ test("bringUp skips history chmod when the existing volume root is already 1777"
   expect(ensured).toEqual([{ ref: VOLUME_HISTORY_IMAGE, force: false, extensions: {} }]);
   expect(calls.some(isHistoryModeCheckCreate)).toBe(true);
   expect(calls.some(isHistoryInitCreate)).toBe(false);
+  expect(
+    calls.some(
+      (call) =>
+        call.path === "/volumes/create" &&
+        (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+    ),
+  ).toBe(true);
+});
+
+test("bringUp skips helper image and container when history mode is already verified", async () => {
+  const ensured: EnsureImageCall[] = [];
+  const warnings: string[] = [];
+  const calls = await recordingBringUp({
+    volumeStatus: 409,
+    verifiedMarker: true,
+    warnings,
+    ...succeedingEnsureImage(ensured),
+  });
+  expect(ensured).toEqual([]);
+  expect(calls.some(isHistoryHelperCreate)).toBe(false);
+  expect(warnings).toEqual([]);
 });
 
 test("missing helper image warns and does not fail bring-up", async () => {
@@ -292,6 +347,20 @@ test("history helper create failure warns and does not fail bring-up", async () 
   expect(calls.some(isHistoryInitCreate)).toBe(true);
   expect(warnings.some((message) => message.includes("history volume init create failed"))).toBe(true);
   expect(warnings.some((message) => message.includes("until the next rebuild"))).toBe(false);
+});
+
+test("unparsed history helper wait StatusCode warns and does not fail bring-up", async () => {
+  const warnings: string[] = [];
+  const calls = await recordingBringUp({ initWaitBody: "{}", warnings });
+  expect(calls.some(isHistoryInitCreate)).toBe(true);
+  expect(warnings.some((message) => message.includes("wait returned no StatusCode"))).toBe(true);
+  expect(
+    calls.some(
+      (call) =>
+        call.path === "/volumes/create" &&
+        (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+    ),
+  ).toBe(false);
 });
 
 test("nonzero history helper exit warns and does not fail bring-up", async () => {

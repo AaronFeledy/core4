@@ -1,6 +1,11 @@
 export const VOLUME_HISTORY_IMAGE = "oven/bun:1.4.0-alpine";
 export const VOLUME_HISTORY_MOUNT = "/lando-data";
 export const VOLUME_HISTORY_MODE = 0o1777;
+/** Inspectable skip marker: Engine volume labels cannot be updated after create. */
+export const HISTORY_MODE_LABEL = "dev.lando.history-mode";
+export const HISTORY_MODE_VERIFIED = "1777";
+
+export const historyModeMarkerName = (storeName: string): string => `${storeName}.verified`;
 
 // Runs inside the scoped helper, not the host. Directory descriptors prevent
 // symlink following; fchmod + fsync make the sticky-writable root durable.

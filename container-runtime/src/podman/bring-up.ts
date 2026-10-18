@@ -56,8 +56,11 @@ import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import {
+  HISTORY_MODE_LABEL,
+  HISTORY_MODE_VERIFIED,
   VOLUME_HISTORY_IMAGE,
   VOLUME_HISTORY_MOUNT,
+  historyModeMarkerName,
   volumeHistoryInitCommand,
   volumeHistoryModeCheckCommand,
 } from "../volume-history-helper.ts";
@@ -579,14 +582,91 @@ const runHistoryHelper = Effect.fnUntraced(function* (
       ),
     );
   }
-  let statusCode = 0;
-  try {
-    const parsed = JSON.parse(waited.body) as { StatusCode?: number };
-    if (typeof parsed.StatusCode === "number") statusCode = parsed.StatusCode;
-  } catch {
-    statusCode = 0;
+  const statusCode = parseWaitStatusCode(waited.body);
+  if (statusCode === undefined) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        `provider-${deps.options.ctx.providerId} history volume ${operation} wait returned no StatusCode.`,
+        { body: waited.body },
+      ),
+    );
   }
   return statusCode;
+});
+
+const parseWaitStatusCode = (body: string): number | undefined => {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (typeof parsed !== "object" || parsed === null || !("StatusCode" in parsed)) return undefined;
+    const value = Reflect.get(parsed, "StatusCode");
+    return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const historyVolumeLabels = (body: string): Readonly<Record<string, string>> => {
+  try {
+    const parsed = JSON.parse(body) as { Labels?: unknown };
+    if (typeof parsed.Labels !== "object" || parsed.Labels === null) return {};
+    const labels: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed.Labels)) {
+      if (typeof value === "string") labels[key] = value;
+    }
+    return labels;
+  } catch {
+    return {};
+  }
+};
+
+const historyVolumeIsVerified = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<boolean, never> {
+  const marker = historyModeMarkerName(storeName);
+  const inspected = yield* request(deps, {
+    method: "GET",
+    path: `/volumes/${encodeURIComponent(marker)}`,
+  }).pipe(Effect.catch(() => Effect.succeed({ status: 0, body: "" })));
+  return (
+    inspected.status === 200 &&
+    historyVolumeLabels(inspected.body)[HISTORY_MODE_LABEL] === HISTORY_MODE_VERIFIED
+  );
+});
+
+const removeHistoryModeMarker = (deps: BringUpDeps, storeName: string): Effect.Effect<void, never> =>
+  request(deps, {
+    method: "DELETE",
+    path: `/volumes/${encodeURIComponent(historyModeMarkerName(storeName))}?force=true`,
+  }).pipe(
+    Effect.catch(() => Effect.void),
+    Effect.asVoid,
+  );
+
+const stampHistoryModeVerified = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  storeName: string,
+): Effect.fn.Return<void, never> {
+  const marker = historyModeMarkerName(storeName);
+  const store = plan.stores.find((candidate) => candidate.name === storeName) ?? {
+    name: marker,
+    scope: "app" as const,
+    kind: "data" as const,
+  };
+  yield* request(deps, {
+    method: "POST",
+    path: "/volumes/create",
+    body: {
+      Name: marker,
+      Labels: {
+        ...podmanVolumeCreationLabels(plan, { ...store, name: marker }),
+        [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+      },
+    },
+  }).pipe(Effect.catch(() => Effect.void));
 });
 
 const historyVolumeIsStickyWritable = Effect.fnUntraced(function* (
@@ -623,6 +703,17 @@ const initializeHistoryVolumes = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void, ProviderInternalError> {
   const stores = historyStoreNamesFromPlan(plan);
   if (stores.length === 0) return;
+  const unverified: string[] = [];
+  for (const storeName of stores) {
+    if (createdStores.has(storeName)) {
+      yield* removeHistoryModeMarker(deps, storeName);
+      unverified.push(storeName);
+      continue;
+    }
+    if (yield* historyVolumeIsVerified(deps, storeName)) continue;
+    unverified.push(storeName);
+  }
+  if (unverified.length === 0) return;
   const imageReady = yield* Effect.result(ensureHistoryHelperImage(deps, plan));
   if (imageReady._tag === "Failure") {
     yield* warnHistoryInitFailure(
@@ -633,19 +724,22 @@ const initializeHistoryVolumes = Effect.fnUntraced(function* (
     );
     return;
   }
-  for (const storeName of stores) {
+  for (const storeName of unverified) {
     const needsInit =
       createdStores.has(storeName) || !(yield* historyVolumeIsStickyWritable(deps, storeName));
-    if (!needsInit) continue;
-    const init = yield* Effect.result(initializeHistoryVolume(deps, storeName));
-    if (init._tag === "Failure") {
-      yield* warnHistoryInitFailure(
-        deps,
-        init.failure,
-        `History volume ${storeName} could not be initialized.`,
-        "Retry start, or run lando doctor.",
-      );
+    if (needsInit) {
+      const init = yield* Effect.result(initializeHistoryVolume(deps, storeName));
+      if (init._tag === "Failure") {
+        yield* warnHistoryInitFailure(
+          deps,
+          init.failure,
+          `History volume ${storeName} could not be initialized.`,
+          "Retry start, or run lando doctor.",
+        );
+        continue;
+      }
     }
+    yield* stampHistoryModeVerified(deps, plan, storeName);
   }
 });
 
