@@ -25,7 +25,7 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 
-import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+import { defaultInterruptSignals, installSignalHandlers } from "@lando/engine/runtime/interrupt";
 import { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
 
@@ -174,14 +174,17 @@ describe("makeLandoRuntime", () => {
     const beforeSigint = process.listenerCount("SIGINT");
     const beforeSigterm = process.listenerCount("SIGTERM");
     const beforeSighup = process.listenerCount("SIGHUP");
+    const defaults = defaultInterruptSignals();
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           yield* Layer.build(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }));
-          expect(process.listenerCount("SIGINT")).toBe(beforeSigint + 1);
-          expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm + 1);
-          expect(process.listenerCount("SIGHUP")).toBe(beforeSighup + 1);
+          expect(process.listenerCount("SIGINT")).toBe(beforeSigint + (defaults.includes("SIGINT") ? 1 : 0));
+          expect(process.listenerCount("SIGTERM")).toBe(
+            beforeSigterm + (defaults.includes("SIGTERM") ? 1 : 0),
+          );
+          expect(process.listenerCount("SIGHUP")).toBe(beforeSighup + (defaults.includes("SIGHUP") ? 1 : 0));
         }),
       ),
     );

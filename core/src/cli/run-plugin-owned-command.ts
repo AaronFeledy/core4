@@ -200,7 +200,7 @@ const runPluginOwnedCommand = (
   argv: ReadonlyArray<string>,
   options: RunPluginOwnedCommandOptions = {},
 ): Promise<void> =>
-  runWithProcessAbortSignal(async () => {
+  runWithProcessAbortSignal(async (signal) => {
     const flagError = pluginOwnedCliFlagError(spec, argv);
     if (flagError !== undefined) {
       await renderPluginOwnedPreCommandFailure(flagError, options.io);
@@ -210,7 +210,7 @@ const runPluginOwnedCommand = (
       pluginOwnedCommandEffect(spec, argv, activeResultFormat === "text"),
       defaultPluginRuntime(spec.bootstrap),
       () => undefined,
-      compiledPluginOptions(spec, options),
+      { ...compiledPluginOptions(spec, options), signal },
     );
   });
 

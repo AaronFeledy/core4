@@ -48,6 +48,7 @@ import {
   emitResultLine,
   resetActiveCommandInvocation,
   runCompiledCommand,
+  runWithProcessAbortSignal,
   setActiveCommandId,
   setActiveDeprecationWarnings,
   setActiveJq,
@@ -506,4 +507,5 @@ export interface RunCliOptions {
   readonly rootUrl: string;
 }
 
-export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);
+export const runCli = (options: RunCliOptions): Promise<void> =>
+  runWithProcessAbortSignal(() => runCompiledCli(options.argv));

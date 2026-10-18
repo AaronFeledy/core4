@@ -5,6 +5,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
+import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
 import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
@@ -20,6 +21,7 @@ import {
   commandErrorMessage,
   getActiveCommandInvocation,
 } from "./compiled-session";
+import { setActiveProcessAbortSignal } from "./process-abort-signal";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
 import { EmptyResultSchema } from "./spec/command-base";
@@ -92,6 +94,7 @@ export const runCompiledCommand = <A, E, R, RE>(
   options: {
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
+    readonly suppressInterruptionDiagnostics?: boolean;
     readonly successExitCode?: (value: A) => number | undefined;
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Codec<unknown, unknown>;
@@ -101,6 +104,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly io?: RendererIO;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
     readonly tracer?: Tracer.Tracer;
+    readonly signal?: AbortSignal;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -147,9 +151,11 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
+    ...(options.suppressInterruptionDiagnostics === true ? { suppressInterruptionDiagnostics: true } : {}),
     ...(successExitCode === undefined ? {} : { successExitCode }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
     formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) =>
       commandErrorMessage(failure, activeCommandId),
@@ -176,15 +182,17 @@ export const runCompiledCommand = <A, E, R, RE>(
 
 export const runWithProcessAbortSignal = async (
   run: (signal: AbortSignal) => Promise<void>,
+  options: { readonly signals?: ReadonlyArray<NodeJS.Signals> } = {},
 ): Promise<void> => {
   const controller = new AbortController();
   const abort = () => controller.abort();
-  (process as NodeJS.EventEmitter).once("SIGINT", abort);
-  (process as NodeJS.EventEmitter).once("SIGTERM", abort);
+  const previous = setActiveProcessAbortSignal(controller.signal);
+  const signals = options.signals ?? defaultInterruptSignals();
+  for (const signal of signals) (process as NodeJS.EventEmitter).once(signal, abort);
   try {
     await run(controller.signal);
   } finally {
-    (process as NodeJS.EventEmitter).off("SIGINT", abort);
-    (process as NodeJS.EventEmitter).off("SIGTERM", abort);
+    setActiveProcessAbortSignal(previous);
+    for (const signal of signals) (process as NodeJS.EventEmitter).off(signal, abort);
   }
 };

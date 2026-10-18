@@ -17,6 +17,10 @@
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./compression": "./src/compression.ts"
+  },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
   "keywords": ["lando", "lando-plugin", "database", "sql"],
   "lando": {

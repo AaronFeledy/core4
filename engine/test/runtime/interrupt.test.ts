@@ -4,21 +4,26 @@ import { Cause, Effect, Exit } from "effect";
 import { defaultInterruptSignals, installSignalHandlers } from "../../src/runtime/interrupt.ts";
 
 describe("default interrupt signals", () => {
-  test("includes SIGHUP on POSIX and SIGBREAK on Windows", () => {
-    expect(defaultInterruptSignals("linux")).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
-    expect(defaultInterruptSignals("darwin")).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
+  test("includes SIGBREAK on Windows and the gated POSIX set", () => {
     expect(defaultInterruptSignals("win32")).toEqual(["SIGINT", "SIGTERM", "SIGBREAK"]);
-    expect(defaultInterruptSignals()).toEqual(
-      process.platform === "win32" ? ["SIGINT", "SIGTERM", "SIGBREAK"] : ["SIGINT", "SIGTERM", "SIGHUP"],
-    );
+    expect(defaultInterruptSignals("linux", { stdinIsTTY: true, stdoutIsTTY: true, sigIgn: 0n })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+    ]);
+    expect(defaultInterruptSignals("darwin", { stdinIsTTY: true, stdoutIsTTY: true })).toEqual([
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+    ]);
   });
 
-  test("installs the default POSIX set including SIGHUP", async () => {
+  test("installs an explicit SIGHUP handler that interrupts the fiber", async () => {
     const before = process.listenerCount("SIGHUP");
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         Effect.gen(function* () {
-          yield* Effect.withFiber((fiber) => installSignalHandlers({ fiber }));
+          yield* Effect.withFiber((fiber) => installSignalHandlers({ fiber, signals: ["SIGHUP"] }));
           expect(process.listenerCount("SIGHUP")).toBe(before + 1);
           process.emit("SIGHUP");
           yield* Effect.never;
