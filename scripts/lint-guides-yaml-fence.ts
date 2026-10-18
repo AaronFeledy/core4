@@ -63,11 +63,22 @@ export const classifiedFormFor = (value: unknown, formOverride?: "full" | "fragm
 export const classifyYamlFenceDocument = (value: unknown): ClassifiedForm => {
   if (!Predicate.isObject(value)) return { kind: "skip" };
   const keys = Object.keys(value);
-  // `name:` marks a full Landofile; Shape excess-property checks catch unknown keys.
+  // A recognized authoring key keeps unknown siblings in strict validation.
+  const hasLandofileKey = keys.some(
+    (key) => LANDOFILE_KEYS.has(key) && key !== "name" && key !== "version" && !GLOBAL_CONFIG_KEYS.has(key),
+  );
+  if (
+    !hasLandofileKey &&
+    (keys.includes("apiVersion") || keys.includes("jobs") || (keys.includes("id") && keys.includes("title")))
+  )
+    return { kind: "skip" };
   if (Object.hasOwn(value, "name")) return { kind: "full" };
-  if (keys.every((key) => LANDOFILE_KEYS.has(key) || key.startsWith("x-")))
+  if (hasLandofileKey || keys.every((key) => LANDOFILE_KEYS.has(key) || key.startsWith("x-")))
     return { kind: "fragment", value };
-  if (keys.every((key) => SERVICE_KEYS.has(key)))
+  if (
+    keys.every((key) => SERVICE_KEYS.has(key)) ||
+    keys.some((key) => ["image", "type", "build", "healthcheck"].includes(key))
+  )
     return { kind: "fragment", value: { services: { x: value } } };
   if (keys.length > 0 && keys.every((key) => GLOBAL_CONFIG_KEYS.has(key))) return { kind: "global" };
   return { kind: "skip" };
@@ -77,7 +88,10 @@ const decodeStrict = <A, I>(schema: Schema.Codec<A, I>, input: unknown): Effect.
   Schema.decodeUnknownEffect(schema)(input, { onExcessProperty: "error", errors: "all" });
 
 const hasNolintMeta = (meta: string | null | undefined): boolean =>
-  typeof meta === "string" && /\bnolint\b/i.test(meta);
+  typeof meta === "string" &&
+  (meta.match(/(?:[^\s"']|"(?:\\.|[^"\\])*"|'[^']*')+/g) ?? []).some(
+    (token) => token.toLowerCase() === "nolint",
+  );
 
 type YamlLintContext = {
   readonly sourcePath: string;
@@ -155,6 +169,14 @@ export const lintYamlDocument = (options: {
   const { sourcePath, content, cwd, fence, formOverride, code, parseCode, diagnostics } = options;
   const context = { sourcePath, fence, code, diagnostics };
   if (formOverride === undefined && content.trim().length === 0) return;
+  if (formOverride === undefined) {
+    // Project only root block keys, before the restricted parser sees foreign YAML.
+    // Values and tags are never parsed or validated by this applicability check.
+    const keys = [...content.matchAll(/^(?:"([^"\n]+)"|'([^'\n]+)'|([A-Za-z_][\w-]*))\s*:/gm)].map(
+      (match) => match[1] ?? match[2] ?? match[3] ?? "",
+    );
+    if (classifyYamlFenceDocument(Object.fromEntries(keys.map((key) => [key, null]))).kind === "skip") return;
+  }
 
   const parsed = Effect.runSync(
     Effect.result(
