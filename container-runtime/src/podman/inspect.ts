@@ -14,7 +14,7 @@ import type {
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { fingerprintInspectPublishPorts } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
-import { inspectBindSources, inspectNetworkNames } from "./bring-up-recreate.ts";
+import { inspectBindSources, inspectMountDestinations, inspectNetworkNames } from "./bring-up-recreate.ts";
 
 interface ContainerInspect {
   readonly Id?: string;
@@ -175,6 +175,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
   const bindSources = inspectBindSources(decoded);
   const networkNames = inspectNetworkNames(decoded);
+  const mountDestinations = inspectMountDestinations(decoded);
   return {
     app: plan.id,
     appRoot: plan.root,
@@ -196,5 +197,6 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     publishFingerprint: fingerprintInspectPublishPorts(decoded),
     ...(bindSources === undefined ? {} : { bindSources }),
     ...(networkNames === undefined ? {} : { networkNames }),
+    ...(mountDestinations === undefined ? {} : { mountDestinations }),
   };
 });

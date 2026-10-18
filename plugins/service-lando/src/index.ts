@@ -173,6 +173,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     serviceTypes: [...serviceTypes.keys()],
     serviceFeatures: SERVICE_FEATURE_IDS,
     appFeatures: [
+      "service-lando.history",
       "service-lando.mailpit.wire",
       "service-lando.php.db-client",
       "service-lando.phpmyadmin.wire",

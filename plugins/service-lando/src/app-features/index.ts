@@ -3,9 +3,11 @@ import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { nginxPhpFpmWireFeature } from "../services/nginx.ts";
 import { phpDbClientFeature } from "../services/php-db-client.ts";
 import { phpMyAdminWireFeature } from "../services/phpmyadmin.ts";
+import { historyVolumeFeature } from "./history.ts";
 import { mailpitWireFeature } from "./mailpit.ts";
 
 export const appFeatures: ReadonlyMap<string, AppFeatureDefinition> = new Map([
+  [historyVolumeFeature.id, historyVolumeFeature],
   [mailpitWireFeature.id, mailpitWireFeature],
   [phpDbClientFeature.id, phpDbClientFeature],
   [phpMyAdminWireFeature.id, phpMyAdminWireFeature],

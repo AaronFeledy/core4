@@ -48,6 +48,7 @@ import {
   type DataTransferProgress,
   type DataTransferResult,
   type DataTransferSpec,
+  isHistoryStoreName,
   PortablePath,
   ProviderId,
   type PrunePolicy,
@@ -395,6 +396,20 @@ const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): Data
 
 const failUnsupported = (from: DataEndpoint, to: DataEndpoint, reason: string) =>
   Effect.fail(unsupported(from, to, reason));
+
+const historyVolumeUnsupported = (store: string, toEndpoint: string): DataEndpointUnsupportedError =>
+  new DataEndpointUnsupportedError({
+    message: `History volume ${store} is not included in snapshots or exports.`,
+    fromEndpoint: "volume",
+    toEndpoint,
+    remediation: "Choose a database or other data volume. Interactive history is kept out of snapshots.",
+  });
+
+const refuseHistoryStore = (store: string, toEndpoint: string) =>
+  isHistoryStoreName(store) ? Effect.fail(historyVolumeUnsupported(store, toEndpoint)) : Effect.void;
+
+const refuseHistoryEndpoint = (endpoint: DataEndpoint, toEndpoint: string) =>
+  endpoint._tag === "volume" ? refuseHistoryStore(endpoint.store, toEndpoint) : Effect.void;
 
 const providerFailure = (operation: string, cause: unknown): DataTransferError =>
   new DataTransferError({
@@ -1248,6 +1263,8 @@ export const makeDataMoverService = (
       });
 
       const run = Effect.gen(function* () {
+        yield* refuseHistoryEndpoint(spec.from, "transfer");
+        yield* refuseHistoryEndpoint(spec.to, "transfer");
         yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
         const hostToHost = spec.from._tag === "hostPath" && spec.to._tag === "hostPath";
         const treeCopy = hostToHost ? yield* hostSourceIsDirectory(spec.from.path) : false;
@@ -1345,6 +1362,7 @@ export const makeDataMoverService = (
         ),
       ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
+      yield* refuseHistoryStore(store.store, "snapshot");
       if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(
           new DataEndpointUnsupportedError({
@@ -1509,6 +1527,7 @@ export const makeDataMoverService = (
       );
     }),
     restore: Effect.fn("DataMover.restore")(function* (handle, store, opts) {
+      yield* refuseHistoryStore(store.store, "restore");
       const info = yield* findSnapshotInfo(
         persistence,
         typeof handle === "string" ? handle : handle.id,

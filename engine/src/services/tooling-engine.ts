@@ -11,6 +11,7 @@ import {
 } from "@lando/sdk/services";
 
 import { withAgentContextEnv } from "../config/agent-env.ts";
+import { mergeHistoryExecEnv } from "../config/history-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
@@ -143,23 +144,31 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
   }
   const service = yield* resolveService(invocation, plan);
   const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
-  const env = withAgentContextEnv(invocation.env, process.env, {
+  const agentEnv = withAgentContextEnv(invocation.env, process.env, {
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
   yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const tty = invocation.tty === true;
+  const target = {
+    app: plan.id,
+    service: service.name,
+    plan,
+    ...(invocation.user === undefined ? {} : { user: invocation.user }),
+  };
+  const env = yield* mergeHistoryExecEnv({
+    provider,
+    target,
+    serviceName: String(service.name),
+    serviceEnv: service.environment,
+    env: agentEnv,
+    tty,
+  });
   let exitCode = 0;
   let stdout = "";
   let stderr = "";
   for (const command of invocation.commands) {
-    const target = {
-      app: plan.id,
-      service: service.name,
-      plan,
-      ...(invocation.user === undefined ? {} : { user: invocation.user }),
-    };
     const result = yield* collectExecStream(
       provider.execStream(
         target,

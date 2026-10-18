@@ -14,6 +14,7 @@ import {
   type AppRef,
   type EndpointPlan,
   type HostPlatform,
+  isHistoryMountTarget,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -53,6 +54,11 @@ import {
 } from "../service-publish-ports.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { isServiceRestartExpected } from "../supervision.ts";
+import {
+  VOLUME_HISTORY_IMAGE,
+  VOLUME_HISTORY_MOUNT,
+  volumeHistoryInitCommand,
+} from "../volume-history-helper.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
@@ -412,6 +418,125 @@ export const podmanVolumeCreationLabels = (
 ): Readonly<Record<string, string>> => ({
   ...volumeCreationLabels(plan, store),
   [PROVIDER_LABEL]: plan.provider,
+});
+
+export const historyStoreNamesFromPlan = (plan: AppPlan): ReadonlyArray<string> => {
+  const names = new Set<string>();
+  for (const service of Object.values(plan.services)) {
+    for (const mount of service.storage) {
+      if (isHistoryMountTarget(String(mount.target))) names.add(mount.store);
+    }
+  }
+  return [...names];
+};
+
+const historyInitFailure = (deps: BringUpDeps, storeName: string, message: string, details?: unknown) =>
+  new ProviderUnavailableError({
+    providerId: deps.options.ctx.providerId,
+    operation: "bringUp.historyInit",
+    message,
+    details: redactDetails({ store: storeName, ...(details === undefined ? {} : details) }),
+    remediation: deps.remediation,
+  });
+
+const initializeHistoryVolume = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  const helperName = `lando-hist-${storeName}`.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 128);
+  const remove = request(deps, {
+    method: "DELETE",
+    path: `/containers/${encodeURIComponent(helperName)}?force=true`,
+  }).pipe(Effect.catch(() => Effect.void));
+  yield* remove;
+  const created = yield* request(deps, {
+    method: "POST",
+    path: `/containers/create?name=${encodeURIComponent(helperName)}`,
+    body: {
+      Image: VOLUME_HISTORY_IMAGE,
+      Cmd: [...volumeHistoryInitCommand()],
+      User: "0:0",
+      HostConfig: {
+        Binds: [`${storeName}:${VOLUME_HISTORY_MOUNT}`],
+        NetworkMode: "none",
+      },
+    },
+  });
+  if (created.status < 200 || created.status >= 300) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        withApiReason(
+          `provider-${deps.options.ctx.providerId} history volume init create failed with HTTP ${created.status}.`,
+          { status: created.status, body: created.body },
+        ),
+        { status: created.status, body: created.body },
+      ),
+    );
+  }
+  const started = yield* request(deps, {
+    method: "POST",
+    path: `/containers/${encodeURIComponent(helperName)}/start`,
+  });
+  if (started.status < 200 || started.status >= 300) {
+    yield* remove;
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        withApiReason(
+          `provider-${deps.options.ctx.providerId} history volume init start failed with HTTP ${started.status}.`,
+          { status: started.status, body: started.body },
+        ),
+        { status: started.status, body: started.body },
+      ),
+    );
+  }
+  const waited = yield* request(deps, {
+    method: "POST",
+    path: `/containers/${encodeURIComponent(helperName)}/wait`,
+  });
+  yield* remove;
+  if (waited.status < 200 || waited.status >= 300) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        withApiReason(
+          `provider-${deps.options.ctx.providerId} history volume init wait failed with HTTP ${waited.status}.`,
+          { status: waited.status, body: waited.body },
+        ),
+        { status: waited.status, body: waited.body },
+      ),
+    );
+  }
+  let statusCode = 0;
+  try {
+    const parsed = JSON.parse(waited.body) as { StatusCode?: number };
+    if (typeof parsed.StatusCode === "number") statusCode = parsed.StatusCode;
+  } catch {
+    statusCode = 0;
+  }
+  if (statusCode !== 0) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        `provider-${deps.options.ctx.providerId} history volume init exited ${statusCode}.`,
+        { statusCode, body: waited.body },
+      ),
+    );
+  }
+});
+
+const initializeHistoryVolumes = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  for (const storeName of historyStoreNamesFromPlan(plan)) {
+    yield* initializeHistoryVolume(deps, storeName);
+  }
 });
 
 const ensureVolume = (
@@ -1044,6 +1169,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   for (const store of plan.stores) {
     createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
   }
+  yield* initializeHistoryVolumes(deps, plan);
   const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {

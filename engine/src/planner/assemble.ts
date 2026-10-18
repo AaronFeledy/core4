@@ -8,6 +8,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  HISTORY_FEATURE_ID,
   type LandofileShape,
   type NetworkPlan,
   type NetworkingPlan,
@@ -178,6 +179,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
           }),
       ),
     );
+    if (globalConfig?.history?.enabled === false && definition.id === HISTORY_FEATURE_ID) continue;
     appFeatures.push({ id: ref.id, definition, pluginId: ref.pluginId });
   }
 
@@ -348,6 +350,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       defaultDomain,
       sshAgentMode: sshAgentIntent.mode,
       gpgAgentForward: gpgAgentIntent.forward,
+      historyEnabled: globalConfig?.history?.enabled !== false,
     }),
     ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
     versionConstraints,

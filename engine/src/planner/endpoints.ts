@@ -14,6 +14,7 @@ import {
 import {
   type AppId,
   type FileSyncPlan,
+  isHistoryMountTarget,
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
@@ -453,7 +454,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       const authoredInfo = authored.byStore.get(mount.store);
       pushStore(
         mount.store,
-        authoredInfo?.scope ?? "service",
+        authoredInfo?.scope ?? (isHistoryMountTarget(String(mount.target)) ? "app" : "service"),
         authoredInfo?.kind ?? "data",
         authoredInfo?.key,
       );

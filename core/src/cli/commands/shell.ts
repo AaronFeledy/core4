@@ -30,6 +30,7 @@ import {
 
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
+import { mergeHistoryExecEnv } from "@lando/engine/config/history-env";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
@@ -268,9 +269,17 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
     };
     const terminalSize = currentTerminalSize(io);
     const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-    const serviceEnv = withAgentContextEnv(options.env, process.env, {
+    const agentEnv = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,
+    });
+    const serviceEnv = yield* mergeHistoryExecEnv({
+      provider,
+      target,
+      serviceName: String(service.name),
+      serviceEnv: service.environment,
+      env: agentEnv,
+      tty: true,
     });
     const spec: CommandSpec = {
       command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
