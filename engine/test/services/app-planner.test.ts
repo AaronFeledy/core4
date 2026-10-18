@@ -17,6 +17,7 @@ import {
   AppId,
   AppPlan,
   GlobalConfig,
+  HISTORY_MOUNT_TARGET,
   LandofileShape,
   LogSource,
   PluginManifest,
@@ -27,6 +28,7 @@ import {
   type ServiceConfig,
   ServiceName,
   ServicePlan,
+  historyStoreName,
 } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -3229,14 +3231,24 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      expect(appPlan.stores).toHaveLength(2);
-      expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
-      const postgresMount = appPlan.services[ServiceName.make("db")]?.storage[0]?.store;
-      const redisMount = appPlan.services[ServiceName.make("cache")]?.storage[0]?.store;
+      const historyStore = historyStoreName("stockapp");
+      expect(appPlan.stores.some((store) => store.name === historyStore && store.scope === "app")).toBe(true);
+      expect(appPlan.stores.filter((store) => store.scope === "service")).toHaveLength(2);
+      const postgresMount = appPlan.services[ServiceName.make("db")]?.storage.find(
+        (mount) => mount.store !== historyStore,
+      )?.store;
+      const redisMount = appPlan.services[ServiceName.make("cache")]?.storage.find(
+        (mount) => mount.store !== historyStore,
+      )?.store;
       expect(postgresMount).toBeDefined();
       expect(redisMount).toBeDefined();
       const storeNames = appPlan.stores.map((s) => s.name).sort();
-      expect(storeNames).toEqual([postgresMount ?? "", redisMount ?? ""].sort());
+      expect(storeNames).toEqual([historyStore, postgresMount ?? "", redisMount ?? ""].sort());
+      expect(
+        appPlan.services[ServiceName.make("db")]?.storage.some(
+          (mount) => mount.store === historyStore && String(mount.target) === HISTORY_MOUNT_TARGET,
+        ),
+      ).toBe(true);
     });
   });
 

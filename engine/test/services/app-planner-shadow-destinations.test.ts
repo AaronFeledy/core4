@@ -8,7 +8,13 @@ import { Effect, Layer, Schema } from "effect";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
-import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import {
+  HISTORY_MOUNT_TARGET,
+  LandofileShape,
+  PortablePath,
+  ServiceName,
+  historyStoreName,
+} from "@lando/sdk/schema";
 import { AppPlanner, CacheService, FileSystem, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -58,12 +64,23 @@ test.each([
       ).pipe(Effect.provide(planner)),
     );
 
-    // Then canonical identity produces exactly one store and one mount.
+    // Then canonical identity produces exactly one shadow store plus history.
     const store = "shadowapp-web-app-vendor-64784057";
-    expect(appPlan.stores).toEqual([{ name: store, scope: "service", kind: "data" }]);
-    expect(appPlan.services[ServiceName.make("web")]?.storage).toEqual([
-      { store, target: PortablePath.make("/app/vendor"), readOnly: false },
-    ]);
+    const historyStore = historyStoreName("shadowapp");
+    expect(appPlan.stores).toEqual(
+      expect.arrayContaining([
+        { name: historyStore, scope: "app", kind: "data" },
+        { name: store, scope: "service", kind: "data" },
+      ]),
+    );
+    expect(appPlan.stores).toHaveLength(2);
+    expect(appPlan.services[ServiceName.make("web")]?.storage).toEqual(
+      expect.arrayContaining([
+        { store: historyStore, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false },
+        { store, target: PortablePath.make("/app/vendor"), readOnly: false },
+      ]),
+    );
+    expect(appPlan.services[ServiceName.make("web")]?.storage).toHaveLength(2);
   } finally {
     await rm(appRoot, { recursive: true, force: true });
   }

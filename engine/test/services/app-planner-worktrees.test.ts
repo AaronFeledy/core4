@@ -6,6 +6,7 @@ import { expect, test } from "bun:test";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import {
+  HISTORY_MOUNT_TARGET,
   LandofileShape,
   type MountPlan,
   PortablePath,
@@ -239,6 +240,7 @@ test("includes removes both overlay and sync ignores while files never shadow", 
     expect(web?.storage.map((mount) => String(mount.target)).sort()).toEqual([
       "/app/node_modules",
       "/app/tmp",
+      HISTORY_MOUNT_TARGET,
     ]);
     expect(web?.mounts).toEqual([]);
   } finally {
