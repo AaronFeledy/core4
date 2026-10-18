@@ -22,6 +22,7 @@ import {
   ProviderId,
   ServiceName,
   type VolumeInfo,
+  historyStoreName,
 } from "@lando/sdk/schema";
 import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
@@ -618,6 +619,26 @@ describe("applied-state teardown", () => {
       });
     },
   );
+
+  test("destroy at a missing root removes a history marker with its store", async () => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const historyStore = historyStoreName("applied-teardown");
+      const historyMarker = `${historyStore}.verified`;
+      const harness = makeLayer({
+        orphans: [orphanGroup({ root, volumes: [historyStore, historyMarker, "database"] })],
+      });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root, { volumes: true }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.volumesRemoved).toBe(true);
+      expect(harness.removedVolumes.map((volume) => volume.store)).toEqual([
+        historyStore,
+        historyMarker,
+        "database",
+      ]);
+    });
+  });
 
   test("destroy at an absent missing root returns unchanged without desired config", async () => {
     await withTempRoot(async (parent) => {

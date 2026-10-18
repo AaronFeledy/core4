@@ -3,7 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  historyStoreName,
+} from "@lando/sdk/schema";
 import type { ListFilter, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -378,6 +385,49 @@ describe("resolveTeardownEvidence", () => {
           appId: AppId.make("orphaned-app"),
           services: [],
           volumes: [volume],
+        },
+      ],
+    });
+  });
+
+  test("adopts a history marker volume listed by the provider", async () => {
+    const historyStore = historyStoreName("orphaned-app");
+    const historyMarker = `${historyStore}.verified`;
+    const store = {
+      ref: { app: AppId.make("orphaned-app"), store: historyStore },
+      identity: {
+        coordinationKey: `lando:orphaned-app:${historyStore}`,
+        nativeName: historyStore,
+        generation: "generation-store",
+        ownerRoot: root,
+        origin: "created" as const,
+      },
+    };
+    const marker = {
+      ref: { app: AppId.make("orphaned-app"), store: historyMarker },
+      labels: { "dev.lando.history-mode": "1777" },
+      identity: {
+        coordinationKey: `lando:orphaned-app:${historyMarker}`,
+        nativeName: historyMarker,
+        generation: "generation-marker",
+        ownerRoot: root,
+        origin: "created" as const,
+      },
+    };
+    const result = await Effect.runPromise(
+      resolveTeardownEvidence(root, [
+        provider("lando", { listVolumes: () => Effect.succeed([store, marker]) }),
+      ]),
+    );
+
+    expect(result).toEqual({
+      kind: "orphans",
+      groups: [
+        {
+          providerId: ProviderId.make("lando"),
+          appId: AppId.make("orphaned-app"),
+          services: [],
+          volumes: [store, marker],
         },
       ],
     });

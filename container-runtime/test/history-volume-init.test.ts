@@ -540,13 +540,19 @@ test("bringUp deletes a 409 marker then recreates it with the current instance",
     markerCreateStatus: 409,
     ...succeedingEnsureImage([]),
   });
-  const creates = calls.filter(
-    (call) =>
-      call.path === "/volumes/create" && (call.body as { Name?: string } | undefined)?.Name === historyMarker,
+  const createIndexes = calls.flatMap((call, index) =>
+    call.path === "/volumes/create" && (call.body as { Name?: string } | undefined)?.Name === historyMarker
+      ? [index]
+      : [],
   );
-  expect(creates).toHaveLength(2);
-  expect(markerDeleted(calls)).toBe(true);
-  expect(creates[1]?.body).toMatchObject({
+  const deleteIndex = calls.findIndex(
+    (call) =>
+      call.method === "DELETE" && call.path.startsWith(`/volumes/${encodeURIComponent(historyMarker)}`),
+  );
+  expect(createIndexes).toHaveLength(2);
+  expect(deleteIndex).toBeGreaterThan(createIndexes[0] ?? -1);
+  expect(deleteIndex).toBeLessThan(createIndexes[1] ?? Number.POSITIVE_INFINITY);
+  expect(calls[createIndexes[1] ?? -1]?.body).toMatchObject({
     Labels: {
       [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
       [HISTORY_MODE_INSTANCE_LABEL]: storeInstanceId,

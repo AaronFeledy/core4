@@ -172,6 +172,31 @@ test("emits one manual warning per root and redacts every context value and solu
   expect(checks[0]?.solutions[0]?.description).toMatch(/^redacted\(/);
 });
 
+test("does not display history marker volumes as orphaned data", async () => {
+  const base = snapshot();
+  const checks = await run([
+    {
+      ...base,
+      volumes: [
+        ...base.volumes,
+        {
+          ref: { app, store: "lando-gone-history.verified" },
+          labels: { "dev.lando.history-mode": "1777" },
+          identity: {
+            coordinationKey: "marker",
+            nativeName: "lando-gone-history.verified",
+            generation: "1",
+            ownerRoot: root,
+            origin: "created" as const,
+          },
+        },
+      ],
+    },
+  ]);
+  expect(checks[0]?.context.dataVolumes).toBe("native-data");
+  expect(JSON.stringify(checks[0]?.context)).not.toContain(".verified");
+});
+
 test.each([false, true])("purges caches only when cache volumes were observed: %s", async (cache) => {
   const checks = await run([snapshot(root, cache)]);
   expect(checks[0]?.solutions[0]?.command).toBe(

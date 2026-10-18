@@ -1004,7 +1004,7 @@ describe("provider data plane", () => {
     expect(volumes[0]?.provenance).toBe("known");
   });
 
-  test("omits history mode marker volumes from inventory", async () => {
+  test("keeps history mode marker volumes in provider inventory", async () => {
     const api: DataPlaneApiClient = {
       request: () =>
         Effect.succeed({
@@ -1044,7 +1044,10 @@ describe("provider data plane", () => {
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
 
-    expect(volumes.map((volume) => volume.ref.store)).toEqual(["lando-app-history"]);
+    expect(volumes.map((volume) => volume.ref.store)).toEqual([
+      "lando-app-history",
+      "lando-app-history.verified",
+    ]);
   });
 
   test("reads Podman bare-array volume listings", async () => {
