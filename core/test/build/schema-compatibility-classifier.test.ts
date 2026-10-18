@@ -30,6 +30,51 @@ test.each(unionCases)(
   },
 );
 
+const overlappingMembers = [{ type: "number" }, { type: "integer" }];
+const survivingOneOfCases = (
+  [
+    ["overlapping addition", overlappingMembers, [...overlappingMembers, { type: "number", minimum: 0 }]],
+    ["duplicate addition", overlappingMembers, [...overlappingMembers, { type: "number" }]],
+    [
+      "duplicate plus distinct addition",
+      overlappingMembers,
+      [...overlappingMembers, ...overlappingMembers, { type: "string" }],
+    ],
+  ] as const
+).flatMap(([name, before, after]) =>
+  (["input", "output", "strict"] as const).flatMap(
+    (polarity) =>
+      [
+        [name, polarity, "forward", { oneOf: before }, { oneOf: after }],
+        [name, polarity, "reverse", { oneOf: after }, { oneOf: before }],
+      ] as const,
+  ),
+);
+
+test.each(survivingOneOfCases)(
+  "keeps oneOf %s unknown under %s polarity in the %s direction",
+  (_name, polarity, _direction, before, after) => {
+    // Given / When
+    const findings = classifySchemaChange(before, after, polarity);
+    // Then
+    expect(findings).toMatchObject([
+      { verdict: "unknown", changeKind: "unsupported-construct", path: "$.oneOf" },
+    ]);
+  },
+);
+
+test.each(["input", "output", "strict"] satisfies readonly SchemaPolarity[])(
+  "ignores oneOf ordering while preserving duplicates under %s polarity",
+  (polarity) => {
+    // Given
+    const members = [...overlappingMembers, { type: "number" }];
+    // When
+    const findings = classifySchemaChange({ oneOf: members }, { oneOf: [...members].reverse() }, polarity);
+    // Then
+    expect(findings).toEqual([]);
+  },
+);
+
 test.each(["input", "output", "strict"] satisfies readonly SchemaPolarity[])(
   "keeps mutated union members unsupported for %s polarity",
   (polarity) => {

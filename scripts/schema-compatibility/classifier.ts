@@ -181,11 +181,7 @@ const compareNode = (
     if (!jsonEquals(before[keyword], after[keyword])) {
       const beforeMembers = before[keyword];
       const afterMembers = after[keyword];
-      if (
-        (keyword === "anyOf" || keyword === "oneOf") &&
-        Array.isArray(beforeMembers) &&
-        Array.isArray(afterMembers)
-      ) {
+      if (keyword === "anyOf" && Array.isArray(beforeMembers) && Array.isArray(afterMembers)) {
         const union = compareUnion(beforeMembers, afterMembers, {
           ...context,
           path: childPath(context.path, keyword),
