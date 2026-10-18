@@ -15,6 +15,12 @@ Rationale for bytecode: Bun 1.4.1 fixed cross-platform bytecode compilation, inc
 
 Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. The compiler floor does not change container-runtime image pins; `@types/bun` tracks the same floor at `^1.4.3`.
 
+## Compiled binary hardening and bytecode layout (Bun 1.4.3)
+
+The compiled CLI embeds `--disallow-code-generation-from-strings=strict` through `compile.execArgv`, so `eval()`, `new Function()`, `node:vm`, `data:` imports, eval Workers, and source-returning plugins throw inside the shipped binary. Lando has none of those: the jq engine is an AST interpreter, `.lando.ts` and `recipe.ts` load through file-path `import()`, and bundled plugins are static imports. The relocated smoke matrix (`--help`, `--version`, `meta:version`, `list`, `version --jq`, `init --recipe drupal-cms --yes`, `app:config` on a `.lando.ts` app, and Bun Shell `--eval` re-entry) passed at the strict level. `BUN_BE_BUN=1` re-entry runs Bun without the embedded flag, which is what keeps the host-shell `--eval` path working; treat re-entry as plain Bun, not as hardened Lando execution.
+
+Profile-guided bytecode layout (`compile.bytecodeOrder`) was evaluated and not adopted. A two-pass build (compile, run `--help`/`list`/`meta:version`/`--version` with `BUN_BYTECODE_ORDER_OUT`, recompile) doubled the 7.7 s native compile, produced about 3.1 MB of profiles, and moved wall-clock startup by -2.6% to +4.9% at the median across `--help`, `list --format=json`, `meta:version --format=json`, and `info --format=json` over 25 interleaved runs each; the tracked `bench-opentui-startup` p95 moved 7-9%, inside run-to-run variation. Lando starts in 16-125 ms, so the layout win Bun reports for second-scale cold starts does not apply. `compile.jitPolicy` 2 and 4 were likewise inconsistent and are not set. Re-evaluate both if compiled startup grows past roughly 500 ms.
+
 ## OCLIF major lock decision (superseded by architecture-simplicity)
 
 Original Beta 1 decision, kept here as historical context: Beta 1 would stay on OCLIF v4. At the time, package metadata recorded `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies; those literals are retained as decision evidence, not current dependency guidance.
