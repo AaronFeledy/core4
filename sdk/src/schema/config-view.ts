@@ -30,6 +30,7 @@ export const GlobalConfigView = Schema.toType(
       "scanner",
       "mcp",
       "agentEnv",
+      "history",
       "notify",
       "events",
       "hostEvents",

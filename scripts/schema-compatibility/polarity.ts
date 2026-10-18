@@ -7,6 +7,7 @@ import type { SchemaPolarity } from "./model.ts";
 export const SCHEMA_POLARITY_BY_ID: Readonly<Record<string, SchemaPolarity>> = {
   AgentEnvConfig: "input",
   GlobalConfig: "input",
+  HistoryConfig: "input",
   HealthcheckInput: "input",
   KeymapConfig: "input",
   LandofileShape: "input",

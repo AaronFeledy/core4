@@ -261,6 +261,8 @@ export interface ServiceRuntimeInfo {
   readonly bindSources?: Readonly<Record<string, string>>;
   /** Inspected network names attached to the container. */
   readonly networkNames?: ReadonlyArray<string>;
+  /** Inspected container mount destinations. Used to gate exec-time history env. */
+  readonly mountDestinations?: ReadonlyArray<string>;
 }
 
 export interface ServiceRuntimeIdentity {

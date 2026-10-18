@@ -170,6 +170,19 @@ export const AgentEnvConfig = Schema.Struct({
 });
 export type AgentEnvConfig = typeof AgentEnvConfig.Type;
 
+export const HistoryConfig = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean).annotate({
+    default: true,
+    description:
+      "Master switch for rebuild-surviving container shell and client history; default true (global history.enabled).",
+  }),
+}).annotate({
+  identifier: "HistoryConfig",
+  title: "History Config",
+  description: "Global container history volume policy (global history).",
+});
+export type HistoryConfig = typeof HistoryConfig.Type;
+
 /**
  * Optional OTLP export settings under global `tracing:`.
  * Endpoint and headers may also come from OTEL_EXPORTER_OTLP_* env vars.
@@ -297,6 +310,9 @@ export const GlobalConfig = Schema.Struct({
   }),
   agentEnv: Schema.optionalKey(AgentEnvConfig).annotate({
     description: "Global host agent-context env forwarding policy (global agentEnv).",
+  }),
+  history: Schema.optionalKey(HistoryConfig).annotate({
+    description: "Global container shell and client history volume policy (global history).",
   }),
   notify: Schema.optionalKey(NotifyConfig).annotate({
     description: "Global desktop-notification policy (global notify).",
