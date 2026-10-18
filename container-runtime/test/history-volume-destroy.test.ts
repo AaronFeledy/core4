@@ -1,7 +1,15 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId, HISTORY_MOUNT_TARGET, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  HISTORY_MOUNT_TARGET,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
@@ -24,7 +32,7 @@ const historyPlan = {
       artifact: { kind: "ref" as const, ref: "php:8.3-apache" },
       environment: {},
       mounts: [],
-      storage: [{ store: historyStore, target: HISTORY_MOUNT_TARGET, readOnly: false }],
+      storage: [{ store: historyStore, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -47,7 +55,7 @@ const historyPlan = {
     runtime: 4 as const,
   },
   extensions: {},
-};
+} as AppPlan;
 
 const recordingApi = (): { readonly api: EngineHttpApi; readonly requests: EngineHttpRequest[] } => {
   const requests: EngineHttpRequest[] = [];

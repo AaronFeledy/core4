@@ -29,6 +29,9 @@ try {
 } catch { process.stderr.write("History volume init unavailable or unsafe\n"); process.exitCode = 1; }
 `;
 
-export const volumeHistoryInitCommand = (
-  root: string = VOLUME_HISTORY_MOUNT,
-): readonly string[] => ["bun", "-e", source, JSON.stringify({ root })];
+export const volumeHistoryInitCommand = (root: string = VOLUME_HISTORY_MOUNT): readonly string[] => [
+  "bun",
+  "-e",
+  source,
+  JSON.stringify({ root }),
+];

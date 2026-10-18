@@ -14,13 +14,13 @@ import {
 import {
   type AppId,
   type FileSyncPlan,
-  isHistoryMountTarget,
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
   ServiceName,
   ServicePlan,
   type StorageScope,
+  isHistoryMountTarget,
 } from "@lando/sdk/schema";
 
 import { validationIssue } from "@lando/sdk/schema";

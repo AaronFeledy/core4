@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Layer, Option, Schema, Stream } from "effect";
+import { Cause, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
 import * as BunDataMover from "@lando/data-mover/service";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
@@ -40,7 +40,7 @@ const passthroughRedaction = Layer.succeed(
   }),
 );
 
-const runMover = <A, E>(effect: Effect.Effect<A, E, DataMover>) =>
+const runMover = <A, E>(effect: Effect.Effect<A, E, DataMover | Scope.Scope>) =>
   Effect.runPromiseExit(
     Effect.scoped(effect).pipe(
       Effect.provide(BunDataMover.layer),
@@ -61,7 +61,7 @@ const expectHistoryUnsupported = (exit: Awaited<ReturnType<typeof runMover>>) =>
   if (exit._tag === "Failure") {
     const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(DataEndpointUnsupportedError);
-    expect(String(error.message)).toMatch(/History volume/);
+    if (error instanceof DataEndpointUnsupportedError) expect(error.message).toMatch(/History volume/);
   }
 };
 

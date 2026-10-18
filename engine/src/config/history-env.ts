@@ -27,8 +27,8 @@ const alreadySet = (
 export const withHistoryExecEnv = (input: {
   readonly tty: boolean;
   readonly serviceName: string;
-  readonly serviceEnv?: Readonly<Record<string, string>>;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly serviceEnv?: Readonly<Record<string, string>> | undefined;
+  readonly env?: Readonly<Record<string, string>> | undefined;
   readonly hasHistoryMount: boolean;
 }): Record<string, string> | undefined => {
   if (!input.tty || !input.hasHistoryMount) {
@@ -57,14 +57,14 @@ export const mergeHistoryExecEnv = Effect.fnUntraced(function* (input: {
   readonly provider: RuntimeProviderShape;
   readonly target: ExecTarget;
   readonly serviceName: string;
-  readonly serviceEnv?: Readonly<Record<string, string>>;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly serviceEnv?: Readonly<Record<string, string>> | undefined;
+  readonly env?: Readonly<Record<string, string>> | undefined;
   readonly tty: boolean;
 }) {
   if (!input.tty) return input.env;
-  const runtime = yield* input.provider.inspect(input.target).pipe(
-    Effect.catch(() => Effect.succeed<ServiceRuntimeInfo | undefined>(undefined)),
-  );
+  const runtime = yield* input.provider
+    .inspect(input.target)
+    .pipe(Effect.catch(() => Effect.succeed<ServiceRuntimeInfo | undefined>(undefined)));
   return withHistoryExecEnv({
     tty: true,
     serviceName: input.serviceName,

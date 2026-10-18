@@ -69,7 +69,9 @@ export const HISTORY_CLIENT_FILES = {
 
 export type HistoryClientEnvName = keyof typeof HISTORY_CLIENT_FILES;
 
-export const HISTORY_CLIENT_ENV_NAMES = Object.keys(HISTORY_CLIENT_FILES) as ReadonlyArray<HistoryClientEnvName>;
+export const HISTORY_CLIENT_ENV_NAMES = Object.keys(
+  HISTORY_CLIENT_FILES,
+) as ReadonlyArray<HistoryClientEnvName>;
 
 export const historyFilePath = (serviceName: string, clientFile: string): string =>
   `${HISTORY_MOUNT_TARGET}/${serviceName}.${clientFile}`;

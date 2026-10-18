@@ -1,11 +1,19 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId, HISTORY_MOUNT_TARGET, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  HISTORY_MOUNT_TARGET,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 
 import { STORAGE_SCOPE_LABEL } from "../src/labels.ts";
-import { bringUp, historyStoreNamesFromPlan } from "../src/podman/bring-up.ts";
 import { inspectMountDestinations } from "../src/podman/bring-up-recreate.ts";
+import { bringUp, historyStoreNamesFromPlan } from "../src/podman/bring-up.ts";
 import { VOLUME_HISTORY_IMAGE, volumeHistoryInitCommand } from "../src/volume-history-helper.ts";
 
 const historyStore = "lando-histapp-history";
@@ -17,38 +25,39 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const historyPlan = () => ({
-  id: AppId.make("histapp"),
-  name: "histapp",
-  slug: "histapp",
-  root: AbsolutePath.make("/owner"),
-  provider: providerId,
-  identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: "owner" },
-  services: {
-    [serviceName]: {
-      name: serviceName,
-      type: "php:8.3",
-      provider: providerId,
-      primary: true,
-      artifact: { kind: "ref" as const, ref: "php:8.3-apache" },
-      environment: {},
-      mounts: [],
-      storage: [{ store: historyStore, target: HISTORY_MOUNT_TARGET, readOnly: false }],
-      endpoints: [],
-      routes: [],
-      dependsOn: [],
-      hostAliases: [],
-      metadata,
-      extensions: {},
+const historyPlan = (): AppPlan =>
+  ({
+    id: AppId.make("histapp"),
+    name: "histapp",
+    slug: "histapp",
+    root: AbsolutePath.make("/owner"),
+    provider: providerId,
+    identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: "owner" },
+    services: {
+      [serviceName]: {
+        name: serviceName,
+        type: "php:8.3",
+        provider: providerId,
+        primary: true,
+        artifact: { kind: "ref" as const, ref: "php:8.3-apache" },
+        environment: {},
+        mounts: [],
+        storage: [{ store: historyStore, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }],
+        endpoints: [],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata,
+        extensions: {},
+      },
     },
-  },
-  routes: [],
-  networks: [],
-  stores: [{ name: historyStore, scope: "app" as const, kind: "data" as const }],
-  fileSync: [],
-  metadata,
-  extensions: {},
-});
+    routes: [],
+    networks: [],
+    stores: [{ name: historyStore, scope: "app" as const, kind: "data" as const }],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  }) as AppPlan;
 
 test("historyStoreNamesFromPlan reads the history mount target", () => {
   expect(historyStoreNamesFromPlan(historyPlan())).toEqual([historyStore]);
@@ -73,8 +82,17 @@ test("bringUp runs the history init helper against the history volume", async ()
           if (request.path.startsWith("/containers/create")) {
             return Effect.succeed({ status: 201, body: '{"Id":"helper"}' });
           }
+          if (request.path.endsWith("/start")) {
+            return Effect.succeed({ status: 204, body: "" });
+          }
           if (request.path.includes("/wait")) {
             return Effect.succeed({ status: 200, body: '{"StatusCode":0}' });
+          }
+          if (request.path.endsWith("/json")) {
+            return Effect.succeed({
+              status: 200,
+              body: JSON.stringify({ State: { Running: true, Status: "running" } }),
+            });
           }
           return Effect.succeed({ status: 200, body: "{}" });
         },

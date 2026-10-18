@@ -7,9 +7,9 @@ import { historyVolumeFeature } from "./history.ts";
 import { mailpitWireFeature } from "./mailpit.ts";
 
 export const appFeatures: ReadonlyMap<string, AppFeatureDefinition> = new Map([
-  [historyVolumeFeature.id, historyVolumeFeature],
   [mailpitWireFeature.id, mailpitWireFeature],
   [phpDbClientFeature.id, phpDbClientFeature],
   [phpMyAdminWireFeature.id, phpMyAdminWireFeature],
   [nginxPhpFpmWireFeature.id, nginxPhpFpmWireFeature],
+  [historyVolumeFeature.id, historyVolumeFeature],
 ]);

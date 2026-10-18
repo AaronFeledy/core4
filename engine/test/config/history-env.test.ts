@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { HISTORY_MOUNT_TARGET } from "@lando/sdk/schema";
+import { AppId, HISTORY_MOUNT_TARGET, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 
 import {
@@ -10,13 +10,10 @@ import {
   withHistoryExecEnv,
 } from "../../src/config/history-env.ts";
 
-const inspectProvider = (
-  runtime: ServiceRuntimeInfo | undefined,
-  fail = false,
-): RuntimeProviderShape =>
+const inspectProvider = (runtime: ServiceRuntimeInfo | undefined, fail = false): RuntimeProviderShape =>
   ({
     inspect: () => (fail ? Effect.fail(new Error("inspect failed")) : Effect.succeed(runtime)),
-  }) as RuntimeProviderShape;
+  }) as unknown as RuntimeProviderShape;
 
 describe("withHistoryExecEnv", () => {
   test("skips non-TTY sessions", () => {
@@ -106,7 +103,7 @@ describe("mergeHistoryExecEnv", () => {
     const env = await Effect.runPromise(
       mergeHistoryExecEnv({
         provider: inspectProvider(undefined, true),
-        target: { app: "app", service: "web" },
+        target: { app: AppId.make("app"), service: ServiceName.make("web") },
         serviceName: "web",
         tty: true,
       }),
@@ -118,13 +115,13 @@ describe("mergeHistoryExecEnv", () => {
     const env = await Effect.runPromise(
       mergeHistoryExecEnv({
         provider: inspectProvider({
-          app: "app",
-          service: "web",
-          providerId: "test",
+          app: AppId.make("app"),
+          service: ServiceName.make("web"),
+          providerId: ProviderId.make("test"),
           status: "running",
           mountDestinations: [HISTORY_MOUNT_TARGET],
         }),
-        target: { app: "app", service: "web" },
+        target: { app: AppId.make("app"), service: ServiceName.make("web") },
         serviceName: "web",
         tty: true,
       }),
@@ -137,18 +134,18 @@ test("containerHasHistoryMount reads inspect destinations", () => {
   expect(containerHasHistoryMount(undefined)).toBe(false);
   expect(
     containerHasHistoryMount({
-      app: "app",
-      service: "web",
-      providerId: "test",
+      app: AppId.make("app"),
+      service: ServiceName.make("web"),
+      providerId: ProviderId.make("test"),
       status: "running",
       mountDestinations: ["/app"],
     }),
   ).toBe(false);
   expect(
     containerHasHistoryMount({
-      app: "app",
-      service: "web",
-      providerId: "test",
+      app: AppId.make("app"),
+      service: ServiceName.make("web"),
+      providerId: ProviderId.make("test"),
       status: "running",
       mountDestinations: [HISTORY_MOUNT_TARGET],
     }),

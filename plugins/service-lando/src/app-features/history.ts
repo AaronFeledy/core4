@@ -4,23 +4,27 @@ import {
   HISTORY_DEFAULT_SERVICE_TYPES,
   HISTORY_FEATURE_ID,
   HISTORY_MOUNT_TARGET,
+  PortablePath,
   historyStoreName,
   shouldAttachHistoryVolume,
 } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 
-import { LANDO_BOOT_FEATURE_ID } from "../features/boot.ts";
 import { appNameFor } from "../app-name.ts";
+import { LANDO_BOOT_FEATURE_ID } from "../features/boot.ts";
+import { COMPOSE_FEATURE_ID } from "../services/compose.ts";
 
 export { HISTORY_FEATURE_ID };
 
+const historyMountTarget = PortablePath.make(HISTORY_MOUNT_TARGET);
+
 export const historyVolumeFeature: AppFeatureDefinition = {
   id: HISTORY_FEATURE_ID,
-  priority: 100,
-  activatedBy: { services: { hasFeature: LANDO_BOOT_FEATURE_ID } },
+  // No activatedBy: an explicit boot trigger cycles with php.db-client wiring.
+  priority: 110,
   selectors: {
     types: [...HISTORY_DEFAULT_SERVICE_TYPES],
-    hasFeature: [LANDO_BOOT_FEATURE_ID],
+    hasFeature: [LANDO_BOOT_FEATURE_ID, COMPOSE_FEATURE_ID],
   },
   apply: Effect.fn("HistoryVolumeFeature.apply")((ctx) =>
     Effect.sync(() => {
@@ -46,7 +50,7 @@ export const historyVolumeFeature: AppFeatureDefinition = {
         }
         service.addStorage({
           store,
-          target: HISTORY_MOUNT_TARGET,
+          target: historyMountTarget,
           readOnly: false,
         });
       });

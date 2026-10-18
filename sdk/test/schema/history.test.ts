@@ -3,11 +3,11 @@ import { Schema } from "effect";
 
 import {
   GlobalConfig,
-  HistoryConfig,
   HISTORY_CLIENT_FILES,
   HISTORY_DEFAULT_SERVICE_TYPES,
   HISTORY_FEATURE_ID,
   HISTORY_MOUNT_TARGET,
+  HistoryConfig,
   historyFilePath,
   historyStoreName,
   isHistoryDefaultServiceType,

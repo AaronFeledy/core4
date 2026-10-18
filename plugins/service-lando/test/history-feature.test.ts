@@ -5,12 +5,14 @@ import {
   GlobalConfig,
   HISTORY_FEATURE_ID,
   HISTORY_MOUNT_TARGET,
-  historyStoreName,
   LandofileShape,
+  PortablePath,
   ServiceConfig,
+  ServiceName,
+  historyStoreName,
 } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService } from "@lando/sdk/services";
-import { runAppFeatureContract, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, runAppFeatureContract } from "@lando/sdk/test";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -43,10 +45,10 @@ const planApp = (landofile: typeof LandofileShape.Type, config?: GlobalConfig) =
 };
 
 describe("service-lando.history AppFeature", () => {
-  test("declares boot activation and default-type selectors", () => {
+  test("declares default-type selectors without an explicit boot trigger", () => {
     expect(historyVolumeFeature.id).toBe(HISTORY_FEATURE_ID);
-    expect(historyVolumeFeature.activatedBy).toEqual({ services: { hasFeature: LANDO_BOOT_FEATURE_ID } });
-    expect(historyVolumeFeature.selectors?.hasFeature).toEqual([LANDO_BOOT_FEATURE_ID]);
+    expect(historyVolumeFeature.activatedBy).toBeUndefined();
+    expect(historyVolumeFeature.selectors?.hasFeature).toContain(LANDO_BOOT_FEATURE_ID);
     expect(historyVolumeFeature.selectors?.types).toContain("mysql");
     expect(historyVolumeFeature.selectors?.types).toContain("php:8.3");
   });
@@ -63,7 +65,12 @@ describe("service-lando.history AppFeature", () => {
               base: "lando",
               featureIds: [LANDO_BOOT_FEATURE_ID],
             },
-            { serviceName: "nginx", serviceType: "nginx", base: "lando", featureIds: [LANDO_BOOT_FEATURE_ID] },
+            {
+              serviceName: "nginx",
+              serviceType: "nginx",
+              base: "lando",
+              featureIds: [LANDO_BOOT_FEATURE_ID],
+            },
           ],
         }),
       ),
@@ -82,11 +89,11 @@ describe("service-lando.history AppFeature", () => {
     const store = historyStoreName("histapp");
     expect(plan.stores).toEqual(expect.arrayContaining([{ name: store, scope: "app", kind: "data" }]));
     expect(plan.stores.filter((entry) => entry.name === store)).toHaveLength(1);
-    expect(plan.services.appserver?.storage).toEqual(
-      expect.arrayContaining([{ store, target: HISTORY_MOUNT_TARGET, readOnly: false }]),
+    expect(plan.services[ServiceName.make("appserver")]?.storage).toEqual(
+      expect.arrayContaining([{ store, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }]),
     );
-    expect(plan.services.database?.storage).toEqual(
-      expect.arrayContaining([{ store, target: HISTORY_MOUNT_TARGET, readOnly: false }]),
+    expect(plan.services[ServiceName.make("database")]?.storage).toEqual(
+      expect.arrayContaining([{ store, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }]),
     );
   });
 
@@ -100,9 +107,11 @@ describe("service-lando.history AppFeature", () => {
     });
     const plan = await planApp(landofile);
     const store = historyStoreName("histopt");
-    expect(plan.services.appserver?.storage.some((mount) => mount.store === store)).toBe(false);
-    expect(plan.services.nginx?.storage).toEqual(
-      expect.arrayContaining([{ store, target: HISTORY_MOUNT_TARGET, readOnly: false }]),
+    expect(plan.services[ServiceName.make("appserver")]?.storage.some((mount) => mount.store === store)).toBe(
+      false,
+    );
+    expect(plan.services[ServiceName.make("nginx")]?.storage).toEqual(
+      expect.arrayContaining([{ store, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }]),
     );
   });
 
