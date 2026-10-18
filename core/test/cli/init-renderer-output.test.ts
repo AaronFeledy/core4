@@ -67,16 +67,39 @@ describe("init recipe output through the command renderer", () => {
   test("retains the real Drupal CMS post-init message above one completed TTY tree", async () => {
     await withTemp(async (root) => {
       const chunks: string[] = [];
-      const stdout = Object.assign(new EventEmitter(), {
-        columns: 120,
-        rows: 30,
-        write: (chunk: string) => {
-          chunks.push(chunk);
-          return true;
+      const resize = new EventEmitter();
+      const terminal = new Proxy(process.stderr, {
+        get: (target, key) => {
+          if (key === "write")
+            return (chunk: string) => {
+              chunks.push(chunk);
+              return true;
+            };
+          if (key === "on") return resize.on.bind(resize);
+          if (key === "off") return resize.off.bind(resize);
+          if (key === "columns") return 120;
+          if (key === "rows") return 30;
+          return Reflect.get(target, key);
         },
       });
-      const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 120, terminalRows: 30 });
-      const io = { ...base, externalOutputStream: stdout as unknown as NodeJS.WriteStream };
+      const base = createBufferedRendererIO({
+        isTTY: true,
+        stdoutIsTTY: true,
+        terminalColumns: 120,
+        terminalRows: 30,
+      });
+      const io = {
+        ...base,
+        externalOutputStream: terminal,
+        writeStdout: (chunk: string) => {
+          base.writeStdout(chunk);
+          chunks.push(chunk);
+        },
+        writeStderr: (chunk: string) => {
+          base.writeStderr(chunk);
+          chunks.push(chunk);
+        },
+      };
       await runWithRendererHandling(
         Effect.gen(function* () {
           const events = yield* EventService;
@@ -119,7 +142,8 @@ describe("init recipe output through the command renderer", () => {
       expect(screen.indexOf("Run 'lando start'")).toBeLessThan(screen.indexOf("\u256D\u2500 apps:init"));
       expect(screen).toContain("Rendered 2 files");
       expect(screen).toContain("Ran 1 action");
-      expect(base.stdout()).toBe("");
+      expect(base.stdout()).toContain("Run 'lando start'");
+      expect(base.stdout()).not.toContain("apps:init");
     });
   });
 
