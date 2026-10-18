@@ -12,10 +12,12 @@ import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
 
 export type { UserLandofileError };
 
+import { buildLandofileLoadScope } from "./compile.ts";
+import { compileLandofileFile } from "./file-compile.ts";
 import { hasResolvableIncludes, resolveLandofileIncludes } from "./includes.ts";
 import { landofileLayerPaths } from "./layers.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { findDiscoveredLandofilePath, loadLandofileFile, loadLandofileLayers } from "./service.ts";
+import { findDiscoveredLandofilePath, loadLandofileLayers } from "./service.ts";
 
 const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
@@ -142,13 +144,23 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
                 }),
         }).pipe(
           Effect.flatMap(({ appRoot, filePath }) =>
-            resolveLandofileIncludes({
-              landofile,
-              appRoot,
-              sourcePath: filePath,
-              ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
-              ...(options.inputs?.stateStore === undefined ? {} : { stateStore: options.inputs.stateStore }),
-            }),
+            buildLandofileLoadScope(
+              [{ file: filePath, value: landofile }],
+              options.inputs?.templates.context?.env,
+            ).pipe(
+              Effect.flatMap((loadScope) =>
+                resolveLandofileIncludes({
+                  landofile,
+                  loadScope,
+                  appRoot,
+                  sourcePath: filePath,
+                  ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
+                  ...(options.inputs?.stateStore === undefined
+                    ? {}
+                    : { stateStore: options.inputs.stateStore }),
+                }),
+              ),
+            ),
           ),
           Effect.map((resolved) => ({ landofile: resolved, sourcePath: undefined })),
         );
@@ -165,10 +177,11 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
         ({ yamlPath, typescriptPath }) => filePath === yamlPath || filePath === typescriptPath,
       )
         ? loadLandofileLayers(appRoot, filePath, options.inputs)
-        : loadLandofileFile(filePath, undefined, options.inputs).pipe(
-            Effect.flatMap((landofile) =>
+        : compileLandofileFile(filePath, undefined, options.inputs).pipe(
+            Effect.flatMap(({ landofile, scope: loadScope }) =>
               resolveLandofileIncludes({
                 landofile,
+                loadScope,
                 appRoot,
                 sourcePath: filePath,
                 ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),

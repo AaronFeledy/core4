@@ -8,8 +8,8 @@ import { Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 
 import { getLocalIncludePaths } from "../src/include-provenance.ts";
-import { resolveLandofileIncludes } from "../src/includes.ts";
 import { getInternalToolingTasks } from "../src/tooling-include-provenance.ts";
+import { authoredRecipe, resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
@@ -74,11 +74,13 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     // When
     const result = await Effect.runPromise(
       resolveLandofileIncludes({
-        landofile: { includes: [{ source: "./tasks.yml", kind: "tooling", namespace: "typed" }] },
+        landofile: {
+          includes: [{ source: "./tasks.yml", kind: "tooling", namespace: "typed" }],
+          recipe: authoredRecipe({ required: true }),
+        },
         appRoot,
         cacheRoot: join(appRoot, ".cache"),
         stateStore: makeTestLandofileStateStore(),
-        loadScope: { env: {}, recipe: { required: true } },
       }),
     );
     // Then

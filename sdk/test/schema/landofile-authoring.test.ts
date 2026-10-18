@@ -366,7 +366,7 @@ describe("Landofile authoring schemas", () => {
         "deprecated",
         "anyOf",
       ],
-      [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string" }],
+      [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string", pattern: expect.any(String) }],
     );
     expect(decoded._tag).toBe("Success");
   });

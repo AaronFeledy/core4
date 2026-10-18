@@ -232,8 +232,9 @@ describe("lando app:includes:update (source dispatch)", () => {
     });
   });
 
-  test("rejects non-object tooling flag metadata before updating includes", async () => {
+  test("reports structured issues for non-object tooling flag metadata before updating includes", async () => {
     await withTempCwd(async (dir) => {
+      // Given
       await writeFile(
         join(dir, ".lando.yml"),
         [
@@ -247,17 +248,24 @@ describe("lando app:includes:update (source dispatch)", () => {
         ].join("\n"),
       );
 
+      // When
       const exit = await Effect.runPromiseExit(
         appIncludesUpdate({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
       );
 
+      // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
-          expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
-          expect((failure.value as { message: string }).message).toContain('Tooling flags entry "verbose"');
+          expect(failure.value).toMatchObject({
+            _tag: "LandofileValidationError",
+            file: join(dir, ".lando.yml"),
+            issues: expect.arrayContaining([
+              expect.objectContaining({ path: ["tooling", "echo", "flags", "verbose"] }),
+            ]),
+          });
         }
       }
     });

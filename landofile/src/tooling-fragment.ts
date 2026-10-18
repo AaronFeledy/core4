@@ -1,4 +1,4 @@
-import { Effect, Predicate, Result, Schema } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { type LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
 import { ToolingIncludeShape } from "@lando/sdk/schema";
@@ -37,27 +37,7 @@ export const assertToolingFragment = (
       }),
     );
   }
-  if (parsed.tooling !== undefined && !Predicate.isObject(parsed.tooling)) {
-    return Effect.fail(
-      includeError({
-        message: `Tooling include ${source} declares tooling: as a non-mapping value.`,
-        source,
-        kind: "forbidden-field",
-        remediation: FRAGMENT_KEY_REMEDIATION,
-      }),
-    );
-  }
-  if (parsed.toolingIncludes !== undefined) {
-    if (!Predicate.isObject(parsed.toolingIncludes)) {
-      return Effect.fail(
-        includeError({
-          message: `Tooling include ${source} declares toolingIncludes: as a non-mapping value.`,
-          source,
-          kind: "forbidden-field",
-          remediation: FRAGMENT_KEY_REMEDIATION,
-        }),
-      );
-    }
+  if (Predicate.isObject(parsed.toolingIncludes)) {
     for (const [name, entry] of Object.entries(parsed.toolingIncludes)) {
       const unsupported = Predicate.isObject(entry)
         ? Object.keys(entry).find((key) => !TOOLING_INCLUDE_KEYS.has(key))
@@ -66,23 +46,6 @@ export const assertToolingFragment = (
         return Effect.fail(
           includeError({
             message: `Tooling include ${source} sets unsupported field "${unsupported}" on toolingIncludes.${name}.`,
-            source,
-            kind: "forbidden-field",
-            remediation: ENTRY_FIELD_REMEDIATION,
-          }),
-        );
-      }
-      if (
-        Result.isFailure(
-          Schema.decodeUnknownResult(ToolingIncludeShape)(entry, {
-            onExcessProperty: "error",
-            errors: "all",
-          }),
-        )
-      ) {
-        return Effect.fail(
-          includeError({
-            message: `Tooling include ${source} has an invalid toolingIncludes.${name} entry.`,
             source,
             kind: "forbidden-field",
             remediation: ENTRY_FIELD_REMEDIATION,

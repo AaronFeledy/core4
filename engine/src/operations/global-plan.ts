@@ -1,7 +1,6 @@
-import { join } from "node:path";
 import { Effect } from "effect";
 
-import { GlobalAppError, type LandofileParseError, type LandofileValidationError } from "@lando/sdk/errors";
+import { GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import {
@@ -15,9 +14,9 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { buildLandofileLoadScope, compileLandofileLayer } from "@lando/landofile/compile";
-import { DEFAULT_LANDOFILE, DEFAULT_POST_LANDOFILES, DEFAULT_PRE_LANDOFILES } from "@lando/landofile/merge";
-import { parseLandofile } from "@lando/landofile/parser";
+import { landofileLayerPaths } from "@lando/landofile/layers";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
+import { type LandofileCompileError, compileLandofileContentLayers } from "@lando/landofile/root-compile";
 import { validateLandofile } from "@lando/landofile/validation";
 
 import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
@@ -38,6 +37,7 @@ export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanRes
 
 export type LoadGlobalPlanError =
   | AppPlannerError
+  | LandofileCompileError
   | ProviderSelectionError
   | FileSystemError
   | GlobalAppError
@@ -49,14 +49,25 @@ export const decodeGlobalLandofile = (input: {
   readonly file: string;
   readonly content: string;
   readonly cwd: string;
-}): Effect.Effect<LandofileShape, LandofileParseError | LandofileValidationError> =>
-  parseLandofile(input).pipe(
-    Effect.flatMap((parsed) =>
-      buildLandofileLoadScope([{ file: input.file, value: parsed }]).pipe(
-        Effect.flatMap((scope) => compileLandofileLayer(input.file, parsed, scope)),
-      ),
+}): Effect.Effect<LandofileShape, LandofileCompileError> =>
+  compileLandofileContentLayers(
+    [
+      {
+        filePath: input.file,
+        content: input.content,
+        layer: "canonical",
+        order: 3,
+        basename: ".lando",
+      },
+    ],
+    {
+      appRoot: input.cwd,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    },
+  ).pipe(
+    Effect.flatMap(({ compiled }) =>
+      validateLandofile(input.file, mergeLandofiles(compiled.map(({ landofile }) => landofile))),
     ),
-    Effect.flatMap((overlay) => validateLandofile(input.file, mergeLandofiles([overlay]))),
   );
 
 const withProcessCwd = <A, E, R>(
@@ -83,7 +94,7 @@ const withProcessCwd = <A, E, R>(
 
 export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function* (): Effect.fn.Return<
   MissingGlobalPlanResult | Omit<LoadedGlobalPlanResult, "plan">,
-  GlobalAppError | FileSystemError | LandofileParseError | LandofileValidationError,
+  GlobalAppError | FileSystemError | LandofileCompileError,
   FileSystem | GlobalAppService
 > {
   const globalApp = yield* GlobalAppService;
@@ -92,19 +103,19 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   const exists = yield* fileSystem.exists(paths.distLandofile);
   if (!exists) return { materialized: false, paths };
 
-  const rawLayers: Array<{ readonly file: string; readonly value: unknown }> = [];
-  for (const basename of [...DEFAULT_PRE_LANDOFILES, DEFAULT_LANDOFILE, ...DEFAULT_POST_LANDOFILES]) {
-    const file = join(paths.root, basename);
+  const rawLayers = [];
+  for (const position of landofileLayerPaths(paths.root)) {
+    const file = position.yamlPath;
     if (!(yield* fileSystem.exists(file))) continue;
     const content = yield* fileSystem.readText(file);
-    rawLayers.push({ file, value: yield* parseLandofile({ file, content, cwd: paths.root }) });
+    rawLayers.push({ ...position, filePath: file, content });
   }
-  const scope = yield* buildLandofileLoadScope(rawLayers);
-  const layers = yield* Effect.forEach(rawLayers, ({ file, value }) =>
-    compileLandofileLayer(file, value, scope),
-  );
+  const { compiled } = yield* compileLandofileContentLayers(rawLayers, {
+    appRoot: paths.root,
+    policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+  });
   const landofile = yield* validateLandofile(paths.userLandofile, {
-    ...mergeLandofiles(layers),
+    ...mergeLandofiles(compiled.map(({ landofile }) => landofile)),
     name: "global",
     provider: MANAGED_PROVIDER_ID,
   });
