@@ -1,16 +1,21 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import { arr, call, defaultRoute, lit, obj } from "./snapshot-expression.ts";
 
+/** Drupal upload tree. Authored only by the Drupal and Drupal CMS recipes. */
+export const DRUPAL_NGINX_NO_SCRIPTS = ["sites/*/files"] as const;
+
 export const phpSiteSnapshotBuilders = ({
   framework,
   databaseFields = [],
   appserverMounts,
   appserverBuild,
+  edgeFields = [],
 }: {
   readonly framework: string;
   readonly databaseFields?: ReadonlyArray<readonly [string, ExpressionNode]>;
   readonly appserverMounts?: () => ExpressionNode;
   readonly appserverBuild?: () => ExpressionNode;
+  readonly edgeFields?: ReadonlyArray<readonly [string, ExpressionNode]>;
 }) => {
   const usesNginx = (): ExpressionNode =>
     call(
@@ -55,6 +60,7 @@ export const phpSiteSnapshotBuilders = ({
       ["type", lit("nginx")],
       ["backend", lit("appserver")],
       ["webroot", lit("{{ recipe.webroot }}")],
+      ...edgeFields.map(([key, value]) => [key, structuredClone(value)] as const),
       ["routes", primaryRoutes()],
     ]);
   return { usesNginx, primaryRoutes, databaseService, apacheAppserver, fpmAppserver, edgeService };

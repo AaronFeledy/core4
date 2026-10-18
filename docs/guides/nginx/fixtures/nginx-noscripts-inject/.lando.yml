@@ -1,0 +1,11 @@
+name: nginx-noscripts-inject
+runtime: 4
+services:
+  web:
+    type: nginx
+    backend: app
+    noScripts:
+      - "files; } location / {"
+  app:
+    type: "php:8.3"
+    via: fpm

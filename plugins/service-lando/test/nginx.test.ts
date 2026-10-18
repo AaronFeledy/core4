@@ -9,6 +9,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
+import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
 import {
   NGINX_FEATURE_ID,
   nginxPhpFpmWireFeature,
@@ -51,6 +52,17 @@ const composeNginxPlan = (raw: unknown, serviceName = "web"): Promise<ServicePla
 
 const planCommandText = (command: ServicePlan["command"]): string =>
   Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
+
+const noScriptDeny = (glob: string): string =>
+  `location ~* ^/${nginxNoScriptRegex(glob)}/.*\\.php(/|$) { deny all; }`;
+
+const expectNoScriptDenyBeforePhp = (command: string, glob = "sites/*/files"): void => {
+  const deny = noScriptDeny(glob);
+  const phpLocation = "location ~ [^/]\\.php(/|$) {";
+  expect(command).toContain(deny);
+  expect(command.indexOf(deny)).toBeGreaterThan(-1);
+  expect(command.indexOf(phpLocation)).toBeGreaterThan(command.indexOf(deny));
+};
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;
@@ -235,6 +247,7 @@ describe("nginx PHP FastCGI preset", () => {
     const command = planCommandText(plan.command);
     expect(command).toContain("fastcgi_pass appserver:9000");
     expect(command).toContain("root /app/web");
+    expect(command).not.toContain("location ~* ^/");
     expectPhpFpmPathInfoWire(command);
     expectSharedErrorPagesBuildStep(plan);
     expect(command).toContain("alias /usr/share/lando/errors/;");
@@ -272,6 +285,20 @@ describe("nginx PHP FastCGI preset", () => {
     expect(script).not.toContain("user nginx;");
     expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-nginx.conf"]);
   });
+
+  test("denies PHP under authored noScripts before the FastCGI location", async () => {
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      backend: "appserver",
+      webroot: "/app/web",
+      noScripts: ["sites/*/files", "uploads"],
+    });
+
+    const command = planCommandText(plan.command);
+    expectNoScriptDenyBeforePhp(command, "sites/*/files");
+    expectNoScriptDenyBeforePhp(command, "uploads");
+    expectPhpFpmPathInfoWire(command);
+  });
 });
 
 describe("nginx PHP FPM app-feature wire", () => {
@@ -301,6 +328,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     readonly webroot?: string;
     readonly command?: ReadonlyArray<string>;
     readonly user?: string;
+    readonly noScripts?: ReadonlyArray<string>;
   }): AppFeatureServiceView => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
@@ -313,6 +341,7 @@ describe("nginx PHP FPM app-feature wire", () => {
           ...(input.webroot === undefined ? {} : { webroot: input.webroot }),
           ...(input.command === undefined ? {} : { command: input.command }),
           ...(input.user === undefined ? {} : { user: input.user, home: false }),
+          ...(input.noScripts === undefined ? {} : { noScripts: input.noScripts }),
         },
       },
     });
@@ -370,7 +399,38 @@ describe("nginx PHP FPM app-feature wire", () => {
     expect(commandText(commands.get("edge"))).toContain("error_page 404 /_lando/errors/404.html;");
     expect(commandText(commands.get("edge"))).not.toContain("fastcgi_intercept_errors");
     expectPhpFpmPathInfoWire(commandText(commands.get("edge")));
+    expect(commandText(commands.get("edge"))).not.toContain("location ~* ^/");
     expect(commands.get("appserver")).toBeUndefined();
+  });
+
+  test("wired FastCGI command denies authored noScripts before the PHP location", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
+      viewOf({
+        serviceName: "edge",
+        serviceType: "nginx",
+        backend: "appserver",
+        webroot: "web",
+        noScripts: ["sites/*/files"],
+      }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    const command = commandText(commands.get("edge"));
+    expectNoScriptDenyBeforePhp(command);
+    expectPhpFpmPathInfoWire(command);
+  });
+
+  test("wired FastCGI command does not invent noScripts from a Drupal framework", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm" }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver" }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    expect(commandText(commands.get("edge"))).not.toContain(noScriptDeny("sites/*/files"));
   });
 
   test("wired FastCGI command carries PATH_INFO after fastcgi_params and 404s a missing script file", async () => {
@@ -436,5 +496,39 @@ describe("nginx PHP FPM app-feature wire", () => {
     await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
 
     expect(commands.get("edge")).toBeUndefined();
+  });
+});
+
+describe("nginx noScripts glob translation", () => {
+  test("escapes dots and turns each * into one path segment", () => {
+    expect(nginxNoScriptRegex("sites/*/files")).toBe("sites/[^/]+/files");
+    expect(nginxNoScriptRegex("uploads")).toBe("uploads");
+    expect(nginxNoScriptRegex("sites/default.files")).toBe("sites/default\\.files");
+  });
+
+  test.each([
+    "files; } location / {",
+    "sites/**/files",
+    "files;x",
+    "files#x",
+    "files\nx",
+    "files\rx",
+    "fïles",
+    "files%x",
+    "files,x",
+    "files~x",
+    "files=x",
+    "files@x",
+    "files!x",
+    "files&x",
+    "files:x",
+    "files<x",
+    "files`x",
+    ".",
+    "a/./b",
+    "a//b",
+    "*",
+  ])("rejects %j instead of interpolating it", (path) => {
+    expect(() => nginxNoScriptRegex(path)).toThrow(/nginx noScripts path is not a safe webroot-relative URI/);
   });
 });

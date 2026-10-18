@@ -1,5 +1,6 @@
 import { DRUSH_TOOLING_COMMAND } from "../drush-command";
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
+import { DRUPAL_NGINX_NO_SCRIPTS } from "../php-site-snapshot.ts";
 import { DRUPAL_SCAFFOLD_AUTHORING_COMMAND, drupalProducer, drupalSnapshot } from "./snapshot.ts";
 
 const primaryRoutes = [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }];
@@ -27,6 +28,7 @@ export const drupalDecomposer = makeOptionBearingDecomposer({
               type: "nginx",
               backend: "appserver",
               webroot: "{{ recipe.webroot }}",
+              noScripts: [...DRUPAL_NGINX_NO_SCRIPTS],
               routes: primaryRoutes,
             },
             database,

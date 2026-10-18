@@ -51,6 +51,53 @@ services:
     via: fpm
 ```
 
+## Stop PHP in upload directories
+
+Uploaded files should stay files. Set `noScripts:` to webroot-relative URI paths where nginx must not run PHP. Drupal and Drupal CMS already set `sites/*/files` when the recipe fronts PHP with nginx:
+
+```yaml
+services:
+  web:
+    type: nginx
+    backend: app
+    noScripts:
+      - sites/*/files
+      - uploads
+```
+
+`*` matches one path segment, so `sites/*/files` covers `sites/default/files` and `sites/example.com/files`. A `.php` request under those paths, including PATH_INFO extras, returns 403. Front controllers such as `/index.php` and Drupal image-style fallbacks stay reachable.
+
+Each entry is a webroot-relative path. No leading slash, no trailing slash, no `..`, and no `**`. Letters, digits, `.`, `_`, `/`, `-`, and a single-segment `*` only. `lando app:config:lint` rejects anything else, including characters that would break out of the generated location.
+
+Write `noScripts: []` to clear the Drupal default. The key is ignored on every other service type.
+
+  <Scenario id="authored-noscripts" render>
+    <Step name="scaffold">
+      <UseFixture name="nginx-noscripts" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"noScripts\":\\s*\\[\\s*\"sites/\\*/files\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-noscripts-injection" render={false} reason="Regression for noScripts allowlist">
+    <Step name="scaffold">
+      <UseFixture name="nginx-noscripts-inject" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"noScripts\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
 ## Serve a subdirectory
 
 Set `webroot:` to a path relative to the app mount at `/app`. For example, `public` serves `/app/public`. Omit it or use `.` to serve the app root. An absolute container path is allowed when you need a very specific location outside the usual app layout. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path. Set `port:` to move nginx's listener, endpoint, and healthcheck together:

@@ -27,6 +27,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
+import { nginxNoScriptDenyLocations } from "./nginx-no-scripts.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
 
@@ -63,6 +64,7 @@ const phpFastcgiCommand = (
   webroot: string,
   ports: { readonly listen: number; readonly fpm: number },
   user: string | undefined,
+  noScripts: ReadonlyArray<string> | undefined,
 ): ReadonlyArray<string> =>
   nginxLauncherCommand({
     user,
@@ -75,6 +77,7 @@ const phpFastcgiCommand = (
       "  location / {",
       "    try_files $uri $uri/ /index.php?$query_string;",
       "  }",
+      ...nginxNoScriptDenyLocations(noScripts),
       // Widen beyond `\\.php$` so `/script.php/extra` enters FastCGI (RFC 3875 PATH_INFO).
       "  location ~ [^/]\\.php(/|$) {",
       // Non-greedy: the first `.php` is the script. A greedy `.+\\.php` lets a
@@ -119,7 +122,13 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
     ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
     ctx.setCommand(
       backend.length > 0
-        ? phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user)
+        ? phpFastcgiCommand(
+            backend,
+            webroot,
+            { listen: port, fpm: PHP_FPM_PORT },
+            service.user,
+            service.noScripts,
+          )
         : defaultStaticCommand("nginx", webroot, port, service.user),
     );
   }
@@ -156,7 +165,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
     mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
-    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user));
+    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user, service.noScripts));
   });
 };
 

@@ -1,5 +1,6 @@
 import { DRUSH_TOOLING_COMMAND } from "../drush-command";
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
+import { DRUPAL_NGINX_NO_SCRIPTS } from "../php-site-snapshot.ts";
 import { DRUPAL_CMS_GIT_ARTIFACT, DRUPAL_CMS_SCAFFOLD_COMMAND } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config";
 import {
@@ -43,6 +44,7 @@ export const drupalCmsDecomposer = makeOptionBearingDecomposer({
               type: "nginx",
               backend: "appserver",
               webroot: "{{ recipe.webroot }}",
+              noScripts: [...DRUPAL_NGINX_NO_SCRIPTS],
               routes: primaryRoutes,
             },
             database,
