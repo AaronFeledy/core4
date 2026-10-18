@@ -412,6 +412,7 @@ const makeDestroyLayer = (
           RedactionService,
           RedactionService.of({
             registerValues: registerRedactionValues,
+            payloadValues: () => Effect.succeed(() => []),
             forProfile: (profile) => Effect.succeed(createStandaloneRedactor(profile)),
           }),
         ),
