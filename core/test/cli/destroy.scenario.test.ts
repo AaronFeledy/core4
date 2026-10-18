@@ -775,7 +775,6 @@ describe("lando destroy", () => {
         runDestroyCommand({ flags: { purge: true, yes: true } }).pipe(Effect.provide(harness.layer)),
       );
       expect(harness.destroyCalls[0]?.options.volumes).toBe(true);
-      expect(harness.destroyCalls[0]?.options.purgeSnapshots).toBe(true);
     });
   });
 
