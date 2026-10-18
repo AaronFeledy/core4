@@ -8231,6 +8231,13 @@
                 { "items": { "type": "string" }, "type": "array" }
               ]
             },
+            "noScripts": {
+              "items": {
+                "pattern": "^(?!/)(?!\\*$)(?!.*//)(?!.*\\.\\.)(?!.*\\*\\*)(?!.*/$)(?!(?:^|.*/)\\.(?:/|$))[A-Za-z0-9._/*-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
             "packageRoot": { "type": "string" },
             "password": { "type": "string" },
             "persist": { "type": "boolean" },
