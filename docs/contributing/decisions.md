@@ -7,11 +7,13 @@ description: Records architectural and release decisions for Lando v4.
 
 ## Bun floor decision
 
-Beta 1 requires Bun `>=1.4.2`. The pinned CI/runtime version is `1.4.2` in `.bun-version`, and workspace package metadata mirrors that shared toolchain floor in `engines.bun`.
+Beta 1 requires Bun `>=1.4.3`. The pinned CI/runtime version is `1.4.3` in `.bun-version`, and workspace package metadata mirrors that shared toolchain floor in `engines.bun`.
 
-Rationale: Bun 1.4.1 fixed cross-platform bytecode compilation, including the Linux-to-Windows startup crash; the 1.4.2 toolchain includes that fix. The central builder enables the programmatic equivalent of `bun build --compile --bytecode` for all six release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Bytecode supports cross-compilation, but Windows release binaries must be compiled on Windows so Bun embeds the Lando icon and Windows version info. See "Platform scope" in `release.md` for release instructions. Any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
+The move from `1.4.2` to `1.4.3` is a hard floor, not a preference: `@lando/http-client` builds its egress on `Bun.FetchSession` and `fetch(url, { proxy: false })`, and the compiled binary passes `compile.execArgv`, none of which exist in 1.4.2. The release also fixed Linux/macOS full-pipe stdout truncation, `Bun.spawn` returning truncated data without an error, macOS `signalCode` using Linux numbers, `Bun.file().exists()` sticking `false`, and non-reproducible `--bytecode --format=esm --splitting` executables, all of which sit on code paths Lando runs.
 
-Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. The compiler floor does not change container-runtime image pins or the `@types/bun ^1.4.0` dependency range.
+Rationale for bytecode: Bun 1.4.1 fixed cross-platform bytecode compilation, including the Linux-to-Windows startup crash; every later toolchain includes that fix. The central builder enables the programmatic equivalent of `bun build --compile --bytecode` for all six release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Bytecode supports cross-compilation, but Windows release binaries must be compiled on Windows so Bun embeds the Lando icon and Windows version info. See "Platform scope" in `release.md` for release instructions. Any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
+
+Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. The compiler floor does not change container-runtime image pins; `@types/bun` tracks the same floor at `^1.4.3`.
 
 ## OCLIF major lock decision (superseded by architecture-simplicity)
 

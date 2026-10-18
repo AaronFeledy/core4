@@ -32,11 +32,11 @@
     }
   },
   "engines": {
-    "bun": ">=1.4.2"
+    "bun": ">=1.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@types/bun": "^1.4.0",
+    "@types/bun": "^1.4.3",
     "mdast-util-to-markdown": "^2.1.2",
     "typescript": "^5.9.0"
   },
