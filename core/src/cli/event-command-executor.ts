@@ -23,6 +23,7 @@ import { notImplementedErrorForSpec } from "./deferred-commands";
 import { validateEventCommandInput } from "./event-command-input";
 import { resolveEventCommandTarget } from "./event-command-target";
 import { DEFAULT_RENDERER_MODE, isRendererMode } from "./renderer-selection";
+import { ResultTerminal } from "./result-terminal";
 
 const silentRenderer = Renderer.of({
   id: "silent",
@@ -189,8 +190,7 @@ export const makeEventCommandExecutor = (
               const rendered = target.spec.render(exit.value, input, {
                 mode: isRendererMode(outputRenderer.id) ? outputRenderer.id : DEFAULT_RENDERER_MODE,
                 format: "text",
-                columns: undefined,
-                isTTY: outputRenderer.capabilities.interactive,
+                ...(yield* ResultTerminal),
                 proxyDefaultDomain: yield* resolveProxyDefaultDomain,
                 env: process.env,
               });

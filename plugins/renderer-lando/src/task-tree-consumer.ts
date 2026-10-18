@@ -1,7 +1,7 @@
 import { Semaphore } from "effect";
 import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
-import type { RendererIO } from "@lando/sdk/renderer";
+import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { renderLandoLine } from "./format.ts";
@@ -26,7 +26,7 @@ const taskIdOf = (event: LandoEvent): string | undefined => {
 
 // allow: SIZE_OK — terminal ownership and its shutdown barrier share one scoped consumer closure.
 export const layer = (
-  io: RendererIO,
+  io: RendererNarrationIO,
   stdout: NodeJS.WriteStream,
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,

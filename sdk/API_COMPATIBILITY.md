@@ -16,6 +16,10 @@
 
 - `DataMover.restore` adds an optional third `opts?: SnapshotRestoreOptions` argument. Omitted options and `mode: "restore"` keep strict physical-volume generation checks. `mode: "seed"` permits a new generation only for the snapshot's own app, store, and owner root, with verified snapshot metadata and an in-progress volume initialization claim. `SnapshotAmbiguousError` adds optional `candidateIds`, ordered newest first, for id-or-label resolution; `snapshotId` retains the reference supplied by the caller.
 
+- Rich interactive stdio prompts require terminal stdin and stderr; stdout redirection is irrelevant. Explicit interactive mode still prompts without them, using line input. The interaction contract captures stderr independently and replaces `InteractionServiceSpec.stdout` with `stderr` to enforce the same stream ownership for plugin implementations.
+
+- Pre-release renderer IO split: `RendererNarrationIO` is the stderr-only event-consumer contract. `RendererIO` extends it with result-channel writers, `stdoutIsTTY`, and `stdoutColumns`; its inherited `isTTY`, terminal dimensions, and `externalOutputStream` describe stderr. No compatibility alias preserves the former stdout-based terminal shape. `makeRendererContractSuite` / `runRendererContract` exercise every built-in event schema, imperative messages, exact payload passthrough, and immutable narration-terminal capability snapshots. `@lando/sdk/renderer` additively exports `narrationIO(io)`, a cached per-IO narration view with no stdout writers at runtime; it reads stderr metadata live and projects a view to itself. Hosts pass that view to `makeEventConsumer`, and the contract suite rejects a consumer IO carrying `writeStdout`.
+
 - Explicit service `webroot` now fails planning with the existing `LandofileValidationError` when no final composed `FeatureRef.config.webroot` is a non-empty string. This pre-cache behavior uses no new fields, exports, or error members. Ruby context requires an active app mount; an omitted implicit Ruby default remains valid with `appMount: false`. Webservers can still use absolute document roots without an app mount. Language-runtime command hints are removed; authored process fields and the keep-alive default are unchanged.
 
 - `FileSyncSessionInfo` additively carries optional `conflictedPaths` with validated relative paths when a live sync session has unresolved conflicts. An empty array still means Mutagen reported a conflict but no path was safe to surface.
@@ -1298,6 +1302,9 @@ It registers no JSON Schema.
 - `persistVerifiedStream`
 
 ## Additive Beta test helper exports
+
+- `makeRendererContractSuite`
+- `runRendererContract`
 
 - `makeHttpClientContractSuite` aliases `runHttpClientContract`; both accept Effect's standard client and fiber-policy hooks through `HttpClientContractHarness`.
 

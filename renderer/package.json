@@ -21,6 +21,7 @@
     ".": "./src/index.ts",
     "./console-layout": "./src/console-layout.ts",
     "./io": "./src/io.ts",
+    "./native-stdio": "./src/native-stdio.ts",
     "./output": "./src/output.ts",
     "./runtime": "./src/runtime.ts",
     "./stdio": "./src/stdio.ts",

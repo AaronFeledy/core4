@@ -34,7 +34,7 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
       default: false,
     }),
     interactive: Flags.boolean({
-      description: "Force interactive prompting even when stdin is not detected as a TTY.",
+      description: "Force interactive prompting even when stdin or stderr is not a terminal.",
       default: false,
     }),
     "no-interactive": Flags.boolean({

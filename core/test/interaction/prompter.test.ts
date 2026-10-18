@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 
 import { type Context, Effect, Layer } from "effect";
 
@@ -11,7 +11,7 @@ import { makeInteractionService } from "../../src/interaction/service.ts";
 type RendererService = Context.Service.Shape<typeof Renderer>;
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
-  Readable.from(lines.map((line) => `${line}\n`));
+  Object.assign(Readable.from(lines.map((line) => `${line}\n`)), { isTTY: true });
 
 const neverStdin = (): NodeJS.ReadableStream =>
   new Readable({
@@ -46,7 +46,15 @@ const buildPrompter = (
   renderer?: RendererService,
   stdout?: NodeJS.WritableStream,
 ) => {
-  const interaction = makeInteractionService({ stdin, ...(stdout === undefined ? {} : { stdout }) });
+  const stderr = Object.assign(
+    new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    }),
+    { isTTY: true },
+  );
+  const interaction = makeInteractionService({ stdin, stderr, ...(stdout === undefined ? {} : { stdout }) });
   let layer = Layer.succeed(InteractionService, InteractionService.of(interaction));
   if (renderer !== undefined) {
     layer = Layer.merge(layer, Layer.succeed(Renderer, Renderer.of(renderer)));
@@ -84,11 +92,12 @@ describe("makeInteractionPrompter — Promise adapter over InteractionService", 
     expect(ok).toBe(true);
   });
 
-  test("a captured Renderer receives prompt chrome on stdout", async () => {
+  test("a captured Renderer receives prompt chrome on stderr only", async () => {
     const renderer = capturingRenderer();
     const prompter = await buildPrompter(scriptedStdin(["typed"]), renderer.service);
     await prompter.promptAll([{ name: "app", type: "text", message: "App name?" }], { interactive: true });
-    expect(renderer.out()).toContain("App name?");
+    expect(renderer.err()).toContain("App name?");
+    expect(renderer.out()).toBe("");
   });
 
   test("promptAll rejects with InteractionRequiredError on a missing non-interactive answer", async () => {
