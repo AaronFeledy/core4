@@ -32,6 +32,7 @@ import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-ap
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
+import { orphanedSnapshotsDoctor } from "./doctor-orphaned-snapshots";
 import {
   type DoctorSectionId,
   type DoctorSectionOutcome,
@@ -313,6 +314,14 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
+  const orphanedSnapshots = yield* isolateDoctorSection({
+    section: "orphaned-volume-snapshots",
+    effect: orphanedSnapshotsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (orphanedSnapshots.self !== undefined) selfChecks.push(orphanedSnapshots.self);
   const filesystemWatch = yield* isolateDoctorSection({
     section: "filesystem-watch",
     effect: filesystemWatchDoctor(redact, options.platform),
@@ -325,7 +334,13 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     version: CORE_VERSION,
     provider: { checks: provider.checks },
     subsystems: {
-      checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value, ...filesystemWatch.value],
+      checks: [
+        ...subsystems.checks,
+        ...accelerated.value,
+        ...missingRoots.value,
+        ...orphanedSnapshots.value,
+        ...filesystemWatch.value,
+      ],
     },
     globalApp,
     mcp,

@@ -214,7 +214,7 @@ describe("CLI lifecycle adapters", () => {
         render: () => undefined,
         successExitCode: spec.successExitCode,
         setExitCode: (code) => exitCodes.push(code),
-        formatError: (error) => String(error),
+        formatError: ({ error }) => String(error),
       });
 
       // Then

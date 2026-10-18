@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "enum-narrowed",
+    "path": "$.volumeSnapshot",
+    "justification": "Pre-release removal of unimplemented provider copy snapshots. Providers declare native or none; DataMover retains its own host-archive copy option. No compatibility shim is shipped."
+  },
+  {
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "unsupported-keyword",
     "path": "$.error.additionalProperties",
@@ -2434,5 +2440,11 @@
     "changeKind": "unsupported-construct",
     "path": "$.services.anyOf",
     "justification": "Service map-input declarations (dependsOn maps, Compose scalar maps) inside the authoring shape now derive through their JSON codec projection, which keeps the same record and precheck but admits typed expression slots like the rest of the authoring tree. Previously valid authoring documents still decode unchanged; no directive envelopes are admitted by the complete authoring shape. The conservative checker cannot classify the widened anyOf."
+  },
+  {
+    "surface": "schema:TaskCompleteEvent",
+    "changeKind": "enum-widened",
+    "path": "$.outcome",
+    "justification": "Task completion adds the neutral `info` outcome for reader-owned results such as an app answering post-start checks with an error. The field stays optional, `ok` and `warn` keep their meaning, and consumers that treat unknown outcomes as `ok` keep working; renderers that paint `warn` were updated in the same change."
   }
 ]

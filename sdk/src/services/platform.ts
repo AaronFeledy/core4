@@ -27,6 +27,7 @@ import type {
   ProxyConfig,
   ProxyStatus,
   RoutePlan,
+  ScanVerdict,
   ServiceName,
 } from "../schema/index.ts";
 import type { PrivilegeService } from "./process.ts";
@@ -142,7 +143,11 @@ export class HealthcheckRunner extends Context.Service<
 
 export type HealthcheckRunnerShape = HealthcheckRunner["Service"];
 
+export type { ScanVerdict } from "../schema/networking.ts";
+
 export interface ScanEndpoint {
+  readonly verdict: ScanVerdict;
+  readonly routerMarker?: string;
   readonly service: ServiceName;
   readonly url: string;
   readonly reachable: boolean;
@@ -158,6 +163,19 @@ export interface ScanEndpoint {
    * transport error or `HTTP <code>`). Scanners MUST redact this through the
    * canonical redaction primitive before returning it.
    */
+  readonly detail?: string;
+}
+
+/** One completed probe attempt; detail is redacted by the scanner before notification. */
+export interface ScanAttempt {
+  readonly verdict: ScanVerdict;
+  readonly willRetry?: boolean;
+  readonly service: ServiceName;
+  readonly url: string;
+  readonly attempt: number;
+  readonly maxAttempts: number;
+  readonly outcome: ProbeOutcome;
+  readonly statusCode?: number;
   readonly detail?: string;
 }
 
@@ -186,6 +204,8 @@ export class UrlScanner extends Context.Service<
       options?: {
         readonly plan?: AppPlan;
         readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+        /** Observe completed attempts without affecting probe verdicts; detail is redacted. */
+        readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
       },
     ) => Effect.Effect<ScanResult, ScannerError>;
     readonly detectCollisions: (

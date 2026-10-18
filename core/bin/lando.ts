@@ -37,7 +37,7 @@ const hasDiagnosticOverride = (tokens: ReadonlyArray<string>, env: NodeJS.Proces
 };
 
 const writeLine = async (destination: "stdout" | "stderr", text: string): Promise<void> => {
-  const { writeStdioLine } = await import("@lando/renderer/io");
+  const { writeStdioLine } = await import("@lando/renderer/native-stdio");
   writeStdioLine(destination, text);
 };
 const LANDOFILE_BASENAMES = [
@@ -64,7 +64,7 @@ const hasAppContext = async (cwd: string): Promise<boolean> => {
 };
 
 const main = async (): Promise<void> => {
-  const { installBrokenPipeExitPolicy } = await import("@lando/renderer/io");
+  const { installBrokenPipeExitPolicy } = await import("@lando/renderer/native-stdio");
   installBrokenPipeExitPolicy();
   if (
     argv[0] === "--lando-update-replacement" &&
@@ -167,7 +167,7 @@ const main = async (): Promise<void> => {
 };
 
 main().catch(async (error: unknown) => {
-  const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/io");
+  const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/native-stdio");
   if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
   await writeLine("stderr", String(error));
   process.exit(1);

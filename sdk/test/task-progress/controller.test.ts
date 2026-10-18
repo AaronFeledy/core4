@@ -345,3 +345,34 @@ describe("@lando/sdk/task-progress warnTask", () => {
     expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({ succeeded: 1, failed: 0 });
   });
 });
+
+describe("@lando/sdk/task-progress infoTask", () => {
+  test("publishes an info completion and counts it as succeeded when the result is reader-owned", async () => {
+    // Given
+    const publisher = collectPublisher();
+    const tree = makeTaskTree(publisher, {
+      parentId: "checks",
+      label: "Checks",
+      children: [{ id: "web", label: "Web check" }],
+    });
+
+    // When
+    await Effect.runPromise(
+      runWithTaskTree(
+        tree,
+        (active) =>
+          Effect.gen(function* () {
+            yield* active.startTask("web");
+            yield* active.infoTask("web", "HTTP 500");
+          }),
+        { success: "checked", failure: "checks failed", interrupt: "checks interrupted" },
+      ),
+    );
+
+    // Then
+    expect(byTag(publisher.events, "task.complete")).toMatchObject([
+      { taskId: "web", outcome: "info", summary: "HTTP 500" },
+    ]);
+    expect(byTag(publisher.events, "task.tree.complete")).toMatchObject([{ succeeded: 1, failed: 0 }]);
+  });
+});

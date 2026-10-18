@@ -84,6 +84,7 @@ export interface RendererLike {
   height: number;
   start?(): unknown;
   requestRender?(): unknown;
+  resize?(width: number, height: number): void;
   destroy(): unknown | Promise<unknown>;
   on?(event: string, listener: EventListenerLike<ReadonlyArray<unknown>>): unknown;
   off?(event: string, listener: EventListenerLike<ReadonlyArray<unknown>>): unknown;

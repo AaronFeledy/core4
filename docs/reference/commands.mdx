@@ -23,6 +23,12 @@ it is `{ "ok": false, "error": <tagged error> }` with the command's exit code
 preserved. Every envelope is redacted before emission. Agents and scripts should
 consume this JSON instead of parsing the rendered tables.
 
+## Confirmation
+
+Commands that ask for confirmation or destroy state accept `--yes`/`-y`. A
+destructive command that never prompts accepts it and ignores it, so scripts
+and agents can pass it to every destructive command.
+
 ## Commands
 
 ## `lando app:agent:skills:install`
@@ -36,6 +42,12 @@ Aliases: `lando agent:skills:install`
 Delete Lando-owned agent skill files in this app. Adopted or user files stay.
 
 Aliases: `lando agent:skills:remove`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando app:agent:skills:update`
 
@@ -173,7 +185,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--purge` | Also remove app/service-scoped storage volumes and snapshots. |
+| `--purge` | Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data. |
 | `--purge-caches` | Remove cache storage volumes. |
 | `--root` | Clean up an app whose folder no longer exists, using the path lando doctor prints. |
 | `--volumes` | Also remove app/service-scoped storage volumes. |
@@ -382,6 +394,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--remote` | Remote name. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando app:remote:setup`
 
@@ -547,7 +560,7 @@ Flags:
 | `--checksum` | Expected SHA-256 of a --source=tarball archive (64 hex chars). |
 | `--full` | Use full recipe defaults instead of prompts. |
 | `--id` | Recipe id for --source=registry. |
-| `--interactive` | Force interactive prompting even when stdin is not detected as a TTY. |
+| `--interactive` | Force interactive prompting even when stdin or stderr is not a terminal. |
 | `--name` | App name (slugified for the project id). |
 | `--no-interactive` | Disable interactive prompting. Missing required answers fail with RecipeMissingAnswerError. |
 | `--option` | Recipe option in key=value form (repeatable). |
@@ -557,7 +570,7 @@ Flags:
 | `--registry-url` | Override the recipe registry base URL (for --source=registry). |
 | `--source` | Init source id (cwd, git, tarball, npm, registry, template). |
 | `--url` | Remote recipe source URL (for --source=git/tarball). |
-| `--yes` | Accept every prompt's default without asking. |
+| `--yes, -y` | Accept every prompt's default without asking. |
 
 ## `lando apps:list`
 
@@ -606,6 +619,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--keep-volumes` | Keep scratch volumes for inspection. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando apps:scratch:gc`
 
@@ -618,6 +632,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--prune` | Reap orphaned scratch resources after reporting them. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando apps:scratch:info`
 
@@ -682,7 +697,7 @@ Flags:
 | `--fork` | Use the current app as the scratch source. |
 | `--from` | Recipe reference to materialize as a scratch app. |
 | `--hostname` | Keep this exact planned route hostname unchanged (repeatable). |
-| `--interactive` | Force interactive prompting even when stdin is not detected as a TTY. |
+| `--interactive` | Force interactive prompting even when stdin or stderr is not a terminal. |
 | `--isolate` | Scratch isolation mode; 'none' is a legacy alias for 'cwd'. (one of `none`, `full`, `baked`, `cwd`) |
 | `--keep-on-failure` | Keep the scratch root and registry entry when startup fails. |
 | `--mount-cwd` | Mount the current working directory into the scratch app's primary service. |
@@ -706,6 +721,12 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `id` | Scratch app id. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:bun`
 
@@ -878,7 +899,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--yes, -y` | Accepted for consistency with `lando setup --yes`. Global install does not prompt. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:global:list`
 
@@ -906,6 +927,12 @@ Flags:
 Rebuild the host-level global Lando app.
 
 Aliases: `lando global:rebuild`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:global:restart`
 
@@ -966,6 +993,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--purge` | Also remove global service provider resources and data volumes before clearing services. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:mcp`
 
@@ -1091,6 +1119,12 @@ Arguments:
 | --- | --- |
 | `name` | Plugin name. |
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
 ## `lando meta:plugin:test`
 
 Run the current plugin's Bun test suite (authoring command).
@@ -1181,7 +1215,7 @@ Flags:
 | `--skip-proxy` | Skip router setup. |
 | `--skip-shell-integration` |  |
 | `--smoke` | Verify container run, image build, and healthcheck operations during setup. |
-| `--yes` | Consent to confirmation prompts and privileged host changes. Does not switch providers. |
+| `--yes, -y` | Consent to confirmation prompts and privileged host changes. Does not switch providers. |
 
 ## `lando meta:shellenv`
 
@@ -1194,6 +1228,19 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--shell` | Defaults to PowerShell on Windows and POSIX on other platforms. (one of `posix`, `powershell`, `pwsh`) |
+
+## `lando meta:snapshots:gc`
+
+Inspect orphaned native volume snapshots.
+
+Aliases: `lando snapshots:gc`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--prune` | Remove orphaned snapshot images after rechecking the snapshot index. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:uninstall`
 

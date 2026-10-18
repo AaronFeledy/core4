@@ -1,4 +1,5 @@
-import { Args, Flags } from "../../../spec/metadata";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
+import { Args } from "../../../spec/metadata";
 
 import {
   type GlobalInstallOptions,
@@ -25,11 +26,7 @@ export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {
   topLevelAlias: "global:install",
   bootstrap: "global",
   flags: {
-    yes: Flags.boolean({
-      char: "y",
-      description: "Accepted for consistency with `lando setup --yes`. Global install does not prompt.",
-      default: false,
-    }),
+    yes: nonPromptingYesFlag,
   },
   args: {
     plugin: Args.string({

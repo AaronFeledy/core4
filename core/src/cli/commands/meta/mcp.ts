@@ -103,7 +103,6 @@ const ToolingMcpResultSchema = Schema.Struct({
   exitCode: Schema.Number,
   stdout: Schema.String,
   stderr: Schema.String,
-  rendered: Schema.optionalKey(Schema.Boolean),
 });
 
 const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
@@ -157,9 +156,9 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
     resultSchema: ToolingMcpResultSchema,
     run: (input) =>
       command.input === undefined
-        ? runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true })
+        ? runTooling({ name: command.id, args: toolingArgsFromInput(input) })
         : Effect.flatMap(Effect.fromResult(toolingArgvFromInput(command.id, command.input, input)), (args) =>
-            runTooling({ name: command.id, args, renderProgress: true }),
+            runTooling({ name: command.id, args }),
           ),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
     render: (result) => renderRunToolingResult(result as RunToolingResult),
@@ -369,7 +368,7 @@ export const dispatchMcpCommand = async (params: {
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
-  readonly formatError: (error: unknown) => string;
+  readonly formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) => string;
 }): Promise<void> => {
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {

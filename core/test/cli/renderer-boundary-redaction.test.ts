@@ -20,6 +20,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => ["topsecret", "proxypass"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
   }),
 );
@@ -51,7 +52,7 @@ describe("runWithRendererHandling redaction", () => {
       runtime: redactionLayer,
       rendererMode: "plain",
       io,
-      formatError: (error) => {
+      formatError: ({ error }) => {
         const setupError = error as SetupNetworkTrustError;
         return `${setupError.message} ${setupError.remediation}`;
       },
@@ -76,7 +77,7 @@ describe("runWithRendererHandling redaction", () => {
         runtime: failingRuntime,
         rendererMode: "plain",
         io,
-        formatError: (error) => String(error),
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
     } finally {
@@ -101,7 +102,7 @@ describe("runWithRendererHandling redaction", () => {
       io,
       redactionTokens: (result) => result.redactionTokens,
       render: (result) => result.stdout,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -121,7 +122,7 @@ describe("runWithRendererHandling redaction", () => {
       io,
       redactionTokens: (result) => result.redactionTokens,
       render: (result) => result.stdout,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -137,6 +138,7 @@ describe("runWithRendererHandling redaction", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: () =>
           Effect.succeed({
             redactString: (text: string) => text.split("32").join("[redacted]"),
@@ -161,7 +163,7 @@ describe("runWithRendererHandling redaction", () => {
         rendererMode: "lando",
         io,
         render: (doc, ctx) => formatSummary(doc, summaryPaintOptions(ctx)),
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );
@@ -184,7 +186,12 @@ test("start command hints remain usable when a secret explicitly matches the CLI
   });
   expect(tokens).not.toContain("lando");
   expect(tokens).toContain(customSecret);
-  const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+  const io = createBufferedRendererIO({
+    isTTY: true,
+    terminalColumns: 100,
+    stdoutIsTTY: true,
+    stdoutColumns: 100,
+  });
   try {
     await runWithRendererHandling(
       Effect.gen(function* () {
@@ -200,7 +207,7 @@ test("start command hints remain usable when a secret explicitly matches the CLI
         io,
         command: "app:start",
         render: renderStartAppResult,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );

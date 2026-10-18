@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { Result } from "effect";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Exit } from "effect";
 
 import { makeLandoRuntime } from "@lando/core";
 import {
@@ -145,12 +146,37 @@ describe("@lando/core/cli/operations package export", () => {
     if (Exit.isFailure(interruptExit)) {
       expect(Cause.findErrorOption(interruptExit.cause)._tag).toBe("None");
     }
+  });
 
-    const mixedExit = await Effect.runPromiseExit(
-      invokeOperation(
-        Effect.failCause(Cause.combine(Cause.fail("typed-error"), Cause.die(new Error("inner-defect")))),
-      ),
+  test("classifies the projected primary by reason kind, not by value equality", async () => {
+    // Given: a typed failure whose value is not equal to itself.
+    const nan = await Effect.runPromise(invokeOperation(Effect.fail(Number.NaN)));
+    // Then: it still returns as a typed failure.
+    expect(nan).toMatchObject({ ok: false, additionalErrors: [] });
+
+    // Given: an unannotated defect and a rollback failure that carry the same value.
+    const shared = { _tag: "Shared" };
+    const rollback = Cause.annotate(Cause.fail(shared), Context.make(FailureRoleAnnotation, "rollback"));
+    // When: invokeOperation observes the combined cause.
+    const exit = await Effect.runPromiseExit(
+      invokeOperation(Effect.failCause(Cause.combine(Cause.die(shared), rollback))),
     );
-    expect(Exit.isFailure(mixedExit)).toBe(true);
+    // Then: the primary is the defect, so the cause propagates instead of returning a typed failure.
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  test("returns typed primary and additional defect for a combined cause", async () => {
+    // Given: a typed operation failure and a cleanup defect.
+    const defect = new Error("inner-defect");
+    // When: invokeOperation observes the combined cause.
+    const result = await Effect.runPromise(
+      invokeOperation(Effect.failCause(Cause.combine(Cause.fail("typed-error"), Cause.die(defect)))),
+    );
+    // Then: defects alongside a typed failure are returned as additional errors.
+    expect(result).toEqual({
+      ok: false,
+      error: "typed-error",
+      additionalErrors: [{ role: "peer", error: defect }],
+    });
   });
 });

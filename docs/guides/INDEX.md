@@ -94,7 +94,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | - | - | `app:config:explain` recipe provenance report | `docs/guides/landofile/config-explain.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Shipped |
 | PRD-10 | US-163 | service-mode `lando shell` | `docs/guides/tooling/lando-shell.mdx` | Shipped |
-| PRD-10 | US-164 | tooling output via renderer task tree | `docs/guides/tooling/output-streaming.mdx` | Shipped |
+| PRD-10 | US-164 | tooling byte-exact streaming, unified sinks, and PTY handoff | `docs/guides/tooling/output-streaming.mdx` | Shipped |
 | PRD-11 | US-165 | `meta:plugin:add` against npm | `docs/guides/plugins/install-from-npm.mdx` | Shipped |
 | PRD-11 | US-167 | postinstall trust gating (incl. wildcards) | `docs/guides/plugins/trust-and-wildcards.mdx` | Shipped |
 | PRD-11 | US-168 | system / user / app plugin discovery scopes | `docs/guides/plugins/discovery-scopes.mdx` | Shipped |
@@ -287,6 +287,8 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |
 | L3-PARITY-05 | US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` | Shipped |
 | L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| - | - | orphaned native snapshot inspection (`meta:snapshots:gc`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| - | - | git worktree as its own app with a seeded database | `docs/guides/tooling/git-worktrees.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | app plan cache refresh | `docs/guides/cli/cache-refresh.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |
 | IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |

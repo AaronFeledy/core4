@@ -138,7 +138,11 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/sql": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/sql": {
+    dependencies: PLUGIN_RUNTIME_TARGETS,
+    // Recovery retention tests compose the real snapshot store without a live container runtime.
+    devDependencies: ["@lando/data-mover", "@lando/paths", "@lando/state-store"],
+  },
   "@lando/provider-docker": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: PLUGIN_TEST_TARGETS,
@@ -168,8 +172,8 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
   },
   "@lando/renderer-lando": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/renderer", "@lando/paths"],
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],
+    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/paths"],
   },
   "@lando/service-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

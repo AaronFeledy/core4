@@ -326,6 +326,10 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             ? { status: 404, body: "{}" }
             : { status: 200, body: JSON.stringify({ Id: ref, Size: payload.byteLength }) };
         }
+        if (request.path.startsWith("/images/") && request.method === "DELETE") {
+          const ref = decodeURIComponent(request.path.slice("/images/".length));
+          return { status: snapshots.delete(ref) ? 204 : 404, body: "" };
+        }
         if (request.path === "/volumes/create" && request.method === "POST") {
           const body = request.body as {
             readonly Name?: string;

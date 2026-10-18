@@ -103,7 +103,7 @@ export const testCapabilities: ProviderCapabilities = {
   bindMountPerformance: "native",
   copyMounts: true,
   copyOnWriteAppRoot: false,
-  volumeSnapshot: "copy",
+  volumeSnapshot: "native",
   serviceFileCopy: "exec",
   artifactExport: true,
   artifactImport: true,

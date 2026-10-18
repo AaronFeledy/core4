@@ -277,6 +277,7 @@ describe("LandoLogger.layer logLevel and stderr", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => ["super-secret-value"]),
         forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["super-secret-value"] })),
       }),
     );

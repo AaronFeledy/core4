@@ -71,7 +71,13 @@ export const makeUrlScanner = (
             });
       const scanned = yield* Effect.forEach(
         targets,
-        ({ target, config }) => scanTarget(deps, config, redactor, target),
+        ({ target, config }) =>
+          scanTarget(
+            { ...deps, ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }) },
+            config,
+            redactor,
+            target,
+          ),
         { concurrency: 4 },
       );
       return { appId, endpoints: scanned };
@@ -101,7 +107,7 @@ export const makeUrlScanner = (
 const providerListError = (error: ProviderError, redactor: Redactor): ScannerError =>
   new ScannerError({
     message: redactor.redactString(
-      `URL scan could not list provider services: ${error.message}. Check the provider with \`lando doctor\` and re-run the scan.`,
+      `App checks could not list provider services: ${error.message}. Check the provider with \`lando doctor\` and re-run the checks.`,
     ),
     scannerId: SCANNER_ID,
     cause: redactor.redactValue(error),

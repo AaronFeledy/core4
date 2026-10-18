@@ -20,7 +20,7 @@ const expressionError = new ConfigExpressionError({
 const options = (error: unknown) => ({
   command: "app:cache:refresh",
   resultSchema: Schema.Unknown,
-  outcome: { _tag: "failure", error } as const,
+  outcome: { _tag: "failure", error, additionalErrors: [] } as const,
   redactor: identityRedactor,
 });
 

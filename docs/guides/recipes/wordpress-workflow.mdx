@@ -101,7 +101,7 @@ lando wp search-replace 'https://www.example.com' 'https://wp-demo.lndo.site' --
 lando wp cache flush
 ```
 
-`.gz` dumps gunzip on the way in, and `--yes` skips the confirmation prompt. To roll back, find the `before-import` snapshot's id in `lando db:snapshots` and pass it to `lando db:restore`. `lando db:export` writes `database.sql.gz` when you want a dump of your own.
+`.gz` dumps gunzip on the way in, and `--yes` skips the confirmation prompt. To roll back, run `lando db:restore before-import --yes`. `lando db:export` writes `database.sql.gz` when you want a dump of your own.
 
 ## Start from an existing site
 

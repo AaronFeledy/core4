@@ -19,7 +19,7 @@ test.each(["1234", "32", "0;1"])(
       get: () => Effect.succeed(value),
       has: () => Effect.succeed(true),
     });
-    const redactor = await Effect.runPromise(service.forProfile("secrets"));
+    const redactor = await Effect.runPromise(service.forProfile("secrets", { authoritativeTokens: [value] }));
     const text = `\u001b[32mprovider ${value}\u001b[0m`;
     expect(redactor.redactString(text)).toBe("[redacted]");
     expect(redactor.redactStringBounded?.(text, 100)).toBe("[redacted]");

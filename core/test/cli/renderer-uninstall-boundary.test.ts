@@ -73,7 +73,12 @@ describe("uninstall output flows through the renderer seam", () => {
   test("lando TTY mode renders a grouped spaceship-console summary", async () => {
     const root = mkdtempSync(join(tmpdir(), "lando-uninstall-renderer-"));
     try {
-      const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
+      const io = createBufferedRendererIO({
+        isTTY: true,
+        terminalColumns: 80,
+        stdoutIsTTY: true,
+        stdoutColumns: 80,
+      });
       await runWithRendererHandling(uninstall({ dryRun: true, ...isolatedOptions(root) }), {
         runtime: PrivateFileAccessService.layer,
         rendererMode: "lando",

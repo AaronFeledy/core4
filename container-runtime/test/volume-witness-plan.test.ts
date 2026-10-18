@@ -11,7 +11,7 @@ test("pins both adoption helpers to the existing container rather than auto-crea
   const witness = { version: 1, ownerRoot, generation: "a1234567-1234-4123-8123-123456789abc" };
   const plane = makeProviderDataPlane({
     providerId: "podman",
-    snapshotMode: "copy",
+    capabilities: { volumeSnapshot: "none" },
     endpointNamespace: "unix:///fixture.sock",
     prepareWitnessImage: Effect.sync(() => {
       imageReady = true;

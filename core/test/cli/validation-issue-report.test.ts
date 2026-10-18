@@ -50,7 +50,7 @@ describe("validation issue rendering", () => {
       encodeCommandResult({
         command: "app:config:lint",
         resultSchema: Schema.Struct({}),
-        outcome: { _tag: "failure", error },
+        outcome: { _tag: "failure", error, additionalErrors: [] },
         redactor: createRedactor("secrets", { values: [] }),
       }),
     );

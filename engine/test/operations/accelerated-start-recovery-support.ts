@@ -20,7 +20,7 @@ export const session = {
   source: plan.root,
   target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
   mode: "two-way-safe",
-  excludes: [],
+  excludes: [".git"],
 } as const;
 export const acceleratedPlan: AppPlan = {
   ...plan,

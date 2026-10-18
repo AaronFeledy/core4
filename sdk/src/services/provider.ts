@@ -53,6 +53,7 @@ import type {
   VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
+  VolumeSnapshotArtifact,
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
@@ -440,9 +441,12 @@ export class RuntimeProvider extends Context.Service<
     readonly snapshotVolume: (
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+    /** Idempotently remove this provider's snapshot, dispatching on its stored format. */
     readonly removeVolumeSnapshot?: (
       snapshot: VolumeSnapshotRef,
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /** List native snapshot images without consulting a host snapshot index. */
+    readonly listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>;
     readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;

@@ -54,7 +54,7 @@ import { inspectAppliedService, waitForServiceReadiness } from "./service-readin
 import { selectInfoPlan } from "./service-selection.ts";
 import { startFileSyncSessions } from "./start-file-sync.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
-import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
+import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
@@ -63,7 +63,8 @@ export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
 
 export const RestartAppResultSchema = Schema.Struct({
   app: Schema.String,
-  servicesStarted: Schema.Array(StartedServiceResultSchema),
+  servicesStarted: StartAppResultSchema.fields.servicesStarted,
+  checks: StartAppResultSchema.fields.checks,
 });
 
 type RestartAppServices =

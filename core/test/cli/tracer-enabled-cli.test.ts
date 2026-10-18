@@ -23,7 +23,7 @@ test("CLI composition suppresses host spans while direct host execution keeps tr
     io,
     rendererMode: "plain",
     resultFormat: "text",
-    formatError: String,
+    formatError: ({ error }) => String(error),
     render: (result) => result,
     setExitCode: () => undefined,
   });
