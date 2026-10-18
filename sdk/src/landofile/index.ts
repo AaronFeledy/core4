@@ -36,9 +36,16 @@ export {
   isPlainRecord,
   mergeLandofiles,
   mergeValues,
+  mergeValuesWithOrigins,
   routeFilterIdentity,
   routeFilterMatches,
 } from "./overlay-merge.ts";
+export {
+  withValueOrigins,
+  valueOriginAt,
+  type ValueOrigins,
+  type ValueWithOrigins,
+} from "./overlay-origins.ts";
 export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
 export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
 export {
