@@ -4,7 +4,7 @@
  */
 import { resolve } from "node:path";
 
-import { assertDerivedCodegen } from "./require-derived-codegen.ts";
+import { assertDerivedCodegen } from "../core/bin/derived-codegen.ts";
 
 const repoRoot = resolve(import.meta.dir, "..");
 try {

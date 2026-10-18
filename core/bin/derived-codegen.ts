@@ -1,6 +1,9 @@
 /**
  * Fail-fast check that derived codegen outputs exist before tests or the
  * source CLI try to resolve them. Effect-free; node:fs + node:path only.
+ *
+ * Bundled into the compiled binary via `core/bin/lando.ts` but only executed
+ * in source mode (and by the test preload).
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -17,9 +20,7 @@ export const DERIVED_CODEGEN_SENTINELS = [
 ] as const;
 
 export const missingDerivedCodegen = (repoRoot: string): string[] =>
-  DERIVED_CODEGEN_SENTINELS.filter((relative) => !existsSync(join(repoRoot, relative))).map(
-    (relative) => relative,
-  );
+  DERIVED_CODEGEN_SENTINELS.filter((relative) => !existsSync(join(repoRoot, relative)));
 
 export const derivedCodegenMessage = (missing: string[]): string =>
   `Generated modules are missing (${missing.length} of 8): ${missing.join(", ")}. Run \`bun run codegen\` from the repo root, then retry.`;

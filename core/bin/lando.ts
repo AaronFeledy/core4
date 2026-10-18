@@ -15,6 +15,7 @@ import { resolveLandoRoots } from "@lando/paths";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 import { cliUserArgv } from "../src/cli/user-argv";
+import { derivedCodegenMessage, missingDerivedCodegen } from "./derived-codegen.ts";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
@@ -54,43 +55,6 @@ const isMissingGeneratedModuleError = (error: unknown): boolean =>
   error instanceof Error &&
   /Cannot find module/.test(error.message) &&
   /\/generated\/|recipes\/bundled/.test(error.message);
-
-/**
- * Source-mode only. Keep in lockstep with `scripts/require-derived-codegen.ts`
- * (core cannot import scripts/ under package rootDir).
- */
-const DERIVED_CODEGEN_SENTINELS = [
-  "core/src/plugins/generated/bundled.ts",
-  "core/src/runtime/generated/layers/index.ts",
-  "core/src/cli/generated/command-registry-manifest.ts",
-  "core/src/cli/generated/compiled-decoders.mjs",
-  "core/src/recipes/bundled.ts",
-  "mcp/src/generated/mcp-allowlist.ts",
-  "engine/src/deprecation/generated/schema-deprecations.ts",
-  "data-mover/src/generated/provider-images.ts",
-] as const;
-
-const missingGeneratedRemediation = (): string => {
-  const repoRoot = join(import.meta.dir, "../..");
-  const missing = DERIVED_CODEGEN_SENTINELS.filter((relative) => !existsSync(join(repoRoot, relative)));
-  return `Generated modules are missing (${missing.length} of 8): ${missing.join(", ")}. Run \`bun run codegen\` from the repo root, then retry.`;
-};
-
-/**
- * Source-mode only: map a Bun resolve miss on a generated module to the same
- * remediation the test preload prints. Compiled binaries never take this path.
- */
-const importGeneratedDependent = async <T>(load: () => Promise<T>): Promise<T> => {
-  try {
-    return await load();
-  } catch (error) {
-    if (!isCompiledEntry && isMissingGeneratedModuleError(error)) {
-      await writeLine("stderr", missingGeneratedRemediation());
-      process.exit(1);
-    }
-    throw error;
-  }
-};
 
 const LANDOFILE_BASENAMES = [
   ".lando.base",
@@ -172,9 +136,7 @@ const main = async (): Promise<void> => {
     (argv[0] === "--help" || argv[0] === "-h") &&
     !appAliasContext
   ) {
-    const { renderColdRootHelp } = await importGeneratedDependent(
-      () => import("../src/cli/cold-path-output"),
-    );
+    const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
     await writeLine("stdout", renderColdRootHelp());
     return;
   }
@@ -186,9 +148,7 @@ const main = async (): Promise<void> => {
       (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
       (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list"))
   ) {
-    const { renderColdRecipesList } = await importGeneratedDependent(
-      () => import("../src/cli/cold-path-output"),
-    );
+    const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
     await writeLine("stdout", renderColdRecipesList());
     return;
   }
@@ -208,7 +168,7 @@ const main = async (): Promise<void> => {
   (process as NodeJS.EventEmitter).once("SIGINT", onSigint);
   (process as NodeJS.EventEmitter).once("SIGTERM", onSigterm);
   try {
-    const { runCli } = await importGeneratedDependent(() => import("@lando/core/cli"));
+    const { runCli } = await import("@lando/core/cli");
     if (interruptedCode !== undefined) return;
     await runCli({
       argv,
@@ -226,7 +186,8 @@ main().catch(async (error: unknown) => {
   const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/native-stdio");
   if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
   if (!isCompiledEntry && isMissingGeneratedModuleError(error)) {
-    await writeLine("stderr", missingGeneratedRemediation());
+    const repoRoot = join(import.meta.dir, "../..");
+    await writeLine("stderr", derivedCodegenMessage(missingDerivedCodegen(repoRoot)));
     process.exit(1);
   }
   await writeLine("stderr", String(error));

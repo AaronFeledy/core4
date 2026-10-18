@@ -9,7 +9,7 @@ import {
   assertDerivedCodegen,
   derivedCodegenMessage,
   missingDerivedCodegen,
-} from "../../../scripts/require-derived-codegen.ts";
+} from "../../bin/derived-codegen.ts";
 
 const roots: string[] = [];
 
@@ -65,22 +65,24 @@ describe("require-derived-codegen", () => {
       const root = await mkdtemp(join(tmpdir(), "lando-derived-codegen-proc-"));
       roots.push(root);
       const scriptsDir = join(root, "scripts");
+      const coreBinDir = join(root, "core/bin");
       await mkdir(scriptsDir, { recursive: true });
+      await mkdir(coreBinDir, { recursive: true });
       await mkdir(join(root, "test"), { recursive: true });
 
-      const repoScripts = resolve(import.meta.dirname, "../../../scripts");
+      const repoRoot = resolve(import.meta.dirname, "../../..");
       await writeFile(
         join(root, "bunfig.toml"),
         '[test]\npreload = ["./scripts/require-derived-codegen-preload.ts"]\n',
         "utf8",
       );
       await Bun.write(
-        join(root, "scripts/require-derived-codegen.ts"),
-        Bun.file(join(repoScripts, "require-derived-codegen.ts")),
+        join(root, "core/bin/derived-codegen.ts"),
+        Bun.file(join(repoRoot, "core/bin/derived-codegen.ts")),
       );
       await Bun.write(
         join(root, "scripts/require-derived-codegen-preload.ts"),
-        Bun.file(join(repoScripts, "require-derived-codegen-preload.ts")),
+        Bun.file(join(repoRoot, "scripts/require-derived-codegen-preload.ts")),
       );
       await writeFile(
         join(root, "test/smoke.test.ts"),
