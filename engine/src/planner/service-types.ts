@@ -183,13 +183,11 @@ export const serviceTypeCollision = (
     ],
   });
 
-export const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) =>
-  new LandofileValidationError({
+export const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) => {
+  if (cause instanceof LandofileValidationError) return cause;
+  return new LandofileValidationError({
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-    remediation:
-      cause instanceof LandofileValidationError
-        ? cause.remediation
-        : `Correct the configuration of service ${serviceName}.`,
+    remediation: `Correct the configuration of service ${serviceName}.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -198,9 +196,11 @@ export const servicePlanError = (appRoot: string, serviceName: string, cause: un
       ),
     ],
   });
+};
 
-export const appFeatureError = (appRoot: string, cause: unknown) =>
-  new LandofileValidationError({
+export const appFeatureError = (appRoot: string, cause: unknown) => {
+  if (cause instanceof LandofileValidationError) return cause;
+  return new LandofileValidationError({
     message: cause instanceof Error ? cause.message : "Invalid app-feature composition.",
     remediation: "Correct the app-feature configuration or remove the failing feature.",
     file: `${appRoot}/.lando.yml`,
@@ -211,6 +211,7 @@ export const appFeatureError = (appRoot: string, cause: unknown) =>
       ),
     ],
   });
+};
 
 export interface ResolvedService {
   readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
