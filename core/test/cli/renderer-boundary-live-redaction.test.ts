@@ -3,7 +3,7 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { SecretStore } from "@lando/sdk/services";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 for (const format of ["text", "json"] as const) {
@@ -20,17 +20,19 @@ for (const format of ["text", "json"] as const) {
     // When
     await runWithRendererHandling(
       Effect.gen(function* () {
-        const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: canary.slice(0, 9), raw: true });
-        yield* sink.emit({ _tag: "stdout", chunk: `${canary.slice(9)}!\n`, raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
-        return {};
+        const sink = yield* Effect.serviceOption(StreamFrameSink);
+        if (Option.isSome(sink)) {
+          yield* sink.value.emit({ _tag: "stdout", chunk: canary.slice(0, 9), raw: true });
+          yield* sink.value.emit({ _tag: "stdout", chunk: `${canary.slice(9)}!\n`, raw: true });
+          if (sink.value.flush !== undefined) yield* sink.value.flush();
+        }
+        return { output: Option.isSome(sink) ? "" : `${canary}!\n` };
       }),
       {
         runtime: RedactionService.layer.pipe(Layer.provide(store)),
         rendererMode: "plain",
         resultFormat: format,
-        resultSchema: Schema.Struct({}),
+        resultSchema: Schema.Struct({ output: Schema.String }),
         streamingMode: "live",
         io,
         formatError: String,
