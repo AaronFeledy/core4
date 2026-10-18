@@ -3,6 +3,7 @@
  */
 import { resolve } from "node:path";
 import { Effect } from "effect";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Flags } from "../../spec/metadata";
 
 import {
@@ -82,11 +83,7 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
       description: "Remove cache storage volumes.",
       default: false,
     }),
-    yes: Flags.boolean({
-      char: "y",
-      description: "Skip the confirmation prompt.",
-      default: false,
-    }),
+    yes: yesFlag("Skip the confirmation prompt."),
   },
   run: runDestroyCommand,
   render: (result) => renderDestroyAppResult(result as DestroyAppResult),

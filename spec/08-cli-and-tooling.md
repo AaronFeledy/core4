@@ -162,7 +162,7 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 | `unset` | Remove a key |
 | `edit` | Open `$VISUAL`/`$EDITOR`; `--target canonical\|local\|user` |
 | `validate` | Validate merged Landofile (§7.8) |
-| `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write`, `--yes` |
+| `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write` |
 | `explain` | Read-only recipe provenance; `--format json` |
 | `migrate` | Ordered migration proposals; `--yes`, `--dry-run`, `--format json` |
 
@@ -257,6 +257,12 @@ Command registration and invocation preserve these schema-backed `_tag` values:
 | `McpAllowlistConflictError` | Destructive built-in attempts default MCP allowance |
 | `HostProxyCommandNotAllowedError` | Host-proxy canonical id not allowlisted |
 | `NotImplementedError` | Registered deferred command plan |
+
+#### 8.3.1 Confirmation flags
+
+`--yes`/`-y` is CLI-owned and command-declared. A declaration MUST be an optional scalar boolean defaulting to `false`, and no other CLI flag may claim `-y`. Built-in and plugin commands MUST declare it when they request confirmation or when their canonical id ends in `destroy`, `remove`, `uninstall`, `prune`, `gc`, `reset`, `restore`, `rebuild`, or `poweroff`; `apps:scratch:stop` also declares it because it destroys the scratch app. A command that never prompts treats `yes` as a no-op so scripts and agents confirm every destructive command the same way; other commands MAY declare the same no-op. The CLI MUST NOT inject `yes` into a command that does not declare it; ordinary strictness and passthrough rules apply. A no-op declaration MUST NOT add a prompt, and `--yes` MUST NOT widen destructive scope such as `--volumes`, `--purge`, or `--prune`.
+
+A plugin `ExecutableCommandSpec` that declares `yes` MAY set only `type: "boolean"`, `description`, and `default: false`; any other declaration fails to load with `PluginDescriptorMismatchError`. The CLI supplies `-y`, and argv parsing, help, and structured invocation use the same validated declaration.
 
 ### 8.4 Historical OCLIF integration (removed from shipping dispatch)
 
@@ -435,7 +441,7 @@ Persistable nonsecret options MUST appear in inert `recipe.options` with produce
 
 #### 8.8.1 Command surface
 
-`apps:init [destination]` accepts `--recipe`, `--source`, `--name`, repeated `--answer`, `--answers`, `--no-interactive`, `--yes`, `--full`, and `--from-source`.
+`apps:init [destination]` accepts `--recipe`, `--source`, `--name`, repeated `--answer`, `--answers`, `--no-interactive`, `--yes`/`-y`, `--full`, and `--from-source`.
 
 - Destination defaults to `--name` or cwd and MAY contain files. Existing Landofile destinations fail with `InitTargetExistsError`; any other scaffold conflict skips the scaffold set while free Landofile destinations remain writable.
 - Omitted interactive `--recipe` prompts from bundled recipes. `--source` layers an `InitSource` beneath recipe files.
@@ -775,6 +781,8 @@ Published schema contracts are `PromptType`, `PromptChoice`, `PromptValidate`, `
 Per prompt precedence is explicit answers → defaults when `--yes` or non-interactive → interactive prompt → `InteractionRequiredError`. `auto` is interactive only with TTY stdin and stderr; `--interactive` forces prompting; when stdin or stderr is not a TTY it uses line input. Prompt text and controls MUST use stderr; redirecting stdout MUST NOT disable prompts. CI and non-interactive fail-fast behavior MUST remain intact. CLI defaults to `auto`; library mode defaults non-interactive (§16.3).
 
 One shared parser owns repeated `--answer`, `--answers`, `--yes`, `--no-interactive`, and `--interactive` for both entries. Scratch `--option` merges into the same answer source (§21.10.1).
+
+The `--yes` flag and its `-y` short form follow §8.3.1.
 
 #### 8.10.4 Required behaviors
 

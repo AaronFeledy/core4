@@ -1,3 +1,4 @@
+import { yesFlag } from "../../spec/confirmation-flag";
 /**
  * `meta:setup` flag definitions and provider-scoped plugin flag selection.
  *
@@ -15,10 +16,7 @@ import { mergeSetupPluginFlags } from "../../setup-plugin-flags-merge";
 import { contributedSetupInputFlags } from "./setup-inputs";
 
 export const SETUP_BUILTIN_FLAGS = {
-  yes: Flags.boolean({
-    description: "Consent to confirmation prompts and privileged host changes. Does not switch providers.",
-    default: false,
-  }),
+  yes: yesFlag("Consent to confirmation prompts and privileged host changes. Does not switch providers."),
   "no-interactive": Flags.boolean({
     description: "Do not prompt; fail or use documented non-interactive setup defaults.",
     default: false,

@@ -111,6 +111,7 @@ If you are looking for a public surface or policy:
 | Built-in command registry | 08 | §8.2 |
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
+| CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
 | Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |

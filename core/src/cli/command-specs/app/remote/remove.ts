@@ -1,6 +1,7 @@
 import { RemoteMutationResultSchema, appRemoteRemove } from "@lando/engine/operations/remote";
 import { renderRemoteMutationResult } from "../../../commands/remote";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { remoteConfigFlags, remoteNameArg, remoteRemoveOptionsFromInput } from "./common";
 
 export const remoteRemoveSpec: LandoCommandSpec = {
@@ -8,7 +9,7 @@ export const remoteRemoveSpec: LandoCommandSpec = {
   summary: "Remove a remote from the current app Landofile.",
   namespace: "app",
   bootstrap: "app",
-  flags: remoteConfigFlags,
+  flags: { ...remoteConfigFlags, yes: nonPromptingYesFlag },
   args: { name: remoteNameArg },
   resultSchema: RemoteMutationResultSchema,
   run: (input) => appRemoteRemove(remoteRemoveOptionsFromInput(input)),

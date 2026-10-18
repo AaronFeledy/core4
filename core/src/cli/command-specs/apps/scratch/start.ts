@@ -1,3 +1,4 @@
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { Flags } from "../../../spec/metadata";
 
 import {
@@ -28,11 +29,7 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
       multiple: true,
     }),
     answers: Flags.string({ description: "Path to a JSON answers file." }),
-    yes: Flags.boolean({
-      char: "y",
-      description: "Accept every recipe prompt's default without asking.",
-      default: false,
-    }),
+    yes: yesFlag("Accept every recipe prompt's default without asking."),
     interactive: Flags.boolean({
       description: "Force interactive prompting even when stdin or stderr is not a terminal.",
       default: false,

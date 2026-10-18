@@ -34,6 +34,7 @@ import {
 import { universalFormatFlagDefs } from "./format-flags";
 import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
+import { yesFlag } from "./spec/confirmation-flag";
 
 const PLUGIN_OWNED_COMMAND_ID = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 
@@ -45,11 +46,15 @@ export interface RunPluginOwnedCommandOptions {
 
 type PluginOwnedRuntime = Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
 
-const pluginFlagDefinitions = (
+export const pluginFlagDefinitions = (
   spec: Pick<ExecutableCommandSpec, "flags">,
 ): Readonly<Record<string, OclifFlagDefinition>> => {
   const flags: Record<string, OclifFlagDefinition> = { ...universalFormatFlagDefs };
   for (const [name, definition] of Object.entries(spec.flags ?? {})) {
+    if (name === "yes") {
+      flags[name] = yesFlag(definition.description);
+      continue;
+    }
     flags[name] = {
       name,
       type: definition.type === "boolean" ? "boolean" : "option",
