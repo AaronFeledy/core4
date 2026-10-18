@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid lando3 recipe translation layer
 recipe: lamp
 config:
   php: "8.2"

@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid lando3 compose-arguments translation input
 name: l3cmd
 services:
   whoami:
