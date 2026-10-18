@@ -24,9 +24,9 @@ lando shell --service appserver
 
 ## Keep shell and client history across rebuilds
 
-Interactive `lando shell --service` and TTY `lando exec` sessions write history into one app-scoped volume mounted at `/run/lando/history`. Files are flat per service and user: `appserver.www-data.bash_history`, `db.mysql.mysql_history`, plus `psql`, `redis`, `sqlite`, `node`, and `python` client files named the same way. Python honors `PYTHON_HISTORY` only on 3.13 and newer.
+Interactive `lando shell --service` and TTY `lando exec` sessions write history into one app-scoped volume mounted at `/run/lando/history`. Files are flat per service and user: `appserver.default.bash_history` when the service has no planned user, `db.mysql.mysql_history`, plus `psql`, `redis`, `sqlite`, `node`, and `python` client files named the same way. Python honors `PYTHON_HISTORY` only on 3.13 and newer.
 
-`sh`-only images still start `sh -l`. Dash on Debian does not write `HISTFILE`. Persistent bash history for those shells needs the bash-preferring service shell from #1478.
+History needs a shell that writes `HISTFILE` (for example bash). `sh`-only images still start `sh -l`. Dash on Debian does not write `HISTFILE`.
 
 This is on by default for mysql, mariadb, postgres, redis, php, node, and python services. Opt one service out, opt a non-default type in, or turn the whole app off:
 

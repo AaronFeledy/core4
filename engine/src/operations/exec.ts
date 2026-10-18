@@ -19,7 +19,7 @@ import {
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
-import { mergeHistoryExecEnv } from "../config/history-env.ts";
+import { mergeHistoryExecEnv, resolveHistoryExecUser } from "../config/history-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import {
@@ -134,7 +134,7 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
     provider,
     target,
     serviceName: String(service.name),
-    user: options.user ?? service.user ?? target.user,
+    user: resolveHistoryExecUser(options.user, service.user, target.user),
     serviceEnv: service.environment,
     env: terminalEnv,
     tty,

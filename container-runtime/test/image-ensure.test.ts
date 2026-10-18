@@ -308,6 +308,23 @@ describe("ensureImage", () => {
     expect(fake.requests.filter((request) => request.method === "POST")).toHaveLength(1);
   });
 
+  test("makeEnsureImage skips the registry for a local image when the service has no platform pin", async () => {
+    const fake = makeApi({
+      inspectBody: inspectBody({ os: "linux", architecture: "amd64" }),
+    });
+
+    await Effect.runPromise(
+      makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+        service: service(),
+        ref: "nginx:1.27",
+        force: false,
+      }),
+    );
+
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]?.method).toBe("GET");
+  });
+
   test("makeEnsureImage reads compose.platform and ignores build.platforms", async () => {
     const pinned = makeApi({ inspectStatus: 404 });
     const buildOnly = makeApi({ inspectStatus: 404 });

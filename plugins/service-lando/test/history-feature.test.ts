@@ -45,9 +45,9 @@ const planApp = (landofile: typeof LandofileShape.Type, config?: GlobalConfig) =
 };
 
 describe("service-lando.history AppFeature", () => {
-  test("omits selectors and an explicit boot trigger", () => {
+  test("declares empty activatedBy.services and omits selectors", () => {
     expect(historyVolumeFeature.id).toBe(HISTORY_FEATURE_ID);
-    expect(historyVolumeFeature.activatedBy).toBeUndefined();
+    expect(historyVolumeFeature.activatedBy).toEqual({ services: {} });
     expect(historyVolumeFeature.selectors).toBeUndefined();
   });
 

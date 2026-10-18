@@ -79,7 +79,7 @@ describe("PluginRegistry.loadAppFeature", () => {
     expect(loaded).toBe(feature);
   });
 
-  test("loads an app feature that declares neither activatedBy nor selectors", async () => {
+  test("rejects an app feature that declares neither activatedBy nor selectors", async () => {
     const feature: AppFeatureDefinition = {
       id: "test.unscoped-app-feature",
       priority: 100,
@@ -97,12 +97,16 @@ describe("PluginRegistry.loadAppFeature", () => {
       appFeatures: new Map([["test.unscoped-app-feature", feature]]),
     });
 
-    const loaded = await runWithPluginRegistry(
+    const exit = await runExitWithPluginRegistry(
       Effect.flatMap(PluginRegistry, (registry) => registry.loadAppFeature("test.unscoped-app-feature")),
       [extraBundledPlugin],
     );
 
-    expect(loaded).toBe(feature);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const failure = Cause.findErrorOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(PluginLoadError);
   });
 
   test("loads app feature contributions from linked user plugins", async () => {

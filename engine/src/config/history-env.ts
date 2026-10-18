@@ -11,6 +11,13 @@ import type { ExecTarget, RuntimeProviderShape, ServiceRuntimeInfo } from "@land
 export const containerHasHistoryMount = (runtime: ServiceRuntimeInfo | undefined): boolean =>
   runtime?.mountDestinations?.includes(HISTORY_MOUNT_TARGET) === true;
 
+/** Shared exec/shell/tooling fallback: flag, then planned service user, then target. */
+export const resolveHistoryExecUser = (
+  explicit: string | undefined,
+  serviceUser: string | undefined,
+  targetUser: string | undefined,
+): string | undefined => explicit ?? serviceUser ?? targetUser;
+
 const resolvedValue = (
   name: string,
   serviceEnv: Readonly<Record<string, string>> | undefined,

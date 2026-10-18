@@ -7,6 +7,7 @@ import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/servic
 import {
   containerHasHistoryMount,
   mergeHistoryExecEnv,
+  resolveHistoryExecUser,
   withHistoryExecEnv,
 } from "../../src/config/history-env.ts";
 
@@ -174,6 +175,13 @@ describe("mergeHistoryExecEnv", () => {
     );
     expect(env?.HISTFILE).toBe(hist("web", "bash_history", "www-data"));
   });
+});
+
+test("resolveHistoryExecUser prefers explicit, then service, then target", () => {
+  expect(resolveHistoryExecUser("flag", "service", "target")).toBe("flag");
+  expect(resolveHistoryExecUser(undefined, "service", "target")).toBe("service");
+  expect(resolveHistoryExecUser(undefined, undefined, "target")).toBe("target");
+  expect(resolveHistoryExecUser(undefined, undefined, undefined)).toBeUndefined();
 });
 
 test("containerHasHistoryMount reads inspect destinations", () => {

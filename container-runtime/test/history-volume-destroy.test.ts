@@ -120,19 +120,6 @@ test("destroy --volumes issues DELETE for the history volume", async () => {
   expect(historyVolumeRequests(requests).some((request) => request.method === "DELETE")).toBe(true);
 });
 
-test("destroy --purge issues DELETE for the history volume", async () => {
-  const { api, requests } = recordingApi(true);
-  await Effect.runPromise(
-    bringDown(historyPlan, {
-      api,
-      ctx: { providerId: "docker", remediation: "retry" },
-      dialect: dockerLifecycleDialect,
-      volumes: true,
-    }),
-  );
-  expect(historyVolumeRequests(requests).some((request) => request.method === "DELETE")).toBe(true);
-});
-
 test("destroy --purge-caches leaves the history data volume", async () => {
   const { api, requests } = recordingApi(true);
   await Effect.runPromise(

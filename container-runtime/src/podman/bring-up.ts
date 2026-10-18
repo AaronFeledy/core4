@@ -59,6 +59,7 @@ import {
   VOLUME_HISTORY_IMAGE,
   VOLUME_HISTORY_MOUNT,
   volumeHistoryInitCommand,
+  volumeHistoryModeCheckCommand,
 } from "../volume-history-helper.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
@@ -446,14 +447,31 @@ const warnHistoryInit = (deps: BringUpDeps, message: string): Effect.Effect<void
         .publish(MessageWarnEvent.make({ body: message, timestamp: DateTime.nowUnsafe() }))
         .pipe(Effect.catch(() => Effect.void));
 
+const historyInitContinueHint =
+  "Interactive history may be unwritable until a later start initializes the volume.";
+
+const warnHistoryInitFailure = (
+  deps: BringUpDeps,
+  failure: unknown,
+  fallback: string,
+  recovery: string,
+): Effect.Effect<void, ProviderInternalError> => {
+  const cause = failure instanceof Error ? failure.message : fallback;
+  return warnHistoryInit(deps, `${cause} ${historyInitContinueHint} ${recovery}`);
+};
+
 const ensureHistoryHelperImage = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
 ): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
   const service = Object.values(plan.services)[0];
   if (service !== undefined && deps.options.ensureImage !== undefined) {
+    // Strip compose.platform so the helper is not bound to the first service's
+    // pull/platform policy. ensureImage inspects first and skips the registry
+    // when the helper image is already local.
+    const helperService = { ...service, extensions: {} };
     yield* deps.options
-      .ensureImage({ service, ref: VOLUME_HISTORY_IMAGE, force: false })
+      .ensureImage({ service: helperService, ref: VOLUME_HISTORY_IMAGE, force: false })
       .pipe(
         Effect.catch((error) =>
           Effect.fail(
@@ -487,10 +505,12 @@ const ensureHistoryHelperImage = Effect.fnUntraced(function* (
   );
 });
 
-const initializeHistoryVolume = Effect.fnUntraced(function* (
+const runHistoryHelper = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   storeName: string,
-): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  command: readonly string[],
+  operation: "init" | "mode-check",
+): Effect.fn.Return<number, ProviderUnavailableError | ProviderInternalError> {
   const helperName = `lando-hist-${storeName}`.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 128);
   const remove = request(deps, {
     method: "DELETE",
@@ -502,7 +522,7 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
     path: `/containers/create?name=${encodeURIComponent(helperName)}`,
     body: {
       Image: VOLUME_HISTORY_IMAGE,
-      Cmd: [...volumeHistoryInitCommand()],
+      Cmd: [...command],
       User: "0:0",
       HostConfig: {
         Binds: [`${storeName}:${VOLUME_HISTORY_MOUNT}`],
@@ -516,7 +536,7 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
         deps,
         storeName,
         withApiReason(
-          `provider-${deps.options.ctx.providerId} history volume init create failed with HTTP ${created.status}.`,
+          `provider-${deps.options.ctx.providerId} history volume ${operation} create failed with HTTP ${created.status}.`,
           { status: created.status, body: created.body },
         ),
         { status: created.status, body: created.body },
@@ -534,7 +554,7 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
         deps,
         storeName,
         withApiReason(
-          `provider-${deps.options.ctx.providerId} history volume init start failed with HTTP ${started.status}.`,
+          `provider-${deps.options.ctx.providerId} history volume ${operation} start failed with HTTP ${started.status}.`,
           { status: started.status, body: started.body },
         ),
         { status: started.status, body: started.body },
@@ -552,7 +572,7 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
         deps,
         storeName,
         withApiReason(
-          `provider-${deps.options.ctx.providerId} history volume init wait failed with HTTP ${waited.status}.`,
+          `provider-${deps.options.ctx.providerId} history volume ${operation} wait failed with HTTP ${waited.status}.`,
           { status: waited.status, body: waited.body },
         ),
         { status: waited.status, body: waited.body },
@@ -566,13 +586,31 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
   } catch {
     statusCode = 0;
   }
+  return statusCode;
+});
+
+const historyVolumeIsStickyWritable = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<boolean, never> {
+  const checked = yield* Effect.result(
+    runHistoryHelper(deps, storeName, volumeHistoryModeCheckCommand(), "mode-check"),
+  );
+  return checked._tag === "Success" && checked.success === 0;
+});
+
+const initializeHistoryVolume = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  const statusCode = yield* runHistoryHelper(deps, storeName, volumeHistoryInitCommand(), "init");
   if (statusCode !== 0) {
     return yield* Effect.fail(
       historyInitFailure(
         deps,
         storeName,
         `provider-${deps.options.ctx.providerId} history volume init exited ${statusCode}.`,
-        { statusCode, body: waited.body },
+        { statusCode },
       ),
     );
   }
@@ -583,25 +621,30 @@ const initializeHistoryVolumes = Effect.fnUntraced(function* (
   plan: AppPlan,
   createdStores: ReadonlySet<string>,
 ): Effect.fn.Return<void, ProviderInternalError> {
-  const stores = historyStoreNamesFromPlan(plan).filter((name) => createdStores.has(name));
+  const stores = historyStoreNamesFromPlan(plan);
   if (stores.length === 0) return;
   const imageReady = yield* Effect.result(ensureHistoryHelperImage(deps, plan));
   if (imageReady._tag === "Failure") {
-    const message =
-      imageReady.failure instanceof Error
-        ? imageReady.failure.message
-        : `History helper image ${VOLUME_HISTORY_IMAGE} could not be pulled. Interactive history may be unwritable until the next rebuild.`;
-    yield* warnHistoryInit(deps, message);
+    yield* warnHistoryInitFailure(
+      deps,
+      imageReady.failure,
+      `History helper image ${VOLUME_HISTORY_IMAGE} could not be pulled.`,
+      "Retry start once the helper image is available, or run lando doctor.",
+    );
     return;
   }
   for (const storeName of stores) {
+    const needsInit =
+      createdStores.has(storeName) || !(yield* historyVolumeIsStickyWritable(deps, storeName));
+    if (!needsInit) continue;
     const init = yield* Effect.result(initializeHistoryVolume(deps, storeName));
     if (init._tag === "Failure") {
-      const message =
-        init.failure instanceof Error
-          ? init.failure.message
-          : `History volume ${storeName} could not be initialized. Interactive history may be unwritable until the next rebuild.`;
-      yield* warnHistoryInit(deps, message);
+      yield* warnHistoryInitFailure(
+        deps,
+        init.failure,
+        `History volume ${storeName} could not be initialized.`,
+        "Retry start, or run lando doctor.",
+      );
     }
   }
 });

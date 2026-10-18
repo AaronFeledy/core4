@@ -4,7 +4,7 @@ export const VOLUME_HISTORY_MODE = 0o1777;
 
 // Runs inside the scoped helper, not the host. Directory descriptors prevent
 // symlink following; fchmod + fsync make the sticky-writable root durable.
-const source = String.raw`
+const helperPreamble = String.raw`
 const fs = require("node:fs");
 const path = require("node:path");
 const C = fs.constants;
@@ -22,16 +22,33 @@ try {
       rootFd = next;
     }
   } catch (error) { fs.closeSync(rootFd); throw error; }
+`;
+
+const initSource = `${helperPreamble}
   try {
     fs.fchmodSync(rootFd, ${VOLUME_HISTORY_MODE});
     fs.fsyncSync(rootFd);
   } finally { fs.closeSync(rootFd); }
-} catch { process.stderr.write("History volume init unavailable or unsafe\n"); process.exitCode = 1; }
+} catch { process.stderr.write("History volume init unavailable or unsafe\\n"); process.exitCode = 1; }
 `;
 
-export const volumeHistoryInitCommand = (root: string = VOLUME_HISTORY_MOUNT): readonly string[] => [
+const modeCheckSource = `${helperPreamble}
+  try {
+    const mode = fs.fstatSync(rootFd).mode & ${0o7777};
+    process.exitCode = mode === ${VOLUME_HISTORY_MODE} ? 0 : 1;
+  } finally { fs.closeSync(rootFd); }
+} catch { process.exitCode = 1; }
+`;
+
+const historyHelperCommand = (source: string, root: string): readonly string[] => [
   "bun",
   "-e",
   source,
   JSON.stringify({ root }),
 ];
+
+export const volumeHistoryInitCommand = (root: string = VOLUME_HISTORY_MOUNT): readonly string[] =>
+  historyHelperCommand(initSource, root);
+
+export const volumeHistoryModeCheckCommand = (root: string = VOLUME_HISTORY_MOUNT): readonly string[] =>
+  historyHelperCommand(modeCheckSource, root);

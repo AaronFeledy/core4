@@ -30,7 +30,7 @@ import {
 
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
-import { mergeHistoryExecEnv } from "@lando/engine/config/history-env";
+import { mergeHistoryExecEnv, resolveHistoryExecUser } from "@lando/engine/config/history-env";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
@@ -277,7 +277,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       provider,
       target,
       serviceName: String(service.name),
-      user: options.user ?? service.user,
+      user: resolveHistoryExecUser(options.user, service.user, target.user),
       serviceEnv: service.environment,
       env: agentEnv,
       tty: true,

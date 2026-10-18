@@ -17,9 +17,12 @@ const historyMountTarget = PortablePath.make(HISTORY_MOUNT_TARGET);
 
 export const historyVolumeFeature: AppFeatureDefinition = {
   id: HISTORY_FEATURE_ID,
-  // No activatedBy: an explicit boot trigger cycles with php.db-client wiring.
-  // No selectors: empty-match would throw for apps whose types are not compose
-  // or default-history, and would ignore `history: true` on those services.
+  // Empty activatedBy.services matches every service and satisfies the loader
+  // guard without adding cycle edges (hasExplicitTrigger is type/hasFeature).
+  // No selectors: empty-match would throw for apps whose types are not
+  // compose or default-history, and would ignore `history: true` on those
+  // services. apply still filters with shouldAttachHistoryVolume.
+  activatedBy: { services: {} },
   priority: 110,
   apply: Effect.fn("HistoryVolumeFeature.apply")((ctx) =>
     Effect.sync(() => {
