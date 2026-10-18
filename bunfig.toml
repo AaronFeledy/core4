@@ -2,7 +2,7 @@
 linker = "hoisted"
 
 [test]
-preload = ["./scripts/test-preload.ts"]
+preload = ["./scripts/require-derived-codegen-preload.ts", "./scripts/test-preload.ts"]
 include = [
   "core/test/**/*.test.ts",
   "engine/test/**/*.test.ts",
