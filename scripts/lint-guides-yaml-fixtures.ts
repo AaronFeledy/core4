@@ -48,7 +48,7 @@ const collectLandofileFiles = async (
 /**
  * Validate every `.lando.yml` (full) and `.lando.*.yml` (fragment) under fixture
  * inventory directories. Emits `guide.fixture.landofile-invalid`.
- * Marked v4 fixtures must fail; explicitly marked Lando 3 inputs use another dialect.
+ * Every expect-invalid reason asserts native authoring failure; markers belong on line 1.
  */
 export const lintFixtureLandofiles = async (
   repoRoot: string,
@@ -62,10 +62,23 @@ export const lintFixtureLandofiles = async (
     for (const file of files) {
       const absolutePath = resolve(repoRoot, file.relativePath);
       const content = await Bun.file(absolutePath).text();
-      const expectation = /^# lando-lint: expect-invalid\s+(.+)$/
-        .exec(content.split(/\r?\n/, 1)[0] ?? "")?.[1]
-        ?.trim();
-      if (expectation !== undefined && /^lando3(?:\s|$)/.test(expectation)) continue;
+      const markers = content
+        .replace(/^\uFEFF/, "")
+        .split(/\r?\n/)
+        .flatMap((line, index) => {
+          const match = /^\s*# lando-lint: expect-invalid\s+(.+)$/.exec(line);
+          return match === null ? [] : [{ line: index + 1, reason: match[1]?.trim() }];
+        });
+      for (const marker of markers) {
+        if (marker.line === 1) continue;
+        diagnostics.push({
+          sourcePath: file.relativePath,
+          line: marker.line,
+          column: 1,
+          code: "guide.fixture.landofile-marker-placement",
+          message: "Put the expect-invalid marker on the first line of the fixture.",
+        });
+      }
       const findings: GuideLintDiagnostic[] = [];
       lintYamlDocument({
         sourcePath: file.relativePath,
@@ -78,15 +91,16 @@ export const lintFixtureLandofiles = async (
         parseCode: "guide.fixture.landofile-invalid",
         diagnostics: findings,
       });
-      if (expectation === undefined) diagnostics.push(...findings);
+      if (markers.length === 0) diagnostics.push(...findings);
       else if (findings.length === 0)
-        diagnostics.push({
-          sourcePath: file.relativePath,
-          line: 1,
-          column: 1,
-          code: "guide.fixture.landofile-unexpected-valid",
-          message: `Fixture marked expect-invalid decoded successfully: ${expectation}. Remove the marker or restore the intended invalid input.`,
-        });
+        for (const marker of markers)
+          diagnostics.push({
+            sourcePath: file.relativePath,
+            line: marker.line,
+            column: 1,
+            code: "guide.fixture.landofile-unexpected-valid",
+            message: `Fixture marked expect-invalid decoded successfully: ${marker.reason}. Remove the marker or restore the intended invalid input.`,
+          });
     }
   }
 };

@@ -9,12 +9,11 @@ import { dirname, resolve } from "node:path";
 
 import { Effect, Predicate, Result, Schema } from "effect";
 
-import type { LandofileParseError } from "@lando/sdk/errors";
-import { parseLandofile } from "@lando/sdk/landofile";
+import { type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
+import { decodeLandofileAuthoringLayer, parseLandofile } from "@lando/sdk/landofile";
 import {
   GlobalConfig,
   LandofileAuthoringFragmentNative,
-  LandofileAuthoringShape,
   LandofileShape,
   ServiceConfig,
   formatValidationIssueLine,
@@ -124,7 +123,7 @@ const formatParseMessage = (error: LandofileParseError): string => {
 };
 
 export const firstValidationMessage = (cause: unknown): string => {
-  const issues = validationIssuesFromCause(cause);
+  const issues = cause instanceof LandofileValidationError ? cause.issues : validationIssuesFromCause(cause);
   const first = issues[0];
   return first === undefined ? "Invalid Landofile." : formatValidationIssueLine(first);
 };
@@ -139,7 +138,7 @@ export const validateClassified = (context: YamlLintContext, value: unknown, for
     case "skip":
       return;
     case "full":
-      decoding = decodeStrict(LandofileAuthoringShape, value);
+      decoding = decodeLandofileAuthoringLayer(context.sourcePath, value);
       break;
     case "global":
       decoding = decodeStrict(GlobalConfig, value);
