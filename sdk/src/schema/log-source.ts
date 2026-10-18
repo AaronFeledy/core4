@@ -94,7 +94,11 @@ const LogSourceInputFields = Schema.Struct({
   id: Schema.optionalKey(LogSourceId).annotate({
     description: "Optional source id; defaults to the path basename.",
   }),
-}).annotate({ identifier: "LogSourceInput" });
+}).annotate({
+  identifier: "LogSourceInput",
+  expected: "a log source object with an absolute path",
+  message: "Expected a log source object with an absolute path",
+});
 
 /**
  * `LogSourceInput` is the Landofile-facing shape (`services.<name>.logs:`).

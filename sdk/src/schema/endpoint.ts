@@ -88,6 +88,8 @@ export type PublishedEndpointInput = typeof PublishedEndpointInput.Type;
 
 export const EndpointInput = Schema.Union([InternalEndpointInput, PublishedEndpointInput]).annotate({
   identifier: "EndpointInput",
+  expected: 'an internal or published endpoint object with "_tag"',
+  message: 'Expected an internal or published endpoint object with "_tag"',
 });
 export type EndpointInput = typeof EndpointInput.Type;
 
