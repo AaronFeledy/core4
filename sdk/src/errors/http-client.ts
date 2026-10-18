@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 const HttpTrustErrorKind = Schema.Literals([
   "proxy-authentication",
+  "proxy-tunnel-refused",
   "tls-interception",
   "missing-custom-ca",
   "blocked-endpoint",

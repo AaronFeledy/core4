@@ -1828,7 +1828,10 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["network", "provider"]);
-    expect(fetchInits[0]).toMatchObject({ method: "HEAD", proxy: "http://proxy.example:8080" });
+    expect(fetchInits[0]).toMatchObject({
+      method: "HEAD",
+      proxy: { url: "http://proxy.example:8080", respectNoProxy: false },
+    });
   });
 
   test("default network trust probe classifies blocked registry failures before setup downloads", async () => {
