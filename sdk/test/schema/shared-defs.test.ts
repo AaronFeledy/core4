@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import { getJsonSchema } from "@lando/sdk/schema";
-import { Predicate } from "effect";
 
 import { pruneUnusedDefinitions } from "../../src/schema/json-schema-definitions.ts";
 
@@ -18,22 +17,13 @@ test.each(["MysqlServiceConfig", "PhpServiceConfig"] as const)(
     const pruned = pruneUnusedDefinitions(structuredClone(document));
 
     // Then
-    expect(Predicate.isObject(document.properties)).toBe(true);
-    expect(Predicate.isObject(document.$defs)).toBe(true);
-    expect(Predicate.isObject(pruned.$defs)).toBe(true);
-    if (
-      !Predicate.isObject(document.properties) ||
-      !Predicate.isObject(document.$defs) ||
-      !Predicate.isObject(pruned.$defs)
-    )
-      return;
     for (const [field, contract] of contracts) {
       const { $schema: _schema, $defs: _defs, ...standalone } = getJsonSchema(contract);
       expect(standalone.$ref).toBeUndefined();
-      expect(document.properties[field]).toMatchObject({ $ref: `#/$defs/${contract}` });
-      expect(document.$defs[contract]).toEqual(standalone);
-      expect(pruned.$defs[contract]).toEqual(standalone);
-      expect(document.properties[field]).not.toHaveProperty("anyOf");
+      expect(document).toHaveProperty(["properties", field, "$ref"], `#/$defs/${contract}`);
+      expect(document).toHaveProperty(["$defs", contract], standalone);
+      expect(pruned).toHaveProperty(["$defs", contract], standalone);
+      expect(document).not.toHaveProperty(["properties", field, "anyOf"]);
     }
   },
 );
@@ -44,14 +34,10 @@ test.each([
   ["ServiceConfigInput", "logs", "LogSourceInput"],
 ] as const)("%s shares its %s item contract", (name, field, contract) => {
   // Given
-  const document = getJsonSchema(name);
   const { $schema: _schema, $defs: _defs, ...standalone } = getJsonSchema(contract);
   // When
-  const properties = document.properties;
+  const document = getJsonSchema(name);
   // Then
-  expect(Predicate.isObject(properties)).toBe(true);
-  expect(Predicate.isObject(document.$defs)).toBe(true);
-  if (!Predicate.isObject(properties) || !Predicate.isObject(document.$defs)) return;
-  expect(properties[field]).toMatchObject({ items: { $ref: `#/$defs/${contract}` } });
-  expect(document.$defs[contract]).toEqual(standalone);
+  expect(document).toHaveProperty(["properties", field, "items", "$ref"], `#/$defs/${contract}`);
+  expect(document).toHaveProperty(["$defs", contract], standalone);
 });
