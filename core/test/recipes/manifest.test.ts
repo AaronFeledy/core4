@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { RecipeManifestParseError, RecipeManifestValidationError } from "@lando/sdk/errors";
+import { parseLandofile } from "@lando/sdk/landofile";
 
 import {
   nodePostgresRecipeSource,
   nodePostgresRecipeYaml,
 } from "../../src/recipes/builtin/node-postgres/manifest.ts";
+import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 
 const runParse = async (source: string, content: string) =>
@@ -772,6 +774,36 @@ meta: {a: 1, b: 2}
       );
     }
   });
+
+  test.each(["a.b", "a/b", "@key", "__proto__"])(
+    "uses generic advice when a flow member %s cannot be rewritten for both parsers",
+    async (key) => {
+      const error = expectFailure(await runParse("test://flow-key", `meta: {${key}: "8.3"}`));
+      expect(error).toBeInstanceOf(RecipeManifestParseError);
+      if (!(error instanceof RecipeManifestParseError)) throw new Error("Expected recipe parse error");
+      expect(error.message).toContain(
+        "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+      );
+      expect(error.message).not.toContain(`\n  ${key}:`);
+    },
+  );
+
+  test.each(['meta: {version: "8.3", enabled: true}', "healthcheck: {disable: true}"])(
+    "reparses concrete advice through both actual parsers: %s",
+    (content) => {
+      const source = "test://flow-rewrite";
+      const result = Effect.runSync(Effect.result(parseRecipeYaml({ source, content })));
+      if (result._tag !== "Failure") throw new Error("Expected rejected flow mapping");
+      const rewrite = result.failure.message.split("\n").slice(1).join("\n");
+      const expected = content.startsWith("meta")
+        ? { meta: { version: "8.3", enabled: true } }
+        : { healthcheck: { disable: true } };
+      expect(Effect.runSync(parseRecipeYaml({ source, content: rewrite }))).toEqual(expected);
+      expect(Effect.runSync(parseLandofile({ file: source, content: rewrite, cwd: "/app" }))).toEqual(
+        expected,
+      );
+    },
+  );
 
   test("nested inline flow mapping is rejected with a generic block suggestion", async () => {
     const yaml = `id: flow-nested

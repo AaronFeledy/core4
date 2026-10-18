@@ -9,11 +9,13 @@
  * Landofile parser graph.
  */
 
+import { yamlMappingKeyText } from "../yaml/scalar.ts";
+
 /** Generic suggestion when a concrete block rewrite would be unsafe. */
 export const GENERIC_FLOW_MAPPING_REMEDIATION =
   "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.";
 
-const SIMPLE_KEY = /^[A-Za-z0-9_.@/-]+$/;
+const SIMPLE_KEY = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
 export interface FlowMappingRemediationOptions {
   /** Mapping key that owns the flow value, when known (e.g. `healthcheck`). */
@@ -42,7 +44,7 @@ const trySimpleFlowPairs = (
     if (colon <= 0) return undefined;
     const key = entry.slice(0, colon).trim();
     const value = entry.slice(colon + 1).trim();
-    if (key === "" || value === "" || !SIMPLE_KEY.test(key)) return undefined;
+    if (key === "__proto__" || value === "" || !SIMPLE_KEY.test(key)) return undefined;
     if (/["']/.test(value) && !/^(?:"[^",:]*"|'[^',:]*')$/.test(value)) return undefined;
     // A second unquoted mapping-style "k: v" inside the value is not single-level.
     // Port-style scalars such as `8080:80` stay one token (no space after ':').
@@ -63,10 +65,12 @@ export const flowMappingRemediation = (
   if (pairs === undefined) return GENERIC_FLOW_MAPPING_REMEDIATION;
 
   const lines: string[] = ["Rewrite the flow mapping as a block mapping:"];
-  const parentKey = options.parentKey?.trim();
+  const parentKey = options.parentKey;
   let indent = "";
-  if (parentKey !== undefined && parentKey !== "") {
-    lines.push(`${parentKey}:`);
+  if (parentKey !== undefined) {
+    const keyText = yamlMappingKeyText(parentKey);
+    if (/^[A-Za-z0-9_-]+$/.test(parentKey) && keyText !== parentKey) return GENERIC_FLOW_MAPPING_REMEDIATION;
+    lines.push(`${keyText}:`);
     indent = "  ";
   }
   for (const { key, value } of pairs) {

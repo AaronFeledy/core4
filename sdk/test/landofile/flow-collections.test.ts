@@ -42,6 +42,38 @@ const mappings = [
 ] as const;
 
 describe("Landofile flow collections", () => {
+  test.each(["custom key", " custom key ", "custom:key", ""])(
+    "reparses the suggested rewrite with the original parent key %j",
+    (key) => {
+      const content = `${JSON.stringify(key)}: {enabled: true}\n`;
+      const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
+      if (result._tag !== "Failure") throw new Error("Expected rejected flow mapping");
+      const rewrite = result.failure.remediation?.split("\n").slice(1).join("\n");
+      if (rewrite === undefined) throw new Error("Expected concrete rewrite");
+      expect(Effect.runSync(parseLandofile({ file, content: rewrite, cwd: "/app" }))).toEqual({
+        [key]: { enabled: true },
+      });
+    },
+  );
+
+  test("reparses the healthcheck disable rewrite without changing its values", () => {
+    const result = Effect.runSync(
+      Effect.result(
+        parseLandofile({
+          file,
+          content: "healthcheck: {disable: true, timeout: 5s}",
+          cwd: "/app",
+        }),
+      ),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected rejected flow mapping");
+    const rewrite = result.failure.remediation?.split("\n").slice(1).join("\n");
+    if (rewrite === undefined) throw new Error("Expected concrete rewrite");
+    expect(Effect.runSync(parseLandofile({ file, content: rewrite, cwd: "/app" }))).toEqual({
+      healthcheck: { disable: true, timeout: "5s" },
+    });
+  });
+
   test.each([...mappings])("v4 rejects populated flow mappings in $text", ({ text, column, remediation }) => {
     // Given
     const content = `value: ${text}\n`;
