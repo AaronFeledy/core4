@@ -72,10 +72,9 @@ export const layerNotificationConsumerForMode = (
     case "json":
       return RendererRuntime.layerJsonNotification(io);
     case "lando":
+      // Machine result formats keep human narration off both streams.
       return landoRenderer.makeEventConsumer({
-        writeStderr: io.writeStderr,
-        terminalColumns: io.terminalColumns,
-        terminalRows: io.terminalRows,
+        writeStderr: () => {},
         ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
       });
     case "plain":

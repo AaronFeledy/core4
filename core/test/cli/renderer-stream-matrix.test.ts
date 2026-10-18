@@ -117,6 +117,9 @@ for (const mode of ["lando", "plain", "json", "verbose"] as const) {
           if (mode === "lando" && stderrTTY && shape !== "envelope") {
             expect(buffer.stderr()).toContain("╭─");
           }
+          if (shape === "envelope" && mode !== "verbose") {
+            expect(buffer.stderr()).not.toContain("Generating");
+          }
         });
       }
     }
