@@ -370,6 +370,55 @@ describe("EventCommandExecutorLayer.layer", () => {
     });
   });
 
+  test("preserves a nested command's complete combined cause", async () => {
+    // Given: a target whose operation and cleanup both fail.
+    const primary = new EventCommandTestError({ message: "target failed" });
+    const secondary = new EventCommandTestError({ message: "cleanup failed" });
+    const cause = Cause.combine(Cause.fail(primary), Cause.fail(secondary));
+    const harness = makeHarness();
+    const executor = executorFor(entryFor(testSpec(() => Effect.failCause(cause))), harness);
+    // When: the nested target executes.
+    const exit = await Effect.runPromiseExit(
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+    // Then: the parent receives both reasons without squashing.
+    expect(
+      Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
+    ).toEqual([primary, secondary]);
+  });
+
+  test("keeps a nested defect a typed failure after the primary failure", async () => {
+    // Given: a target whose operation fails and whose cleanup dies.
+    const primary = new EventCommandTestError({ message: "target failed" });
+    const defect = new Error("cleanup crashed");
+    const harness = makeHarness();
+    const executor = executorFor(
+      entryFor(testSpec(() => Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(defect))))),
+      harness,
+    );
+    // When: the nested target executes.
+    const exit = await Effect.runPromiseExit(
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+    // Then: both values arrive as Fail reasons, so event-step error mapping still sees them.
+    expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
+    expect(
+      Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
+    ).toEqual([primary, defect]);
+  });
+
   test("propagates target interruption", async () => {
     // Given
     const harness = makeHarness();

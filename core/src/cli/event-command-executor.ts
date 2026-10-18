@@ -1,5 +1,6 @@
 import { Cause, Context, Effect, Layer } from "effect";
 
+import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 
@@ -217,7 +218,13 @@ export const makeEventCommandExecutor = (
           };
         }
         if (Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.interrupt;
-        return yield* Effect.fail(Cause.squash(exit.cause));
+        // Nested defects stay typed failures so event-step error mapping still applies.
+        const failure = failureOutcomeFromCause(exit.cause);
+        return yield* Effect.failCause(
+          Cause.fromReasons(
+            [failure.error, ...(failure.additionalErrors ?? [])].map((error) => Cause.makeFailReason(error)),
+          ),
+        );
       }).pipe(Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)));
     }),
   });

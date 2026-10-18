@@ -1,17 +1,6 @@
-import {
-  Cause,
-  Clock,
-  Effect,
-  ErrorReporter,
-  Exit,
-  Layer,
-  References,
-  Result,
-  Schema,
-  Scope,
-  Tracer,
-} from "effect";
+import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Schema, Scope, Tracer } from "effect";
 
+import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
@@ -120,7 +109,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly successExitCode?: (value: A) => number | undefined;
   readonly failureExitCode?: (error: unknown) => number | undefined;
-  readonly formatError: (error: unknown) => string;
+  readonly formatError: (error: unknown, additionalErrors?: ReadonlyArray<unknown>) => string;
   readonly setExitCode?: (code: number) => void;
   /**
    * Records the command's spans with this tracer. Without one, the CLI keeps
@@ -168,16 +157,6 @@ const makeStage = (name: "init" | "run" | "render", revisable = false) => {
       return Effect.map(Clock.currentTimeNanos, (now) => current.end(now, exit));
     });
   return { start, end };
-};
-
-const taggedFailureFromCause = (cause: Cause.Cause<unknown>): unknown => {
-  if (cause.reasons.length > 1) return new Error(Cause.pretty(cause), { cause });
-  const failure = Cause.findErrorOption(cause);
-  if (failure._tag === "Some") return failure.value;
-  const defect = Cause.findDefect(cause);
-  if (Result.isSuccess(defect)) return defect.success;
-  if (Cause.hasInterruptsOnly(cause)) return "All fibers interrupted without errors.";
-  return Cause.pretty(cause);
 };
 
 // allow: SIZE_OK — command rendering state machine shares lifecycle, emitters, and failure policy in one closure.
@@ -306,11 +285,15 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
-      const error = yield* renderFailureEvidence(taggedFailureFromCause(cause));
+      const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause);
+      const error = yield* renderFailureEvidence(
+        Cause.hasInterruptsOnly(cause) ? "All fibers interrupted without errors." : primaryError,
+      );
       if (envelopeFormat) {
         const outcome = {
           _tag: "failure",
           error,
+          ...(additionalErrors === undefined ? {} : { additionalErrors }),
         } as const;
         const emit = (next: typeof outcome) => (framedJson ? emitStreamResult(next) : emitJsonResult(next));
         if (framedJson && !attachLiveSink) yield* replayBufferedEvents();
@@ -326,7 +309,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         yield* setFailureExitCode(cause);
         return;
       }
-      let message = options.formatError(error);
+      let message = options.formatError(error, additionalErrors);
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (redaction._tag === "Some") {
         const redactor = yield* redaction.value.forProfile("secrets", {

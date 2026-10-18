@@ -1,4 +1,5 @@
 {
+  "commandResultExports": ["failureOutcomeFromCause"],
   "rendererNarrationIOMembers": [
     "externalOutputStream",
     "isTTY",

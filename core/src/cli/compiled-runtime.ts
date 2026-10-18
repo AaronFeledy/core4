@@ -151,7 +151,8 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
     render,
-    formatError: (error: unknown) => commandErrorMessage(error),
+    formatError: (error: unknown, additionalErrors?: ReadonlyArray<unknown>) =>
+      commandErrorMessage(error, activeCommandId, additionalErrors),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

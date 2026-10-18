@@ -5,6 +5,7 @@ import { resolveLandoRoots } from "@lando/paths";
 import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
+import { formatBugReport } from "./bug-report.ts";
 import { renderUpdateResult } from "./command-specs/meta/update.ts";
 import { extractFormatFlags, resolveResultFormat, supportsResultFormat } from "./format-flags.ts";
 import { runWithRendererHandling } from "./renderer-boundary.ts";
@@ -55,7 +56,13 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
         ? 1
         : undefined,
     render: (result) => `Previous Windows update result:\n${renderUpdateResult(result)}`,
-    formatError: String,
+    formatError: (error, additionalErrors) =>
+      formatBugReport({
+        error,
+        ...(additionalErrors === undefined ? {} : { additionalErrors }),
+        context: { commandId: "meta:update" },
+        rendererMode: renderer.mode,
+      }),
   });
   return true;
 };

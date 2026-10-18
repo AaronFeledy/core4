@@ -243,16 +243,37 @@ export const inspectMcpCommandOutcome = (
         return { _tag: "success", value };
       }
       const error = projectFailure(outcome.error);
+      let additionalErrors: object[] | undefined;
+      if (outcome.additionalErrors !== undefined) {
+        const errors = outcome.additionalErrors;
+        const context = "MCP command failure";
+        if (isRuntimeProxy(errors)) throw inspectionFailure(context);
+        if (Object.getPrototypeOf(errors) !== Array.prototype || Object.hasOwn(errors, "toJSON")) {
+          throw inspectionFailure(context);
+        }
+        if (errors.length > MAX_OUTBOUND_QUEUED_BYTES) throw limitFailure(context);
+        additionalErrors = [];
+        for (let index = 0; index < errors.length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(errors, String(index));
+          if (descriptor === undefined || !("value" in descriptor)) throw inspectionFailure(context);
+          additionalErrors.push(projectFailure(descriptor.value));
+        }
+      }
+      const inspected = {
+        _tag: "failure",
+        error,
+        ...(additionalErrors === undefined ? {} : { additionalErrors }),
+      } as const;
       const envelope = Effect.runSync(
         buildCommandResultEnvelope({
           command: "mcp:inspect",
           resultSchema: Schema.Unknown,
-          outcome: { _tag: "failure", error },
+          outcome: inspected,
           redactor: identityRedactor,
         }),
       );
       new BoundedDataInspector("MCP command failure").inspect(envelope.error);
-      return { _tag: "failure", error };
+      return inspected;
     },
     catch: (cause) => (cause instanceof McpTransportError ? cause : inspectionFailure("MCP command result")),
   });

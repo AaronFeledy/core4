@@ -21,6 +21,11 @@ export interface BugReportEnvelope {
   readonly logsDir: string;
   readonly cacheDir: string;
   readonly extra: ReadonlyArray<readonly [string, string]>;
+  readonly additionalErrors?: ReadonlyArray<{
+    readonly code: string;
+    readonly body: string;
+    readonly remediation?: string;
+  }>;
 }
 
 const asString = (value: unknown): string | undefined =>
@@ -198,6 +203,7 @@ const extractExtraTagFields = (
     "providerId",
     "provider",
     "redactionTokens",
+    "additionalErrors",
     "commandId",
     "code",
     "body",
@@ -323,6 +329,7 @@ const logsDirFor = (cacheRoot: string): string => `${cacheRoot.replace(/\/+$/u, 
 
 export const buildBugReport = (input: {
   readonly error: unknown;
+  readonly additionalErrors?: ReadonlyArray<unknown>;
   readonly context: BugReportContext;
 }): BugReportEnvelope => {
   const record = asTaggedRecord(input.error);
@@ -373,6 +380,18 @@ export const buildBugReport = (input: {
     logsDir: logsDirFor(cacheDir),
     cacheDir,
     extra,
+    ...(input.additionalErrors === undefined || input.additionalErrors.length === 0
+      ? {}
+      : {
+          additionalErrors: input.additionalErrors.map((error) => {
+            const { code, body, remediation } = buildBugReport({ error, context: ctx });
+            return {
+              code: redactString(code),
+              body,
+              ...(remediation === undefined ? {} : { remediation }),
+            };
+          }),
+        }),
   };
 };
 
@@ -382,6 +401,10 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
   const lines: Array<string> = [renderText(envelope.body)];
   if (envelope.remediation !== undefined) {
     lines.push(`  ↳ ${renderText(envelope.remediation)}`);
+  }
+  for (const error of envelope.additionalErrors ?? []) {
+    lines.push(`Also failed (${renderText(error.code)}): ${renderText(error.body)}`);
+    if (error.remediation !== undefined) lines.push(`  ↳ ${renderText(error.remediation)}`);
   }
   const details: Array<string> = [
     `code: ${envelope.code}`,
@@ -406,6 +429,7 @@ const orderedJsonKeys: ReadonlyArray<keyof BugReportEnvelope | "_tag"> = [
   "providerId",
   "body",
   "remediation",
+  "additionalErrors",
   "logsDir",
   "cacheDir",
 ];
@@ -418,6 +442,7 @@ export const renderJsonBugReport = (envelope: BugReportEnvelope): string => {
   if (envelope.providerId !== undefined) record.providerId = envelope.providerId;
   record.body = envelope.body;
   if (envelope.remediation !== undefined) record.remediation = envelope.remediation;
+  if (envelope.additionalErrors !== undefined) record.additionalErrors = envelope.additionalErrors;
   record.logsDir = envelope.logsDir;
   record.cacheDir = envelope.cacheDir;
   for (const [key, value] of envelope.extra) {
@@ -437,10 +462,11 @@ export const renderJsonBugReport = (envelope: BugReportEnvelope): string => {
 
 export const formatBugReport = (input: {
   readonly error: unknown;
+  readonly additionalErrors?: ReadonlyArray<unknown>;
   readonly context: BugReportContext;
   readonly rendererMode: RendererMode;
 }): string => {
-  const envelope = buildBugReport({ error: input.error, context: input.context });
+  const envelope = buildBugReport(input);
   if (input.rendererMode === "json") return renderJsonBugReport(envelope);
   return renderPlainBugReport(envelope);
 };

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
 import type {
@@ -10,7 +10,7 @@ import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
 import { type EventService, RouterService, type ShellRunner } from "@lando/sdk/services";
 
-import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
+import { buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
 import { parseOpenOptionsFromRunLandoArgv } from "./open-argv";
 
@@ -48,13 +48,15 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
             return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
           }
           return {
-            outcome: {
-              _tag: "failure" as const,
-              error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
-                _tag: "HostProxyDispatchError",
-                message: Cause.pretty(outcome.cause),
-              })),
-            },
+            outcome: outcome.cause.reasons.every(Cause.isInterruptReason)
+              ? {
+                  _tag: "failure" as const,
+                  error: {
+                    _tag: "HostProxyDispatchError",
+                    message: Cause.pretty(outcome.cause),
+                  },
+                }
+              : failureOutcomeFromCause(outcome.cause),
             exitCode: 1,
           };
         });

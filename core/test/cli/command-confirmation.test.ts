@@ -117,7 +117,7 @@ describe("lifecycle confirmation boundary", () => {
           command: spec.id,
           resultFormat: "json",
           rendererMode: "plain",
-          formatError: commandErrorMessage,
+          formatError: (error, additionalErrors) => commandErrorMessage(error, spec.id, additionalErrors),
           resultSchema: spec.resultSchema,
           setExitCode: (code) => codes.push(code),
         });

@@ -133,9 +133,18 @@ export const beginNestedCommandInvocation = (
   return activeCommandInvocation as CliInvocationSnapshot;
 };
 
-export const commandErrorMessage = (error: unknown, commandId: string = activeCommandId): string => {
+export const commandErrorMessage = (
+  error: unknown,
+  commandId: string = activeCommandId,
+  additionalErrors?: ReadonlyArray<unknown>,
+): string => {
   const context: BugReportContext = { commandId };
-  return formatBugReport({ error, context, rendererMode: activeRendererMode });
+  return formatBugReport({
+    error,
+    context,
+    rendererMode: activeRendererMode,
+    ...(additionalErrors === undefined ? {} : { additionalErrors }),
+  });
 };
 
 export const emitResultLine = (text: string): Promise<void> =>

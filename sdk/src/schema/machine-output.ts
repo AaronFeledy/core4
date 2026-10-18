@@ -18,27 +18,45 @@ export const CommandWarning = Schema.Struct({
 });
 export type CommandWarning = typeof CommandWarning.Type;
 
+const taggedErrorFields = {
+  _tag: Schema.String,
+  message: Schema.String,
+  remediation: Schema.optionalKey(Schema.String),
+  service: Schema.optionalKey(Schema.String),
+  steps: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        label: Schema.String,
+        target: Schema.String,
+        destructive: Schema.Boolean,
+      }),
+    ),
+  ),
+  reason: Schema.optionalKey(Schema.String).annotate({
+    description: "Structured failure reason when supplied as a string by the source error.",
+  }),
+  issues: Schema.optionalKey(Schema.Array(ValidationIssue)).annotate({
+    description: "Structured authored-file problems when the failure carries ValidationIssue values.",
+  }),
+};
+
+const AdditionalErrorJson = Schema.StructWithRest(
+  Schema.Struct({
+    ...taggedErrorFields,
+    additionalErrors: Schema.optionalKey(Schema.Never).annotate({
+      description: "Additional failures cannot contain a nested additionalErrors property.",
+    }),
+  }),
+  [Schema.Record(Schema.String, Schema.Unknown)],
+);
+
 const TaggedErrorJson = Schema.StructWithRest(
   Schema.Struct({
-    _tag: Schema.String,
-    message: Schema.String,
-    remediation: Schema.optionalKey(Schema.String),
-    service: Schema.optionalKey(Schema.String),
-    steps: Schema.optionalKey(
-      Schema.Array(
-        Schema.Struct({
-          id: Schema.String,
-          label: Schema.String,
-          target: Schema.String,
-          destructive: Schema.Boolean,
-        }),
-      ),
-    ),
-    reason: Schema.optionalKey(Schema.String).annotate({
-      description: "Structured failure reason when supplied as a string by the source error.",
-    }),
-    issues: Schema.optionalKey(Schema.Array(ValidationIssue)).annotate({
-      description: "Structured authored-file problems when the failure carries ValidationIssue values.",
+    ...taggedErrorFields,
+    additionalErrors: Schema.optionalKey(Schema.NonEmptyArray(AdditionalErrorJson)).annotate({
+      description:
+        "Ordered additional failures after the primary error, excluding interruptions and nested additionalErrors.",
     }),
   }),
   [Schema.Record(Schema.String, Schema.Unknown)],

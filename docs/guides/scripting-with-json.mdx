@@ -286,6 +286,15 @@ scripts can branch on both. The tagged error exposes a machine `_tag` plus
 human remediation, so an agent can react to the failure class without
 scraping prose.
 
+If rollback, cleanup, or another step also fails, `error` still describes the
+primary failure and determines the exit code. `error.additionalErrors` contains
+the other failures in cause order, each with its own `_tag`, `message`, optional
+`remediation`, and JSON-safe fields. The array is absent when there are no
+additional failures, and its entries never contain another `additionalErrors`.
+Interruptions are not additional errors. MCP results use the same projection.
+Human reports show the primary message and remediation first, followed by an
+`Also failed (<tag>)` block for each additional failure, without stack traces.
+
 The error also keeps its remaining JSON-safe fields directly under `error`.
 For example, `ConfigExpressionError` carries `error.path` (a dotted string),
 `error.expression`, and `error.filePath`; `ConfigError` can carry `error.path`.

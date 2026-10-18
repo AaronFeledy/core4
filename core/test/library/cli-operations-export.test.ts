@@ -145,12 +145,16 @@ describe("@lando/core/cli/operations package export", () => {
     if (Exit.isFailure(interruptExit)) {
       expect(Cause.findErrorOption(interruptExit.cause)._tag).toBe("None");
     }
+  });
 
-    const mixedExit = await Effect.runPromiseExit(
-      invokeOperation(
-        Effect.failCause(Cause.combine(Cause.fail("typed-error"), Cause.die(new Error("inner-defect")))),
-      ),
+  test("returns typed primary and additional defect for a combined cause", async () => {
+    // Given: a typed operation failure and a cleanup defect.
+    const defect = new Error("inner-defect");
+    // When: invokeOperation observes the combined cause.
+    const result = await Effect.runPromise(
+      invokeOperation(Effect.failCause(Cause.combine(Cause.fail("typed-error"), Cause.die(defect)))),
     );
-    expect(Exit.isFailure(mixedExit)).toBe(true);
+    // Then: defects alongside a typed failure are returned as additional errors.
+    expect(result).toEqual({ ok: false, error: "typed-error", additionalErrors: [defect] });
   });
 });

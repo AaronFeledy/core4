@@ -1,6 +1,7 @@
 import { Cause, Effect, Exit, Option } from "effect";
 import { isReadinessInterruptCause } from "./readiness-failure.ts";
 
+/** Preserve input order when merging failures: consumers project the first Fail as primary. */
 export const runAllAndMergeFailures = Effect.fn("Lifecycle.runAllAndMergeFailures")(function* <E, R>(
   effects: ReadonlyArray<Effect.Effect<void, E, R>>,
 ): Effect.fn.Return<void, E, R> {

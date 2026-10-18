@@ -11,7 +11,7 @@ import { Cause, type Context, Effect, type Exit } from "effect";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import { type CommandResultOutcome, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import type { McpExecute } from "./dispatch";
 import type { McpCommandExecutorShape } from "./port";
 
@@ -20,10 +20,7 @@ export const outcomeFromExit = (exit: Exit.Exit<unknown, unknown>): Effect.Effec
     return Effect.succeed({ _tag: "success", value: exit.value } satisfies CommandResultOutcome);
   }
   if (Cause.hasInterruptsOnly(exit.cause)) return Effect.interrupt;
-  return Effect.succeed({
-    _tag: "failure",
-    error: Cause.squash(exit.cause),
-  } satisfies CommandResultOutcome);
+  return Effect.succeed(failureOutcomeFromCause(exit.cause));
 };
 
 export const makeNestedExecute = (

@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Cause, Effect, Result, Schema } from "effect";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, ValidationIssue } from "@lando/sdk/schema";
@@ -24,7 +24,44 @@ export { listSelectableResultKeys, projectEncodedResult } from "./project-result
 
 export type CommandResultOutcome =
   | { readonly _tag: "success"; readonly value: unknown }
-  | { readonly _tag: "failure"; readonly error: unknown };
+  | {
+      readonly _tag: "failure";
+      readonly error: unknown;
+      readonly additionalErrors?: ReadonlyArray<unknown>;
+    };
+
+/** Project the first typed failure as primary, retaining other failures in cause order. */
+export const failureOutcomeFromCause = (
+  cause: Cause.Cause<unknown>,
+): Extract<CommandResultOutcome, { readonly _tag: "failure" }> => {
+  const failureIndex = cause.reasons.findIndex(Cause.isFailReason);
+  const primaryIndex = failureIndex === -1 ? cause.reasons.findIndex(Cause.isDieReason) : failureIndex;
+  const primary = cause.reasons[primaryIndex];
+  let error: unknown;
+  switch (primary?._tag) {
+    case "Fail":
+      error = primary.error;
+      break;
+    case "Die":
+      error = primary.defect;
+      break;
+    case "Interrupt":
+    case undefined:
+      error = Cause.squash(cause);
+      break;
+  }
+  const additionalErrors = cause.reasons.flatMap((reason, index) => {
+    if (index === primaryIndex) return [];
+    if (Cause.isFailReason(reason)) return [reason.error];
+    if (Cause.isDieReason(reason)) return [reason.defect];
+    return [];
+  });
+  return {
+    _tag: "failure",
+    error,
+    ...(additionalErrors.length === 0 ? {} : { additionalErrors }),
+  };
+};
 
 /** Serializations of the one command result envelope. Stream frames stay JSON. */
 export type CommandResultEnvelopeFormat = "json" | "yaml";
@@ -85,6 +122,7 @@ const taggedErrorJson = (
     "service",
     "steps",
     "redactionTokens",
+    "additionalErrors",
   ]);
   const extra = Object.fromEntries(
     Object.keys(record ?? {}).flatMap((key) => {
@@ -156,7 +194,12 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
       : {
           ...base,
           ok: false,
-          error: taggedErrorJson(options.outcome.error),
+          error: {
+            ...taggedErrorJson(options.outcome.error),
+            ...(options.outcome.additionalErrors?.length
+              ? { additionalErrors: options.outcome.additionalErrors.map(taggedErrorJson) }
+              : {}),
+          },
         };
   return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
 });

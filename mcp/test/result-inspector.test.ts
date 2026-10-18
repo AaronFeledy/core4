@@ -4,7 +4,82 @@ import { Effect, Schema } from "effect";
 import { McpTransportError, SqlConfirmRequiredError } from "@lando/sdk/errors";
 
 import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "@lando/mcp/result-inspector";
+import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { buildCommandResultEnvelope, identityRedactor } from "@lando/sdk/command-result";
+
+test("bounds the combined encoded error rather than each failure independently", () => {
+  // Given: individually bounded failures whose combined encoding exceeds the limit.
+  const message = "x".repeat(MAX_OUTBOUND_QUEUED_BYTES / 2);
+  // When: the outcome passes through inspection.
+  const result = Effect.runSync(
+    Effect.result(
+      inspectMcpCommandOutcome({
+        _tag: "failure",
+        error: { _tag: "StartError", message },
+        additionalErrors: [{ _tag: "CleanupError", message }],
+      }),
+    ),
+  );
+  // Then: the aggregate failure is rejected before transport serialization.
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
+});
+
+test.each(["error-getter", "error-proxy", "array-getter", "array-proxy"] as const)(
+  "rejects an additional failure with %s without invoking its hooks",
+  (kind) => {
+    // Given: a hostile error or collection alongside a valid primary failure.
+    let hookCalls = 0;
+    const accessorError = {
+      _tag: "CleanupError",
+      get message(): string {
+        hookCalls += 1;
+        return "not-read";
+      },
+    };
+    const handler = {
+      getOwnPropertyDescriptor: (target: object, key: string | symbol) => {
+        hookCalls += 1;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    };
+    const errors: unknown[] = [];
+    switch (kind) {
+      case "error-getter":
+        errors.push(accessorError);
+        break;
+      case "error-proxy":
+        errors.push(new Proxy(accessorError, handler));
+        break;
+      case "array-getter":
+        Object.defineProperty(errors, "0", {
+          get: () => {
+            hookCalls += 1;
+            return accessorError;
+          },
+        });
+        break;
+      case "array-proxy":
+        errors.push({ _tag: "CleanupError", message: "not-read" });
+        break;
+      default:
+        return kind satisfies never;
+    }
+    const additionalErrors = kind === "array-proxy" ? new Proxy<unknown[]>(errors, handler) : errors;
+    // When: inspection encounters the additional failures.
+    const result = Effect.runSync(
+      Effect.result(
+        inspectMcpCommandOutcome({
+          _tag: "failure",
+          error: { _tag: "StartError", message: "start" },
+          additionalErrors,
+        }),
+      ),
+    );
+    // Then: protections reject hostile data without executing it.
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
+    expect(hookCalls).toBe(0);
+  },
+);
 
 test("retains SQL confirmation projection when a failure passes MCP inspection", () => {
   const steps = [{ id: "reset", label: "Reset", target: "database", destructive: true }];

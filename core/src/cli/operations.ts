@@ -7,6 +7,8 @@
  */
 import { Cause, Effect, Exit } from "effect";
 
+import { failureOutcomeFromCause } from "@lando/sdk/command-result";
+
 export interface InvokeOperationOptions<A, E> {
   readonly render?: (result: A) => string | undefined;
   readonly renderError?: (error: E) => string | undefined;
@@ -21,6 +23,7 @@ export type InvokeOperationResult<A, E> =
   | {
       readonly ok: false;
       readonly error: E;
+      readonly additionalErrors?: ReadonlyArray<unknown>;
       readonly output?: string;
     };
 
@@ -38,15 +41,15 @@ export const invokeOperation = <A, E, R>(
       };
     }
 
-    // Only treat the exit as a host-consumable typed failure when the Cause
-    // contains exactly one typed failure. Combined causes are propagated as
-    // defects with the original Cause so no failure information is discarded.
+    // Typed failures use the shared primary/additional projection; only untyped causes propagate as defects.
     const failure = Cause.findErrorOption(exit.cause);
-    if (failure._tag === "Some" && exit.cause.reasons.length === 1) {
+    if (failure._tag === "Some") {
+      const outcome = failureOutcomeFromCause(exit.cause);
       const output = options.renderError?.(failure.value);
       return {
         ok: false,
         error: failure.value,
+        ...(outcome.additionalErrors === undefined ? {} : { additionalErrors: outcome.additionalErrors }),
         ...(output === undefined ? {} : { output }),
       };
     }

@@ -819,11 +819,13 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Co
 | `command` | Canonical command id |
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
-| `error` | Optional `TaggedErrorJson` |
+| `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 
 Payloadless commands return an empty result object.
+
+CLI and MCP failure envelopes MUST share one Cause projection: first `Fail` as primary, otherwise first `Die`, otherwise the squashed Cause; remaining `Fail` and `Die` values retain Cause order in `error.additionalErrors`, excluding interruptions. The array MUST be omitted when empty, its entries MUST NOT contain an `additionalErrors` property, and every entry MUST follow the primary error's encoding and redaction rules. Additional errors MUST NOT change command-specific failure exit status. Human reports MUST show the primary message and available remediation first, then each additional error's tag, message, and available remediation, without stack traces. Interruption-only Causes follow the invocation surface's cancellation policy. Effect-native library results follow §16.7.
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
@@ -862,7 +864,7 @@ Every non-interactive canonical command MUST accept `--format json` and `-j`; in
 - Equals form always supplies a field list.
 - `-j` never consumes the next token.
 
-`--jq <expr>` implies JSON, evaluates an embedded jq 1.8-compatible subset against the redacted envelope, replaces stdout, preserves exit status, and renders scalars raw. It is bounded, has no environment or module loading, and never spawns system jq. For streaming commands it transforms only the terminal result frame. MCP and library APIs always return the full redacted envelope and do not accept projection or jq.
+`--jq <expr>` implies JSON, evaluates an embedded jq 1.8-compatible subset against the redacted envelope, replaces stdout, preserves exit status, and renders scalars raw. It is bounded, has no environment or module loading, and never spawns system jq. For streaming commands it transforms only the terminal result frame. MCP returns the full redacted envelope and accepts neither projection nor jq; Effect-native library APIs retain typed results and Causes (§16).
 
 The ordered path is schema encode → optional projection → envelope → redaction → optional jq → stdout.
 
