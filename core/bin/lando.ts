@@ -186,9 +186,11 @@ main().catch(async (error: unknown) => {
   const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/native-stdio");
   if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
   if (!isCompiledEntry && isMissingGeneratedModuleError(error)) {
-    const repoRoot = join(import.meta.dir, "../..");
-    await writeLine("stderr", derivedCodegenMessage(missingDerivedCodegen(repoRoot)));
-    process.exit(1);
+    const missing = missingDerivedCodegen(join(import.meta.dir, "../.."));
+    if (missing.length > 0) {
+      await writeLine("stderr", derivedCodegenMessage(missing));
+      process.exit(1);
+    }
   }
   await writeLine("stderr", String(error));
   process.exit(1);

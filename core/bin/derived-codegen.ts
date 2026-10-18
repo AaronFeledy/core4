@@ -23,7 +23,7 @@ export const missingDerivedCodegen = (repoRoot: string): string[] =>
   DERIVED_CODEGEN_SENTINELS.filter((relative) => !existsSync(join(repoRoot, relative)));
 
 export const derivedCodegenMessage = (missing: string[]): string =>
-  `Generated modules are missing (${missing.length} of 8): ${missing.join(", ")}. Run \`bun run codegen\` from the repo root, then retry.`;
+  `Generated modules are missing (${missing.length} of ${DERIVED_CODEGEN_SENTINELS.length}): ${missing.join(", ")}. Run \`bun run codegen\` from the repo root, then retry.`;
 
 export const assertDerivedCodegen = (repoRoot: string): void => {
   const missing = missingDerivedCodegen(repoRoot);
