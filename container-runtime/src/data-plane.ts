@@ -11,7 +11,6 @@ import {
   VOLUME_OWNER_LABEL,
   VOLUME_SELECTOR_LABEL,
   VOLUME_SNAPSHOT_LABEL,
-  isHistoryModeMarkerVolume,
 } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
@@ -373,7 +372,6 @@ const volumeInfoFromEngineVolume = (
   filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
 ): VolumeInfo | undefined => {
   const labels = volume.Labels ?? {};
-  if (isHistoryModeMarkerVolume(labels)) return undefined;
   const labelApp = labels[landoVolumeLabels.app];
   const labelStore = labels[landoVolumeLabels.store];
   const labelScope = storageScopeFromLabel(labels[landoVolumeLabels.scope]);
@@ -409,11 +407,7 @@ const legacyVolumeInfoFromEngineVolume = (
   filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
 ): VolumeInfo | undefined => {
   const labels = volume.Labels ?? {};
-  if (
-    isHistoryModeMarkerVolume(labels) ||
-    labels[landoVolumeLabels.app] !== undefined ||
-    labels[landoVolumeLabels.store] !== undefined
-  ) {
+  if (labels[landoVolumeLabels.app] !== undefined || labels[landoVolumeLabels.store] !== undefined) {
     return undefined;
   }
   if (filter.app === undefined || filter.store === undefined) return undefined;
