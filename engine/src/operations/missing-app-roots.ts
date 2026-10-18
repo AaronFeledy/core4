@@ -1,3 +1,4 @@
+import { isHistoryModeMarkerVolume } from "@lando/container-runtime/labels";
 import { isGlobalScopedVolume, volumeClassFromLabels } from "@lando/container-runtime/volume-classes";
 import type { AppResolveError, NoProviderInstalledError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
@@ -84,7 +85,8 @@ export const findMissingAppRoots: Effect.Effect<
         volume.identity === undefined ||
         volume.ref.app === "global" ||
         isGlobalScopedVolume(volume.labels) ||
-        volume.labels?.["dev.lando.scratch"] === "TRUE"
+        volume.labels?.["dev.lando.scratch"] === "TRUE" ||
+        isHistoryModeMarkerVolume(volume.labels)
       )
         continue;
       const group = groupFor(
