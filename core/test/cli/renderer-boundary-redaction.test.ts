@@ -102,7 +102,7 @@ describe("runWithRendererHandling redaction", () => {
       io,
       redactionTokens: (result) => result.redactionTokens,
       render: (result) => result.stdout,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -122,7 +122,7 @@ describe("runWithRendererHandling redaction", () => {
       io,
       redactionTokens: (result) => result.redactionTokens,
       render: (result) => result.stdout,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -163,7 +163,7 @@ describe("runWithRendererHandling redaction", () => {
         rendererMode: "lando",
         io,
         render: (doc, ctx) => formatSummary(doc, summaryPaintOptions(ctx)),
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );
@@ -207,7 +207,7 @@ test("start command hints remain usable when a secret explicitly matches the CLI
         io,
         command: "app:start",
         render: renderStartAppResult,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );

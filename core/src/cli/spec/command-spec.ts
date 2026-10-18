@@ -1,3 +1,4 @@
+import type { ProjectedFailure } from "@lando/sdk/command-result";
 import { Schema } from "effect";
 
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
@@ -148,15 +149,16 @@ export const validateCommandSpec = (spec: {
 
 export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
 
-export const formatCommandError = (input: {
-  readonly error: unknown;
-  readonly commandId: string;
-  readonly rendererMode: RendererMode;
-}): string => {
+export const formatCommandError = (
+  input: ProjectedFailure & {
+    readonly commandId: string;
+    readonly rendererMode: RendererMode;
+  },
+): string => {
   const context: BugReportContext = { commandId: input.commandId };
   return formatBugReport({
     error: input.error,
-    additionalErrors: [],
+    additionalErrors: input.additionalErrors,
     context,
     rendererMode: input.rendererMode,
   });

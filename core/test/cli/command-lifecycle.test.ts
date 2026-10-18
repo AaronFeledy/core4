@@ -93,7 +93,7 @@ const optionsFor = <A>(
   invocation,
   io: createBufferedRendererIO(),
   render: () => undefined,
-  formatError: (error) => String(error),
+  formatError: ({ error }) => String(error),
   setExitCode: (code) => {
     harness.exitCodes.push(code);
   },
@@ -381,7 +381,7 @@ describe("generic CLI command lifecycle", () => {
       streaming: StreamFrame,
       resultSchema: Schema.Struct({ version: Schema.String }),
       render: () => undefined,
-      formatError: (error: unknown) => String(error),
+      formatError: ({ error }) => String(error),
     } satisfies LifecycleOptions<{ readonly version: string }, never, never>;
 
     // When

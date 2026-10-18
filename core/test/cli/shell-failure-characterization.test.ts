@@ -83,7 +83,7 @@ describe("native shell failure characterization", () => {
       rendererMode: "plain",
       io,
       suppressInterruptionDiagnostics: true,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => exitCodes.push(code),
     });
     // Then

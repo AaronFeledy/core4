@@ -129,7 +129,7 @@ describe("combined command failures", () => {
         io,
         failureExitCode: (error) => (error === primary ? 7 : 9),
         setExitCode: (code) => exitCodes.push(code),
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(
         format === "json" ? JSON.parse(io.stdout()) : Bun.YAML.parse(io.stdout()),

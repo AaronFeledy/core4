@@ -381,7 +381,7 @@ describe("runWithRendererHandling", () => {
         resultSchema: Schema.Struct({}),
         streaming: StreamFrame,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -616,7 +616,7 @@ describe("native Windows TTY result newlines", () => {
         rendererMode,
         io: fixture.io,
         render: () => "Started\n  app is ready\n\nURLs\n  https://app.test",
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
       expect(fixture.stdout.join("")).toBe("Started\r\n  app is ready\r\n\r\nURLs\r\n  https://app.test\r\n");
@@ -635,7 +635,7 @@ describe("native Windows TTY result newlines", () => {
         resultSchema: Schema.Struct({ answer: Schema.String }),
         io: fixture.io,
         command: "app:info",
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
       const output = fixture.stdout.join("");
@@ -655,7 +655,7 @@ describe("native Windows TTY result newlines", () => {
       resultFormat: "ndjson",
       io: fixture.io,
       render: () => rows,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     expect(fixture.stdout.join("")).toBe(`${rows}\n`);
@@ -669,7 +669,7 @@ describe("native Windows TTY result newlines", () => {
       rendererMode: "json",
       io: fixture.io,
       render: () => "first\nsecond",
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     expect(fixture.stdout.join("")).toBe("first\nsecond\n");

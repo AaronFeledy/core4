@@ -35,7 +35,7 @@ for (const format of ["text", "json"] as const) {
         resultSchema: Schema.Struct({ output: Schema.String }),
         streamingMode: "live",
         io,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );
