@@ -443,8 +443,12 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
     };
     expect(JSON.parse(sourceResult.stdout)).toMatchObject(expectedFailure);
     expect(JSON.parse(compiledResult.stdout)).toMatchObject(expectedFailure);
-    expect(sourceResult.stderr).toBe("");
-    expect(compiledResult.stderr).toBe("");
+    for (const result of [sourceResult, compiledResult]) {
+      expect(result.stderr).toContain("Tooling: app:fail");
+      expect(result.stderr).toContain("diagnostic");
+      expect(result.stderr).toContain("failed with exit code 7");
+      expect(result.stderr).toContain("1 ✗");
+    }
   } finally {
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
