@@ -10,6 +10,7 @@ import {
   stringArray,
 } from "./model.ts";
 import { normalizeJsonSchema } from "./normalize.ts";
+import { compareUnion } from "./union-classifier.ts";
 
 export type {
   CompatibilityException,
@@ -175,8 +176,25 @@ const compareNode = (
 ): ReadonlyArray<CompatibilityFinding> => {
   if (jsonEquals(before, after)) return [];
 
+  const findings: CompatibilityFinding[] = [];
   for (const keyword of UNSUPPORTED_CONSTRUCTS) {
     if (!jsonEquals(before[keyword], after[keyword])) {
+      const beforeMembers = before[keyword];
+      const afterMembers = after[keyword];
+      if (
+        (keyword === "anyOf" || keyword === "oneOf") &&
+        Array.isArray(beforeMembers) &&
+        Array.isArray(afterMembers)
+      ) {
+        const union = compareUnion(beforeMembers, afterMembers, {
+          ...context,
+          path: childPath(context.path, keyword),
+        });
+        if (union !== undefined) {
+          findings.push(union);
+          continue;
+        }
+      }
       return [
         finding(
           "unknown",
@@ -205,7 +223,6 @@ const compareNode = (
     return [finding("breaking", "const-changed", context.path, "A constant value constraint changed.")];
   }
 
-  const findings: CompatibilityFinding[] = [];
   if (!jsonEquals(before.properties, after.properties) || !jsonEquals(before.required, after.required)) {
     findings.push(...compareProperties(before, after, context));
   }
