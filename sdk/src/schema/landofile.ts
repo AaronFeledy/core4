@@ -79,7 +79,9 @@ export const RouteObjectInput = Schema.Struct({
 });
 export type RouteObjectInput = typeof RouteObjectInput.Type;
 
-export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]);
+export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]).annotate({
+  identifier: "RouteInput",
+});
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */
@@ -626,7 +628,7 @@ export const AppMountInput = Schema.Union([
     }),
   ),
 ])
-  .annotate({ description: APP_MOUNT_DESCRIPTION })
+  .annotate({ identifier: "AppMountInput", description: APP_MOUNT_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
       AppMountCanonical,

@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- Shared Landofile field contracts are published once per JSON Schema document as `$defs` and referenced by catalog service configs. This changes schema publication only; decode and encode behavior and public exports are unchanged.
+
 - `ServiceConfig.appMount` and `AppMountPlan` keep `excludes`/`includes`: excludes own per-service volume overlays and are never synced on accelerated binds; includes cancels exact whole entries. Defaults are `node_modules`, `vendor`, and `tmp`, plus service-type presets. The exported `appMountSyncIgnores` helper derives ordered, deduplicated ignores from effective excludes, finalized storage and non-bind mounts under the app target, then `VCS_SYNC_IGNORES` (`[".git"]`). The fixed Git rule never creates an overlay and can be canceled with `includes: [".git"]`. Authored `!` entries in excludes or includes are rejected at the entry path with includes remediation. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
 
 - `DataMover.resolveSnapshot(reference, scope)` is additive. Resolution is id-first (global id match) then label-scoped within `scope` (newest `createdAt` first). A unique match returns `SnapshotInfo`. Multiple label matches fail with `SnapshotAmbiguousError` (`candidateIds` newest first; `snapshotId` is the caller reference). Zero matches fail with `SnapshotNotFoundError`. Existing `listSnapshots`/`restore`/`removeSnapshot` behavior is unchanged.

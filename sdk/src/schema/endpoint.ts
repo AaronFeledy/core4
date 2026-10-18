@@ -86,7 +86,9 @@ export const PublishedEndpointInput = Schema.Struct({
 });
 export type PublishedEndpointInput = typeof PublishedEndpointInput.Type;
 
-export const EndpointInput = Schema.Union([InternalEndpointInput, PublishedEndpointInput]);
+export const EndpointInput = Schema.Union([InternalEndpointInput, PublishedEndpointInput]).annotate({
+  identifier: "EndpointInput",
+});
 export type EndpointInput = typeof EndpointInput.Type;
 
 const InternalNetworkEndpoint = Schema.Struct({
