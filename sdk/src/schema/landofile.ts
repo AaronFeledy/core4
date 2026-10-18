@@ -20,6 +20,7 @@ import { ScannerConfig } from "./networking.ts";
 import {
   AbsoluteContainerPath,
   CommandSpec,
+  ContainerUser,
   PortablePath,
   ProviderExtensionConfig,
   ProviderId,
@@ -83,6 +84,8 @@ export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */
+const MOUNT_INPUT_DESCRIPTION =
+  "Service mount as a short source:target string or an expanded bind, tmpfs, or volume object.";
 export const MountInput = Schema.Union([
   Schema.String,
   Schema.Struct({
@@ -95,10 +98,12 @@ export const MountInput = Schema.Union([
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
-]);
+]).annotate({ description: MOUNT_INPUT_DESCRIPTION });
 export type MountInput = typeof MountInput.Type;
 
 /** Storage input — named volume reference. */
+const STORAGE_INPUT_DESCRIPTION =
+  "Named data or cache volume as a short target path or an expanded store object with optional scope, kind, and key.";
 export const StorageInput = Schema.Union([
   Schema.String,
   Schema.Struct({
@@ -109,7 +114,7 @@ export const StorageInput = Schema.Union([
     kind: Schema.optionalKey(Schema.Literals(["data", "cache"])),
     key: Schema.optionalKey(Schema.String),
   }),
-]);
+]).annotate({ description: STORAGE_INPUT_DESCRIPTION });
 export type StorageInput = typeof StorageInput.Type;
 
 export { HealthcheckInput } from "./compose-healthcheck.ts";
@@ -431,7 +436,7 @@ const SERVICE_CERTS_DESCRIPTION =
   "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities.";
 
 /** Certs input — leaf TLS toggle, custom certificate path, or explicit certificate and key pair. */
-const CertsInput = Schema.Union([
+export const CertsInput = Schema.Union([
   Schema.Boolean,
   Schema.String,
   Schema.Struct({
@@ -443,16 +448,21 @@ const CertsInput = Schema.Union([
     }),
   }),
 ]).annotate({ description: SERVICE_CERTS_DESCRIPTION });
+export type CertsInput = typeof CertsInput.Type;
 
 const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
 
-const ServiceSecurityCaEntry = Schema.Union([Schema.String, StringImportRef]).annotate({
+/** Trusted CA path or import reference used under `services.<name>.security.ca`. */
+export const CaInput = Schema.Union([Schema.String, StringImportRef]).annotate({
   acceptsImportRef: true,
+  description:
+    "Trusted CA certificate as a path string or an import reference for a service security.ca entry.",
 });
+export type CaInput = typeof CaInput.Type;
 
 const ServiceSecurity = Schema.Struct({
-  ca: Schema.optionalKey(layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE)).annotate({
+  ca: Schema.optionalKey(layerMerge(Schema.Array(CaInput), REPLACE)).annotate({
     description: "Additional CA certificate paths for this service.",
   }),
   inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
@@ -463,15 +473,12 @@ const ServiceSecurity = Schema.Struct({
   }),
 });
 
-const ServiceSecurityCaAlias = Schema.Union([
-  ServiceSecurityCaEntry,
-  layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE),
-]);
+const ServiceSecurityCaAlias = Schema.Union([CaInput, layerMerge(Schema.Array(CaInput), REPLACE)]);
 const Forbidden = Schema.optionalKey(Schema.Never);
 
 const ServiceSecurityInput = Schema.Union([
   Schema.Struct({
-    ca: Schema.optionalKey(layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE)),
+    ca: Schema.optionalKey(layerMerge(Schema.Array(CaInput), REPLACE)),
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
@@ -655,7 +662,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     entrypoint: Schema.optionalKey(CommandSpec).annotate({
       description: "Entrypoint used to launch the service container.",
     }),
-    user: Schema.optionalKey(Schema.String).annotate({
+    user: Schema.optionalKey(ContainerUser).annotate({
       description: "Container user used to run service processes.",
     }),
     workingDirectory: Schema.optionalKey(PortablePath).annotate({

@@ -1,5 +1,89 @@
 [
   {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "spec \u00a76.2 ContainerUser adoption: service.user now validates like build-step users; valid uid, uid:gid, and name:group forms are unchanged."
+  },
+  {
     "surface": "schema:HealthcheckInput",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
