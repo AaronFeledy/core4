@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ValidationIssue` additively accepts optional `source: { file, layer, path }`, recording the original authored location separately from the effective issue path. `LandofileValidationError` now requires `remediation`; its shared constructor takes `file` from the primary issue's source when supplied. This is a pre-release constructor requirement, not a persisted-data format migration. Command failure envelopes already support remediation and now preserve authored issue sources through their existing issue projection. `ConfigLintResult` is unchanged.
+
 - Dependency-map identity projection no longer turns scalar map values into conditions, overwrites an authored `service` member, or hides a reserved `__proto__` map key. Invalid authored maps remain available for strict validation instead of being repaired by merging; valid structured maps and service-name lists retain their declared identity merge behavior.
 
 - `@lando/sdk/landofile` adds `mergeValuesWithOrigins`, `withValueOrigins`, `valueOriginAt`, and the erased generic `ValueOrigins` / `ValueWithOrigins` types. The origin map is a path trie: mapping merges retain child locations, keyed collections relocate them, replacements discard inherited locations, and resets retain deletion tombstones. Source payloads remain caller-owned so original authored paths survive projection. `mergeValues(root, left, right, path?)` keeps its signature and uses the same merge traversal without recording origins.

@@ -951,6 +951,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "planned failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });
@@ -978,6 +979,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "original planning failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });

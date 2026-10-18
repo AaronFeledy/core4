@@ -39,6 +39,7 @@ interface ResolveSecurityFeatureInput {
 const validationError = (input: ResolveSecurityFeatureInput, message: string): LandofileValidationError =>
   new LandofileValidationError({
     message: `Service ${input.serviceName} security.ca ${message}`,
+    remediation: "Use readable PEM certificate files for security.ca, or disable CA injection.",
     file: `${input.appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -79,6 +80,7 @@ export const loadGlobalSecurityCas = (
       (cause) =>
         new LandofileValidationError({
           message: `Global network CA could not be loaded: ${cause.message}. ${cause.remediation}`,
+          remediation: cause.remediation,
           file: `${appRoot}/.lando.yml`,
           issues: [
             validationIssue(
@@ -95,6 +97,8 @@ export const loadGlobalSecurityCas = (
           : Effect.fail(
               new LandofileValidationError({
                 message: `Global network CA ${ca.path} must contain a valid PEM certificate. Point network.ca.certs or LANDO_NETWORK_CA_CERTS at a complete CERTIFICATE block.`,
+                remediation:
+                  "Point network.ca.certs or LANDO_NETWORK_CA_CERTS at a complete CERTIFICATE block.",
                 file: `${appRoot}/.lando.yml`,
                 issues: [
                   validationIssue(

@@ -73,6 +73,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
+        remediation: "Remove image or replace build with a Lando build-script block.",
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
