@@ -19,6 +19,7 @@ services:
     environment: "{{ { NODE_ENV: recipe.mode } }}"
   worker:
     type: "node:22"
-    primary: true
+    primary: "{{ boolean(default(env.LANDO_EXPRESSIONS_UNSET_XDEBUG, 'on')) }}"
 router:
   httpPort: "{{ recipe.port }}"
+  httpsPort: "{{ number(default(env.LANDO_EXPRESSIONS_UNSET_PORT, '8443')) }}"

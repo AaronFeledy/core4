@@ -26,7 +26,7 @@ import type { StateStore } from "@lando/sdk/services";
 import { scopedLandofileRuntimeInputs, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
-import { compileLandofileRootLayers } from "@lando/landofile/service";
+import { compileLandofileRootLayers } from "@lando/landofile/root-compile";
 import { validateLandofile } from "@lando/landofile/validation";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 
