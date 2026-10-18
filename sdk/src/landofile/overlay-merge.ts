@@ -18,32 +18,32 @@ class OverlayMerge<Source> {
   ) {}
 
   child(node: ValueWithOrigins<Source>, key: string | number, value: unknown): ValueWithOrigins<Source> {
-    return { value, origins: node.origins.children.get(key) ?? node.origins };
+    return { value, origins: (this.tracked ? node.origins.children.get(key) : undefined) ?? node.origins };
   }
 
   result(
     node: ValueWithOrigins<Source>,
     value: unknown,
-    children: ReadonlyMap<string | number, ValueOrigins<Source>>,
+    children?: ReadonlyMap<string | number, ValueOrigins<Source>>,
   ): ValueWithOrigins<Source> {
     return {
       value,
       origins: this.tracked
-        ? { source: node.origins.source, deleted: value === ABSENT, children }
+        ? { source: node.origins.source, deleted: value === ABSENT, children: children ?? new Map() }
         : node.origins,
     };
   }
 
   materialize(node: ValueWithOrigins<Source>): ValueWithOrigins<Source> {
     const value = node.value;
-    if (isLandofileReset(value)) return this.result(node, ABSENT, new Map());
+    if (isLandofileReset(value)) return this.result(node, ABSENT);
     if (isLandofileOverride(value)) return this.materialize({ ...node, value: value.value });
-    const children = new Map<string | number, ValueOrigins<Source>>();
+    const children = this.tracked ? new Map<string | number, ValueOrigins<Source>>() : undefined;
     if (Array.isArray(value)) {
       const result: unknown[] = [];
       value.forEach((entry, index) => {
         const child = this.materialize(this.child(node, index, entry));
-        if (this.tracked) children.set(result.length, child.origins);
+        children?.set(result.length, child.origins);
         if (child.value !== ABSENT) result.push(child.value);
       });
       return this.result(node, result, children);
@@ -52,12 +52,14 @@ class OverlayMerge<Source> {
     const result = Object.fromEntries(
       Object.entries(value).flatMap(([key, entry]) => {
         const child = this.materialize(this.child(node, key, entry));
-        if (this.tracked) children.set(key, child.origins);
+        children?.set(key, child.origins);
         return child.value === ABSENT ? [] : [[key, child.value]];
       }),
     );
-    for (const [key, origin] of node.origins.children) {
-      if (this.tracked && origin.deleted && !children.has(key)) children.set(key, origin);
+    if (children !== undefined) {
+      for (const [key, origin] of node.origins.children) {
+        if (origin.deleted && !children.has(key)) children.set(key, origin);
+      }
     }
     return this.result(node, result, children);
   }
@@ -74,6 +76,7 @@ class OverlayMerge<Source> {
       const project = (node: ValueWithOrigins<Source>) => {
         const values = rule.entries(node.value);
         if (values === undefined) return undefined;
+        if (!this.tracked) return values.map((value) => ({ value, origins: node.origins }));
         const sources = Array.isArray(node.value)
           ? node.value.flatMap((entry, index) => rule.parts(entry).map(() => this.child(node, index, entry)))
           : isPlainRecord(node.value)
@@ -149,19 +152,19 @@ class OverlayMerge<Source> {
           return this.result(
             right,
             merged.map((node) => node.value),
-            this.tracked ? new Map(merged.map((node, index) => [index, node.origins])) : new Map(),
+            this.tracked ? new Map(merged.map((node, index) => [index, node.origins])) : undefined,
           );
       }
     }
     if (!isPlainRecord(left.value) || !isPlainRecord(right.value)) return this.materialize(right);
     const result: Record<string, unknown> = { ...left.value };
-    const children = new Map(left.origins.children);
+    const children = this.tracked ? new Map(left.origins.children) : undefined;
     for (const [key, value] of Object.entries(right.value)) {
       const merged = this.merge(this.child(left, key, left.value[key]), this.child(right, key, value), [
         ...path,
         key,
       ]);
-      if (this.tracked) children.set(key, merged.origins);
+      children?.set(key, merged.origins);
       if (merged.value === ABSENT) delete result[key];
       else
         Object.defineProperty(result, key, {
