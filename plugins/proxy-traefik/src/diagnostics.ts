@@ -66,6 +66,7 @@ export const renderTraefikDiagnosticNginxConfig = (): string =>
     `    listen ${TRAEFIK_DIAGNOSTICS_PORT} default_server;`,
     "    server_name _;",
     "    charset utf-8;",
+    "    add_header X-Lando-Router no-route always;",
     "    error_page 404 =404 $lando_error_uri;",
     "    location / { return 404; }",
     "    location = /_lando/404.html {",

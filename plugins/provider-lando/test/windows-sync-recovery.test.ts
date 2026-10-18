@@ -65,7 +65,7 @@ const plan = (): AppPlan => ({
         source: root,
         target: { _tag: "volume", name: "demo-web-app-mount", path: PortablePath.make("/app") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: [".git"],
       },
     },
   ],

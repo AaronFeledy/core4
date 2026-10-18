@@ -70,7 +70,9 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 
 Template mounts use app-root-relative `source`, optional `engine`, `vars`, and `mode`. Sources obey include containment (§7.7.6). Engine selection is explicit, then extension-based, then `lando`; values resolve through the standard expression context. Providers receive only rendered `inline` mounts. Rendered output uses the `<userCacheRoot>/templates/<engineId>/...` `template-render` cache (§12.1).
 
-For bind excludes, planning creates storage shadows; `!` entries re-include paths. Copy includes become binds. Ordering preserves nested-path semantics.
+An excluded path belongs to the service. `excludes` (default `node_modules`, `vendor`, `tmp`, plus service-type presets) each get a service-scoped storage shadow; a shadow overlays a directory, so an exclude whose host path exists as a non-directory gets no shadow and stays visible through passthrough binds. `includes` cancels an exclude by exact entry. A bare `!` entry in either list fails validation with remediation naming `includes`; the Lando 3 translator lowers `!x` to `includes: [x]`. VCS metadata is a fixed rule, not a key: `.git` is never shadowed, and accelerated engines never sync it unless `includes` names it. The exclusion patterns an accelerated engine receives are derived from the finalized plan, not from the authored list: every effective exclude, the relative target of every non-bind entry mounted under the app mount (storage shadows, authored and cache stores, `tmpfs` and `volume` mounts), and `.git`, deduplicated. A `storage` entry under the app mount and an `excludes` entry for the same path therefore produce the same container layout and the same patterns. Copy includes become binds. Ordering preserves nested-path semantics.
+
+When a passthrough app mount's `.git` is a gitfile (a Git worktree or submodule checkout), planning bind-mounts the resolved common git directory, and the worktree git directory when it lies outside it, so git works at the app mount. An absolute `gitdir` mounts at the same container path; a relative one mounts where the gitfile resolves from the container app mount target, so git follows the file unchanged. Planning verifies each directory is a Git directory (it holds `HEAD`) before mounting; a gitfile alone never authorizes a host path. The binds are read-only when the app mount is read-only, never file-sync sessions, never override an authored mount or storage at the same destination, and are skipped when a host path is not a POSIX absolute path. Shared metadata is writable by every worktree's containers, as on the host.
 
 Every bind `MountPlan` has `realization: passthrough | accelerated` selected from `bindMountPerformance` (§5.4):
 
@@ -78,7 +80,7 @@ Every bind `MountPlan` has `realization: passthrough | accelerated` selected fro
 - `slow` uses a provider-managed `lando-sync-<app-id>-<service>-<mountKeyHash>` volume and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
 - `none` fails with `CapabilityError`.
 
-The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive excludes; otherwise planning retains storage shadows. Excludes are never silently dropped.
+The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive the derived patterns, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
 
 `mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, `file-sync-sessions` cache, and lifecycle events. Changing excludes changes the key.
 
@@ -124,6 +126,8 @@ Routes live under top-level `proxy:` or preferred service `routes:`. Every `Rout
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
 Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. When a service authors neither `services.<name>.routes` nor `proxy.<name>`, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. A service that authors either gets exactly its authored routes, so an explicitly empty list opts it out of routing without affecting published endpoints. LAN publication is opt-in and warns. Internal endpoints never bind the host.
+
+Service types MAY contribute default checks (§10.5.2) for the endpoints they declare, such as a `tcp` check for a database, and `service-error` rules for their own server pages (a web server's 502 when its upstream is down). Authored service-level `checks` tune or disable them. Types never contribute `expected` or `app-error` rules; those come from profiles and the Landofile.
 
 Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
 

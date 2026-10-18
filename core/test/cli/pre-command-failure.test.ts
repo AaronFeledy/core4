@@ -107,7 +107,7 @@ describe("pre-command failure surface", () => {
       resultSchema: Schema.Struct({}),
       io,
       failureExitCode: () => 2,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -147,7 +147,7 @@ describe("pre-command failure surface", () => {
       command: "app:start",
       resultSchema: Schema.Struct({}),
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -184,7 +184,7 @@ describe("pre-command failure surface", () => {
         runtime: failingRuntime,
         rendererMode: "plain",
         io,
-        formatError: (error) => {
+        formatError: ({ error }) => {
           const record = error as PreCommandLayerError;
           return `${record.message}\n  ↳ ${record.remediation}`;
         },

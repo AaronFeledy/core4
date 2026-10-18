@@ -13,6 +13,7 @@ export const PENDING_MARKER = "◌";
  * and knocks the row out of line with `✓`/`✗`.
  */
 export const WARNED_MARKER = "!";
+export const INFO_MARKER = "•";
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 
 type BodyStyle = {
@@ -21,7 +22,7 @@ type BodyStyle = {
 };
 
 const DIM_DURATION: BodyStyle = { start: csi.dim, end: `${csi.dimReset}${csi.reset}` };
-const SETTLED_GLYPHS = ["✓", WARNED_MARKER, "✗", "–"] as const;
+const SETTLED_GLYPHS = ["✓", WARNED_MARKER, INFO_MARKER, "✗", "–"] as const;
 const SPINNER_GLYPHS: ReadonlySet<string> = new Set(SPINNER_FRAMES);
 const RUNNING_GLYPHS: ReadonlySet<string> = new Set(["·", ...SPINNER_FRAMES]);
 
@@ -36,6 +37,7 @@ const isSettledGlyphRow = (line: string): boolean =>
   SETTLED_GLYPHS.some((glyph) => line.startsWith(`│ ${glyph} `));
 
 const selectBodyStyle = (line: string): BodyStyle | undefined => {
+  if (line.startsWith(`│ ${INFO_MARKER} `)) return DIM_DURATION;
   if (line.includes("✗")) return { start: csi.red, end: csi.reset };
   if (line.includes("  cached")) return { start: csi.cyan, end: csi.reset };
   if (line.includes("  skipped"))

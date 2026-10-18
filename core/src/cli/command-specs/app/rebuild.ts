@@ -9,6 +9,7 @@ import { extractSpecFlags } from "../../spec/command-boundary";
 import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
 
 import { StreamFrame } from "@lando/sdk/schema";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Flags } from "../../spec/metadata";
 
 export const rebuildOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof rebuildApp>[0]> => {
@@ -45,7 +46,7 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   bootstrap: "app",
   usage: "[--service SERVICE] [--yes]",
   flags: {
-    yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt.", default: false }),
+    yes: yesFlag("Skip the confirmation prompt."),
     service: Flags.string({
       char: "s",
       description: "Rebuild a specific planned service and its prerequisites (repeatable).",

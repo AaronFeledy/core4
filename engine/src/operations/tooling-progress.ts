@@ -2,46 +2,7 @@ import { Effect } from "effect";
 
 import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 
-const outputLines = (text: string): ReadonlyArray<string> => {
-  const lines = text.split(/\r?\n/u);
-  if (lines.at(-1) === "") lines.pop();
-  return lines;
-};
-
-export const emitToolingOutputProgress = Effect.fnUntraced(function* (input: {
-  readonly events: ProgressEmitter | undefined;
-  readonly tool: string;
-  readonly service: string;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly exitCode: number;
-  readonly durationMs: number;
-}): Effect.fn.Return<void> {
-  const tree = makeTaskTree(input.events, {
-    parentId: `tooling:${input.tool}`,
-    label: `Tooling: ${input.tool}`,
-    children: [{ id: input.service, label: input.service }],
-    prefixChildIds: true,
-  });
-  yield* tree.start;
-  yield* tree.startTask(input.service);
-  for (const line of outputLines(input.stdout)) {
-    yield* tree.detail(input.service, "stdout", line);
-  }
-  for (const line of outputLines(input.stderr)) {
-    yield* tree.detail(input.service, "stderr", line);
-  }
-  if (input.exitCode === 0) {
-    yield* tree.completeTask(input.service, "completed with exit code 0", input.durationMs);
-  } else {
-    yield* tree.failTask(input.service, `failed with exit code ${input.exitCode}`, {
-      durationMs: input.durationMs,
-      exitCode: input.exitCode,
-    });
-  }
-  yield* tree.close(undefined, input.durationMs);
-});
-
+/** Publish a tooling task tree (no per-line body detail) when an event publisher exists. */
 export const beginLiveToolingTree = (events: ProgressEmitter | undefined, tool: string) => {
   const tree = makeTaskTree(events, {
     parentId: `tooling:${tool}`,

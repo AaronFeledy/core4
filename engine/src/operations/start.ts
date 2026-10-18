@@ -18,6 +18,7 @@ import {
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export { StartedServiceResultSchema, StartAppResultSchema } from "./start-internal.ts";
+export type { CheckResult } from "@lando/sdk/schema";
 export type { StartManagedScope } from "./start-file-sync.ts";
 
 export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (

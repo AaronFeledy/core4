@@ -1,3 +1,4 @@
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { Args, Flags } from "../../../spec/metadata";
 
 import {
@@ -35,6 +36,7 @@ export const metaGlobalUninstallSpec: LandoCommandSpec<GlobalUninstallResult> = 
     }),
   },
   flags: {
+    yes: nonPromptingYesFlag,
     purge: Flags.boolean({
       description: "Also remove global service provider resources and data volumes before clearing services.",
       default: false,

@@ -1,3 +1,4 @@
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { Flags } from "../../../spec/metadata";
 
 import {
@@ -25,11 +26,7 @@ export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
   topLevelAlias: "global:destroy",
   bootstrap: "global",
   flags: {
-    yes: Flags.boolean({
-      char: "y",
-      description: "Confirm destruction of global app provider resources.",
-      default: false,
-    }),
+    yes: yesFlag("Confirm destruction of global app provider resources."),
     purge: Flags.boolean({
       description: "Also remove global service data volumes.",
       default: false,

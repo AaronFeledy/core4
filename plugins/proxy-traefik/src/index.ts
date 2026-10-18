@@ -33,6 +33,7 @@ export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { routerFileWatcherCheck } from "./doctor-watcher.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
+export { appCertificateFiles } from "./proxy-paths.ts";
 export {
   TRAEFIK_DIAGNOSTICS_COMMAND,
   TRAEFIK_DIAGNOSTICS_HEALTHCHECK,

@@ -1,0 +1,3 @@
+⟨pink⟩╭─⟨reset⟩⟨bold⟩ App checks⟨reset⟩
+⟨pink⟩│⟨reset⟩⟨dim⟩ • HTTP 500 from the application's own endpoint⟨dim-off⟩⟨reset⟩⟨dim⟩  42ms⟨dim-off⟩⟨reset⟩
+⟨pink⟩╰─⟨reset⟩⟨dim⟩ done  1.5s⟨dim-off⟩⟨reset⟩

@@ -88,7 +88,7 @@ test.each(["error", "errorDetail"] as const)("projects a redacted daemon %s fram
     encodeCommandResult({
       command: "app:start",
       resultSchema: Schema.Void,
-      outcome: { _tag: "failure", error: failure },
+      outcome: { _tag: "failure", error: failure, additionalErrors: [] },
       redactor: createRedactor("secrets"),
     }),
   );

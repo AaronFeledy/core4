@@ -118,6 +118,8 @@ const hostRun = Effect.fn("ToolingEngine.run")(function* (
       ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
       ...(invocation.env === undefined ? {} : { env: invocation.env }),
       argv: command.argv,
+      ...(invocation.stdinStream === undefined ? {} : { stdinStream: invocation.stdinStream }),
+      ...(invocation.signal === undefined ? {} : { signal: invocation.signal }),
     };
     const result = yield* shell.exec(command.source, options).pipe(
       Effect.catch((cause) =>

@@ -27,8 +27,8 @@ import {
   setActiveCommandId,
 } from "../compiled-runtime";
 
-export const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
-  if (rejectInvalidInvocation("meta:uninstall", argv)) return Promise.resolve();
+export const runMetaUninstall = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (await rejectInvalidInvocation("meta:uninstall", argv)) return;
   const input = compiledCommandInputFromArgv("meta:uninstall", argv);
   return runCompiledCommand(
     uninstall(uninstallOptionsFromInput(input)),
@@ -37,8 +37,8 @@ export const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => 
   );
 };
 
-export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
-  if (rejectInvalidInvocation("meta:mcp", argv)) return Promise.resolve();
+export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (await rejectInvalidInvocation("meta:mcp", argv)) return;
   const input = compiledCommandInputFromArgv("meta:mcp", argv);
   const flags = mcpFlagsFromParsed(input.flags);
   const commandRuntime = resolveCompiledCommandRuntime(
@@ -62,7 +62,7 @@ export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
       flags: input.flags,
       cwd: process.cwd(),
     },
-    formatError: (error) => commandErrorMessage(error, "meta:mcp"),
+    formatError: (failure) => commandErrorMessage(failure, "meta:mcp"),
   });
 };
 
@@ -75,16 +75,16 @@ export const runMetaVersion = async (): Promise<void> => {
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
 export const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> => {
-  if (rejectInvalidInvocation("meta:shellenv", argv)) return;
+  if (await rejectInvalidInvocation("meta:shellenv", argv)) return;
   const input = compiledCommandInputFromArgv("meta:shellenv", argv);
   const shell = input.flags.shell;
   if (argv.includes("--shell") && shell === undefined) {
-    emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh");
+    await emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh");
     process.exitCode = 2;
     return;
   }
   if (shell !== undefined && !SHELLENV_SHELLS.includes(shell as (typeof SHELLENV_SHELLS)[number])) {
-    emitDiagnosticLine(`Expected --shell=${shell} to be one of: posix, powershell, pwsh`);
+    await emitDiagnosticLine(`Expected --shell=${shell} to be one of: posix, powershell, pwsh`);
     process.exitCode = 2;
     return;
   }

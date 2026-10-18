@@ -107,6 +107,31 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
 };
 
 describe("plugin-owned command dispatch", () => {
+  test("loads a compliant confirmation flag and passes -y through execution to run", async () => {
+    // Given
+    const spec = {
+      id: "db:import",
+      summary: "Import a dump.",
+      namespace: "db",
+      bootstrap: "app",
+      resultSchema: Schema.Boolean,
+      flags: { yes: { type: "boolean", default: false } },
+      run: (input: ExecutableCommandInput) => Effect.succeed(input.flags.yes),
+    } satisfies ExecutableCommandSpec<unknown, never, never>;
+    const context = graphContextForPlugin({
+      ...makeDbImportPlugin(),
+      commands: new Map([["db:import", async () => spec]]),
+    });
+    // When
+    const target = await Effect.runPromise(resolveEventCommandTarget(spec.id, context, []));
+    const result = await Effect.runPromise(
+      pluginOwnedCommandEffect(spec, ["-y"], false).pipe(Effect.provideService(Renderer, silentRenderer)),
+    );
+    // Then
+    expect(target.spec).toBe(spec);
+    expect(result).toBe(true);
+  });
+
   test("does not register db:import as a built-in", () => {
     // Given
     const catalogIds = Object.keys(builtInCommandCatalog);
