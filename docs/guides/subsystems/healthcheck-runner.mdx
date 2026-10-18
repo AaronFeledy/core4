@@ -36,7 +36,7 @@ Provider inspection failures use `inspect-failed` and prescribe `lando doctor`, 
 
 Non-instant readiness waits publish task-tree progress. Interruption during the barrier retains the applied app, routes, volumes, sessions, journal, and managed scopes while interruption propagates. Earlier startup phases keep their existing interrupt cleanup.
 
-This is not a user how-to. For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
+This is not a user how-to. To make start wait for your app, see [Make start wait for your app](../services/wait-for-your-app.mdx). For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
 <Guide>
   <Scenario id="healthcheck-shorthand-forms" render={false} reason="Live probe execution needs a running container and is covered by sdk/test/contract/healthcheck-runner.test.ts and core/test/subsystems/healthcheck/live.test.ts. This scenario checks the canonical shapes of the false and string shorthands through the CLI.">
