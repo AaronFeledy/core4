@@ -206,6 +206,7 @@ const HealthcheckAccepted = Schema.Union([
   identifier: "HealthcheckInput",
   description: HEALTHCHECK_FIELD_DESCRIPTION,
   expected: "false, a command string, an argv array, or a healthcheck object",
+  message: "Expected false, a command string, an argv array, or a healthcheck object",
 });
 
 export const HealthcheckInput = HealthcheckAccepted.pipe(
