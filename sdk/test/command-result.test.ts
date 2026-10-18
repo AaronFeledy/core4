@@ -192,6 +192,7 @@ describe("encodeCommandResult", () => {
         resultSchema: EmptyResultSchema,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new ExampleTaggedError({ message: "provider missing", remediation: "Run setup." }),
         },
         redactor: plainRedactor,
@@ -219,7 +220,7 @@ describe("encodeCommandResult", () => {
     const options = {
       command: "app:info",
       resultSchema: EmptyResultSchema,
-      outcome: { _tag: "failure", error } as const,
+      outcome: { _tag: "failure", error, additionalErrors: [] } as const,
       redactor: plainRedactor,
     };
 
@@ -247,6 +248,7 @@ describe("encodeCommandResult", () => {
         resultSchema: EmptyResultSchema,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new ComposeKeyRejectedError({
             message: "Compose key deploy.replicas is rejected.",
             source: "/workspace/.lando.yml",
@@ -290,7 +292,7 @@ describe("encodeCommandResult", () => {
       encodeCommandResult({
         command: "app:start",
         resultSchema: EmptyResultSchema,
-        outcome: { _tag: "failure", error: new Error("failed with topsecret") },
+        outcome: { _tag: "failure", error: new Error("failed with topsecret"), additionalErrors: [] },
         redactor,
       }),
     );
@@ -461,6 +463,7 @@ describe("encodeCommandResult", () => {
         resultSchema: PersonResultSchema,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new ExampleTaggedError({ message: "provider missing", remediation: "Run setup." }),
         },
         redactor: plainRedactor,
@@ -599,6 +602,7 @@ describe("encodeCommandResult yaml serialization", () => {
       resultSchema: EmptyResultSchema,
       outcome: {
         _tag: "failure",
+        additionalErrors: [],
         error: new ExampleTaggedError({ message: "nope", remediation: "try again" }),
       },
       redactor: plainRedactor,
@@ -689,6 +693,7 @@ describe("encodeCommandResult trace", () => {
           resultSchema: EmptyResultSchema,
           outcome: {
             _tag: "failure",
+            additionalErrors: [],
             error: new ExampleTaggedError({ message: "boom" }),
           },
           redactor: plainRedactor,

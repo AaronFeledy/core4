@@ -51,11 +51,13 @@ Later layers override earlier layers. Maps deep-merge and scalar values use the 
 
 Directive paths may traverse sequence entries only in schema-declared keyed collections, excluding identity fields. Dependency-map decoding and security CA alias paths reject directives with containing-value remediation; CA directives use canonical `ca`.
 
-Template expressions in identities match as literal text before materialization; templated hostnames retain their authored case. An untouched route retains its authored scheme spelling. A matched `both` entry expands into its atomic scheme parts, including any unmatched part; an unmatched overlay `both` entry appends as authored, while a partially matched overlay appends only its unmatched part.
+Collection identities compare values after load-owned expression materialization. Expressions deferred to planning match as authored literal text, and hostnames that still contain them retain their authored case. An untouched route retains its authored scheme spelling. A matched `both` entry expands into its atomic scheme parts, including any unmatched part; an unmatched overlay `both` entry appends as authored, while a partially matched overlay appends only its unmatched part.
 
 `.lando.recipe.yml` is not a canonical layer; recipes are init-time scaffolds (§8.8). Explicit Lando 3 translation supplies all seven legacy layers as one ordered set, folds recipe between dist and upstream, preserves source layers where the canonical merge algebra permits, and MUST preserve final effective configuration over the representable subset. Translation expresses mapping-member removals with native `!reset` and collection transitions not representable by ordinary merging with native `!override`, preserving effective configuration after every representable prefix. Unrepresentable native directive placements use a valid containing-value replacement; remaining unsupported semantics produce diagnostics. There is no translator-only compatibility delete value.
 
 Each file resolves its includes before entering six-layer precedence. Resolution retains recursively ordered fragment and inline overlays until the effective fold so intermediate materialization cannot erase reset or override intent (§7.7).
+
+Load-owned expressions (`recipe.*`, `env.*`) resolve before schema validation. After parsing and file-helper reads, the loader builds one scope from the app layers' inert `recipe` provenance, merged by these rules, plus one captured environment. Every layer and fragment materializes against that scope before strict layer decoding, so field codecs, refinements, and merge identities see resolved values, and the effective merge then passes strict runtime validation. An unresolved load-owned expression fails with `LandofileValidationError` naming the authoring file and value path. A site that also references a planner-owned scope stays deferred whole (§7.3.1).
 
 ### 7.3 Loading external file content
 
@@ -71,7 +73,7 @@ The canonical loader and emitter support native `!override` and `!reset` merge d
 
 ### 7.3.1 Configuration expressions
 
-The pure expression language supports `{{ expr }}` interpolation, dotted and bracket paths, equivalent pipe filters and positional calls, whitespace trimming, comments, whole-file `if`/`else` and `for` blocks, and shell forms `${VAR}`, `${VAR:-default}`, `${VAR-default}`, `${VAR:?message}`, `${VAR:+alt}`, and unambiguous `$VAR`. `{{{{` and `$${` escape literal openers. Whole-expression strings preserve scalar or structured result type; interpolation mixed with text always yields text. Whole-file rendering always yields text.
+The pure expression language supports `{{ expr }}` interpolation, dotted and bracket paths, equivalent pipe filters and positional calls, whitespace trimming, comments, whole-file `if`/`else` and `for` blocks, and shell forms `${VAR}`, `${VAR:-default}`, `${VAR-default}`, `${VAR:?message}`, `${VAR:+alt}`, and unambiguous `$VAR`. `{{{{` and `$${` escape literal openers. Whole-expression strings preserve scalar or structured result type; interpolation mixed with text always yields text. Whole-file rendering always yields text. The one exception is a Landofile value site that references planner-owned `app`, `proxy`, or `services` data: it stays deferred whole, including any load-owned references in the same site, is valid only where the schema accepts text, and MUST evaluate to text. Loading reports such a site at a non-text field with a suggestion to use a literal or a load-owned expression; a non-text result fails during planning with `ConfigExpressionError`.
 
 Built-in helpers are:
 
@@ -221,11 +223,11 @@ Any §7.4–§7.6 key MAY carry the §18.5 `deprecated` annotation, propagated t
 
 #### 7.7.2 Fragment shape
 
-A Landofile fragment is partial YAML or JSON and MAY contain top-level configuration except `name` and `runtime`. It MAY include further fragments. Cycles fail with `IncludeCycleError`; depth is bounded. Tooling fragments nest only through `toolingIncludes` and fail closed on bare `includes` (§8.5.8).
+A Landofile fragment is partial YAML or JSON and MAY contain top-level configuration except `name`, `runtime`, and `recipe`. It MAY include further fragments. Cycles fail with `IncludeCycleError`; depth is bounded. Tooling fragments nest only through `toolingIncludes` and fail closed on bare `includes` (§8.5.8).
 
 #### 7.7.3 Merge semantics
 
-Includes resolve in array order; later includes override earlier ones; the including file's inline keys override all of its includes; §7.2 map and array rules apply. File helper paths remain relative to the fragment source. Expressions use the including context and cannot export bindings.
+Includes resolve in array order; later includes override earlier ones; the including file's inline keys override all of its includes; §7.2 map and array rules apply. File helper paths remain relative to the fragment source. Expressions use the including context and cannot export bindings: load-owned expressions in every fragment, including nested and tooling fragments, read the including app's merged recipe options and captured environment, and a fragment cannot introduce or replace recipe options.
 
 #### 7.7.4 Lockfile
 
@@ -253,7 +255,7 @@ Published JSON Schema artifacts (`dist/schemas/**`, `dist/command-schemas/**`) a
 
 **Parity contract.** Lando's decoder is the definition of a valid Landofile. A parity test holds the published JSON Schema document (loaded with `SchemaRepresentation.fromJsonSchemaDocument`) and the Standard Schema view to that decoder over every valid guide and recipe Landofile fixture plus a curated invalid set (unknown keys, wrong types, out-of-range ports, `null` for an optional key). Accept/reject must agree, Standard Schema issue paths and messages must equal Lando's, and every check JSON Schema cannot express is listed in the test with its reason.
 
-**Validation issues.** Authored-file decoders run with `errors: "all"`. `LandofileValidationError`, `RecipeManifestValidationError`, and config-lint violations carry `issues` as `{ path: Array<string | number>, message, suggestion? }` (`ValidationIssue`). An unknown key's `suggestion` names the closest allowed key within edit distance 2.
+**Validation issues.** Authored-file decoders run with `errors: "all"`. `LandofileValidationError`, `RecipeManifestValidationError`, and config-lint violations carry `issues` as `{ path: Array<string | number>, message, suggestion? }` (`ValidationIssue`). An unknown key's `suggestion` names the closest allowed key within edit distance 2. Every Landofile validation entry point shares these issue semantics. Error summaries distinguish unknown keys, invalid values, or both, and MUST NOT describe a value failure as an unsupported key. Lint and validation materialize load-owned expressions exactly as loading does, using the invocation environment; planner-owned sites stay deferred, and neither builds an `AppPlan` nor contacts a provider.
 
 #### 7.8.1 Canonical Landofile serializer
 

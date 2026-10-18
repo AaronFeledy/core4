@@ -23,10 +23,12 @@ import type {
 } from "@lando/sdk/errors";
 import type { StateStore } from "@lando/sdk/services";
 
-import { loadLandofileFile, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { scopedLandofileRuntimeInputs, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
-import { presentLandofileLayers } from "@lando/landofile/layers";
+import { compileLandofileRootLayers } from "@lando/landofile/service";
+import { validateLandofile } from "@lando/landofile/validation";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 
 export type {
   IncludeUpdateEntry,
@@ -111,27 +113,17 @@ export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function*
     );
   }
   const appRoot = dirname(filePath);
-  const layers = yield* Effect.tryPromise({
-    try: () => presentLandofileLayers(appRoot),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: cause instanceof Error ? cause.message : "Failed to discover Landofile layers.",
-            filePath,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  });
   const includes = [];
   const composeIncludes: string[] = [];
-  for (const layer of layers) {
-    const landofile = yield* loadLandofileFile(layer.filePath);
+  const inputs = yield* scopedLandofileRuntimeInputs;
+  const { compiled, scope: loadScope } = yield* compileLandofileRootLayers(appRoot, filePath, inputs);
+  for (const { layer, landofile: overlay } of compiled) {
+    const landofile = yield* validateLandofile(layer.filePath, mergeLandofiles([overlay]));
     includes.push(...(landofile.includes ?? []));
     composeIncludes.push(...(landofile.include ?? []));
   }
   return yield* updateLandofileIncludes({
+    loadScope,
     landofile: { includes, include: composeIncludes },
     appRoot,
     ...(options.check === true ? { check: true } : {}),

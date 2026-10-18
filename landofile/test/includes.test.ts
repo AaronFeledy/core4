@@ -108,6 +108,38 @@ describe("resolveLandofileIncludes", () => {
     expect(await exists(join(appRoot, ".lando.lock.yml"))).toBe(false);
   });
 
+  test("materializes typed fragment values from the including load scope", async () => {
+    // Given
+    await writeFile(join(appRoot, "fragment.yml"), 'services:\n  api:\n    primary: "{{ recipe.flag }}"\n');
+    // When
+    const result = await Effect.runPromise(
+      resolveLandofileIncludes({
+        landofile: { includes: ["./fragment.yml"] },
+        appRoot,
+        cacheRoot,
+        loadScope: { env: {}, recipe: { flag: false } },
+      }),
+    );
+    // Then
+    expect(result.services?.[ServiceName.make("api")]?.primary).toBe(false);
+  });
+
+  test("rejects recipe declarations in fragments rather than exporting bindings", async () => {
+    // Given
+    await writeFile(join(appRoot, "fragment.yml"), "recipe: lamp\n");
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(resolveEffect({ includes: ["./fragment.yml"] }, appRoot, cacheRoot)),
+    );
+    // Then
+    expect(error).toMatchObject({
+      _tag: "LandofileIncludeError",
+      kind: "forbidden-field",
+      remediation: expect.stringContaining("Remove top-level name:, runtime:, and recipe:"),
+    });
+    expect(error.message).toContain("recipe:");
+  });
+
   test("reports every merged include problem as a structured validation issue", async () => {
     // Given: an include that misspells a service key and gives another key the wrong type.
     await writeFile(

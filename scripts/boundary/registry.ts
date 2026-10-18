@@ -41,7 +41,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: effectIdiomsRule,
     seamJustification:
-      "Package edges govern dependency direction; they cannot reject retired Effect idioms (Data errors, wall-clock Date in Effect modules, generator-only wrappers, hand-rolled record guards, *Live layer names, @effect/* imports) written inside an allowed package.",
+      "Package edges govern dependency direction; they cannot reject retired Effect idioms (Data errors, wall-clock Date in Effect modules, generator-only wrappers, hand-rolled record guards, *Live layer names, @effect/* imports) or raw Cause assembly that bypasses failure-role helpers, all written inside an allowed package.",
   },
   {
     rule: envHelperRule,

@@ -1,15 +1,9 @@
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { type LandofileDecodedOverlay, decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
-import {
-  type AppPlan,
-  type LandofileShape,
-  LandofileShape as LandofileShapeSchema,
-  formatValidationIssueLine,
-  validationIssuesFromCause,
-} from "@lando/sdk/schema";
+import { GlobalAppError, type LandofileParseError, type LandofileValidationError } from "@lando/sdk/errors";
+import { mergeLandofiles } from "@lando/sdk/landofile";
+import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type AppPlannerError,
@@ -21,9 +15,10 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { decodeOrFail } from "@lando/landofile/decode";
+import { buildLandofileLoadScope, compileLandofileLayer } from "@lando/landofile/compile";
 import { DEFAULT_LANDOFILE, DEFAULT_POST_LANDOFILES, DEFAULT_PRE_LANDOFILES } from "@lando/landofile/merge";
 import { parseLandofile } from "@lando/landofile/parser";
+import { validateLandofile } from "@lando/landofile/validation";
 
 import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 
@@ -50,30 +45,18 @@ export type LoadGlobalPlanError =
 
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
-const validationIssues = (cause: unknown) =>
-  validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
-
-const validateGlobalLandofile = (
-  filePath: string,
-  parsed: unknown,
-): Effect.Effect<LandofileShape, LandofileValidationError> =>
-  decodeOrFail(LandofileShapeSchema, (cause) => {
-    const issues = validationIssues(cause);
-    return new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
-      file: filePath,
-      issues,
-    });
-  })(parsed, { onExcessProperty: "error", errors: "all" });
-
 export const decodeGlobalLandofile = (input: {
   readonly file: string;
   readonly content: string;
   readonly cwd: string;
 }): Effect.Effect<LandofileShape, LandofileParseError | LandofileValidationError> =>
   parseLandofile(input).pipe(
-    Effect.flatMap((parsed) => decodeLandofileLayer(input.file, parsed)),
-    Effect.flatMap((overlay) => validateGlobalLandofile(input.file, mergeLandofiles([overlay]))),
+    Effect.flatMap((parsed) =>
+      buildLandofileLoadScope([{ file: input.file, value: parsed }]).pipe(
+        Effect.flatMap((scope) => compileLandofileLayer(input.file, parsed, scope)),
+      ),
+    ),
+    Effect.flatMap((overlay) => validateLandofile(input.file, mergeLandofiles([overlay]))),
   );
 
 const withProcessCwd = <A, E, R>(
@@ -109,18 +92,18 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   const exists = yield* fileSystem.exists(paths.distLandofile);
   if (!exists) return { materialized: false, paths };
 
-  const layers: LandofileDecodedOverlay[] = [];
+  const rawLayers: Array<{ readonly file: string; readonly value: unknown }> = [];
   for (const basename of [...DEFAULT_PRE_LANDOFILES, DEFAULT_LANDOFILE, ...DEFAULT_POST_LANDOFILES]) {
     const file = join(paths.root, basename);
     if (!(yield* fileSystem.exists(file))) continue;
     const content = yield* fileSystem.readText(file);
-    layers.push(
-      yield* parseLandofile({ file, content, cwd: paths.root }).pipe(
-        Effect.flatMap((parsed) => decodeLandofileLayer(file, parsed)),
-      ),
-    );
+    rawLayers.push({ file, value: yield* parseLandofile({ file, content, cwd: paths.root }) });
   }
-  const landofile = yield* validateGlobalLandofile(paths.userLandofile, {
+  const scope = yield* buildLandofileLoadScope(rawLayers);
+  const layers = yield* Effect.forEach(rawLayers, ({ file, value }) =>
+    compileLandofileLayer(file, value, scope),
+  );
+  const landofile = yield* validateLandofile(paths.userLandofile, {
     ...mergeLandofiles(layers),
     name: "global",
     provider: MANAGED_PROVIDER_ID,

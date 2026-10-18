@@ -8,6 +8,7 @@ import {
 } from "@lando/landofile/recipe-expressions";
 
 const input = {
+  textOnly: true,
   scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
   context: {
     app: { name: "dcms-demo", slug: "dcms-demo" },
@@ -15,7 +16,7 @@ const input = {
     recipe: { flavor: "cms" },
     env: { FLAVOR: "host" },
   },
-};
+} as const;
 
 test("materializes app, proxy, recipe, and env throughout nested values", () => {
   const source = {
@@ -76,6 +77,7 @@ test("defers services.* at load, reports the deferred sites, and resolves them w
     { path: ["cmds", 0], expression: "{{ services.database.creds.database }}" },
   ]);
   const resolved = materializeExpressionScopes(identity.value, "/app/.lando.yml", {
+    textOnly: true,
     scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
     context: { ...input.context, services: { database: { creds: { user: "lando", database: "db" } } } },
   });
@@ -128,7 +130,7 @@ test("enforces the supplied evaluation budget", () => {
 
 test("keeps loader rejection of recipe defaults without recorded options", () => {
   const source = { cmd: '{{ default(recipe.flavor, "cms") }}' };
-  const result = materializeLoadScopeExpressions(source, "/app/.lando.yml", {});
+  const result = materializeLoadScopeExpressions(source, "/app/.lando.yml", { env: {}, recipe: undefined });
   expect(result.value).toBe(source);
   expect(result.unresolved).toEqual([{ path: ["cmd"], reason: "the Landofile records no recipe options" }]);
 });

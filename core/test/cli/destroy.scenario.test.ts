@@ -453,7 +453,7 @@ const runDestroyCli = (
     resultSchema: destroySpec.resultSchema,
     render: (result, context) => destroySpec.render?.(result, input, context),
     io,
-    formatError: (error) => commandErrorMessage(error, "app:destroy"),
+    formatError: (failure) => commandErrorMessage(failure, "app:destroy"),
   }).finally(clearActiveCommandInvocation);
 };
 

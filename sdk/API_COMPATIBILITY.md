@@ -277,6 +277,8 @@
   arguments remain separate. `ToolingEngine.run` additively exposes `ToolingCompileError` when host
   shell positional references cannot be bound safely.
 - `@lando/sdk/command-result` additively exports the canonical Effect-based command-result and stream-frame encoders, their option/outcome contracts, envelope builder, and identity redactor. The helpers serialize the existing `CommandResultEnvelope` and `StreamFrame` schemas; no schema registry membership changes.
+- `@lando/sdk/command-result` exports `FailureRoleAnnotation`, `failureOutcomeFromCause`, `primaryFailureReason` (the reason the projection selects as primary), `commandFailureCause`, and the type-only `ProjectedFailure`. Reason annotations select the primary independently of cause ordering: first unannotated Fail, then unannotated Die, then first Fail, then first Die, then squash. The failure outcome requires `additionalErrors: ReadonlyArray<{ role: FailureRole; error: unknown }>` even when empty. Other Fail/Die reasons retain their order and annotated role, defaulting to `peer`; interruptions are excluded. The closed `FailureRole` schema is `rollback` (undo partial work), `cleanup` (release or bookkeeping), or `peer` (sibling phase failure). Engine cause-preserving mappings retain reason annotations; raw Effect `mapError` and matching `catchTag` handlers can discard compound causes and must not wrap compensated failures. `commandFailureCause` converts nested defects to typed Fail reasons without dropping annotations.
+- `CommandResultEnvelope.error.additionalErrors` carries non-recursive tagged-error entries with required `role` only when non-empty. The encoder reserves `role`, `stack`, `cause`, and source-owned `additionalErrors`, and redacts every entry like the primary. `CliCommandErrorEvent` adds optional non-empty `additionalFailures: [{ failureTag, role }]` from the same projection; `failureTag` remains the primary identity. These are pre-release contract changes, not compatibility shims.
 - `@lando/sdk/schema` additively exports `CommandTraceSpan`, `CommandTrace`, and `TracingConfig`. `CommandResultEnvelope` additively accepts optional `trace: CommandTrace` for machine-output timing trees when tracing is enabled. `@lando/sdk/command-result` `EncodeCommandResultOptions` additively accepts optional `trace`; success, failure, stream result frames, and encode fallbacks carry it through the same envelope seam. `GlobalConfig` and `GlobalConfigView` additively accept optional `tracing: TracingConfig` (`otlp.endpoint`, `otlp.headers`) for OTLP export configuration.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
@@ -436,6 +438,7 @@ It registers no JSON Schema.
 
 ## Additive schema exports
 
+- `FailureRole`
 - `LANDOFILE_MERGE_DIRECTIVE`
 - `LandofileOverride`
 - `LandofileReset`

@@ -418,6 +418,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   PromptSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   InteractionServiceContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandResultFormat: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  FailureRole: "sdk/test/command-result-roles.test.ts",
   CommandWarning: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandResultEnvelope: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandTraceSpan: "sdk/test/schema/command-trace.test.ts",
