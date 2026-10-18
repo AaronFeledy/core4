@@ -1013,7 +1013,7 @@ describe("lando start", () => {
     expect(JSON.stringify(failure)).not.toContain(secret);
   });
 
-  test("named task output emits no detail and retains redacted tagged failure output", async () => {
+  test("named task output narrates redacted details and retains redacted tagged failure output", async () => {
     // Given
     const secret = "named-event-task-token";
     const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] });
@@ -1033,7 +1033,7 @@ describe("lando start", () => {
     const details = harness.taskEvents
       .filter((event) => event._tag === "task.detail")
       .map((event) => String(event.line));
-    expect(details).toEqual([]);
+    expect(details).toEqual(["[redacted]", "[redacted] failed"]);
     expect(failure).toMatchObject({
       _tag: "LandofileEventStepFailedError",
       outputTail: "[redacted]\n[redacted] failed",
