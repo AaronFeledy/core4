@@ -42,14 +42,9 @@ const writeLine = async (destination: "stdout" | "stderr", text: string): Promis
   writeStdioLine(destination, text);
 };
 
-/** Compiled `$bunfs` / Windows `~BUN` virtual entries already embed generated modules. */
-const entryLocator =
-  typeof import.meta.path === "string" && import.meta.path.length > 0
-    ? import.meta.path
-    : typeof import.meta.url === "string"
-      ? import.meta.url
-      : "";
-const isCompiledEntry = entryLocator.includes("$bunfs") || entryLocator.includes("~BUN");
+/** Compiled standalone binaries already embed generated modules. */
+const isCompiledEntry =
+  typeof Bun.isStandaloneExecutable === "boolean" ? Bun.isStandaloneExecutable : false;
 
 const LANDOFILE_BASENAMES = [
   ".lando.base",
