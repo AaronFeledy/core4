@@ -27,7 +27,7 @@ import {
   findPrimaryServiceName,
   readScratchLandofile,
 } from "@lando/engine/scratch-app/service";
-import { RedactionService, collectForwardedEnvValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { finishCommandProgress } from "../command-progress";
@@ -97,6 +97,12 @@ export const defaultScratchRunDeps: ScratchRunDeps = {
     ),
   readLandofile: readScratchLandofile,
 };
+
+// Forwarded agent markers are identity flags, not secrets; only long values are registered.
+const MIN_REDACTION_TOKEN_LENGTH = 8;
+
+const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> =>
+  Object.values(env ?? {}).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
 
 export const scratchRunRedactionTokens = (result: ScratchRunResult): ReadonlyArray<string> =>
   result.redactionTokens ?? [];
@@ -179,7 +185,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
       });
       // Chunks stream before the result exists, so forwarded values must reach sinks already built.
       const redaction = yield* Effect.serviceOption(RedactionService);
-      if (Option.isSome(redaction)) yield* redaction.value.registerValues(collectForwardedEnvValues(env));
+      if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokensFromEnv(env));
       const cliTextOutput = options.hostIo === "cli" && options.envelopeFormat !== true;
       if (cliTextOutput) yield* finishCommandProgress();
       const sink = yield* Effect.serviceOption(StreamFrameSink);
@@ -216,7 +222,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         kept: options.keep,
         stdout: result.stdout,
         stderr: result.stderr,
-        redactionTokens: collectForwardedEnvValues(env),
+        redactionTokens: redactionTokensFromEnv(env),
       } satisfies ScratchRunResult;
     }),
   );

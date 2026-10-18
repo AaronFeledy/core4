@@ -1,6 +1,5 @@
 import { Effect, Layer } from "effect";
 
-import { collectForwardedEnvValues } from "@lando/redaction/service";
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
@@ -148,11 +147,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
-  const forwarded = withAgentContextEnv(undefined, process.env, {
-    lowerThanEnv: { ...service.environment, ...invocation.env },
-    ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
-  });
-  yield* registerAppPlanRedactionTokens(plan, collectForwardedEnvValues(forwarded));
+  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const tty = invocation.tty === true;
   let exitCode = 0;

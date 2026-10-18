@@ -6,11 +6,7 @@ import {
   isUsableExactRedactionValue,
 } from "@lando/sdk/secrets";
 import { Effect } from "effect";
-import {
-  collectForwardedEnvValues,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "../src/service.ts";
+import { makeRedactionService, resetRegisteredRedactionValuesForTesting } from "../src/service.ts";
 
 afterEach(resetRegisteredRedactionValuesForTesting);
 
@@ -59,7 +55,7 @@ test.each([
   // Given
   const text = `<>${value}<>`;
   const masked = `<>${REDACTED}<>`;
-  for (const source of ["store", "plan", "env", "registered", "forwarded"] as const) {
+  for (const source of ["store", "plan", "env", "registered"] as const) {
     resetRegisteredRedactionValuesForTesting();
     const service = makeRedactionService({
       id: "fixture",
@@ -75,16 +71,13 @@ test.each([
     const strings = await Effect.runPromise(service.forProfile("secrets", options));
     // When
     if (source === "registered") await Effect.runPromise(service.registerValues([value]));
-    if (source === "forwarded") {
-      await Effect.runPromise(service.registerValues(collectForwardedEnvValues({ OPAQUE: value })));
-    }
     const payload = createPayloadRedactor(getValues);
     const bytes = new TextEncoder().encode(text);
     const first = payload.write(bytes.subarray(0, 9));
     const second = payload.write(bytes.subarray(9));
     const output = Buffer.concat([first, second, payload.flush()]).toString();
     // Then: heuristic sources drop public defaults; explicit sources keep them.
-    const heuristic = source === "env" || source === "forwarded";
+    const heuristic = source === "env";
     const eligible =
       value.trim().length > 0 &&
       isUsableExactRedactionValue(value) &&

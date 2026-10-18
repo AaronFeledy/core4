@@ -594,13 +594,14 @@ describe("ProviderExecToolingEngine.layer", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  test("registers forwarded agent values before split live bytes arrive", async () => {
+  test("keeps forwarded agent markers visible in split live bytes", async () => {
     // Given
     const prior = process.env.OPENCODE_CLIENT;
-    process.env.OPENCODE_CLIENT = "pqXyZq";
+    // Agent markers identify the client; they are not secrets (CI forwards values like `true`).
+    process.env.OPENCODE_CLIENT = "true";
     resetRegisteredRedactionValuesForTesting();
     const plan = makePlan([baseServicePlan("web", true)]);
-    const base = makeFakeProvider([{ exitCode: 0, stdout: "pqXyZq", stderr: "" }]);
+    const base = makeFakeProvider([{ exitCode: 0, stdout: '{"ok":true}', stderr: "" }]);
     const provider: RuntimeProviderShape = {
       ...base,
       execStream: (target, command) =>
@@ -651,8 +652,9 @@ describe("ProviderExecToolingEngine.layer", () => {
         ),
       );
       // Then
-      expect(base.calls[0]?.command.env?.OPENCODE_CLIENT).toBe("pqXyZq");
-      expect(stdout).toBe("[redacted]");
+      expect(base.calls[0]?.command.env?.OPENCODE_CLIENT).toBe("true");
+      expect(stdout).toBe('{"ok":true}');
+      expect([...values()]).not.toContain("true");
     } finally {
       if (prior === undefined) Reflect.deleteProperty(process.env, "OPENCODE_CLIENT");
       else process.env.OPENCODE_CLIENT = prior;

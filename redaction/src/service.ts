@@ -172,10 +172,6 @@ const dedupeValues = (values: Iterable<string>): string[] => {
   return [...deduped];
 };
 
-/** Forwarded agent values are heuristic, so they drop the published default credentials. */
-export const collectForwardedEnvValues = (env: Readonly<Record<string, string>> | undefined): string[] =>
-  dedupeValues(Object.values(env ?? {})).filter((value) => !isPublicDefaultCredential(value));
-
 /**
  * Explicit values (secret store, registrations, authoritative tokens) are authoritative: an
  * unusable one suppresses any string that contains it. Heuristic sources drop public defaults

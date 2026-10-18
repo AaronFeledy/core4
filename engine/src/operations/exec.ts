@@ -17,7 +17,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { collectForwardedEnvValues } from "@lando/redaction/service";
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
@@ -194,12 +193,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     allowlist,
     lowerThanEnv: service.environment,
   });
-  const forwarded = withAgentContextEnv(undefined, process.env, {
-    allowlist,
-    lowerThanEnv: { ...service.environment, ...options.env },
-  });
-  const forwardedTokens = collectForwardedEnvValues(forwarded);
-  yield* registerAppPlanRedactionTokens(plan, forwardedTokens);
+  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const result = yield* execServiceCommand(
     {
@@ -218,7 +212,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     exitCode: result.exitCode,
     stdout: result.stdout,
     stderr: result.stderr,
-    redactionTokens: [...collectAppPlanRedactionTokens(plan), ...forwardedTokens],
+    redactionTokens: collectAppPlanRedactionTokens(plan),
   };
   return withTokens;
 });
