@@ -1,10 +1,8 @@
 import { Schema } from "effect";
-import type { DirectHttpTransport } from "./direct-http.ts";
-import { type ResolvedNetworkTrust, fetchInitForNetwork, usesDirectEndpoint } from "./network-trust.ts";
+import { type ResolvedNetworkTrust, fetchInitForNetwork, shouldBypassProxy } from "./network-trust.ts";
 
 export interface HttpTransports {
-  readonly fetch: typeof fetch;
-  readonly direct: DirectHttpTransport;
+  readonly fetch: (input: string | URL | Request, init?: BunFetchRequestInit) => Promise<Response>;
 }
 
 class RedirectError extends Schema.TaggedError<RedirectError>()("RedirectError", {
@@ -36,27 +34,23 @@ export const requestWithNetworkTrust = async (
   const headers = new Headers(request.headers);
   let body = request.body;
   const { trust, transports, systemCaPems } = network;
-  const startsDirect = usesDirectEndpoint(url, trust);
-  const ca =
-    trust === undefined || (trust.trustHost && trust.caPems.length === 0)
-      ? undefined
-      : trust.trustHost
-        ? [...systemCaPems, ...trust.caPems]
-        : trust.caPems;
 
   for (let redirects = 0; ; redirects += 1) {
     signal.throwIfAborted();
-    const response =
-      startsDirect && usesDirectEndpoint(url, trust)
-        ? await transports.direct(url, { method, headers, signal, ca, body })
-        : await transports.fetch(url.href, {
-            method,
-            headers,
-            signal,
-            redirect: "manual",
-            body,
-            ...(trust === undefined ? {} : fetchInitForNetwork(url.href, trust, systemCaPems)),
-          });
+    const init =
+      trust === undefined
+        ? shouldBypassProxy(url.href, [])
+          ? { proxy: false as const }
+          : {}
+        : fetchInitForNetwork(url.href, trust, systemCaPems);
+    const response = await transports.fetch(url.href, {
+      method,
+      headers,
+      signal,
+      redirect: "manual",
+      body,
+      ...init,
+    });
     const location = response.headers.get("location");
     if (
       ![301, 302, 303, 307, 308].includes(response.status) ||
