@@ -43,8 +43,7 @@ const writeLine = async (destination: "stdout" | "stderr", text: string): Promis
 };
 
 /** Compiled standalone binaries already embed generated modules. */
-const isCompiledEntry =
-  typeof Bun.isStandaloneExecutable === "boolean" ? Bun.isStandaloneExecutable : false;
+const isCompiledEntry = typeof Bun.isStandaloneExecutable === "boolean" ? Bun.isStandaloneExecutable : false;
 
 const LANDOFILE_BASENAMES = [
   ".lando.base",
