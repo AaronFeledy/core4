@@ -44,15 +44,6 @@ const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 export const planMysqlApp = (servicesInput: NonNullable<LandofileShape["services"]>) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(
-        {
-          name: "mysql-versions",
-          runtime: 4,
-          services: Object.fromEntries(
-            Object.entries(servicesInput).map(([name, service]) => [name, { ...service, history: false }]),
-          ),
-        },
-        providerCapabilities,
-      ),
+      planner.plan({ name: "mysql-versions", runtime: 4, services: servicesInput }, providerCapabilities),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );
