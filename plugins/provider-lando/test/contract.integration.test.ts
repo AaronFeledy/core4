@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -17,6 +17,7 @@ import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
 
@@ -123,6 +124,7 @@ const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string)
 };
 
 const makeFakeApi = () => {
+  const createdVolumes = new Map<string, unknown>();
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
@@ -136,10 +138,28 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),
+          )(request.body);
+          if (createdVolumes.has(body.Name)) return { status: 409, body: "{}" };
+          createdVolumes.set(body.Name, body);
+          return { status: 201, body: JSON.stringify(body) };
+        }
+
+        if (request.path.startsWith("/volumes/")) {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length).split("?")[0] ?? "");
+          if (request.method === "DELETE")
+            return { status: createdVolumes.delete(name) ? 204 : 404, body: "" };
+          const volume = createdVolumes.get(name);
+          return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
+        }
+
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
-        if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
@@ -470,6 +490,15 @@ describe("provider-lando RuntimeProvider contract", () => {
     );
 
     await Effect.runPromise(runProviderContract(provider));
+    await Effect.runPromise(
+      runProviderVolumeCreationContract(
+        provider,
+        () =>
+          fake.calls.filter(
+            (call) => call.method === "POST" && /\/containers\/[^/]+\/start$/u.test(call.path),
+          ).length,
+      ),
+    );
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
   });

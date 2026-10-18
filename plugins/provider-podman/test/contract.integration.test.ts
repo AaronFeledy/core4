@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
@@ -29,6 +29,7 @@ import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -178,6 +179,7 @@ const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string)
 };
 
 const makeFakeApi = () => {
+  const createdVolumes = new Map<string, unknown>();
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
@@ -190,6 +192,24 @@ const makeFakeApi = () => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+
+        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),
+          )(request.body);
+          if (createdVolumes.has(body.Name)) return { status: 409, body: "{}" };
+          createdVolumes.set(body.Name, body);
+          return { status: 201, body: JSON.stringify(body) };
+        }
+
+        if (request.path.startsWith("/volumes/")) {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length).split("?")[0] ?? "");
+          if (request.method === "DELETE")
+            return { status: createdVolumes.delete(name) ? 204 : 404, body: "" };
+          const volume = createdVolumes.get(name);
+          return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
+        }
 
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
@@ -686,6 +706,15 @@ describe("provider-podman RuntimeProvider contract", () => {
     expect(provider.capabilities.bindMountPerformance).toBe("native");
 
     await Effect.runPromise(runProviderContract(provider));
+    await Effect.runPromise(
+      runProviderVolumeCreationContract(
+        provider,
+        () =>
+          fake.calls.filter(
+            (call) => call.method === "POST" && /\/containers\/[^/]+\/start$/u.test(call.path),
+          ).length,
+      ),
+    );
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
   });
