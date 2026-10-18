@@ -1,5 +1,11 @@
 import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
-import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
+import {
+  HISTORY_MODE_INSTANCE_LABEL,
+  PROVIDER_LABEL,
+  SCRATCH_ID_LABEL,
+  SCRATCH_LABEL,
+  VOLUME_INSTANCE_LABEL,
+} from "../labels.ts";
 
 import {
   ProviderInternalError,
@@ -60,6 +66,7 @@ import {
   HISTORY_MODE_VERIFIED,
   VOLUME_HISTORY_IMAGE,
   VOLUME_HISTORY_MOUNT,
+  historyModeMarkerIsVerified,
   historyModeMarkerName,
   volumeHistoryInitCommand,
   volumeHistoryModeCheckCommand,
@@ -621,19 +628,24 @@ const historyVolumeLabels = (body: string): Readonly<Record<string, string>> => 
   }
 };
 
-const historyVolumeIsVerified = Effect.fnUntraced(function* (
+const inspectVolumeLabels = Effect.fnUntraced(function* (
   deps: BringUpDeps,
-  storeName: string,
-): Effect.fn.Return<boolean, never> {
-  const marker = historyModeMarkerName(storeName);
+  name: string,
+): Effect.fn.Return<Readonly<Record<string, string>> | undefined, never> {
   const inspected = yield* request(deps, {
     method: "GET",
-    path: `/volumes/${encodeURIComponent(marker)}`,
+    path: `/volumes/${encodeURIComponent(name)}`,
   }).pipe(Effect.catch(() => Effect.succeed({ status: 0, body: "" })));
-  return (
-    inspected.status === 200 &&
-    historyVolumeLabels(inspected.body)[HISTORY_MODE_LABEL] === HISTORY_MODE_VERIFIED
-  );
+  return inspected.status === 200 ? historyVolumeLabels(inspected.body) : undefined;
+});
+
+const inspectStoreInstanceId = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<string | undefined, never> {
+  const labels = yield* inspectVolumeLabels(deps, storeName);
+  const instanceId = labels?.[VOLUME_INSTANCE_LABEL];
+  return instanceId !== undefined && instanceId.length > 0 ? instanceId : undefined;
 });
 
 const removeHistoryModeMarker = (deps: BringUpDeps, storeName: string): Effect.Effect<void, never> =>
@@ -645,18 +657,19 @@ const removeHistoryModeMarker = (deps: BringUpDeps, storeName: string): Effect.E
     Effect.asVoid,
   );
 
-const stampHistoryModeVerified = Effect.fnUntraced(function* (
+const createHistoryModeMarker = (
   deps: BringUpDeps,
   plan: AppPlan,
   storeName: string,
-): Effect.fn.Return<void, never> {
+  instanceId: string,
+): Effect.Effect<{ readonly status: number }, never> => {
   const marker = historyModeMarkerName(storeName);
   const store = plan.stores.find((candidate) => candidate.name === storeName) ?? {
     name: marker,
     scope: "app" as const,
     kind: "data" as const,
   };
-  yield* request(deps, {
+  return request(deps, {
     method: "POST",
     path: "/volumes/create",
     body: {
@@ -664,9 +677,23 @@ const stampHistoryModeVerified = Effect.fnUntraced(function* (
       Labels: {
         ...podmanVolumeCreationLabels(plan, { ...store, name: marker }),
         [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+        [HISTORY_MODE_INSTANCE_LABEL]: instanceId,
       },
     },
-  }).pipe(Effect.catch(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.succeed({ status: 0, body: "" })));
+};
+
+const stampHistoryModeVerified = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  storeName: string,
+  instanceId: string,
+): Effect.fn.Return<void, never> {
+  if (instanceId.length === 0) return;
+  const created = yield* createHistoryModeMarker(deps, plan, storeName, instanceId);
+  if (created.status !== 409) return;
+  yield* removeHistoryModeMarker(deps, storeName);
+  yield* createHistoryModeMarker(deps, plan, storeName, instanceId);
 });
 
 const historyVolumeIsStickyWritable = Effect.fnUntraced(function* (
@@ -699,19 +726,29 @@ const initializeHistoryVolume = Effect.fnUntraced(function* (
 const initializeHistoryVolumes = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
-  createdStores: ReadonlySet<string>,
+  createdInstances: ReadonlyMap<string, string>,
 ): Effect.fn.Return<void, ProviderInternalError> {
   const stores = historyStoreNamesFromPlan(plan);
   if (stores.length === 0) return;
-  const unverified: string[] = [];
+  const unverified: Array<{ readonly storeName: string; readonly instanceId: string | undefined }> = [];
   for (const storeName of stores) {
-    if (createdStores.has(storeName)) {
+    const createdId = createdInstances.get(storeName);
+    const instanceId = createdId ?? (yield* inspectStoreInstanceId(deps, storeName));
+    if (createdId !== undefined) {
       yield* removeHistoryModeMarker(deps, storeName);
-      unverified.push(storeName);
+      unverified.push({ storeName, instanceId });
       continue;
     }
-    if (yield* historyVolumeIsVerified(deps, storeName)) continue;
-    unverified.push(storeName);
+    const markerLabels = yield* inspectVolumeLabels(deps, historyModeMarkerName(storeName));
+    if (
+      instanceId !== undefined &&
+      markerLabels !== undefined &&
+      historyModeMarkerIsVerified(markerLabels, instanceId)
+    ) {
+      continue;
+    }
+    if (markerLabels !== undefined) yield* removeHistoryModeMarker(deps, storeName);
+    unverified.push({ storeName, instanceId });
   }
   if (unverified.length === 0) return;
   const imageReady = yield* Effect.result(ensureHistoryHelperImage(deps, plan));
@@ -724,9 +761,9 @@ const initializeHistoryVolumes = Effect.fnUntraced(function* (
     );
     return;
   }
-  for (const storeName of unverified) {
+  for (const { storeName, instanceId } of unverified) {
     const needsInit =
-      createdStores.has(storeName) || !(yield* historyVolumeIsStickyWritable(deps, storeName));
+      createdInstances.has(storeName) || !(yield* historyVolumeIsStickyWritable(deps, storeName));
     if (needsInit) {
       const init = yield* Effect.result(initializeHistoryVolume(deps, storeName));
       if (init._tag === "Failure") {
@@ -739,7 +776,7 @@ const initializeHistoryVolumes = Effect.fnUntraced(function* (
         continue;
       }
     }
-    yield* stampHistoryModeVerified(deps, plan, storeName);
+    if (instanceId !== undefined) yield* stampHistoryModeVerified(deps, plan, storeName, instanceId);
   }
 });
 
@@ -1370,14 +1407,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const createdVolumes: VolumeCreationFact[] = [];
-  const createdHistoryStores = new Set<string>();
+  const createdHistoryInstances = new Map<string, string>();
   const historyStores = new Set(historyStoreNamesFromPlan(plan));
   for (const store of plan.stores) {
     const facts = yield* ensureVolume(deps, plan, store);
     createdVolumes.push(...facts);
-    if (facts.length > 0 && historyStores.has(store.name)) createdHistoryStores.add(store.name);
+    const generation = facts[0]?.generation;
+    if (historyStores.has(store.name) && generation !== undefined && generation.length > 0) {
+      createdHistoryInstances.set(store.name, generation);
+    }
   }
-  yield* initializeHistoryVolumes(deps, plan, createdHistoryStores);
+  yield* initializeHistoryVolumes(deps, plan, createdHistoryInstances);
   const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {

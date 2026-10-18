@@ -3,9 +3,21 @@ export const VOLUME_HISTORY_MOUNT = "/lando-data";
 export const VOLUME_HISTORY_MODE = 0o1777;
 /** Inspectable skip marker: Engine volume labels cannot be updated after create. */
 export const HISTORY_MODE_LABEL = "dev.lando.history-mode";
+export const HISTORY_MODE_INSTANCE_LABEL = "dev.lando.history-mode.instance";
 export const HISTORY_MODE_VERIFIED = "1777";
 
 export const historyModeMarkerName = (storeName: string): string => `${storeName}.verified`;
+
+export const isHistoryModeMarkerVolume = (labels: Readonly<Record<string, string>> | undefined): boolean =>
+  labels?.[HISTORY_MODE_LABEL] !== undefined;
+
+export const historyModeMarkerIsVerified = (
+  labels: Readonly<Record<string, string>>,
+  storeInstanceId: string,
+): boolean =>
+  storeInstanceId.length > 0 &&
+  labels[HISTORY_MODE_LABEL] === HISTORY_MODE_VERIFIED &&
+  labels[HISTORY_MODE_INSTANCE_LABEL] === storeInstanceId;
 
 // Runs inside the scoped helper, not the host. Directory descriptors prevent
 // symlink following; fchmod + fsync make the sticky-writable root durable.
