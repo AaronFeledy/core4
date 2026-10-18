@@ -20,7 +20,7 @@ With no `--service` flag, that opens a host shell scoped to the app root. The ho
 lando shell --service appserver
 ```
 
-`--service` starts a login shell (`sh -l`) in that container. `lando shell` takes no positional arguments. `lando shell appserver` is rejected with `Unexpected argument: appserver` instead of silently opening a host shell.
+`--service` starts a login shell in that container. It prefers `bash -l` when bash is on PATH, otherwise `sh -l`. `lando shell` takes no positional arguments. `lando shell appserver` is rejected with `Unexpected argument: appserver` instead of silently opening a host shell.
 
 ## Forward agent-context env
 

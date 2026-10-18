@@ -41,7 +41,7 @@ lando exec db -- psql --version
 lando logs --service app --follow
 ```
 
-`lando ssh` opens an interactive `sh -l` in the primary service. See [Open a shell in a service](./ssh.mdx).
+`lando ssh` opens an interactive login shell in the primary service (bash when present, otherwise sh). See [Open a shell in a service](./ssh.mdx).
 
 ## Stop, restart, rebuild
 
