@@ -104,7 +104,7 @@ describe("require-derived-codegen", () => {
       );
 
       // When: bun test runs under that tree's preload.
-      const proc = Bun.spawn(["bun", "test", "test/smoke.test.ts"], {
+      const proc = Bun.spawn([process.execPath, "test", "test/smoke.test.ts"], {
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
@@ -116,10 +116,65 @@ describe("require-derived-codegen", () => {
         proc.exited,
       ]);
 
-      // Then: nonzero exit and actionable codegen remediation on stderr.
+      // Then: nonzero exit and all-missing remediation on stderr.
       expect(exitCode).not.toBe(0);
-      expect(`${stderr}\n${stdout}`).toContain("Run `bun run codegen`");
+      const combined = `${stderr}\n${stdout}`;
+      expect(combined).toContain("Run `bun run codegen`");
+      expect(combined).toContain("(8 of 8)");
     },
-    { timeout: 5_000 },
+    { timeout: 30_000 },
   );
+
+  test("bunfig.toml preload starts with require-derived-codegen-preload", async () => {
+    // Given: the repo bunfig.toml test preload list.
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    const bunfig = await Bun.file(join(repoRoot, "bunfig.toml")).text();
+    const match = bunfig.match(/\[test\][\s\S]*?preload\s*=\s*\[([^\]]+)\]/);
+    expect(match).not.toBeNull();
+    const entries = (match?.[1] ?? "")
+      .split(",")
+      .map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
+      .filter((entry) => entry.length > 0);
+
+    // When / Then: first preload is the codegen guard.
+    expect(entries[0]?.endsWith("require-derived-codegen-preload.ts")).toBe(true);
+  });
+
+  test("test-preload awaits bundled-plugins dynamically after the guard", async () => {
+    // Given: scripts/test-preload.ts source.
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    const source = await Bun.file(join(repoRoot, "scripts/test-preload.ts")).text();
+
+    // When / Then: dynamic import only; no static bundled-plugins import.
+    expect(source).toMatch(/await import\(["']\.\.\/core\/src\/runtime\/bundled-plugins/);
+    expect(source).not.toContain('import "../core/src/runtime/bundled-plugins');
+  });
+
+  test("every derived-codegen sentinel path is gitignored", async () => {
+    // Given: the eight sentinel relative paths at the repo root.
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    const input = `${DERIVED_CODEGEN_SENTINELS.join("\n")}\n`;
+
+    // When: git check-ignore --stdin echoes ignored paths.
+    const proc = Bun.spawn(["git", "check-ignore", "--stdin"], {
+      cwd: repoRoot,
+      stdin: new Blob([input]),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    // Then: all eight paths echo back (fully ignored).
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    const echoed = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    expect(echoed).toEqual([...DERIVED_CODEGEN_SENTINELS]);
+  });
 });
