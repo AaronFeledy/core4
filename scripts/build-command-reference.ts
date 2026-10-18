@@ -147,6 +147,12 @@ const renderPage = (): string => {
     "preserved. Every envelope is redacted before emission. Agents and scripts should",
     "consume this JSON instead of parsing the rendered tables.",
     "",
+    "## Confirmation",
+    "",
+    "Commands that ask for confirmation or destroy state accept `--yes`/`-y`. A",
+    "destructive command that never prompts accepts it and ignores it, so scripts",
+    "and agents can pass it to every destructive command.",
+    "",
     "## Commands",
     "",
   ].join("\n");

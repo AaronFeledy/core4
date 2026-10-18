@@ -15,7 +15,7 @@ import {
   PreAppStartEvent,
   PreStartEvent,
 } from "@lando/sdk/events";
-import { ServiceName } from "@lando/sdk/schema";
+import { CheckResult, ServiceName } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOptions,
@@ -49,6 +49,8 @@ import {
 import {
   compensateFailure,
   compensateFailureUnless,
+  mapFailureErrors,
+  mergeFailure,
   runAllAndMergeFailures,
 } from "../lifecycle/failure-compensation.ts";
 import {
@@ -105,6 +107,7 @@ export const StartedServiceResultSchema = Schema.Struct({
 export const StartAppResultSchema = Schema.Struct({
   app: Schema.String,
   servicesStarted: Schema.Array(StartedServiceResultSchema),
+  checks: Schema.optionalKey(Schema.Array(CheckResult)),
 });
 
 type StartAppServices =
@@ -360,7 +363,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       services: neededGlobalServices,
       ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
     }).pipe(
-      Effect.mapError((cause) =>
+      mapFailureErrors((cause) =>
         isReadinessFailure(cause)
           ? cause
           : new GlobalAutoStartError({
@@ -514,17 +517,17 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 });
                 yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
                 const scanner = yield* Effect.serviceOption(UrlScanner);
-                if (Option.isSome(scanner)) {
-                  yield* runPostStartScan({
-                    scanner: scanner.value,
-                    plan: builtPlan,
-                    events,
-                    urls: startupScanUrls(builtPlan, servicesStarted),
-                  });
-                }
+                const checks = Option.isSome(scanner)
+                  ? yield* runPostStartScan({
+                      scanner: scanner.value,
+                      plan: builtPlan,
+                      events,
+                      urls: startupScanUrls(builtPlan, servicesStarted),
+                    })
+                  : undefined;
                 if (pendingStart !== undefined) yield* pendingStart.clear;
 
-                return { app: plan.name, servicesStarted };
+                return { app: plan.name, servicesStarted, ...(checks === undefined ? {} : { checks }) };
               }).pipe(
                 Effect.catchCause((cause) =>
                   shouldRetainReadinessResources(cause)
@@ -532,7 +535,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                         Effect.uninterruptible,
                         Effect.matchCauseEffect({
                           onSuccess: () => Effect.failCause(cause),
-                          onFailure: (journalCause) => Effect.failCause(Cause.combine(cause, journalCause)),
+                          onFailure: (journalCause) =>
+                            Effect.failCause(mergeFailure(cause, journalCause, "cleanup")),
                         }),
                       )
                     : Effect.failCause(cause),
@@ -580,7 +584,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                     }),
                   );
                   if (Exit.isFailure(cleanupExit)) {
-                    const failure = Cause.combine(exit.cause, cleanupExit.cause);
+                    const failure = mergeFailure(exit.cause, cleanupExit.cause, "rollback");
                     // Without provider rollback, prepared targets survive any cleanup failure.
                     if (
                       (sessionLease.preserveOnFailure ||

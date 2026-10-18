@@ -133,8 +133,9 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       const scriptedStdin = "empty\nci-empty-app\n";
       const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Pick a recipe");
-      expect(result.stdout).toContain("Empty Landofile");
+      expect(result.stderr).toContain("Pick a recipe");
+      expect(result.stderr).toContain("Empty Landofile");
+      expect(result.stdout).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created ci-empty-app at");
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
       expect(await Bun.file(join(dir, "server.js")).exists()).toBe(false);
@@ -184,8 +185,9 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       expect(result.appName).toBe("valid-app");
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
       expect(stderr.text()).toContain('no choice matches "totally-bogus"');
-      expect(stdout.text()).toContain("Pick a recipe");
-      expect(stdout.text()).toContain("Empty Landofile");
+      expect(stderr.text()).toContain("Pick a recipe");
+      expect(stderr.text()).toContain("Empty Landofile");
+      expect(stdout.text()).toBe("");
     });
   });
 
@@ -238,6 +240,7 @@ describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
       );
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Pick a recipe");
+      expect(result.stderr).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created ci-app at");
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
       expect(await Bun.file(join(dir, "server.js")).exists()).toBe(false);
@@ -249,6 +252,7 @@ describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
       const result = await runCli(["init", "--no-interactive", "--answer=name=default-ci"], dir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Pick a recipe");
+      expect(result.stderr).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created default-ci at");
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
       expect(await Bun.file(join(dir, "server.js")).exists()).toBe(true);
@@ -260,6 +264,7 @@ describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
       const result = await runCli(["init", "--yes", "--answer=name=yes-app"], dir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Pick a recipe");
+      expect(result.stderr).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created yes-app at");
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
     });

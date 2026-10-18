@@ -1,4 +1,4 @@
-import type { RendererIO } from "@lando/sdk/renderer";
+import type { RendererNarrationIO } from "@lando/sdk/renderer";
 
 const BEL = "\u0007";
 const OSC = "\u001b]";
@@ -11,13 +11,8 @@ export const encodeDesktopNotification = (message: string, title?: string): stri
   return `${osc99("title", title, 0)}${osc99("body", message, 1)}`;
 };
 
-export const writeDesktopNotification = (io: RendererIO, text: string): void => {
-  const stream = io.externalOutputStream;
-  if (stream !== undefined) {
-    stream.write(text);
-    return;
-  }
-  io.writeStdout(text);
+export const writeDesktopNotification = (io: RendererNarrationIO, text: string): void => {
+  io.writeStderr(text);
 };
 
 const pendingNotifications = new Set<Promise<boolean>>();
@@ -42,7 +37,7 @@ export const bindDesktopNotificationTrigger = (write: (text: string) => void) =>
   return trigger;
 };
 
-export const bindIoDesktopNotificationTrigger = (io: RendererIO) =>
+export const bindIoDesktopNotificationTrigger = (io: RendererNarrationIO) =>
   bindDesktopNotificationTrigger((text) => writeDesktopNotification(io, text));
 
 export const flushPendingNotifications = async (): Promise<void> => {

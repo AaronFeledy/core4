@@ -86,6 +86,7 @@ import type {
   AbsolutePath,
   AppPlan,
   AppRef,
+  CheckResult,
   ConfigLintResult,
   DatasetKind,
   LandofileShape,
@@ -199,6 +200,7 @@ export interface StartAppOptions {
 }
 
 export interface StartAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesStarted: ReadonlyArray<{
     readonly name: string;
@@ -292,6 +294,7 @@ export interface RestartAppOptions {
 }
 
 export interface RestartAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
@@ -304,6 +307,7 @@ export interface RebuildAppOptions {
 }
 
 export interface RebuildAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesRebuilt: ReadonlyArray<string>;
   readonly servicesStarted: StartAppResult["servicesStarted"];
@@ -314,6 +318,7 @@ export type RebuildAppError = StartAppError | AppResolveError;
 export interface DestroyAppOptions {
   readonly volumes?: boolean;
   readonly purgeCaches?: boolean;
+  readonly purgeSnapshots?: boolean;
   readonly yes?: boolean;
 }
 
@@ -322,9 +327,16 @@ export interface DestroyAppResult {
   readonly outcome?: "destroyed" | "unchanged";
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
+  readonly snapshotsRemoved: number;
 }
 
-export type DestroyAppError = StopAppError | ProxyError | StateStoreError | CacheError;
+export type DestroyAppError =
+  | StopAppError
+  | ProxyError
+  | StateStoreError
+  | CacheError
+  | DataMoverError
+  | ProviderSelectionError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
@@ -422,7 +434,6 @@ export interface ToolingOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
-  readonly renderProgress?: boolean;
   /** Explicitly request a provider PTY. Omission remains noninteractive. */
   readonly tty?: boolean;
 }
@@ -433,7 +444,6 @@ export interface ToolingResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
-  readonly rendered?: boolean;
 }
 
 export type ToolingError =

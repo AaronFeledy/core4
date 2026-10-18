@@ -67,7 +67,7 @@ export const runTracingCommand = async (options: {
     trace,
     redactionTokens: (result) => result.redactionTokens,
     render: (result) => result.message,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: (code) => {
       exitCode = code;
     },

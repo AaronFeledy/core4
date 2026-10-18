@@ -62,10 +62,10 @@ export const activeProjectResultKeys = (): readonly string[] | undefined => {
   }
 };
 
-export const emitJsonListModeIfRequested = (resultSchema: unknown): boolean => {
+export const emitJsonListModeIfRequested = async (resultSchema: unknown): Promise<boolean> => {
   switch (activeJsonControl.mode) {
     case "list":
-      emitResultLine(JSON.stringify(listSelectableResultKeys(resultSchema)));
+      await emitResultLine(JSON.stringify(listSelectableResultKeys(resultSchema)));
       return true;
     case "off":
     case "keys":
@@ -133,23 +133,28 @@ export const beginNestedCommandInvocation = (
   return activeCommandInvocation as CliInvocationSnapshot;
 };
 
-export const commandErrorMessage = (error: unknown, commandId: string = activeCommandId): string => {
+export const commandErrorMessage = (
+  failure: import("@lando/sdk/command-result").ProjectedFailure,
+  commandId: string = activeCommandId,
+): string => {
   const context: BugReportContext = { commandId };
-  return formatBugReport({ error, context, rendererMode: activeRendererMode });
+  return formatBugReport({
+    ...failure,
+    context,
+    rendererMode: activeRendererMode,
+  });
 };
 
-export const emitResultLine = (text: string): void => {
-  Effect.runSync(
+export const emitResultLine = (text: string): Promise<void> =>
+  Effect.runPromise(
     writeResultLine(text).pipe(
       Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer)),
     ),
   );
-};
 
-export const emitDiagnosticLine = (text: string): void => {
-  Effect.runSync(
+export const emitDiagnosticLine = (text: string): Promise<void> =>
+  Effect.runPromise(
     writeDiagnosticLine(text).pipe(
       Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer)),
     ),
   );
-};

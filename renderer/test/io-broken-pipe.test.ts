@@ -5,6 +5,8 @@ import { Socket } from "node:net";
 let scenario = 0;
 const freshIO = async (): Promise<typeof import("../src/io.ts")> =>
   import(`../src/io.ts?broken-pipe=${scenario++}`);
+const freshStdio = async (): Promise<typeof import("../src/native-stdio.ts")> =>
+  import(`../src/native-stdio.ts?broken-pipe=${scenario++}`);
 const brokenPipe = () =>
   Object.assign(new Error("EPIPE: broken pipe, write"), { code: "EPIPE", syscall: "write" });
 const fakeStream = (failure?: Error) => {
@@ -80,15 +82,15 @@ test.each(["stdout", "stderr"] as const)(
 
 test("notifies once per destination and stops notifying when unsubscribed", async () => {
   // Given
-  const { createStdioRendererIO, onStdioBrokenPipe } = await freshIO();
+  const { writeStdioLine, onStdioBrokenPipe } = await freshStdio();
   const listener = mock((_destination: "stdout" | "stderr") => {});
   const unsubscribe = onStdioBrokenPipe(listener);
   try {
     // When
-    createStdioRendererIO(fakeStream(brokenPipe()).stream).writeStdout("x");
-    createStdioRendererIO(fakeStream(brokenPipe()).stream).writeStdout("again");
+    writeStdioLine("stdout", "x", fakeStream(brokenPipe()).stream);
+    writeStdioLine("stdout", "again", fakeStream(brokenPipe()).stream);
     unsubscribe();
-    createStdioRendererIO(fakeStream().stream, fakeStream(brokenPipe()).stream).writeStderr("y");
+    writeStdioLine("stderr", "y", fakeStream(brokenPipe()).stream);
     // Then
     expect(listener.mock.calls).toEqual([["stdout"]]);
   } finally {
@@ -112,7 +114,7 @@ test("guards line writes when an injected stream has no event capability", async
 
 test("restores sticky status at exit when a later failure overwrites it", async () => {
   // Given
-  const { createStdioRendererIO, installBrokenPipeExitPolicy, BROKEN_PIPE_EXIT_CODE } = await freshIO();
+  const { writeStdioLine, installBrokenPipeExitPolicy, BROKEN_PIPE_EXIT_CODE } = await freshStdio();
   const exits: (() => void)[] = [];
   const proc = {
     exitCode: 0,
@@ -125,14 +127,14 @@ test("restores sticky status at exit when a later failure overwrites it", async 
     expect(installBrokenPipeExitPolicy(proc)).toBe(uninstall);
     expect(proc.once).not.toHaveBeenCalled();
     // When
-    createStdioRendererIO(fakeStream(brokenPipe()).stream).writeStdout("x");
+    writeStdioLine("stdout", "x", fakeStream(brokenPipe()).stream);
     // Then
     expect(BROKEN_PIPE_EXIT_CODE).toBe(141);
     expect(proc.exitCode).toBe(141);
     proc.exitCode = 1;
     for (const exit of exits) exit();
     expect(proc.exitCode).toBe(141);
-    createStdioRendererIO(fakeStream().stream, fakeStream(brokenPipe()).stream).writeStderr("y");
+    writeStdioLine("stderr", "y", fakeStream(brokenPipe()).stream);
     expect(proc.once).toHaveBeenCalledTimes(1);
   } finally {
     uninstall();
@@ -141,12 +143,12 @@ test("restores sticky status at exit when a later failure overwrites it", async 
 
 test("leaves exit status alone when the policy is uninstalled before a pipe breaks", async () => {
   // Given
-  const { createStdioRendererIO, installBrokenPipeExitPolicy } = await freshIO();
+  const { writeStdioLine, installBrokenPipeExitPolicy } = await freshStdio();
   const proc = { exitCode: 7, once: mock((_event: "exit", _listener: () => void) => {}) };
   const uninstall = installBrokenPipeExitPolicy(proc);
   uninstall();
   // When
-  createStdioRendererIO(fakeStream(brokenPipe()).stream).writeStdout("x");
+  writeStdioLine("stdout", "x", fakeStream(brokenPipe()).stream);
   // Then
   expect(proc.exitCode).toBe(7);
   expect(proc.once).not.toHaveBeenCalled();

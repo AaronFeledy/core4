@@ -1,4 +1,4 @@
-import { Clock, Effect } from "effect";
+import { Clock, Effect, Option } from "effect";
 
 import type { ToolingResult } from "@lando/sdk/app";
 import type { ShellExecError, ShellScriptOutsideRootError } from "@lando/sdk/errors";
@@ -10,8 +10,8 @@ import { readBunShellScript } from "@lando/landofile/bun-sh-script";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
-import { StreamFrameSink } from "./stream-frame-sink.ts";
-import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
+import { withToolingOutput } from "./tooling-output.ts";
+import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 const HOST_SERVICE = ":host";
 
@@ -90,7 +90,6 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
-    readonly renderProgress?: boolean;
     readonly hostIo?: "stdin" | "terminal";
     readonly signal?: AbortSignal;
     readonly relativePath?: string;
@@ -112,33 +111,15 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     );
   }
 
-  const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
-  const progressEvents = events?._tag === "Some" ? events.value : undefined;
-  const sink = yield* Effect.serviceOption(StreamFrameSink);
-  const liveTree =
-    sink._tag === "Some" && progressEvents !== undefined
-      ? beginLiveToolingTree(progressEvents, script.id)
-      : undefined;
+  const events = yield* Effect.serviceOption(EventService);
+  const progressEvents = Option.getOrUndefined(events);
+  const liveTree = progressEvents === undefined ? undefined : beginLiveToolingTree(progressEvents, script.id);
   if (liveTree !== undefined) yield* liveTree.start;
   const startedAt = yield* Clock.currentTimeMillis;
-  const exit = yield* Effect.result(runBunShellScript(script, appRoot, options));
+  const exit = yield* Effect.result(withToolingOutput(runBunShellScript(script, appRoot, options)));
   const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
   if (liveTree !== undefined)
     yield* liveTree.finish(exit._tag === "Success" ? exit.success.exitCode : 1, durationMs);
   if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
-  const result = exit.success;
-  if (sink._tag === "None")
-    yield* emitToolingOutputProgress({
-      events: progressEvents,
-      tool: result.tool,
-      service: result.service,
-      exitCode: result.exitCode,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      durationMs,
-    });
-  return {
-    ...result,
-    ...(progressEvents === undefined && sink._tag === "None" ? {} : { rendered: true }),
-  } satisfies ToolingResult;
+  return exit.success satisfies ToolingResult;
 });

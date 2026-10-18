@@ -1,3 +1,4 @@
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { Args, Flags } from "../../../spec/metadata";
 
 import type { ScratchHandle } from "@lando/sdk/services";
@@ -25,6 +26,7 @@ export const appsScratchDestroySpec: LandoCommandSpec<ScratchHandle> = {
     id: Args.string({ description: "Scratch app id.", required: true }),
   },
   flags: {
+    yes: nonPromptingYesFlag,
     "keep-volumes": Flags.boolean({ description: "Keep scratch volumes for inspection.", default: false }),
   },
   run: (input) => scratchDestroy(scratchIdFromInput(input), { keepVolumes: keepVolumesFromInput(input) }),

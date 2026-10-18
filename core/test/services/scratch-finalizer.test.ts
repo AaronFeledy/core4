@@ -71,6 +71,7 @@ const redactionLive = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createRedactor("secrets")),
   }),
 );

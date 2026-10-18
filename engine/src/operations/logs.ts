@@ -304,26 +304,39 @@ const drainLogFollow = Effect.fnUntraced(function* (
   logOptions: LogOptions,
   requestedSource: string | undefined,
   signal: AbortSignal | undefined,
-): Effect.fn.Return<LogsAppResult, SdkLogsAppError, StreamFrameSink> {
+): Effect.fn.Return<LogsAppResult, SdkLogsAppError> {
   yield* registerAppPlanRedactionTokens(plan);
-  const sink = yield* StreamFrameSink;
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const lines: LogsAppLine[] = [];
   const streams = services.map((service) =>
     provider.logs(
       { app: plan.id, service: service.name, plan },
       logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources, requestedSource),
     ),
   );
-  const drain = Stream.runForEach(Stream.mergeAll(streams, { concurrency: "unbounded" }), (chunk: LogChunk) =>
-    sink.emit({
-      _tag: chunk.stream,
-      chunk: chunk.line,
-      service: String(chunk.service),
-      ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
-    }),
+  const drain = Stream.runForEach(
+    Stream.mergeAll(streams, { concurrency: "unbounded" }),
+    (chunk: LogChunk) =>
+      Option.isSome(sink)
+        ? sink.value.emit({
+            _tag: chunk.stream,
+            chunk: chunk.line,
+            service: String(chunk.service),
+            ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
+          })
+        : Effect.sync(() => {
+            lines.push({
+              service: String(chunk.service),
+              stream: chunk.stream,
+              line: chunk.line,
+              ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
+              ...(chunk.timestamp === undefined ? {} : { timestamp: chunk.timestamp.getTime() }),
+            });
+          }),
   );
 
   yield* raceAbort(signal, Effect.scoped(drain));
-  return { app: plan.name, lines: [] };
+  return { app: plan.name, lines };
 });
 
 const collectLogsForPlan = Effect.fnUntraced(function* (
@@ -352,7 +365,7 @@ export const logsForPlan = Effect.fn("AppOperation.logsForPlan")(function* (
 export const followLogsForPlan = Effect.fn("AppOperation.followLogsForPlan")(function* (
   plan: AppPlan,
   options: FollowLogsAppOptions = {},
-): Effect.fn.Return<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry | StreamFrameSink> {
+): Effect.fn.Return<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> {
   const since = yield* validateSince(options.since);
   const { services, provider } = yield* servicesForPlan(plan, options);
   return yield* drainLogFollow(
@@ -390,7 +403,7 @@ export const logsAppForTarget = Effect.fn("AppOperation.logsForTarget")(function
 export const followLogsApp = Effect.fn("AppOperation.followLogs")(function* (
   options: FollowLogsAppOptions = {},
   target?: ResolvedAppTarget,
-): Effect.fn.Return<LogsAppResult, LogsAppError, LogsAppServices | StreamFrameSink> {
+): Effect.fn.Return<LogsAppResult, LogsAppError, LogsAppServices> {
   const since = yield* validateSince(options.since);
   const { plan, services, provider } = yield* resolvePlanServices(options, target);
   return yield* drainLogFollow(

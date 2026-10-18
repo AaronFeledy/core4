@@ -947,6 +947,9 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
+      - name: Regenerate paired Tomcat catalog
+        run: bun run codegen:tomcat-catalog
+
       - name: Regenerate bundled plugins
         run: bun run codegen:bundled-plugins
 

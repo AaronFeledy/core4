@@ -1,4 +1,4 @@
-import { type Context, DateTime, Effect, Layer, Stream } from "effect";
+import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import {
@@ -15,6 +15,14 @@ import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 
 const textEncoder = new TextEncoder();
+const ProcessRedactionTokens = Context.Reference<readonly string[]>("@lando/engine/ProcessRedactionTokens", {
+  defaultValue: () => [],
+});
+
+export const withProcessRedactionTokens = <A, E, R>(
+  tokens: readonly string[],
+  effect: Effect.Effect<A, E, R>,
+) => effect.pipe(Effect.provideService(ProcessRedactionTokens, tokens));
 
 const errnoFrom = (cause: unknown): number | undefined => {
   if (typeof cause === "object" && cause !== null && "errno" in cause) {
@@ -48,6 +56,7 @@ const redactorForInput = Effect.fnUntraced(function* (input: ProcessSpawnOptions
   if (redaction._tag === "None") return identityRedactor;
   return yield* redaction.value.forProfile("secrets", {
     sourceEnv: { ...process.env, ...(input.env ?? {}) },
+    authoritativeTokens: yield* ProcessRedactionTokens,
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * Prompt I/O abstraction for the recipe prompt runtime.
  *
- * The runtime is decoupled from `process.stdin`/`process.stdout` so
+ * The runtime is decoupled from `process.stdin`/`process.stderr` so
  * unit tests can supply scripted input streams and capture transcripts
  * byte-for-byte. Production code uses {@link createStdioPromptIO}.
  */
@@ -48,7 +48,7 @@ export interface PromptReadOptions {
 export interface PromptIO {
   /** Read a single line of input (newline-stripped). */
   readonly readLine: (options?: PromptReadOptions) => Promise<string>;
-  /** Write to the user-visible prompt transcript (stdout-equivalent). */
+  /** Write to the user-visible prompt transcript on stderr. */
   readonly write: (chunk: PromptIOWriteChunk) => void;
   /** Write to the diagnostic surface (stderr-equivalent) — validation messages, banners. */
   readonly writeError: (chunk: PromptIOWriteChunk) => void;
@@ -149,7 +149,6 @@ export const createLineReader = (stream: NodeJS.ReadableStream): PromptLineReade
 
 interface StdioPromptIOOptions {
   readonly stdin?: NodeJS.ReadableStream;
-  readonly stdout?: NodeJS.WritableStream;
   readonly stderr?: NodeJS.WritableStream;
   /** Aborting this signal rejects an in-flight `readLine` with `PromptCancelledError`. */
   readonly signal?: AbortSignal;
@@ -164,11 +163,10 @@ interface StdioPromptIOOptions {
  */
 export const createStdioPromptIO = (options: StdioPromptIOOptions = {}): PromptIO => {
   const stdin = options.stdin ?? process.stdin;
-  const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
   const signal = options.signal;
   const reader = options.lineReader ?? createLineReader(stdin);
-  const isTTY = stdin instanceof ReadStream && stdin.isTTY === true;
+  const isTTY = "isTTY" in stdin && stdin.isTTY === true && "isTTY" in stderr && stderr.isTTY === true;
 
   const readLine = async (readOptions?: PromptReadOptions): Promise<string> => {
     const secret = readOptions?.secret === true;
@@ -190,7 +188,7 @@ export const createStdioPromptIO = (options: StdioPromptIOOptions = {}): PromptI
   return {
     readLine,
     write: (chunk) => {
-      stdout.write(chunk);
+      stderr.write(chunk);
     },
     writeError: (chunk) => {
       stderr.write(chunk);

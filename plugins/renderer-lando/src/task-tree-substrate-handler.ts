@@ -1,4 +1,4 @@
-import type { RendererIO } from "@lando/sdk/renderer";
+import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderLandoLine } from "./format.ts";
@@ -9,6 +9,7 @@ export interface LiveRegionHandle {
   clearFooter(): void;
   commitScrollback(text: string): void;
   rememberScrollback(text: string): void;
+  suspendOutput?(chunk: string | Uint8Array, write: () => void): void;
   requestLive(): void;
   dropLive(): void;
   enterFullTail(): void | Promise<void>;
@@ -16,7 +17,7 @@ export interface LiveRegionHandle {
   dispose(): Promise<void>;
 }
 
-export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveRegionHandle) => {
+export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller: LiveRegionHandle) => {
   let terminalColumns = io.terminalColumns;
   let terminalRows = io.terminalRows;
   const output = {

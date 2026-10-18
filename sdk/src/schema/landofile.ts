@@ -90,7 +90,7 @@ export const MountInput = Schema.Union([
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
-    /** Excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
+    /** Overlay excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
     excludes: Schema.optionalKey(Schema.Array(Schema.String)),
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -595,6 +595,14 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
+const AppMountEntry = Schema.String.check(
+  Schema.makeFilter((entry) =>
+    entry.startsWith("!")
+      ? `Use includes: [${entry.slice(1)}] to keep ${entry.slice(1)}; \`!\` entries are not supported.`
+      : undefined,
+  ),
+);
+
 const ServiceConfigWithExtensions = Schema.StructWithRest(
   Schema.Struct({
     api: Schema.optionalKey(Schema.Literal(4)),
@@ -652,7 +660,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:
-        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. With appMount: false it must be absolute.',
+        "Root whose meaning and defaults are determined by the selected features: webservers use it as their document root; Ruby provides context only and does not start a server. An explicit value requires a final feature declaration of support. Relative paths resolve against the app mount. Built-in Ruby context is unavailable with appMount: false, while a webserver can still use an absolute container root without an app mount.",
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
@@ -715,8 +723,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         Schema.Struct({
           target: Schema.String,
           readOnly: Schema.optionalKey(Schema.Boolean),
-          excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-          includes: Schema.optionalKey(Schema.Array(Schema.String)),
+          excludes: Schema.optionalKey(Schema.Array(AppMountEntry)),
+          includes: Schema.optionalKey(Schema.Array(AppMountEntry)),
         }),
       ]),
     ).annotate({

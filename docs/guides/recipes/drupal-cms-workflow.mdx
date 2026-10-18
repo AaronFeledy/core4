@@ -117,11 +117,10 @@ Take your own snapshot before a risky update, then roll back to it:
 
 ```sh
 lando db:snapshot --label before-update
-lando db:snapshots
-lando db:restore <id> --yes
+lando db:restore before-update --yes
 ```
 
-`db:restore` takes the id `lando db:snapshots` lists, not the label. Lando stops the database while it copies the volume, then starts it again.
+`db:restore` takes the label or the id `lando db:snapshots` lists. Lando stops the database while it copies the volume, then starts it again.
 
 ## Change PHP settings
 

@@ -1,3 +1,4 @@
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { Args } from "../../../spec/metadata";
 
 import type { ScratchHandle } from "@lando/sdk/services";
@@ -17,6 +18,7 @@ export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   topLevelAlias: "scratch:stop",
   aliases: ["scratch:stop"],
   bootstrap: "scratch",
+  flags: { yes: nonPromptingYesFlag },
   args: {
     id: Args.string({ description: "Scratch app id.", required: true }),
   },

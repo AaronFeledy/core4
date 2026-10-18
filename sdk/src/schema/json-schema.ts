@@ -171,6 +171,9 @@ import {
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   SnapshotFilter,
+  SnapshotGcOrphan,
+  SnapshotGcProviderReport,
+  SnapshotGcReport,
   SnapshotHandle,
   SnapshotInfo,
   VolumeFilter,
@@ -178,6 +181,7 @@ import {
   VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
+  VolumeSnapshotArtifact,
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
@@ -195,6 +199,7 @@ import {
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -259,6 +264,7 @@ import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScop
 import {
   AppRef,
   CertificatePlan,
+  CheckResult,
   DependencyPlan,
   EndpointPlan,
   HealthcheckPlan,
@@ -541,6 +547,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   HealthcheckPlan,
   ScannerConfig,
   ScanPlan,
+  CheckResult,
   CertificatePlan,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -607,6 +614,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   VolumeFilter,
   VolumeSnapshotSpec,
   VolumeSnapshotRef,
+  VolumeSnapshotArtifact,
+  SnapshotGcReport,
+  SnapshotGcOrphan,
+  SnapshotGcProviderReport,
   VolumeRestoreSpec,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
@@ -806,6 +817,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PromptSpec,
   InteractionServiceContribution,
   CommandResultFormat,
+  FailureRole,
   CommandWarning,
   CommandResultEnvelope,
   CommandTraceSpan,
@@ -999,6 +1011,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
   ScannerConfig: "Post-start URL scan settings, or false to skip scanning.",
   ScanPlan: "Fully resolved post-start URL scan settings for a service.",
+  CheckResult: "An owner-classified post-start HTTP check.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
@@ -1061,6 +1074,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   VolumeFilter: "Public Lando schema contract for Volume Filter.",
   VolumeSnapshotSpec: "Public Lando schema contract for Volume Snapshot Spec.",
   VolumeSnapshotRef: "Public Lando schema contract for Volume Snapshot Ref.",
+  VolumeSnapshotArtifact: "Provider-observed native snapshot image metadata.",
+  SnapshotGcReport: "Native snapshot orphan inspection and removal report.",
+  SnapshotGcOrphan: "An unindexed provider snapshot eligible for removal.",
+  SnapshotGcProviderReport: "Snapshot orphan inspection status for one provider.",
   VolumeRestoreSpec: "Public Lando schema contract for Volume Restore Spec.",
   ServiceCopyInSpec: "Public Lando schema contract for Service Copy In Spec.",
   ServiceCopyOutSpec: "Public Lando schema contract for Service Copy Out Spec.",
@@ -1266,6 +1283,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PromptSpec: "Public Lando schema contract for Prompt Spec.",
   InteractionServiceContribution: "Public Lando schema contract for Interaction Service Contribution.",
   CommandResultFormat: "Public Lando schema contract for Command Result Format.",
+  FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",

@@ -65,5 +65,8 @@ export const teardownLine = (
 
 export const unchangedLine = (app: string): string => teardownLine("unchanged", app, []);
 
-export const volumesTrailer = (removed: boolean): string =>
-  removed ? "volumes removed" : "volumes preserved";
+export const volumesTrailer = (removed: boolean, snapshotsRemoved = 0): string => {
+  if (snapshotsRemoved === 0) return removed ? "volumes removed" : "volumes preserved";
+  const snapshots = `${snapshotsRemoved} snapshot${snapshotsRemoved === 1 ? "" : "s"}`;
+  return removed ? `volumes and ${snapshots} removed` : `${snapshots} removed`;
+};

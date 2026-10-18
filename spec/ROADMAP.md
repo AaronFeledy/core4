@@ -47,6 +47,8 @@ Six-platform support is an **exit target**, not a claim about today.
 
 Feature freeze begins only after every Alpha PRD story passes. No new 4.0 feature surface after that.
 
+App checks (§10.5.2) replace the URL scanner before freeze, in order: ownership-classified verdicts with a neutral `expected` state and router error marker; `checks` replacing `scanner` with app-level rules and profiles; `command` and `tcp` kinds plus `app:check`.
+
 ### Alpha 1 exit criteria
 
 1. Every story in [`spec/alpha/prd-alpha-00-index.md`](./alpha/prd-alpha-00-index.md) is accepted (US-592 through US-600).

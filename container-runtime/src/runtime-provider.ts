@@ -69,6 +69,8 @@ export type ResolvedProviderOps = Pick<
   | "run"
   | "runStream"
   | "snapshotVolume"
+  | "removeVolumeSnapshot"
+  | "listVolumeSnapshots"
   | "restoreVolume"
   | "listVolumes"
   | "locateVolume"
@@ -226,6 +228,16 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     snapshotVolume: (spec) =>
       requireDataPlane("snapshotVolume").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.snapshotVolume(spec)))),
+      ),
+    removeVolumeSnapshot: (snapshot) =>
+      requireDataPlane("removeVolumeSnapshot").pipe(
+        Effect.flatMap((dataPlane) =>
+          before.pipe(Effect.flatMap(() => dataPlane.removeVolumeSnapshot(snapshot))),
+        ),
+      ),
+    listVolumeSnapshots: () =>
+      requireDataPlane("listVolumeSnapshots").pipe(
+        Effect.flatMap((dataPlane) => dataPlane.listVolumeSnapshots()),
       ),
     restoreVolume: (spec) =>
       requireDataPlane("restoreVolume").pipe(

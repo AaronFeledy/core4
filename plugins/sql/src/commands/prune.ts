@@ -5,6 +5,7 @@ import { Renderer } from "@lando/sdk/services";
 
 import { dbCommandRedactionTokens, dbInputFromCommand, runDbCommand } from "../run.ts";
 import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "../schemas.ts";
+import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "../snapshot-retention.ts";
 
 export const renderDbSnapshotPrune = (result: DbCommandResult): string => {
   const candidates = result.pruneCandidates ?? [];
@@ -26,7 +27,7 @@ export const spec = {
     "keep-latest": {
       type: "number",
       valueType: "integer",
-      default: 3,
+      default: DEFAULT_SNAPSHOT_KEEP_LATEST,
       description: "Number of newest manual snapshots to retain.",
       parse: (input) => {
         const value = Number(input);

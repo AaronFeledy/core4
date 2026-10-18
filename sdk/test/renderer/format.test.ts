@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { TaskCompleteEvent } from "@lando/sdk/events";
 import { renderJsonLine, renderPlainLine, renderVerboseLine } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 const logLine = (fields: Record<string, unknown>): LandoEvent =>
   ({ _tag: "log.line", timestamp: "2026-05-19T12:00:00.000Z", ...fields }) as unknown as LandoEvent;
@@ -50,6 +52,38 @@ describe("plain task tree header", () => {
         children: [{}],
       } as unknown as LandoEvent),
     ).toBe("▼ Global services (1 step)");
+  });
+});
+
+describe("neutral task completion", () => {
+  const event = Schema.decodeUnknownSync(TaskCompleteEvent)({
+    _tag: "task.complete",
+    taskId: "web",
+    outcome: "info",
+    summary: "HTTP 500",
+    durationMs: 12,
+    timestamp: "2026-05-19T12:00:00.000Z",
+  });
+
+  test("uses a neutral glyph when plain output formats an info result", () => {
+    // Given / When
+    const line = renderPlainLine(event);
+    // Then
+    expect(line).toBe("[web] • complete: HTTP 500 (12ms)");
+  });
+
+  test("reuses the neutral plain line when verbose output formats an info result", () => {
+    // Given / When
+    const line = renderVerboseLine(event);
+    // Then
+    expect(line.split("\n")[0]).toBe("[web] • complete: HTTP 500 (12ms)");
+  });
+
+  test("preserves the event payload when JSON output formats an info result", () => {
+    // Given / When
+    const line = renderJsonLine(event);
+    // Then
+    expect(JSON.parse(line ?? "").payload).toEqual(Schema.encodeSync(TaskCompleteEvent)(event));
   });
 });
 

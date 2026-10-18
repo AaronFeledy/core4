@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -24,6 +25,7 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  flags: { yes: nonPromptingYesFlag },
   args: {
     name: Args.string({ description: "Plugin name.", required: false }),
   },

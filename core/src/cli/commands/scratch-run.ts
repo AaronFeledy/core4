@@ -98,12 +98,11 @@ export const defaultScratchRunDeps: ScratchRunDeps = {
   readLandofile: readScratchLandofile,
 };
 
+// Forwarded agent markers are identity flags, not secrets; only long values are registered.
 const MIN_REDACTION_TOKEN_LENGTH = 8;
 
-const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> => {
-  if (env === undefined) return [];
-  return Object.values(env).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
-};
+const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> =>
+  Object.values(env ?? {}).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
 
 export const scratchRunRedactionTokens = (result: ScratchRunResult): ReadonlyArray<string> =>
   result.redactionTokens ?? [];

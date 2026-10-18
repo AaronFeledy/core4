@@ -91,7 +91,9 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo` schema | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
+| Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
+| Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
@@ -109,6 +111,7 @@ If you are looking for a public surface or policy:
 | Built-in command registry | 08 | §8.2 |
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
+| CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
 | Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
@@ -128,7 +131,7 @@ If you are looking for a public surface or policy:
 | Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | SSH identity, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
-| Probe, healthcheck, and scanner contracts | 11 | §10.5 |
+| Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
@@ -149,6 +152,7 @@ If you are looking for a public surface or policy:
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |
+| Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |

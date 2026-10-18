@@ -91,6 +91,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
           RedactionService,
           RedactionService.of({
             registerValues: registerRedactionValues,
+            payloadValues: () => Effect.succeed(() => []),
             forProfile: () => Effect.succeed(createRedactor("secrets")),
           }),
         ),

@@ -7,6 +7,7 @@ import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
+import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
@@ -641,7 +642,7 @@ describe("@lando/service-lando registration", () => {
       throw new Error("tomcat/varnish planner smoke services missing");
     }
 
-    expect(java.artifact).toEqual({ kind: "ref", ref: "tomcat:11-jre21" });
+    expect(java.artifact).toEqual({ kind: "ref", ref: TOMCAT_CATALOG["11"].image });
     expect(java.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
     expect(cache.artifact).toEqual({ kind: "ref", ref: "varnish:7" });
     expect(cache.healthcheck?.command).toEqual(["varnishadm", "ping"]);
