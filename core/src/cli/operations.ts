@@ -7,7 +7,11 @@
  */
 import { Cause, Effect, Exit } from "effect";
 
-import { failureOutcomeFromCause } from "@lando/sdk/command-result";
+import {
+  type ProjectedFailure,
+  failureOutcomeFromCause,
+  primaryFailureReason,
+} from "@lando/sdk/command-result";
 
 export interface InvokeOperationOptions<A, E> {
   readonly render?: (result: A) => string | undefined;
@@ -23,7 +27,7 @@ export type InvokeOperationResult<A, E> =
   | {
       readonly ok: false;
       readonly error: E;
-      readonly additionalErrors?: ReadonlyArray<unknown>;
+      readonly additionalErrors: ProjectedFailure["additionalErrors"];
       readonly output?: string;
     };
 
@@ -42,14 +46,13 @@ export const invokeOperation = <A, E, R>(
     }
 
     // Typed failures use the shared primary/additional projection; only untyped causes propagate as defects.
-    const failure = Cause.findErrorOption(exit.cause);
-    if (failure._tag === "Some") {
-      const outcome = failureOutcomeFromCause(exit.cause);
-      const output = options.renderError?.(failure.value);
+    const primary = primaryFailureReason(exit.cause);
+    if (primary !== undefined && Cause.isFailReason(primary)) {
+      const output = options.renderError?.(primary.error);
       return {
         ok: false,
-        error: failure.value,
-        ...(outcome.additionalErrors === undefined ? {} : { additionalErrors: outcome.additionalErrors }),
+        error: primary.error,
+        additionalErrors: failureOutcomeFromCause(exit.cause).additionalErrors,
         ...(output === undefined ? {} : { output }),
       };
     }

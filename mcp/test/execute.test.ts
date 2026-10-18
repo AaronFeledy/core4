@@ -24,8 +24,12 @@ describe("MCP failure projection", () => {
       }),
     );
     // Then: both surfaces carry the same primary and ordered additional failure.
-    expect(outcome).toEqual({ _tag: "failure", error: primary, additionalErrors: [secondary] });
-    expect(envelope.error).toEqual({ ...primary, additionalErrors: [secondary] });
+    expect(outcome).toEqual({
+      _tag: "failure",
+      error: primary,
+      additionalErrors: [{ role: "peer", error: secondary }],
+    });
+    expect(envelope.error).toEqual({ ...primary, additionalErrors: [{ ...secondary, role: "peer" }] });
   });
 
   test("prioritizes a typed failure over an earlier defect and preserves additional error order", () => {
@@ -42,7 +46,14 @@ describe("MCP failure projection", () => {
     // When: MCP projects the failed exit.
     const outcome = Effect.runSync(outcomeFromExit(Exit.failCause(cause)));
     // Then: the typed failure is primary and the remaining errors retain cause order.
-    expect(outcome).toEqual({ _tag: "failure", error: primary, additionalErrors: [defect, secondary] });
+    expect(outcome).toEqual({
+      _tag: "failure",
+      error: primary,
+      additionalErrors: [
+        { role: "peer", error: defect },
+        { role: "peer", error: secondary },
+      ],
+    });
   });
 
   test("uses the first defect as primary when no typed failure exists", () => {
@@ -53,7 +64,11 @@ describe("MCP failure projection", () => {
     // When: MCP projects the failed exit.
     const outcome = Effect.runSync(outcomeFromExit(Exit.failCause(cause)));
     // Then: defects remain separate and the interrupt is excluded.
-    expect(outcome).toEqual({ _tag: "failure", error: primary, additionalErrors: [secondary] });
+    expect(outcome).toEqual({
+      _tag: "failure",
+      error: primary,
+      additionalErrors: [{ role: "peer", error: secondary }],
+    });
   });
 
   test("propagates interrupt-only exits", () => {

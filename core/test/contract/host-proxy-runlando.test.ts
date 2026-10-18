@@ -137,6 +137,7 @@ const hostSideEnvelope = (
       : {
           outcome: {
             _tag: "failure" as const,
+            additionalErrors: [],
             error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
               _tag: "HostProxyDispatchError",
               message: Cause.pretty(outcome.cause),
@@ -234,7 +235,7 @@ describe("in-container lando open host-proxy round-trip", () => {
       proxyId: "traefik",
       message: "router status failed",
       remediation: "Repair router.",
-      additionalErrors: [{ _tag: "Error", message: "router cleanup failed" }],
+      additionalErrors: [{ _tag: "Error", role: "peer", message: "router cleanup failed" }],
     });
   });
   test("an unconfigured hostname uses the running ingress listen port", async () => {

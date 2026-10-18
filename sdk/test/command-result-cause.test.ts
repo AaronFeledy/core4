@@ -9,7 +9,7 @@ describe("command failure projection", () => {
     { name: "empty", additionalErrors: [] },
     {
       name: "nested",
-      additionalErrors: [{ _tag: "CleanupError", message: "cleanup", additionalErrors: [] }],
+      additionalErrors: [{ _tag: "CleanupError", message: "cleanup", role: "cleanup", additionalErrors: [] }],
     },
   ])("rejects a $name additional-error collection on decode", ({ additionalErrors }) => {
     // Given: a wire envelope that violates the additional-error contract.
@@ -39,7 +39,13 @@ describe("command failure projection", () => {
         _tag: "StartError",
         message: "start",
         additionalErrors: [
-          { _tag: "CleanupError", message: "cleanup", remediation: "Retry cleanup.", operation: "stop" },
+          {
+            _tag: "CleanupError",
+            role: "cleanup",
+            message: "cleanup",
+            remediation: "Retry cleanup.",
+            operation: "stop",
+          },
         ],
       },
     } as const;
@@ -59,6 +65,7 @@ describe("command failure projection", () => {
     expect(outcome).toEqual({
       _tag: "failure",
       error: primary,
+      additionalErrors: [],
     });
   });
 
@@ -70,7 +77,7 @@ describe("command failure projection", () => {
       // When: the cause is projected.
       const outcome = failureOutcomeFromCause(cause);
       // Then: the fallback matches Effect and has no additional errors.
-      expect(outcome).toEqual({ _tag: "failure", error: expected });
+      expect(outcome).toEqual({ _tag: "failure", error: expected, additionalErrors: [] });
     },
   );
 
@@ -102,7 +109,14 @@ describe("command failure projection", () => {
     // When: the cause is projected.
     const outcome = failureOutcomeFromCause(cause);
     // Then: the primary is typed and additional failures retain their original order.
-    expect(outcome).toEqual({ _tag: "failure", error: primary, additionalErrors: [defect, secondary] });
+    expect(outcome).toEqual({
+      _tag: "failure",
+      error: primary,
+      additionalErrors: [
+        { role: "peer", error: defect },
+        { role: "peer", error: secondary },
+      ],
+    });
   });
 
   test("uses the first defect when no Fail exists and ignores interruptions", () => {
@@ -113,7 +127,11 @@ describe("command failure projection", () => {
     // When: the cause is projected.
     const outcome = failureOutcomeFromCause(cause);
     // Then: neither interruption nor the primary is duplicated.
-    expect(outcome).toEqual({ _tag: "failure", error: first, additionalErrors: [second] });
+    expect(outcome).toEqual({
+      _tag: "failure",
+      error: first,
+      additionalErrors: [{ role: "peer", error: second }],
+    });
   });
 
   test.each(["json", "yaml"] as const)("encodes non-recursive redacted additional errors in %s", (format) => {
@@ -148,8 +166,8 @@ describe("command failure projection", () => {
       _tag: "StartError",
       message: "start failed",
       additionalErrors: [
-        { _tag: "Error", message: "[redacted]" },
-        { _tag: "StopError", message: "[redacted]", remediation: "[redacted]" },
+        { _tag: "Error", role: "peer", message: "[redacted]" },
+        { _tag: "StopError", role: "peer", message: "[redacted]", remediation: "[redacted]" },
       ],
     });
     expect(line).not.toContain("stack");
@@ -170,7 +188,7 @@ describe("command failure projection", () => {
       }),
     );
     // Then: the optional collection is absent on both representations.
-    expect(outcome).toEqual({ _tag: "failure", error: primary });
+    expect(outcome).toEqual({ _tag: "failure", error: primary, additionalErrors: [] });
     expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
       _tag: "StartError",
       message: "failed",

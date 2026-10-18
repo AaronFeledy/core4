@@ -134,16 +134,14 @@ export const beginNestedCommandInvocation = (
 };
 
 export const commandErrorMessage = (
-  error: unknown,
+  failure: import("@lando/sdk/command-result").ProjectedFailure,
   commandId: string = activeCommandId,
-  additionalErrors?: ReadonlyArray<unknown>,
 ): string => {
   const context: BugReportContext = { commandId };
   return formatBugReport({
-    error,
+    ...failure,
     context,
     rendererMode: activeRendererMode,
-    ...(additionalErrors === undefined ? {} : { additionalErrors }),
   });
 };
 

@@ -3,7 +3,11 @@ import { Effect, Schema } from "effect";
 
 import { McpTransportError, SqlConfirmRequiredError } from "@lando/sdk/errors";
 
-import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "@lando/mcp/result-inspector";
+import {
+  MAX_ADDITIONAL_FAILURE_COUNT,
+  inspectMcpCommandOutcome,
+  projectMcpProgressFrame,
+} from "@lando/mcp/result-inspector";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { buildCommandResultEnvelope, identityRedactor } from "@lando/sdk/command-result";
 
@@ -16,13 +20,45 @@ test("bounds the combined encoded error rather than each failure independently",
       inspectMcpCommandOutcome({
         _tag: "failure",
         error: { _tag: "StartError", message },
-        additionalErrors: [{ _tag: "CleanupError", message }],
+        additionalErrors: [{ role: "cleanup", error: { _tag: "CleanupError", message } }],
       }),
     ),
   );
   // Then: the aggregate failure is rejected before transport serialization.
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
 });
+
+test("bounds additional failure count independently of the byte budget", () => {
+  const errors = Array.from({ length: MAX_ADDITIONAL_FAILURE_COUNT + 1 }, () => ({
+    role: "peer" as const,
+    error: "small",
+  }));
+  const result = Effect.runSync(
+    Effect.result(inspectMcpCommandOutcome({ _tag: "failure", error: "primary", additionalErrors: errors })),
+  );
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
+});
+
+test.each(["role", "error"] as const)(
+  "rejects a projected entry's %s getter without invoking it",
+  (field) => {
+    let calls = 0;
+    const entry = { role: "cleanup" as const, error: "secondary" };
+    Object.defineProperty(entry, field, {
+      get: () => {
+        calls++;
+        return "hostile";
+      },
+    });
+    const result = Effect.runSync(
+      Effect.result(
+        inspectMcpCommandOutcome({ _tag: "failure", error: "primary", additionalErrors: [entry] }),
+      ),
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
+    expect(calls).toBe(0);
+  },
+);
 
 test.each(["error-getter", "error-proxy", "array-getter", "array-proxy"] as const)(
   "rejects an additional failure with %s without invoking its hooks",
@@ -42,13 +78,13 @@ test.each(["error-getter", "error-proxy", "array-getter", "array-proxy"] as cons
         return Reflect.getOwnPropertyDescriptor(target, key);
       },
     };
-    const errors: unknown[] = [];
+    const errors: Array<{ readonly role: "cleanup"; readonly error: unknown }> = [];
     switch (kind) {
       case "error-getter":
-        errors.push(accessorError);
+        errors.push({ role: "cleanup", error: accessorError });
         break;
       case "error-proxy":
-        errors.push(new Proxy(accessorError, handler));
+        errors.push({ role: "cleanup", error: new Proxy(accessorError, handler) });
         break;
       case "array-getter":
         Object.defineProperty(errors, "0", {
@@ -59,12 +95,12 @@ test.each(["error-getter", "error-proxy", "array-getter", "array-proxy"] as cons
         });
         break;
       case "array-proxy":
-        errors.push({ _tag: "CleanupError", message: "not-read" });
+        errors.push({ role: "cleanup", error: { _tag: "CleanupError", message: "not-read" } });
         break;
       default:
         return kind satisfies never;
     }
-    const additionalErrors = kind === "array-proxy" ? new Proxy<unknown[]>(errors, handler) : errors;
+    const additionalErrors = kind === "array-proxy" ? new Proxy<typeof errors>(errors, handler) : errors;
     // When: inspection encounters the additional failures.
     const result = Effect.runSync(
       Effect.result(
@@ -90,7 +126,7 @@ test("retains SQL confirmation projection when a failure passes MCP inspection",
     remediation: "Use --yes",
   });
   const envelope = Effect.runSync(
-    inspectMcpCommandOutcome({ _tag: "failure", error }).pipe(
+    inspectMcpCommandOutcome({ _tag: "failure", error, additionalErrors: [] }).pipe(
       Effect.flatMap((outcome) =>
         buildCommandResultEnvelope({
           command: "app:db:reset",
@@ -169,7 +205,7 @@ test("omits a proxy-valued failure field without invoking traps before envelope 
   const error = { _tag: "ProxyFieldError", message: "failure", path: "/x", value: proxy };
 
   const envelope = Effect.runSync(
-    inspectMcpCommandOutcome({ _tag: "failure", error }).pipe(
+    inspectMcpCommandOutcome({ _tag: "failure", error, additionalErrors: [] }).pipe(
       Effect.flatMap((outcome) =>
         buildCommandResultEnvelope({
           command: "app:info",
@@ -205,7 +241,9 @@ test("rejects a proxy error itself without enumerating passthrough fields", () =
     },
   );
 
-  const exit = Effect.runSync(Effect.result(inspectMcpCommandOutcome({ _tag: "failure", error })));
+  const exit = Effect.runSync(
+    Effect.result(inspectMcpCommandOutcome({ _tag: "failure", error, additionalErrors: [] })),
+  );
 
   expect(exit).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
   expect(trapCalls).toBe(0);

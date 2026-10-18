@@ -2,7 +2,8 @@ import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { FileSyncEngine, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
-import { Cause, Effect, Exit, Fiber, Option, Ref } from "effect";
+import { Effect, Exit, Fiber, Option, Ref } from "effect";
+import { mergeFailure } from "../lifecycle/failure-compensation.ts";
 import { beginAcceleratedStart } from "./accelerated-start-journal.ts";
 import { reseedRetainedTargets, terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
@@ -59,7 +60,7 @@ export const prepareAcceleratedStart = (
         const rollback = yield* Effect.exit(prepared.rollback.pipe(Effect.andThen(pendingStart.clear)));
         if (Exit.isFailure(rollback))
           return yield* Effect.failCause(
-            yield* pendingStart.retainTargets(Cause.combine(coverage.cause, rollback.cause)),
+            yield* pendingStart.retainTargets(mergeFailure(coverage.cause, rollback.cause, "rollback")),
           );
         return yield* Effect.failCause(coverage.cause);
       }
@@ -142,7 +143,7 @@ export const prepareAcceleratedStart = (
           : undefined;
       if (inventory !== undefined && Exit.isFailure(inventory))
         return yield* Effect.failCause(
-          yield* pendingStart.retainTargets(Cause.combine(syncExit.cause, inventory.cause)),
+          yield* pendingStart.retainTargets(mergeFailure(syncExit.cause, inventory.cause, "cleanup")),
         );
       const noOwnedSessions =
         inventory !== undefined &&
@@ -156,7 +157,7 @@ export const prepareAcceleratedStart = (
       const rollback = yield* Effect.exit(prepared.rollback.pipe(Effect.andThen(pendingStart.clear)));
       if (Exit.isFailure(rollback))
         return yield* Effect.failCause(
-          yield* pendingStart.retainTargets(Cause.combine(syncExit.cause, rollback.cause)),
+          yield* pendingStart.retainTargets(mergeFailure(syncExit.cause, rollback.cause, "rollback")),
         );
       return yield* Effect.failCause(syncExit.cause);
     }),

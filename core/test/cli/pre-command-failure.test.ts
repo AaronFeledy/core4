@@ -184,7 +184,7 @@ describe("pre-command failure surface", () => {
         runtime: failingRuntime,
         rendererMode: "plain",
         io,
-        formatError: (error) => {
+        formatError: ({ error }) => {
           const record = error as PreCommandLayerError;
           return `${record.message}\n  ↳ ${record.remediation}`;
         },

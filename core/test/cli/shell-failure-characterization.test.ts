@@ -29,10 +29,9 @@ describe("native shell failure characterization", () => {
             cwd: "/workspace",
           },
           io,
-          formatError: (error, additionalErrors) =>
+          formatError: (failure) =>
             formatBugReport({
-              error,
-              ...(additionalErrors === undefined ? {} : { additionalErrors }),
+              ...failure,
               context: { commandId: "meta:characterize", cacheRoot: "/cache" },
               rendererMode: "plain",
             }),
@@ -63,7 +62,7 @@ describe("native shell failure characterization", () => {
                     _tag: "ShellFailure",
                     message: "operation refused",
                     remediation: "Retry with valid input.",
-                    additionalErrors: [{ _tag: "Error", message: "cleanup defect" }],
+                    additionalErrors: [{ _tag: "Error", role: "peer", message: "cleanup defect" }],
                   }
                 : scenario.error,
             warnings: [],

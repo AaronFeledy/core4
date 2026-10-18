@@ -405,7 +405,7 @@ describe("runWithRendererHandling", () => {
       runtime: Layer.empty,
       rendererMode: "lando",
       io,
-      formatError: (e) => `error: ${String(e)}`,
+      formatError: ({ error }) => `error: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -426,7 +426,7 @@ describe("runWithRendererHandling", () => {
       runtime: failingRuntime,
       rendererMode: "lando",
       io,
-      formatError: (e) => `boot: ${String(e)}`,
+      formatError: ({ error }) => `boot: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Layer, Option, Queue, Schema, Stream } from "effect";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -99,6 +100,26 @@ const optionsFor = <A>(
 });
 
 describe("generic CLI command lifecycle", () => {
+  test("projects roles and primary exit status independently of cause order", async () => {
+    const harness = makeRecordingHarness();
+    const primary = new CommandLifecycleExitError({ message: "start", exitCode: 7 });
+    const rollback = new CommandLifecycleTestError({ message: "rollback" });
+    const cause = Cause.combine(
+      Cause.annotate(Cause.fail(rollback), Context.make(FailureRoleAnnotation, "rollback")),
+      Cause.fail(primary),
+    );
+    await runWithRendererHandling(Effect.failCause(cause), {
+      ...optionsFor(harness),
+      failureExitCode: (error) => (error === primary ? 7 : 9),
+    });
+    expect(harness.events.at(-1)).toMatchObject({
+      _tag: "cli-app:start-error",
+      exitCode: 7,
+      failureTag: "CommandLifecycleExitError",
+      additionalFailures: [{ failureTag: "CommandLifecycleTestError", role: "rollback" }],
+    });
+    expect(harness.exitCodes).toEqual([7]);
+  });
   test("orders canonical init, command-specific, and canonical run events", async () => {
     // Given
     const harness = makeRecordingHarness();

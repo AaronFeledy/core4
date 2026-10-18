@@ -148,6 +148,8 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 
 CLI payloads carry `CommandInvocationCorrelation`: an outer invocation has a unique `invocationId` and no parent; nested canonical dispatch has its own id and the enclosing `parentInvocationId`. All phases of one invocation share the pair. Only the outer invocation is eligible for foreground notification, though nested terminal events remain observable.
 
+`cli-<canonical-id>-error` carries the projected primary `failureTag` and optional non-empty `additionalFailures: [{ failureTag, role }]`. Roles are `rollback`, `cleanup`, or `peer`, read from reason annotations through the same projection as command envelopes (§8.11.1). Interruptions are excluded from additional failures. Error identities are redacted before event publication.
+
 ### 3.6 Imperative shells
 
 | Shell | Responsibilities |

@@ -56,10 +56,9 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
         ? 1
         : undefined,
     render: (result) => `Previous Windows update result:\n${renderUpdateResult(result)}`,
-    formatError: (error, additionalErrors) =>
+    formatError: (failure) =>
       formatBugReport({
-        error,
-        ...(additionalErrors === undefined ? {} : { additionalErrors }),
+        ...failure,
         context: { commandId: "meta:update" },
         rendererMode: renderer.mode,
       }),

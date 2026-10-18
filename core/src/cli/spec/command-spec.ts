@@ -154,7 +154,12 @@ export const formatCommandError = (input: {
   readonly rendererMode: RendererMode;
 }): string => {
   const context: BugReportContext = { commandId: input.commandId };
-  return formatBugReport({ error: input.error, context, rendererMode: input.rendererMode });
+  return formatBugReport({
+    error: input.error,
+    additionalErrors: [],
+    context,
+    rendererMode: input.rendererMode,
+  });
 };
 
 export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>

@@ -288,12 +288,17 @@ scraping prose.
 
 If rollback, cleanup, or another step also fails, `error` still describes the
 primary failure and determines the exit code. `error.additionalErrors` contains
-the other failures in cause order, each with its own `_tag`, `message`, optional
-`remediation`, and JSON-safe fields. The array is absent when there are no
+the other failures in cause order, each with its own `_tag`, `message`, required
+`role`, optional `remediation`, and JSON-safe fields. `role` is `rollback` for
+undoing partial work, `cleanup` for release or bookkeeping, or `peer` for a
+sibling step. The array is absent when there are no
 additional failures, and its entries never contain another `additionalErrors`.
 Interruptions are not additional errors. MCP results use the same projection.
-Human reports show the primary message and remediation first, followed by an
-`Also failed (<tag>)` block for each additional failure, without stack traces.
+Reason annotations select the first operation failure, not whichever failure
+happens to appear first. Human reports show the primary message and remediation
+first, followed by `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`,
+or `Also failed (<tag>)`. Each block includes its own remediation and distinct
+diagnostic fields, without stack traces or repeated command context.
 
 The error also keeps its remaining JSON-safe fields directly under `error`.
 For example, `ConfigExpressionError` carries `error.path` (a dotted string),

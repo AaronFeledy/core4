@@ -44,7 +44,7 @@ describe("db command machine output", () => {
       encodeCommandResult({
         command: "db:seed",
         resultSchema: DbCommandResult,
-        outcome: { _tag: "failure", error },
+        outcome: { _tag: "failure", error, additionalErrors: [] },
         redactor: identityRedactor,
       }),
     );
@@ -183,6 +183,7 @@ describe("db command machine output", () => {
         resultSchema: DbCommandResult,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new SqlServiceAmbiguousError({
             message: "Multiple SQL services are available.",
             available: ["analytics", "database"],
@@ -205,7 +206,7 @@ describe("db command machine output", () => {
       encodeCommandResult({
         command: "db:reset",
         resultSchema: DbCommandResult,
-        outcome: { _tag: "failure", error: deniedError },
+        outcome: { _tag: "failure", error: deniedError, additionalErrors: [] },
         redactor: identityRedactor,
       }),
     );
@@ -230,6 +231,7 @@ describe("db command machine output", () => {
         resultSchema: DbCommandResult,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new SqlConfirmRequiredError({
             message: "Reset requires confirmation.",
             service: "database",

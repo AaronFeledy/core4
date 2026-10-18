@@ -96,7 +96,12 @@ describe("library shell failure characterization", () => {
     expect(result).toMatchObject({
       ok: false,
       error: { _tag: "ShellFailure", message: "first failure", remediation: "Retry first." },
-      additionalErrors: [{ _tag: "ShellFailure", message: "second failure", remediation: "Retry second." }],
+      additionalErrors: [
+        {
+          role: "peer",
+          error: { _tag: "ShellFailure", message: "second failure", remediation: "Retry second." },
+        },
+      ],
       output: "first failure",
     });
     expect(renderedErrors).toEqual(["first failure"]);

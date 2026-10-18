@@ -109,7 +109,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly successExitCode?: (value: A) => number | undefined;
   readonly failureExitCode?: (error: unknown) => number | undefined;
-  readonly formatError: (error: unknown, additionalErrors?: ReadonlyArray<unknown>) => string;
+  readonly formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) => string;
   readonly setExitCode?: (code: number) => void;
   /**
    * Records the command's spans with this tracer. Without one, the CLI keeps
@@ -276,12 +276,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     };
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
-        const failure = Cause.findErrorOption(cause);
-        if (failure._tag === "Some" && failure.value instanceof JqExpressionError) {
+        const failure = failureOutcomeFromCause(cause);
+        if (failure.error instanceof JqExpressionError) {
           setExitCode(2);
           return;
         }
-        setExitCode(failure._tag === "Some" ? (options.failureExitCode?.(failure.value) ?? 1) : 1);
+        setExitCode(options.failureExitCode?.(failure.error) ?? 1);
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
@@ -293,7 +293,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const outcome = {
           _tag: "failure",
           error,
-          ...(additionalErrors === undefined ? {} : { additionalErrors }),
+          additionalErrors,
         } as const;
         const emit = (next: typeof outcome) => (framedJson ? emitStreamResult(next) : emitJsonResult(next));
         if (framedJson && !attachLiveSink) yield* replayBufferedEvents();
@@ -302,14 +302,14 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           if (!(emitted.failure instanceof JqExpressionError)) {
             return yield* Effect.fail(emitted.failure);
           }
-          yield* emit({ _tag: "failure", error: emitted.failure });
+          yield* emit({ _tag: "failure", error: emitted.failure, additionalErrors: [] });
           setExitCode(2);
           return;
         }
         yield* setFailureExitCode(cause);
         return;
       }
-      let message = options.formatError(error, additionalErrors);
+      let message = options.formatError({ error, additionalErrors });
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (redaction._tag === "Some") {
         const redactor = yield* redaction.value.forProfile("secrets", {

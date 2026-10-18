@@ -1,5 +1,10 @@
 {
-  "commandResultExports": ["failureOutcomeFromCause"],
+  "commandResultExports": [
+    "failureOutcomeFromCause",
+    "FailureRoleAnnotation",
+    "commandFailureCause",
+    "primaryFailureReason"
+  ],
   "rendererNarrationIOMembers": [
     "externalOutputStream",
     "isTTY",

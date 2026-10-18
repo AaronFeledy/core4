@@ -33,7 +33,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
   const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
   const encoded =
     parsed._tag === "failure"
-      ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
+      ? { outcome: parsed, exitCode: parsed.error.exitCode ?? 2 }
       : yield* Effect.gen(function* () {
           const outcome = yield* Effect.exit(
             Effect.gen(function* () {
@@ -51,6 +51,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
             outcome: outcome.cause.reasons.every(Cause.isInterruptReason)
               ? {
                   _tag: "failure" as const,
+                  additionalErrors: [],
                   error: {
                     _tag: "HostProxyDispatchError",
                     message: Cause.pretty(outcome.cause),

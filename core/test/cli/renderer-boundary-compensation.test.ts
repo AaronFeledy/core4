@@ -34,12 +34,14 @@ describe("combined command failures", () => {
     // When: the JSON report receives the actual additional failure separately.
     const report = formatBugReport({
       error,
-      additionalErrors: [{ _tag: "CleanupError", message: "Cleanup refused." }],
+      additionalErrors: [{ role: "cleanup", error: { _tag: "CleanupError", message: "Cleanup refused." } }],
       context: { commandId: "app:start", cacheRoot: "/cache" },
       rendererMode: "json",
     });
     // Then: report-owned failures survive without an invented remediation.
-    expect(JSON.parse(report).additionalErrors).toEqual([{ code: "CleanupError", body: "Cleanup refused." }]);
+    expect(JSON.parse(report).additionalErrors).toEqual([
+      { role: "cleanup", code: "CleanupError", body: "Cleanup refused." },
+    ]);
   });
 
   for (const rendererMode of ["plain", "lando", "verbose", "json"] as const) {
@@ -65,10 +67,9 @@ describe("combined command failures", () => {
           extraRedactionTokens: ["private-rollback-token"],
           failureExitCode: (error) => (error === primary ? 7 : 9),
           setExitCode: (code) => exitCodes.push(code),
-          formatError: (error, additionalErrors) =>
+          formatError: (failure) =>
             formatBugReport({
-              error,
-              ...(additionalErrors === undefined ? {} : { additionalErrors }),
+              ...failure,
               context: { commandId: "app:start", cacheRoot: "/cache" },
               rendererMode,
             }),
@@ -139,7 +140,7 @@ describe("combined command failures", () => {
         message: "Start refused.",
         remediation: "Repair start.",
         additionalErrors: [
-          { _tag: "CleanupError", message: "Cleanup refused.", remediation: "Repair cleanup." },
+          { _tag: "CleanupError", role: "peer", message: "Cleanup refused.", remediation: "Repair cleanup." },
         ],
       });
       expect(exitCodes).toEqual([7]);

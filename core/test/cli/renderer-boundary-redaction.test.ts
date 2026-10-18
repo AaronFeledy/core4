@@ -52,7 +52,7 @@ describe("runWithRendererHandling redaction", () => {
       runtime: redactionLayer,
       rendererMode: "plain",
       io,
-      formatError: (error) => {
+      formatError: ({ error }) => {
         const setupError = error as SetupNetworkTrustError;
         return `${setupError.message} ${setupError.remediation}`;
       },
@@ -77,7 +77,7 @@ describe("runWithRendererHandling redaction", () => {
         runtime: failingRuntime,
         rendererMode: "plain",
         io,
-        formatError: (error) => String(error),
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
     } finally {
