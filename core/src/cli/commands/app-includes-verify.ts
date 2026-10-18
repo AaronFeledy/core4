@@ -4,30 +4,33 @@ import { Effect, Schema } from "effect";
 
 import {
   type ComposeKeyRejectedError,
+  type Lando3LandofileDetected,
+  type LandofileDialectMixError,
+  LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLoadExpressionError,
   type LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
-  LandofileValidationError,
+  type LandofileSandboxError,
+  type LandofileTimeoutError,
+  type LandofileValidationError,
+  type ManagedFileTransactionError,
   type NotImplementedError,
   type ToolingIncludeCycleError,
-  causeMessage,
 } from "@lando/sdk/errors";
-import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
 
-import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { rejectComposeKeys } from "@lando/landofile/compose/rejections";
+import { scopedLandofileRuntimeInputs, verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import type {
   IncludeVerifyReport,
   IncludeVerifyStatus,
   LandofileIncludeDeps,
 } from "@lando/landofile/includes";
-import { parseLandofile } from "@lando/landofile/parser";
-import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
-import { decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
+import { compileLandofileRootLayers } from "@lando/landofile/service";
+import { validateLandofile } from "@lando/landofile/validation";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 
 export type {
   IncludeVerifyEntry,
@@ -75,6 +78,12 @@ export interface AppIncludesVerifyOptions {
 }
 
 export type AppIncludesVerifyError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
+  | LandofileFormConflictError
+  | ManagedFileTransactionError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
@@ -84,8 +93,6 @@ export type AppIncludesVerifyError =
   | ToolingIncludeCycleError
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
-
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 
 /**
  * Read-only check that the current app's `.lando.lock.yml` matches its resolved
@@ -97,7 +104,19 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
   options: AppIncludesVerifyOptions = {},
 ): Effect.fn.Return<IncludeVerifyReport, AppIncludesVerifyError, StateStore> {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
+  const filePath = yield* Effect.tryPromise({
+    try: () => findLandofilePath(cwd),
+    catch: (cause) =>
+      cause instanceof LandofileFormConflictError
+        ? cause
+        : new LandofileParseError({
+            message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
+            filePath: cwd,
+            line: undefined,
+            column: undefined,
+            cause,
+          }),
+  });
   if (filePath === undefined) {
     return yield* Effect.fail(
       new LandofileNotFoundError({
@@ -107,34 +126,18 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
     );
   }
   const appRoot = dirname(filePath);
-  const content = yield* Effect.tryPromise({
-    try: () => Bun.file(filePath).text(),
-    catch: (cause) =>
-      new LandofileParseError({
-        message: `Could not read ${filePath}: ${causeMessage(cause)}`,
-        filePath,
-        line: undefined,
-        column: undefined,
-        cause,
-      }),
-  });
-  const parsed = yield* parseLandofile({ file: filePath, content, cwd: appRoot });
-  const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
-  yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-  const overlay = yield* decodeLandofileLayer(filePath, checkedParsed);
-  const decoded = decodeLandofile(mergeLandofiles([overlay]), { onExcessProperty: "error", errors: "all" });
-  if (decoded._tag === "Failure") {
-    const issues = validationIssuesFromCause(decoded.failure);
-    return yield* Effect.fail(
-      new LandofileValidationError({
-        message: `Landofile ${filePath} is not valid: ${issues.map(formatValidationIssueLine).join(", ")}`,
-        file: filePath,
-        issues,
-      }),
-    );
+  const inputs = yield* scopedLandofileRuntimeInputs;
+  const { compiled, scope: loadScope } = yield* compileLandofileRootLayers(appRoot, filePath, inputs);
+  const includes = [];
+  const composeIncludes: string[] = [];
+  for (const { layer, landofile: overlay } of compiled) {
+    const landofile = yield* validateLandofile(layer.filePath, mergeLandofiles([overlay]));
+    includes.push(...(landofile.includes ?? []));
+    composeIncludes.push(...(landofile.include ?? []));
   }
   return yield* verifyLandofileIncludes({
-    landofile: decoded.success,
+    landofile: { includes, include: composeIncludes },
+    loadScope,
     appRoot,
     ...(options.deps === undefined ? {} : { deps: options.deps }),
   });

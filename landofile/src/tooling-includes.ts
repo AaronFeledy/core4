@@ -12,7 +12,6 @@ import {
 } from "@lando/sdk/errors";
 import {
   type LandofileDecodedOverlay,
-  decodeLandofileLayer,
   isMergeDirective,
   isPlainRecord,
   mergeLandofiles,
@@ -20,6 +19,7 @@ import {
 } from "@lando/sdk/landofile";
 import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
+import { type LandofileLoadScope, compileLandofileLayer } from "./compile.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { hasIncludeCycle } from "./include-graph.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
@@ -38,6 +38,7 @@ export { hasToolingIncludes } from "./tooling-include-entries.ts";
 
 export interface ResolveToolingIncludesOptions {
   readonly landofile: Pick<LandofileShape, "includes" | "toolingIncludes">;
+  readonly loadScope: LandofileLoadScope;
   readonly appRoot: string;
   readonly sourceRoot: string;
   readonly maxDepth?: number;
@@ -126,6 +127,7 @@ const locateFragment = (
 const loadFragment = (
   entry: NormalizedToolingInclude,
   filePath: string,
+  scope: LandofileLoadScope,
 ): Effect.Effect<Fragment, ToolingIncludeError> =>
   readFragmentText(filePath, entry.source).pipe(
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
@@ -139,7 +141,7 @@ const loadFragment = (
     Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
     Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) =>
-      decodeLandofileLayer(filePath, parsed).pipe(
+      compileLandofileLayer(filePath, parsed, scope).pipe(
         Effect.mapError((cause) =>
           includeError({
             source: entry.source,
@@ -158,6 +160,7 @@ const loadFragment = (
   );
 
 interface ResolveContext {
+  readonly loadScope: LandofileLoadScope;
   readonly appRoot: string;
   readonly sourceRoot: string;
   readonly maxDepth: number;
@@ -201,7 +204,7 @@ const resolveEntries = Effect.fnUntraced(function* (
       );
     }
 
-    const fragment = yield* loadFragment(entry, filePath);
+    const fragment = yield* loadFragment(entry, filePath, ctx.loadScope);
     const nested = yield* resolveEntries(
       normalizeToolingIncludes(fragment.nested),
       { ...ctx, sourceRoot: dirname(filePath) },
@@ -257,7 +260,12 @@ export const resolveToolingIncludes = (
   }
   return resolveEntries(
     normalizeToolingIncludes(options.landofile),
-    { appRoot: options.appRoot, sourceRoot: options.sourceRoot, maxDepth: options.maxDepth ?? 8 },
+    {
+      appRoot: options.appRoot,
+      sourceRoot: options.sourceRoot,
+      maxDepth: options.maxDepth ?? 8,
+      loadScope: options.loadScope,
+    },
     0,
     [],
   ).pipe(

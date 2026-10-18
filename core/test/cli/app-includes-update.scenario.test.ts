@@ -104,6 +104,56 @@ const withUserCacheRoot = async <T>(userCacheRoot: string, run: () => Promise<T>
   }
 };
 
+test.each(["recipe: lamp\nconfig:\n  php: '8.3'\n", "recipe: lamp\nconfig: {}\nmounts:\n  - {a: 1}\n"])(
+  "includes update rejects a legacy local layer alongside a valid canonical layer: %s",
+  async (legacy) => {
+    await withTempCwd(async (dir) => {
+      // Given
+      const canonicalFile = join(dir, ".lando.yml");
+      await writeFile(canonicalFile, "name: native\n");
+      await writeFile(join(dir, ".lando.local.yml"), legacy);
+      // When
+      const error = await Effect.runPromise(
+        appIncludesUpdate({ cwd: dir, check: true }).pipe(Effect.provide(testStateStoreLayer), Effect.flip),
+      );
+      // Then
+      expect(error).toMatchObject({ _tag: "LandofileDialectMixError", canonicalFile });
+    });
+  },
+);
+
+test("includes update compiles noncanonical typed sites with the merged root recipe scope", async () => {
+  // Given
+  await withTempCwd(async (dir) => {
+    await writeFile(
+      join(dir, ".lando.yml"),
+      [
+        "name: typed",
+        "recipe:",
+        "  id: lamp",
+        "  version: 0.1.0",
+        "  options:",
+        "    flag: false",
+        "  producer:",
+        "    sourceKind: bundled",
+        '    packageName: "@lando/recipe-lamp"',
+        "    recipeId: lamp",
+        "    manifestVersion: 0.1.0",
+        `    contentDigest: sha256:${"0".repeat(64)}`,
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(dir, ".lando.base.yml"), 'services:\n  web:\n    primary: "{{ recipe.flag }}"\n');
+    // When
+    const result = await Effect.runPromise(
+      appIncludesUpdate({ cwd: dir, check: true }).pipe(Effect.provide(testStateStoreLayer)),
+    );
+    // Then
+    expect(result.entries).toEqual([]);
+    expect(result.checkMode).toBe(true);
+  });
+});
+
 describe("renderIncludesUpdateResult", () => {
   test("check-mode drift renders remediation without changing process.exitCode", () => {
     const report: IncludeUpdateReport = {
