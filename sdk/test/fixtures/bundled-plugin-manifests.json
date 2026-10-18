@@ -293,6 +293,7 @@
       "bootstrap": "app",
       "contributes": {
         "appFeatures": [
+          "service-lando.history",
           "service-lando.mailpit.wire",
           "service-lando.php.db-client",
           "service-lando.phpmyadmin.wire",

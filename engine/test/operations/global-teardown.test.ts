@@ -13,6 +13,7 @@ import {
   ServiceName,
   type VolumeInfo,
   appIdentityKey,
+  historyStoreName,
 } from "@lando/sdk/schema";
 import {
   GlobalAppService,
@@ -64,14 +65,18 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
   containerId: "observed-container",
 });
 
-const volumeAt = (root: AbsolutePath, scope: "app" | "global"): VolumeInfo => ({
-  ref: { app: appId, store: scope },
-  labels: { "dev.lando.scope": scope },
+const volumeAt = (
+  root: AbsolutePath,
+  store: string,
+  labels: Readonly<Record<string, string>> = { "dev.lando.scope": "app" },
+): VolumeInfo => ({
+  ref: { app: appId, store },
+  labels,
   identity: {
     ownerRoot: root,
-    nativeName: scope,
-    coordinationKey: scope,
-    generation: `generation-${scope}`,
+    nativeName: store,
+    coordinationKey: store,
+    generation: `generation-${store}`,
     origin: "created",
   },
 });
@@ -197,7 +202,7 @@ for (const volumes of [false, true]) {
       };
       const harness = harnessAt(dataRoot, {
         services: [owned, foreign],
-        volumes: [volumeAt(root, "app"), volumeAt(root, "global")],
+        volumes: [volumeAt(root, "app"), volumeAt(root, "global", { "dev.lando.scope": "global" })],
       });
       // When teardown uses the observed-identity orphan path and its scoped lock.
       const receipt = await Effect.runPromise(
@@ -215,6 +220,30 @@ for (const volumes of [false, true]) {
     });
   });
 }
+
+test("global orphan teardown removes a history marker with its store", async () => {
+  await withRoot(async (dataRoot, root) => {
+    const historyStore = historyStoreName("global");
+    const historyMarker = `${historyStore}.verified`;
+    const harness = harnessAt(dataRoot, {
+      volumes: [
+        volumeAt(root, historyStore),
+        volumeAt(root, historyMarker, {
+          "dev.lando.scope": "app",
+          "dev.lando.history-mode": "1777",
+        }),
+      ],
+    });
+    const receipt = await Effect.runPromise(
+      Effect.gen(function* () {
+        const resolved = yield* resolveGlobalTeardown();
+        return yield* executeGlobalTeardown(resolved, { volumes: true, removeState: true });
+      }).pipe(Effect.provide(harness.layer)),
+    );
+    expect(receipt).toEqual({ changed: true, services: [], volumesRemoved: true });
+    expect(harness.removedVolumes).toEqual([historyStore, historyMarker]);
+  });
+});
 
 test("global teardown ignores foreign-root applied and observed resources", async () => {
   await withRoot(async (dataRoot) => {

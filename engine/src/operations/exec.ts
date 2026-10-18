@@ -19,6 +19,7 @@ import {
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
+import { mergeHistoryExecEnv, resolveHistoryExecUser } from "../config/history-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import {
@@ -122,12 +123,21 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
 ) {
   const { provider, target, service, options } = input;
   const tty = inheritTty(options);
-  const mergedEnv = withTerminalEnv({
+  const terminalEnv = withTerminalEnv({
     tty,
     hostEnv: process.env,
     ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
     serviceEnv: service.environment,
     ...(options.env === undefined ? {} : { env: options.env }),
+  });
+  const mergedEnv = yield* mergeHistoryExecEnv({
+    provider,
+    target,
+    serviceName: String(service.name),
+    user: resolveHistoryExecUser(options.user, service.user, target.user),
+    serviceEnv: service.environment,
+    env: terminalEnv,
+    tty,
   });
   const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
   const spec: CommandSpec = {

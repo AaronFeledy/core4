@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  HISTORY_MOUNT_TARGET,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -120,6 +121,7 @@ interface FakeProvider extends RuntimeProviderShape {
 
 const makeFakeProvider = (
   responses: ReadonlyArray<ExecResult> | ((index: number) => ExecResult),
+  mounts?: ReadonlyArray<string>,
 ): FakeProvider => {
   const calls: ExecCall[] = [];
   const responseFor = (index: number): ExecResult =>
@@ -167,7 +169,14 @@ const makeFakeProvider = (
     run: () => Effect.die("not used"),
     runStream: () => Stream.empty,
     logs: () => Stream.empty,
-    inspect: () => Effect.die("not used"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        ...(mounts === undefined ? {} : { mountDestinations: [...mounts] }),
+      }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
@@ -796,6 +805,26 @@ describe("ProviderExecToolingEngine.layer", () => {
 
     // Then
     expect(provider.calls[0]?.command.terminalSize).toEqual({ columns: 160, rows: 40 });
+  });
+
+  test("calls mergeHistoryExecEnv and injects HISTFILE for a TTY with the mount", async () => {
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }], [HISTORY_MOUNT_TARGET]);
+    await Effect.runPromise(
+      runEngine(
+        {
+          tool: "shell",
+          commands: [["bash"]],
+          tty: true,
+          user: "www-data",
+        },
+        plan,
+        provider,
+      ),
+    );
+    expect(provider.calls[0]?.command.env?.HISTFILE).toBe(
+      `${HISTORY_MOUNT_TARGET}/web.www-data.bash_history`,
+    );
   });
 
   test("a tooling PTY defaults PAGER to cat when its stdin is not forwarded", async () => {

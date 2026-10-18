@@ -768,6 +768,16 @@ describe("lando destroy", () => {
     expect(renderDestroyAppResult(result)).toContain("volumes removed");
   });
 
+  test("--purge maps to volumes: true at the command layer", async () => {
+    await withTempCwd(async (dataRoot) => {
+      const harness = makeDestroyLayer({ userDataRoot: dataRoot });
+      await Effect.runPromise(
+        runDestroyCommand({ flags: { purge: true, yes: true } }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(harness.destroyCalls[0]?.options.volumes).toBe(true);
+    });
+  });
+
   test("--purge removes only this folder's snapshots and provider artifacts", async () => {
     await withTempCwd(async (dataRoot) => {
       const harness = makeDestroyLayer({ userDataRoot: dataRoot });

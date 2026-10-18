@@ -6,6 +6,11 @@
  */
 export { STORAGE_KIND_LABEL, STORAGE_SCOPE_LABEL } from "./volume-classes.ts";
 export { VOLUME_OWNER_LABEL, VOLUME_SELECTOR_LABEL } from "./volume-ownership.ts";
+export {
+  HISTORY_MODE_INSTANCE_LABEL,
+  HISTORY_MODE_LABEL,
+  isHistoryModeMarkerVolume,
+} from "./volume-history-helper.ts";
 
 export const APP_LABEL = "dev.lando.app" as const;
 export const APP_ROOT_LABEL = "dev.lando.app-root" as const;

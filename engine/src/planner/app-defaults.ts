@@ -17,6 +17,7 @@ export const cacheInput = (
     readonly defaultDomain: string;
     readonly sshAgentMode: SshAgentIntent["mode"];
     readonly gpgAgentForward?: boolean;
+    readonly historyEnabled?: boolean;
   },
 ) => ({
   routerEnabled,
@@ -26,6 +27,7 @@ export const cacheInput = (
   appLabels: defaults.appLabels ?? null,
   sshAgentMode: defaults.sshAgentMode,
   gpgAgentForward: defaults.gpgAgentForward ?? false,
+  historyEnabled: defaults.historyEnabled !== false,
 });
 
 const isPathWithin = (root: string, candidate: string): boolean => {

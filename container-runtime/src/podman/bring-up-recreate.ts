@@ -55,6 +55,19 @@ export const inspectBindSources = (body: unknown): Readonly<Record<string, strin
   return sources;
 };
 
+export const inspectMountDestinations = (body: unknown): ReadonlyArray<string> | undefined => {
+  if (typeof body !== "object" || body === null) return undefined;
+  const mounts = Reflect.get(body, "Mounts");
+  if (!Array.isArray(mounts)) return undefined;
+  const destinations: string[] = [];
+  for (const mount of mounts) {
+    if (typeof mount !== "object" || mount === null) continue;
+    const target = Reflect.get(mount, "Destination");
+    if (typeof target === "string" && target.length > 0) destinations.push(target);
+  }
+  return destinations;
+};
+
 export const inspectNetworkNames = (body: unknown): ReadonlyArray<string> | undefined => {
   if (typeof body !== "object" || body === null) return undefined;
   const settings = Reflect.get(body, "NetworkSettings");

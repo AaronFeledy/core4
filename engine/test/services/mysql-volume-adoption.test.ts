@@ -73,7 +73,10 @@ const plan = async (
           name: "mysql-adoption",
           runtime: 4,
           services: Object.fromEntries(
-            Object.entries(servicesInput).map(([name, service]) => [name, { ...service, home: false }]),
+            Object.entries(servicesInput).map(([name, service]) => [
+              name,
+              { ...service, home: false, history: false },
+            ]),
           ),
         },
         TestRuntimeProvider.capabilities,

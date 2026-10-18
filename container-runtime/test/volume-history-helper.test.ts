@@ -1,0 +1,91 @@
+import { expect, test } from "bun:test";
+import { chmod, mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  HISTORY_MODE_INSTANCE_LABEL,
+  HISTORY_MODE_LABEL,
+  HISTORY_MODE_VERIFIED,
+  VOLUME_HISTORY_MODE,
+  historyModeMarkerIsVerified,
+  historyModeMarkerName,
+  isHistoryModeMarkerVolume,
+  volumeHistoryInitCommand,
+  volumeHistoryModeCheckCommand,
+} from "../src/volume-history-helper.ts";
+
+const invoke = async (command: readonly string[]) => {
+  const helperSource = command[2];
+  if (helperSource === undefined) throw new Error("Expected an inline history helper");
+  const child = Bun.spawn([process.execPath, command[1] ?? "-e", helperSource, ...command.slice(3)], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { code, stdout, stderr };
+};
+
+test("historyModeMarkerName suffixes the store", () => {
+  expect(historyModeMarkerName("lando-app-history")).toBe("lando-app-history.verified");
+});
+
+test("isHistoryModeMarkerVolume detects the history-mode label", () => {
+  expect(isHistoryModeMarkerVolume({ [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED })).toBe(true);
+  expect(isHistoryModeMarkerVolume({})).toBe(false);
+  expect(isHistoryModeMarkerVolume(undefined)).toBe(false);
+});
+
+test("historyModeMarkerIsVerified requires 1777 and a matching nonempty instance", () => {
+  const labels = {
+    [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+    [HISTORY_MODE_INSTANCE_LABEL]: "uuid-1",
+  };
+  expect(historyModeMarkerIsVerified(labels, "uuid-1")).toBe(true);
+  expect(historyModeMarkerIsVerified(labels, "uuid-2")).toBe(false);
+  expect(historyModeMarkerIsVerified(labels, "")).toBe(false);
+  expect(historyModeMarkerIsVerified({ [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED }, "uuid-1")).toBe(false);
+  expect(historyModeMarkerIsVerified({ ...labels, [HISTORY_MODE_LABEL]: "0777" }, "uuid-1")).toBe(false);
+});
+
+test("chmods the volume root to 1777 without wiping files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-history-"));
+  try {
+    await Bun.write(join(root, "appserver.bash_history"), "ls\n");
+    const result = await invoke(volumeHistoryInitCommand(root));
+    expect(result.code).toBe(0);
+    const mode = (await stat(root)).mode & 0o7777;
+    expect(mode).toBe(VOLUME_HISTORY_MODE);
+    expect(await Bun.file(join(root, "appserver.bash_history")).text()).toBe("ls\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("mode check exits 0 only when the volume root is 1777", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-history-mode-"));
+  try {
+    expect((await invoke(volumeHistoryModeCheckCommand(root))).code).not.toBe(0);
+    expect((await invoke(volumeHistoryInitCommand(root))).code).toBe(0);
+    expect((await invoke(volumeHistoryModeCheckCommand(root))).code).toBe(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("mode check treats 0777 without the sticky bit as needing chmod", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-history-0777-"));
+  try {
+    await chmod(root, 0o0777);
+    expect((await stat(root)).mode & 0o7777).toBe(0o0777);
+    expect((await invoke(volumeHistoryModeCheckCommand(root))).code).not.toBe(0);
+    expect((await invoke(volumeHistoryInitCommand(root))).code).toBe(0);
+    expect((await stat(root)).mode & 0o7777).toBe(VOLUME_HISTORY_MODE);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

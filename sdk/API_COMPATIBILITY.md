@@ -65,7 +65,8 @@
 
 - `RuntimeProviderRegistry.select(target?: AppPlan | ProviderId)` accepts an explicit provider ID for planless resource observation and cleanup. Real plans still select their provider; omitting the target still selects the configured default.
 
-- `RestartAppOptions` additively accepts optional `services` for a scoped restart of named planned services with no dependency pull-in. Unknown names fail with the existing `ServiceNotFoundError`. Bare restart (no `services`) is unchanged. `RestartAppError` additively includes `ProviderError` so scoped restart can surface inspect, stop, apply, and `ServiceRestartWouldRecreateError`. `PreRestartEvent` and `PostRestartEvent` additively accept optional `services`; a full-app restart omits the field. `ApplyOptions.forbidRecreate` asks bring-up to fail instead of recreating on publish-port, bind-source, or network drift, or on host-port bind-rejection recovery. Combining it with `reconcile: true` fails. `ServiceRuntimeInfo` additively reports optional `publishFingerprint`, `bindSources`, and `networkNames` when inspect can read them.
+- `RestartAppOptions` additively accepts optional `services` for a scoped restart of named planned services with no dependency pull-in. Unknown names fail with the existing `ServiceNotFoundError`. Bare restart (no `services`) is unchanged. `RestartAppError` additively includes `ProviderError` so scoped restart can surface inspect, stop, apply, and `ServiceRestartWouldRecreateError`. `PreRestartEvent` and `PostRestartEvent` additively accept optional `services`; a full-app restart omits the field. `ApplyOptions.forbidRecreate` asks bring-up to fail instead of recreating on publish-port, bind-source, or network drift, or on host-port bind-rejection recovery. Combining it with `reconcile: true` fails. `ServiceRuntimeInfo` additively reports optional `publishFingerprint`, `bindSources`, `networkNames`, and `mountDestinations` when inspect can read them.
+- `HistoryConfig` is a new public schema export; `GlobalConfig.history` is a new additive optional field (`history.enabled`, default true) for the rebuild-surviving container history volume. `ServiceConfig.history` is a new additive optional boolean to opt a service in or out. `@lando/sdk/schema` also exports history volume constants (`HISTORY_FEATURE_ID`, `HISTORY_MOUNT_TARGET`, `HISTORY_DEFAULT_SERVICE_TYPES`, `historyStoreName`, `isHistoryStoreName(name, appName)` matching the planned `lando-<app>-history` volume, `historyStatusFromPlan`, and related helpers). `InfoAppService.history` and `InfoAppResult.history` are additive optional fields for `lando info` (volume name and per-service enabled/disabled).
 
 - `ToolingInvocation` adds optional `stdinStream`, `terminalResize`, and `signal` using the provider exec contract's types. Keyboard input must be re-iterable for sequential container steps. Omission preserves idle PTY input and noninteractive embedding/event behavior; no service signature or JSON Schema changes.
 
@@ -946,6 +947,22 @@ It registers no JSON Schema.
 - `McpConfig`
 - `McpServeOptions`
 - `AgentEnvConfig`
+- `HistoryConfig`
+- `HISTORY_FEATURE_ID`
+- `HISTORY_MOUNT_TARGET`
+- `HISTORY_DEFAULT_SERVICE_TYPES`
+- `HISTORY_DEFAULT_USER`
+- `HISTORY_CLIENT_FILES`
+- `HISTORY_CLIENT_ENV_NAMES`
+- `historyStoreName`
+- `isHistoryStoreName`
+- `isHistoryMountTarget`
+- `historyServiceTypeFamily`
+- `isHistoryDefaultServiceType`
+- `historyFilePath`
+- `sanitizeHistoryUser`
+- `historyStatusFromPlan`
+- `shouldAttachHistoryVolume`
 - `AppIdentity`
 - `NotifyConfig`
 - `NotifyCommandId`
@@ -1059,6 +1076,7 @@ It registers no JSON Schema.
 - `ServiceRuntimeInfo.publishFingerprint`
 - `ServiceRuntimeInfo.bindSources`
 - `ServiceRuntimeInfo.networkNames`
+- `ServiceRuntimeInfo.mountDestinations`
 
 ## Additive Beta schema fields
 
@@ -1080,6 +1098,7 @@ It registers no JSON Schema.
 - `ToolingTaskShape.dir`
 - `ToolingTaskShape.env`
 - `GlobalConfig.agentEnv`
+- `GlobalConfig.history`
 - `GlobalConfig.notify`
 - `GlobalConfig.logLevel`
 - `GlobalConfig.proxy`
@@ -1119,6 +1138,7 @@ It registers no JSON Schema.
   `TaskCompleteArgs.outcome`, and the controller method `warnTask`, which counts the child as
   succeeded.
 - `TaskCompleteEvent.outcome` additively accepts `"info"`: a neutral, reader-owned result (an app that answered with an error during post-start checks) that renderers MUST paint as neither success nor warning. `TaskOutcome` widens accordingly and the controller additively gains `infoTask`, which counts the child as succeeded.
+- `ServiceConfig.history` is a new additive optional boolean that opts a service into or out of the app-scoped history volume.
 - `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
   `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
   `.stop_grace_period`, `.security_opt`, `.group_add`, `.read_only`, `.platform`, `.pull_policy`,

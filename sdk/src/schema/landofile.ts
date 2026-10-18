@@ -747,6 +747,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
     }),
+    history: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Mount the app-scoped history volume at /run/lando/history for interactive shells and clients. Default on for mysql, mariadb, postgres, redis, php, node, and python service types. Set false to opt out, or true to opt a non-default type in.",
+    }),
 
     scanner: Schema.optionalKey(ScannerConfig).annotate({
       description: "How the post-start URL scan probes this service, or false to skip it.",

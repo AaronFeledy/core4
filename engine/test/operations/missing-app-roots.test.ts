@@ -139,6 +139,7 @@ test.each([
   "scratch-volume",
   "unowned-volume",
   "unowned-service",
+  "history-mode-marker",
 ])("excludes %s evidence", async (kind) => {
   const evidence = {
     "global-plan": snapshot({ appliedPlans: [{ ...plan, id: AppId.make("global") }] }),
@@ -153,6 +154,9 @@ test.each([
     "unowned-volume": snapshot({ volumes: [{ ref: { app, store: "data" } }] }),
     "unowned-service": snapshot({
       services: [{ app, service: service.service, providerId, status: "running" }],
+    }),
+    "history-mode-marker": snapshot({
+      volumes: [volume("lando-app-history.verified", { "dev.lando.history-mode": "1777" })],
     }),
   }[kind];
   expect(await run(evidence === undefined ? [] : [evidence])).toEqual([]);
@@ -189,6 +193,22 @@ test("marks a root partially observed only when a contributing provider was not 
     runtimeObserved: false,
     providers: ["docker", "lando"],
   });
+});
+
+test("omits history mode marker volumes from orphan data inventory", async () => {
+  const result = await run([
+    snapshot({
+      appliedPlans: [plan],
+      volumes: [
+        volume("data"),
+        volume("lando-app-history.verified", {
+          "dev.lando.history-mode": "1777",
+          "dev.lando.history-mode.instance": "store-instance-1",
+        }),
+      ],
+    }),
+  ]);
+  expect(result).toMatchObject([{ dataVolumes: ["data"] }]);
 });
 
 test("ignores unrelated unobserved providers", async () => {

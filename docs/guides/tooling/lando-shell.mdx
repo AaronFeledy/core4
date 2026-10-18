@@ -22,6 +22,36 @@ lando shell --service appserver
 
 `--service` starts a login shell (`sh -l`) in that container. `lando shell` takes no positional arguments. `lando shell appserver` is rejected with `Unexpected argument: appserver` instead of silently opening a host shell.
 
+## Keep shell and client history across rebuilds
+
+Interactive `lando shell --service` and TTY `lando exec` sessions write history into one app-scoped volume mounted at `/run/lando/history`. Files are flat per service and user: `appserver.default.bash_history` when the service has no planned user, `db.mysql.mysql_history`, plus `psql`, `redis`, `sqlite`, `node`, and `python` client files named the same way. Python honors `PYTHON_HISTORY` only on 3.13 and newer.
+
+History needs a shell that writes `HISTFILE` (for example bash). `sh`-only images still start `sh -l`. Dash on Debian does not write `HISTFILE`.
+
+This is on by default for mysql, mariadb, postgres, redis, php, node, and python services. Opt one service out, opt a non-default type in, or turn the whole app off:
+
+```yaml
+services:
+  appserver:
+    type: php:8.3
+    history: false
+  nginx:
+    type: nginx
+    history: true
+```
+
+```yaml
+# ~/.lando/config.yml
+history:
+  enabled: false
+```
+
+Plain `lando destroy` keeps the history volume. `lando destroy --volumes` or `--purge` removes it.
+
+Treat those files as secrets. `psql` and bash history can record passwords. Concurrent sessions are last-writer-wins; two shells on the same service can clobber each other.
+
+History env is injected at exec time, and only when the running container already has the `/run/lando/history` mount. Existing apps pick it up on the next rebuild. Non-TTY `lando exec` does not write history. `lando shell --service --no-history` skips injection. A service `environment` (or env_file) value for a histfile variable wins over Lando's default. `lando info` shows the history volume and per-service enabled/disabled state. `lando doctor` reports whether that volume is present.
+
 ## Forward agent-context env
 
 `lando exec` and `lando shell --service` copy host agent-context markers into the target service. Only this allowlist is forwarded:

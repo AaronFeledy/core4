@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { HISTORY_MOUNT_TARGET, LandofileShape, PortablePath, historyStoreName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
@@ -29,9 +29,12 @@ test("creates no generated stores when Redis persistence is disabled", async () 
       Effect.provide(PluginRegistryLayer.layer),
     ),
   );
-  // Then
-  expect(plan.stores).toEqual([]);
-  expect(Object.values(plan.services).flatMap((service) => service.storage)).toEqual([]);
+  // Then. Redis data is skipped; the app-scoped history volume still mounts.
+  const historyStore = historyStoreName("ephemeral");
+  expect(plan.stores).toEqual([{ name: historyStore, scope: "app", kind: "data" }]);
+  expect(Object.values(plan.services).flatMap((service) => service.storage)).toEqual([
+    { store: historyStore, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false },
+  ]);
 });
 
 test("refuses an authored Redis command that bypasses explicit authentication", async () => {

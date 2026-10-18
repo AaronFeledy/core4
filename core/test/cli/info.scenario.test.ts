@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  HISTORY_MOUNT_TARGET,
   LogSource,
   type LogSource as LogSourceShape,
   PortablePath,
@@ -17,6 +18,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  historyStoreName,
 } from "@lando/core/schema";
 import {
   AppPlanner,
@@ -395,6 +397,39 @@ describe("lando info", () => {
     expect(output).toMatch(/memcached\s+running\s+memcached:\/\/localhost:11211/);
     expect(output).toMatch(/valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379/);
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
+  });
+
+  test("reports the history volume and per-service enabled state", async () => {
+    const store = historyStoreName("test-info");
+    const historyPlan: AppPlan = {
+      ...plan,
+      stores: [...plan.stores, { name: store, scope: "app", kind: "data" }],
+      services: {
+        ...plan.services,
+        [node.name]: {
+          ...node,
+          storage: [{ store, target: PortablePath.make(HISTORY_MOUNT_TARGET), readOnly: false }],
+        },
+      },
+    };
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(makeInfoLayer("running", { plannedApp: historyPlan }))),
+    );
+    expect(result.history).toEqual({
+      volume: store,
+      services: [
+        { service: "node", enabled: true },
+        { service: "postgres", enabled: false },
+        { service: "memcached", enabled: false },
+        { service: "valkey", enabled: false },
+      ],
+    });
+    expect(result.services.find((service) => service.service === "node")?.history).toBe(true);
+    expect(result.services.find((service) => service.service === "postgres")?.history).toBe(false);
+    const output = renderInfoAppResult(result);
+    expect(output).toContain(`history\tvolume\t${store}`);
+    expect(output).toContain("history\tnode\tenabled");
+    expect(output).toContain("history\tpostgres\tdisabled");
   });
 
   test("prints stopped services without endpoints", async () => {

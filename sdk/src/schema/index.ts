@@ -99,6 +99,7 @@ export * from "./docs.ts";
 export * from "./embedding-plugin-policy.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
+export * from "./history.ts";
 export * from "./host-terminal.ts";
 export { BuildStepSkipEvent } from "../events/app.ts";
 export { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "../events/global.ts";

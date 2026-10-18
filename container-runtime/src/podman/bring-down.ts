@@ -8,6 +8,7 @@ import {
   type AppRef,
   ProviderId,
   type ServicePlan,
+  isHistoryStoreName,
   landoAppNetworkName,
 } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
@@ -23,6 +24,7 @@ import { missingApi } from "../engine-errors.ts";
 import { parseJsonOrUndefined } from "../engine-json.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
+import { historyModeMarkerName } from "../volume-history-helper.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
@@ -229,6 +231,13 @@ const removeAppScopedVolumes = Effect.fnUntraced(function* (
     }
     const removed = yield* removeVolume(deps, plan, store);
     changed = changed || removed;
+    if (isHistoryStoreName(store.name, plan.name)) {
+      const markerRemoved = yield* removeVolume(deps, plan, {
+        ...store,
+        name: historyModeMarkerName(store.name),
+      });
+      changed = changed || markerRemoved;
+    }
   }
   return changed;
 });

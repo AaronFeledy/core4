@@ -34,6 +34,7 @@ export type {
   ExecAppResult,
   InfoAppError,
   InfoAppOptions,
+  InfoAppHistory,
   InfoAppResult,
   InfoAppService,
   PullAppOptions,

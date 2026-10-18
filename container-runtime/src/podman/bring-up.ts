@@ -1,5 +1,11 @@
 import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
-import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
+import {
+  HISTORY_MODE_INSTANCE_LABEL,
+  PROVIDER_LABEL,
+  SCRATCH_ID_LABEL,
+  SCRATCH_LABEL,
+  VOLUME_INSTANCE_LABEL,
+} from "../labels.ts";
 
 import {
   ProviderInternalError,
@@ -8,7 +14,7 @@ import {
   ServiceStartError,
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
-import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
+import { MessageWarnEvent, PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type AppRef,
@@ -17,6 +23,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  isHistoryMountTarget,
   landoAppNetworkName,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
@@ -54,6 +61,16 @@ import {
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
+import {
+  HISTORY_MODE_LABEL,
+  HISTORY_MODE_VERIFIED,
+  VOLUME_HISTORY_IMAGE,
+  VOLUME_HISTORY_MOUNT,
+  historyModeMarkerIsVerified,
+  historyModeMarkerName,
+  volumeHistoryInitCommand,
+  volumeHistoryModeCheckCommand,
+} from "../volume-history-helper.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
   bringUpRecreateReasons,
@@ -412,6 +429,355 @@ export const podmanVolumeCreationLabels = (
 ): Readonly<Record<string, string>> => ({
   ...volumeCreationLabels(plan, store),
   [PROVIDER_LABEL]: plan.provider,
+});
+
+export const historyStoreNamesFromPlan = (plan: AppPlan): ReadonlyArray<string> => {
+  const names = new Set<string>();
+  for (const service of Object.values(plan.services)) {
+    for (const mount of service.storage) {
+      if (isHistoryMountTarget(String(mount.target))) names.add(mount.store);
+    }
+  }
+  return [...names];
+};
+
+const historyInitFailure = (deps: BringUpDeps, storeName: string, message: string, details?: unknown) =>
+  new ProviderUnavailableError({
+    providerId: deps.options.ctx.providerId,
+    operation: "bringUp.historyInit",
+    message,
+    details: redactDetails({ store: storeName, ...(details === undefined ? {} : details) }),
+    remediation: deps.remediation,
+  });
+
+const warnHistoryInit = (deps: BringUpDeps, message: string): Effect.Effect<void, ProviderInternalError> =>
+  deps.options.eventService === undefined
+    ? Effect.void
+    : deps.options.eventService
+        .publish(MessageWarnEvent.make({ body: message, timestamp: DateTime.nowUnsafe() }))
+        .pipe(Effect.catch(() => Effect.void));
+
+const historyInitContinueHint =
+  "Interactive history may be unwritable until a later start initializes the volume.";
+
+const warnHistoryInitFailure = (
+  deps: BringUpDeps,
+  failure: unknown,
+  fallback: string,
+  recovery: string,
+): Effect.Effect<void, ProviderInternalError> => {
+  const cause = failure instanceof Error ? failure.message : fallback;
+  return warnHistoryInit(deps, `${cause} ${historyInitContinueHint} ${recovery}`);
+};
+
+const ensureHistoryHelperImage = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  const service = Object.values(plan.services)[0];
+  if (service !== undefined && deps.options.ensureImage !== undefined) {
+    // Strip compose.platform so the helper is not bound to the first service's
+    // pull/platform policy. ensureImage inspects first and skips the registry
+    // when the helper image is already local.
+    const helperService = { ...service, extensions: {} };
+    yield* deps.options
+      .ensureImage({ service: helperService, ref: VOLUME_HISTORY_IMAGE, force: false })
+      .pipe(
+        Effect.catch((error) =>
+          Effect.fail(
+            historyInitFailure(
+              deps,
+              VOLUME_HISTORY_IMAGE,
+              error instanceof Error
+                ? error.message
+                : `History helper image ${VOLUME_HISTORY_IMAGE} could not be pulled.`,
+            ),
+          ),
+        ),
+      );
+    return;
+  }
+  const inspected = yield* request(deps, {
+    method: "GET",
+    path: `/images/${encodeURIComponent(VOLUME_HISTORY_IMAGE)}/json`,
+  });
+  if (inspected.status === 200) return;
+  return yield* Effect.fail(
+    historyInitFailure(
+      deps,
+      VOLUME_HISTORY_IMAGE,
+      withApiReason(
+        `provider-${deps.options.ctx.providerId} history helper image ${VOLUME_HISTORY_IMAGE} is missing (HTTP ${inspected.status}).`,
+        { status: inspected.status, body: inspected.body },
+      ),
+      { status: inspected.status, body: inspected.body },
+    ),
+  );
+});
+
+const runHistoryHelper = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+  command: readonly string[],
+  operation: "init" | "mode-check",
+): Effect.fn.Return<number, ProviderUnavailableError | ProviderInternalError> {
+  const helperName = `lando-hist-${storeName}`.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 128);
+  const remove = request(deps, {
+    method: "DELETE",
+    path: `/containers/${encodeURIComponent(helperName)}?force=true`,
+  }).pipe(Effect.catch(() => Effect.void));
+  yield* remove;
+  const created = yield* request(deps, {
+    method: "POST",
+    path: `/containers/create?name=${encodeURIComponent(helperName)}`,
+    body: {
+      Image: VOLUME_HISTORY_IMAGE,
+      Cmd: [...command],
+      User: "0:0",
+      HostConfig: {
+        Binds: [`${storeName}:${VOLUME_HISTORY_MOUNT}`],
+        NetworkMode: "none",
+      },
+    },
+  });
+  if (created.status < 200 || created.status >= 300) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        withApiReason(
+          `provider-${deps.options.ctx.providerId} history volume ${operation} create failed with HTTP ${created.status}.`,
+          { status: created.status, body: created.body },
+        ),
+        { status: created.status, body: created.body },
+      ),
+    );
+  }
+  const started = yield* request(deps, {
+    method: "POST",
+    path: `/containers/${encodeURIComponent(helperName)}/start`,
+  });
+  if (started.status < 200 || started.status >= 300) {
+    yield* remove;
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        withApiReason(
+          `provider-${deps.options.ctx.providerId} history volume ${operation} start failed with HTTP ${started.status}.`,
+          { status: started.status, body: started.body },
+        ),
+        { status: started.status, body: started.body },
+      ),
+    );
+  }
+  const waited = yield* request(deps, {
+    method: "POST",
+    path: `/containers/${encodeURIComponent(helperName)}/wait`,
+  });
+  yield* remove;
+  if (waited.status < 200 || waited.status >= 300) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        withApiReason(
+          `provider-${deps.options.ctx.providerId} history volume ${operation} wait failed with HTTP ${waited.status}.`,
+          { status: waited.status, body: waited.body },
+        ),
+        { status: waited.status, body: waited.body },
+      ),
+    );
+  }
+  const statusCode = parseWaitStatusCode(waited.body);
+  if (statusCode === undefined) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        `provider-${deps.options.ctx.providerId} history volume ${operation} wait returned no StatusCode.`,
+        { body: waited.body },
+      ),
+    );
+  }
+  return statusCode;
+});
+
+const parseWaitStatusCode = (body: string): number | undefined => {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (typeof parsed !== "object" || parsed === null || !("StatusCode" in parsed)) return undefined;
+    const value = Reflect.get(parsed, "StatusCode");
+    return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const historyVolumeLabels = (body: string): Readonly<Record<string, string>> => {
+  try {
+    const parsed = JSON.parse(body) as { Labels?: unknown };
+    if (typeof parsed.Labels !== "object" || parsed.Labels === null) return {};
+    const labels: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed.Labels)) {
+      if (typeof value === "string") labels[key] = value;
+    }
+    return labels;
+  } catch {
+    return {};
+  }
+};
+
+const inspectVolumeLabels = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  name: string,
+): Effect.fn.Return<Readonly<Record<string, string>> | undefined, never> {
+  const inspected = yield* request(deps, {
+    method: "GET",
+    path: `/volumes/${encodeURIComponent(name)}`,
+  }).pipe(Effect.catch(() => Effect.succeed({ status: 0, body: "" })));
+  return inspected.status === 200 ? historyVolumeLabels(inspected.body) : undefined;
+});
+
+const inspectStoreInstanceId = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<string | undefined, never> {
+  const labels = yield* inspectVolumeLabels(deps, storeName);
+  const instanceId = labels?.[VOLUME_INSTANCE_LABEL];
+  return instanceId !== undefined && instanceId.length > 0 ? instanceId : undefined;
+});
+
+const removeHistoryModeMarker = (deps: BringUpDeps, storeName: string): Effect.Effect<void, never> =>
+  request(deps, {
+    method: "DELETE",
+    path: `/volumes/${encodeURIComponent(historyModeMarkerName(storeName))}?force=true`,
+  }).pipe(
+    Effect.catch(() => Effect.void),
+    Effect.asVoid,
+  );
+
+const createHistoryModeMarker = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  storeName: string,
+  instanceId: string,
+): Effect.Effect<{ readonly status: number }, never> => {
+  const marker = historyModeMarkerName(storeName);
+  const store = plan.stores.find((candidate) => candidate.name === storeName) ?? {
+    name: marker,
+    scope: "app" as const,
+    kind: "data" as const,
+  };
+  return request(deps, {
+    method: "POST",
+    path: "/volumes/create",
+    body: {
+      Name: marker,
+      Labels: {
+        ...podmanVolumeCreationLabels(plan, { ...store, name: marker }),
+        [HISTORY_MODE_LABEL]: HISTORY_MODE_VERIFIED,
+        [HISTORY_MODE_INSTANCE_LABEL]: instanceId,
+      },
+    },
+  }).pipe(Effect.catch(() => Effect.succeed({ status: 0, body: "" })));
+};
+
+const stampHistoryModeVerified = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  storeName: string,
+  instanceId: string,
+): Effect.fn.Return<void, never> {
+  if (instanceId.length === 0) return;
+  const created = yield* createHistoryModeMarker(deps, plan, storeName, instanceId);
+  if (created.status !== 409) return;
+  yield* removeHistoryModeMarker(deps, storeName);
+  yield* createHistoryModeMarker(deps, plan, storeName, instanceId);
+});
+
+const historyVolumeIsStickyWritable = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<boolean, never> {
+  const checked = yield* Effect.result(
+    runHistoryHelper(deps, storeName, volumeHistoryModeCheckCommand(), "mode-check"),
+  );
+  return checked._tag === "Success" && checked.success === 0;
+});
+
+const initializeHistoryVolume = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  storeName: string,
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError> {
+  const statusCode = yield* runHistoryHelper(deps, storeName, volumeHistoryInitCommand(), "init");
+  if (statusCode !== 0) {
+    return yield* Effect.fail(
+      historyInitFailure(
+        deps,
+        storeName,
+        `provider-${deps.options.ctx.providerId} history volume init exited ${statusCode}.`,
+        { statusCode },
+      ),
+    );
+  }
+});
+
+const initializeHistoryVolumes = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  createdInstances: ReadonlyMap<string, string>,
+): Effect.fn.Return<void, ProviderInternalError> {
+  const stores = historyStoreNamesFromPlan(plan);
+  if (stores.length === 0) return;
+  const unverified: Array<{ readonly storeName: string; readonly instanceId: string | undefined }> = [];
+  for (const storeName of stores) {
+    const createdId = createdInstances.get(storeName);
+    const instanceId = createdId ?? (yield* inspectStoreInstanceId(deps, storeName));
+    if (createdId !== undefined) {
+      yield* removeHistoryModeMarker(deps, storeName);
+      unverified.push({ storeName, instanceId });
+      continue;
+    }
+    const markerLabels = yield* inspectVolumeLabels(deps, historyModeMarkerName(storeName));
+    if (
+      instanceId !== undefined &&
+      markerLabels !== undefined &&
+      historyModeMarkerIsVerified(markerLabels, instanceId)
+    ) {
+      continue;
+    }
+    if (markerLabels !== undefined) yield* removeHistoryModeMarker(deps, storeName);
+    unverified.push({ storeName, instanceId });
+  }
+  if (unverified.length === 0) return;
+  const imageReady = yield* Effect.result(ensureHistoryHelperImage(deps, plan));
+  if (imageReady._tag === "Failure") {
+    yield* warnHistoryInitFailure(
+      deps,
+      imageReady.failure,
+      `History helper image ${VOLUME_HISTORY_IMAGE} could not be pulled.`,
+      "Retry start once the helper image is available, or run lando doctor.",
+    );
+    return;
+  }
+  for (const { storeName, instanceId } of unverified) {
+    const needsInit =
+      createdInstances.has(storeName) || !(yield* historyVolumeIsStickyWritable(deps, storeName));
+    if (needsInit) {
+      const init = yield* Effect.result(initializeHistoryVolume(deps, storeName));
+      if (init._tag === "Failure") {
+        yield* warnHistoryInitFailure(
+          deps,
+          init.failure,
+          `History volume ${storeName} could not be initialized.`,
+          "Retry start, or run lando doctor.",
+        );
+        continue;
+      }
+    }
+    if (instanceId !== undefined) yield* stampHistoryModeVerified(deps, plan, storeName, instanceId);
+  }
 });
 
 const ensureVolume = (
@@ -1041,9 +1407,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const createdVolumes: VolumeCreationFact[] = [];
+  const createdHistoryInstances = new Map<string, string>();
+  const historyStores = new Set(historyStoreNamesFromPlan(plan));
   for (const store of plan.stores) {
-    createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
+    const facts = yield* ensureVolume(deps, plan, store);
+    createdVolumes.push(...facts);
+    const generation = facts[0]?.generation;
+    if (historyStores.has(store.name) && generation !== undefined && generation.length > 0) {
+      createdHistoryInstances.set(store.name, generation);
+    }
   }
+  yield* initializeHistoryVolumes(deps, plan, createdHistoryInstances);
   const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {

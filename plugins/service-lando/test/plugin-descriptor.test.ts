@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { historyDoctorCheck } from "../src/doctor/history.ts";
 import {
   PLUGIN_NAME,
   appFeatures,
@@ -57,5 +58,6 @@ describe("@lando/service-lando plugin descriptor", () => {
     expect(plugin.serviceFeatures).toBe(serviceFeatures);
     expect(plugin.appFeatures).toBe(appFeatures);
     expect(plugin.globalServices).toBe(globalServices);
+    expect(plugin.doctorChecks).toEqual([historyDoctorCheck]);
   });
 });

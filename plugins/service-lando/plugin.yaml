@@ -111,6 +111,7 @@ contributes:
     - "service-lando.valkey"
     - "service-lando.varnish"
   appFeatures:
+    - "service-lando.history"
     - "service-lando.phpmyadmin.wire"
     - "service-lando.nginx.php-fpm.wire"
 

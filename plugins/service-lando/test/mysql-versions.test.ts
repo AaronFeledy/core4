@@ -50,8 +50,8 @@ describe("MySQL managed versions", () => {
 
   test("Given two MySQL services, when planning, then their stores are isolated and version-independent", async () => {
     const appPlan = await planMysqlApp({
-      [ServiceName.make("db")]: { type: "mysql:8.0" },
-      [ServiceName.make("analytics")]: { type: "mysql:9.7" },
+      [ServiceName.make("db")]: { type: "mysql:8.0", history: false },
+      [ServiceName.make("analytics")]: { type: "mysql:9.7", history: false },
     });
     const dbStore = appPlan.services[ServiceName.make("db")]?.storage[0]?.store;
     const analyticsStore = appPlan.services[ServiceName.make("analytics")]?.storage[0]?.store;
@@ -69,8 +69,8 @@ describe("MySQL managed versions", () => {
   });
 
   test("Given one MySQL service across versions, when planning, then its store identity is stable", async () => {
-    const mysql80 = await planMysqlApp({ [ServiceName.make("db")]: { type: "mysql:8.0" } });
-    const mysql97 = await planMysqlApp({ [ServiceName.make("db")]: { type: "mysql:9.7" } });
+    const mysql80 = await planMysqlApp({ [ServiceName.make("db")]: { type: "mysql:8.0", history: false } });
+    const mysql97 = await planMysqlApp({ [ServiceName.make("db")]: { type: "mysql:9.7", history: false } });
 
     expect(mysql80.services[ServiceName.make("db")]?.storage[0]?.store).toBe(
       mysql97.services[ServiceName.make("db")]?.storage[0]?.store,
