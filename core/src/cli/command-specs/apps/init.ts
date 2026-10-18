@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Args, Flags } from "../../spec/metadata";
 
 import type { InitAppOptions } from "../../commands/init";
@@ -126,7 +127,7 @@ export const initSpec: LandoCommandSpec<never> = {
       description: "Install the Lando agent skill pack into the new app (off by default).",
       default: false,
     }),
-    yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
+    yes: yesFlag("Accept every prompt's default without asking."),
     "no-interactive": Flags.boolean({
       aliases: ["non-interactive"],
       description:

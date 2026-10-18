@@ -4,6 +4,7 @@ import { APP_LABEL } from "@lando/container-runtime/labels";
 import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Flags } from "../../spec/metadata";
 
 import {
@@ -610,11 +611,7 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, Priva
       description: "Print the uninstall plan without changing the system.",
       default: false,
     }),
-    yes: Flags.boolean({
-      char: "y",
-      description: "Confirm destructive uninstall execution after reviewing the plan.",
-      default: false,
-    }),
+    yes: yesFlag("Confirm destructive uninstall execution after reviewing the plan."),
     "keep-data": Flags.boolean({
       description: "Remove the managed CLI while preserving app data, the managed VM, and runtime tools.",
       default: false,

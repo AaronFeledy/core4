@@ -5,6 +5,7 @@ import {
   renderAgentSkillsResult,
 } from "../../../../commands/agent-skills";
 import type { LandoCommandSpec } from "../../../../spec/command-base";
+import { nonPromptingYesFlag } from "../../../../spec/confirmation-flag";
 
 export const appAgentSkillsRemoveSpec: LandoCommandSpec<AgentSkillsResult, AgentSkillsError> = {
   resultSchema: AgentSkillsResultSchema,
@@ -13,6 +14,7 @@ export const appAgentSkillsRemoveSpec: LandoCommandSpec<AgentSkillsResult, Agent
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "minimal",
+  flags: { yes: nonPromptingYesFlag },
   run: () => removeAgentSkills(),
   render: (result) => renderAgentSkillsResult(result as AgentSkillsResult),
 };

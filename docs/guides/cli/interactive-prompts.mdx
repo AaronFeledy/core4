@@ -13,7 +13,9 @@ lando init --recipe lamp --yes
 lando setup --no-interactive
 ```
 
-`--yes` resolves every prompt from recipe defaults and never opens a prompt surface. `--no-interactive` disables prompting and fails with a tagged missing-answer error when a required value has no answer or default.
+Commands that ask for confirmation or destroy state accept `--yes`/`-y`. A destructive command that never prompts accepts it and ignores it, so your scripts and agents can pass it to every destructive command.
+
+During recipe initialization, `--yes`/`-y` resolves every prompt from recipe defaults and never opens a prompt surface. `--no-interactive` disables prompting and fails with a tagged missing-answer error when a required value has no answer or default.
 
 Values supplied via `--answer` or an `--answers` file are validated and used directly, so the matching prompt is never shown. A non-TTY stdin keeps the line-based path. `LANDO_NO_OPENTUI_PROMPTS=1` forces that same line-based reader even on an interactive TTY. Any renderer import or probe failure degrades to that fallback.
 

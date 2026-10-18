@@ -4,6 +4,7 @@ import type { SnapshotGcReport } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { renderSnapshotGcReport } from "../../../commands/snapshots-gc";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
 
@@ -36,6 +37,7 @@ export const metaSnapshotsGcSpec: LandoCommandSpec<SnapshotGcReport> = {
   bootstrap: "provider",
   resultSchema: SnapshotGcReportResultSchema,
   flags: {
+    yes: nonPromptingYesFlag,
     prune: Flags.boolean({
       description: "Remove orphaned snapshot images after rechecking the snapshot index.",
       default: false,

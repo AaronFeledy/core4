@@ -772,6 +772,8 @@ Per prompt precedence is explicit answers → defaults when `--yes` or non-inter
 
 One shared parser owns repeated `--answer`, `--answers`, `--yes`, `--no-interactive`, and `--interactive` for both entries. Scratch `--option` merges into the same answer source (§21.10.1).
 
+`--yes` is CLI-owned. Every command that declares it, built-in or plugin-owned, gets the same boolean `--yes` with short form `-y`; no other flag may claim `-y`, and a plugin `ExecutableCommandSpec` cannot change its shape. Every command that prompts for confirmation, or that destroys or removes state, MUST accept `--yes`. A destructive command that never prompts accepts it as a no-op, so scripts and agents confirm every destructive command the same way. `--yes` is not universal: a command that neither prompts nor destroys state rejects it as an unknown flag.
+
 #### 8.10.4 Required behaviors
 
 The core `InteractionService` implementation layer requirements:

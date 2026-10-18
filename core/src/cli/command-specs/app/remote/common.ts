@@ -1,3 +1,4 @@
+import { yesFlag } from "../../../spec/confirmation-flag";
 import {
   booleanFlag,
   formatFlag,
@@ -38,7 +39,7 @@ export const remoteSkeletonFlags = {
   only: Flags.string({ description: "Comma-separated dataset kinds." }),
   "no-snapshot": Flags.boolean({ description: "Skip the safety snapshot before applying pulled data." }),
   force: Flags.boolean({ description: "Confirm protected remote operations." }),
-  yes: Flags.boolean({ char: "y", description: "Answer yes to confirmation prompts." }),
+  yes: yesFlag("Answer yes to confirmation prompts."),
   "no-interactive": Flags.boolean({ description: "Disable interactive confirmation prompts." }),
   format: remoteFormatFlag,
 } as const;

@@ -1,3 +1,4 @@
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { booleanFlag, formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
 
@@ -14,7 +15,7 @@ export const shareFlags = {
   target: Flags.string({ description: "Tunnel target as service[:port], route id, or loopback URL." }),
   provider: Flags.string({ description: "TunnelService provider id." }),
   detach: Flags.boolean({ description: "Record the tunnel as a detached session." }),
-  yes: Flags.boolean({ char: "y", description: "Answer yes to confirmation prompts." }),
+  yes: yesFlag("Answer yes to confirmation prompts."),
   format: shareFormatFlag,
 } as const;
 

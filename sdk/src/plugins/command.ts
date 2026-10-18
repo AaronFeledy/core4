@@ -76,6 +76,7 @@ export interface ExecutableCommandSpec<
   readonly summary: string;
   readonly namespace: ExecutableCommandNamespace;
   readonly bootstrap: BootstrapLevel;
+  /** The CLI reserves `yes` as the boolean confirmation flag `--yes`/`-y`; declare it as `type: "boolean"`. */
   readonly flags?: Readonly<Record<string, ExecutableCommandFlagSpec>>;
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;
   readonly strict?: boolean;
