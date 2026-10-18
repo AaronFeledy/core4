@@ -31,6 +31,13 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
+The destination suffix picks the format: `.gz` for gzip, `.zst` for zstd. `--compression-level` trades speed for size: gzip takes `0` through `9`, zstd takes `1` through `22`. Omit it to keep the format default. An uncompressed export rejects the flag.
+
+```sh
+lando db:export backups/app.sql.gz --compression-level 6
+lando db:export backups/app.sql.zst --compression-level 3
+```
+
 MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.
 
 ## Snapshots

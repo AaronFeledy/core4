@@ -16,11 +16,13 @@ import {
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
 
+import { validateExportCompressionLevel } from "./command-input.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { sqlPlanFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
+  yield* validateExportCompressionLevel(input);
   const landofiles = yield* LandofileService;
   const planner = yield* AppPlanner;
   const registry = yield* RuntimeProviderRegistry;
