@@ -21,6 +21,7 @@ const identityRedactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(identityRedactor),
   }),
 );

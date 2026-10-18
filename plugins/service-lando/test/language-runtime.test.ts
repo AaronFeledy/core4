@@ -111,7 +111,13 @@ const fixtures = [
     mounts: [
       [
         "setAppMount",
-        { source: "/srv/apps/myapp", target: "/app", readOnly: false, excludes: [".bundle"], includes: [] },
+        {
+          source: "/srv/apps/myapp",
+          target: "/app",
+          readOnly: false,
+          excludes: [".bundle"],
+          includes: [],
+        },
       ],
     ],
   },

@@ -115,6 +115,7 @@ OCLIF was originally selected for its mature plugin manifest, lazy-loading, inst
 - **Endpoint** — Service listener such as a port, path, or socket.
 - **Host proxy** — Per-app authenticated container-to-host RPC channel exposed by `HostProxyService` (§10.10).
 - **Host-proxy allowlist** — Generated canonical ids permitted through `runLando`; lifecycle commands are forbidden.
+- **Check** — App-level post-start probe (`http`, `command`, `tcp`, or plugin kind) judged by declarative rules into a verdict; reports, never gates (§10.5.2).
 - **Entry point** — Documented `package.json#exports` path of `@lando/core`.
 - **Feature** — Ordered, idempotent service-plan transformation.
 - **File sync engine** — `FileSyncEngine` implementation for accelerated binds; bundled slow-provider default is `@lando/file-sync-mutagen`.

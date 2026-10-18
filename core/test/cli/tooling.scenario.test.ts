@@ -329,11 +329,9 @@ describe("runTooling — CLI rendering", () => {
     );
 
     // When
-    const result = await Effect.runPromise(
-      runTooling({ name: "composer", renderProgress: true }).pipe(runtimeFor(layer)),
-    );
+    const result = await Effect.runPromise(runTooling({ name: "composer" }).pipe(runtimeFor(layer)));
 
-    // Then
+    // Then: output stays on the result/sink path; the tree carries structure only.
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("bare-db-password");
     expect(result.stdout).toContain("bare-default-token");
@@ -342,43 +340,17 @@ describe("runTooling — CLI rendering", () => {
     expect(events.map((event) => event._tag)).toEqual([
       "task.tree.start",
       "task.start",
-      "task.detail",
-      "task.detail",
-      "task.detail",
-      "task.detail",
       "task.complete",
       "task.tree.complete",
     ]);
     expect(events.find((event) => event._tag === "task.tree.start")).toMatchObject({
       parentId: "tooling:composer",
-      label: "Tooling: composer",
-      children: ["tooling:composer:appserver"],
+      label: "composer",
+      children: ["tooling:composer:exec"],
     });
-    expect(events.filter((event) => event._tag === "task.detail")).toEqual([
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "DB=[redacted]",
-      }),
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "DEFAULT=[redacted]",
-      }),
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "TASK=[redacted]",
-      }),
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "REGION=us-east-1",
-      }),
-    ]);
+    expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     expect(events.find((event) => event._tag === "task.complete")).toMatchObject({
-      taskId: "tooling:composer:appserver",
-      summary: "completed with exit code 0",
+      taskId: "tooling:composer:exec",
     });
     expect(events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
       parentId: "tooling:composer",
@@ -387,7 +359,7 @@ describe("runTooling — CLI rendering", () => {
     });
   });
 
-  test("publishes stderr detail and task.fail for non-zero provider-exec tooling", async () => {
+  test("publishes task.fail for non-zero provider-exec tooling without body detail events", async () => {
     const events: LandoEvent[] = [];
     const { provider } = makeProvider([{ exitCode: 7, stdout: "before\n", stderr: "boom\n" }]);
     const landofile: LandofileShape = {
@@ -399,18 +371,13 @@ describe("runTooling — CLI rendering", () => {
       recordingEventLayer(events),
     );
 
-    const result = await Effect.runPromise(
-      runTooling({ name: "composer", renderProgress: true }).pipe(runtimeFor(layer)),
-    );
+    const result = await Effect.runPromise(runTooling({ name: "composer" }).pipe(runtimeFor(layer)));
 
     expect(result.exitCode).toBe(7);
-    expect(events.find((event) => event._tag === "task.detail" && event.stream === "stderr")).toMatchObject({
-      taskId: "tooling:composer:appserver",
-      line: "boom",
-    });
+    expect(result.stderr).toContain("boom");
+    expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     expect(events.find((event) => event._tag === "task.fail")).toMatchObject({
-      taskId: "tooling:composer:appserver",
-      summary: "failed with exit code 7",
+      taskId: "tooling:composer:exec",
       exitCode: 7,
     });
     expect(events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
@@ -1041,23 +1008,17 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const landofile: LandofileShape = { name: "scenario" };
       const layer = Layer.mergeAll(makeLayer({ landofile, plan, provider }), recordingEventLayer(events));
 
-      const result = await Effect.runPromise(
-        runTooling({ name: "greet", renderProgress: true }).pipe(runtimeFor(layer)),
-      );
+      const result = await Effect.runPromise(runTooling({ name: "greet" }).pipe(runtimeFor(layer)));
 
       expect(result.service).toBe(":host");
+      expect(result.stdout).toContain("hi-from-bun-sh");
       expect(events.map((event) => event._tag)).toEqual([
         "task.tree.start",
         "task.start",
-        "task.detail",
         "task.complete",
         "task.tree.complete",
       ]);
-      expect(events.find((event) => event._tag === "task.detail")).toMatchObject({
-        taskId: "tooling:app:greet::host",
-        stream: "stdout",
-        line: "hi-from-bun-sh",
-      });
+      expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     });
   });
 

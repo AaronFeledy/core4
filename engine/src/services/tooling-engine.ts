@@ -142,12 +142,12 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     return yield* Effect.fail(noCommandsError(invocation.tool));
   }
   const service = yield* resolveService(invocation, plan);
-  yield* registerAppPlanRedactionTokens(plan);
   const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
   const env = withAgentContextEnv(invocation.env, process.env, {
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
+  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const tty = invocation.tty === true;
   let exitCode = 0;

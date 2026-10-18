@@ -19,7 +19,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `cwd-app-map` | `<userCacheRoot>/cwd-app-map.bin` | binary | Bounded CWD-to-app-root index with Landofile freshness metadata; stale entries fall back to discovery. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
 | `app-plugin` | `<userCacheRoot>/apps/<app-id>/plugins.json` | JSON | App plugin lock resolution and local install metadata. |
-| `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints. |
+| `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. |
 | `global-app-plan` | `<userCacheRoot>/global/plan.bin` | Effect Schema binary | Cross-app-readable global `AppPlan` (§20.5), invalidated by global layers/config/contributions or lifecycle changes. |
 | `global-app-info` | `<userCacheRoot>/global/info.json` | JSON | Last known global `ServiceInfo[]`. |
 | `scratch-app-plan` | `<userCacheRoot>/scratch/<scratch-id>/plan.bin` | Effect Schema binary | Scratch `AppPlan`, tooling graphs, and expressions; removed atomically at destroy (§21.5). |
@@ -79,7 +79,7 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userDataRoot>/run/file-sync/daemon.sock`, `daemon.pid` | Lando-owned file-sync daemon endpoint and orphan-detection PID; Windows uses the corresponding named pipe. |
 | `<userDataRoot>/file-sync/mutagen-data/` | Opaque embedded-Mutagen state; uninstall owns final removal. |
 | `<userDataRoot>/builds/<app-id>/...`, `builds/global/...`, `builds/scratch/...` | Per-step build transcripts, never telemetry; user/global retention follows build policy and scratch transcripts disappear at destroy (§6.13.6). |
-| `<userDataRoot>/snapshots/<app-id>/<store>/<snapshot-id>.<format>` | Snapshot archives and `SnapshotInfo` sidecars; survives ordinary destroy and is purged explicitly (§10.11). |
+| `<userDataRoot>/snapshots/<app-id>/<store>/<snapshot-id>.<format>` | Snapshot archives and `SnapshotInfo` sidecars; survive ordinary destroy, and explicit purge and pruning, including automatic recovery retention, remove them (§10.11.2). |
 | `<userDataRoot>/snapshots/<app-id>/index.bin` | `StateStore` snapshot index. |
 | `<userDataRoot>/managed-files/<app-id>/ledger.json` | `ManagedFileService` ownership ledger through `StateStore` (§10.13). |
 | `<systemPluginRoot>/plugins/` | Read-only system-installed plugins. |

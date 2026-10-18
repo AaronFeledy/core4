@@ -4,6 +4,7 @@ import {
   poweroff,
   renderPoweroffResult,
 } from "../../commands/poweroff";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Flags } from "../../spec/metadata";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -20,7 +21,7 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   flags: {
     "keep-global": Flags.boolean({ description: "Do not stop the global app.", default: false }),
     "keep-scratch": Flags.boolean({ description: "Do not stop scratch apps.", default: false }),
-    yes: Flags.boolean({ char: "y", description: "Skip confirmation prompts.", default: false }),
+    yes: yesFlag("Skip confirmation prompts."),
   },
   run: (input) => {
     const flags = specFlagsOf(input);

@@ -59,11 +59,12 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | Canonical id | Default alias | Bootstrap | Contract |
 |---|---|---|---|
 | `app:cache:refresh` | none | `app` | Rebuild app plan, tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.bin` without starting services |
+| `app:check` | `check` | `app` | Run the app's checks without restarting (§8.2.7); repeatable `--only <id>`, `--format json` |
 | `app:config` | none | `app` | Read or write the current Landofile (§8.2.1) |
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
 | `app:config:migrate` | none | `plugins` | Commit recipe migrations; `--yes`, `--dry-run`, `--format json` |
 | `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; never plans or contacts a provider |
-| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes` |
+| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |
@@ -93,6 +94,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
 | `meta:config` | `config` | `minimal` | Edit `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
+| `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks the index and removes them. Stopped providers are reported unavailable, never started (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `minimal` | Edit `<userDataRoot>/global/.lando.yml` and plugin enablement |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--purge` includes service/app volumes |
@@ -129,12 +131,14 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 
 Command-wide rules:
 
+- Tooling narration and scratch acquisition progress MUST use stderr, including the live tree when stderr is a terminal and stdout is redirected to a file (a pipe keeps line mode, §8.9.2). stdout MUST remain the payload channel. Narration terminal selection MUST NOT change the stdin/stdout PTY and keyboard-attachment rules below.
+
 - `app:cache:refresh` performs full app bootstrap and refreshes the plan, tooling graph, and app command index. It MUST NOT contact the provider unless materialization requires a missing managed dependency.
 - `app:info` and `app:rebuild` deduplicate services on first occurrence and validate all names before provider action. `app:info` selects no dependencies. `app:rebuild` selects transitive prerequisites in stable plan order and MUST leave unrelated services and dependents untouched.
 - `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
-- For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and its end MUST close the command's stdin in every output format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML result formats disable PTYs and keyboard attachment, and `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, for `app:ssh` with terminal stdin, and for `apps:scratch:run` and tooling with terminal stdin and stdout. A `.bun.sh` script runs on the host, so piped input reaches it by inheriting Lando's stdin descriptor instead of a forwarded copy; a keyboard-attached script inherits Lando's stdin, stdout, and stderr and owns the terminal, so its output reaches the user's terminal directly and is neither captured nor redacted. Keyboard-attached tooling does not render its task tree, and in human-result formats `apps:scratch:run` retires its acquisition progress before the tool starts (§8.9.2). In human-result formats, when stdout is not a terminal, the stdout of tooling, `apps:scratch:run`, and `.bun.sh` script tasks MUST carry only the tool's output, subject to redaction; task trees and acquisition progress go to stderr (§8.9.1). Machine formats follow §8.11. Interrupting the CLI process MUST stop the tool or script; an interrupted script reports exit status 130, like interrupted container tooling. Dispatched event, MCP, and library command invocations MUST NOT consume process stdin.
+- For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and EOF MUST close the command's stdin in every format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML disable PTYs and keyboard attachment; `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, `app:ssh` with terminal stdin, and `apps:scratch:run` and tooling with terminal stdin and stdout. Host `.bun.sh` scripts inherit Lando's stdin descriptor for piped and keyboard input, but stdout and stderr MUST still pass through the sink; keyboard mode MUST NOT bypass redaction by inheriting output descriptors. The CLI retires event rendering before keyboard-attached tooling or scripts, and retires scratch acquisition progress before exec (§8.9.2). Human host and container payloads MUST stream incrementally through one sink with byte-exact, value-only redaction (§3.7), including final partial lines, identically for terminal and redirected destinations. Tool body bytes MUST NOT become per-line `task.detail` events. Tool stdout alone goes to stdout; task trees and acquisition narration go to stderr (§8.9.1). Machine formats follow §8.11. Interruption MUST stop the tool or script; interrupted scripts report exit 130. Event, MCP, and library invocations MUST NOT consume process stdin.
 - `meta:events:follow` reads the `EventService` trace sink used by diagnostics and e2e tests; it does not subscribe to plugin events itself.
 - `meta:uninstall` MUST remove only recorded entries it owns. Unrecorded root contents, Lando 3 state, foreign installs, and provider resources MUST remain untouched. Stopping the managed runtime service before its recorded runtime directory is removed follows §5.8.1.
 - `--clear` is universal and purges relevant caches.
@@ -158,7 +162,7 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 | `unset` | Remove a key |
 | `edit` | Open `$VISUAL`/`$EDITOR`; `--target canonical\|local\|user` |
 | `validate` | Validate merged Landofile (§7.8) |
-| `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write`, `--yes` |
+| `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write` |
 | `explain` | Read-only recipe provenance; `--format json` |
 | `migrate` | Ordered migration proposals; `--yes`, `--dry-run`, `--format json` |
 
@@ -199,6 +203,10 @@ For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando
 `meta:mcp` serves stdio MCP; streamable HTTP transport is not specified and is sequenced in the ROADMAP (§10.14). Tools derive solely from `LandoCommandSpec` and return §8.11 envelopes. Effective allowance is default `mcpAllowed` plus global `mcp.allow` and `--allow`, minus config or CLI denies. Destructive commands are never default-allowed. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
 
 The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-call events to `pre-mcp-call`/`post-mcp-call`. It MUST NOT be host-proxy or recipe-post-init allowed.
+
+#### 8.2.7 The `app:check` command
+
+`app:check` runs the app's `CheckPlan` (§10.5.2) against a running app and exits `0` whatever the verdicts; a stopped app is `AppNotRunningError`. `--only <id>` selects checks by id. The result is `checks[]` with `{ id, kind, verdict, status?, exitCode?, message?, next?, excerpt?, matchedBy }`; `app:start`, `app:restart`, and `app:rebuild` carry the same array when they ran checks. Only `lando-error` verdicts enter `warnings`. Events are `cli-app:check-*` plus the §10.5.2 task tree.
 
 ### 8.3 Command contract
 
@@ -249,6 +257,12 @@ Command registration and invocation preserve these schema-backed `_tag` values:
 | `McpAllowlistConflictError` | Destructive built-in attempts default MCP allowance |
 | `HostProxyCommandNotAllowedError` | Host-proxy canonical id not allowlisted |
 | `NotImplementedError` | Registered deferred command plan |
+
+#### 8.3.1 Confirmation flags
+
+`--yes`/`-y` is CLI-owned and command-declared. A declaration MUST be an optional scalar boolean defaulting to `false`, and no other CLI flag may claim `-y`. Built-in and plugin commands MUST declare it when they request confirmation or when their canonical id ends in `destroy`, `remove`, `uninstall`, `prune`, `gc`, `reset`, `restore`, `rebuild`, or `poweroff`; `apps:scratch:stop` also declares it because it destroys the scratch app. A command that never prompts treats `yes` as a no-op so scripts and agents confirm every destructive command the same way; other commands MAY declare the same no-op. The CLI MUST NOT inject `yes` into a command that does not declare it; ordinary strictness and passthrough rules apply. A no-op declaration MUST NOT add a prompt, and `--yes` MUST NOT widen destructive scope such as `--volumes`, `--purge`, or `--prune`.
+
+A plugin `ExecutableCommandSpec` that declares `yes` MAY set only `type: "boolean"`, `description`, and `default: false`; any other declaration fails to load with `PluginDescriptorMismatchError`. The CLI supplies `-y`, and argv parsing, help, and structured invocation use the same validated declaration.
 
 ### 8.4 Historical OCLIF integration (removed from shipping dispatch)
 
@@ -427,7 +441,7 @@ Persistable nonsecret options MUST appear in inert `recipe.options` with produce
 
 #### 8.8.1 Command surface
 
-`apps:init [destination]` accepts `--recipe`, `--source`, `--name`, repeated `--answer`, `--answers`, `--no-interactive`, `--yes`, `--full`, and `--from-source`.
+`apps:init [destination]` accepts `--recipe`, `--source`, `--name`, repeated `--answer`, `--answers`, `--no-interactive`, `--yes`/`-y`, `--full`, and `--from-source`.
 
 - Destination defaults to `--name` or cwd and MAY contain files. Existing Landofile destinations fail with `InitTargetExistsError`; any other scaffold conflict skips the scaffold set while free Landofile destinations remain writable.
 - Omitted interactive `--recipe` prompts from bundled recipes. `--source` layers an `InitSource` beneath recipe files.
@@ -599,7 +613,9 @@ The Effect service tag `Renderer` has `id`, current `RendererCapabilities`, `ren
 
 Named renderer contracts include `Renderer`, `RendererCapabilities`, `RenderEvent`, `ImmediateLine`, and `RenderError`.
 
-The default `lando` renderer MUST publish a fixed immutable capability snapshot synchronously at construction: `RENDERER_CAPABILITIES_TTY` (all four fields true) when `RendererIO.isTTY` is true, otherwise `RENDERER_CAPABILITIES_NONE` (all four false). Capability resolution MUST NOT import OpenTUI, probe the substrate or terminal, delay first output, or keep the process alive after command completion. OpenTUI presentation failure falls back to line mode (§8.9.3) without changing this snapshot. `plain` and `json` expose all four fields false; TTY `verbose` exposes color only.
+`Renderer.output.stdout` and `stderr` MUST accept `string | Uint8Array` and own all payload writes. Full `RendererIO` writers accept the same union; narration IO remains text-only. Byte writes MUST preserve the original bytes without decoding or newline translation. Terminal payloads on either fd MUST suspend and erase the stderr live region before writing, then repaint when the payload line is complete. The stream sink MUST use only the Renderer output channel, never raw IO.
+
+The default `lando` renderer MUST publish a fixed immutable capability snapshot synchronously at construction: `RENDERER_CAPABILITIES_TTY` (all four fields true) when the stderr narration terminal is a TTY, otherwise `RENDERER_CAPABILITIES_NONE` (all four false). `RendererNarrationIO.isTTY`, terminal columns/rows, and terminal stream MUST describe stderr. Event consumers MUST receive narration-only IO without stdout writers. `RendererIO` MUST add stdout writers and separate stdout TTY/width metadata for result formatting. Capability resolution MUST NOT import OpenTUI, probe the substrate or terminal, delay first output, or keep the process alive after command completion. OpenTUI presentation failure falls back to line mode (§8.9.3) without changing this snapshot. `plain` and `json` expose all four fields false; stderr-TTY `verbose` exposes color only.
 
 Third-party renderers MUST use immutable capability snapshots and MAY replace them only by monotonic promotion. Callers MUST reread capabilities at use time to support those renderers; events dropped before promotion MUST NOT be replayed. Third-party capability resolution MUST NOT delay first output or process exit.
 
@@ -614,7 +630,7 @@ Built-in `RenderEvent` names are:
 
 `task.tree.start` identifies parent, label, children, and optional layout mode. `task.detail` identifies task, stdout/stderr stream, and line. Detail expand/collapse are renderer input events, not caller output events.
 
-The default renderer is plugin `@lando/renderer-lando`, id `lando`. Core fallbacks are `json`, `plain`, and `verbose`. Selection precedence MUST be `--renderer` → `LANDO_RENDERER` → global `renderer:` → default `lando`, including non-TTY and CI. The `lando` renderer MUST degrade to line mode when stdout is not a terminal. Typed messages and schemas are published from `@lando/sdk`.
+The default renderer is plugin `@lando/renderer-lando`, id `lando`. Core fallbacks are `json`, `plain`, and `verbose`. Selection precedence MUST be `--renderer` → `LANDO_RENDERER` → global `renderer:` → default `lando`, including non-TTY and CI. The `lando` renderer MUST degrade to line mode when stderr is not a terminal. Redirecting stdout to a regular file MUST NOT disable the live tree; a pipe or socket on stdout selects line mode (§8.9.2). Typed messages and schemas are published from `@lando/sdk`.
 
 #### 8.9.1 First-paint contract
 
@@ -629,15 +645,15 @@ Renderers MUST meet §2.1 policy:
 | Completion | Final line within 50 ms of terminal event |
 | Level `none` | Direct native output; `Renderer` is not involved |
 
-The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. Narration from `lando` line mode, `plain`, and `verbose`, including every `message.*` contract, MUST go to stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. The TTY live region MAY paint on stdout only when `RendererIO.isTTY` and `externalOutputStream` are set; it MUST commit interleaved output through journal scrollback. §8.9.7 notification controls MAY also target terminal stdout. JSON emits exactly one stdout result and structured stderr events, with a first stderr event inside the meaningful-line budget.
+The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. All narration, including live regions and every `message.*` contract, MUST use stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. A terminal stdout payload MUST suspend and erase the stderr live frame, write the original payload bytes to stdout, then repaint on stderr. A redirected stdout payload MUST NOT interact with the live frame. Result decoration and table width MUST use stdout TTY state and dimensions. Non-streaming JSON emits one stdout envelope; streaming JSON follows §8.11.3. JSON emits structured stderr events, with a first stderr event inside the meaningful-line budget.
 
 #### 8.9.2 Concurrent task tree contract
 
-`task.tree.start`/`complete` bracket concurrent children. TTY renderers show parent/child state, recent per-task `task.detail`, success/failure summaries, focus navigation, and Enter/Escape expand/collapse. Expanded full-tail view uses persisted §6.13.6/§12.4 transcripts and MUST preserve cancellation and restore the tree. It remains available after completion. Renderers publish `task.detail.expand` and `task.detail.collapse` through `EventService`.
+`task.tree.start`/`complete` bracket concurrent children. TTY renderers MUST show the live tree and alternate-screen full-tail on stderr. When stdout is a pipe or socket, the `lando` renderer MUST use append-only line mode instead, because the consuming process may write to the same terminal and a repaint would erase its output. They show parent/child state, recent per-task `task.detail`, success/failure summaries, focus navigation, and Enter/Escape expand/collapse. Keyboard input MUST come from stdin only when stdin is a TTY. Expanded full-tail view uses persisted §6.13.6/§12.4 transcripts and MUST preserve cancellation and restore the tree. It remains available after completion. Renderers publish `task.detail.expand` and `task.detail.collapse` through `EventService`. `task.complete` outcomes are `ok`, `warn`, and `info`; `info` is a neutral completion for results the user owns (app-owned check verdicts, §10.5.2) and MUST NOT be painted as success or warning.
 
-A command that hands the terminal to a foreground child partway through an invocation (`apps:scratch:run`) first retires that invocation's event-rendering consumer and waits for it: delivered events render in order, the open tree paints as a final static frame, and renderer input, the live region, and output interception are released before the child's first byte or keystroke. The handoff is one-way; later events in that invocation are not repainted, and the `Renderer` output service stays usable for the child's raw output.
+A command that hands the terminal to a foreground child (`apps:scratch:run`, keyboard-attached tooling, or a keyboard-mode `.bun.sh` script) first retires that invocation's event-rendering consumer and waits for it: delivered events render in order, any open tree paints as a final static frame, and renderer input, the live region, and output interception are released before the child's first byte or keystroke. Tooling MUST publish its task tree whenever `EventService` exists; the CLI retires its consumer before keyboard-attached tooling publishes that tree. The handoff is one-way; later events in that invocation are not repainted, and the `Renderer` output service stays usable for the child's raw output.
 
-In human-result formats, `lando` line mode MUST emit stable-prefixed detail lines and tree summaries on stderr, without input handling or an alternate screen. `json` emits structured task events on stderr. `plain` MUST emit flat renderable event lines on stderr; tooling uses detail-only task events, without tree lifecycle lines. `verbose` MUST emit human lines and full event payloads on stderr; framed JSON streams carry events as §8.11.3 event frames instead. All renderer `message.*` narration MUST use stderr, except that an attached TTY live region commits it into stdout scrollback. Publishers redact `task.detail`; local transcript full-tail is not exported to telemetry, guide transcripts, or JSON. Ctrl+C MUST interrupt every in-flight child and MUST NOT be swallowed in expanded view.
+In human-result formats, `lando` line mode MUST emit stable-prefixed detail lines and tree summaries on stderr, without input handling or an alternate screen. `json` emits structured task events on stderr. `plain` MUST emit flat renderable event lines on stderr for every renderable event, without a tooling-only detail-only filter. Lifecycle event steps that run outside a tooling bracket are narration: their redacted output publishes as `task.detail` on stderr. Tool body bytes of tooling, exec, scratch runs, and scripts use the unified sink (§8.2), not per-line `task.detail` publication. Output already delivered through a live sink MUST NOT be duplicated as narration. `verbose` MUST emit human lines and full event payloads on stderr; framed JSON streams carry events as §8.11.3 event frames instead. All renderer `message.*` narration MUST use stderr, including scrollback committed above an attached live region. Publishers redact `task.detail` when it is used (build transcripts and expanded full-tail); local transcript full-tail is not exported to telemetry, guide transcripts, or JSON. Ctrl+C MUST interrupt every in-flight child and MUST NOT be swallowed in expanded view.
 
 #### 8.9.3 Default renderer implementation contract
 
@@ -647,7 +663,7 @@ In human-result formats, `lando` line mode MUST emit stable-prefixed detail line
 - Core, level-`none`, pre-renderer, non-TTY, `plain`, and `json` paths MUST NOT load it.
 - Renderer tests MAY statically import `@opentui/core/testing`.
 
-Initialization failure MUST degrade to non-TTY line mode with a debug notice and MUST NOT fail the command or contaminate machine output. Task trees paint inline at the cursor with atomic frames, native scrollback, and resize replay; OpenTUI is acquired lazily for the expanded full-tail view on the alternate screen, and retirement (§8.9.2) leaves the final inline frame static. Animation runs only while needed and is capped at 30 fps. Prompt chrome uses the same substrate without changing `InteractionService` contracts. Headless frame snapshots cover task transitions, all prompt types, narrow terminals, and resize.
+Initialization failure MUST degrade to non-TTY line mode with a debug notice and MUST NOT fail the command or contaminate machine output. Task trees MUST paint inline on stderr with atomic frames, native scrollback, and resize replay. OpenTUI MUST use the stderr WriteStream for the expanded alternate-screen full-tail and prompt driver; custom-stream resize MUST be forwarded explicitly. OpenTUI is acquired lazily, and retirement (§8.9.2) leaves the final inline frame static. Animation runs only while needed and is capped at 30 fps. Prompt chrome uses the same substrate without changing `InteractionService` contracts. Headless frame snapshots cover task transitions, all prompt types, narrow terminals, and resize.
 
 #### 8.9.4 Rich render events
 
@@ -700,7 +716,7 @@ Same-surface chord collisions fail after schema decode with `KeymapConflictError
 
 `NotifyDesktopEvent` (`notify.desktop`) carries nonempty `title`, optional `body`, and optional urgency `info|success|failure`. Publishers MUST redact content. The renderer sanitizes line/control and bidi characters, normalizes Unicode NFC, drops empty results, and realizes notifications only when current `RendererCapabilities.notifications` is true. JSON passes the structured event; plain/non-TTY drops it.
 
-The default TTY renderer MUST emit sanitized OSC 99 frames through `RendererIO` without importing OpenTUI, constructing a `CliRenderer`, querying the terminal, or waiting for a terminal response. Its `notifications` capability declares an available emission path, not detected terminal support; unsupported terminals ignore the frames. Notification presentation MUST NOT depend on OpenTUI availability.
+The default TTY renderer MUST emit sanitized OSC 99 frames through the stderr writer of `RendererNarrationIO`, without importing OpenTUI, constructing a `CliRenderer`, querying the terminal, or waiting for a terminal response. Its `notifications` capability declares an available emission path, not detected terminal support; unsupported terminals ignore the frames. Notification presentation MUST NOT depend on OpenTUI availability or stdout TTY state.
 
 Bundled plugin `@lando/notify-lando` owns policy through `NotifyConfig` at global `notify:` with `enabled` default true, `thresholdMs` default 15000, and bounded additional canonical `commands`. The default eligible family is ordered: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. Config ids validate against the cwd-independent global registry, then deduplicate in first-occurrence order. Unknown ids return `ConfigError`.
 
@@ -762,9 +778,11 @@ Published schema contracts are `PromptType`, `PromptChoice`, `PromptValidate`, `
 
 #### 8.10.3 Answer-source precedence and interactivity mode
 
-Per prompt precedence is explicit answers → defaults when `--yes` or non-interactive → interactive prompt → `InteractionRequiredError`. `auto` is interactive only with TTY stdin. CLI defaults to `auto`; library mode defaults non-interactive (§16.3).
+Per prompt precedence is explicit answers → defaults when `--yes` or non-interactive → interactive prompt → `InteractionRequiredError`. `auto` is interactive only with TTY stdin and stderr; `--interactive` forces prompting; when stdin or stderr is not a TTY it uses line input. Prompt text and controls MUST use stderr; redirecting stdout MUST NOT disable prompts. CI and non-interactive fail-fast behavior MUST remain intact. CLI defaults to `auto`; library mode defaults non-interactive (§16.3).
 
 One shared parser owns repeated `--answer`, `--answers`, `--yes`, `--no-interactive`, and `--interactive` for both entries. Scratch `--option` merges into the same answer source (§21.10.1).
+
+The `--yes` flag and its `-y` short form follow §8.3.1.
 
 #### 8.10.4 Required behaviors
 
@@ -829,7 +847,11 @@ Validation failures carry structured `issues` (`ValidationIssue`: `path` as an a
 
 #### 8.11.3 Streaming commands
 
-Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. This is not a second event tap. `--format=ndjson` is that frame sequence, one JSON document per line, and is advertised only by streaming commands: a command with no frame sequence does not advertise `ndjson` rather than inventing one.
+Live commands MUST treat `StreamFrameSink` as optional (`Effect.serviceOption`). YAML runs have no live sink and MUST collect output into the single result envelope.
+
+Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. Human sinks deliver tool bytes through value-only payload redaction (§3.7). JSON data frames MUST first apply the boundary-safe byte value layer, then accumulate complete lines (including `\n`), flush at end of stream or a 64 KiB byte cap, decode with UTF-8 replacement, and apply the full `secrets` profile through `redactString` before encoding. UTF-8 codepoints split at the cap MUST decode incrementally; an incomplete final codepoint becomes a replacement character. Pattern matching is bounded to each line or capped fragment; registered-value matching MUST span fragments. Envelopes keep §8.11.2 redaction unchanged. This is not a second event tap. `--format=ndjson` is that frame sequence, one JSON document per line, and is advertised only by streaming commands: a command with no frame sequence does not advertise `ndjson` rather than inventing one.
+
+Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, MCP, library, and event invocations. Live sink delivery MUST NOT also accumulate those channels in the result or replay them at completion. The output is delivered exactly once. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, and the JSON line cap, not total output size.
 
 `CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are published from `@lando/sdk`, re-exported by `@lando/core/schema`, and snapshot-governed by §13.2.
 

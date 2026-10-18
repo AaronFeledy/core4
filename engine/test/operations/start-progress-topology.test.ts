@@ -46,7 +46,7 @@ const planWithFileSync: AppPlan = {
         source: plan.root,
         target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: [".git"],
       },
     },
   ],

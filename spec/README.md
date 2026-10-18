@@ -111,6 +111,7 @@ If you are looking for a public surface or policy:
 | Built-in command registry | 08 | §8.2 |
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
+| CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
 | Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
@@ -130,7 +131,7 @@ If you are looking for a public surface or policy:
 | Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | SSH identity, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
-| Probe, healthcheck, and scanner contracts | 11 | §10.5 |
+| Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |

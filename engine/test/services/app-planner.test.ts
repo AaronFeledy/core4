@@ -43,7 +43,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
-import { FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
+import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -3439,7 +3439,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("default excludes (node_modules, vendor, .git, tmp) are always merged into appMount.excludes", async () => {
+  test("default overlay and sync-only excludes are merged separately", async () => {
     await withTempCwd(async () => {
       const appPlan = await planWithCustomRegistry({
         name: "defapp",
@@ -3449,7 +3449,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual(FILE_SYNC_DEFAULT_EXCLUDES);
+      expect(web?.appMount?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
     });
   });
 
@@ -3467,7 +3467,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual([...FILE_SYNC_DEFAULT_EXCLUDES, "dist"]);
+      expect(web?.appMount?.excludes).toEqual([...DEFAULT_APP_MOUNT_EXCLUDES, "dist"]);
     });
   });
 
@@ -3489,7 +3489,7 @@ describe("AppPlannerLayer.layer", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       expect(web?.appMount?.excludes).toEqual(
-        expect.arrayContaining([...FILE_SYNC_DEFAULT_EXCLUDES, "__pycache__", "dist"]),
+        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", "dist"]),
       );
       expect(web?.appMount?.excludes).toContain("__pycache__");
     });
@@ -3532,7 +3532,6 @@ describe("AppPlannerLayer.layer", () => {
 
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
-        "shadowapp-web-app-git-12945185",
         "shadowapp-web-app-node-modules-ad806e3f",
         "shadowapp-web-app-tmp-43bdc5ce",
         "shadowapp-web-app-vendor-64784057",
@@ -3542,12 +3541,11 @@ describe("AppPlannerLayer.layer", () => {
       const web = appPlan.services[ServiceName.make("web")];
       const shadowTargets = web?.storage.map((entry) => entry.target).sort() ?? [];
       expect(shadowTargets).toEqual([
-        PortablePath.make("/app/.git"),
         PortablePath.make("/app/node_modules"),
         PortablePath.make("/app/tmp"),
         PortablePath.make("/app/vendor"),
       ]);
-      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", ".git", "tmp"]);
+      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
     });
   });
 

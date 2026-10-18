@@ -14,6 +14,7 @@ const layer = Layer.mergeAll(
     RedactionService,
     RedactionService.of({
       registerValues: registerRedactionValues,
+      payloadValues: (options) => Effect.succeed(() => options?.redactionTokens ?? []),
       forProfile: (profile, options) =>
         Effect.succeed(
           createRedactor(profile, {

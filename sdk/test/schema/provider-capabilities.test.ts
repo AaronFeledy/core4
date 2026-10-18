@@ -34,7 +34,7 @@ const LITERAL_FIELDS = {
   hostPortPublish: ["native", "proxy", "manual", "none"],
   tlsCertificates: ["native", "lando", "none"],
   composeSpec: ["none", "portable", "native"],
-  volumeSnapshot: ["native", "copy", "none"],
+  volumeSnapshot: ["native", "none"],
   serviceFileCopy: ["native", "exec", "none"],
 } as const;
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Layer, Queue, Schema, Stream } from "effect";
+import { Effect, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -379,8 +379,9 @@ describe("generic CLI command lifecycle", () => {
     const ordering: Array<string> = [];
     const harness = makeRecordingHarness(ordering);
     const io = {
-      writeStdout: (chunk: string) => {
-        ordering.push(chunk.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
+      writeStdout: (chunk: string | Uint8Array) => {
+        const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+        ordering.push(text.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
       },
       writeStderr: () => undefined,
     };
@@ -391,10 +392,10 @@ describe("generic CLI command lifecycle", () => {
       streamingMode: "live",
       resultSchema: Schema.Struct({ ok: Schema.Boolean }),
       io,
-    } satisfies LifecycleOptions<{ readonly ok: boolean }, EventService | StreamFrameSink, never>;
+    } satisfies LifecycleOptions<{ readonly ok: boolean }, EventService, never>;
     const command = Effect.gen(function* () {
-      const sink = yield* StreamFrameSink;
-      yield* sink.emit({ _tag: "stdout", chunk: "working" });
+      const sink = yield* Effect.serviceOption(StreamFrameSink);
+      if (Option.isSome(sink)) yield* sink.value.emit({ _tag: "stdout", chunk: "working" });
       return { ok: true };
     });
 

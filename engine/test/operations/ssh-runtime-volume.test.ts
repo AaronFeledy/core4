@@ -305,6 +305,7 @@ test.each([
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
       Effect.provideService(RedactionService, {
         registerValues: () => Effect.void,
+        payloadValues: () => Effect.succeed(() => ["super-secret"]),
         forProfile: () => Effect.succeed(redactor),
       }),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),

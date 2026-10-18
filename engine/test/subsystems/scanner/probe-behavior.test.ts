@@ -32,7 +32,7 @@ const db = ServiceName.make("db");
 describe("makeUrlScanner probe behavior", () => {
   test("overall deadline stops retrying before maxAttempts", async () => {
     // Given a retry delay that crosses the overall deadline.
-    const http = requestSequence([httpStatus(503)]);
+    const http = requestSequence([httpStatus(502)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { http: http.http, listEndpoints: source.listEndpoints },
@@ -43,7 +43,7 @@ describe("makeUrlScanner probe behavior", () => {
     // Then the last verdict is retained and only two attempts ran.
     expect(http.requests).toHaveLength(2);
     expect(timed.elapsedMs).toBe(1500);
-    expect(successOf(timed.exit).endpoints[0]?.outcome).toBe("yellow");
+    expect(successOf(timed.exit).endpoints[0]?.verdict).toBe("lando-error");
   });
 
   test.each([
@@ -81,7 +81,7 @@ describe("makeUrlScanner probe behavior", () => {
   });
 
   test("green on the third attempt after two fixed delays", async () => {
-    const http = requestSequence([httpStatus(500), httpFailure("connection refused"), httpStatus(200)]);
+    const http = requestSequence([httpStatus(502), httpFailure("connection refused"), httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { http: http.http, listEndpoints: source.listEndpoints },
@@ -99,6 +99,7 @@ describe("makeUrlScanner probe behavior", () => {
       reachable: true,
       statusCode: 200,
       outcome: "green",
+      verdict: "ready",
     });
   });
 
@@ -143,6 +144,7 @@ describe("makeUrlScanner probe behavior", () => {
       url: "http://localhost:8080/",
       reachable: false,
       outcome: "red",
+      verdict: "lando-error",
       detail: "deadline exceeded after 20000ms",
     });
   });
@@ -160,6 +162,7 @@ describe("makeUrlScanner probe behavior", () => {
       reachable: true,
       statusCode: 500,
       outcome: "yellow",
+      verdict: "app-error",
       detail: "HTTP 500",
     });
   });

@@ -733,115 +733,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   };
   const ensureEffect = ensureEffectFor();
   const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) => ensureEffect.pipe(Effect.andThen(effect));
-  const planState = makeProviderPlanState({
-    ctx: LANDO_CTX,
-    ...(podmanApi === undefined
-      ? {}
-      : {
-          api: podmanApi,
-          prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
-            ctx: LANDO_CTX,
-            dialect: libpodPullDialect,
-          }),
-        }),
-    ...(socketPath === undefined
-      ? {}
-      : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
-    snapshotMode: "native",
-    redactDetails,
-    volumeCreationLabels: podmanVolumeCreationLabels,
-    providerId,
-    providerName: "provider-lando",
-    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
-    sanitizeAppliedPlan: options.sanitizeAppliedPlan,
-    load: loadAppliedPlan,
-    persist: persistAppliedPlan,
-    remove: removeAppliedPlan,
-  });
-  const { appliedPlans } = planState;
-  const plans = appliedPlans.plans;
-  const resolvePlan = appliedPlans.resolvePlan;
-
-  const freshPlanForTeardown = Effect.fnUntraced(function* (
-    target: Parameters<RuntimeProviderShape["destroy"]>[0],
-    requireReceipt: boolean,
-  ): Effect.fn.Return<AppPlan | undefined, ProviderUnavailableError> {
-    const state = options.appliedPlanState;
-    if (state === undefined) {
-      if (!requireReceipt) return target.plan ?? (yield* resolvePlan(target.app));
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "quiesceForFileSync",
-          message: "Durable applied app state is unavailable; running writers cannot be verified.",
-          remediation: "Recover the applied provider state before stopping an app with file sync.",
-        }),
-      );
-    }
-    const prior = yield* inspectAppliedPlan(state, target.app);
-    if (prior.status === "unreadable" || (requireReceipt && prior.status === "missing")) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "applied-state.teardown",
-          message: "The applied app plan cannot be verified before teardown.",
-          remediation: "Recover the saved applied plan and retry without changing app volumes.",
-        }),
-      );
-    }
-    if (prior.status === "missing") return target.plan;
-    if (target.plan !== undefined && prior.plan.root !== target.plan.root) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "applied-state.teardown",
-          message: "The saved applied app plan belongs to a different app root.",
-          remediation: "Inspect the applied plan and retry from the original app directory.",
-        }),
-      );
-    }
-    return prior.plan;
-  });
-  const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
-    options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
-      ? Effect.void
-      : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
-          Effect.tap((diskPlans) =>
-            Effect.sync(() => {
-              for (const diskPlan of diskPlans) {
-                if (!plans.has(diskPlan.id)) {
-                  plans.set(diskPlan.id, diskPlan);
-                }
-              }
-            }),
-          ),
-          Effect.asVoid,
-        );
-
   return Effect.gen(function* () {
-    const processRunnerOption =
-      options.processRunner === undefined ? yield* Effect.serviceOption(ProcessRunner) : undefined;
-    const processRunner =
-      options.processRunner ?? (processRunnerOption?._tag === "Some" ? processRunnerOption.value : undefined);
-    const windowsStdinOptions =
-      processRunner === undefined
-        ? undefined
-        : { podmanBin, connectionName: `${MANAGED_MACHINE_NAME}-root`, processRunner };
-    const shouldUseWindowsStdinCli = (command: Parameters<typeof runtimeExec>[2]) =>
-      family === "win32" &&
-      shouldManageRuntime &&
-      command.stdinStream !== undefined &&
-      command.tty !== true &&
-      command.terminalSize === undefined &&
-      command.terminalResize === undefined;
-    const missingWindowsStdinRunner = (target: Parameters<typeof runtimeExec>[1]) =>
-      new ServiceExecError({
-        providerId: "lando",
-        operation: "exec",
-        service: target.service,
-        message: "Managed Windows Podman stdin execution requires ProcessRunner.",
-        details: { remediation: "Retry with the standard Lando runtime layer." },
-      });
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
     const capabilities =
       shouldProbeCapabilities && podmanApi !== undefined
@@ -868,6 +760,114 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         };
       }),
     );
+    const planState = makeProviderPlanState({
+      ctx: LANDO_CTX,
+      ...(podmanApi === undefined
+        ? {}
+        : {
+            api: podmanApi,
+            prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
+              ctx: LANDO_CTX,
+              dialect: libpodPullDialect,
+            }),
+          }),
+      ...(socketPath === undefined
+        ? {}
+        : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
+      capabilities: resolvedCapabilities,
+      redactDetails,
+      volumeCreationLabels: podmanVolumeCreationLabels,
+      providerId,
+      providerName: "provider-lando",
+      ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+      sanitizeAppliedPlan: options.sanitizeAppliedPlan,
+      load: loadAppliedPlan,
+      persist: persistAppliedPlan,
+      remove: removeAppliedPlan,
+    });
+    const { appliedPlans } = planState;
+    const plans = appliedPlans.plans;
+    const resolvePlan = appliedPlans.resolvePlan;
+
+    const freshPlanForTeardown = Effect.fnUntraced(function* (
+      target: Parameters<RuntimeProviderShape["destroy"]>[0],
+      requireReceipt: boolean,
+    ): Effect.fn.Return<AppPlan | undefined, ProviderUnavailableError> {
+      const state = options.appliedPlanState;
+      if (state === undefined) {
+        if (!requireReceipt) return target.plan ?? (yield* resolvePlan(target.app));
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "quiesceForFileSync",
+            message: "Durable applied app state is unavailable; running writers cannot be verified.",
+            remediation: "Recover the applied provider state before stopping an app with file sync.",
+          }),
+        );
+      }
+      const prior = yield* inspectAppliedPlan(state, target.app);
+      if (prior.status === "unreadable" || (requireReceipt && prior.status === "missing")) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "applied-state.teardown",
+            message: "The applied app plan cannot be verified before teardown.",
+            remediation: "Recover the saved applied plan and retry without changing app volumes.",
+          }),
+        );
+      }
+      if (prior.status === "missing") return target.plan;
+      if (target.plan !== undefined && prior.plan.root !== target.plan.root) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "applied-state.teardown",
+            message: "The saved applied app plan belongs to a different app root.",
+            remediation: "Inspect the applied plan and retry from the original app directory.",
+          }),
+        );
+      }
+      return prior.plan;
+    });
+    const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
+      options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+        ? Effect.void
+        : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+            Effect.tap((diskPlans) =>
+              Effect.sync(() => {
+                for (const diskPlan of diskPlans) {
+                  if (!plans.has(diskPlan.id)) {
+                    plans.set(diskPlan.id, diskPlan);
+                  }
+                }
+              }),
+            ),
+            Effect.asVoid,
+          );
+
+    const processRunnerOption =
+      options.processRunner === undefined ? yield* Effect.serviceOption(ProcessRunner) : undefined;
+    const processRunner =
+      options.processRunner ?? (processRunnerOption?._tag === "Some" ? processRunnerOption.value : undefined);
+    const windowsStdinOptions =
+      processRunner === undefined
+        ? undefined
+        : { podmanBin, connectionName: `${MANAGED_MACHINE_NAME}-root`, processRunner };
+    const shouldUseWindowsStdinCli = (command: Parameters<typeof runtimeExec>[2]) =>
+      family === "win32" &&
+      shouldManageRuntime &&
+      command.stdinStream !== undefined &&
+      command.tty !== true &&
+      command.terminalSize === undefined &&
+      command.terminalResize === undefined;
+    const missingWindowsStdinRunner = (target: Parameters<typeof runtimeExec>[1]) =>
+      new ServiceExecError({
+        providerId: "lando",
+        operation: "exec",
+        service: target.service,
+        message: "Managed Windows Podman stdin execution requires ProcessRunner.",
+        details: { remediation: "Retry with the standard Lando runtime layer." },
+      });
     const managedRuntimeStatusDeps =
       shouldManageRuntime &&
       managedSocketPath !== undefined &&

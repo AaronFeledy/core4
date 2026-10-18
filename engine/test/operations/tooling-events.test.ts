@@ -27,8 +27,9 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 
+import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
@@ -69,8 +70,10 @@ const harness = (input: {
   readonly events?: LandofileEvents;
   readonly failOn?: string;
   readonly omitEventRuntime?: boolean;
+  readonly live?: boolean;
 }) => {
   const executed: string[] = [];
+  const frames: StreamFrameSinkFrame[] = [];
   const selections: string[] = [];
   const plan: AppPlan = {
     id: AppId.make("tooling-events"),
@@ -108,6 +111,7 @@ const harness = (input: {
             RedactionService,
             RedactionService.of({
               registerValues: registerRedactionValues,
+              payloadValues: () => Effect.succeed(() => []),
               forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
             }),
           ),
@@ -120,13 +124,19 @@ const harness = (input: {
       ToolingEngine.of({
         id: "recording",
         run: (invocation) =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
+            const output = exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join("");
+            // A live sink receives provider output directly, so the result carries none of it.
+            const sink = yield* Effect.serviceOption(StreamFrameSink);
+            if (Option.isSome(sink) && output.length > 0) {
+              yield* sink.value.emit({ _tag: "stdout", chunk: output, raw: true });
+            }
             return {
               tool: invocation.tool,
               service: invocation.service ?? String(service.name),
               exitCode,
-              stdout: exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join(""),
+              stdout: Option.isSome(sink) ? "" : output,
               stderr: "",
             };
           }),
@@ -174,11 +184,17 @@ const harness = (input: {
       }),
     ),
   );
+  const sink =
+    input.live === true
+      ? Layer.succeed(StreamFrameSink, { emit: (frame) => Effect.sync(() => frames.push(frame)) })
+      : Layer.empty;
   return {
     executed,
+    frames,
     selections,
     plan,
-    run: (name: string) => Effect.runPromise(runTooling({ name }).pipe(Effect.provide(layer), Effect.result)),
+    run: (name: string) =>
+      Effect.runPromise(runTooling({ name }).pipe(Effect.provide(Layer.merge(layer, sink)), Effect.result)),
   };
 };
 
@@ -266,6 +282,26 @@ test("a failing post bracket is fatal and carries the redacted output tail", asy
     event: "post-build",
     exitCode: 7,
   });
+  expect(result.failure.outputTail).toContain("[redacted]");
+  expect(result.failure.outputTail).not.toContain(secret);
+});
+
+test("a failing post bracket keeps the output tail when its output streamed live", async () => {
+  // Given a live sink and a failing post bracket whose streamed stdout includes a secret
+  const secret = "live-bracket-secret";
+  const h = harness({
+    tooling: { build: { service: "web", cmd: "echo body" } },
+    events: { "post-build": [{ cmd: "echo after", service: "web", env: { SECRET: secret } }] },
+    failOn: "echo after",
+    live: true,
+  });
+  // When the task runs
+  const result = await h.run("build");
+  // Then the output reached the sink once and the failure still carries its redacted tail
+  expect(h.frames.map((frame) => frame.chunk)).toEqual([secret]);
+  if (result._tag !== "Failure" || result.failure._tag !== "LandofileEventStepFailedError") {
+    throw new Error("expected LandofileEventStepFailedError");
+  }
   expect(result.failure.outputTail).toContain("[redacted]");
   expect(result.failure.outputTail).not.toContain(secret);
 });

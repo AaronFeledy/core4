@@ -1,6 +1,6 @@
 import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
-import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
+import type { RendererContribution, RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, type Renderer } from "@lando/sdk/services";
 
@@ -79,7 +79,7 @@ export const makeLandoService = (io: RendererIO): Layer.Layer<Renderer> => {
 };
 
 export const makeLandoEventConsumer = (
-  io: RendererIO,
+  io: RendererNarrationIO,
   deps: LandoEventConsumerDeps = {},
 ): Layer.Layer<never, never, EventService> => {
   const capabilities = io.isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE;

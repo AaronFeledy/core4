@@ -9,8 +9,8 @@ import * as sdkTest from "@lando/sdk/test";
  * Plugin contract-kit layer-coverage gate.
  *
  * Each plugin abstraction that publishes a shared contract suite in
- * `@lando/sdk/test` must have at least one built-in invocation — a `core/test/**`
- * or `engine/test/**` file (the test tree of the package owning the built-in)
+ * `@lando/sdk/test` must have at least one built-in invocation in the test tree
+ * of the package owning the built-in (including renderer and renderer plugins)
  * that runs that suite against the shipped built-in implementation(s).
  *
  * This gate fails when:
@@ -49,7 +49,7 @@ interface CoverageEntry {
   /** How the built-in coverage is provided. */
   readonly defaultPolicy: DefaultPolicy;
   /**
-   * Repo-relative files in `core/test/**` or `engine/test/**` that invoke the
+   * Repo-relative files in the implementation's owning package that invoke the
    * suite against the built-in(s). Empty only for `none-bundled`.
    */
   readonly invocationFiles: ReadonlyArray<string>;
@@ -63,6 +63,16 @@ const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
  * (unless core ships none bundled by default).
  */
 const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
+  {
+    abstraction: "Renderer",
+    makeExport: "makeRendererContractSuite",
+    runExport: "runRendererContract",
+    defaultPolicy: "built-in",
+    invocationFiles: [
+      "renderer/test/renderer-contract.test.ts",
+      "plugins/renderer-lando/test/renderer-contract.test.ts",
+    ],
+  },
   {
     abstraction: "HttpClient",
     makeExport: "makeHttpClientContractSuite",
@@ -244,7 +254,7 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
     expect(new Set(runExports).size).toBe(runExports.length);
   });
 
-  test("every non-none-bundled abstraction has a real core built-in invocation", () => {
+  test("every non-none-bundled abstraction has a real owning-package built-in invocation", () => {
     for (const entry of COVERAGE_MANIFEST) {
       if (entry.defaultPolicy === "none-bundled") {
         expect(entry.invocationFiles.length).toBe(0);
@@ -253,9 +263,14 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
       expect(entry.invocationFiles.length).toBeGreaterThan(0);
       for (const file of entry.invocationFiles) {
         // The invocation must be a real built-in invocation, living in the test
-        // tree of the package owning the built-in (core or engine), never
+        // tree of the package owning the built-in, never
         // sdk/test (a suite self-test).
-        expect(file.startsWith("core/test/") || file.startsWith("engine/test/")).toBe(true);
+        expect(
+          file.startsWith("core/test/") ||
+            file.startsWith("engine/test/") ||
+            file.startsWith("renderer/test/") ||
+            file.startsWith("plugins/renderer-lando/test/"),
+        ).toBe(true);
         expect(file.startsWith("sdk/test/")).toBe(false);
         expect(existsSync(resolve(REPO_ROOT, file))).toBe(true);
         // The file must actually call the suite (make or run form), so a

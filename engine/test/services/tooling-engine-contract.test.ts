@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
@@ -174,6 +175,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "providerExec",
       engine,
+      captureOutput: withToolingOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -242,6 +244,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "host",
       engine,
+      captureOutput: withToolingOutput,
       okScenario: {
         invocation: {
           tool: "build",

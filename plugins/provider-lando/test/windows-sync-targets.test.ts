@@ -76,7 +76,7 @@ const plan = (): AppPlan => {
           path: PortablePath.make("/app"),
         },
         mode: "two-way-safe" as const,
-        excludes: [],
+        excludes: [".git"],
       },
     })),
     metadata,

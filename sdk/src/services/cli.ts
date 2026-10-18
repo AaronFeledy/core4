@@ -16,6 +16,8 @@ import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
  * and process-level diagnostics. Unlike `message.*`, it performs no glyph or
  * newline injection: results go to `output.stdout`, failure diagnostics go to
  * `output.stderr`, regardless of the active mode.
+ * Output effects complete only when the destination can accept more bytes,
+ * propagating backpressure to producers without retaining the remaining body.
  *
  * `capabilities` is a getter returning the current immutable snapshot object
  * (at most two snapshots per run: initial, then optional monotonic promotion).
@@ -31,8 +33,8 @@ export class Renderer extends Context.Service<
       readonly error: (body: string, remediation?: string) => Effect.Effect<void, EventError>;
     };
     readonly output: {
-      readonly stdout: (chunk: string) => Effect.Effect<void>;
-      readonly stderr: (chunk: string) => Effect.Effect<void>;
+      readonly stdout: (chunk: string | Uint8Array) => Effect.Effect<void>;
+      readonly stderr: (chunk: string | Uint8Array) => Effect.Effect<void>;
     };
   }
 >()("@lando/core/Renderer") {}
@@ -106,7 +108,9 @@ export interface ToolingInvocation {
 /**
  * Result of executing a tooling invocation: the exit code of the last
  * command that ran plus the aggregated stdout/stderr captured across all
- * commands.
+ * commands. An engine may instead emit a channel to the invocation's output
+ * sink. Per channel, emitted output owns delivery and returned content is
+ * ignored; when nothing was emitted, returned content is delivered once.
  */
 export interface ToolingEngineResult {
   readonly tool: string;
@@ -126,6 +130,8 @@ export interface ToolingEngineResult {
  * Engines receive a fully-normalized invocation (argv form, resolved service
  * name still authored as the task `service:` value, etc.) and an `AppPlan`
  * for any plan-level data they need (primary-service lookup, provider id).
+ * Both returning and streaming engines MUST pass the contract suite. Streaming
+ * adapters MUST preserve returning-engine output independently on each channel.
  */
 export class ToolingEngine extends Context.Service<
   ToolingEngine,

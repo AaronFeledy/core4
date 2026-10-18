@@ -235,7 +235,7 @@ export const dockerCapabilitiesForHost = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
-    volumeSnapshot: "copy",
+    volumeSnapshot: "none",
     serviceFileCopy: "native",
     artifactExport: true,
     artifactImport: true,
@@ -504,274 +504,272 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       };
     }),
   );
-  const planState = makeProviderPlanState({
-    ctx: DOCKER_CTX,
-    providerId: ProviderId.make(PROVIDER_ID),
-    endpointNamespace: resolvedDockerHost,
-    prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
+  return Effect.gen(function* () {
+    const { capabilities: resolvedCapabilities, logSourceBinding } = yield* runtimeCapabilities;
+    const planState = makeProviderPlanState({
       ctx: DOCKER_CTX,
-      dialect: dockerPullDialect,
-    }),
-    api: dockerApi,
-    snapshotMode: "copy",
-    redactDetails,
-    volumeCreationLabels,
-    providerName: "Docker",
-    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
-    ...(options.sanitizeAppliedPlan === undefined
-      ? {}
-      : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
-    load: loadAppliedPlan,
-    persist: persistAppliedPlan,
-    remove: removeAppliedPlan,
-  });
-  const { appliedPlans } = planState;
-  const resolvePlan = (target: {
-    readonly app: AppId;
-    readonly plan?: AppPlan;
-  }): Effect.Effect<AppPlan | undefined, never> =>
-    target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
+      providerId: ProviderId.make(PROVIDER_ID),
+      endpointNamespace: resolvedDockerHost,
+      prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
+        ctx: DOCKER_CTX,
+        dialect: dockerPullDialect,
+      }),
+      api: dockerApi,
+      capabilities: resolvedCapabilities,
+      redactDetails,
+      volumeCreationLabels,
+      providerName: "Docker",
+      ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+      ...(options.sanitizeAppliedPlan === undefined
+        ? {}
+        : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
+      load: loadAppliedPlan,
+      persist: persistAppliedPlan,
+      remove: removeAppliedPlan,
+    });
+    const { appliedPlans } = planState;
+    const resolvePlan = (target: {
+      readonly app: AppId;
+      readonly plan?: AppPlan;
+    }): Effect.Effect<AppPlan | undefined, never> =>
+      target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
 
-  const resolvedOps = bindResolvedProviderOps(planState, {
-    ctx: DOCKER_CTX,
-    noPlanError: (_app, operation) => makeUnavailable(operation),
-    service: {
-      lifecycle: (plan, target, action) =>
-        postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
-      resume: (target, identity) =>
-        postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
-      suspend: (target, identity) =>
-        postExactServiceLifecycle(target, identity, "stop", { api: dockerApi, ctx: DOCKER_CTX }),
-      waitForExit: (plan, target, waitOptions) =>
-        waitForExit(plan, target, {
+    const resolvedOps = bindResolvedProviderOps(planState, {
+      ctx: DOCKER_CTX,
+      noPlanError: (_app, operation) => makeUnavailable(operation),
+      service: {
+        lifecycle: (plan, target, action) =>
+          postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+        resume: (target, identity) =>
+          postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
+        suspend: (target, identity) =>
+          postExactServiceLifecycle(target, identity, "stop", { api: dockerApi, ctx: DOCKER_CTX }),
+        waitForExit: (plan, target, waitOptions) =>
+          waitForExit(plan, target, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            dialect: dockerWaitDialect,
+            ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+          }),
+        exec: (plan, target, command) => exec(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
+        execStream: (plan, target, command) =>
+          execStream(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
+        inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX }),
+      },
+    });
+
+    return {
+      id: PROVIDER_ID,
+      inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
+        inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
+      ),
+      displayName: "Docker Runtime Provider",
+      version: "0.0.0",
+      platform,
+      capabilities: resolvedCapabilities,
+      ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
+        ? {
+            openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
+              api: dockerApi,
+              hostGateway: "host.docker.internal",
+              relayImage: AGENT_RELAY_IMAGE,
+            }),
+          }
+        : {}),
+      isAvailable: dockerApi.info.pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          isDockerApiVersionError(error) ? Effect.fail(error) : Effect.succeed(false),
+        ),
+      ),
+      appliedPlans:
+        options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+          ? Effect.succeed([])
+          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
+      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
+        Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
+      ),
+      setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
+      getStatus: dockerApi.info.pipe(
+        Effect.as({ running: true, message: "ready" }),
+        Effect.catch((error) =>
+          Effect.succeed({
+            running: false,
+            message: error instanceof Error ? error.message : "Docker Engine is not reachable.",
+          }),
+        ),
+      ),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
+        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
+      ),
+      pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
+        pullImage(dockerApi, spec.ref, {
+          ctx: DOCKER_CTX,
+          dialect: dockerPullDialect,
+          ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+        }).pipe(
+          Effect.map((result) => ({
+            providerId: ProviderId.make(PROVIDER_ID),
+            ref: result.ref,
+            ...(result.digest === undefined ? {} : { digest: result.digest }),
+          })),
+        ),
+      ),
+      removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
+      apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        return yield* bringUp(plan, {
           api: dockerApi,
           ctx: DOCKER_CTX,
-          dialect: dockerWaitDialect,
-          ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
-        }),
-      exec: (plan, target, command) => exec(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
-      execStream: (plan, target, command) =>
-        execStream(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
-      inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX }),
-    },
-  });
-
-  return runtimeCapabilities.pipe(
-    Effect.map(
-      ({ capabilities: resolvedCapabilities, logSourceBinding }): RuntimeProviderShape => ({
-        id: PROVIDER_ID,
-        inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
-          inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
-        ),
-        displayName: "Docker Runtime Provider",
-        version: "0.0.0",
-        platform,
-        capabilities: resolvedCapabilities,
-        ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
-          ? {
-              openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
-                api: dockerApi,
-                hostGateway: "host.docker.internal",
-                relayImage: AGENT_RELAY_IMAGE,
-              }),
-            }
-          : {}),
-        isAvailable: dockerApi.info.pipe(
-          Effect.as(true),
-          Effect.catch((error) =>
-            isDockerApiVersionError(error) ? Effect.fail(error) : Effect.succeed(false),
+          dialect: dockerLifecycleDialect,
+          ensureImage: dockerEnsureImage(dockerApi),
+          retryCreateOnMissingImage: true,
+          startFailureRemediation: dockerStartFailureRemediation,
+          platform,
+          daemonUrl: resolvedDockerHost,
+          ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+          ...(applyOptions.serviceEnvironment === undefined
+            ? {}
+            : { serviceEnvironment: applyOptions.serviceEnvironment }),
+          reconcile: applyOptions.reconcile,
+          ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
+          completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
+          ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+        }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
+      }),
+      ...resolvedOps,
+      destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+        return yield* resolvePlan(target).pipe(
+          Effect.flatMap((plan) =>
+            plan === undefined
+              ? Effect.succeed(DESTROY_NO_OP)
+              : bringDown(plan, {
+                  api: dockerApi,
+                  ctx: DOCKER_CTX,
+                  dialect: dockerLifecycleDialect,
+                  volumes: destroyOptions.volumes,
+                  ...(destroyOptions.purgeCaches === undefined
+                    ? {}
+                    : { purgeCaches: destroyOptions.purgeCaches }),
+                }).pipe(
+                  Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
+                  Effect.as(DESTROYED),
+                ),
           ),
+        );
+      }),
+      removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
+        removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }).pipe(
+          Effect.map(observedRemoval),
         ),
-        appliedPlans:
-          options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
-            ? Effect.succeed([])
-            : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
-        planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-          Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
-        ),
-        setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
-        getStatus: dockerApi.info.pipe(
-          Effect.as({ running: true, message: "ready" }),
-          Effect.catch((error) =>
-            Effect.succeed({
-              running: false,
-              message: error instanceof Error ? error.message : "Docker Engine is not reachable.",
+      ),
+      logs: (target, logOptions) =>
+        Stream.unwrap(
+          resolvePlan(target).pipe(
+            Effect.map((plan) => {
+              if (plan !== undefined) {
+                const service = plan.services[target.service];
+                return logs(plan, target, logOptions, {
+                  api: dockerApi,
+                  ctx: DOCKER_CTX,
+                  ...logSourceBinding.bind(
+                    dockerApi,
+                    service === undefined ? undefined : containerName(plan, service),
+                  ),
+                });
+              }
+
+              return Stream.fromEffect(
+                discoverContainers(dockerApi, APP_LABEL).pipe(
+                  Effect.flatMap((containers) => {
+                    const container = containers.find(
+                      (c) => c.labels[APP_LABEL] === target.app && c.labels[SERVICE_LABEL] === target.service,
+                    );
+                    if (container === undefined) {
+                      return Effect.fail(
+                        unavailable(
+                          "logs",
+                          `Container for app ${target.app} service ${target.service} not found.`,
+                        ),
+                      );
+                    }
+                    return Effect.succeed(container);
+                  }),
+                ),
+              ).pipe(
+                Stream.flatMap((container) =>
+                  logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
+                ),
+              );
             }),
           ),
         ),
-        getVersions: Effect.succeed({ provider: "0.0.0" }),
-        buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
-          buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
-        ),
-        pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
-          pullImage(dockerApi, spec.ref, {
-            ctx: DOCKER_CTX,
-            dialect: dockerPullDialect,
-            ...(spec.policy === undefined ? {} : { policy: spec.policy }),
-          }).pipe(
-            Effect.map((result) => ({
-              providerId: ProviderId.make(PROVIDER_ID),
-              ref: result.ref,
-              ...(result.digest === undefined ? {} : { digest: result.digest }),
-            })),
-          ),
-        ),
-        removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
-        apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-          return yield* bringUp(plan, {
-            api: dockerApi,
-            ctx: DOCKER_CTX,
-            dialect: dockerLifecycleDialect,
-            ensureImage: dockerEnsureImage(dockerApi),
-            retryCreateOnMissingImage: true,
-            startFailureRemediation: dockerStartFailureRemediation,
-            platform,
-            daemonUrl: resolvedDockerHost,
-            ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-            ...(applyOptions.serviceEnvironment === undefined
-              ? {}
-              : { serviceEnvironment: applyOptions.serviceEnvironment }),
-            reconcile: applyOptions.reconcile,
-            ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
-            completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
-            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
-        }),
-        ...resolvedOps,
-        destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-          return yield* resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.succeed(DESTROY_NO_OP)
-                : bringDown(plan, {
-                    api: dockerApi,
-                    ctx: DOCKER_CTX,
-                    dialect: dockerLifecycleDialect,
-                    volumes: destroyOptions.volumes,
-                    ...(destroyOptions.purgeCaches === undefined
-                      ? {}
-                      : { purgeCaches: destroyOptions.purgeCaches }),
-                  }).pipe(
-                    Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                    Effect.as(DESTROYED),
-                  ),
-            ),
-          );
-        }),
-        removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-          removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }).pipe(
-            Effect.map(observedRemoval),
-          ),
-        ),
-        logs: (target, logOptions) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) => {
-                if (plan !== undefined) {
-                  const service = plan.services[target.service];
-                  return logs(plan, target, logOptions, {
-                    api: dockerApi,
-                    ctx: DOCKER_CTX,
-                    ...logSourceBinding.bind(
-                      dockerApi,
-                      service === undefined ? undefined : containerName(plan, service),
-                    ),
-                  });
+      list: Effect.fn("RuntimeProvider.list")((filter) =>
+        discoverContainers(dockerApi, APP_LABEL).pipe(
+          Effect.flatMap((containers) =>
+            Effect.forEach(
+              containers.filter((container) => {
+                const appId = container.labels[APP_LABEL];
+                if (appId === undefined) return false;
+                if (filter.app !== undefined && appId !== filter.app) return false;
+                if (
+                  filter.includeScratch !== true &&
+                  filter.app === undefined &&
+                  container.labels[SCRATCH_LABEL] === "TRUE"
+                ) {
+                  return false;
                 }
-
-                return Stream.fromEffect(
-                  discoverContainers(dockerApi, APP_LABEL).pipe(
-                    Effect.flatMap((containers) => {
-                      const container = containers.find(
-                        (c) =>
-                          c.labels[APP_LABEL] === target.app && c.labels[SERVICE_LABEL] === target.service,
-                      );
-                      if (container === undefined) {
-                        return Effect.fail(
-                          unavailable(
-                            "logs",
-                            `Container for app ${target.app} service ${target.service} not found.`,
-                          ),
-                        );
-                      }
-                      return Effect.succeed(container);
-                    }),
-                  ),
-                ).pipe(
-                  Stream.flatMap((container) =>
-                    logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
-                  ),
-                );
+                return true;
               }),
-            ),
-          ),
-        list: Effect.fn("RuntimeProvider.list")((filter) =>
-          discoverContainers(dockerApi, APP_LABEL).pipe(
-            Effect.flatMap((containers) =>
-              Effect.forEach(
-                containers.filter((container) => {
-                  const appId = container.labels[APP_LABEL];
-                  if (appId === undefined) return false;
-                  if (filter.app !== undefined && appId !== filter.app) return false;
-                  if (
-                    filter.includeScratch !== true &&
-                    filter.app === undefined &&
-                    container.labels[SCRATCH_LABEL] === "TRUE"
-                  ) {
-                    return false;
+              (container) =>
+                Effect.gen(function* () {
+                  const appId = container.labels[APP_LABEL] ?? "";
+                  const serviceName = container.labels[SERVICE_LABEL] ?? "";
+                  const isRunning = container.state === "running";
+                  const status = isRunning ? "running" : "stopped";
+
+                  const inspectResponse = yield* request(dockerApi, "list", {
+                    method: "GET",
+                    path: `/containers/${encodeURIComponent(container.name)}/json`,
+                  });
+
+                  let endpoints: ServiceRuntimeInfo["endpoints"] = [];
+                  if (inspectResponse.status >= 200 && inspectResponse.status < 300) {
+                    endpoints = publishedEndpointsFromInspect(yield* parseJson(inspectResponse, "list"));
                   }
-                  return true;
-                }),
-                (container) =>
-                  Effect.gen(function* () {
-                    const appId = container.labels[APP_LABEL] ?? "";
-                    const serviceName = container.labels[SERVICE_LABEL] ?? "";
-                    const isRunning = container.state === "running";
-                    const status = isRunning ? "running" : "stopped";
 
-                    const inspectResponse = yield* request(dockerApi, "list", {
-                      method: "GET",
-                      path: `/containers/${encodeURIComponent(container.name)}/json`,
-                    });
-
-                    let endpoints: ServiceRuntimeInfo["endpoints"] = [];
-                    if (inspectResponse.status >= 200 && inspectResponse.status < 300) {
-                      endpoints = publishedEndpointsFromInspect(yield* parseJson(inspectResponse, "list"));
-                    }
-
-                    return {
-                      app: AppId.make(appId),
-                      ...(container.labels[APP_ROOT_LABEL] === undefined
-                        ? {}
-                        : { appRoot: AbsolutePath.make(container.labels[APP_ROOT_LABEL]) }),
-                      service: ServiceName.make(serviceName),
-                      providerId: ProviderId.make(PROVIDER_ID),
-                      status,
-                      state: status,
-                      containerId: container.id,
-                      labels: container.labels,
-                      endpoints,
-                      ...(container.startedAt === undefined
-                        ? {}
-                        : {
-                            lastStartedAt: Option.match(DateTime.make(container.startedAt), {
-                              onSome: DateTime.toDate,
-                              // Preserve the invalid Date returned for Docker's relative Status text.
-                              onNone: () =>
-                                DateTime.toDate(
-                                  DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => Number.NaN),
-                                ),
-                            }),
+                  return {
+                    app: AppId.make(appId),
+                    ...(container.labels[APP_ROOT_LABEL] === undefined
+                      ? {}
+                      : { appRoot: AbsolutePath.make(container.labels[APP_ROOT_LABEL]) }),
+                    service: ServiceName.make(serviceName),
+                    providerId: ProviderId.make(PROVIDER_ID),
+                    status,
+                    state: status,
+                    containerId: container.id,
+                    labels: container.labels,
+                    endpoints,
+                    ...(container.startedAt === undefined
+                      ? {}
+                      : {
+                          lastStartedAt: Option.match(DateTime.make(container.startedAt), {
+                            onSome: DateTime.toDate,
+                            // Preserve the invalid Date returned for Docker's relative Status text.
+                            onNone: () =>
+                              DateTime.toDate(
+                                DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => Number.NaN),
+                              ),
                           }),
-                    };
-                  }),
-              ),
+                        }),
+                  };
+                }),
             ),
           ),
         ),
-      }),
-    ),
-  );
+      ),
+    } satisfies RuntimeProviderShape;
+  });
 };
 
 export const layer = (options: ProviderLayerOptions = {}) =>

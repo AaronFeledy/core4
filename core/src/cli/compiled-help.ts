@@ -137,7 +137,7 @@ export const buildHelpCatalog = (cache?: AppCommandIndexPayload | null): HelpCat
 export const printHelpCatalogJson = (
   cache?: AppCommandIndexPayload | null,
   format: CommandResultEnvelopeFormat = "json",
-): void => {
+): Promise<void> => {
   const line = Effect.runSync(
     encodeCommandResult({
       command: HELP_CATALOG_COMMAND,
@@ -147,18 +147,17 @@ export const printHelpCatalogJson = (
       format,
     }),
   );
-  emitResultLine(line);
+  return emitResultLine(line);
 };
 
 export const printRootHelp = (
   activeAliases?: ReadonlyArray<readonly [string, string]>,
   cache?: AppCommandIndexPayload | null,
-): void => {
+): Promise<void> => {
   if (cache == null) {
-    emitResultLine(renderColdRootHelp(activeAliases));
-    return;
+    return emitResultLine(renderColdRootHelp(activeAliases));
   }
-  emitResultLine(
+  return emitResultLine(
     renderColdRootHelp(activeAliases, {
       thisAppRows: thisAppHelpRowsFromCache(cache),
       ...(cache.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
@@ -180,9 +179,9 @@ const rendererModeFrom = (
   return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
 };
 
-export const printCommandHelp = (entry: BuiltInCommandEntry): void => {
+export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
   const argv = process.argv.slice(2);
-  emitResultLine(
+  return emitResultLine(
     renderCommandHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: process.stdout.isTTY === true,
@@ -194,9 +193,9 @@ export const printCommandHelp = (entry: BuiltInCommandEntry): void => {
   );
 };
 
-export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): void => {
+export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): Promise<void> => {
   const argv = process.argv.slice(2);
-  emitResultLine(
+  return emitResultLine(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: process.stdout.isTTY === true,

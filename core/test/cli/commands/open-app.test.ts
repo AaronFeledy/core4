@@ -77,6 +77,7 @@ const layers = (rec: ReturnType<typeof record>) =>
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
       }),
     ),

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { Args, Flags } from "../../../spec/metadata";
 
 import { type PluginAddResult, PluginAddResultSchema } from "@lando/engine/operations/plugin-install";
@@ -47,7 +48,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
         "Trust the plugin for this session (required for non-interactive installs; persistent trust is not supported).",
       default: false,
     }),
-    yes: Flags.boolean({ char: "y", description: "Alias of --trust.", default: false }),
+    yes: yesFlag("Alias of --trust."),
     force: Flags.boolean({ description: "Re-install even if already present.", default: false }),
   },
   run: Effect.fn("PluginAddCommand.run")(function* (input: unknown) {

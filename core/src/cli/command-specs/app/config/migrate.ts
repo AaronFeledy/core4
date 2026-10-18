@@ -8,6 +8,7 @@ import {
   renderAppConfigMigrateResult,
 } from "../../../commands/app-config-migrate";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { Flags } from "../../../spec/metadata";
 
 export const appConfigMigrateOptionsFromInput = (input: unknown): AppConfigMigrateOptions => {
@@ -36,7 +37,7 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
       description: "Preview every migration hunk without writing.",
       default: false,
     }),
-    yes: Flags.boolean({ char: "y", description: "Approve selectable migration hunks.", default: false }),
+    yes: yesFlag("Approve selectable migration hunks."),
     "no-interactive": Flags.boolean({
       aliases: ["non-interactive"],
       description: "Never prompt for migration approval.",

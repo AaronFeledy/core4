@@ -51,6 +51,7 @@ test("the live shared port reads engine creation state and does not expose a cre
           RedactionService,
           RedactionService.of({
             registerValues: registerRedactionValues,
+            payloadValues: () => Effect.succeed(() => []),
             forProfile: () =>
               Effect.succeed({
                 redactString: (text: string) => text,
