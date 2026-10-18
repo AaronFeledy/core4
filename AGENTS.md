@@ -33,7 +33,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial. The live-socket gate connects to the candidate rather than stat-ing it, so a socket file left behind by a dead daemon makes those suites skip instead of fail; `LANDO_TEST_PODMAN_SOCKET` keeps its precedence but is not exempt from that check.
 - `NIGHTLY_TIER_TESTS` in `scripts/test-shards.ts` (the CI-workflow codegen suite and the Linux acceptance suite) is excluded from PR shards, so drift those files guard can reach `main` without a red PR. Run them by path whenever you touch their generator.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
-- Fresh worktree: after `bun install`, run `bun run codegen` before any `bun test` or `bun core/bin/lando.ts`; the test preload and the source CLI entry fail closed with `Generated modules are missing … Run \`bun run codegen\``.
+- Fresh worktree: after `bun install`, run `bun run codegen` before any `bun test` or `bun core/bin/lando.ts`; the test preload and the source CLI entry fail closed with "Generated modules are missing … Run `bun run codegen`".
 
 ## Generated Files
 
