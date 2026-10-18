@@ -154,16 +154,16 @@ test("a reintroduced value replaces its tombstone without losing unrelated delet
   expect(valueOriginAt(restored.origins, ["environment", "ABSENT"]).deleted).toBe(true);
 });
 
-test("projections of dependency map shorthand keep the authored map location", () => {
+test("projections of dependency maps keep the authored field location", () => {
   // Given
-  const base = authored({ dependsOn: { database: "started" } }, ".lando.yml");
+  const base = authored({ dependsOn: { database: { condition: "service_started" } } }, ".lando.yml");
   const local = authored({ dependsOn: [{ service: "cache" }] }, ".lando.local.yml");
   // When
   const result = mergeValuesWithOrigins(ServiceConfig, base, local);
   // Then
   expect(valueOriginAt(result.origins, ["dependsOn", 0, "condition"]).source).toEqual({
     file: ".lando.yml",
-    path: ["dependsOn", "database"],
+    path: ["dependsOn", "database", "condition"],
   });
   expect(valueOriginAt(result.origins, ["dependsOn", 1, "service"]).source.path).toEqual([
     "dependsOn",

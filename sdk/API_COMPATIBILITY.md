@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- Dependency-map identity projection no longer turns scalar map values into conditions, overwrites an authored `service` member, or hides a reserved `__proto__` map key. Invalid authored maps remain available for strict validation instead of being repaired by merging; valid structured maps and service-name lists retain their declared identity merge behavior.
+
 - `@lando/sdk/landofile` adds `mergeValuesWithOrigins`, `withValueOrigins`, `valueOriginAt`, and the erased generic `ValueOrigins` / `ValueWithOrigins` types. The origin map is a path trie: mapping merges retain child locations, keyed collections relocate them, replacements discard inherited locations, and resets retain deletion tombstones. Source payloads remain caller-owned so original authored paths survive projection. `mergeValues(root, left, right, path?)` keeps its signature and uses the same merge traversal without recording origins.
 
 - `ServiceConfig.appMount` and `AppMountPlan` keep `excludes`/`includes`: excludes own per-service volume overlays and are never synced on accelerated binds; includes cancels exact whole entries. Defaults are `node_modules`, `vendor`, and `tmp`, plus service-type presets. The exported `appMountSyncIgnores` helper derives ordered, deduplicated ignores from effective excludes, finalized storage and non-bind mounts under the app target, then `VCS_SYNC_IGNORES` (`[".git"]`). The fixed Git rule never creates an overlay and can be canceled with `includes: [".git"]`. Authored `!` entries in excludes or includes are rejected at the entry path with includes remediation. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
