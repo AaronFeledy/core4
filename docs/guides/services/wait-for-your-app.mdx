@@ -1,0 +1,184 @@
+---
+id: wait-for-your-app
+provider: test
+timeout: 90000
+tags: [beta, docs, services, healthcheck]
+---
+
+# Make start wait for your app
+
+Add `healthcheck:` so `lando start` waits until the app answers, not only until the process is running.
+
+```yaml
+name: myapp
+services:
+  app:
+    type: "node:22"
+    command:
+      - node
+      - server.mjs
+    healthcheck: curl -fsS http://localhost:3000/
+```
+
+This edits an app that already serves HTTP on port 3000. `server.mjs` has to listen there and exit on SIGTERM. `type: "node:22"` is the Node 22 image, which includes `curl`, and Lando sets `PORT=3000`. Point the probe at that port.
+
+```sh
+lando start
+lando app:config --format=json
+```
+
+Start sits there until curl gets an answer. That's the wait. `app:config` prints the healthcheck Lando stored. Use `--format=json` so you can read the field, not a wrapped table.
+
+## Write the probe as a string or a list
+
+A string runs through `sh -c`. The shell splits `curl -fsS http://localhost:3000/`.
+
+A list is literal argv. Lando runs those strings as the program and its arguments, with no shell. Don't put Compose markers in that list. `CMD`, `CMD-SHELL`, and `NONE` are not programs on the image.
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    command:
+      - node
+      - server.mjs
+    healthcheck:
+      - curl
+      - -fsS
+      - http://localhost:3000/
+```
+
+Write the service `command:` as a list too, `[node, server.mjs]`. A string command runs under `sh -lc`, and that shell doesn't pass SIGTERM on. The list does, so stop can reach the server before the runtime's timeout. Handle SIGTERM in the app.
+
+## Set timing on an object
+
+Use an object when you need an interval, a timeout, retries, or a start period. Keep `kind: command`.
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    command:
+      - node
+      - server.mjs
+    healthcheck:
+      kind: command
+      command:
+        - curl
+        - -fsS
+        - http://localhost:3000/
+      intervalSeconds: 7
+      timeoutSeconds: 4
+      retries: 9
+      startPeriodSeconds: 15
+```
+
+`retries` is how many probes one start attempts after the start period. It isn't a count of `lando start` reruns. Failed probes during `startPeriodSeconds` don't use up those retries. The first success ends the wait.
+
+Compose spellings work on the same object. Markers belong in `test`, not in a bare list:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - http://localhost:3000/
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+```
+
+`CMD` becomes an argv command. `CMD-SHELL` takes one shell string. `NONE` shows up as `false`. A duration such as `5s` becomes seconds. `lando app:config --format=json` prints that stored object, not the spelling you typed.
+
+Use a command probe. The runner that ships with Lando only runs command probes, inside the service. `kind: http` and `kind: tcp` are accepted in the Landofile, but that runner doesn't execute them, so start fails instead of probing a URL or a port. Nothing in the Landofile turns an HTTP probe on.
+
+## Turn the probe off
+
+`healthcheck: false` drops the probe. That includes one you wrote and a service type's default, such as MySQL's `mysqladmin ping`. Start still fails if the process exits. It doesn't wait for an application check.
+
+Put the override in `.lando.local.yml` when only this machine should skip the probe. `false` replaces the base value. It doesn't merge with it. A later layer that sets an object doesn't bring the old probe back. It starts from the service type's default, or from nothing when the type has none.
+
+```yaml
+services:
+  app:
+    healthcheck: false
+```
+
+## Inspect a failed start
+
+Start, restart, and rebuild wait for an enabled probe before they finish. If the probe never passes, start fails and leaves the app in place. Routes and volumes stay, so you can read logs without destroying anything.
+
+```sh
+lando app:config --format=json
+lando logs -s app
+```
+
+`-s` is `--service`. Fix the app or the probe, then retry start:
+
+```sh
+lando start
+```
+
+A failed healthcheck stays fatal even if the service has a restart policy. To skip the probe and keep only the process-running check, set `healthcheck: false`.
+
+<Guide>
+  <Scenario id="command-form" render>
+    <Step name="inspect-command-forms">
+      <UseFixture name="command-form" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"shell\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\"curl -fsS http://localhost:3000/\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"argv\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\\[\\s*\"curl\",\\s*\"-fsS\",\\s*\"http://localhost:3001/\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-command-forms">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="object-form" render>
+    <Step name="inspect-timing">
+      <UseFixture name="object-form" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"intervalSeconds\":\\s*7" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timeoutSeconds\":\\s*4" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"retries\":\\s*9" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"startPeriodSeconds\":\\s*15" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"intervalSeconds\":\\s*5" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timeoutSeconds\":\\s*3" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"retries\":\\s*6" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"startPeriodSeconds\":\\s*20" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"curl\",\\s*\"-fsS\",\\s*\"http://localhost:3001/\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "CMD" } } }} />
+    </Step>
+    <Step name="refresh-plan">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:cache:refresh\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"wait-object-form\"" } }} />
+    </Step>
+    <Step name="cleanup-object-form">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="disabled" render>
+    <Step name="inspect-disabled-probe">
+      <UseFixture name="disabled" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"healthcheck\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "curl -fsS" } } }} />
+    </Step>
+    <Step name="cleanup-disabled">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Add Node.js](./node.mdx)
+- [Read service logs](../cli/service-logs.mdx)
