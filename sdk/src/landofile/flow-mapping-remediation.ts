@@ -64,15 +64,13 @@ export const flowMappingRemediation = (
 
   const lines: string[] = ["Rewrite the flow mapping as a block mapping:"];
   const parentKey = options.parentKey?.trim();
+  let indent = "";
   if (parentKey !== undefined && parentKey !== "") {
     lines.push(`${parentKey}:`);
-    for (const { key, value } of pairs) {
-      lines.push(`  ${key}: ${value}`);
-    }
-  } else {
-    for (const { key, value } of pairs) {
-      lines.push(`${key}: ${value}`);
-    }
+    indent = "  ";
+  }
+  for (const { key, value } of pairs) {
+    lines.push(`${indent}${key}: ${value}`);
   }
   return lines.join("\n");
 };

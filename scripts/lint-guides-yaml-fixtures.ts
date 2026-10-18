@@ -5,7 +5,7 @@
 import { readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { type YamlFenceMdxNode, lintYamlDocument } from "./lint-guides-yaml-fence.ts";
+import { lintYamlDocument } from "./lint-guides-yaml-fence.ts";
 import type { GuideFixtureInventoryEntry, GuideLintDiagnostic } from "./lint-guides.ts";
 
 const FIXTURE_FULL_NAMES = new Set([".lando.yml", ".lando.yaml"]);
@@ -45,12 +45,6 @@ const collectLandofileFiles = async (
   return found;
 };
 
-/** Synthetic fence node at line 0 so content line N maps to file line N. */
-const fileAnchorFence = (): YamlFenceMdxNode => ({
-  type: "code",
-  position: { start: { line: 0, column: 1 } },
-});
-
 /**
  * Validate every `.lando.yml` (full) and `.lando.*.yml` (fragment) under fixture
  * inventory directories. Emits `guide.fixture.landofile-invalid`.
@@ -77,7 +71,8 @@ export const lintFixtureLandofiles = async (
         sourcePath: file.relativePath,
         content,
         cwd: dirname(absolutePath),
-        fence: fileAnchorFence(),
+        // Synthetic fence at line 0 so content line N maps to file line N.
+        fence: { type: "code", position: { start: { line: 0, column: 1 } } },
         formOverride: file.form,
         code: "guide.fixture.landofile-invalid",
         parseCode: "guide.fixture.landofile-invalid",

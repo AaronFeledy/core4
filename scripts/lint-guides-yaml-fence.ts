@@ -38,21 +38,10 @@ export type YamlFenceMdxNode = {
   readonly position?: { readonly start?: { readonly line?: number; readonly column?: number } };
 };
 
-const lineOf = (node: YamlFenceMdxNode): number => node.position?.start?.line ?? 1;
-
 const walkAllNodes = (node: YamlFenceMdxNode, visitor: (node: YamlFenceMdxNode) => void): void => {
   visitor(node);
   for (const child of node.children ?? []) walkAllNodes(child, visitor);
 };
-
-const recordKeys = (value: Record<string, unknown>): ReadonlyArray<string> => Object.keys(value);
-
-const isLandofileKey = (key: string): boolean => LANDOFILE_KEYS.has(key) || key.startsWith("x-");
-
-const keysSubset = (
-  keys: ReadonlyArray<string>,
-  allowed: ReadonlySet<string> | ((key: string) => boolean),
-): boolean => keys.every((key) => (typeof allowed === "function" ? allowed(key) : allowed.has(key)));
 
 export type ClassifiedForm =
   | { readonly kind: "full" }
@@ -73,12 +62,14 @@ export const classifiedFormFor = (value: unknown, formOverride?: "full" | "fragm
 /** Classify a parsed YAML root for guide fence validation (no form override). */
 export const classifyYamlFenceDocument = (value: unknown): ClassifiedForm => {
   if (!Predicate.isObject(value)) return { kind: "skip" };
-  const keys = recordKeys(value);
+  const keys = Object.keys(value);
   // `name:` marks a full Landofile; Shape excess-property checks catch unknown keys.
   if (Object.hasOwn(value, "name")) return { kind: "full" };
-  if (keysSubset(keys, isLandofileKey)) return { kind: "fragment", value };
-  if (keysSubset(keys, SERVICE_KEYS)) return { kind: "fragment", value: { services: { x: value } } };
-  if (keys.length > 0 && keysSubset(keys, GLOBAL_CONFIG_KEYS)) return { kind: "global" };
+  if (keys.every((key) => LANDOFILE_KEYS.has(key) || key.startsWith("x-")))
+    return { kind: "fragment", value };
+  if (keys.every((key) => SERVICE_KEYS.has(key)))
+    return { kind: "fragment", value: { services: { x: value } } };
+  if (keys.length > 0 && keys.every((key) => GLOBAL_CONFIG_KEYS.has(key))) return { kind: "global" };
   return { kind: "skip" };
 };
 
@@ -100,7 +91,7 @@ const fenceDiagnostic = (
   message: string,
   offset?: { readonly line?: number | undefined; readonly column?: number | undefined },
 ): GuideLintDiagnostic => {
-  const fenceLine = lineOf(fence);
+  const fenceLine = fence.position?.start?.line ?? 1;
   const contentLine = offset?.line;
   return {
     sourcePath,
