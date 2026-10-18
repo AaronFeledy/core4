@@ -19,13 +19,54 @@ If you came here for `${VARS}` magic in volumes or tooling, that path is still n
 
 ## Load-time recipe and env
 
-Recipe Landofiles keep values like `php:{{ recipe.php }}`. Lando fills those from that same file's merged `recipe.options`. It does not look up a recipe plugin or run recipe code.
+Recipe Landofiles keep values like `php:{{ recipe.php }}`. Lando fills those from the app's merged `recipe.options`, across every Landofile layer, before it validates the file. It does not look up a recipe plugin or run recipe code.
 
 `{{ default(env.LANDO_NODE_VERSION, 'lts') }}` reads the host environment. A missing variable fails closed unless the expression supplies a `default()`.
 
-A missing recipe option, or an unset env var with no default, is a Landofile validation error that names the YAML path.
+A missing recipe option, or an unset env var with no default, is a Landofile validation error that names the YAML path and the layer file that wrote it, so a bad site in `.lando.base.yml` points at `.lando.base.yml`.
 
 The `recipe:` block itself is provenance. Lando does not rewrite expressions inside it.
+
+### Whole-value expressions keep their type
+
+A value that is nothing but one `{{ ... }}` resolves to whatever the expression returns. Recipe option `primary: false` makes `primary: "{{ recipe.primary }}"` a real boolean `false`, not the string `"false"`. Numbers, lists, and objects work the same way at fields of those types. Validation then runs on the resolved value, so a wrong type is still a schema violation at that path.
+
+```yaml
+name: Typed Values Demo
+recipe:
+  id: lamp
+  version: 0.1.0
+  producer:
+    sourceKind: bundled
+    packageName: "@lando/recipe-lamp"
+    recipeId: lamp
+    manifestVersion: 0.1.0
+    contentDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  options:
+    primary: false
+    port: 8088
+    mode: development
+services:
+  app:
+    type: "node:22"
+    primary: "{{ recipe.primary }}"
+    environment: "{{ { NODE_ENV: recipe.mode } }}"
+  worker:
+    type: "node:22"
+    primary: true
+router:
+  httpPort: "{{ recipe.port }}"
+```
+
+`primary` is `false`, `httpPort` is the number `8088`, and `environment` is the object `{ NODE_ENV: development }`. Mix text with an expression and you get text: `"flag={{ recipe.primary }}"` is `"flag=false"`.
+
+Plan-time scopes (`app.*`, `proxy.*`, `services.<name>.creds.*`) fill text only. Put `{{ app.name }}` at a boolean, number, list, or object field and validation fails at that path, with a suggestion to use a literal or a recipe/env expression. A plan-time expression at a text field whose result is not text, like `{{ eq(app.name, 'x') }}` in `database:`, fails when the plan is built.
+
+```sh
+lando app:config --format=json
+```
+
+That prints the Landofile after load-time resolution: recipe and env sites show their values and types, plan-time sites stay as you wrote them.
 
 ## Plan-time app and proxy
 
@@ -64,7 +105,7 @@ Change `proxy.defaultDomain` once and every recipe URL that uses the expression 
 
 A site that mixes scopes, like `APP_LABEL` above, is left alone by the loader and resolves at plan time.
 
-`lando app:config` echoes the Landofile as you wrote it, so it never shows resolved values. `lando app:cache:refresh` builds the plan and fails when an expression can't resolve. `lando info` shows the resolved `database:` value in the database credentials:
+`lando app:config` leaves plan-time sites as you wrote them, so it never shows these values. `lando app:cache:refresh` builds the plan and fails when an expression can't resolve. `lando info` shows the resolved `database:` value in the database credentials:
 
 ```sh
 lando app:cache:refresh
@@ -131,6 +172,41 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"expressions-demo\"" } }} />
     </Step>
     <Step name="cleanup-plan-time">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="typed-whole-values-resolve" render>
+    <Step name="scaffold-typed-values">
+      <UseFixture name="expressions-typed-values" />
+    </Step>
+    <Step name="lint-typed-values">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="read-typed-values">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"primary\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"environment\":\\s*\\{\\s*\"NODE_ENV\":\\s*\"development\"\\s*\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpPort\":\\s*8088" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "recipe\\.(primary|port|mode) \\}\\}\"" } } }} />
+    </Step>
+    <Step name="cleanup-typed-values">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="plan-time-at-typed-field-fails" render>
+    <Step name="scaffold-plan-time-typed-field">
+      <UseFixture name="expressions-plan-time-typed-field" />
+    </Step>
+    <Step name="lint-plan-time-typed-field">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"primary\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*plan-time scopes" } }} />
+    </Step>
+    <Step name="cleanup-plan-time-typed-field">
       <Cleanup />
     </Step>
   </Scenario>

@@ -333,7 +333,7 @@ describe("LandofileService layer", () => {
     });
   });
 
-  test("rejects Compose keys outside the MVP allowlist with remediation", async () => {
+  test("rejects Compose keys outside the supported subset with remediation", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -370,7 +370,7 @@ describe("LandofileService layer", () => {
     });
   });
 
-  test("reports generic MVP remediation for non-compose service keys", async () => {
+  test("reports unknown-key remediation for non-compose service keys", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -399,7 +399,7 @@ describe("LandofileService layer", () => {
             expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
               "services.web.unsupported",
             );
-            expect(error.message).toContain("unsupported MVP keys");
+            expect(error.message).toContain("unknown keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
           }
@@ -443,7 +443,7 @@ describe("LandofileService layer", () => {
               "services.web.unsupported",
             ]);
             expect(error.message).toContain("unsupported service keys");
-            expect(error.message).toContain("For type: compose services");
+            expect(error.message).toContain("Compose compatibility is limited to the supported subset");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
           }
         }
@@ -451,7 +451,7 @@ describe("LandofileService layer", () => {
     });
   });
 
-  test("reports generic MVP remediation for compose service type errors", async () => {
+  test("reports invalid-value remediation for compose service type errors", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -472,7 +472,7 @@ describe("LandofileService layer", () => {
             expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
               "services.web.image",
             );
-            expect(error.message).toContain("unsupported MVP keys");
+            expect(error.message).toContain("invalid values");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
           }
@@ -502,9 +502,7 @@ describe("LandofileService layer", () => {
             expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
               "services.web.certs.key",
             );
-            expect(error.message).toContain(
-              "Remove unsupported keys or update the documented Landofile service schema.",
-            );
+            expect(error.message).toContain("Fix each listed value.");
           }
         }
       }

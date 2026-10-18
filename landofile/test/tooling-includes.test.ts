@@ -65,6 +65,26 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     await rm(appRoot, { recursive: true, force: true });
   });
 
+  test("materializes a typed tooling fragment value with the including scope", async () => {
+    // Given
+    await writeFile(
+      join(appRoot, "tasks.yml"),
+      'tooling:\n  build:\n    cmd: build\n    flags:\n      debug:\n        required: "{{ recipe.required }}"\n',
+    );
+    // When
+    const result = await Effect.runPromise(
+      resolveLandofileIncludes({
+        landofile: { includes: [{ source: "./tasks.yml", kind: "tooling", namespace: "typed" }] },
+        appRoot,
+        cacheRoot: join(appRoot, ".cache"),
+        stateStore: makeTestLandofileStateStore(),
+        loadScope: { env: {}, recipe: { required: true } },
+      }),
+    );
+    // Then
+    expect(result.tooling?.["typed:build"]?.flags?.debug?.required).toBe(true);
+  });
+
   test("namespaces included tasks, aliases the namespace, applies excludes, and layers include vars", async () => {
     // Given a tooling include declaring a namespace, alias, exclude, and include-level vars
     const landofile: LandofileShape = {

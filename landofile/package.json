@@ -26,6 +26,7 @@
     "./compose/rejection-trie": "./src/compose/rejection-trie.ts",
     "./compose/rejections": "./src/compose/rejections.ts",
     "./config-translate": "./src/config-translate.ts",
+    "./compile": "./src/compile.ts",
     "./copy-provenance": "./src/copy-provenance.ts",
     "./decode": "./src/decode.ts",
     "./discovery": "./src/discovery.ts",
@@ -59,7 +60,8 @@
     "./tooling-include-provenance": "./src/tooling-include-provenance.ts",
     "./tooling-includes": "./src/tooling-includes.ts",
     "./ts-loader": "./src/ts-loader.ts",
-    "./version-constraint": "./src/version-constraint.ts"
+    "./version-constraint": "./src/version-constraint.ts",
+    "./validation": "./src/validation.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "landofile"],

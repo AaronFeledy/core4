@@ -9,30 +9,19 @@ import {
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileParseError,
-  LandofileValidationError,
+  type LandofileValidationError,
   type NotImplementedError,
   RecipeSourceError,
   type ToolingIncludeCycleError,
   causeMessage,
 } from "@lando/sdk/errors";
-import {
-  AbsolutePath,
-  type IncludeEntry,
-  LandofileShape,
-  formatValidationIssueLine,
-  validationIssuesFromCause,
-} from "@lando/sdk/schema";
+import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
-import {
-  decodeLandofileLayer,
-  isMergeDirective,
-  mergeLandofiles,
-  mergeValues,
-  override,
-} from "@lando/sdk/landofile";
+import { isMergeDirective, mergeLandofiles, mergeValues, override } from "@lando/sdk/landofile";
 import type { LandofileDecodedOverlay } from "@lando/sdk/schema";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
+import { type LandofileLoadScope, buildLandofileLoadScope, compileLandofileLayer } from "./compile.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
 import {
@@ -74,6 +63,7 @@ import {
   winningInternalToolingTasks,
 } from "./tooling-include-provenance.ts";
 import { hasToolingIncludes, resolveToolingIncludes } from "./tooling-includes.ts";
+import { validateLandofile } from "./validation.ts";
 import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
@@ -101,6 +91,7 @@ export interface LandofileRelaxedRead {
 }
 
 export interface ResolveLandofileIncludesOptions {
+  readonly loadScope?: LandofileLoadScope;
   readonly landofile: LandofileShape;
   readonly appRoot: string;
   readonly sourcePath?: string;
@@ -132,6 +123,7 @@ interface LockEntry {
 }
 
 interface ResolveContext {
+  readonly loadScope: LandofileLoadScope;
   readonly appRoot: string;
   readonly sourceRoot: string;
   readonly userOwned: boolean;
@@ -660,16 +652,22 @@ const parseFragment = (
             }),
           );
         }
-        if (Object.hasOwn(parsed, "name") || Object.hasOwn(parsed, "runtime")) {
+        if (
+          Object.hasOwn(parsed, "name") ||
+          Object.hasOwn(parsed, "runtime") ||
+          Object.hasOwn(parsed, "recipe")
+        ) {
           return Effect.fail(
             includeError({
-              message: `Include ${fragment.sourceId} must not declare top-level name: or runtime:.`,
+              message: `Include ${fragment.sourceId} must not declare top-level name:, runtime:, or recipe:.`,
               source: fragment.sourceId,
               kind: "forbidden-field",
+              remediation:
+                "Remove top-level name:, runtime:, and recipe: from the fragment; the including Landofile owns the app's identity and recipe options.",
             }),
           );
         }
-        return decodeLandofileLayer(fragment.filePath, parsed).pipe(
+        return compileLandofileLayer(fragment.filePath, parsed, ctx.loadScope).pipe(
           Effect.map((decoded) =>
             rememberLandofileReferencedFiles(decoded, getLandofileReferencedFiles(parsed)),
           ),
@@ -681,21 +679,8 @@ const parseFragment = (
 const decodeMerged = (
   value: Record<string, unknown>,
   filePath: string,
-): Effect.Effect<LandofileShape, LandofileValidationError> => {
-  const decoded = Schema.decodeUnknownResult(LandofileShape)(value, {
-    onExcessProperty: "error",
-    errors: "all",
-  });
-  if (decoded._tag === "Success") return Effect.succeed(decoded.success);
-  const issues = validationIssuesFromCause(decoded.failure, { fallback: causeMessage(decoded.failure) });
-  return Effect.fail(
-    new LandofileValidationError({
-      message: `Merged Landofile is invalid: ${issues.map(formatValidationIssueLine).join(", ")}`,
-      file: filePath,
-      issues,
-    }),
-  );
-};
+): Effect.Effect<LandofileShape, LandofileValidationError | LandofileParseError> =>
+  validateLandofile(filePath, value);
 
 const inlineWithoutIncludes = (landofile: Record<string, unknown>): Record<string, unknown> => {
   const { include: _include, includes: _includes, toolingIncludes: _toolingIncludes, ...rest } = landofile;
@@ -1115,6 +1100,11 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
   }
   const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
   const ctx: ResolveContext = {
+    loadScope:
+      options.loadScope ??
+      (yield* buildLandofileLoadScope([
+        { file: options.sourcePath ?? ".lando.yml", value: options.landofile },
+      ])),
     appRoot: options.appRoot,
     sourceRoot: options.appRoot,
     userOwned: false,
@@ -1153,6 +1143,7 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
   if (options.resolveTooling === false) return rememberLandofileAppRoot(unresolved, options.appRoot);
 
   const tooling = yield* resolveToolingIncludes({
+    loadScope: ctx.loadScope,
     landofile: unresolved,
     appRoot: options.appRoot,
     sourceRoot: options.appRoot,
@@ -1229,6 +1220,7 @@ export interface IncludeUpdateReport {
 }
 
 export interface UpdateLandofileIncludesOptions {
+  readonly loadScope?: LandofileLoadScope;
   readonly landofile: LandofileShape;
   readonly appRoot: string;
   readonly cacheRoot?: string;
@@ -1291,6 +1283,11 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
     maxDepth: options.maxDepth ?? 8,
     mode: "refresh",
     lockEntries: existing,
+    loadScope:
+      options.loadScope ??
+      (yield* buildLandofileLoadScope([
+        { file: join(options.appRoot, ".lando.yml"), value: options.landofile },
+      ])),
     stagedLocks: new Map(),
     noNetwork,
     loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
@@ -1366,6 +1363,7 @@ export interface IncludeVerifyReport {
 }
 
 export interface VerifyLandofileIncludesOptions {
+  readonly loadScope?: LandofileLoadScope;
   readonly landofile: LandofileShape;
   readonly appRoot: string;
   readonly cacheRoot?: string;
@@ -1412,6 +1410,11 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
     maxDepth: options.maxDepth ?? 8,
     mode: "refresh",
     lockEntries: existing,
+    loadScope:
+      options.loadScope ??
+      (yield* buildLandofileLoadScope([
+        { file: join(options.appRoot, ".lando.yml"), value: options.landofile },
+      ])),
     stagedLocks: new Map(),
     noNetwork: false,
     loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,

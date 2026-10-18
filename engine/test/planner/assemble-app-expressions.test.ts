@@ -46,6 +46,24 @@ const plan = Effect.fnUntraced(function* (landofile: LandofileShape) {
   );
 }, Effect.provide(PluginRegistryLayer.layer));
 
+test("rejects a non-string result at a plan-time text site", async () => {
+  // Given
+  const landofile = {
+    name: "x",
+    services: {
+      [ServiceName.make("database")]: {
+        type: serviceType.id,
+        database: "{{ eq(app.name, 'x') }}",
+      },
+    },
+  };
+  // When
+  const error = await Effect.runPromise(plan(landofile).pipe(Effect.flip));
+  // Then
+  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.database.database" });
+  expect(error.message).toContain("takes text");
+});
+
 test("materializes app and proxy expressions before service resolution and tooling compilation", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-app-expression-"));
   try {
