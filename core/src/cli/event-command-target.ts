@@ -62,13 +62,13 @@ const loadPluginSpec = (
         yes === undefined ||
         (yes.type === "boolean" &&
           (yes.default === undefined || yes.default === false) &&
-          yes.multiple === undefined &&
-          yes.parse === undefined &&
-          yes.options === undefined &&
-          yes.required === undefined &&
-          yes.valueType === undefined);
+          Object.keys(yes).every((key) => key === "type" || key === "default" || key === "description"));
       if (!compatibleYes) issues.push("flag yes must be an optional boolean defaulting to false");
       if (issues.length > 0) {
+        let yesDeclaration = "absent";
+        if (yes !== undefined) {
+          yesDeclaration = compatibleYes ? "optional-boolean-default-false" : "incompatible";
+        }
         throw new PluginDescriptorMismatchError({
           pluginName,
           kind: "commands",
@@ -84,7 +84,7 @@ const loadPluginSpec = (
             `namespace=${String(spec.namespace)}`,
             `bootstrap=${String(spec.bootstrap)}`,
             `resultSchema=${Schema.isSchema(spec.resultSchema) ? "schema" : "non-schema"}`,
-            `flags.yes=${yes === undefined ? "absent" : compatibleYes ? "optional-boolean-default-false" : "incompatible"}`,
+            `flags.yes=${yesDeclaration}`,
           ],
           message: `Plugin ${pluginName} command loader ${id} returned an invalid executable command spec: ${issues.join("; ")}.`,
           remediation:

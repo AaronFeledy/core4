@@ -118,9 +118,8 @@ describe("plugin-owned command dispatch", () => {
       flags: { yes: { type: "boolean", default: false } },
       run: (input: ExecutableCommandInput) => Effect.succeed(input.flags.yes),
     } satisfies ExecutableCommandSpec<unknown, never, never>;
-    const plugin = makeDbImportPlugin();
     const context = graphContextForPlugin({
-      ...plugin,
+      ...makeDbImportPlugin(),
       commands: new Map([["db:import", async () => spec]]),
     });
     // When

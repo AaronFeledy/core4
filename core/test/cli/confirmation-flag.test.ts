@@ -25,8 +25,6 @@ const DESTRUCTIVE_VERBS = new Set([
   "rebuild",
   "poweroff",
 ]);
-// Scratch stop destroys the scratch app, unlike an ordinary app stop.
-const DESTRUCTIVE_EXCEPTIONS = new Set(["apps:scratch:stop"]);
 
 const pluginSpecs: ExecutableCommandSpec[] = [];
 
@@ -81,7 +79,8 @@ describe("registry-wide confirmation flags", () => {
     // When
     const missing = commands.filter(
       ({ id, flags }) =>
-        (DESTRUCTIVE_VERBS.has(id.split(":").at(-1) ?? "") || DESTRUCTIVE_EXCEPTIONS.has(id)) &&
+        // Scratch stop destroys the scratch app, unlike an ordinary app stop.
+        (DESTRUCTIVE_VERBS.has(id.split(":").at(-1) ?? "") || id === "apps:scratch:stop") &&
         flags.yes === undefined,
     );
     // Then
@@ -90,14 +89,16 @@ describe("registry-wide confirmation flags", () => {
 });
 
 describe("confirmation argv and help", () => {
-  for (const id of [
+  const dbCommandIds = [
     "db:restore",
     "db:import",
     "db:export",
     "db:reset",
     "db:snapshot",
     "db:snapshots:prune",
-  ]) {
+  ];
+
+  for (const id of dbCommandIds) {
     test(`${id} parses -y as yes without consuming its positional`, () => {
       // Given
       const spec = sqlSpec(id);
@@ -111,22 +112,26 @@ describe("confirmation argv and help", () => {
     });
   }
 
-  test("db:restore snap -y passes strict plugin flag validation", () => {
-    // Given
-    const spec = sqlSpec("db:restore");
-    // When
-    const error = pluginOwnedCliFlagError(spec, ["snap", "-y"]);
-    // Then
-    expect(error).toBeUndefined();
+  test("DB commands pass strict plugin flag validation with -y", () => {
+    for (const id of dbCommandIds) {
+      // Given
+      const spec = sqlSpec(id);
+      // When
+      const error = pluginOwnedCliFlagError(spec, ["snap", "-y"]);
+      // Then
+      expect(error).toBeUndefined();
+    }
   });
 
   test("plugin help advertises -y for the yes flag", () => {
-    // Given
-    const spec = sqlSpec("db:restore");
-    // When
-    const help = renderPluginOwnedCommandHelp(spec);
-    // Then
-    expect(help).toContain("--yes, -y");
+    for (const id of dbCommandIds) {
+      // Given
+      const spec = sqlSpec(id);
+      // When
+      const help = renderPluginOwnedCommandHelp(spec);
+      // Then
+      expect(help).toContain("--yes, -y");
+    }
   });
 
   for (const flag of ["--yes", "-y"]) {
