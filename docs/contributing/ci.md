@@ -15,6 +15,7 @@ Every platform cell runs the fork-safe portable static gates:
 
 ```bash
 bun run codegen:check
+bun run check:types
 bun run lint
 bun run audit
 bun run check:boundaries
@@ -23,11 +24,12 @@ bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run check:types` is `bun check`: Bun's built-in type checker follows the root project references like `tsc -b`, emits nothing, and finishes the whole repo in about five seconds, so every platform cell gets a type gate. It reports TypeScript 7 semantics; a construct that only `tsc` 5.x accepts fails here first. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`.
 
-Run typecheck separately:
+`bun run typecheck` stays a separate gate in the runner jobs. It runs `tsc -b`, which also emits the declaration graph under `*/dist` that `engine` and `core` resolve `@lando/sdk` types against and that `bun run build` publishes. Use `check:types` for the inner loop and `typecheck` before you push:
 
 ```bash
+bun run check:types
 bun run typecheck
 ```
 

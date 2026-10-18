@@ -463,7 +463,8 @@ describe("ci workflow", () => {
       "        run: bun test state-store/test/state-store/private-file-access.test.ts",
     );
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-    expect(staticChecksPlatform).not.toContain("        run: bun run typecheck");
+    expect(staticChecksPlatform).not.toMatch(/^ {8}run: bun run typecheck$/m);
+    expect(staticChecksPlatform.match(/^ {8}run: bun run check:types$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("        run: bun run lint");
     expect(staticChecksPlatform.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);

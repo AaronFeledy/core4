@@ -55,6 +55,9 @@ jobs:
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Type check (bun check, no emit)
+        run: bun run check:types
+
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
