@@ -136,7 +136,7 @@ test.each([
   const repaired = repairClosedExtension(captured.landofile);
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
   const expected = evolveHistoricalContainerUser(evolveHistoricalShorthand(normalizeJsonSchema(repaired)));
-  const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+  const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(jsonEquals(expected, current)).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
