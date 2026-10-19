@@ -7,7 +7,12 @@ import { Cause, Effect, Exit } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { type GitRecipeCloner, publish, resolveGitRecipeSource } from "../../src/recipes/git-source.ts";
+import {
+  type GitRecipeCloner,
+  defaultGitRecipeCloner,
+  publish,
+  resolveGitRecipeSource,
+} from "../../src/recipes/git-source.ts";
 import * as RecipeManifestServiceLayer from "../../src/recipes/manifest/service.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
@@ -288,7 +293,7 @@ describe("initApp git source boundary", () => {
 });
 
 describe("resolveGitRecipeSource — real git clone (file:// source, no network)", () => {
-  const runGit = async (args: ReadonlyArray<string>, cwd: string): Promise<void> => {
+  const runGit = async (args: ReadonlyArray<string>, cwd: string): Promise<string> => {
     const proc = Bun.spawn({
       cmd: ["git", ...args],
       cwd,
@@ -305,8 +310,13 @@ describe("resolveGitRecipeSource — real git clone (file:// source, no network)
       stdout: "pipe",
       stderr: "pipe",
     });
-    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
+    return stdout.trim();
   };
 
   test("clones a local bare repo and resolves recipe.yml at a subpath via the default cloner", async () => {
@@ -341,4 +351,60 @@ describe("resolveGitRecipeSource — real git clone (file:// source, no network)
       expect(manifest.id).toBe("remote-recipe");
     });
   });
+
+  for (const selector of [
+    "annotated-tag",
+    "branch",
+    "full-sha",
+    "default",
+    "unknown",
+    "abbreviated-sha",
+  ] as const) {
+    test(`default cloner acquires ${selector} through shallow fetch`, async () => {
+      await withTempRoot(async (dir) => {
+        // Given
+        const worktree = join(dir, "worktree");
+        await mkdir(worktree);
+        await runGit(["init", "-q", "-b", "main"], worktree);
+        await Bun.write(join(worktree, "fragment.yml"), "services: {}\n");
+        await runGit(["add", "."], worktree);
+        await runGit(["commit", "-q", "-m", "first"], worktree);
+        const first = await runGit(["rev-parse", "HEAD"], worktree);
+        await runGit(["tag", "-a", "v1", "-m", "annotated"], worktree);
+        await runGit(["branch", "release"], worktree);
+        await Bun.write(join(worktree, "fragment.yml"), "services: {web: {type: php}}\n");
+        await runGit(["commit", "-q", "-am", "second"], worktree);
+        const tip = await runGit(["rev-parse", "HEAD"], worktree);
+        const bare = join(dir, "remote.git");
+        await runGit(["clone", "-q", "--bare", worktree, bare], dir);
+        const refs = {
+          "annotated-tag": "v1",
+          branch: "release",
+          "full-sha": first,
+          default: undefined,
+          unknown: "absent",
+          "abbreviated-sha": first.slice(0, 8),
+        };
+        const ref = refs[selector];
+        const dest = join(dir, "acquired");
+        // When
+        const acquisition = defaultGitRecipeCloner.clone({
+          url: `file://${bare}`,
+          dest,
+          stagingDir: dest,
+          ...(ref === undefined ? {} : { ref }),
+        });
+        // Then
+        if (selector === "unknown" || selector === "abbreviated-sha") {
+          await expect(acquisition).rejects.toThrow("couldn't find remote ref");
+        } else {
+          expect((await acquisition).commitSha).toBe(selector === "default" ? tip : first);
+          expect(await Bun.file(join(dest, "fragment.yml")).text()).toBe(
+            selector === "default" ? "services: {web: {type: php}}\n" : "services: {}\n",
+          );
+          expect(await runGit(["rev-parse", "--is-shallow-repository"], dest)).toBe("true");
+        }
+      });
+    });
+  }
 });

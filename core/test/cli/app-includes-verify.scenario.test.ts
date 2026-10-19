@@ -97,8 +97,8 @@ test("verifies locked sources from both base and canonical include trees", async
     const fragment = "services: {}\n";
     const checksum = new Bun.CryptoHasher("sha256").update(fragment).digest("hex");
     const sources = [
-      { layer: ".lando.base.yml", repo: "base", commit: "base123" },
-      { layer: ".lando.yml", repo: "canonical", commit: "canonical456" },
+      { layer: ".lando.base.yml", repo: "base", commit: "a".repeat(40) },
+      { layer: ".lando.yml", repo: "canonical", commit: "b".repeat(40) },
     ];
     for (const source of sources) {
       await writeFile(
@@ -119,10 +119,8 @@ test("verifies locked sources from both base and canonical include trees", async
         .join("")}`,
     );
     const gitCloner: GitIncludeCloner = {
-      clone: async ({ url, stagingDir }) => {
-        await mkdir(stagingDir, { recursive: true });
-        await writeFile(join(stagingDir, "fragment.yml"), fragment);
-        return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
+      clone: async () => {
+        throw new Error("warm verify must stay offline");
       },
     };
     await withEnvVar("LANDO_USER_CACHE_ROOT", cacheRoot, async () => {

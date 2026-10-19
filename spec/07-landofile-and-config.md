@@ -251,15 +251,15 @@ Any §7.4–§7.6 key MAY carry the §18.5 `deprecated` annotation, propagated t
 | Scheme | Contract |
 |---|---|
 | Local | Relative or absolute path resolved from the including source; MUST remain under app root unless explicitly relaxed. |
-| Git | Hosted shorthand or `git+https`; resolved ref is locked and content-addressed. |
+| Git | Hosted shorthand, `https`, `git+https`, `ssh`, `git+ssh`, or `git@host:path`; `version` or an `@ref` suffix requests a tag, branch, or full commit SHA. The resolved commit is locked and content-addressed. |
 | npm | Package and optional path/version; resolved package is locked and cached. |
 | Registry | `registry:<id>` syntax is reserved; implementation is sequenced in the ROADMAP and MUST require signature verification. |
 
-`kind` is `landofile` (default), `tooling`, or `compose`. Landofile and Compose fragments resolve per file before §7.2; tooling resolves during app-plan compilation and shares the §8.5.8 `toolingIncludes` contract. Compose `include` normalizes to `kind: compose`. A `when` expression uses the including context and skips on false.
+`kind` is `landofile` (default), `tooling`, or `compose`. Landofile and Compose fragments resolve per file before §7.2; tooling resolves during app-plan compilation, shares the §8.5.8 `toolingIncludes` contract, and reads local fragments only. Compose `include` normalizes to `kind: compose`. A `when` expression uses the including context and skips on false.
 
 #### 7.7.2 Fragment shape
 
-A Landofile fragment is partial YAML or JSON and MAY contain top-level configuration except `name`, `runtime`, and `recipe`. It MAY include further fragments. Cycles fail with `IncludeCycleError`; depth is bounded. Tooling fragments nest only through `toolingIncludes` and fail closed on bare `includes` (§8.5.8).
+A Landofile fragment is partial YAML or JSON and MAY contain top-level configuration except `name`, `runtime`, and `recipe`. It MAY include further fragments. Cycles fail with `LandofileIncludeError` (`kind: "cycle"`); depth is bounded. Tooling fragments nest only through `toolingIncludes` and fail closed on bare `includes` (§8.5.8).
 
 #### 7.7.3 Merge semantics
 
@@ -267,7 +267,7 @@ Includes resolve in array order; later includes override earlier ones; the inclu
 
 #### 7.7.4 Lockfile
 
-The configurable `<appRoot>/.lando.lock.yml` records exact versions, refs, and checksums for non-local includes and app-declared plugins and is committed. Existing entries MUST be used and verified; absent entries resolve and are added. `app:includes:update` refreshes entries and `app:includes:verify` verifies without updating (§8.2). Drift or absence fails with `IncludeLockError`. The lockfile uses `StateStore` with its stable YAML codec, atomicity, and containment (§12.7).
+The configurable `<appRoot>/.lando.lock.yml` records exact versions, refs, and checksums for non-local includes and app-declared plugins and is committed. An include entry pins one fragment request, keyed by source and fragment path, to its requested version, resolved revision (commit SHA or package version), and fragment SHA-256. Existing entries MUST be used and verified: a load reads the pinned revision from cache or acquires exactly that revision, and verifies the checksum before parsing the fragment; it MUST NOT re-resolve a floating ref. Absent entries resolve and are added. On load, a requested version that differs from its entry, or a checksum mismatch, fails with `LandofileLockMismatchError`; an undecodable lockfile fails with `LandofileParseError`; a load never rewrites an existing entry. `app:includes:update` re-resolves requests and refreshes entries, and its `--check` mode reports what a refresh would change. `app:includes:verify` checks that entries pin every request at its requested version and that pinned content matches, without resolving floating refs or updating (§8.2). The lockfile uses `StateStore` with its stable YAML codec, atomicity, and containment (§12.7).
 
 #### 7.7.5 Caching
 

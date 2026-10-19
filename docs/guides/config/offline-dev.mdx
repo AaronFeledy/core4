@@ -43,7 +43,7 @@ The bundled SSH sidecar installs `openssh-client` and `socat` when the global ap
 
 Runtime bundle, tool, and recipe downloads first check the local cache. A cache hit never touches the network. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
 
-Once a remote include has a lockfile entry and a cached copy, `app:includes:update --no-network` reuses that cache.
+Once a remote include has a lockfile entry and a cached copy, loading the app reads that copy instead of the network. `lando start`, `lando app:config`, tooling, `lando app:includes:verify`, and `lando app:includes:update --no-network` all work offline from then on. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include).
 
 ## Honest limits
 

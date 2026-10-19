@@ -1,5 +1,5 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import { LandofileIncludeError, causeMessage } from "@lando/sdk/errors";
+import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
 import { isMergeDirective, override } from "@lando/sdk/landofile";
 import type { LandofileDecodedOverlay, LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -104,10 +104,12 @@ export const resolveTree = Effect.fnUntraced(function* (
         }
       },
       catch: (cause) =>
-        cause instanceof LandofileIncludeError
+        cause instanceof LandofileIncludeError || cause instanceof LandofileLockMismatchError
           ? cause
           : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
     });
+    if (fragment === undefined) continue;
+    yield* stageFragmentLock(fragment, ctx);
     if (hasIncludeCycle(stack, fragment.sourceId))
       return yield* Effect.fail(
         includeError({
@@ -134,7 +136,6 @@ export const resolveTree = Effect.fnUntraced(function* (
       sha256: sha256Hex(fragment.content),
     });
     if (!fragment.locked) localIncludePaths.push(fragment.filePath);
-    yield* stageFragmentLock(fragment, ctx);
   }
   const toolingSources = [...fragmentRecords, sourced];
   const toolingIncludes = composeToolingIncludeEntries(toolingSources);

@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, posix } from "node:path";
 import type { IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import type { NormalizedInclude } from "./include-context.ts";
 import { includeError } from "./include-guard.ts";
@@ -38,8 +38,13 @@ const safeRelativeSubpath = (subpath: string | undefined, source: string): strin
       source,
       kind: "subpath-invalid",
     });
-  const normalized = relative(".", resolve(".", slashPath));
-  if (normalized === "" || normalized === ".." || normalized.startsWith("../") || isAbsolute(normalized))
+  const normalized = posix.relative("/", posix.resolve("/", slashPath));
+  if (
+    normalized === "" ||
+    posix.normalize(slashPath).startsWith("../") ||
+    slashPath === ".." ||
+    /^[A-Za-z]:/u.test(slashPath)
+  )
     throw includeError({
       message: `Include subpath escapes the source root: ${subpath}`,
       source,
@@ -50,14 +55,22 @@ const safeRelativeSubpath = (subpath: string | undefined, source: string): strin
 const parseSourceRef = (raw: string): { readonly value: string; readonly ref?: string } => {
   const at = raw.lastIndexOf("@");
   if (at <= 0) return { value: raw };
-  if (raw.startsWith("git@") && raw.indexOf(":") < at) return { value: raw };
+  const authority = raw.indexOf("://");
+  const boundary =
+    authority >= 0 ? raw.indexOf("/", authority + 3) : raw.startsWith("git@") ? raw.indexOf(":") : 0;
+  if (boundary < 0 || at <= boundary) return { value: raw };
   const ref = raw.slice(at + 1);
   return ref === "" ? { value: raw } : { value: raw.slice(0, at), ref };
 };
 export const classify = (source: string): "local" | "user" | "git" | "npm" => {
   if (source.startsWith("user:")) return "user";
   if (source.startsWith("npm:")) return "npm";
-  if (source.startsWith("git@") || source.startsWith("github:") || /^https?:\/\//u.test(source)) return "git";
+  if (
+    source.startsWith("git@") ||
+    source.startsWith("github:") ||
+    /^(?:git\+)?(?:https?|ssh):\/\//u.test(source)
+  )
+    return "git";
   return "local";
 };
 const gitHubPathFromSource = (source: string): string | undefined => {
@@ -66,7 +79,7 @@ const gitHubPathFromSource = (source: string): string | undefined => {
   return parts.length > 2 ? parts.slice(2).join("/") : undefined;
 };
 const gitCloneUrl = (source: string): string => {
-  if (!source.startsWith("github:")) return source;
+  if (!source.startsWith("github:")) return source.replace(/^git\+/u, "");
   const [owner, repo] = source.slice("github:".length).split("/");
   return owner === undefined || repo === undefined ? source : `https://github.com/${owner}/${repo}.git`;
 };
@@ -75,6 +88,21 @@ const gitRepoIdentity = (source: string): string => {
   const [owner, repo] = source.slice("github:".length).split("/");
   return owner === undefined || repo === undefined ? source : `github:${owner}/${repo}`;
 };
+// git check-ref-format rules for one literal ref (a full SHA also passes). A
+// leading "-" or "+" would otherwise reach git fetch as an option or refspec.
+const INVALID_REF_PATTERNS = [
+  /^$/u,
+  /^@$/u,
+  /^[+/-]/u,
+  /[\p{Cc}\s~^:?*[\\]/u,
+  /\.\./u,
+  /\/\//u,
+  /@\{/u,
+  /[/.]$/u,
+  /(?:^|\/)\./u,
+  /\.lock(?:\/|$)/u,
+] as const;
+const isLiteralGitRef = (ref: string): boolean => !INVALID_REF_PATTERNS.some((pattern) => pattern.test(ref));
 export const parseGitInclude = (
   entry: NormalizedInclude,
 ): {
@@ -86,6 +114,13 @@ export const parseGitInclude = (
   const parsed = parseSourceRef(entry.source);
   const path = safeRelativeSubpath(entry.path ?? gitHubPathFromSource(parsed.value), entry.source);
   const ref = entry.version ?? parsed.ref;
+  if (ref !== undefined && !isLiteralGitRef(ref))
+    throw includeError({
+      message: `Invalid git include ref ${ref} for ${entry.source}.`,
+      source: entry.source,
+      kind: "source-unresolved",
+      remediation: "Use a valid git tag, branch, or full commit SHA.",
+    });
   return {
     sourceId: `${gitRepoIdentity(parsed.value)}/${path}`,
     cloneUrl: gitCloneUrl(parsed.value),
@@ -109,11 +144,12 @@ export const parseNpmInclude = (
   const subpath =
     entry.path ?? (parsed.value.startsWith("@") ? parts.slice(2).join("/") : parts.slice(1).join("/"));
   const packageSpec = requestedVersion === undefined ? packageName : `${packageName}@${requestedVersion}`;
+  const path = safeRelativeSubpath(subpath, entry.source);
   return {
-    sourceId: `npm:${parsed.value}`,
+    sourceId: `npm:${packageName}/${path}`,
     packageSpec,
     packageName,
     ...(requestedVersion === undefined ? {} : { requestedVersion }),
-    path: safeRelativeSubpath(subpath, entry.source),
+    path,
   };
 };

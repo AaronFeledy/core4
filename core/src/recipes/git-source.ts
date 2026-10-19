@@ -14,6 +14,7 @@ import {
 
 export interface GitRecipeCloneInput {
   readonly url: string;
+  readonly ref?: string;
   readonly stagingDir: string;
   readonly dest: string;
 }
@@ -68,9 +69,22 @@ const runGit = async (args: ReadonlyArray<string>, cwd?: string): Promise<string
 };
 
 export const defaultGitRecipeCloner: GitRecipeCloner = {
-  clone: async ({ url, stagingDir }) => {
-    await runGit(["clone", "--depth", "1", "--", url, stagingDir]);
-    return { commitSha: await runGit(["rev-parse", "HEAD"], stagingDir) };
+  clone: async ({ url, dest, ref }) => {
+    await runGit(["init", "-q", dest]);
+    await runGit(["-C", dest, "fetch", "-q", "--depth", "1", "--no-tags", "--", url, ref ?? "HEAD"]);
+    await runGit([
+      "-C",
+      dest,
+      "-c",
+      "core.autocrlf=false",
+      "-c",
+      "core.eol=lf",
+      "checkout",
+      "-q",
+      "--detach",
+      "FETCH_HEAD",
+    ]);
+    return { commitSha: await runGit(["-C", dest, "rev-parse", "HEAD"]) };
   },
 };
 
