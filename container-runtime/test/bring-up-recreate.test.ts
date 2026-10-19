@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -10,7 +10,9 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
@@ -95,15 +97,24 @@ const inspectBody = (
 const inspectWithoutPortBindings = (running: boolean): string =>
   JSON.stringify({ State: { Running: running } });
 
+const createConfigSchema = Schema.Struct({
+  Labels: Schema.Record(Schema.String, Schema.String),
+  Env: Schema.Array(Schema.String),
+  Cmd: Schema.optional(Schema.Array(Schema.String)),
+});
+
 const makeFakeApi = (input: {
   readonly deleteStatus: number;
   readonly omitPortBindings?: boolean;
   readonly existingBindSource?: string;
   readonly existingContainerName?: string;
+  readonly existingNativeId?: string;
   readonly existingNetworks?: ReadonlyArray<string>;
   readonly networkExists?: boolean;
   readonly containerExists?: boolean;
   readonly running?: boolean;
+  readonly existingLabels?: Readonly<Record<string, string>>;
+  readonly existingPlan?: AppPlan;
   readonly additionalMounts?: ReadonlyArray<{
     readonly Type: string;
     readonly Source: string;
@@ -121,6 +132,13 @@ const makeFakeApi = (input: {
   let running = input.running ?? true;
   let hostPort = "18080";
   let bindSource = input.existingBindSource;
+  const original = input.existingPlan ?? planWithHostPort(18080);
+  const originalService = original.services[serviceName];
+  if (originalService === undefined) throw new Error("Test service is missing.");
+  let config: typeof createConfigSchema.Type = {
+    Labels: input.existingLabels ?? commonContainerLabels(original, originalService),
+    Env: [],
+  };
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
@@ -142,22 +160,30 @@ const makeFakeApi = (input: {
             input.omitPortBindings === true
               ? inspectWithoutPortBindings(running)
               : inspectBody(hostPort, running, bindSource, input.existingNetworks);
+          const inspected: unknown = JSON.parse(body);
+          if (typeof inspected !== "object" || inspected === null) {
+            throw new TypeError("Fake container inspect must be an object.");
+          }
           return {
             status: 200,
-            body:
-              input.agentMount === undefined
-                ? body
-                : JSON.stringify({
-                    ...JSON.parse(body),
-                    Mounts: [input.agentMount, ...(input.additionalMounts ?? [])],
-                  }),
+            body: JSON.stringify({
+              ...inspected,
+              Id: input.existingNativeId ?? input.existingContainerName ?? containerName,
+              Config: config,
+              ...(input.agentMount === undefined
+                ? {}
+                : { Mounts: [input.agentMount, ...(input.additionalMounts ?? [])] }),
+            }),
           };
         }
         if (request.method === "POST" && action === "stop") {
           running = false;
           return { status: 204, body: "" };
         }
-        if (request.method === "DELETE" && name === (input.existingContainerName ?? containerName)) {
+        if (
+          request.method === "DELETE" &&
+          name === (input.existingNativeId ?? input.existingContainerName ?? containerName)
+        ) {
           if (input.deleteStatus === 204) {
             exists = false;
             running = false;
@@ -166,6 +192,7 @@ const makeFakeApi = (input: {
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create")) {
           if (exists) return { status: 409, body: "already exists" };
+          config = Schema.decodeUnknownSync(createConfigSchema)(request.body);
           exists = true;
           hostPort = "38080";
           bindSource = "/home/user/new/host-proxy.sock";
@@ -188,6 +215,146 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 describe("Podman publish-port recreate", () => {
+  test("recreate stops and deletes the observed owned native ID", async () => {
+    // Given
+    const fake = makeFakeApi({ deleteStatus: 204, existingNativeId: "observed-owned-id" });
+    // When
+    await Effect.runPromise(bringUp(planWithHostPort(38080), { api: fake.api, ctx }));
+    // Then
+    expect(
+      fake.calls
+        .filter((call) => call.path.endsWith("/stop") || call.method === "DELETE")
+        .map((call) => call.path),
+    ).toEqual(["/containers/observed-owned-id/stop", "/containers/observed-owned-id?force=true"]);
+  });
+  test("migrates a missing create-config label once without deleting volumes", async () => {
+    // Given an existing container from before create-config labels.
+    const plan = planWithHostPort(38080);
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingLabels: {
+        "dev.lando.app": plan.id,
+        "dev.lando.app-root": plan.root,
+        "dev.lando.service": serviceName,
+      },
+    });
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
+    // When the same plan is applied again after migration.
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
+    // Then the replacement is reused and no volume was deleted.
+    expect(result.changed).toBe(false);
+    expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
+      `/containers/${containerName}?force=true`,
+    ]);
+  });
+
+  test("keeps the desired digest when resolved environment overrides change", async () => {
+    // Given desired secret references and a first resolved value.
+    const base = planWithHostPort(38080);
+    const service = base.services[serviceName];
+    if (service === undefined) throw new Error("Test service is missing.");
+    const plan: AppPlan = {
+      ...base,
+      services: { [serviceName]: { ...service, environment: { PASSWORD: "${secret:db/password}" } } },
+    };
+    const fake = makeFakeApi({ deleteStatus: 204, containerExists: false });
+    await Effect.runPromise(
+      bringUp(plan, {
+        api: fake.api,
+        ctx,
+        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-before" } },
+      }),
+    );
+    // When the resolved bytes change without a desired reference change.
+    const result = await Effect.runPromise(
+      bringUp(plan, {
+        api: fake.api,
+        ctx,
+        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-after" } },
+      }),
+    );
+    // Then actual create received the secret, but its label contains only the desired opaque digest.
+    expect(result.changed).toBe(false);
+    expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(createCalls(fake.calls)[0]?.body).toMatchObject({
+      Env: ["PASSWORD=resolved-before"],
+      Labels: { [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v1:[a-f0-9]{64}$/u) },
+    });
+    expect(createCalls(fake.calls)[0]?.body).toHaveProperty(
+      ["Labels", CREATE_CONFIG_LABEL],
+      commonContainerLabels(plan, plan.services[serviceName] ?? service)[CREATE_CONFIG_LABEL],
+    );
+  });
+
+  test("forbidRecreate rejects config drift before any mutation", async () => {
+    // Given an owned running container with a previous config.
+    const plan = planWithHostPort(18080);
+    const service = plan.services[serviceName];
+    if (service === undefined) throw new Error("Test service is missing.");
+    const fake = makeFakeApi({ deleteStatus: 204, networkExists: true });
+    const updated: AppPlan = {
+      ...plan,
+      services: { [serviceName]: { ...service, environment: { MODE: "after" } } },
+    };
+    // When an in-place restart encounters config drift.
+    const error = await Effect.runPromise(
+      Effect.flip(
+        bringUp(updated, {
+          api: fake.api,
+          ctx,
+          reconcile: false,
+          forbidRecreate: true,
+        }),
+      ),
+    );
+    // Then it refuses and leaves the existing container untouched.
+    expect(error).toMatchObject({ _tag: "ServiceRestartWouldRecreateError", reason: "config" });
+    expect(error.remediation).toContain("lando rebuild -s web");
+    expect(fake.calls.every((call) => call.method === "GET")).toBe(true);
+  });
+
+  test.each(["environment", "command"] as const)(
+    "recreates with the new create config when %s changes with reconcile=false",
+    async (field) => {
+      // Given an original container created through the same fake API.
+      const fake = makeFakeApi({ deleteStatus: 204, containerExists: false });
+      const base = planWithHostPort(38080);
+      const service = base.services[serviceName];
+      if (service === undefined) throw new Error("Test service is missing.");
+      const original: AppPlan = {
+        ...base,
+        services: {
+          [serviceName]: { ...service, environment: { MODE: "before" }, command: ["sleep", "60"] },
+        },
+      };
+      await Effect.runPromise(bringUp(original, { api: fake.api, ctx, reconcile: false }));
+      const environment = { MODE: field === "environment" ? "after" : "before" };
+      const command = field === "command" ? ["sleep", "120"] : ["sleep", "60"];
+      const updated: AppPlan = {
+        ...base,
+        services: { [serviceName]: { ...service, environment, command } },
+      };
+
+      // When ordinary start applies a change to only the environment or command.
+      await Effect.runPromise(bringUp(updated, { api: fake.api, ctx, reconcile: false }));
+
+      // Then the old container is removed between creates and the replacement uses the new config.
+      const creates = createCalls(fake.calls);
+      expect({
+        createCount: creates.length,
+        lifecycle: fake.calls
+          .filter((call) => creates.includes(call) || call.method === "DELETE")
+          .map((call) => call.method),
+        lastConfig: creates.at(-1)?.body,
+      }).toMatchObject({
+        createCount: 2,
+        lifecycle: ["POST", "DELETE", "POST"],
+        lastConfig: { Env: [`MODE=${environment.MODE}`], Cmd: command },
+      });
+    },
+  );
+
   test("forbidRecreate refuses a missing container without creating one", async () => {
     // Given a container removed after the operation's preflight.
     const fake = makeFakeApi({ deleteStatus: 204, networkExists: true, containerExists: false });
@@ -211,7 +378,7 @@ describe("Podman publish-port recreate", () => {
   ] as const)("SSH overlay recreation: %s %s to %s %s", async (oldType, oldSource, type, source, changed) => {
     // Given
     const target = PortablePath.make("/run/lando/ssh-agent");
-    const fake = makeFakeApi({
+    const fakeInput = {
       deleteStatus: 204,
       agentMount: {
         Type: oldType,
@@ -219,7 +386,7 @@ describe("Podman publish-port recreate", () => {
         ...(oldType === "volume" ? { Name: oldSource } : {}),
         Destination: target,
       },
-    });
+    };
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
@@ -244,6 +411,7 @@ describe("Podman publish-port recreate", () => {
       },
     };
     // When
+    const fake = makeFakeApi({ ...fakeInput, existingPlan: plan });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
     // Then
     expect(result.changed).toBe(changed);
@@ -256,7 +424,7 @@ describe("Podman publish-port recreate", () => {
     ["bind", "bind", "/previous/ssh-agent", true],
   ] as const)("SSH sidecar storage volume: %s", async (_scenario, oldType, oldSource, changed) => {
     const target = PortablePath.make("/run/lando/ssh-agent");
-    const fake = makeFakeApi({
+    const fakeInput = {
       deleteStatus: 204,
       ...(oldType === undefined || oldSource === undefined
         ? {}
@@ -268,7 +436,7 @@ describe("Podman publish-port recreate", () => {
               Destination: target,
             },
           }),
-    });
+    };
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
@@ -281,6 +449,7 @@ describe("Podman publish-port recreate", () => {
         },
       },
     };
+    const fake = makeFakeApi({ ...fakeInput, existingPlan: plan });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
     expect(result.changed).toBe(changed);
     expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
@@ -293,7 +462,7 @@ describe("Podman publish-port recreate", () => {
     ["replace changed POSIX bind", "/previous/ssh", "/current/ssh", true, true],
   ] as const)("SSH sidecar host endpoint: %s", async (_scenario, oldSource, source, changed, running) => {
     const target = PortablePath.make("/run/lando/ssh-agent");
-    const fake = makeFakeApi({
+    const fakeInput = {
       deleteStatus: 204,
       running,
       agentMount: {
@@ -303,7 +472,7 @@ describe("Podman publish-port recreate", () => {
         Destination: target,
       },
       additionalMounts: [{ Type: "bind", Source: oldSource, Destination: "/ssh-auth" }],
-    });
+    };
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
@@ -328,6 +497,7 @@ describe("Podman publish-port recreate", () => {
         },
       },
     };
+    const fake = makeFakeApi({ ...fakeInput, existingPlan: plan });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
     expect(result.changed).toBe(changed);
     expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
@@ -375,8 +545,8 @@ describe("Podman publish-port recreate", () => {
     "recreates an existing running container without PortBindings only when reconcile=%s",
     async (reconcile) => {
       // Given
-      const fake = makeFakeApi({ deleteStatus: 204, omitPortBindings: true });
       const plan = planWithHostPort(38080);
+      const fake = makeFakeApi({ deleteStatus: 204, omitPortBindings: true, existingPlan: plan });
 
       // When
       const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile }));
@@ -529,7 +699,6 @@ describe("Podman publish-port recreate", () => {
   });
 
   test("does not compare unrelated bind sources without a host-proxy session", async () => {
-    const fake = makeFakeApi({ deleteStatus: 204, existingBindSource: "/home/user/old/host-proxy.sock" });
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
@@ -550,15 +719,16 @@ describe("Podman publish-port recreate", () => {
         },
       },
     };
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingBindSource: "/home/user/old/host-proxy.sock",
+      existingPlan: plan,
+    });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
     expect(result.changed).toBe(false);
     expect(createCalls(fake.calls)).toHaveLength(0);
   });
   test("reuses an existing container when its bind source is unchanged", async () => {
-    const fake = makeFakeApi({
-      deleteStatus: 204,
-      existingBindSource: "/home/user/new/host-proxy.sock",
-    });
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
@@ -581,13 +751,17 @@ describe("Podman publish-port recreate", () => {
       },
     };
 
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingBindSource: "/home/user/new/host-proxy.sock",
+      existingPlan: plan,
+    });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     expect(result.changed).toBe(false);
     expect(createCalls(fake.calls)).toHaveLength(0);
   });
   test("recreates a global published service on only the shared network", async () => {
-    const fake = makeFakeApi({ deleteStatus: 204, existingContainerName: "lando-global-web" });
     const plan: AppPlan = {
       ...planWithHostPort(38080),
       id: AppId.make("global"),
@@ -602,6 +776,11 @@ describe("Podman publish-port recreate", () => {
       },
     };
 
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingContainerName: "lando-global-web",
+      existingPlan: plan,
+    });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     expect(result.changed).toBe(true);
@@ -621,8 +800,8 @@ describe("Podman publish-port recreate", () => {
   });
   test("Given inspect without PortBindings, When bringing up a pinned hostPort plan, Then the running container is not recreated", async () => {
     // Given: fake inspect returns State.Running only; planned hostPort is pinned.
-    const fake = makeFakeApi({ deleteStatus: 204, omitPortBindings: true });
     const plan = planWithHostPort(38080);
+    const fake = makeFakeApi({ deleteStatus: 204, omitPortBindings: true, existingPlan: plan });
 
     // When
     const first = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));

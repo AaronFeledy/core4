@@ -116,15 +116,13 @@ glibc tools still need a generated locale. Give the Debian-based `node` service 
 
 ## Change the locale
 
-Switching `LANG` to a locale the image already has only needs a restart:
+Switching `LANG` to a locale the image already has is an environment change. Bare `lando restart` stop/starts and picks it up. `lando start` does too:
 
 ```sh
 lando restart
 ```
 
-`lando start` on an app that is already running keeps the old value. Restart it.
-
-Adding a locale changes the build step, so rebuild. Append another `localedef` to the same `run` line:
+Adding a locale changes the build step, so the next `lando start` rebuilds that image. Append another `localedef` to the same `run` line:
 
 ```yaml
 build:
@@ -134,7 +132,7 @@ build:
 ```
 
 ```sh
-lando rebuild -y
+lando start
 lando exec -- locale -a
 ```
 

@@ -83,7 +83,7 @@ export const AppConfigMigrateResultSchema = Schema.Struct({
 
 export type AppConfigMigrateResult = typeof AppConfigMigrateResultSchema.Type;
 
-const REBUILD_LINE = "run `lando rebuild`";
+const START_LINE = "run `lando start`";
 
 const formatProducer = (label: string, producer: RecipeProducer): readonly string[] => [
   `${label}: ${producer.recipeId} ${producer.manifestVersion}`,
@@ -105,7 +105,7 @@ const formatHunkLine = (
  *
  * Dry-run still prints the complete ordered hunk set so the reader can audit
  * every edit before writing. Committed and partial runs always end with the
- * rebuild instruction so the next step is unambiguous.
+ * start instruction so the next step is unambiguous.
  */
 export const renderAppConfigMigrateResult = (result: AppConfigMigrateResult): string => {
   const lines: string[] = [`Landofile: ${result.landofilePath}`, ...formatProducer("Target", result.target)];
@@ -145,8 +145,8 @@ export const renderAppConfigMigrateResult = (result: AppConfigMigrateResult): st
     }
   }
 
-  if (result.next.length > 0 && result.next !== REBUILD_LINE) lines.push(result.next);
-  if (result.status === "committed" || result.status === "partial") lines.push(REBUILD_LINE);
+  if (result.next.length > 0 && result.next !== START_LINE) lines.push(result.next);
+  if (result.status === "committed" || result.status === "partial") lines.push(START_LINE);
 
   return lines.join("\n");
 };

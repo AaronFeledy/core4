@@ -1,4 +1,5 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
+import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 
 import type {
   AppResolveError,
@@ -290,8 +291,17 @@ export interface AppliedOrphanGroup {
 
 /** What a teardown caller may act on for one app root, before any desired config is loaded. */
 export type AppliedTeardownEvidence =
-  | { readonly kind: "applied"; readonly plan: AppPlan }
-  | { readonly kind: "orphans"; readonly groups: ReadonlyArray<AppliedOrphanGroup> }
+  | {
+      readonly kind: "applied";
+      readonly plan: AppPlan;
+      readonly ownership?: ReadonlyArray<ResourceOwnership>;
+    }
+  | {
+      readonly kind: "orphans";
+      readonly groups: ReadonlyArray<AppliedOrphanGroup>;
+      readonly ownership?: ReadonlyArray<ResourceOwnership>;
+    }
+  | { readonly kind: "owned"; readonly ownership: ReadonlyArray<ResourceOwnership> }
   | { readonly kind: "absent" };
 
 /** Read-only host-wide evidence; an unobserved runtime contributes only applied plans. */
@@ -311,6 +321,10 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
+    readonly resourceOwnership?: (
+      providerId: ProviderId,
+      root: AbsolutePath,
+    ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
     readonly resolveAppliedPlan?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
@@ -342,6 +356,10 @@ export class RuntimeProvider extends Context.Service<
 
     readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
+    readonly cleanupOwnedResources?: (
+      root: AbsolutePath,
+      options: DestroyOptions,
+    ) => Effect.Effect<OwnedResourcesCleanupResult, ProviderError>;
     readonly planSetup: (
       options: ProviderSetupInspectOptions,
     ) => Effect.Effect<ProviderSetupPlan, ProviderError>;

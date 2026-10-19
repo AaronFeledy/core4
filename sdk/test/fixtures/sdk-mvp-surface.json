@@ -127,6 +127,7 @@
     "RuntimeProvider": [
       "apply: (plan: AppPlan, options: ApplyOptions) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>",
       "appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>",
+      "cleanupOwnedResources?: (root: AbsolutePath, options: DestroyOptions) => Effect.Effect<OwnedResourcesCleanupResult, ProviderError>",
       "buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>",
       "capabilities: ProviderCapabilities",
       "copyFromService: (target: ExecTarget, spec: ServiceCopyOutSpec) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>",
@@ -186,6 +187,7 @@
       "observeRuntime?: Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>, AppResolveError | ProviderError | NoProviderInstalledError>",
       "resolveAppliedPlan?: (root: AbsolutePath) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>",
       "resolveTeardownEvidence?: (root: AbsolutePath) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>",
+      "resourceOwnership?: (providerId: ProviderId, root: AbsolutePath) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>",
       "select: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>"
     ],
     "ShellRunner": [

@@ -71,10 +71,10 @@ services:
 
 Lando bakes a reviewed, upstream-based `conf/server.xml` into every catalog image, including when `port:` is omitted or set to `8080`. Each supported major pairs an exact image version and immutable multiarch digest with its matching Apache configuration. Only the active HTTP connector's port is customized. Apache notices, listeners, realms, valves, shutdown settings, deployment defaults, and commented AJP/TLS examples stay intact. No startup script rewrites the config, and your `command:` and `entrypoint:` stay yours.
 
-Rebuild after changing the port, then check the listener from inside the service:
+Start after changing the port, then check the listener from inside the service:
 
 ```sh
-lando rebuild -y
+lando start
 lando exec appserver -- curl --fail --silent http://127.0.0.1:9090/
 ```
 
