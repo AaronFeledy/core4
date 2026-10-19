@@ -33,6 +33,7 @@ import {
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
+import { presentLogicalCreateConfig } from "@lando/container-runtime/podman/bring-up-recreate";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
@@ -999,7 +1000,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
           const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
-          if (physical === plan || runtime.networkNames === undefined) return runtime;
+          if (physical === plan) return runtime;
+          const logicalRuntime = {
+            ...runtime,
+            ...(runtime.labels === undefined
+              ? {}
+              : {
+                  labels: presentLogicalCreateConfig(runtime.labels, {
+                    physical,
+                    logical: plan,
+                    service: target.service,
+                  }),
+                }),
+          };
+          if (runtime.networkNames === undefined) return logicalRuntime;
           const logicalNames = new Map<string, string>();
           if (physical.networking !== undefined && plan.networking !== undefined) {
             logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
@@ -1010,7 +1024,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             }
           }
           return {
-            ...runtime,
+            ...logicalRuntime,
             networkNames: runtime.networkNames.map((name) => logicalNames.get(name) ?? name),
           };
         }),

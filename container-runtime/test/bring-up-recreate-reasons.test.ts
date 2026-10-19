@@ -11,8 +11,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
+import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import { commonContainerLabels } from "../src/plan.ts";
-import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
+import { bringUpRecreateReasons, presentLogicalCreateConfig } from "../src/podman/bring-up-recreate.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
@@ -61,6 +62,63 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+
+describe("presentLogicalCreateConfig", () => {
+  const physical: AppPlan = {
+    ...plan,
+    networking: { perAppBridge: { name: "machine-physical-network", driver: "bridge" } },
+  };
+
+  test("translates an exact physical match while preserving all other labels", () => {
+    // Given physical create evidence with an unrelated label.
+    const labels: Readonly<Record<string, string>> = {
+      ...commonContainerLabels(physical, service),
+      unrelated: "preserved",
+    };
+    const logical = commonContainerLabels(plan, service)[CREATE_CONFIG_LABEL];
+    if (logical === undefined) throw new TypeError("logical fingerprint is missing");
+    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(logical);
+    // When inspect presents the evidence in the logical representation.
+    const presented = presentLogicalCreateConfig(labels, { physical, logical: plan, service: serviceName });
+    // Then only the fingerprint changes, without mutating the daemon labels.
+    expect(presented).toEqual({ ...labels, [CREATE_CONFIG_LABEL]: logical });
+    expect(labels[CREATE_CONFIG_LABEL]).toBe(commonContainerLabels(physical, service)[CREATE_CONFIG_LABEL]);
+  });
+
+  const staleLabels: Array<Readonly<Record<string, string>>> = [
+    {},
+    { [CREATE_CONFIG_LABEL]: "v1:old-config" },
+  ];
+  test.each(staleLabels)("reports config drift for missing or mismatched physical evidence: %j", (labels) => {
+    // Given absent or stale physical create evidence.
+    // When inspect tries to present a logical fingerprint.
+    const presented = presentLogicalCreateConfig(labels, { physical, logical: plan, service: serviceName });
+    // Then unverified physical evidence cannot be presented as a config match.
+    expect(presented[CREATE_CONFIG_LABEL]).toBeUndefined();
+    expect(bringUpRecreateReasons(plan, service, { labels: presented }, { skipAbsentFields: true })).toEqual([
+      "config",
+    ]);
+  });
+
+  test("reports config drift when observed logical evidence does not match physical creation", () => {
+    // Given logical labels that cannot prove the physical network configuration.
+    const labels: Readonly<Record<string, string>> = {
+      ...commonContainerLabels(plan, service),
+      unrelated: "preserved",
+    };
+    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(
+      commonContainerLabels(physical, service)[CREATE_CONFIG_LABEL],
+    );
+    // When inspect presents physical evidence for logical preflight.
+    const presented = presentLogicalCreateConfig(labels, { physical, logical: plan, service: serviceName });
+    // Then the unverified fingerprint cannot hide config drift.
+    expect(presented[CREATE_CONFIG_LABEL]).toBeUndefined();
+    expect(presented.unrelated).toBe("preserved");
+    expect(bringUpRecreateReasons(plan, service, { labels: presented }, { skipAbsentFields: true })).toEqual([
+      "config",
+    ]);
+  });
+});
 
 describe("bringUpRecreateReasons", () => {
   test("reports known missing config labels even when absent custom metadata is skipped", () => {

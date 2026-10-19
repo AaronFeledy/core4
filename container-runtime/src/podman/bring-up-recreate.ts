@@ -1,5 +1,10 @@
 import { ServiceRestartWouldRecreateError } from "@lando/sdk/errors";
-import { AGENT_SOCKET_CONTAINER_DIR, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
+import {
+  AGENT_SOCKET_CONTAINER_DIR,
+  type AppPlan,
+  type ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../create-fingerprint.ts";
 import { commonContainerLabels, fingerprintPlannedPublishPorts } from "../plan.ts";
@@ -75,6 +80,33 @@ export const inspectContainerLabels = (body: unknown): Readonly<Record<string, s
   return Object.fromEntries(
     Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
+};
+
+/** Present logical evidence only after verifying the full physical create configuration. */
+export const presentLogicalCreateConfig = (
+  labels: Readonly<Record<string, string>>,
+  plans: { readonly physical: AppPlan; readonly logical: AppPlan; readonly service: ServiceName },
+): Readonly<Record<string, string>> => {
+  const physicalService = plans.physical.services[plans.service];
+  const logicalService = plans.logical.services[plans.service];
+  if (physicalService === undefined || logicalService === undefined) return labels;
+  const physicalExpected = commonContainerLabels(plans.physical, physicalService)[CREATE_CONFIG_LABEL];
+  const logicalExpected = commonContainerLabels(plans.logical, logicalService)[CREATE_CONFIG_LABEL];
+  if (
+    physicalExpected === undefined ||
+    logicalExpected === undefined ||
+    labels[CREATE_CONFIG_LABEL] === undefined
+  ) {
+    return labels;
+  }
+  if (labels[CREATE_CONFIG_LABEL] !== physicalExpected) {
+    if (physicalExpected === logicalExpected) return labels;
+    return Object.fromEntries(Object.entries(labels).filter(([key]) => key !== CREATE_CONFIG_LABEL));
+  }
+  return {
+    ...labels,
+    [CREATE_CONFIG_LABEL]: logicalExpected,
+  };
 };
 
 export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspectSnapshot): boolean => {
