@@ -162,7 +162,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
       resultSchema: DoctorReportSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
     const parsed = Schema.decodeUnknownSync(Schema.Struct({ result: DoctorReportSchema }))(
       Bun.YAML.parse(io.stdout()),

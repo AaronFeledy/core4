@@ -65,7 +65,7 @@ const spec = (
 const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) as const),
-    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } as const)),
+    Effect.catch((error) => Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const)),
   ) as ReturnType<McpDispatchDeps["execute"]>;
 
 interface Harness {

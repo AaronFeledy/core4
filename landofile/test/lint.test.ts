@@ -31,6 +31,21 @@ describe("lintLandofile", () => {
 
   const write = async (content: string) => writeFile(join(dir, ".lando.yml"), content, "utf8");
 
+  test("preserves the closest-key suggestion when an unknown key contains a planner expression", async () => {
+    // Given
+    await write('name: typo\nservices:\n  web:\n    primry: "{{ app.name }}"\n');
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    // Then
+    expect(result.valid).toBe(false);
+    expect(result.violations).toContainEqual(
+      expect.objectContaining({
+        path: ["services", "web", "primry"],
+        suggestion: 'Did you mean "primary"?',
+      }),
+    );
+  });
+
   test("reports invalid route shorthand with the authored key path", async () => {
     // Given
     await write(
@@ -161,6 +176,34 @@ describe("lintLandofile", () => {
         exit.value.violations.some((violation) => formatValidationIssuePath(violation.path) === "recipe"),
       ).toBe(true);
     }
+  });
+
+  test("accepts whole-value typed expressions before schema validation", async () => {
+    // Given
+    await write(
+      "name: typed\nservices:\n  web:\n    primary: \"{{ eq(default(env.LANDO_TYPED_FLAG, 'off'), 'on') }}\"\n",
+    );
+    // When
+    const exit = await lint(dir);
+    // Then
+    expect(Exit.isSuccess(exit) && exit.value.valid).toBe(true);
+  });
+
+  test("reports an unset env expression at its path in the authoring layer", async () => {
+    // Given
+    await write("name: typed\n");
+    await writeFile(
+      join(dir, ".lando.base.yml"),
+      'services:\n  web:\n    primary: "{{ env.LANDO_TYPED_UNSET_FOR_LINT }}"\n',
+    );
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    // Then
+    expect(result).toMatchObject({
+      valid: false,
+      file: join(dir, ".lando.base.yml"),
+      violations: [{ path: ["services", "web", "primary"] }],
+    });
   });
 
   test("same-layer YAML and TS forms fail with LandofileFormConflictError", async () => {

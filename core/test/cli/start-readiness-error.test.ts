@@ -29,7 +29,7 @@ test.each(["app:start", "app:restart", "app:rebuild", "meta:global:start"])(
       resultFormat: "json",
       resultSchema: Schema.Struct({}),
       io,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },

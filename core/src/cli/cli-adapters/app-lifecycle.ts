@@ -11,6 +11,7 @@ import {
 } from "../commands/doctor-report";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
+  activeCommandId,
   activeDeprecationWarnings,
   activeJq,
   activeProjectResultKeys,
@@ -59,8 +60,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
-      formatError: (error) => {
-        const message = commandErrorMessage(error);
+      formatError: (failure) => {
+        const message = commandErrorMessage(failure, activeCommandId);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
       },
     },

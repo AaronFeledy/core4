@@ -368,7 +368,7 @@ export const dispatchMcpCommand = async (params: {
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
-  readonly formatError: (error: unknown) => string;
+  readonly formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) => string;
 }): Promise<void> => {
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {

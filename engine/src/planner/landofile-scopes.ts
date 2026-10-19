@@ -103,6 +103,7 @@ export const materializeLandofileScopes = (
   const appSlug = normalizeAppSlug(input.landofile.name ?? "app", input.appRoot);
   const defaultDomain = readProxyDefaultDomain(input.globalConfig ?? {});
   const materialized = materializeExpressionScopes(input.landofile, input.landofilePath, {
+    textOnly: true,
     scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
     context: {
       app: { name: appSlug, slug: appSlug },
@@ -180,6 +181,7 @@ export const materializeServiceScopeSites = <T extends object>(
 ): Effect.Effect<T, ConfigExpressionError> => {
   const eligibleSites = new Set(input.deferredSites.map((site) => deferredSiteKey(site.path)));
   const materialized = materializeExpressionScopes(input.value, input.landofilePath, {
+    textOnly: true,
     scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
     context: input.context,
     eligible: (_value, path) => eligibleSites.has(deferredSiteKey([...input.pathPrefix, ...path])),

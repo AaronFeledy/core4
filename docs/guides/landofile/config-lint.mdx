@@ -14,6 +14,8 @@ lando app:config:lint
 
 That validates the current app's Landofile against the canonical schema, then checks that every key under `events:` names an event Lando can actually run. No translators, no doctor checks, no provider probes, no container runtime. A clean Landofile exits `0`.
 
+Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Plan-time sites (`app.*`, `proxy.*`, `services.<name>.creds.*`) stay text; one at a boolean or number field is a violation with a suggestion to use a literal or a recipe/env expression. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
+
 Lint reports every problem in one run. A Landofile with three independent mistakes gets three violations, not one, so you fix the file once instead of playing whack-a-mole with the validator.
 
 ## Print JSON
@@ -60,7 +62,7 @@ When Lando cannot resolve your services at all, lint reports that resolution fai
 
 ## Validate as you type
 
-Your editor can flag the same problems before you run anything. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
+Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
   <Scenario id="clean-landofile" render>

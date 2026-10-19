@@ -477,7 +477,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
       return;
     }
-    await emitDiagnosticLine(commandErrorMessage(error));
+    await emitDiagnosticLine(commandErrorMessage({ error, additionalErrors: [] }));
     process.exitCode = 1;
     return;
   }

@@ -66,6 +66,8 @@ lando db:seed --from-path ../shop --from-service database
 
 A dump file works from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`. Use `db:import` to load data into a database that's already in use.
 
+If another service fails after Lando creates the database volume, fix that error and run `lando start` again. You can still use `db:seed` while the database stays fresh and empty. A volume Lando didn't create, or whose creation it couldn't record, isn't eligible.
+
 ```sh
 lando db:seed ../shared/baseline.sql.gz
 ```

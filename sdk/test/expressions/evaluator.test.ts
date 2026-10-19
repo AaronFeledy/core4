@@ -65,6 +65,73 @@ const evaluateTemplateFailure = (source: string, context: ExpressionContext = {}
 };
 
 describe("evaluateExpression happy paths", () => {
+  for (const [helper, cases] of [
+    [
+      "number",
+      [
+        [8080, 8080],
+        [-1.5, -1.5],
+        [" 8080 ", 8080],
+        ["-1.5", -1.5],
+        ["2e3", 2000],
+        ["", null],
+        [" ", null],
+        ["0x1F", null],
+        ["Infinity", null],
+        ["NaN", null],
+        ["1_000", null],
+        ["1e999", null],
+        [true, null],
+        [false, null],
+        [null, null],
+        [[], null],
+        [{}, null],
+        [Number.POSITIVE_INFINITY, null],
+        [Number.NaN, null],
+      ],
+    ],
+    [
+      "boolean",
+      [
+        [true, true],
+        [false, false],
+        [1, true],
+        [0, false],
+        [2, null],
+        [-1, null],
+        [" TRUE ", true],
+        ["Yes", true],
+        ["on", true],
+        ["1", true],
+        [" FALSE ", false],
+        ["No", false],
+        ["off", false],
+        ["0", false],
+        ["", null],
+        [" ", null],
+        ["maybe", null],
+        [null, null],
+        [[], null],
+        [{}, null],
+      ],
+    ],
+  ] as const) {
+    for (const [input, expected] of cases) {
+      for (const source of [`{{ ${helper}(vars.input) }}`, `{{ vars.input | ${helper} }}`]) {
+        test(`${source} converts ${JSON.stringify(input)} to ${expected}`, () => {
+          // Given / When / Then
+          expect(evaluateExpressionValue(source, { vars: { input } })).toBe(expected);
+        });
+      }
+    }
+    test.each([`{{ ${helper}() }}`, `{{ ${helper}(1, 2) }}`, `{{ ${helper}(env.MISSING) }}`])(
+      "rejects converter misuse: %s",
+      (source) => {
+        // Given / When / Then
+        expect(evaluateExpressionFailure(source, { env: {} })._tag).toBe("LandofileExpressionEvalError");
+      },
+    );
+  }
   test("uses default for an unset env read", () => {
     expect(evaluateExpressionValue('{{ default(env.NOT_SET, "fallback") }}', { env: {} })).toBe("fallback");
   });

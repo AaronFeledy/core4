@@ -101,7 +101,7 @@ for (const mode of ["lando", "plain", "json", "verbose"] as const) {
                 expect(context.columns).toBe(100);
                 return `${value.value}:${context.isTTY ? "terminal" : "pipe"}`;
               },
-              formatError: String,
+              formatError: ({ error }) => String(error),
               setExitCode: (code) => {
                 expect(code).toBe(0);
               },

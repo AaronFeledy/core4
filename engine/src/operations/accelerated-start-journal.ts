@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { Cause, Effect, Exit } from "effect";
+import { type Cause, Effect, Exit } from "effect";
 
 import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
+import { mergeFailure } from "../lifecycle/failure-compensation.ts";
 
 import {
   type PendingStart,
@@ -220,7 +221,7 @@ export const beginAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan,
     original: Cause.Cause<E>,
   ): Effect.fn.Return<Cause.Cause<E | FileSyncStartError>> {
     const saved = yield* Effect.exit(phase("retained"));
-    return Exit.isFailure(saved) ? Cause.combine(original, saved.cause) : original;
+    return Exit.isFailure(saved) ? mergeFailure(original, saved.cause, "cleanup") : original;
   }, Effect.uninterruptible);
   return {
     phase,

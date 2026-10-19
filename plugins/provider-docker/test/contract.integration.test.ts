@@ -37,6 +37,7 @@ import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -316,6 +317,7 @@ const makeFakeApi = () => {
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
   const volumes = new Set<string>();
+  const createdVolumes = new Map<string, unknown>();
   const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
@@ -338,12 +340,22 @@ const makeFakeApi = () => {
           const name = (request.body as { Name?: string }).Name ?? "";
           const existed = volumes.has(name);
           volumes.add(name);
-          return { status: existed ? 409 : 201, body: "{}" };
+          if (!existed) createdVolumes.set(name, request.body);
+          return { status: existed ? 409 : 201, body: JSON.stringify(request.body) };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "GET") {
+          const volume = createdVolumes.get(decodeURIComponent(request.path.slice("/volumes/".length)));
+          return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "DELETE") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          createdVolumes.delete(name);
+          return { status: volumes.delete(name) ? 204 : 404, body: "" };
         }
         if (request.path === "/networks/lando_bridge_network/connect") {
           return { status: 200, body: "{}" };
         }
-        if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
@@ -967,6 +979,15 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     await Effect.runPromise(runProviderContract(provider));
+    await Effect.runPromise(
+      runProviderVolumeCreationContract(
+        provider,
+        () =>
+          fake.calls.filter(
+            (call) => call.method === "POST" && /\/containers\/[^/]+\/start$/u.test(call.path),
+          ).length,
+      ),
+    );
 
     expect(provider.capabilities.bindMountPerformance).toBe("native");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);

@@ -50,7 +50,7 @@ describe("redaction integration on emitting surfaces", () => {
       runtime: realRedactionLayer,
       rendererMode: "plain",
       io,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
       setExitCode: () => undefined,
     });
 
