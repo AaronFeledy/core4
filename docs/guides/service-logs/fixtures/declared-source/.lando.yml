@@ -1,0 +1,8 @@
+name: declared-log-source
+services:
+  app:
+    type: node:22
+    logs:
+      - path: /tmp/app.log
+        id: applog
+        timestamps: true
