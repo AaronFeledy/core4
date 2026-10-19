@@ -7,8 +7,8 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { updateLandofileIncludes as updateLandofileIncludesPackage } from "../src/includes.ts";
 import type { GitIncludeCloner } from "../src/includes.ts";
+import { updateAuthoredIncludes as updateLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
 
 const updateLandofileIncludes = (options: Parameters<typeof updateLandofileIncludesPackage>[0]) =>

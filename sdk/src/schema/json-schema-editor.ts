@@ -3,7 +3,7 @@ import { JsonSchema } from "effect";
 import { GlobalConfig } from "./config.ts";
 import { jsonSchemaDocument, withSchemaDeprecations } from "./json-schema-deprecations.ts";
 import { repairLandofileExtensions } from "./json-schema-extensions.ts";
-import { LandofileShape } from "./landofile.ts";
+import { LandofileAuthoringShape } from "./landofile-authoring.ts";
 
 const YAML_KINDS = ["scalar", "sequence", "mapping"] as const;
 
@@ -22,7 +22,7 @@ const LANDOFILE_YAML_TAGS = {
 
 /** Draft-07 projection for YAML editors, derived from the public contracts. */
 export const getEditorJsonSchema = (name: "LandofileShape" | "GlobalConfig"): JsonSchema.JsonSchema => {
-  const schema = { LandofileShape, GlobalConfig }[name];
+  const schema = { LandofileShape: LandofileAuthoringShape, GlobalConfig }[name];
   const document = JsonSchema.toDocumentDraft07(
     jsonSchemaDocument(schema, { onExcessProperty: "error", generateDescriptions: true }),
   );

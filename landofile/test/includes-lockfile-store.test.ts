@@ -10,7 +10,10 @@ import type { StateStoreShape } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 
 import type { GitIncludeCloner } from "../src/includes.ts";
-import { updateLandofileIncludes, verifyLandofileIncludes } from "../src/includes.ts";
+import {
+  updateAuthoredIncludes as updateLandofileIncludes,
+  verifyAuthoredIncludes as verifyLandofileIncludes,
+} from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const sha256 = (content: string): string => new Bun.CryptoHasher("sha256").update(content).digest("hex");

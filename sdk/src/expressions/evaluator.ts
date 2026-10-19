@@ -1045,6 +1045,27 @@ const HELPERS: Record<string, Helper> = {
     assertArgCount("lower", args, state, 1);
     return asString("lower", args[0], state).toLowerCase();
   },
+  number: (args, state) => {
+    assertArgCount("number", args, state, 1);
+    const value = requireResolved(args[0], state, 'Helper "number" received a missing value.');
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (typeof value !== "string") return null;
+    const text = value.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return null;
+    const converted = Number(text);
+    return Number.isFinite(converted) ? converted : null;
+  },
+  boolean: (args, state) => {
+    assertArgCount("boolean", args, state, 1);
+    const value = requireResolved(args[0], state, 'Helper "boolean" received a missing value.');
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
+    if (typeof value !== "string") return null;
+    const text = value.trim().toLowerCase();
+    if (["true", "yes", "on", "1"].includes(text)) return true;
+    if (["false", "no", "off", "0"].includes(text)) return false;
+    return null;
+  },
   upper: (args, state) => {
     assertArgCount("upper", args, state, 1);
     return asString("upper", args[0], state).toUpperCase();

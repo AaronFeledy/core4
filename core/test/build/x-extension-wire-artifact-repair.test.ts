@@ -64,9 +64,9 @@ describe("embedded wire closed x-* artifact repair", () => {
   });
 
   test("pins the reviewed directive transport capture independently of the historical repair", () => {
-    expect(directiveCapture.provenanceCommit).toBe("31996b06836f2647a61851f5a8d337df6d61ba23");
+    expect(directiveCapture.provenanceCommit).toBe("614e804a9369ec2e6e751de16031f4cea8ee989d");
     expect(createHash("sha256").update(directiveBytes).digest("hex")).toBe(
-      "28de00715c624a03f017e473db4124e9c137dae14064669f3957429c501be10a",
+      "a343c5de1e034ba4b9dbb5bfe8da1b5235be6a70d2d4ffd1dc5c06fe8d59cdb5",
     );
     expect(jsonEquals(directiveCaptured.fragment, captured.fragment)).toBe(false);
   });

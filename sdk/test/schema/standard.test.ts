@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { GlobalConfig, LandofileShape, PluginManifest, RecipeManifest } from "@lando/sdk/schema";
+import {
+  GlobalConfig,
+  LandofileShape,
+  PluginManifest,
+  RecipeManifest,
+  getEditorJsonSchema,
+} from "@lando/sdk/schema";
 import {
   GlobalConfigStandardJSONSchema,
   GlobalConfigStandardSchema,
@@ -68,10 +74,25 @@ describe("Standard Schema views", () => {
         const input = json["~standard"].jsonSchema.input({ target });
         const output = json["~standard"].jsonSchema.output({ target });
         // Then both documents describe objects and retain their declared properties.
-        expect(input).toHaveProperty("type", "object");
-        expect(output).toHaveProperty("type", "object");
-        expect(input).toHaveProperty("properties");
-        expect(output).toHaveProperty("properties");
+        for (const document of [input, output]) {
+          const reference = document.$ref;
+          const definition =
+            typeof reference === "string"
+              ? reference
+                  .split("/")
+                  .reduce<unknown>(
+                    (node, key) =>
+                      key === "#"
+                        ? node
+                        : typeof node === "object" && node !== null
+                          ? Reflect.get(node, key)
+                          : undefined,
+                    document,
+                  )
+              : document;
+          expect(definition).toHaveProperty("type", "object");
+          expect(definition).toHaveProperty("properties");
+        }
       }
       expect(json["~standard"].vendor).toBe("effect");
     }
@@ -85,11 +106,24 @@ describe("Standard Schema views", () => {
     }
   });
 
+  test("uses the closed editor input document for Standard JSON Schema", () => {
+    const input = LandofileStandardJSONSchema["~standard"].jsonSchema.input({ target: "draft-07" });
+    expect(input).toEqual(getEditorJsonSchema("LandofileShape"));
+    expect(input.additionalProperties).toBe(false);
+  });
+
   test("imports only the four direct schema modules rather than the barrel", async () => {
     // Given the subpath source, when collecting its module dependencies.
     const source = await Bun.file(new URL("../../src/schema/standard.ts", import.meta.url)).text();
     const imports = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((match) => match[1]);
     // Then neither a barrel nor another SDK module can pull in the whole schema registry.
-    expect(imports.sort()).toEqual(["./config.ts", "./landofile.ts", "./plugin.ts", "./recipe.ts", "effect"]);
+    expect(imports.sort()).toEqual([
+      "./config.ts",
+      "./json-schema-editor.ts",
+      "./landofile-authoring.ts",
+      "./plugin.ts",
+      "./recipe.ts",
+      "effect",
+    ]);
   });
 });
