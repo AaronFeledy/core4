@@ -170,7 +170,7 @@ services:
 
 They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` without an extra `lando npm install -g` every rebuild.
 
-Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image; adding, removing, or re-pinning a package does, because the normalized list is part of the image build key.
+Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image. Adding, removing, or re-pinning a package does, on the next `lando start`, because the normalized list is part of the image build key.
 
 Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or a dist-tag like `latest`. Anything else fails at plan time, before any container work, naming the package that broke.
 

@@ -128,7 +128,7 @@ Install the global app first, then override a bundled service, check the effecti
 lando global:install
 lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
 lando global:config --format=json
-lando global:rebuild
+lando global:start
 ```
 
 `set`, `unset`, and `edit` write only the canonical Landofile at `<userDataRoot>/global/.lando.yml`, for example `/home/user/.local/share/lando/global/.lando.yml` on Linux. `validate` checks that same file. Leave the generated `.lando.dist.yml` alone; Lando regenerates it.
@@ -177,4 +177,4 @@ lando global:config validate
 lando global:config edit
 ```
 
-Writes don't touch running containers. Check `lando global:config --format=json`, then run `lando global:rebuild` to apply the change. Rebuild also publishes route changes, so a renamed hostname answers right away.
+Writes don't touch running containers. Check `lando global:config --format=json`, then run `lando global:start` to apply env, bind, and image changes. `lando global:rebuild` forces a pull and build refresh.

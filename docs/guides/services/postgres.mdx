@@ -132,7 +132,7 @@ services:
 
 Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the `<app>-postgresql-data` volume.
 
-Changing the major doesn't upgrade an existing database. Postgres refuses to start on files from another major, so the `lando rebuild` that applies the change fails with the server's own error. Move the data through a dump:
+Changing the major doesn't upgrade an existing database. Postgres refuses to start on files from another major, so the `lando start` that applies the change fails with the server's own error. Move the data through a dump:
 
 1. Export it while the old major still runs: `lando db:export dump.sql.gz`
 2. Delete the old data volume: `lando destroy -y --volumes`

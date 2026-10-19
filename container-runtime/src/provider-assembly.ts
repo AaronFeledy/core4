@@ -10,6 +10,10 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
+import { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
 import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";
@@ -37,6 +41,12 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   };
 
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
+  ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+  cleanupOwnedResources: makeOwnedResourcesCleanup({
+    store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+    ctx: options.ctx,
+    ...(options.api === undefined ? {} : { api: options.api }),
+  }),
   ...(options.api === undefined
     ? {}
     : {

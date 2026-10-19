@@ -235,9 +235,18 @@ export const makeRuntimeProviderRegistry = (
           Effect.gen(function* () {
             const descriptor = yield* contributionFor(id);
             const { contribution, context } = descriptor;
+            const resourceOwnership = contribution.resourceOwnership;
             const runtime = yield* Effect.cached(makeProvider(descriptor));
             return {
               id,
+              ...(resourceOwnership === undefined
+                ? {}
+                : {
+                    resourceOwnership: (root: AbsolutePath) => resourceOwnership(context, root),
+                  }),
+              canCleanupOwnedResources: runtime.pipe(
+                Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
+              ),
               appliedPlans: contribution
                 .appliedPlans(context)
                 .pipe(Effect.provideService(PathsService, paths)),
@@ -281,6 +290,15 @@ export const makeRuntimeProviderRegistry = (
             ? activeProvider
             : providerFor(typeof target === "string" ? target : target.provider);
         }),
+        resourceOwnership: Effect.fn("RuntimeProviderRegistry.resourceOwnership")(
+          (providerId: ProviderId, root: AbsolutePath) =>
+            contributionFor(providerId).pipe(
+              Effect.flatMap(
+                ({ contribution, context }) =>
+                  contribution.resourceOwnership?.(context, root) ?? Effect.succeed(undefined),
+              ),
+            ),
+        ),
         resolveAppliedPlan,
         resolveTeardownEvidence: resolveTeardown,
         observeRuntime: appliedStateProviders.pipe(Effect.flatMap(observeProviderRuntime)),

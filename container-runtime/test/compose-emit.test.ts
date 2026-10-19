@@ -17,6 +17,7 @@ import {
 import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
 
+import { commonContainerLabels } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 
 const providerId = ProviderId.make("lando");
@@ -306,7 +307,7 @@ describe("Podman Compose emission", () => {
     );
 
     expect(content).toContain(
-      '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.app-root: "/srv/apps/myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
+      `    labels:\n      dev.lando.app: "myapp"\n      dev.lando.app-root: "/srv/apps/myapp"\n      dev.lando.create-config: "${commonContainerLabels(plan, labeledWeb)["dev.lando.create-config"]}"\n      dev.lando.service: "web"\n      example.com/role: "web"\n`,
     );
   });
 
@@ -740,6 +741,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
+            "dev.lando.create-config": expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
             "dev.lando.service": "web",
           },
           networks: {
@@ -755,6 +757,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
+            "dev.lando.create-config": expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
             "dev.lando.service": "database",
           },
           networks: {

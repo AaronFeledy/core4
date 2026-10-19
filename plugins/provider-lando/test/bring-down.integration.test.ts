@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Clock, DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect, Schema } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -116,10 +116,25 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+const decodeCreateBody = Schema.decodeUnknownSync(
+  Schema.Struct({
+    Name: Schema.optional(Schema.String),
+    Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  }),
+);
+
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const networks = new Set<string>();
+  const containers = new Map<
+    string,
+    { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
+  >();
+  const networkDetails = new Map<
+    string,
+    { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
+  >();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
     plan.stores.map((store) => [
@@ -137,13 +152,17 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
-        const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const reference = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const name = [...containers].find(([, container]) => container.Id === reference)?.[0] ?? reference;
         const action = containerMatch?.[2];
 
         if (request.path === "/networks/create") {
-          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const body = decodeCreateBody(request.body);
+          const requestedName = body.Name ?? "";
           networks.add(requestedName);
-          return { status: 201, body: "{}" };
+          const network = { Id: `${requestedName}-id`, Labels: body.Labels ?? {} };
+          networkDetails.set(requestedName, network);
+          return { status: 201, body: JSON.stringify(network) };
         }
         if (request.path === "/volumes/create") {
           const body = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
@@ -153,9 +172,15 @@ const makeFakeApi = () => {
           if (!existed && body.Labels !== undefined) volumeLabels.set(requestedName, body.Labels);
           return { status: existed ? 409 : 201, body: "{}" };
         }
-        if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
-          const network = decodeURIComponent(request.path.slice("/networks/".length));
-          const deleted = networks.delete(network);
+        if (request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networkDetails].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          const network = networkDetails.get(name);
+          if (request.method === "GET") {
+            return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
+          }
+          const deleted = networks.delete(name);
+          networkDetails.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && action === "json") {
@@ -165,6 +190,8 @@ const makeFakeApi = () => {
           return {
             status: 200,
             body: JSON.stringify({
+              Id: containers.get(name)?.Id,
+              Config: { Labels: containers.get(name)?.Labels },
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "created" },
             }),
           };
@@ -175,7 +202,10 @@ const makeFakeApi = () => {
             return { status: 409, body: "already exists" };
           }
           existing.add(createdName);
-          return { status: 201, body: "{}" };
+          const body = decodeCreateBody(request.body);
+          const container = { Id: `${createdName}-id`, Labels: body.Labels ?? {} };
+          containers.set(createdName, container);
+          return { status: 201, body: JSON.stringify(container) };
         }
         if (request.method === "POST" && action === "start") {
           running.add(name);
@@ -191,6 +221,7 @@ const makeFakeApi = () => {
         if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
           const deleted = existing.delete(name);
           running.delete(name);
+          containers.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && request.path.startsWith("/volumes/")) {
@@ -259,7 +290,29 @@ describe("provider-lando bringDown", () => {
     const failedStopApi: PodmanApiClient = {
       info: Effect.succeed({}),
       ping: Effect.succeed(undefined),
-      request: () => Effect.succeed({ status: 500, body: "stop failed" }),
+      request: (request) =>
+        Effect.sync(() => {
+          if (request.method === "GET" && request.path.endsWith("/json")) {
+            const global = request.path === "/containers/lando-global-node/json";
+            return {
+              status: 200,
+              body: JSON.stringify({
+                Id: global ? "global-node-id" : "app-node-id",
+                Config: {
+                  Labels: {
+                    "dev.lando.app": global ? globalPlan.id : plan.id,
+                    "dev.lando.app-root": appRoot,
+                    "dev.lando.service": "node",
+                  },
+                },
+              }),
+            };
+          }
+          if (request.method === "POST" && request.path.endsWith("/stop")) {
+            return { status: 500, body: "stop failed" };
+          }
+          return { status: 500, body: `unexpected ${request.method} ${request.path}` };
+        }),
     };
 
     const globalError = await Effect.runPromise(
@@ -300,7 +353,7 @@ describe("provider-lando bringDown", () => {
       request: (request) =>
         Effect.sync(() => {
           calls.push(request);
-          if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          if (request.method === "GET" && request.path.startsWith("/networks/")) {
             return { status: 404, body: "" };
           }
           if (request.method === "GET" && request.path === "/volumes/foreign-data") {
