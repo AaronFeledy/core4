@@ -173,6 +173,11 @@ Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`,
 
 `LANDO_GLOBAL_*` is projected only for global services required by activated `AppFeature`s (§20.6.3). Plugins MAY add typed projections through `AppFeature.apply()`.
 
+Remote consumers MUST reuse named per-service, per-key environment overrides at execution/start, not a core relationship feature or aggregate variable API. A plugin MAY project vendor-specific names from approved local endpoints or session forwarding (§10.12.5); it MUST name each consumer service and key explicitly.
+
+- The calling scope MUST own override values, secret references, and consumers. Overrides MUST replace only named keys and MUST NOT enter the reusable plan, Landofile, caches, or future-start state. Standalone pull cannot retain secrets for another process's start.
+- Invocation-only overrides MUST end with that execution. Start-time secrets MAY be visible to the provider and in its container configuration; Lando MUST NOT promise that removing an in-memory map erases them. Session consumers MUST be stopped/removed at closure, and tether MUST independently revoke forwarding before teardown (§10.12.5).
+
 `lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment, plus `LANDO_HOST_IP` when host reachability applies.
 
 #### 6.9.1 Host agent-context forwarding (`agentEnv`)
@@ -210,11 +215,13 @@ Every type MUST name `l337` or `lando`, return `ServiceTypeResolution`, and sati
 
 Contributed `logSources` MUST have unique ids, absolute paths, and compatible strategies; `console` is reserved. `redirect` requires an owned build, while a BYO/`l337` service may use only `follow`. Feature ordering and inheritance are replay-stable.
 
-`ServiceType` declares `name`, optional `versions`, explicit `base`, optional `extends`, optional `artifacts`, `schema`, and Effectful `resolve` with `ServiceTypeError`. `ServiceTypeResolution` carries `base`, `normalizedConfig`, `features`, optional `tooling`, optional `logSources`, and optional `metadata`.
+`ServiceType` declares `name`, optional `versions`, explicit `base`, optional `extends`, optional `artifacts`, `schema`, and Effectful `resolve` with `ServiceTypeError`. `ServiceTypeResolution` carries `base`, `normalizedConfig`, `features`, optional `tooling`, optional `logSources`, optional `sync` (`defaultDataset` per dataset kind and `postApply` tasks, §10.12.2), and optional `metadata`.
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, artifacts, and `sync` before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+
+`sync.defaultDataset` and `sync.postApply` MUST merge per dataset kind. An omitted child kind inherits its parent value; a child default Dataset id replaces that kind's parent id. A child `postApply` list replaces that kind's entire inherited list in declaration order, and an explicit empty list clears it; lists MUST NOT concatenate. The final merged defaults participate in §10.12 binding selection, while an explicit binding Dataset still wins. The final task lists run under §10.12.2 grouping and ordering, never once for each ancestor.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
