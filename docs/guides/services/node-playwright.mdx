@@ -111,7 +111,7 @@ lando playwright test
 
 No browser download on first run. The image already sat through it for you.
 
-`lando start` waits until both services are running. Install from `e2e` so `node_modules` is resolved by the same Node that runs the tests. Check that `lando playwright --version` prints the same release as the image tag, then check that `lando playwright test` reports the test as passed. A failing assertion, or a `--grep` that matches no tests, exits non-zero through `lando playwright`, so the command works as a gate in scripts. Passing proves Chromium in `e2e` loaded `web` over the app network. It doesn't prove the proxy URL works; open the `lando info` URL in your browser for that.
+`lando start` waits until both containers are running, not until `web` answers on `3000`. If the first test run beats your server, run it again, or give `web` a healthcheck so start waits for it. Install from `e2e` so `node_modules` is resolved by the same Node that runs the tests. Check that `lando playwright --version` prints the same release as the image tag, then check that `lando playwright test` reports the test as passed. A failing assertion, or a `--grep` that matches no tests, exits non-zero through `lando playwright`, so the command works as a gate in scripts. Passing proves Chromium in `e2e` loaded `web` over the app network. It doesn't prove the proxy URL works; open the `lando info` URL in your browser for that.
 
 The npm script runs the same suite without the tooling entry:
 
@@ -125,9 +125,11 @@ The image ships its own Node release, so `lando exec e2e -- node -v` reports the
 
 ## Read the report
 
-The HTML reporter writes `playwright-report/` in your app directory on the host. Open `playwright-report/index.html` in your host browser. Add `playwright-report/` and `test-results/` to `.gitignore`.
+Tests run headless in the container. To look at a run, open `playwright-report/index.html` from your host, or load a trace from `test-results/` in the trace viewer. Headed mode needs a display the container doesn't have.
 
-Both directories are written by the container user. When your host user can't delete them, clear them from inside the service:
+The HTML reporter writes `playwright-report/` in your app directory on the host. Add `playwright-report/` and `test-results/` to `.gitignore`.
+
+Both directories are written by the container user. `e2e` runs as root, the image's default user, so on the Docker provider these files are owned by root on Linux hosts. When your host user can't delete them, clear them from inside the service:
 
 ```sh
 lando exec e2e -- sh -c 'rm -rf playwright-report test-results'
