@@ -1,6 +1,6 @@
 # Lando v4: Architecture Specification (Index)
 
-> **Status:** Living architecture and compatibility contract. When code and this spec disagree, the spec wins. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md); this specification does not assert release readiness.
+> **Status:** Authored architecture planning contract, not a shipped artifact or evidence of implementation. It states the intended design when code differs; runtime compatibility remains governed by published contracts. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md).
 > **Audience:** Lando Core maintainers, plugin authors, contributors, and embedding hosts integrating `@lando/core` as a library.
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
@@ -34,7 +34,7 @@ The split is almost one section per file, with these principled merges and addit
 | 08 | [`08-cli-and-tooling.md`](./08-cli-and-tooling.md) | §8 | Defines command identity and dispatch, built-ins, tooling, recipes, rendering, interaction, help, and machine-readable output. |
 | 09 | [`09-embedding.md`](./09-embedding.md) | §16 | Defines the Effect-native library API, runtime and app handles, plugin/config policy, scope ownership, programmatic CLI access, testing exports, and compatibility. |
 | 10 | [`10-plugins.md`](./10-plugins.md) | §9 | Defines plugin identity, discovery, manifest keys, contribution surfaces, install and loading policy, constrained context, and authoring commands. |
-| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Specifies networking, routing, tunnels, trust and downloads, SSH, probes, file sync, setup, diagnostics, host proxy, data movement, managed files, remote sync, and MCP. |
+| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Specifies networking, routing, tunnels, trust and downloads, SSH, probes, file sync, setup, diagnostics, host proxy, data movement, managed files, remote sync with code sync and vendor tools, browser authorization, and MCP. |
 | 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | Catalogs caches and persistent artifacts, encoding and atomicity, managed-file transactions, hot-path budgets, offline state, and `StateStore`. |
 | 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | Defines test layers, schema/type/quality gates, synchronized binary and library distribution, CI cadences, release channels, and boundary enforcement. |
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provides provider-neutral terminology, forbidden dependencies, the source-derived acceptance checklist, historical dispatcher rationale, and glossary. |
@@ -102,6 +102,7 @@ If you are looking for a public surface or policy:
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys | 07 | §7.4 |
 | Config translation contracts and diagnostics | 07 | §7.4.1 |
+| Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
@@ -117,6 +118,7 @@ If you are looking for a public surface or policy:
 | Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
 | Machine-readable command envelopes, advertised formats, streams, and closed pipes | 08 | §8.11 |
@@ -128,10 +130,12 @@ If you are looking for a public surface or policy:
 | Plugin contribution surfaces | 10 | §9.5 |
 | Plugin install, loading, trust, and updates | 10 | §9.6 + §9.7 |
 | `LandoPluginContext` capabilities | 10 | §9.8 |
+| Durable `lando` grants, scope-local `lando-session`, and 1Password references | 10 | §9.5.1 |
 | Plugin authoring commands | 10 | §9.10 |
 | Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
-| SSH identity, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
+| External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
+| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Setup and host integration | 11 | §10.8 |
@@ -139,6 +143,12 @@ If you are looking for a public surface or policy:
 | Host-proxy protocol and errors | 11 | §10.10 |
 | `DataMover`, endpoints, snapshots, and errors | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
+| Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
+| Service tunnels, tethered sessions, and environment operations | 11 | §10.12.5 + §10.12.6 |
+| Config datasets (private file pull, unreadable keys, explicit push keys) | 11 | §10.12.7 |
+| Effective remote protection and target-bound approval | 11 | §10.12.8 |
+| Browser authorization (loopback PKCE, device flow) | 11 | §10.3.5 |
+| Scope-owned per-service environment overrides | 06 | §6.9 |
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |

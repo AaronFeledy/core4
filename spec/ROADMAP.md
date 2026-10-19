@@ -87,7 +87,7 @@ Tag `4.0.0` from the last green RC onto `stable`. Version bumps and RC bug fixes
 Post-GA minors. Out of 4.0:
 
 - `TunnelService` / `lando share` (contract frozen; no bundled tunnel)
-- `RemoteSource` / `Dataset` pull and push (contract frozen; no hoster wiring)
+- Hoster synchronization remains planned for this wave, not shipped by these spec edits: §10.12 source/Dataset orchestration, `CodeSync`, protected operations, revocable foreground tether, vendor tools, and the bundled `dotenv` plugin; §9.5.1 durable grants and scope-local credentials; §10.4 SSH identities; §8.8.13 init sources; §7.4.2 local-snapshot translation with explicit metadata refresh. Bundled Pantheon, Acquia, and Upsun connectors remain here. Any of this core surface moves into 4.0 only through an accepted Alpha PRD story before feature freeze; nothing lands in Beta 1.
 - Renderer 4.1: rich render events, panel slots, keymap remapping, interactive `app:logs --follow` viewer
 - Deferred meta commands: `meta:plugin:login`, `meta:plugin:logout`, `meta:events:follow`
 
