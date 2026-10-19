@@ -66,13 +66,15 @@ describe("app config yaml", () => {
   });
 
   test("renderAppConfigResult get output ignores yaml", () => {
-    const result: AppConfigResult = { subcommand: "get", value: "node" };
+    const result: AppConfigResult = { source: "resolved", subcommand: "get", key: "recipe", value: "node" };
 
     expect(renderWithFormat(result, "yaml")).toBe("node");
   });
 
-  test("renderAppConfigResult falls back to table when landofile is absent", () => {
-    expect(renderWithFormat({ app: "x" }, "yaml")).toBe("app\tx\nservices\t(none)");
+  test("renderAppConfigResult shows an empty service list for a full resolved view", () => {
+    expect(renderWithFormat({ source: "resolved", app: "x", landofile: {} }, "table")).toBe(
+      "app\tx\nservices\t(none)",
+    );
   });
 
   test("appConfigOptionsFromInput preserves yaml format", () => {

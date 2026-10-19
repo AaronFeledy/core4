@@ -81,6 +81,8 @@ describe("lando app:config", () => {
       appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
     );
 
+    if (!("landofile" in result) || result.source !== "resolved")
+      throw new Error("Expected full resolved config");
     expect(result.app).toBe("test-app-config");
     expect(result.source).toBe("resolved");
     expect(result.landofile?.name).toBe("test-app-config");
@@ -128,6 +130,7 @@ describe("lando app:config", () => {
         const result = await Effect.runPromise(
           appConfig({ cwd: dir }).pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
         );
+        if (!("hostEvents" in result)) throw new Error("Expected resolved host-event status");
         expect(result.hostEvents).toEqual([
           { event: "post-start", index: 0, step: "echo web", status: "active" },
         ]);
@@ -178,6 +181,7 @@ describe("lando app:config", () => {
         const result = await Effect.runPromise(
           appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
         );
+        if (!("hostEvents" in result)) throw new Error("Expected resolved host-event status");
         expect(result.hostEvents).toEqual([
           { event: "post-start", index: 0, step: "echo shared", status: "deduped" },
           {
@@ -234,6 +238,7 @@ describe("lando app:config", () => {
 
   test("renders a get scalar as the selected value only", () => {
     const result: AppConfigResult = {
+      source: "resolved",
       subcommand: "get",
       key: "services.web.type",
       value: "node",
@@ -244,6 +249,7 @@ describe("lando app:config", () => {
 
   test("renders a missing get value as an empty string", () => {
     const result: AppConfigResult = {
+      source: "resolved",
       subcommand: "get",
       key: "services.web.missing",
     };
