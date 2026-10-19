@@ -32,7 +32,7 @@ test.each([
   {
     base: "appMount:\n      target: /app\n      excludes:\n        - vendor",
     local: "appMount: /site",
-    expected: { appMount: { target: "/site", excludes: ["vendor"] } },
+    expected: { appMount: { target: "/site" } },
   },
   {
     base: "appMount:\n      target: /app\n      excludes:\n        - vendor",

@@ -1,5 +1,6 @@
 import { Cause, Clock, Context, DateTime, Effect, Exit, Option, Schema } from "effect";
 
+import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
@@ -79,19 +80,26 @@ export const withCommandEventService = <A, E, R>(
     ),
   );
 
-const failureIdentity = (cause: Cause.Cause<unknown>): { readonly failureTag: string } => {
+const failureIdentity = (
+  cause: Cause.Cause<unknown>,
+): Pick<CliCommandErrorEvent, "failureTag" | "additionalFailures"> => {
   if (Cause.hasInterruptsOnly(cause)) return { failureTag: "Interrupted" };
-  const failure = Cause.findErrorOption(cause);
-  if (failure._tag === "Some") {
-    const value = failure.value;
-    if (typeof value === "object" && value !== null) {
-      const failureTag = "_tag" in value && typeof value._tag === "string" ? value._tag : "Failure";
-      return { failureTag };
-    }
-    return { failureTag: "Failure" };
-  }
-  if (Cause.hasDies(cause)) return { failureTag: "Defect" };
-  return { failureTag: "Failure" };
+  const failure = failureOutcomeFromCause(cause);
+  const tagOf = (value: unknown): string =>
+    typeof value === "object" && value !== null && "_tag" in value && typeof value._tag === "string"
+      ? value._tag
+      : cause.reasons.some((reason) => Cause.isDieReason(reason) && reason.defect === value)
+        ? "Defect"
+        : "Failure";
+  const additionalFailures = failure.additionalErrors.map(({ error, role }) => ({
+    failureTag: tagOf(error),
+    role,
+  }));
+  const [first, ...rest] = additionalFailures;
+  return {
+    failureTag: tagOf(failure.error),
+    ...(first === undefined ? {} : { additionalFailures: [first, ...rest] }),
+  };
 };
 
 const publishRedacted = Effect.fnUntraced(
@@ -163,15 +171,13 @@ export const runCommandLifecycle: <A, E, R>(
       exitCode: options.successExitCode?.(outcome.value) ?? 0,
     });
   } else {
-    const failure = Cause.findErrorOption(outcome.cause);
+    const failure = failureOutcomeFromCause(outcome.cause);
     yield* publishRedacted(CliCommandErrorEvent, {
       _tag: `cli-${options.invocation.commandId}-error`,
       ...terminal,
       exitCode: Cause.hasInterruptsOnly(outcome.cause)
         ? (options.interruptionExitCode ?? 1)
-        : failure._tag === "Some"
-          ? (options.failureExitCode?.(failure.value) ?? 1)
-          : 1,
+        : (options.failureExitCode?.(failure.error) ?? 1),
       ...failureIdentity(outcome.cause),
     });
   }

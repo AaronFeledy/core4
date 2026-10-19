@@ -17,7 +17,7 @@ import {
   type AppPlan,
   AppPlan as AppPlanSchema,
   type IsolateMode,
-  LandofileShape,
+  type LandofileShape,
   type NetworkingPlan,
   PortablePath,
   type ProviderCapabilities,
@@ -47,18 +47,17 @@ import {
 } from "@lando/sdk/services";
 
 import type { UserAppResolution } from "@lando/landofile/app-resolution";
-import { decodeOrFail } from "@lando/landofile/decode";
-import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
+import { decodeScratchLandofile } from "./landofile.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
 
@@ -200,22 +199,6 @@ const mapInitError = (
   }
   return scratchAppError("materialize", "Unable to render the recipe into the scratch app root.", cause);
 };
-
-const decodeScratchLandofile = (
-  file: string,
-  content: string,
-  cwd: string,
-): Effect.Effect<LandofileShape, ScratchAppError> =>
-  parseLandofile({ file, content, cwd }).pipe(
-    Effect.mapError((cause) =>
-      scratchAppError("materialize", `Unable to parse the rendered scratch Landofile at ${file}.`, cause),
-    ),
-    Effect.flatMap((parsed) =>
-      decodeOrFail(LandofileShape, (cause) =>
-        scratchAppError("materialize", `The rendered scratch Landofile at ${file} is invalid.`, cause),
-      )(parsed, { onExcessProperty: "error" }),
-    ),
-  );
 
 const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
   new ScratchAppNotFoundError({
@@ -783,8 +766,13 @@ const makeScratchAppService = (
         ),
       ),
     );
-    yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false, serviceEnvironment })).pipe(
-      Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
+    yield* Effect.scoped(
+      provider.apply(builtPlan, {
+        reconcile: false,
+        serviceEnvironment,
+        onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+      }),
+    ).pipe(
       // A failed start can leave a materialized dir and partial provider state; the scope
       // finalizer only covers a successful start, so reclaim on the failure path too.
       Effect.tapError(() => (keepOnFailure ? Effect.void : destroyScratchResources)),

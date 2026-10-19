@@ -15,12 +15,13 @@ import {
   verifyLandofileIncludes as verifyLandofileIncludesPackage,
 } from "@lando/landofile/includes";
 import type { LintLandofileOptions } from "@lando/landofile/lint";
-import { lintLandofile as lintLandofilePackage } from "@lando/landofile/lint";
+import { lintLandofileSnapshot as lintLandofileSnapshotPackage } from "@lando/landofile/lint";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
   findDiscoveredLandofilePath,
   loadLandofileFile as loadLandofileFilePackage,
   loadLandofileLayers as loadLandofileLayersPackage,
+  validateLandofileReplacement as validateLandofileReplacementPackage,
 } from "@lando/landofile/service";
 import * as LandofileServiceLayer from "@lando/landofile/service";
 import {
@@ -59,7 +60,12 @@ export const renderLandofileTemplate = (options: RenderLandofileTemplateOptions)
   });
 
 export const lintLandofile = (options: LintLandofileOptions = {}) =>
-  lintLandofilePackage({ ...options, templates: options.templates ?? landofileRuntimeInputs().templates });
+  lintLandofileSnapshot(options).pipe(Effect.map(({ result }) => result));
+
+export const lintLandofileSnapshot = (options: LintLandofileOptions = {}) =>
+  Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+    lintLandofileSnapshotPackage({ ...options, templates: options.templates ?? inputs.templates }, inputs),
+  );
 
 export const resolveLandofileIncludes = (options: ResolveLandofileIncludesOptions) =>
   Effect.flatMap(
@@ -101,6 +107,13 @@ export const verifyLandofileIncludes = (options: VerifyLandofileIncludesOptions)
   );
 
 export { findDiscoveredLandofilePath };
+
+export const validateLandofileReplacement = (
+  replacement: Parameters<typeof validateLandofileReplacementPackage>[0],
+) =>
+  Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+    validateLandofileReplacementPackage(replacement, inputs),
+  );
 
 export const loadLandofileFile = (
   filePath: string,

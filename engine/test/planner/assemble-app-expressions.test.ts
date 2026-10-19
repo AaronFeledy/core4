@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { loadLandofileFile } from "@lando/landofile/service";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
@@ -45,6 +47,75 @@ const plan = Effect.fnUntraced(function* (landofile: LandofileShape) {
     TestRuntimeProvider.capabilities,
   );
 }, Effect.provide(PluginRegistryLayer.layer));
+
+test.each([
+  { field: 'database: "{{ env.QA }}"', environmentKey: "DATABASE" },
+  { field: 'environment: "{{ { FOO: env.QA } }}"', environmentKey: "FOO" },
+])("keeps load-produced expression text literal at $field", async ({ field, environmentKey }) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-load-literal-"));
+  try {
+    const file = join(root, ".lando.yml");
+    await writeFile(
+      file,
+      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}\n`,
+    );
+    const scope = await Effect.runPromise(buildLandofileLoadScope([], { QA: " {{ app.name }}" }));
+    const loaded = await Effect.runPromise(loadLandofileFile(file, undefined, undefined, scope));
+    // When
+    const app = await Effect.runPromise(plan(loaded));
+    // Then
+    expect(app.services[ServiceName.make("database")]?.environment[environmentKey]).toBe(" {{ app.name }}");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  { expression: "load('./payload.txt')", field: "database", key: "DATABASE" },
+  { expression: "load('./payload.json')", field: "environment", key: "FOO" },
+  { expression: "load('./payload.yml')", field: "environment", key: "FOO" },
+  { expression: "import('./payload.json').value", field: "environment", key: "FOO" },
+  { expression: "import('./payload.yml').value", field: "environment", key: "FOO" },
+])("keeps file-helper text literal in the plan for $expression", async ({ expression, field, key }) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-file-plan-literal-"));
+  try {
+    await writeFile(join(root, "payload.txt"), "{{ app.name }}");
+    await writeFile(join(root, "payload.json"), JSON.stringify({ FOO: "{{ app.name }}" }));
+    await writeFile(join(root, "payload.yml"), 'FOO: "{{ app.name }}"\n');
+    const file = join(root, ".lando.yml");
+    await writeFile(
+      file,
+      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}: "{{ ${expression} }}"\n`,
+    );
+    const loaded = await Effect.runPromise(loadLandofileFile(file));
+    // When
+    const app = await Effect.runPromise(plan(loaded));
+    // Then
+    expect(app.services[ServiceName.make("database")]?.environment[key]).toBe("{{ app.name }}");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a non-string result at a plan-time text site", async () => {
+  // Given
+  const landofile = {
+    name: "x",
+    services: {
+      [ServiceName.make("database")]: {
+        type: serviceType.id,
+        database: "{{ eq(app.name, 'x') }}",
+      },
+    },
+  };
+  // When
+  const error = await Effect.runPromise(plan(landofile).pipe(Effect.flip));
+  // Then
+  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.database.database" });
+  expect(error.message).toContain("takes text");
+});
 
 test("materializes app and proxy expressions before service resolution and tooling compilation", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-app-expression-"));

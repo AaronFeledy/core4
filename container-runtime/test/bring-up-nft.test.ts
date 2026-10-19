@@ -211,7 +211,7 @@ describe("bringUp network-create remediation hook", () => {
     );
 
     // Then
-    expect(error.operation).toBe("bringUp.network");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "bringUp.network" });
     expect(error.remediation).toBe("hook remediation");
     expect(seen).toHaveLength(1);
     expect(seen[0]?.service).toBeUndefined();
@@ -257,7 +257,7 @@ describe("bringUp provider identity", () => {
 
     // Then
     expect(error.providerId).toBe("podman");
-    expect(error.operation).toBe("bringUp.network");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "bringUp.network" });
     expect(error.message).toContain("network create refused");
   });
 });

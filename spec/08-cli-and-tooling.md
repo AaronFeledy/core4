@@ -160,13 +160,21 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 | `get` | Read one key path |
 | `set` | Write a typed value with `--type string\|number\|boolean\|json\|yaml` |
 | `unset` | Remove a key |
-| `edit` | Open `$VISUAL`/`$EDITOR`; `--target canonical\|local\|user` |
+| `edit` | Open `$VISUAL`/`$EDITOR` for the canonical YAML source |
 | `validate` | Validate merged Landofile (§7.8) |
 | `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write` |
 | `explain` | Read-only recipe provenance; `--format json` |
 | `migrate` | Ordered migration proposals; `--yes`, `--dry-run`, `--format json` |
 
-Ordinary writes target the canonical Landofile unless `edit --target` selects another editable layer. They validate before atomic §12.3 persistence; failure returns `LandofileWriteValidationError`. Translation and migration use §12.4 transactions. Successful writes invalidate the app-plan cache. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+Inspection exposes three stages without a second loader. Raw returns `{ source: "raw", layers: [{ layer, file, form, document }] }` in low-to-high order immediately after acquisition/render/parse or sandboxed TypeScript evaluation. It MUST NOT expand includes, evaluate load helpers, materialize expressions, or validate the effective schema. Merged returns `{ source: "merged", landofile }` after authored composition, including fragments, before recipe/env materialization, defaults, tooling assembly, or the final runtime decode. Resolved remains the default strict canonical `LandofileShape` with existing metadata. Final-schema-invalid documents remain inspectable through raw and merged; acquisition/composition failures still fail their respective stage. Source data uses recursive finite JSON values and the shared directive transport, including literal-envelope collision escaping.
+
+`--path` selects inside the exposed document, never inside the result envelope. Raw selects independently inside each encoded layer document and retains every identity and position; projected raw adds `path` and omits a missing `document`. Raw get returns `{ source: "raw", subcommand: "get", key, value? }`, where `value` is the layer projection array when any layer matches, with missing documents omitted; otherwise `value` is absent. Merged/resolved projections return `{ source, path, value? }`; get returns `{ source, subcommand: "get", key, value? }`. Get uses `key ?? path` and retains the tagged missing-selector failure. Dot/bracket syntax is shared with writes; missing members, malformed selectors, scalar traversal, and out-of-range indexes are missing, not null. Scalars, null, and arrays retain their types. Missing human text is empty; objects/arrays render compact JSON, other values use `String(value)`. Only a full resolved view emits bare canonical YAML. All other YAML output uses the normal success envelope. Result schemas MUST distinguish full views, projections, get, and actual write subcommands without a permissive fallback.
+
+Read-only MCP view/get projections expose and forward `source` and `path`, with optional get `key`, while forcing their read-only subcommand. `lando://app/config` remains resolved. Every view collects literal redaction tokens across all retained sources, including shadowed layers, directive payloads, and authored `KEY=value` arrays, before projection. Inspection MUST NOT resolve secret references or env files just to redact.
+
+Ordinary writes target the canonical YAML Landofile. A private source-replacement operation substitutes candidate bytes before parsing the old target, inserting an absent canonical source between upstream and local. It validates the original candidate as an expression-aware recursively partial native authoring fragment, discards the validation product, then runs the normal effective pipeline with one finalization. Only candidate and effective validity block writes; lint owns masked invalid untouched fragments. Set/unset persist the authored next tree, not decoded ASTs or defaults. Edit persists the exact validated buffer, including template directives; set/unset reject templates and canonical TypeScript writes remain unsupported. Dry-run fully validates without writing. Unchanged unset validates but creates no absent target. Candidate parse/schema failures and effective schema issues return `LandofileWriteValidationError` retaining source attribution; other loader tags remain intact. Persistence is atomic under §12.3. Translation and migration use §12.4 transactions. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+
+Lint validates retained root/include fragments in their authoring role and attempts normal effective finalization. Findings distinguish `scope: "fragment" | "effective"` and carry `{ file, layer, path }` source attribution, preserving effective versus authored paths. Coordinates MUST come from retained content. Different sources/scopes MUST NOT be deduplicated by path/message alone. The private lint snapshot retains the exact successful resolved object even alongside independent fragment findings; engine event validation reuses it without acquiring or evaluating sources again.
 
 Translation is preview-only without `--write`, MUST be explicit or unambiguous, MUST load translators only for conversion, and MUST NOT build an `AppPlan` or contact a provider. Only encoders with registered safe target mappings MAY write. `--file` MUST remain within that layer's authorized dependency closure. Preview and write MUST produce identical ordered, redacted diagnostics: `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. Unsupported input or unpreservable loss MUST block writing.
 
@@ -817,7 +825,7 @@ Every command is agent-consumable without prose parsing. `--renderer` selects pr
 
 #### 8.11.1 The result envelope
 
-Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `CommandWarning`, and `CommandResultEnvelope`.
+Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, and `CommandResultEnvelope`.
 
 **Advertised formats.** `text`, `json`, and `yaml` are universal and are attached to every command's `--format` flag. `table` and `ndjson` are opt-in render-path values declared through the command's `resultFormats`. Help, the generated command-registry manifest, and the MCP catalog projection MUST show exactly the supported set. A command that does not advertise a value MUST reject it with `RendererSelectionError` rather than silently emit text. Advertisement and implementation MUST agree on every surface. `text` is the default.
 
@@ -827,11 +835,15 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Co
 | `command` | Canonical command id |
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
-| `error` | Optional `TaggedErrorJson` |
+| `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 
 Payloadless commands return an empty result object.
+
+CLI and MCP failure envelopes MUST share one Cause projection. The primary is the first `Fail` reason without a failure role, otherwise the first such `Die`, otherwise the first `Fail`, otherwise the first `Die`, otherwise the squashed Cause. Failure-role annotations take precedence over Cause order, which breaks ties within each category. Every other `Fail` and `Die` reason, in Cause order and excluding interruptions, is an additional error with a `role`: `rollback` (undoing the failed operation's partial work), `cleanup` (best-effort release, teardown, or bookkeeping), or `peer` (a sibling step in the same phase, and the default for unannotated reasons). Roles are reason annotations set only by the engine compensation helpers; error mappings and nested defect conversion MUST preserve every reason and its annotations.
+
+`error.additionalErrors` is omitted when empty and never nests. Each entry is the additional error's `TaggedErrorJson` plus `role`, encoded and redacted like the primary. Additional errors MUST NOT change the primary's exit status. Human reports show the primary body and remediation, then one `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`, or `Also failed (<tag>)` block per additional error with its body, indented continuation and remediation lines, and diagnostic fields that differ from the primary's, without stack traces. Interruption-only Causes follow the invocation surface's cancellation policy. Effect-native library results follow §16.7.
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
@@ -870,7 +882,7 @@ Every non-interactive canonical command MUST accept `--format json` and `-j`; in
 - Equals form always supplies a field list.
 - `-j` never consumes the next token.
 
-`--jq <expr>` implies JSON, evaluates an embedded jq 1.8-compatible subset against the redacted envelope, replaces stdout, preserves exit status, and renders scalars raw. It is bounded, has no environment or module loading, and never spawns system jq. For streaming commands it transforms only the terminal result frame. MCP and library APIs always return the full redacted envelope and do not accept projection or jq.
+`--jq <expr>` implies JSON, evaluates an embedded jq 1.8-compatible subset against the redacted envelope, replaces stdout, preserves exit status, and renders scalars raw. It is bounded, has no environment or module loading, and never spawns system jq. For streaming commands it transforms only the terminal result frame. MCP returns the full redacted envelope and accepts neither projection nor jq; Effect-native library APIs retain typed results and Causes (§16).
 
 The ordered path is schema encode → optional projection → envelope → redaction → optional jq → stdout.
 

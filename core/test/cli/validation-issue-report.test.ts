@@ -20,6 +20,7 @@ describe("validation issue rendering", () => {
       message: "Landofile contains unsupported keys.",
       file: "/tmp/app/.lando.yml",
       issues: [issue, { path: [], message: "The document root is not an object." }],
+      remediation: "Fix the reported issue(s).",
     });
     const text = renderPlainBugReport(buildBugReport({ error, context: { commandId: "app:config:lint" } }));
     expect(text).toContain(
@@ -41,21 +42,27 @@ describe("validation issue rendering", () => {
   });
 
   test("json command envelope carries structured issues", () => {
+    const sourcedIssue = {
+      ...issue,
+      source: { file: "/tmp/app/.lando.local.yml", layer: "local" as const, path: issue.path },
+    };
     const error = new LandofileValidationError({
       message: "Landofile contains unsupported keys.",
       file: "/tmp/app/.lando.yml",
-      issues: [issue],
+      issues: [sourcedIssue],
+      remediation: "Fix the reported issue(s).",
     });
     const line = Effect.runSync(
       encodeCommandResult({
         command: "app:config:lint",
         resultSchema: Schema.Struct({}),
-        outcome: { _tag: "failure", error },
+        outcome: { _tag: "failure", error, additionalErrors: [] },
         redactor: createRedactor("secrets", { values: [] }),
       }),
     );
     const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
     expect(envelope.ok).toBe(false);
-    expect(envelope.error?.issues).toEqual([issue]);
+    expect(envelope.error?.issues).toEqual([sourcedIssue]);
+    expect(envelope.error?.remediation).toBe(error.remediation);
   });
 });

@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolveIncludesError } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import type { StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 import {
@@ -45,13 +46,18 @@ test.each(operations)(
     const open = spyOn(store.service, "open");
     try {
       await writeFile(join(appRoot, "fragment.yml"), "lando: '>=4'\n");
+      const authored = { includes: ["./fragment.yml"] };
+      const loadScope = await Effect.runPromise(
+        buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: authored }]),
+      );
       // When the engine wrapper resolves its dependency from Effect
       await Effect.runPromise(
         Effect.asVoid<unknown, ResolveIncludesError, StateStore>(
           run({
             appRoot,
             cacheRoot: join(appRoot, ".cache"),
-            landofile: { includes: ["./fragment.yml"] },
+            landofile: authored,
+            loadScope,
           }),
         ).pipe(Effect.provide(store.layer)),
       );
@@ -73,13 +79,18 @@ test.each(operations)("%s prefers the explicit StateStore over the ambient store
   const ambientOpen = spyOn(ambient.service, "open");
   try {
     await writeFile(join(appRoot, "fragment.yml"), "lando: '>=4'\n");
+    const authored = { includes: ["./fragment.yml"] };
+    const loadScope = await Effect.runPromise(
+      buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: authored }]),
+    );
     // When both injection paths are available
     await Effect.runPromise(
       Effect.asVoid<unknown, ResolveIncludesError, StateStore>(
         run({
           appRoot,
           cacheRoot: join(appRoot, ".cache"),
-          landofile: { includes: ["./fragment.yml"] },
+          landofile: authored,
+          loadScope,
           stateStore: explicit.service,
         }),
       ).pipe(Effect.provide(ambient.layer)),

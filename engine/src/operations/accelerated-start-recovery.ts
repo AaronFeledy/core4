@@ -2,7 +2,8 @@ import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, PreparedFileSyncTarget } from "@lando/sdk/schema";
 import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Effect, Exit, Option } from "effect";
+import { mergeFailure } from "../lifecycle/failure-compensation.ts";
 import { openJournal } from "./accelerated-start-journal.ts";
 import { type PendingStart, digest } from "./accelerated-start-record.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
@@ -142,7 +143,9 @@ export const reseedRetainedTargets = Effect.fnUntraced(function* (
           const terminated = yield* Effect.exit(engine.terminateSession(ref));
           if (Exit.isFailure(flushed))
             return yield* Effect.failCause(
-              Exit.isFailure(terminated) ? Cause.combine(flushed.cause, terminated.cause) : flushed.cause,
+              Exit.isFailure(terminated)
+                ? mergeFailure(flushed.cause, terminated.cause, "cleanup")
+                : flushed.cause,
             );
           if (Exit.isFailure(terminated)) return yield* Effect.failCause(terminated.cause);
         }),

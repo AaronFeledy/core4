@@ -96,13 +96,7 @@ const scanToolingInputMetadataForUnsupported = (
   const allowedKeys = section === "flags" ? SUPPORTED_FLAG_KEYS : SUPPORTED_ARG_KEYS;
 
   for (const [name, value] of Object.entries(metadata as Record<string, unknown>)) {
-    if (!Predicate.isObject(value)) {
-      return {
-        task: taskName,
-        key: `${section}.${name}`,
-        description: `Tooling ${section} entry "${name}"`,
-      };
-    }
+    if (!Predicate.isObject(value)) continue;
 
     const keys = Object.keys(value as Record<string, unknown>);
     const unsupportedKey = keys.find((key) => !allowedKeys.has(key));

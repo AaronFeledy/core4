@@ -35,7 +35,11 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
-import { type ComposeAppFeature, composeAppFeatures } from "../services/app-feature.ts";
+import {
+  type ComposeAppFeature,
+  composeAppFeatures,
+  snapshotAppFeatureEnv,
+} from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { mergeLogSources } from "../services/log-sources.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
@@ -53,6 +57,7 @@ import {
 } from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
+import { validateAuthoredHealthchecks } from "./authored-healthcheck.ts";
 import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -121,6 +126,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     capabilities: providerCapabilities,
     ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
   });
+  yield* validateAuthoredHealthchecks(authoredLandofile, landofilePath);
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -135,6 +141,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     catch: (cause) =>
       new LandofileValidationError({
         message: `Global network trust configuration is invalid: ${causeMessage(cause)}`,
+        remediation: "Correct the global network trust configuration and retry planning.",
         file: landofilePath,
         issues: [
           validationIssue(
@@ -168,6 +175,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         (error) =>
           new LandofileValidationError({
             message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
+            remediation: `Install or repair the plugin that provides app feature ${ref.id}.`,
             file: landofilePath,
             issues: [
               validationIssue(
@@ -338,11 +346,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       ]),
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
+  const appFeatureEnv = snapshotAppFeatureEnv(appFeatures);
   const cacheKey = deriveAppPlanCacheKey({
     appRoot,
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
+    appFeatureEnv: appFeatureEnv.bindings,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
       defaultDomain,
@@ -408,6 +418,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     appRoot,
     services: plannedServiceDrafts.map((entry) => entry.draft),
     features: appFeatures,
+    env: appFeatureEnv.env,
   }).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {

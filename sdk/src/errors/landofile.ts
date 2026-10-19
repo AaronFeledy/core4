@@ -162,6 +162,9 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
     message: Schema.String,
     file: Schema.String,
     issues: Schema.Array(ValidationIssue),
+    remediation: Schema.String.annotate({
+      description: "Action required to correct the authored configuration.",
+    }),
   },
 ) {}
 

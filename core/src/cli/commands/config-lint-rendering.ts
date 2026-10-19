@@ -4,7 +4,9 @@ import { escapeDiagnosticText } from "../diagnostic-text";
 export const renderConfigLintViolation = (violation: ConfigLintViolation): string => {
   const formatted = formatValidationIssuePath(violation.path);
   const where = formatted.length === 0 ? "(root)" : escapeDiagnosticText(formatted);
-  const lines = [`  ${where}: ${escapeDiagnosticText(violation.message)}`];
+  const lines = [
+    `  ${where}: ${violation.severity} [${escapeDiagnosticText(violation.rule)}] ${escapeDiagnosticText(violation.message)}`,
+  ];
   if (violation.suggestion !== undefined) {
     lines.push(`    fix: ${escapeDiagnosticText(violation.suggestion)}`);
   }

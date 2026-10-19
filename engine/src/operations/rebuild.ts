@@ -33,7 +33,7 @@ import { compensateFailure, compensateFailureUnless } from "../lifecycle/failure
 import { isReadinessFailure } from "../lifecycle/readiness-failure.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -124,18 +124,17 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
         use: Effect.fnUntraced(function* (applyPlan) {
           const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(applyPlan);
           yield* Effect.scoped(
-            provider
-              .apply(applyPlan, {
-                reconcile: true,
-                completionPlan: readinessPlan,
-                recordedPlan: {
-                  ...target.plan,
-                  services: { ...target.plan.services, ...builtPlan.services },
-                },
-                ...(signal === undefined ? {} : { signal }),
-                serviceEnvironment,
-              })
-              .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
+            provider.apply(applyPlan, {
+              reconcile: true,
+              completionPlan: readinessPlan,
+              recordedPlan: {
+                ...target.plan,
+                services: { ...target.plan.services, ...builtPlan.services },
+              },
+              ...(signal === undefined ? {} : { signal }),
+              serviceEnvironment,
+              onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
+            }),
           ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected)));
           yield* Effect.forEach(services, (service) =>
             inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(

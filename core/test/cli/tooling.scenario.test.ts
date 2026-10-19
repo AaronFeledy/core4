@@ -41,6 +41,7 @@ import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling"
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -631,7 +632,11 @@ describe("runTooling — CLI rendering", () => {
       tooling: { inspect: { cmd: "env" } },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      buildLandofileLoadScope([{ file: "/tmp/scenario/.lando.yml", value: authoredLandofile }]).pipe(
+        Effect.flatMap((loadScope) =>
+          resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario", loadScope }),
+        ),
+      ),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -667,7 +672,11 @@ describe("runTooling — CLI rendering", () => {
       },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      buildLandofileLoadScope([{ file: "/tmp/scenario/.lando.yml", value: authoredLandofile }]).pipe(
+        Effect.flatMap((loadScope) =>
+          resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario", loadScope }),
+        ),
+      ),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -951,6 +960,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "planned failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });
@@ -978,6 +988,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "original planning failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });

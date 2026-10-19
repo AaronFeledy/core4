@@ -18,7 +18,7 @@ test("JSON error envelopes preserve a tagged secret-store reason", () => {
     encodeCommandResult({
       command: "app:start",
       resultSchema: Schema.Void,
-      outcome: { _tag: "failure", error },
+      outcome: { _tag: "failure", error, additionalErrors: [] },
       redactor: createRedactor("secrets"),
     }),
   );
@@ -42,7 +42,7 @@ test.each(["", "socket-missing", undefined, null, 42, { code: "locked" }])(
       encodeCommandResult({
         command: "app:start",
         resultSchema: Schema.Void,
-        outcome: { _tag: "failure", error },
+        outcome: { _tag: "failure", error, additionalErrors: [] },
         redactor: createRedactor("secrets"),
       }),
     );
@@ -63,7 +63,7 @@ test("streamed result frames preserve reason through schema encoding", () => {
     encodeStreamResultFrame({
       command: "app:start",
       resultSchema: Schema.Void,
-      outcome: { _tag: "failure", error },
+      outcome: { _tag: "failure", error, additionalErrors: [] },
       redactor: createRedactor("secrets"),
     }),
   );

@@ -4,6 +4,22 @@
 
 ## Compatibility notes
 
+- Config lint findings now require schema-derived `rule: string` and `severity: "error" | "warning"` metadata. `valid` means no error-severity finding, not an empty findings array. Stable healthcheck warning rules are `healthcheck.bare-compose-marker` and `healthcheck.mixed-dialects`; all existing validation failures remain errors. This intentionally evolves the pre-release result contract, without changing authored Landofile grammar or historical schema captures.
+- Disabled healthcheck objects validate supplied siblings before canonicalizing to false. Lando-over-Compose precedence is unchanged for enabled Lando intent. Authored HTTP/TCP healthchecks remain schema-accepted but fail planning with the existing `LandofileValidationError`, without widening planner error channels.
+
+- Authored Landofile composition (pre-ship): `LandofileOverlayInput` and `defineLandofile` accept schema-derived expression-bearing partial layers. Runtime loading composes authored values, materializes merged recipe/env sites, assembles tooling, and strictly decodes once. Codecs obey strict encoded round trips rather than requiring runtime output to be authored input. `@lando/sdk/landofile` additionally exports `directivePathProblem` for preparation without full layer decoding. Existing editor/Standard Schema expression restrictions and produced-text literal behavior remain unchanged.
+
+- `ValidationIssue` additively accepts optional `source: { file, layer, path }`, recording the original authored location separately from the effective issue path. `LandofileValidationError` now requires `remediation`; its shared constructor takes `file` from the primary issue's source when supplied. This is a pre-release constructor requirement, not a persisted-data format migration. Command failure envelopes already support remediation and now preserve authored issue sources through their existing issue projection. `ConfigLintResult` is unchanged.
+
+- Dependency-map identity projection no longer turns scalar map values into conditions, overwrites an authored `service` member, or hides a reserved `__proto__` map key. Invalid authored maps remain available for strict validation instead of being repaired by merging; valid structured maps and service-name lists retain their declared identity merge behavior.
+
+- `@lando/sdk/landofile` adds `mergeValuesWithOrigins`, `withValueOrigins`, `valueOriginAt`, and the erased generic `ValueOrigins` / `ValueWithOrigins` types. The origin map is a path trie: mapping merges retain child locations, keyed collections relocate them, replacements discard inherited locations, and resets retain deletion tombstones. Source payloads remain caller-owned so original authored paths survive projection. `mergeValues(root, left, right, path?)` keeps its signature and uses the same merge traversal without recording origins.
+
+- `ApplyOptions.onVolumeCreated` additively accepts an optional effectful callback for each verified `VolumeCreationFact`. Providers await it immediately after creation, before any service starts; callback failure aborts apply. Engine callers persist creation receipts there, with only the persist step uninterruptible, rather than waiting for whole-apply success. Adoption never grants freshness. This type-only addition does not change the frozen `RuntimeProvider.apply` signature or JSON Schema artifacts.
+- Landofile input views are authoring-aware: `LandofileStandardSchema` validates through `LandofileAuthoringShape` and returns parsed `AuthoringExpression` slots, not evaluated runtime values. `LandofileStandardJSONSchema` describes that codec's input and decoded authoring output. `getEditorJsonSchema("LandofileShape")` and the published `landofile.schema.json` accept whole-value expressions at boolean, numeric, array, and object sites. Runtime `LandofileShape`, `getJsonSchema("LandofileShape")`, and `landofile-shape.json` remain strict. No in-repository production consumer needs a runtime Standard Schema view.
+- Typed expression slots reject `app`, `proxy`, and `services` scope reads before evaluation; planner scopes remain text-only. Static helper return types must agree with the site. Standard Schema parses the original source without trimming and requires the parser's `whole` flag at non-text sites. The JSON Schema expression arm uses `^\{\{-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])`: surrounding whitespace (including a trailing newline), composite text, and adjacent interpolations are rejected. Trim markers inside the delimiters remain allowed. This is a syntax approximation, not an expression parser: it accepts malformed bodies and cannot check scope heads or helper return types. It rejects quoted delimiters such as `{{ eq("}}", "}}") }}` and adjacent object-closing braces such as `{{ length({a:{b:1}}) }}`, both accepted by Standard Schema. These false negatives are listed explicitly in input parity coverage. Standard Schema preserves the authoring decoder's issue paths and messages across the fixture corpus and curated cases. Shell-only text outside the expression grammar stays plain authoring text.
+- Pure expression helpers `number(value)` and `boolean(value)` also work as pipe filters. `number` accepts finite numbers and trimmed finite decimal/exponent strings, never hexadecimal, separators, empty text, booleans, or containers. `boolean` accepts booleans, numeric 1/0, and trimmed case-insensitive true/yes/on/1 or false/no/off/0 strings. Uninterpretable resolved values return null; missing/unresolved arguments and invalid arity fail like other single-argument helpers. Their static return kinds are number and boolean.
+
 - `ServiceConfig.appMount` and `AppMountPlan` keep `excludes`/`includes`: excludes own per-service volume overlays and are never synced on accelerated binds; includes cancels exact whole entries. Defaults are `node_modules`, `vendor`, and `tmp`, plus service-type presets. The exported `appMountSyncIgnores` helper derives ordered, deduplicated ignores from effective excludes, finalized storage and non-bind mounts under the app target, then `VCS_SYNC_IGNORES` (`[".git"]`). The fixed Git rule never creates an overlay and can be canceled with `includes: [".git"]`. Authored `!` entries in excludes or includes are rejected at the entry path with includes remediation. Native worktree app mounts additionally bind resolved Git metadata directories at their original absolute POSIX paths; accelerated mounts do not.
 
 - `DataMover.resolveSnapshot(reference, scope)` is additive. Resolution is id-first (global id match) then label-scoped within `scope` (newest `createdAt` first). A unique match returns `SnapshotInfo`. Multiple label matches fail with `SnapshotAmbiguousError` (`candidateIds` newest first; `snapshotId` is the caller reference). Zero matches fail with `SnapshotNotFoundError`. Existing `listSnapshots`/`restore`/`removeSnapshot` behavior is unchanged.
@@ -160,10 +176,10 @@
 
 - `SqlSeedStateError.status` additively accepts `unknown`; absent or mismatched initialization records can no longer be reported as fresh.
 
-- `VolumeCreationFact` and `VolumeInitializationRecord` are additive schemas. `ApplyResult.createdVolumes` is optional and reports only a daemon-echoed newly generated creation token with its owner. Engine apply consumers re-observe the mounted generation before persisting freshness. Missing evidence, old volumes, and adoption never imply freshness. `DataMoverShape.volumeInitialization` is an optional shared host-state port with `read`, atomic `begin(operationId)`, and generation/owner/operation-checked `finish`. SQL uses this port rather than plugin-scoped buckets; absence is unknown, and interruption quarantines a claimed generation as failed. Process death leaves in-progress state ineligible for another claim. Whole-lifecycle locking remains separate.
+- `VolumeCreationFact` and `VolumeInitializationRecord` are additive schemas. `ApplyResult.createdVolumes` is optional and reports only a daemon-echoed newly generated creation token with its owner. Engine apply callers re-read the named volume identity through `locateVolume` under the physical-volume coordination lock before persisting creation evidence through `onVolumeCreated`. Missing evidence, old volumes, and adoption never imply freshness. `DataMoverShape.volumeInitialization` is an optional shared host-state port with `read`, atomic `begin(operationId)`, and generation/owner/operation-checked `finish`. SQL uses this port rather than plugin-scoped buckets; absence is unknown, and interruption quarantines a claimed generation as failed. Process death leaves in-progress state ineligible for another claim. Whole-lifecycle locking remains separate.
 
 - `@lando/sdk/schema` additively exports `VolumeIdentity`; `VolumeInfo.identity` is optional. Its `coordinationKey` identifies a daemon namespace and native volume name, not an app slug, root, or generation. `generation` changes on recreation. `ownerRoot` binds the generation to a canonical app root. `origin: adopted` must never establish creation history or freshness.
-- Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without canonical identity do not receive an inferred owner label. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
+- Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without `identity` derive ownership from their canonical `plan.root` through the shared volume-ownership resolver. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
 - `PluginDoctorCheckContribution.run` now takes the named `PluginDoctorCheckInput`, which additively carries optional `app` (`DoctorAppIdentity`: name and canonical root only), `resources` (`DoctorResourceInspector`), and `executables` (`DoctorExecutableLocator`). The inspector answers bounded name-prefix/label queries against the selected provider, never returns Lando 4-owned resources, and resolves to `unsupported` or `unavailable` instead of failing. The locator performs filesystem/PATH resolution only: it never executes a candidate or reads its contents, and it reports `lando4`/case-insensitive Windows `lando4.exe` as the normalized running basename `lando4`.
 - `RuntimeProviderShape.inspectResourceNames(query)` is additive and optional. Bundled Docker and Podman providers answer it with one bounded list request filtered by name prefix and/or exact label, drop any resource carrying a `dev.lando.` label, and return at most `query.limit` names. A provider without it makes the doctor inspector report `unsupported`.
 - `RuntimeProviderShape.observeVolume(target, destination)` is optional. Bundled providers resolve the existing container identity, inspect its actual mount at the requested destination, then inspect that native volume. Missing containers, missing or ambiguous destinations, bind mounts, malformed responses, and disappeared volumes fail closed. Identity comes from creation/owner labels or a validated in-volume witness. Legacy observations retain legacy provenance without an invented creation ID. A missing method or identity does not authorize recovery. Observation is not a lock or mutation precondition; callers must recheck generation at mutation time.
@@ -277,6 +293,8 @@
   arguments remain separate. `ToolingEngine.run` additively exposes `ToolingCompileError` when host
   shell positional references cannot be bound safely.
 - `@lando/sdk/command-result` additively exports the canonical Effect-based command-result and stream-frame encoders, their option/outcome contracts, envelope builder, and identity redactor. The helpers serialize the existing `CommandResultEnvelope` and `StreamFrame` schemas; no schema registry membership changes.
+- `@lando/sdk/command-result` exports `FailureRoleAnnotation`, `failureOutcomeFromCause`, `primaryFailureReason` (the reason the projection selects as primary), `commandFailureCause`, and the type-only `ProjectedFailure`. Reason annotations select the primary independently of cause ordering: first unannotated Fail, then unannotated Die, then first Fail, then first Die, then squash. The failure outcome requires `additionalErrors: ReadonlyArray<{ role: FailureRole; error: unknown }>` even when empty. Other Fail/Die reasons retain their order and annotated role, defaulting to `peer`; interruptions are excluded. The closed `FailureRole` schema is `rollback` (undo partial work), `cleanup` (release or bookkeeping), or `peer` (sibling phase failure). Engine cause-preserving mappings retain reason annotations; raw Effect `mapError` and matching `catchTag` handlers can discard compound causes and must not wrap compensated failures. `commandFailureCause` converts nested defects to typed Fail reasons without dropping annotations.
+- `CommandResultEnvelope.error.additionalErrors` carries non-recursive tagged-error entries with required `role` only when non-empty. The encoder reserves `role`, `stack`, `cause`, and source-owned `additionalErrors`, and redacts every entry like the primary. `CliCommandErrorEvent` adds optional non-empty `additionalFailures: [{ failureTag, role }]` from the same projection; `failureTag` remains the primary identity. These are pre-release contract changes, not compatibility shims.
 - `@lando/sdk/schema` additively exports `CommandTraceSpan`, `CommandTrace`, and `TracingConfig`. `CommandResultEnvelope` additively accepts optional `trace: CommandTrace` for machine-output timing trees when tracing is enabled. `@lando/sdk/command-result` `EncodeCommandResultOptions` additively accepts optional `trace`; success, failure, stream result frames, and encode fallbacks carry it through the same envelope seam. `GlobalConfig` and `GlobalConfigView` additively accept optional `tracing: TracingConfig` (`otlp.endpoint`, `otlp.headers`) for OTLP export configuration.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
@@ -434,8 +452,30 @@ Node imports. The block-document emitter accepts JSON-compatible values, rejects
 unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
+## Authored inspection compatibility
+
+The source schemas describe JSON data independently of runtime `LandofileShape`.
+`@lando/sdk/landofile` exports `encodeLandofileSourceValue`, shared with the directive
+codec, to preserve native directives and escape literal envelope collisions.
+Config inspection now has explicit raw, merged, resolved, projection, get, and
+write result variants. Full resolved output remains the strict runtime contract.
+`ConfigLintViolation` adds optional `scope` and the shared validation `source`;
+the built-in lint operation supplies fragment/effective scopes and retained sources.
+
+The conservative actual-parent check reports five output-union changes at `$.anyOf`
+for app-config and its registered write verbs. Issue #1502 records this intentional
+pre-release contract evolution for lead review. The scoped ledger entries do not
+assert generic output-union compatibility or relax the classifier. Existing default
+resolved output remains unchanged; clients opting into new sources discriminate
+the source and result variant.
+
 ## Additive schema exports
 
+- `LandofileSourceValue`
+- `LandofileSourceDocument`
+- `LandofileSourceProjection`
+
+- `FailureRole`
 - `LANDOFILE_MERGE_DIRECTIVE`
 - `LandofileOverride`
 - `LandofileReset`
@@ -1313,6 +1353,8 @@ It registers no JSON Schema.
 - `persistVerifiedStream`
 
 ## Additive Beta test helper exports
+
+- `runProviderVolumeCreationContract`
 
 - `makeRendererContractSuite`
 - `runRendererContract`

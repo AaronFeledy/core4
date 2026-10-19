@@ -546,6 +546,7 @@ describe("LandofileShape (MVP)", () => {
 
     const err = new LandofileValidationError({
       message: `Landofile rejected ${rejectedKeys.length} unknown key(s): ${rejectedKeys.join(", ")}`,
+      remediation: "Remove unknown keys or correct their spelling.",
       file: "/srv/apps/myapp/.lando.yml",
       issues: rejectedKeys.map((key) => ({
         path: key.length === 0 ? [] : key.split("."),

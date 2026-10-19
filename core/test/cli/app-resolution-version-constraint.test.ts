@@ -12,6 +12,7 @@ import { LandofileService, Renderer } from "@lando/sdk/services";
 import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/landofile/app-resolution";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -130,7 +131,7 @@ describe("assertLandoVersionConstraint", () => {
         resultSchema: Schema.Struct({ checked: Schema.Boolean }),
         io,
         render: () => "",
-        formatError: String,
+        formatError: ({ error }) => String(error),
       },
     );
 
@@ -197,9 +198,14 @@ describe("loadUserLandofile version-constraint enforcement", () => {
       const fragmentPath = join(appRoot, "fragment.yml");
       await writeFile(fragmentPath, "lando: >=4.5\n", "utf8");
 
+      const authored = { lando: ">=4.1", includes: ["fragment.yml"] };
+      const loadScope = await Effect.runPromise(
+        buildLandofileLoadScope([{ file: rootPath, value: authored }]),
+      );
       const resolved = await Effect.runPromise(
         resolveLandofileIncludes({
-          landofile: { lando: ">=4.1", includes: ["fragment.yml"] },
+          landofile: authored,
+          loadScope,
           appRoot,
           sourcePath: rootPath,
         }).pipe(Effect.provide(makeTestStateStore().layer)),

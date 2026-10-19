@@ -31,6 +31,20 @@ cache fingerprints include the resolved local include bytes, so changing a
 local fragment invalidates cached app commands even after the merged
 Landofile shape has dropped includes.
 
+A fragment is a slice of one app, not an app of its own. It can't declare
+top-level `name:`, `runtime:`, or `recipe:`; Lando rejects the include with
+`LandofileIncludeError` naming the fragment. Expressions inside a fragment,
+`{{ recipe.<option> }}` and `{{ env.* }}`, resolve against the including
+app's merged recipe options and the host environment, with the same typed
+whole-value results as the app's own layers. See
+[Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
+
+Fragments do not need to be complete runtime values. A fragment can set only
+`build.args` while the app supplies `build.context`. Lando composes the authored
+maps first, resolves recipe/env expressions, assembles tooling, and validates
+the effective Landofile once. Shorthand forms and defaults apply after that
+composition, not separately inside each fragment.
+
 Remote git and npm includes are locked by resolved revision and SHA-256
 content hash, in `.lando.lock.yml`; local includes are not locked.
 
@@ -88,7 +102,8 @@ Nested relative includes resolve from the declaring profile's directory, while
 nested `user:` includes start at the user includes root. Build `context` and
 `env_file` paths still resolve from the consuming app root. Include order, array
 merge rules and project overrides work as they do for local fragments. Profiles
-cannot override `name`, `runtime` or reserved runtime environment identity.
+cannot declare `name`, `runtime`, or `recipe`, and cannot override reserved
+runtime environment identity.
 
 User profiles are not lockfile entries. Their content hashes participate in cache
 freshness. The separate `toolingIncludes:` shorthand does not accept `user:`.

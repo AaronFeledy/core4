@@ -8,18 +8,24 @@ import { Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(
-    resolveLandofileIncludes({
-      landofile,
-      appRoot,
-      cacheRoot: join(appRoot, ".cache"),
-      stateStore: makeTestStateStore().service,
-    }),
+    buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: landofile }]).pipe(
+      Effect.flatMap((loadScope) =>
+        resolveLandofileIncludes({
+          landofile,
+          loadScope,
+          appRoot,
+          cacheRoot: join(appRoot, ".cache"),
+          stateStore: makeTestStateStore().service,
+        }),
+      ),
+    ),
   );
 
 describe("tooling include precedence", () => {

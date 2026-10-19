@@ -44,6 +44,7 @@ import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { isReadinessFailure, withReadinessRetention } from "../lifecycle/readiness-failure.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -190,6 +191,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       recordedPlan: appliedPlan,
       completionPlan: target.plan,
       forbidRecreate: true,
+      onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
       ...(signal === undefined ? {} : { signal }),
     }),
   );

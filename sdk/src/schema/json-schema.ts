@@ -10,6 +10,11 @@ import {
   GpgAgentConfig,
   SshAgentConfig,
 } from "./agent-forwarding.ts";
+import {
+  LandofileSourceDocument,
+  LandofileSourceProjection,
+  LandofileSourceValue,
+} from "./landofile-source.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
 
 import {
@@ -199,6 +204,7 @@ import {
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -818,6 +824,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PromptSpec,
   InteractionServiceContribution,
   CommandResultFormat,
+  FailureRole,
   CommandWarning,
   CommandResultEnvelope,
   CommandTraceSpan,
@@ -833,6 +840,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
     readonly PreRestartEvent: typeof PreRestartEvent;
     readonly PostRestartEvent: typeof PostRestartEvent;
     readonly LandofileShape: typeof LandofileShape;
+    readonly LandofileSourceValue: typeof LandofileSourceValue;
+    readonly LandofileSourceDocument: typeof LandofileSourceDocument;
+    readonly LandofileSourceProjection: typeof LandofileSourceProjection;
     readonly AuthoringExpression: typeof AuthoringExpression;
     readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
     readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
@@ -858,6 +868,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   } = {
   LandofileShape,
   PreRestartEvent,
+  LandofileSourceValue,
+  LandofileSourceDocument,
+  LandofileSourceProjection,
   PostRestartEvent,
   AuthoringExpression,
   AuthoringExpressionExpectedType,
@@ -1025,6 +1038,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
   CommandAliasesShape: "Per-app top-level command alias policy.",
   LandofileShape: "Public Lando schema contract for Landofile Shape.",
+  LandofileSourceValue: "Recursive authored source JSON and directive transport.",
+  LandofileSourceDocument: "A complete acquired authored layer document.",
+  LandofileSourceProjection: "An acquired layer with an optional selected document value.",
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
@@ -1284,6 +1300,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PromptSpec: "Public Lando schema contract for Prompt Spec.",
   InteractionServiceContribution: "Public Lando schema contract for Interaction Service Contribution.",
   CommandResultFormat: "Public Lando schema contract for Command Result Format.",
+  FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",

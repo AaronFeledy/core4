@@ -185,7 +185,7 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
 export const mcpRegistryFromBuiltIns = (
   entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
-  commandEntries: entries.flatMap(({ spec }) => {
+  commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
     if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));
@@ -368,7 +368,7 @@ export const dispatchMcpCommand = async (params: {
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
-  readonly formatError: (error: unknown) => string;
+  readonly formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) => string;
 }): Promise<void> => {
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
