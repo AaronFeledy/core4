@@ -50,8 +50,8 @@ Lando enables `mod_rewrite` while building stock Apache services. Set
 `allowOverride: true` if your app uses `.htaccess` rewrite rules; it defaults to
 `false`. PHP framework recipes such as Laravel and Backdrop already set it.
 Custom images and authored `command:` or `entrypoint:` values own their Apache
-configuration, including module setup. Rebuild existing apps after upgrading
-Lando to apply the new default.
+configuration, including module setup. After upgrading Lando, run `lando start`
+to apply the updated default build key to existing apps.
 
 Pair FPM with nginx by naming the PHP service on `backend:`. The nginx service
 generates a FastCGI upstream pointing at that service on port `9000`:

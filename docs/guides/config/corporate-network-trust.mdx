@@ -80,7 +80,7 @@ override `network.proxy.injectIntoServices`. Values other than `true` or `false`
 invalid global config. `LANDO_NETWORK_CA_CERTS` remains a JSON array of additional CA paths; it does
 not replace either injection flag.
 
-## Runtime CA environment and rebuilds
+## Runtime CA environment
 
 When a `type: lando` service receives one or more injected CAs, each host PEM is mounted read-only
 under `/usr/local/share/ca-certificates`. The runtime trust paths stay fixed before and after the
@@ -110,8 +110,8 @@ The bundled language service types consume that trust material as follows:
 
 These runtime variables are absent when the service receives no injected CA material.
 
-Run `lando rebuild` after CA material changes so the service artifact registers the updated trust
-store. The bundle and directory paths do not change across that rebuild.
+Run `lando start` after CA material changes so the service artifact registers the updated trust
+store. The bundle and directory paths do not change across that start.
 
 ## Confirm injection during setup
 
@@ -180,3 +180,18 @@ list (an empty string is still a defined `NO_PROXY=` env entry, not an absent va
 resolved), `proxyInjectIntoServices`, and `noProxyCount`. It does not print the resolved proxy URL
 or any embedded credential. `lando setup` does not publish those proxy fields; proxy failures still
 run through the command redaction boundary before they reach a human or a `--format json` consumer.
+
+Confirm the opt-out is valid config before you start the app.
+
+<Guide>
+  <Scenario id="ca-opt-out-lints" render>
+    <Step name="lint-opt-out">
+      <UseFixture name="ca-opt-out" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"inheritNetworkCa\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"inheritNetworkProxy\":\\s*false" } }} />
+    </Step>
+  </Scenario>
+</Guide>

@@ -92,10 +92,10 @@ services:
     cores: [gettingstarted]
 ```
 
-After changing an existing app, rebuild and check the core:
+After changing an existing app, start and check the core:
 
 ```sh
-lando rebuild -y
+lando start
 lando solr-cli 'http://localhost:8983/solr/admin/cores?action=STATUS&wt=json'
 ```
 

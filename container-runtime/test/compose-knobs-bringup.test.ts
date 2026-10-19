@@ -10,6 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
@@ -141,7 +142,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v1:333c903efe2030e5cb2ebc7221e338b3587e9371a002744665fc885092352240"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
   test("detects a colon target collision through API Mounts", async () => {
@@ -319,16 +320,26 @@ describe("Podman Compose knob bring-up realization", () => {
     // Then
     const baseline = findCreateRequest(baselineFake.calls)?.body;
     const withKnobs = findCreateRequest(knobsFake.calls)?.body;
+    const baselineLabels = field(baseline, "Labels");
+    const knobLabels = field(withKnobs, "Labels");
+    if (typeof baselineLabels !== "object" || baselineLabels === null)
+      throw new TypeError("Expected baseline labels");
+    if (typeof knobLabels !== "object" || knobLabels === null) throw new TypeError("Expected knob labels");
+    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v1:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v1:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).not.toBe(field(baselineLabels, CREATE_CONFIG_LABEL));
     expect({
       Env: field(withKnobs, "Env"),
-      Labels: field(withKnobs, "Labels"),
+      Labels: Object.fromEntries(Object.entries(knobLabels).filter(([key]) => key !== CREATE_CONFIG_LABEL)),
       NetworkingConfig: field(withKnobs, "NetworkingConfig"),
       PortBindings: field(field(withKnobs, "HostConfig"), "PortBindings"),
       Binds: field(field(withKnobs, "HostConfig"), "Binds"),
       Mounts: field(field(withKnobs, "HostConfig"), "Mounts"),
     }).toEqual({
       Env: field(baseline, "Env"),
-      Labels: field(baseline, "Labels"),
+      Labels: Object.fromEntries(
+        Object.entries(baselineLabels).filter(([key]) => key !== CREATE_CONFIG_LABEL),
+      ),
       NetworkingConfig: field(baseline, "NetworkingConfig"),
       PortBindings: field(field(baseline, "HostConfig"), "PortBindings"),
       Binds: field(field(baseline, "HostConfig"), "Binds"),
