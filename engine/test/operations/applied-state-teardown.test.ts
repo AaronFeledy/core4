@@ -72,6 +72,7 @@ for (const kind of ["applied", "orphans", "absent"] as const) {
         withResolvedCwd(
           root,
           withTeardownResolution({
+            owned: () => handler("owned"),
             applied: () => handler("applied"),
             orphans: () => handler("orphans"),
             absent: () => handler("absent"),
@@ -216,6 +217,7 @@ const makeLayer = (input: {
   readonly observed?: ReadonlyArray<ServiceRuntimeInfo>;
   readonly listFailure?: ProviderUnavailableError;
   readonly removalFailure?: ProviderUnavailableError;
+  readonly ownershipFailure?: ProviderUnavailableError;
   /** Observed services whose container survives removal; every other one is reported removed. */
   readonly survivingServices?: ReadonlyArray<string>;
 }) => {
@@ -300,6 +302,7 @@ const makeLayer = (input: {
     // malformed plan still reaches the ownership validators under test.
     resolveTeardownEvidence: (root: AbsolutePath) => {
       evidenceRoots.push(root);
+      if (input.ownershipFailure !== undefined) return Effect.fail(input.ownershipFailure);
       if (
         appliedPlan !== undefined &&
         (appliedPlan.root === root || appliedPlan.identity?.appRoot === root)
@@ -412,6 +415,31 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test.each(["stop", "destroy"] as const)(
+    "explicit-target %s preflights other-provider inventory before mutation",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given
+        const appliedPlan = planAt(root);
+        const failure = new ProviderUnavailableError({
+          providerId: "docker",
+          operation: "resource-ownership",
+          message: "Other provider inventory is corrupt.",
+        });
+        const harness = makeLayer({ appliedPlan, ownershipFailure: failure });
+        // When
+        const result = await Effect.runPromise(
+          (operation === "stop"
+            ? stopAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.asVoid)
+            : destroyAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.asVoid)
+          ).pipe(Effect.provide(harness.layer), Effect.result),
+        );
+        // Then
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(harness.mutationOrder).toEqual([]);
+      });
+    },
+  );
   test.each(["cwd", "root"] as const)(
     "%s destroy removes only same-app, same-root stray containers before the plan",
     async (mode) => {
@@ -588,7 +616,7 @@ describe("applied-state teardown", () => {
       expect(result.outcome).toBe("destroyed");
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.desiredLoads).toEqual([]);
-      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
   });
 
@@ -656,7 +684,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: ["leftover"],
         volumesRemoved: true,
       });
-      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root, root]);
     });
   });
 
@@ -671,7 +699,7 @@ describe("applied-state teardown", () => {
         destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
       );
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root]);
+      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root, root]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
@@ -690,7 +718,7 @@ describe("applied-state teardown", () => {
 
       // Then the recorded path wins over the symlink's current destination.
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([recorded, recorded]);
+      expect(harness.evidenceRoots).toEqual([recorded, recorded, recorded]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });

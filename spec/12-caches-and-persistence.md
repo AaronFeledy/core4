@@ -88,6 +88,7 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | State-store transaction journal | Owner-only managed-file transaction plan and recovery state. |
 | `<target>.lando-stage.<transaction-id>` | Same-directory owner-only staged target with recorded digest and mode. |
 | `<file>.bak.<full-before-sha256>` | Immutable digest-named backup retained until user removal. |
+| Provider-private `resource-ownership` namespace | Durable ownership manifest, one JSON document per canonical owner (§12.4.2). Not a fingerprint cache. |
 
 `lando-session` values and metadata MUST NOT persist. Private config payloads, stages, backups, and snapshots (§10.12.7) are distinct from credential stores and from caches/logs; approved payload persistence MUST NOT authorize storing control-plane grants or access tokens in them.
 
@@ -104,6 +105,21 @@ For config datasets, every secret-bearing target, stage, backup, and snapshot MU
 The journal state is `prepared` → `committing` → `committed` or `blocked`. Before mutation, a complete ordered before/after plan MUST be durably recorded. Commit rechecks digests around each rename and durably records completion before cleanup. Recovery derives applied operations from recorded before/after state, MUST preflight every path, and MUST NOT overwrite concurrent edits forward or backward. Conflicts preserve user files and mark `blocked`; cooperative locking is not filesystem-wide atomicity against noncooperative editors.
 
 A crash before `prepared` MUST alter no target. Unjournaled stages MUST NOT be guessed or auto-deleted. Recovery and scoped cancellation remove only identity- and digest-verified owned stages. Committed journals are removed after cleanup; immutable backups remain. A transaction guard MUST run before native loading and start, recovering safely or refusing blocked state. Dry-run reports recovery but MUST NOT lock for writing or mutate anything.
+
+#### 12.4.2 Durable ownership manifest
+
+This durable provider-private identity record lets stop and destroy finish when a failed attempt or rollback left resources (§5.3.1). It survives app-plan cache invalidation. Verified absent or removed containers and private networks are retired; volume identities remain until the existing volume flags select their cleanup.
+
+| Field | Contract |
+|---|---|
+| Namespace | `resource-ownership` on the provider-private `ctx.stateStore`, keyed by canonical owner. |
+| Document | One JSON object per owner, version 1. |
+| Mode | `0600`. |
+| Lock | Advisory. |
+| Corruption or version mismatch | Fail closed. Do not treat the hint as absent. |
+| Payload | Container, private-network, and volume identities and digests only, with expected app, provider, root, and owner, and the actual physical name. No raw config, no per-value hashes, no resolved secret values. |
+
+`ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the Lando-managed provider (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
 
 ### 12.5 Hot-path read budgets
 
@@ -143,7 +159,7 @@ Hot-path caches remain under their existing readers and MAY adopt `StateStore` o
 
 #### 12.7.2 Reference consumers
 
-The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. These subsystems MUST NOT implement bespoke persistence primitives.
+The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). These subsystems MUST NOT implement bespoke persistence primitives.
 
 #### 12.7.3 Plugins and embedding hosts
 

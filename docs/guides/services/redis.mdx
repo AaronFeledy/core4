@@ -67,7 +67,7 @@ services:
     persist: true
 ```
 
-Run `lando rebuild`, then `lando redis-cli ping`. The generated client and healthcheck authenticate through the container environment, without putting the password in command arguments. Other services must supply the same password to their Redis client.
+Run `lando start`, then `lando redis-cli ping`. The generated client and healthcheck authenticate through the container environment, without putting the password in command arguments. Other services must supply the same password to their Redis client.
 
 ## Discard cached data on restart
 
@@ -80,7 +80,7 @@ services:
     persist: false
 ```
 
-Run `lando rebuild`, set a disposable key, then run `lando restart` and read it again:
+Run `lando start`, set a disposable key, then run `lando restart` and read it again:
 
 ```sh
 lando redis-cli set temporary value

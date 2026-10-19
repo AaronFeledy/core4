@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { SERVICE_PUBLISH_PORT_MIN, type ServicePublishProbe } from "../src/service-publish-ports.ts";
 
@@ -93,6 +94,10 @@ const makeFakeApi = (input: {
   let hostPort = input.inspectHostPort ?? "31234";
   let createIndex = 0;
   let startIndex = 0;
+  const original = planWithPublication({});
+  const originalService = original.services[serviceName];
+  if (originalService === undefined) throw new TypeError("Missing fixture service");
+  let labels = commonContainerLabels(original, originalService);
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
@@ -114,6 +119,8 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && action === "json") {
           if (!exists) return { status: 404, body: "{}" };
           const body = JSON.parse(inspectBody(hostPort, running)) as Record<string, unknown>;
+          body.Id = containerName;
+          body.Config = { Labels: labels };
           if (input.inspectBindingHostPort !== undefined && createIndex === 0) {
             body.HostConfig = {
               PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: input.inspectBindingHostPort }] },
@@ -141,6 +148,9 @@ const makeFakeApi = (input: {
           const body = input.createBodies?.[createIndex] ?? "{}";
           createIndex += 1;
           if (status === 201 || status === 409) {
+            labels = Schema.decodeUnknownSync(
+              Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+            )(request.body).Labels;
             exists = true;
             const created = request.body as {
               HostConfig?: { PortBindings?: Record<string, Array<{ HostPort?: string }>> };

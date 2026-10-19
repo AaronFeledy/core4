@@ -56,10 +56,10 @@ In a `git worktree`, `.git` is a one-line file that points at the main checkout'
 
 ## Verify
 
-After you change excludes, rebuild so the mounts update:
+After you change excludes, start so the mounts update:
 
 ```sh
-lando rebuild
+lando start
 lando doctor
 ```
 
@@ -71,3 +71,18 @@ lando exec app -- git -C /app status --short
 ```
 
 The first prints nothing on a fresh service. The second works on Linux and fails with `not a git repository` on macOS and Windows.
+
+Lint the excludes before you start. The check reads the Landofile. It does not boot a sync session.
+
+<Guide>
+  <Scenario id="excludes-lint" render>
+    <Step name="lint-excludes">
+      <UseFixture name="excludes-demo" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"excludes\":\\s*\\[\\s*\"dist\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"includes\":\\s*\\[\\s*\"vendor\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>

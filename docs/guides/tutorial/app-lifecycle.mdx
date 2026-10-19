@@ -90,22 +90,19 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-`restart` cycles the running processes; `rebuild` recreates the containers.
-Reach for `rebuild` when configuration changed, `restart` when only the
-running process needs cycling:
+Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
 
 ```sh
 # Stop the app's containers but keep volumes and state
 lando stop
 
-# Bring a stopped app back up using the existing plan and volumes
+# Bring the app up and apply create-config changes. Volumes stay
 lando start
 
 # Stop then start in one step
 lando restart
 
-# Recreate containers from the current Landofile. Use after changing
-# service types, images, or build steps
+# Force a pull and build refresh, then recreate containers
 lando rebuild
 ```
 

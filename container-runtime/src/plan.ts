@@ -6,7 +6,14 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
-import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
+import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
+import {
+  ContainerPlanError,
+  containerHealthcheck,
+  normalizeCommand,
+  normalizeEntrypoint,
+} from "./create-values.ts";
+import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL, scratchLabelsForPlan } from "./labels.ts";
 
 import {
   bindSourceForComposeConfig,
@@ -16,6 +23,7 @@ import {
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 
 export { composeConfigBindStrings };
+export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
 export const mergeAppliedPlan = (
@@ -31,17 +39,6 @@ export const mergeAppliedPlan = (
 export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
   `lando-${plan.slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-export class ContainerPlanError extends Error {
-  readonly _tag = "ContainerPlanError";
-  readonly details?: unknown;
-
-  constructor(message: string, details?: unknown) {
-    super(message);
-    this.name = "ContainerPlanError";
-    if (details !== undefined) this.details = details;
-  }
-}
-
 export const envArrayFromRecord = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
   Object.entries(environment).map(([key, value]) => `${key}=${value}`);
 
@@ -49,48 +46,6 @@ export const serviceEnv = (service: ServicePlan): ReadonlyArray<string> =>
   envArrayFromRecord(service.environment);
 
 export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
-
-export const normalizeCommand = (
-  command: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (command === undefined) return undefined;
-  if (typeof command === "string") return ["sh", "-lc", command];
-  return [...command];
-};
-
-export const normalizeEntrypoint = (
-  entrypoint: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (entrypoint === undefined) return undefined;
-  if (typeof entrypoint === "string") return [entrypoint];
-  return [...entrypoint];
-};
-
-const containerHealthcheck = (
-  healthcheck: ServicePlan["healthcheck"],
-): Record<string, unknown> | undefined => {
-  if (healthcheck === undefined) return undefined;
-  switch (healthcheck.kind) {
-    case "none":
-      return { Test: ["NONE"] };
-    case "command": {
-      const command = healthcheck.command;
-      if (command === undefined) return undefined;
-      return {
-        Test: typeof command === "string" ? ["CMD-SHELL", command] : ["CMD", ...command],
-        Interval: healthcheck.intervalSeconds * 1_000_000_000,
-        Timeout: healthcheck.timeoutSeconds * 1_000_000_000,
-        Retries: healthcheck.retries,
-        ...(healthcheck.startPeriodSeconds === undefined
-          ? {}
-          : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
-      };
-    }
-    case "http":
-    case "tcp":
-      return undefined;
-  }
-};
 
 export const commonContainerLabels = (
   plan: AppPlan,
@@ -108,13 +63,15 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  return {
+  const baseLabels = {
     ...userLabels,
     [APP_LABEL]: plan.id,
     [APP_ROOT_LABEL]: plan.root,
     [SERVICE_LABEL]: service.name,
+    ...scratchLabelsForPlan(plan),
     ...extra,
   };
+  return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 
 export interface ContainerHostConfigOptions {
