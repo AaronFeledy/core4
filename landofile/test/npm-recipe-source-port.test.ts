@@ -7,7 +7,7 @@ import { Effect } from "effect";
 
 import { ServiceName } from "@lando/sdk/schema";
 
-import { resolveLandofileIncludes } from "../src/includes.ts";
+import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
 
 describe("npm include recipe-source port", () => {

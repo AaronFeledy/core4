@@ -153,7 +153,7 @@ test.each([false, true])(
       resultFormat: "json",
       command: "app:start",
       resultSchema: StartAppResultSchema,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exits.push(code);
       },

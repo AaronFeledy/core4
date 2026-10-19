@@ -52,7 +52,7 @@ export const renderPreCommandFailure = async (input: PreCommandFailureInput): Pr
     failureExitCode: () => exitCode,
     formatError: (failure) =>
       formatBugReport({
-        error: failure,
+        ...failure,
         context: { commandId: input.commandId },
         rendererMode: input.rendererMode,
       }),

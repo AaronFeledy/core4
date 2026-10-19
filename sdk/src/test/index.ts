@@ -28,6 +28,7 @@ export {
   runProviderContractMatrix,
 } from "./provider-contract.ts";
 export * from "./provider-data-plane.ts";
+export { runProviderVolumeCreationContract } from "./provider-volume-creation.ts";
 export * from "./service-contract.ts";
 export * from "./file-sync-contract.ts";
 export * from "./network-service-fixtures.ts";

@@ -8,13 +8,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import {
-  bringDown,
-  bringUp,
-  inspect,
-  makePodmanApiClient,
-  layer as makeProviderLayer,
-} from "@lando/provider-lando";
+import { bringDown, bringUp, inspect, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -25,6 +19,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("inspectapp");

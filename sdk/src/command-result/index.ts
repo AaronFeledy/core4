@@ -1,4 +1,12 @@
 import { Effect, Result, Schema } from "effect";
+import type { ProjectedFailure } from "./failure.ts";
+export {
+  FailureRoleAnnotation,
+  failureOutcomeFromCause,
+  commandFailureCause,
+  primaryFailureReason,
+  type ProjectedFailure,
+} from "./failure.ts";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, ValidationIssue } from "@lando/sdk/schema";
@@ -24,7 +32,7 @@ export { listSelectableResultKeys, projectEncodedResult } from "./project-result
 
 export type CommandResultOutcome =
   | { readonly _tag: "success"; readonly value: unknown }
-  | { readonly _tag: "failure"; readonly error: unknown };
+  | (ProjectedFailure & { readonly _tag: "failure" });
 
 /** Serializations of the one command result envelope. Stream frames stay JSON. */
 export type CommandResultEnvelopeFormat = "json" | "yaml";
@@ -85,6 +93,8 @@ const taggedErrorJson = (
     "service",
     "steps",
     "redactionTokens",
+    "additionalErrors",
+    "role",
   ]);
   const extra = Object.fromEntries(
     Object.keys(record ?? {}).flatMap((key) => {
@@ -156,7 +166,17 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
       : {
           ...base,
           ok: false,
-          error: taggedErrorJson(options.outcome.error),
+          error: {
+            ...taggedErrorJson(options.outcome.error),
+            ...(options.outcome.additionalErrors.length
+              ? {
+                  additionalErrors: options.outcome.additionalErrors.map(({ role, error }) => ({
+                    ...taggedErrorJson(error),
+                    role,
+                  })),
+                }
+              : {}),
+          },
         };
   return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
 });

@@ -3,7 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import type { ListFilter, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -20,6 +27,107 @@ const failureDetail = <A, E>(exit: Exit.Exit<A, E>): unknown => {
 };
 
 const root = AbsolutePath.make("/tmp/applied-state-evidence");
+
+test("applied provider A preserves failed provider B ownership in teardown evidence", async () => {
+  // Given
+  const hints = {
+    appRoot: root,
+    ownerKey: appIdentityKey("owner", root),
+    providerId: ProviderId.make("docker"),
+    appIds: [AppId.make("failed-b")],
+  };
+  const a = provider("lando", { appliedPlans: Effect.succeed([planFor("lando")]) });
+  const b = {
+    ...provider("docker", { isAvailable: Effect.succeed(true) }),
+    resourceOwnership: () => Effect.succeed(hints),
+    canCleanupOwnedResources: Effect.succeed(true),
+  };
+  // When
+  const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [a, b]));
+  // Then
+  expect(evidence).toEqual({ kind: "applied", plan: planFor("lando"), ownership: [hints] });
+});
+
+for (const problem of ["corrupt", "offline", "incapable"] as const) {
+  test(`failed provider B ${problem} inventory refuses teardown before A can mutate`, async () => {
+    // Given
+    let aObserved = false;
+    const a = provider("lando", {
+      appliedPlans: Effect.succeed([planFor("lando")]),
+      list: () =>
+        Effect.sync(() => {
+          aObserved = true;
+          return [];
+        }),
+    });
+    const b = {
+      ...provider("docker", { isAvailable: Effect.succeed(problem !== "offline") }),
+      resourceOwnership: () =>
+        problem === "corrupt"
+          ? Effect.fail(unavailable("docker", "resource-ownership"))
+          : Effect.succeed({
+              appRoot: root,
+              ownerKey: appIdentityKey("owner", root),
+              providerId: ProviderId.make("docker"),
+              appIds: [AppId.make("failed-b")],
+            }),
+      canCleanupOwnedResources: Effect.succeed(problem !== "incapable"),
+    };
+    // When
+    const exit = await Effect.runPromiseExit(resolveTeardownEvidence(root, [a, b]));
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(aObserved).toBe(false);
+  });
+}
+
+for (const problem of ["corrupt", "offline", "incapable"] as const) {
+  test(`applied provider A resolves without reading provider B's ${problem} inventory`, async () => {
+    // Given
+    const plan = planFor("lando");
+    const a = provider("lando", { appliedPlans: Effect.succeed([plan]) });
+    let inventoryReads = 0;
+    const b = {
+      ...provider("docker", { isAvailable: Effect.succeed(problem !== "offline") }),
+      resourceOwnership: () => {
+        inventoryReads += 1;
+        return problem === "corrupt"
+          ? Effect.fail(unavailable("docker", "resource-ownership"))
+          : Effect.succeed({
+              appRoot: root,
+              ownerKey: appIdentityKey("owner", root),
+              providerId: ProviderId.make("docker"),
+              appIds: [AppId.make("failed-b")],
+            });
+      },
+      canCleanupOwnedResources: Effect.succeed(problem !== "incapable"),
+    };
+    // When
+    const resolved = await Effect.runPromise(resolveAppliedPlanEvidence(root, [a, b]));
+    // Then
+    expect(resolved).toEqual(plan);
+    expect(inventoryReads).toBe(0);
+  });
+}
+
+test("inventory-only evidence refuses non-teardown resolution", async () => {
+  // Given
+  const b = {
+    ...provider("docker", { isAvailable: Effect.succeed(true) }),
+    resourceOwnership: () =>
+      Effect.succeed({
+        appRoot: root,
+        ownerKey: appIdentityKey("owner", root),
+        providerId: ProviderId.make("docker"),
+        appIds: [AppId.make("failed-b")],
+      }),
+    canCleanupOwnedResources: Effect.succeed(true),
+  };
+  // When
+  const exit = await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [b]));
+  // Then
+  expect(failureDetail(exit)).toBe("provider-resources");
+});
 
 test.each([
   {

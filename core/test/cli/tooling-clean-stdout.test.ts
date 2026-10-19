@@ -36,7 +36,7 @@ test.each(["alpha\nbeta\n", "no-newline"])(
           streamingMode: "live",
           io,
           render: renderRunToolingResult,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => expect(code).toBe(0),
         },
       );

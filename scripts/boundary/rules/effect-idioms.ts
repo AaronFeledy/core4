@@ -34,6 +34,19 @@ const importedPath = (expression: ts.Expression, checker: ts.TypeChecker): strin
       return statement.moduleSpecifier.text;
     }
   }
+  // `const { combine } = Cause` resolves through the destructured initializer, reported at the binding.
+  if (
+    ts.isBindingElement(declaration) &&
+    declaration.name === node &&
+    ts.isObjectBindingPattern(declaration.parent)
+  ) {
+    const key = declaration.propertyName ?? declaration.name;
+    const owner = declaration.parent.parent;
+    if (ts.isIdentifier(key) && ts.isVariableDeclaration(owner) && owner.initializer !== undefined) {
+      const base = importedPath(owner.initializer, checker);
+      return base === undefined ? undefined : `${base}/${key.text}`;
+    }
+  }
   return undefined;
 };
 
@@ -142,6 +155,16 @@ export const effectIdiomsRule = {
           (ts.isIdentifier(node) && !ts.isImportSpecifier(node.parent))
         ) {
           const path = importedPath(node, checker);
+          if (
+            (path === "effect/Cause/combine" || path === "effect/Cause/fromReasons") &&
+            file.relativePath !== "engine/src/lifecycle/failure-compensation.ts" &&
+            file.relativePath !== "sdk/src/command-result/failure.ts"
+          ) {
+            report(
+              node,
+              `Cause.${path.endsWith("combine") ? "combine" : "fromReasons"}; use role-aware failure helpers`,
+            );
+          }
           if (path === "effect/Data/TaggedError" || path === "effect/Data/Error") {
             report(
               node,

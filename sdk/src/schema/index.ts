@@ -155,3 +155,4 @@ export {
   layerMerge,
   getLayerMergeRule,
 } from "./layer-merge.ts";
+export * from "./resource-ownership.ts";

@@ -312,7 +312,7 @@ describe("meta:doctor combined report", () => {
         renderCalled = true;
         return renderDoctorReport(report);
       },
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const envelope = decodeCommandEnvelope(io.stdoutLines()[0] ?? "{}");
@@ -339,7 +339,7 @@ describe("meta:doctor combined report", () => {
       resultSchema: metaDoctorSpec.resultSchema,
       io: textIo,
       render: renderDoctorReport,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
     expect(textIo.stdoutLines().join("")).toContain("buildSecrets: true");
     expect(textIo.stdoutLines().join("")).not.toContain("buildSecrets: [redacted]");
@@ -353,7 +353,7 @@ describe("meta:doctor combined report", () => {
       resultSchema: metaDoctorSpec.resultSchema,
       io: jsonIo,
       render: renderDoctorReport,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
     const envelope = decodeCommandEnvelope(jsonIo.stdoutLines()[0] ?? "{}");
     expect(envelope.ok).toBe(true);
@@ -615,7 +615,7 @@ describe("meta:doctor combined report", () => {
         resultSchema: DoctorReportSchema,
         io,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       const yaml = io.stdout();
       expect(
@@ -800,7 +800,7 @@ describe("meta:doctor combined report", () => {
         resultSchema: DoctorReportSchema,
         io,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       const yaml = io.stdout();
       expect(yaml).toContain("deprecations:");
@@ -859,7 +859,7 @@ describe("meta:doctor combined report", () => {
           renderCalled = true;
           return "legacy-json-renderer";
         },
-        formatError: (error) => String(error),
+        formatError: ({ error }) => String(error),
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -924,7 +924,7 @@ describe("meta:doctor combined report", () => {
       resultSchema: DoctorReportSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
 
     // Then

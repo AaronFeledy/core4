@@ -24,6 +24,7 @@ import {
   type LandofileLoadPolicy,
   type LandofileLoadSource,
 } from "./load-expression-file.ts";
+import { escapeLoadProducedText } from "./load-expression-literals.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES, sourceHasUnescapedBracedForm } from "./recipe-expressions.ts";
 import { isServiceEnvironmentSecretReference } from "./secret-reference.ts";
@@ -197,7 +198,7 @@ export const resolveLandofileLoadExpressions = (
               remediation: "Use load() for plain values or move import() under service security.ca.",
             });
           }
-          return result;
+          return escapeLoadProducedText(result);
         }
         if (isLandofileReset(value)) return value;
         if (isLandofileOverride(value)) return override(visit(value.value, path));

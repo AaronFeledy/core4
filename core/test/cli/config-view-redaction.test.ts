@@ -67,7 +67,7 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
           redactionTokens: (result) => metaConfigSpec.redactionTokens?.(result) ?? [],
           render: renderConfigResult,
           io,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => expect(code).toBe(0),
         });
         // Then

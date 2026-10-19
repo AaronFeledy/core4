@@ -224,7 +224,7 @@ test("omits tracing and makes no request when tracing and endpoint are unset", a
       resultFormat: "json",
       resultSchema: ResultSchema,
       trace: resolveTrace({ env: { OTEL_EXPORTER_OTLP_HEADERS: `endpoint=${receiver.url}` } }),
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
     expect(requests).toBe(0);
     expect(JSON.parse(io.stdout())).not.toHaveProperty("trace");
@@ -261,7 +261,7 @@ test("deduplicates nested defect reports into one existing failure rendering", a
     io,
     rendererMode: "plain",
     resultFormat: "json",
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => {},
   });
   expect(io.stdout().trim().split("\n")).toHaveLength(1);
@@ -294,7 +294,7 @@ test("marks the root and render spans failed when jq rendering fails", async () 
         env: {},
         config: { otlp: { endpoint: String(receiver.url), headers: {} } },
       }),
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },

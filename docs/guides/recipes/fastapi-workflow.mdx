@@ -146,10 +146,10 @@ services:
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --reload]
 ```
 
-Rebuild to pick up the new command:
+Start to pick up the new command:
 
 ```sh
-lando rebuild
+lando start
 lando info
 ```
 
@@ -179,10 +179,10 @@ services:
       REDIS_URL: redis://cache:6379/0
 ```
 
-The password never lands in your Landofile, and the URL follows an authored `creds:` block. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials). Rebuild so `web` picks them up, then check what it got:
+The password never lands in your Landofile, and the URL follows an authored `creds:` block. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials). Start so `web` picks them up, then check what it got:
 
 ```sh
-lando rebuild
+lando start
 lando exec web -- printenv DATABASE_URL REDIS_URL
 ```
 

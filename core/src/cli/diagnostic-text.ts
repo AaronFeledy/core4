@@ -17,5 +17,22 @@ export const dimBugReportDetails = (text: string): string => {
   const lines = text.split("\n");
   const detailsStart = lines.findIndex((line) => line.startsWith("code: "));
   if (detailsStart === -1) return text;
-  return [...lines.slice(0, detailsStart), ...lines.slice(detailsStart).map(dimLine)].join("\n");
+  let additional = false;
+  let additionalDetails = false;
+  return lines
+    .map((line, index) => {
+      if (index >= detailsStart) return dimLine(line);
+      if (/^(?:Rollback also failed|Cleanup also failed|Also failed) \(/u.test(line)) {
+        additional = true;
+        additionalDetails = false;
+        return line;
+      }
+      // Details follow the remediation; a block without remediation stays undimmed.
+      if (additional && line.startsWith("  ↳ ")) {
+        additionalDetails = true;
+        return line;
+      }
+      return additionalDetails ? dimLine(line) : line;
+    })
+    .join("\n");
 };

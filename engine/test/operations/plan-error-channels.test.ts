@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { LandofileCompileError } from "@lando/landofile/root-compile";
 import type { Effect } from "effect";
 
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  AppResolveError,
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
@@ -58,8 +60,9 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ?
 const assertType = <T extends true>(value: T): T => value;
 type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>;
 
-// Given: independent member lists copied from the pre-refactor operation contracts.
-type LegacyLoadGlobalPlanError =
+// Given: independent member lists for the intended operation contracts.
+type ExpectedLoadGlobalPlanError =
+  | LandofileCompileError
   | CapabilityError
   | CommandAliasConflictError
   | HomePathCapabilityError
@@ -90,6 +93,7 @@ type LegacyPlanAppChannel =
   | LandofileUnknownEventError;
 
 type LegacyOrphanTeardownError =
+  | AppResolveError
   | ProviderError
   | ProviderUnavailableError
   | ProviderConfigError
@@ -107,7 +111,9 @@ type LegacyGlobalInstallChannel =
   | ProviderConfigError
   | ProviderUnavailableError;
 
-type LegacyEnsureGlobalServicesError =
+type ExpectedEnsureGlobalServicesError =
+  | LandofileCompileError
+  | ServiceNotReadyError
   | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -179,12 +185,17 @@ describe("Engine plan-carrying error channels", () => {
     expect(assertType<Equal<Extract<AppPlannerError, DialectError>, never>>(true)).toBe(true);
   });
   // When: extract each operation channel. Then: require exact member-set equality under tsc.
-  test("LoadGlobalPlanError retains its pre-refactor members", () => {
-    assertType<Equal<LoadGlobalPlanError, LegacyLoadGlobalPlanError>>(true);
+  test("LoadGlobalPlanError carries shared Landofile compilation and planning failures", () => {
+    assertType<Equal<LoadGlobalPlanError, ExpectedLoadGlobalPlanError>>(true);
     assertType<
       Equal<
         LoadGlobalPlanError,
-        AppPlannerError | ProviderSelectionError | FileSystemError | GlobalAppError | LandofileParseError
+        | AppPlannerError
+        | LandofileCompileError
+        | ProviderSelectionError
+        | FileSystemError
+        | GlobalAppError
+        | LandofileParseError
       >
     >(true);
     expect(true).toBe(true);
@@ -201,7 +212,7 @@ describe("Engine plan-carrying error channels", () => {
     assertType<
       Equal<
         OrphanTeardownError,
-        ProviderError | ProviderSelectionError | AppLockTimeoutError | StateStoreError
+        AppResolveError | ProviderError | ProviderSelectionError | AppLockTimeoutError | StateStoreError
       >
     >(true);
     expect(true).toBe(true);
@@ -212,10 +223,8 @@ describe("Engine plan-carrying error channels", () => {
     expect(true).toBe(true);
   });
 
-  test("EnsureGlobalServicesError retains its pre-refactor members", () => {
-    assertType<Equal<EnsureGlobalServicesError, LegacyEnsureGlobalServicesError | ServiceNotReadyError>>(
-      true,
-    );
+  test("EnsureGlobalServicesError carries global loading, build, and readiness failures", () => {
+    assertType<Equal<EnsureGlobalServicesError, ExpectedEnsureGlobalServicesError>>(true);
     assertType<
       Equal<
         EnsureGlobalServicesError,

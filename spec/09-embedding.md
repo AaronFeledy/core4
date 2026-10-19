@@ -44,7 +44,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable, outside the semver-stable set. |
 | `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
 
-The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. `RemoteSource` and `Dataset` remain contract-only, never sync application code, and their implementation is sequenced in the ROADMAP (§10.12).
+The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. The authored remote-sync design keeps data movement in `RemoteSource`/`Dataset` and application-code movement in `CodeSync` (§10.12); implementation sequencing remains in the ROADMAP.
 
 ### 16.3 The `LandoRuntime` factory
 
@@ -73,10 +73,12 @@ The returned opaque, SDK-published `App` handle captures app identity and runtim
 | `info` | Typed app and service information. |
 | `exec`, `tooling`, `logs` | Scoped execution and streaming operations. |
 | `share`, `shareList`, `shareStop` | Scoped or detached tunnel operations (§10.2.2). |
-| `pull`, `push`, `remote` | Frozen remote-sync contract; connector wiring is sequenced in the ROADMAP (§10.12). |
+| `pull`, `push`, `switch`, `remote` | Authored remote-sync contract over source/Dataset plugins (including bundled `dotenv`) and core `CodeSync`. Code changes invalidate old plans/handles even with `noPull`; all selected bindings MUST be re-resolved (§10.12). Release sequencing remains in the ROADMAP. |
 | `config`, `events` | App-scoped configuration and lifecycle access. |
 
 Inputs are option objects. One-shot methods require no runtime services after binding; live resources and subscriptions retain `Scope.Scope`. Typed Effects are returned directly, not renderer envelopes. `app.start()` is managed by default; detached behavior requires explicit opt-in.
+
+Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 
 **Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, discovery, and cache loading and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
 
@@ -122,15 +124,17 @@ Hosts MAY register programmatic event subscribers, but manifest-declared subscri
 
 App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable command-shaped surface for hosts needing canonical ids, argv policy, schema-validated command input, renderer-independent typed results, or the same native dispatch behavior as the binary (§8.4.1).
 
-- Built-in commands in §8.2 expose Effect operations except installation and interactive diagnostics explicitly omitted below.
+- Built-in commands in §8.2 expose Effect operations except installation, interactive diagnostics, and interactive-only tether (§10.12.5).
 - Direct export names follow namespace plus Pascal-cased segments; top-level CLI aliases do not create duplicate exports.
 - `appConfig` and `metaConfig` expose their subcommands as nested function namespaces.
 - Operations MUST NOT access process stdio or invoke OCLIF. They inherit runtime services through the Effect requirements channel.
 - The binary MUST use the same operations; there is no second implementation.
 - `runTooling(canonicalId, input)` invokes cached tooling programs with the CLI’s normalized input semantics (§8.6).
-- `appConfig.translate`, `appConfig.detectTranslators`, and `appConfig.listTranslators` invoke translation only on explicit request and write only when requested.
+- `appConfig.translate`, `appConfig.detectTranslators`, and `appConfig.listTranslators` are explicit authoring calls. Translation/refresh options MUST follow §7.4.2: explicit refresh may fetch metadata, check is local/read-only, and lifecycle refresh uses local snapshots only.
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.
+
+The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. Projected defects and interruption-only causes propagate as defects with the original Cause attached.
 
 ### 16.8 Testing
 

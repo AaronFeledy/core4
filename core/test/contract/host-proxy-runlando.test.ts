@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
+import { HostProxyCommandNotAllowedError, ProxyError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import {
   AbsolutePath,
@@ -137,6 +137,7 @@ const hostSideEnvelope = (
       : {
           outcome: {
             _tag: "failure" as const,
+            additionalErrors: [],
             error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
               _tag: "HostProxyDispatchError",
               message: Cause.pretty(outcome.cause),
@@ -201,6 +202,42 @@ const withStdoutTty = async <Value>(tty: boolean, run: () => Promise<Value>): Pr
 };
 
 describe("in-container lando open host-proxy round-trip", () => {
+  test("host dispatch retains typed router failure and cleanup defect in its envelope", async () => {
+    const primary = new ProxyError({
+      proxyId: "traefik",
+      message: "router status failed",
+      remediation: "Repair router.",
+    });
+    const secondary = new Error("router cleanup failed");
+    const router = RouterService.of({
+      ...Effect.runSync(
+        Effect.map(RouterService, (service) => service).pipe(
+          Effect.provide(commandServices(silentEventLayer())),
+        ),
+      ),
+      status: Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(secondary))),
+    });
+    const result = await Effect.runPromise(
+      runOpenForHostProxy(httpsPlan(), {
+        commandId: "app:open",
+        argv: ["open"],
+        cwd: "/srv/apps/myapp",
+        tty: false,
+        env: {},
+      }).pipe(
+        Effect.provideService(RouterService, router),
+        Effect.provide(commandServices(silentEventLayer())),
+      ),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.envelope.error).toEqual({
+      _tag: "ProxyError",
+      proxyId: "traefik",
+      message: "router status failed",
+      remediation: "Repair router.",
+      additionalErrors: [{ _tag: "Error", role: "peer", message: "router cleanup failed" }],
+    });
+  });
   test("an unconfigured hostname uses the running ingress listen port", async () => {
     const plan = makePlan(
       [route({ hostname: "unstarted.lndo.site", scheme: "https", service: "web" })],

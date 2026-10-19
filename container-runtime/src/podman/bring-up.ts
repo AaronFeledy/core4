@@ -1,5 +1,5 @@
-import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
-import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
+import { Cause, type Context, DateTime, Duration, Effect, Exit, Stream } from "effect";
+import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
   ProviderInternalError,
@@ -34,6 +34,13 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import {
+  containerOwnershipLabels,
+  inspectOwnedNativeId,
+  isSharedNetwork,
+  networkOwnershipLabels,
+  verifiedNativeId,
+} from "../native-ownership.ts";
+import {
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
@@ -58,6 +65,7 @@ import { waitForExit } from "../wait-for-exit.ts";
 import {
   bringUpRecreateReasons,
   inspectBindSources,
+  inspectContainerLabels,
   inspectNetworkNames,
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
@@ -71,13 +79,7 @@ const networkNames = podmanNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 const sharedNetworkName = landoSharedNetworkName;
 
-export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
-  const scratch = plan.extensions["@lando/core/scratch"];
-  const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
-  return scratchId === plan.id && typeof scratchId === "string"
-    ? { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: scratchId }
-    : {};
-};
+export { scratchLabelsForPlan } from "../labels.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringUpError =
@@ -103,6 +105,7 @@ interface InspectResult {
   readonly publishFingerprint: string;
   readonly bindSources: Readonly<Record<string, string>> | undefined;
   readonly networkNames: ReadonlyArray<string> | undefined;
+  readonly labels?: Readonly<Record<string, string>>;
   readonly body?: unknown;
 }
 
@@ -137,6 +140,7 @@ export interface BringUpOptions {
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
   readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
+  readonly onVolumeCreated?: ApplyOptions["onVolumeCreated"];
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
@@ -247,6 +251,7 @@ const inspectContainer = Effect.fnUntraced(function* (
       publishFingerprint: fingerprintInspectPublishPorts(body),
       bindSources: inspectBindSources(body),
       networkNames: inspectNetworkNames(body),
+      labels: inspectContainerLabels(body),
       body,
     };
   }
@@ -256,6 +261,7 @@ const inspectContainer = Effect.fnUntraced(function* (
     publishFingerprint: fingerprintInspectPublishPorts(body),
     bindSources: inspectBindSources(body),
     networkNames: inspectNetworkNames(body),
+    labels: inspectContainerLabels(body),
     body,
   };
 });
@@ -325,7 +331,7 @@ const createContainerRequest = (
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
-      labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+      labels: commonContainerLabels(plan, service),
       hostConfig: {
         ...baseHostConfig,
         ...knobs.hostConfig,
@@ -363,6 +369,7 @@ const createContainerRequest = (
 const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
+  plan: AppPlan,
 ): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
@@ -372,7 +379,15 @@ const ensureNetwork = (
       return request(deps, {
         method: "POST",
         path: "/networks/create",
-        body: { Name: name, Driver: "bridge" },
+        body: {
+          Name: name,
+          Driver: "bridge",
+          ...(isSharedNetwork(plan, name)
+            ? {}
+            : {
+                Labels: networkOwnershipLabels(plan),
+              }),
+        },
       }).pipe(
         Effect.flatMap((response) => {
           if (response.status === 201 || response.status === 200) {
@@ -620,25 +635,39 @@ const removeContainer = (
     ),
   );
 
-const removeNetworkSilent = (deps: BringUpDeps, plan: AppPlan): Effect.Effect<void> =>
-  request(deps, {
-    method: "DELETE",
-    path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
-  }).pipe(Effect.catch(() => Effect.void));
+const removeNetworkSilent = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  name = appNetworkName(plan),
+): Effect.Effect<void> =>
+  (isSharedNetwork(plan, name)
+    ? Effect.void
+    : inspectOwnedNativeId(
+        deps.api,
+        {
+          kind: "network",
+          name,
+          labels: networkOwnershipLabels(plan),
+        },
+        deps.options.ctx,
+      ).pipe(
+        Effect.flatMap((id) =>
+          id === undefined
+            ? Effect.void
+            : request(deps, {
+                method: "DELETE",
+                path: `/networks/${encodeURIComponent(id)}`,
+              }).pipe(Effect.asVoid),
+        ),
+      )
+  ).pipe(Effect.catch(() => Effect.void));
 
 const removeCreatedNetworksSilent = (
   deps: BringUpDeps,
   createdNetworks: ReadonlySet<string>,
+  plan: AppPlan,
 ): Effect.Effect<void> =>
-  Effect.forEach(
-    createdNetworks,
-    (name) =>
-      request(deps, {
-        method: "DELETE",
-        path: `/networks/${encodeURIComponent(name)}`,
-      }).pipe(Effect.catch(() => Effect.void)),
-    { discard: true },
-  );
+  Effect.forEach(createdNetworks, (name) => removeNetworkSilent(deps, plan, name), { discard: true });
 
 const publish = (
   deps: BringUpDeps,
@@ -690,6 +719,13 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = yield* inspectContainer(deps, name);
+  const existingId = inspected.exists
+    ? yield* verifiedNativeId(
+        JSON.stringify(inspected.body),
+        containerOwnershipLabels(plan, service.name),
+        deps.options.ctx,
+      )
+    : undefined;
   if (!inspected.exists && deps.options.forbidRecreate === true) {
     return yield* Effect.fail(
       new ServiceStartError({
@@ -709,7 +745,7 @@ const startService = Effect.fnUntraced(function* (
     plannedFingerprint.length > 0 &&
     inspected.publishFingerprint.length > 0 &&
     inspected.publishFingerprint !== plannedFingerprint;
-  const recreateReasons = bringUpRecreateReasons(plan, service, inspected);
+  const recreateReasons = inspected.exists ? bringUpRecreateReasons(plan, service, inspected) : [];
   let before = inspected;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     if (deps.options.forbidRecreate === true && recreateReasons.length > 0) {
@@ -722,8 +758,10 @@ const startService = Effect.fnUntraced(function* (
         }),
       );
     }
-    yield* stopContainerSilent(deps, name);
-    yield* removeContainer(deps, service, name);
+    if (existingId !== undefined) {
+      yield* stopContainerSilent(deps, existingId);
+      yield* removeContainer(deps, service, existingId);
+    }
     before = {
       exists: false,
       running: false,
@@ -792,8 +830,15 @@ const startService = Effect.fnUntraced(function* (
             }),
           );
         }
-        yield* stopContainerSilent(deps, name);
-        yield* removeContainer(deps, service, name);
+        const recoveryId = yield* inspectOwnedNativeId(
+          deps.api,
+          { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+          deps.options.ctx,
+        );
+        if (recoveryId !== undefined) {
+          yield* stopContainerSilent(deps, recoveryId);
+          yield* removeContainer(deps, service, recoveryId);
+        }
         recordTouched({ name, created: true, startedExisting: false });
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
@@ -903,7 +948,7 @@ const rollbackPartialApply = Effect.fnUntraced(function* (
   // Volumes are preserved so rollback does not discard persistent data.
   yield* cleanupTouchedContainers(deps, touched);
   if (deps.options.forbidRecreate !== true) yield* removeNetworkSilent(deps, plan);
-  yield* removeCreatedNetworksSilent(deps, createdNetworks);
+  yield* removeCreatedNetworksSilent(deps, createdNetworks, plan);
 });
 
 const SERVICE_START_LOG_TAIL_LINES = 50;
@@ -1013,7 +1058,7 @@ const rollbackAfterStartFailure = (
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   plan: AppPlan,
   options: BringUpOptions,
-): Effect.fn.Return<ApplyResult, BringUpError> {
+): Effect.fn.Return<ApplyResult, ProviderError> {
   const api = options.api;
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
@@ -1036,14 +1081,25 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
 
   const createdNetworks = new Set<string>();
   for (const name of networkNames(plan)) {
-    if (yield* ensureNetwork(deps, name)) {
+    if (yield* ensureNetwork(deps, name, plan)) {
       createdNetworks.add(name);
     }
   }
   const createdVolumes: VolumeCreationFact[] = [];
-  for (const store of plan.stores) {
-    createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
-  }
+  // Volume creation and its receipts run before any container exists; a failure or interrupt
+  // here still removes the networks this apply created. Volumes and recorded receipts stay.
+  yield* Effect.gen(function* () {
+    for (const store of plan.stores) {
+      for (const fact of yield* ensureVolume(deps, plan, store)) {
+        if (options.onVolumeCreated !== undefined) yield* options.onVolumeCreated(fact);
+        createdVolumes.push(fact);
+      }
+    }
+  }).pipe(
+    Effect.onExit((exit) =>
+      Exit.isFailure(exit) ? rollbackPartialApply(deps, plan, [], createdNetworks) : Effect.void,
+    ),
+  );
   const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {

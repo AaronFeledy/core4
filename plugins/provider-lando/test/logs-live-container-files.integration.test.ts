@@ -8,7 +8,7 @@ import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-s
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
+import { makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -21,6 +21,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 

@@ -8,7 +8,11 @@ import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema"
 import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { type LoadGlobalPlanResult, loadGlobalPlan } from "../../src/operations/global-plan.ts";
+import {
+  type LoadGlobalPlanResult,
+  decodeGlobalLandofile,
+  loadGlobalPlan,
+} from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const withGlobalFiles = async <A>(
@@ -123,6 +127,49 @@ test("global directives are consumed before the managed-provider plan", async ()
     expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.routes).toEqual(["global.test"]);
     expect(loaded.plan.provider).toBe(ProviderId.make("lando"));
   });
+});
+
+test("global loading materializes typed sites before per-layer validation", async () => {
+  // Given
+  await withGlobalFiles(async ({ root, load }) => {
+    await writeFile(
+      join(root, ".lando.base.yml"),
+      'services:\n  mailpit:\n    primary: "{{ eq(recipe.flag, false) }}"\n',
+    );
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "recipe:",
+        "  id: lamp",
+        "  version: 0.1.0",
+        "  options:",
+        "    flag: false",
+        "  producer:",
+        "    sourceKind: bundled",
+        '    packageName: "@lando/recipe-lamp"',
+        "    recipeId: lamp",
+        "    manifestVersion: 0.1.0",
+        `    contentDigest: sha256:${"0".repeat(64)}`,
+        "",
+      ].join("\n"),
+    );
+    // When
+    const loaded = await load();
+    // Then
+    if (!loaded.materialized) throw new Error("Expected global Landofile");
+    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.primary).toBe(true);
+  });
+});
+
+test("global explicit decode compiles typed expressions with the shared validator", async () => {
+  // Given
+  const content = 'services:\n  web:\n    primary: "{{ eq(1, 2) }}"\n';
+  // When
+  const result = await Effect.runPromise(
+    decodeGlobalLandofile({ file: "/global/.lando.yml", cwd: "/global", content }),
+  );
+  // Then
+  expect(result.services?.[ServiceName.make("web")]?.primary).toBe(false);
 });
 
 test("merges all six global YAML layers in low-to-high precedence", async () => {

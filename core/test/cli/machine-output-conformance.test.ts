@@ -130,7 +130,7 @@ describe("machine-output conformance", () => {
         resultSchema: spec.resultSchema,
         io,
         render: () => undefined,
-        formatError: (error) => `diagnostic: ${String(error)}`,
+        formatError: ({ error }) => `diagnostic: ${String(error)}`,
       });
       const line = io.stdoutLines()[0] ?? "{}";
       const envelope = decodeEnvelope(line);
@@ -155,7 +155,7 @@ describe("machine-output conformance", () => {
           resultSchema: spec.resultSchema,
           io,
           render: () => undefined,
-          formatError: (error) => `diagnostic: ${String(error)}`,
+          formatError: ({ error }) => `diagnostic: ${String(error)}`,
         });
         return io;
       };
@@ -181,7 +181,7 @@ describe("machine-output conformance", () => {
           command: spec.id,
           resultSchema: spec.resultSchema,
           io,
-          formatError: (error) => `diagnostic: ${String(error)}`,
+          formatError: ({ error }) => `diagnostic: ${String(error)}`,
           setExitCode: (code) => {
             exitCode = code;
           },
@@ -213,7 +213,7 @@ describe("machine-output conformance", () => {
       projectResultKeys: ["core"],
       io,
       render: () => undefined,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
     });
 
     // Then the envelope result contains only that key.
@@ -234,7 +234,7 @@ describe("machine-output conformance", () => {
         command: spec.id,
         resultSchema: spec.resultSchema,
         io,
-        formatError: (error) => `diagnostic: ${String(error)}`,
+        formatError: ({ error }) => `diagnostic: ${String(error)}`,
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -273,7 +273,7 @@ describe("machine-output conformance", () => {
         ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
         io,
         render: () => undefined,
-        formatError: (error) => `diagnostic: ${String(error)}`,
+        formatError: ({ error }) => `diagnostic: ${String(error)}`,
         ...(onExit === undefined ? {} : { setExitCode: onExit }),
       });
       return io;

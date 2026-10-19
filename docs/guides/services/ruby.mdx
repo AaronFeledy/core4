@@ -52,7 +52,7 @@ Ruby publishes its port endpoint but has no default healthcheck, even with an au
 
 ## Set the Ruby webroot context
 
-Run `lando rebuild` after adding `framework: rails` and your `webroot:` to the service:
+Run `lando start` after adding `framework: rails` and your `webroot:` to the service:
 
 ```yaml
 services:
@@ -73,7 +73,7 @@ Relative paths can't escape the app mount with `..`.
 Verify the value inside the running service:
 
 ```sh
-lando rebuild
+lando start
 lando exec app -- printenv LANDO_WEBROOT
 ```
 

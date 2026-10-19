@@ -46,9 +46,10 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `buildArtifact` | Builds a runnable artifact from an `ArtifactBuildSpec`. |
 | `pullArtifact` | Acquires a referenced artifact with optional policy `always` (default; acquire from source), `missing` (reuse a provider-local copy, acquire only when absent), or `never` (reuse a provider-local copy, fail without contacting the source when absent; §6.13.3). Provider policies are strict and do not fall back. |
 | `removeArtifact` | Removes an artifact owned or selected by the request. |
-| `apply` | Reconciles an `AppPlan` and returns materialized runtime results. |
+| `apply` | Reconciles an `AppPlan` and returns materialized runtime results. Ordinary apply recreates only containers whose immutable create configuration drifted or whose `dev.lando.create-config` label is missing, and keeps unchanged containers and volumes (§5.3.2). |
 | `start`, `stop`, `restart` | Changes lifecycle state for selected services. |
 | `destroy` | Removes the selected app realization according to `DestroyOptions` and returns a `DestroyOutcome`: `destroyed`, or `no-op` with reason `no-applied-plan` when the target carried no plan and the provider found no applied record. A planless destroy that removes nothing MUST report the no-op rather than succeed silently. |
+| `cleanupOwnedResources` (optional) | Removes verified owned containers, private networks, and volumes selected by `DestroyOptions` for one root. Returns `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`). All bundled providers implement it. Shared networks are never owned or deleted. |
 | `removeObservedService` | Stops and removes the container behind one observed `ServiceRuntimeInfo`, by observed identity, without resolving an applied plan; returns `removed` or `absent`. |
 | `exec` | Executes a short command and returns a collected `ExecResult`. |
 | `execStream` | Streams stdout/stderr and a terminal exit result for a command. |
@@ -66,21 +67,62 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
+`ApplyOptions.onVolumeCreated` is an optional effectful callback receiving the same verified `VolumeCreationFact` reported in `ApplyResult.createdVolumes`. Providers MUST await it for each volume immediately after verified creation and before starting any service container. A callback failure MUST fail apply before service startup. Existing or adopted volumes MUST NOT trigger the callback; ownership labels alone are not creation evidence. Receipts already persisted survive a later apply failure without changing rollback or volume-retention policy.
+
 #### 5.3.1 Teardown resolution and orphaned resources
 
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
 
-1. No applied plan and no owned runtime resources: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
+1. No applied plan, no owned runtime resources, and no nonempty cleanup inventory: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. A nonempty inventory requires provider verification even when every recorded resource returns absent. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
 2. An applied plan exists: tear down from the applied plan.
 3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
 
 `stop` reports `stopped` or `unchanged`; `destroy` reports `destroyed` or `unchanged`. Every renderer and machine format MUST preserve that distinction. The operation result vocabulary is distinct from the provider's `DestroyOutcome` (`destroyed`, or `no-op` with reason `no-applied-plan`, §5.3): rule 1 returns `unchanged` without any provider call, an applied-plan teardown (rule 2) reports `destroyed`, and an orphan teardown (rule 3) derives its result from what it removed, `unchanged` when nothing was removed. A direct provider `no-op` MUST NOT be rendered as `destroyed`; it corresponds to `unchanged` unless the same operation removed other resources. Both operations stop and remove the selected containers, but `stop` retains the applied plan and volumes, while `destroy` clears applied state and follows its volume policy. An orphan teardown MUST report what it removed; a result that lists a service MUST mean that service was stopped and removed. Orphan volume removal under `destroy --volumes` MUST classify cache and data volumes exactly as planful bring-down does. A plain `destroy` leaves data stores, so rule 3 lets a later `destroy --volumes` remove them.
 
-Selected global stop (§20.7) is the one teardown exception to rule 3: an otherwise valid selected orphan request (orphaned runtime resources, no applied plan) fails with `AppResolveError` before any mutation, because route ownership cannot be reconstructed without applied route definitions. Whole-global stop follows rule 3.
+Selected global stop (§20.7) is the one teardown exception to rule 3: an otherwise valid selected orphan request (orphaned runtime resources or cleanup-only ownership hints, no applied plan) fails with `AppResolveError` before any mutation, because route ownership cannot be reconstructed without applied route definitions. Whole-global stop follows rule 3.
 
 The relaxation is scoped to teardown callers. `start` and every other non-teardown caller keep the fail-closed refusal of orphaned runtime resources (`AppResolveError`) and MUST NOT be served by widening the shared evidence resolver's default.
 
 The §10.11 `DataMover` uses native data-plane methods only when declared. Otherwise it MAY use the mount-aware ephemeral-run fallback; if `ephemeralMounts` is false and no native capability exists, planning or transfer fails with `CapabilityError`.
+
+Before any provider `apply` mutates app containers, private networks, or volumes, the provider records the union of the previous successful attempt, prior failed attempts, and the attempt in progress. The record holds identities and digests only, plus the expected app, provider, root, and owner, and the actual physical name, including Lando Windows names. Shared networks are never owned. Applied plans are recorded on success only. `ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is a summary hint. It is not physical existence, readiness, or seed evidence.
+
+`RuntimeProviderContribution.resourceOwnership(ctx, root)` is a filesystem-only query and MUST NOT construct, initialize, or contact a runtime. It reads the provider-private `ctx.stateStore` `resource-ownership` namespace, keyed by canonical owner (§12.4.2). `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is the optional per-provider form of the same query, with the same filesystem-only restriction.
+
+Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown (global stop and global destroy) is the exception to the every-contribution query: it consults only the Lando-managed provider's inventory through `RuntimeProviderRegistry.resourceOwnership` and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
+
+Inventories are teardown evidence only. Non-teardown resolution (selected restart, applied-state resolution) serves a matching applied plan without reading any provider's inventory; it consults inventories only when no applied plan matches, and a nonempty hint then produces the existing orphan refusal (`AppResolveError`). Only teardown probes the availability and cleanup capability of inventory providers. The internal whole-app stop that restart and rebuild run does not perform ownership cleanup.
+
+Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only removal is not `unchanged`. An all-absent result stays `unchanged`. Verified absent or removed containers and private networks are retired from the inventory. Volumes remain until the existing volume flags select them. Verification uses ownership labels, not trusted names, with one legacy exception for networks.
+
+| Observed resource | Teardown action |
+|---|---|
+| Container with its app, root, and service ownership labels and an observed native id | Remove by observed native id. |
+| Container missing any of those labels or an observed native id | Refuse. No legacy exception. |
+| Network at the exact planned private network name with no labels at all | Legacy (created by an earlier build). Remove by observed native id during planful bring-down, bring-up rollback, and ownership-inventory cleanup. |
+| Network with the expected ownership label set | Remove by observed native id. |
+| Network with any nonempty label set that is not the expected ownership set (partial, another app, root, owner, or provider) | MUST refuse. |
+| Shared network | Never removed. |
+
+This inventory MUST NOT widen partial `provider.destroy`, selected rebuild, or global `-s`. Selected global orphan refusal (§20.7) is unchanged. Orphan lifecycle events are unchanged. Apply and build pre-barrier compensation still run. Readiness failure and interruption during readiness still retain the applied app, routes, and volumes. Neither path deletes volumes unless the existing flags select them.
+
+#### 5.3.2 Create-config identity
+
+Ordinary `start` and explicit `global:start` plan and build with the default cache policy (§6.13.3), then apply changed immutable container create configuration, keeping unchanged containers and volumes. Bare `restart` stops and removes containers, then starts the app with the default cache policy (§6.15). `start` has no confirmation flag.
+
+| Drift | Apply behavior |
+|---|---|
+| Image reference, digest, or build key, under the ordinary build flow | Recreate the affected container. |
+| `command`, `entrypoint`, environment, `user`, working directory, mounts, storage, labels, preserved Compose knobs, or container `healthcheck` | Recreate the affected container. |
+| Missing opaque `dev.lando.create-config` label | One-time recreate. |
+| Unchanged `${secret:...}` reference whose store value changed | Not a config-identity change. MUST NOT recreate for that reason alone. |
+| Per-session credentials, allocations, and timestamps | Excluded from identity. |
+
+The label value is `v1:` plus one SHA-256 digest of the desired create configuration. It stores no raw values and no per-value hashes. A `${secret:...}` input contributes the reference text, not the resolved SecretStore value. Literal env-file and YAML config, including a literal password, is desired configuration and is inside that single outer digest. The digest does not prevent dictionary inference and MUST NOT be described as proof that no secret was hashed.
+
+Explicit `rebuild` remains the forced artifact refresh and explicit recreate (§6.15). It is not required to apply create-config drift.
+
+A provider that realizes network names physically (the managed Windows machine) stamps the fingerprint computed from the physical plan. Its `inspect` presents the logical fingerprint only when the observed label exactly equals the physical expectation, so selected-restart preflight compares like with like. When physical and logical expectations differ, a physical mismatch withholds the fingerprint so it counts as config drift.
 
 ### 5.4 Capabilities
 

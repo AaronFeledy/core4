@@ -84,7 +84,7 @@ describe("runWithRendererHandling jqExpression", () => {
       resultSchema: TinyResultSchema,
       jqExpression: ".ok",
       io,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },
