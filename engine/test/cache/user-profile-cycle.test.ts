@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { deserialize } from "node:v8";
 import { Effect, Layer, Schema } from "effect";
 
+import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { ServiceName } from "@lando/sdk/schema";
@@ -55,16 +56,22 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
   const plannerLayer = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, cache)),
   );
+  const authored = { name: "profile-cycle", includes: ["user:profile.yml"] };
   const load = () =>
-    resolveLandofileIncludes({
-      landofile: { name: "profile-cycle", includes: ["user:profile.yml"] },
-      appRoot,
-      cacheRoot,
-      ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => includesRoot },
-      stateStore: makeStateStore({
-        privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
-      }),
-    });
+    buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: authored }]).pipe(
+      Effect.flatMap((loadScope) =>
+        resolveLandofileIncludes({
+          landofile: authored,
+          loadScope,
+          appRoot,
+          cacheRoot,
+          ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => includesRoot },
+          stateStore: makeStateStore({
+            privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+          }),
+        }),
+      ),
+    );
   const plan = () =>
     Effect.runPromise(
       Effect.gen(function* () {

@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
-import { Cause, DateTime, Effect, Exit, Fiber, Option, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -18,10 +18,10 @@ import {
   emitCompose,
   linuxDockerCapabilities,
   makeDockerApiClient,
-  layer as makeProviderLayer,
-  makeRuntimeProvider,
   persistAppliedPlan,
+  layer as providerLayer,
   renderCompose,
+  makeRuntimeProvider as runtimeProviderFactory,
 } from "@lando/provider-docker";
 import {
   AbsolutePath,
@@ -31,14 +31,27 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { FileSystem, RuntimeProvider } from "@lando/sdk/services";
 import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
+
+const testPluginState = () =>
+  makePluginStateStore(
+    makeTestStateStore().service,
+    AbsolutePath.make(path.join(tmpdir(), `docker-contract-${crypto.randomUUID()}`)),
+    ownerOnlyFileAccess,
+  );
+const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]> = {}) =>
+  providerLayer({ ...options, appliedPlanState: options.appliedPlanState ?? testPluginState() });
+const makeRuntimeProvider = (options: Parameters<typeof runtimeProviderFactory>[0]) =>
+  runtimeProviderFactory({ ...options, appliedPlanState: options?.appliedPlanState ?? testPluginState() });
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -311,11 +324,14 @@ const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string)
 };
 
 const makeFakeApi = () => {
+  const networks = new Map<string, object>();
+  const configs = new Map<string, unknown>();
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
   const volumes = new Set<string>();
+  const createdVolumes = new Map<string, unknown>();
   const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
@@ -329,21 +345,40 @@ const makeFakeApi = () => {
         if (imageResponse !== undefined) return imageResponse;
 
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 404, body: "{}" };
+          const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
+          return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
         }
         if (request.path === "/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(request.body);
+          networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
         if (request.path === "/volumes/create") {
           const name = (request.body as { Name?: string }).Name ?? "";
           const existed = volumes.has(name);
           volumes.add(name);
-          return { status: existed ? 409 : 201, body: "{}" };
+          if (!existed) createdVolumes.set(name, request.body);
+          return { status: existed ? 409 : 201, body: JSON.stringify(request.body) };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "GET") {
+          const volume = createdVolumes.get(decodeURIComponent(request.path.slice("/volumes/".length)));
+          return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "DELETE") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          createdVolumes.delete(name);
+          return { status: volumes.delete(name) ? 204 : 404, body: "" };
         }
         if (request.path === "/networks/lando_bridge_network/connect") {
           return { status: 200, body: "{}" };
         }
-        if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
+          networks.delete(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
@@ -364,6 +399,7 @@ const makeFakeApi = () => {
           const name = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1)).get("name");
           if (name !== null && name.length > 0) {
             existing.add(name);
+            configs.set(name, request.body);
             containerBinds.set(name, createBodyBinds(request.body));
             return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
           }
@@ -387,12 +423,17 @@ const makeFakeApi = () => {
           return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
         }
         if (request.path.endsWith("/stop")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length));
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)).replace(
+            /-id$/u,
+            "",
+          );
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
         if (request.path.endsWith("?force=true") && request.method === "DELETE") {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+          const name = decodeURIComponent(
+            request.path.slice("/containers/".length, -"?force=true".length),
+          ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
@@ -406,6 +447,7 @@ const makeFakeApi = () => {
             status: 200,
             body: JSON.stringify({
               Id: `${name}-id`,
+              Config: configs.get(name),
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
               NetworkSettings: {
                 Ports: { "31080/tcp": [{ HostIp: "0.0.0.0", HostPort: "32768" }] },
@@ -738,6 +780,8 @@ interface FakeDockerApiHooks {
 }
 
 const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
+  const networks = new Map<string, object>();
+  const configs = new Map<string, unknown>();
   const running = new Set<string>();
   const existing = new Set<string>();
   const volumes = hooks.volumes ?? new Set<string>();
@@ -755,15 +799,24 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         const imageResponse = imageInspectAndPullResponse(images, request);
         if (imageResponse !== undefined) return imageResponse;
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 404, body: "{}" };
+          const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
+          return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
         }
         if (request.path === "/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(request.body);
+          networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
         if (request.path === "/networks/lando_bridge_network/connect") {
           return hooks.sharedNetworkConnectResponse ?? { status: 200, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          networks.delete(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: 204, body: "" };
         }
         if (request.path === "/volumes/create") {
@@ -803,6 +856,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
             return { status: 409, body: "already exists" };
           }
           existing.add(createdName);
+          configs.set(createdName, request.body);
           return { status: 201, body: "{}" };
         }
         if (request.path.endsWith("/start")) {
@@ -820,12 +874,17 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           return { status: 204, body: "" };
         }
         if (request.path.endsWith("/stop")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length));
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)).replace(
+            /-id$/u,
+            "",
+          );
           running.delete(name);
           return { status: 204, body: "" };
         }
         if (request.path.endsWith("?force=true") && request.method === "DELETE") {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+          const name = decodeURIComponent(
+            request.path.slice("/containers/".length, -"?force=true".length),
+          ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
@@ -839,6 +898,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
             status: 200,
             body: JSON.stringify({
               Id: `${name}-id`,
+              Config: configs.get(name),
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
               NetworkSettings: {
                 Ports: { "31080/tcp": [{ HostIp: "0.0.0.0", HostPort: "32768" }] },
@@ -967,6 +1027,15 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     await Effect.runPromise(runProviderContract(provider));
+    await Effect.runPromise(
+      runProviderVolumeCreationContract(
+        provider,
+        () =>
+          fake.calls.filter(
+            (call) => call.method === "POST" && /\/containers\/[^/]+\/start$/u.test(call.path),
+          ).length,
+      ),
+    );
 
     expect(provider.capabilities.bindMountPerformance).toBe("native");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
@@ -1164,7 +1233,16 @@ describe("provider-docker RuntimeProvider contract", () => {
       EndpointConfig: { Aliases: ["web.myapp.internal"] },
     });
     expect(fake.calls.filter((call) => call.path === "/networks/create").map((call) => call.body)).toEqual([
-      { Name: "lando-myapp", Driver: "bridge" },
+      {
+        Name: "lando-myapp",
+        Driver: "bridge",
+        Labels: {
+          "dev.lando.app": appId,
+          "dev.lando.app-root": "/tmp/lando-sdk-contract-myapp",
+          "dev.lando.owner": appIdentityKey("owner", "/tmp/lando-sdk-contract-myapp"),
+          "dev.lando.provider": providerId,
+        },
+      },
       { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
@@ -1185,8 +1263,10 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /exec/lando-myapp-web-exec/start",
       "GET /exec/lando-myapp-web-exec/json",
       "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
-      "POST /containers/lando-myapp-web/stop",
-      "DELETE /containers/lando-myapp-web?force=true",
+      "GET /containers/lando-myapp-web/json",
+      "POST /containers/lando-myapp-web-id/stop",
+      "DELETE /containers/lando-myapp-web-id?force=true",
+      "GET /networks/lando-myapp",
       "DELETE /networks/lando-myapp",
     ]);
   });
@@ -1557,7 +1637,11 @@ describe("provider-docker RuntimeProvider contract", () => {
     };
     const plan = {
       ...makePlan(service),
-      identity: { appRoot: AbsolutePath.make("/canonical/creation-root"), ownerKey: "creation-owner" },
+      root: AbsolutePath.make("/canonical/creation-root"),
+      identity: {
+        appRoot: AbsolutePath.make("/canonical/creation-root"),
+        ownerKey: appIdentityKey("owner", "/canonical/creation-root"),
+      },
       stores: [{ name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" }],
     };
 
@@ -1572,7 +1656,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
         "dev.lando.volume-owner": "/canonical/creation-root",
-        "dev.lando.volume-selector": `docker:${appId}:creation-owner:cache`,
+        "dev.lando.volume-selector": `docker:${appId}:${appIdentityKey("owner", "/canonical/creation-root")}:cache`,
       },
     });
     expect(
@@ -1710,8 +1794,10 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /exec/lando-myapp-web-exec/start",
       "GET /exec/lando-myapp-web-exec/json",
       "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
-      "POST /containers/lando-myapp-web/stop",
-      "DELETE /containers/lando-myapp-web?force=true",
+      "GET /containers/lando-myapp-web/json",
+      "POST /containers/lando-myapp-web-id/stop",
+      "DELETE /containers/lando-myapp-web-id?force=true",
+      "GET /networks/lando-myapp",
       "DELETE /networks/lando-myapp",
     ]);
   });

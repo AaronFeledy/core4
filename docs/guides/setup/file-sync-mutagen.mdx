@@ -21,7 +21,7 @@ Setup installs checksum-verified Mutagen binaries and a private Docker command-l
 
 The `file-sync` doctor check verifies that the installed tools and session client are available. The separate `filesystem-watch` check creates a temporary Windows file and verifies that a native watcher receives its event. That watch check covers the host temporary directory; it does not test every project directory or a container watcher.
 
-## Start or rebuild the app
+## Start the app
 
 From your project directory:
 
@@ -30,10 +30,10 @@ lando start
 lando info
 ```
 
-If the app already uses ordinary mounts, rebuild it after setup so its containers use the accelerated mounts:
+If the app already uses ordinary mounts, start it after setup so its containers use the accelerated mounts:
 
 ```sh
-lando rebuild
+lando start
 lando doctor
 ```
 
@@ -93,3 +93,18 @@ Directory, deletion, and symbolic-link conflicts need a decision about which con
 `lando setup --skip-file-sync` skips installing sync tools. It does not remove tools that are already installed or change your provider.
 
 Native Linux providers keep their native bind mounts and skip this file-sync check. Accelerated sessions described here require Windows and the managed `lando` provider; other provider and host combinations keep their existing mount behavior.
+
+Lint the exclude before you start. The check reads the Landofile. It does not install Mutagen or boot a session.
+
+<Guide>
+  <Scenario id="accelerated-excludes-lint" render>
+    <Step name="lint-excludes">
+      <UseFixture name="accelerated-excludes" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"excludes\":\\s*\\[\\s*\"dist\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>

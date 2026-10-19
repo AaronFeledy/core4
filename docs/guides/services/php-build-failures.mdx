@@ -51,8 +51,10 @@ surfaces.
 
 Fix the failing command in `build.app`. Most often that means fixing the underlying script itself, not the Landofile. Then rerun `lando start`.
 Editing a `build.app` entry changes that step's content-hash build key, so
-the next build always reruns it; you don't need `lando rebuild` the way
-you do for `build.artifact` image-layer changes.
+the next `lando start` reruns it. A `build.artifact` edit changes the image
+key the same way, so start rebuilds that image too. `lando rebuild` is the
+forced rerun when the command text is unchanged and only bind-mounted inputs
+changed, or when you want a forced pull.
 
 ## Prove the plan
 

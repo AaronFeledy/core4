@@ -455,7 +455,7 @@ describe("renderPlainBugReport: stable multi-line output", () => {
   });
 
   test("does not invent an Example line when the error has no remediation", () => {
-    const text = commandErrorMessage(new Error("boom"), "app:start");
+    const text = commandErrorMessage({ error: new Error("boom"), additionalErrors: [] }, "app:start");
     expect(text).toContain("boom");
     expect(text).not.toContain("Example:");
   });
@@ -666,9 +666,9 @@ describe("formatBugReport: dispatches on renderer mode", () => {
   test("json renderer mode returns NDJSON; plain/lando modes return multi-line text", () => {
     const error = new Error("boom");
     const context = ctx();
-    const json = formatBugReport({ error, context, rendererMode: "json" });
-    const plain = formatBugReport({ error, context, rendererMode: "plain" });
-    const lando = formatBugReport({ error, context, rendererMode: "lando" });
+    const json = formatBugReport({ error, additionalErrors: [], context, rendererMode: "json" });
+    const plain = formatBugReport({ error, additionalErrors: [], context, rendererMode: "plain" });
+    const lando = formatBugReport({ error, additionalErrors: [], context, rendererMode: "lando" });
     expect(json.startsWith('{"_tag":"message.error"')).toBe(true);
     expect(json.includes("\n")).toBe(false);
     expect(plain).toContain("boom");

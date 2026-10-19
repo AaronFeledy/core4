@@ -40,6 +40,7 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
+import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -631,7 +632,11 @@ describe("runTooling — CLI rendering", () => {
       tooling: { inspect: { cmd: "env" } },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      buildLandofileLoadScope([{ file: "/tmp/scenario/.lando.yml", value: authoredLandofile }]).pipe(
+        Effect.flatMap((loadScope) =>
+          resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario", loadScope }),
+        ),
+      ),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -667,7 +672,11 @@ describe("runTooling — CLI rendering", () => {
       },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      buildLandofileLoadScope([{ file: "/tmp/scenario/.lando.yml", value: authoredLandofile }]).pipe(
+        Effect.flatMap((loadScope) =>
+          resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario", loadScope }),
+        ),
+      ),
     );
     const layer = makeLayer({ landofile, plan, provider });
 

@@ -4,10 +4,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
+import * as sdkCommandResult from "@lando/sdk/command-result";
 import * as sdkSchema from "@lando/sdk/schema";
 import * as sdkServices from "@lando/sdk/services";
 
 type FrozenSdkSurface = {
+  readonly commandResultExports: ReadonlyArray<string>;
   readonly schemaNames: ReadonlyArray<string>;
   readonly serviceTags: Readonly<Record<string, ReadonlyArray<string>>>;
   readonly provisionalServiceTagMethods?: Readonly<Record<string, ReadonlyArray<string>>>;
@@ -110,6 +112,10 @@ const documentedNames = (heading: string): ReadonlyArray<string> => {
 };
 
 describe("SDK backward-compatibility surface", () => {
+  test("keeps frozen command-result exports available", () => {
+    for (const name of frozenSurface.commandResultExports)
+      expect(Object.keys(sdkCommandResult)).toContain(name);
+  });
   test("keeps frozen schema exports available while allowing documented additions", () => {
     const exportedSchemaNames = Object.keys(sdkSchema).sort();
 

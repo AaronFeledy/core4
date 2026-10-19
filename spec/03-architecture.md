@@ -90,6 +90,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `CacheService` | Atomic ephemeral cache operations (§12) |
 | `StateStore` | Durable, atomic, versioned, schema-validated, lockable state (§12.7); host/test-overridable, never plugin-replaceable |
 | `ManagedFileService` | Canonical guarded working-tree writes (§10.13); host/test-overridable, never plugin-replaceable |
+| `CodeSync` | Host-`git` application-code fetch, fast-forward, and branch switch for remote sync and init acquisition (§10.12.1); host/test-overridable, never plugin-replaceable |
 | `FileSystem` | Bun-first filesystem boundary |
 | `ProcessRunner` | Exact argv subprocess execution through `Bun.spawn` |
 | `ShellRunner` | Cross-platform embedded Bun Shell through an embedded `bun exec` self-spawn |
@@ -141,12 +142,18 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` |
 | Global | `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-global-rebuild`, `post-global-rebuild`, `pre-global-destroy`, `post-global-destroy`, `pre-global-dist-regenerate`, `post-global-dist-regenerate` |
 | Scratch | `pre-scratch-acquire`, `post-scratch-acquire`, `pre-scratch-materialize`, `post-scratch-materialize`, `pre-scratch-start`, `post-scratch-start`, `pre-scratch-stop`, `post-scratch-stop`, `pre-scratch-destroy`, `post-scratch-destroy`, `pre-scratch-gc`, `post-scratch-gc` |
-| Sync | `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send` |
+| Sync | `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-switch`, `post-switch`, `pre-code-sync`, `post-code-sync`, `pre-remote-setup`, `post-remote-setup`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-tunnel-open`, `post-tunnel-open`, `pre-tunnel-close`, `post-tunnel-close`, `pre-tether`, `post-tether`, `pre-remote-operation`, `post-remote-operation` |
+| Config refresh | `pre-config-refresh`, `post-config-refresh`, `config-source-drift` |
+| Init source | `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, `post-init-source-acquire` |
 | Cross-cutting | `deprecation-used` |
+
+Remote lifecycle publishers MUST be core orchestration wrappers, including dataset, tunnel, setup, and operation wrappers (§10.12); plugin contributions do not gain arbitrary publish authority. Payloads MUST retain nonsecret target identity, partial-completion and cleanup outcomes, and tether status where applicable, but MUST NOT carry secret values, authorization codes, or live credential-bearing endpoints. Required post-processing failures MUST remain failed outcomes with applied-data receipts, not synthetic rollback events.
 
 `LandoEvent` is the closed union of these events and generated CLI lifecycle events. Plugins MUST NOT add schemas, arbitrary names, or wider publish authority; their only publish seam is the closed `RenderEvent` subset (§9.8). For a resolved command, `-init` fires after bootstrap and before the body; exactly one of `-run` or `-error` follows before scope finalization. Unknown commands do not emit `-init`.
 
 CLI payloads carry `CommandInvocationCorrelation`: an outer invocation has a unique `invocationId` and no parent; nested canonical dispatch has its own id and the enclosing `parentInvocationId`. All phases of one invocation share the pair. Only the outer invocation is eligible for foreground notification, though nested terminal events remain observable.
+
+`cli-<canonical-id>-error` carries the projected primary `failureTag` and optional non-empty `additionalFailures: [{ failureTag, role }]`. Roles are `rollback`, `cleanup`, or `peer`, read from reason annotations through the same projection as command envelopes (§8.11.1). Interruptions are excluded from additional failures. Error identities are redacted before event publication.
 
 ### 3.6 Imperative shells
 

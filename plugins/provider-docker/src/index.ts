@@ -51,6 +51,7 @@ import {
   composeAdaptersFor,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   notImplementedError,
   providerHostInputs,
   rememberAppliedPlan,
@@ -618,6 +619,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* planState.ownership.prepare(plan, yield* appliedPlans.resolvePlan(plan.id));
         return yield* bringUp(plan, {
           api: dockerApi,
           ctx: DOCKER_CTX,
@@ -632,12 +634,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ? {}
             : { serviceEnvironment: applyOptions.serviceEnvironment }),
           reconcile: applyOptions.reconcile,
+          onVolumeCreated: applyOptions.onVolumeCreated,
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
       }),
       ...resolvedOps,
+      cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
         return yield* resolvePlan(target).pipe(
           Effect.flatMap((plan) =>
@@ -798,6 +802,8 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        resourceOwnership: (ctx, root) =>
+          makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),

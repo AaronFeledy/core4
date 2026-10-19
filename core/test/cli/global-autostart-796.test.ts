@@ -47,6 +47,7 @@ describe("issue 796 global autostart", () => {
 
   test("auto-start failure report prints the cause and never says start Traefik by hand", () => {
     const text = formatBugReport({
+      additionalErrors: [],
       error: new GlobalAutoStartError({
         message: "Failed to auto-start global services (traefik) required by my-drupal-cms-app.",
         app: "my-drupal-cms-app",

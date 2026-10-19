@@ -23,6 +23,7 @@ import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-stat
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { buildLandofileLoadScope } from "@lando/landofile/compile";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 
@@ -79,7 +80,14 @@ const planFromShape = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const sourcePath = join(appRoot, ".lando.yml");
   const stateStore = yield* StateStore;
-  const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath, stateStore });
+  const loadScope = yield* buildLandofileLoadScope([{ file: sourcePath, value: shape }]);
+  const landofile = yield* resolveLandofileIncludes({
+    landofile: shape,
+    appRoot,
+    sourcePath,
+    stateStore,
+    loadScope,
+  });
   yield* assertUserAppIdNotReserved(landofile);
   yield* assertLandoVersionConstraint(landofile, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);

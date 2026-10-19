@@ -377,7 +377,7 @@ const makeDestroyLayer = (
               resolveTeardownEvidence: (root: AbsolutePath) => {
                 evidenceRoots.push(root);
                 return Effect.succeed(
-                  evidenceRoots.length === 1
+                  destroyCalls.length === 0
                     ? { kind: "applied" as const, plan: plannedApp }
                     : { kind: "absent" as const },
                 );
@@ -453,7 +453,7 @@ const runDestroyCli = (
     resultSchema: destroySpec.resultSchema,
     render: (result, context) => destroySpec.render?.(result, input, context),
     io,
-    formatError: (error) => commandErrorMessage(error, "app:destroy"),
+    formatError: (failure) => commandErrorMessage(failure, "app:destroy"),
   }).finally(clearActiveCommandInvocation);
 };
 
@@ -540,7 +540,7 @@ describe("lando destroy", () => {
       const harness = makeDestroyLayer({ plannedApp: appliedPlan, appliedPlanEvidence: true });
       const io = createBufferedRendererIO();
       await withCwd(parent, () => runDestroyCli(["--root", "gone", "--yes"], harness, io, "plain"));
-      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root]);
       expect(harness.destroyCalls).toHaveLength(1);
       expect(harness.destroyCalls[0]?.target.plan).toEqual(appliedPlan);
     });

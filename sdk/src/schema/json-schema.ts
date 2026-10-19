@@ -11,6 +11,7 @@ import {
   SshAgentConfig,
 } from "./agent-forwarding.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
+import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 
 import {
   AxisToken,
@@ -199,6 +200,7 @@ import {
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -608,6 +610,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   VolumeInfo,
   VolumeLocator,
   VolumeIdentity,
+  ResourceOwnership,
+  OwnedResourcesCleanupResult,
   VolumeCreationFact,
   VolumeInitializationRecord,
   VolumeFilter,
@@ -816,6 +820,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PromptSpec,
   InteractionServiceContribution,
   CommandResultFormat,
+  FailureRole,
   CommandWarning,
   CommandResultEnvelope,
   CommandTraceSpan,
@@ -1066,6 +1071,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
+  ResourceOwnership: "Provider cleanup inventory hints, not readiness evidence.",
+  OwnedResourcesCleanupResult: "Verified physical resource cleanup counts.",
   VolumeIdentity: "Owner-bound observed physical volume generation.",
   VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
   VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",
@@ -1281,6 +1288,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PromptSpec: "Public Lando schema contract for Prompt Spec.",
   InteractionServiceContribution: "Public Lando schema contract for Interaction Service Contribution.",
   CommandResultFormat: "Public Lando schema contract for Command Result Format.",
+  FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",

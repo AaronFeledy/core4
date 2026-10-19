@@ -1,15 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
@@ -17,10 +21,23 @@ import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const textEncoder = new TextEncoder();
+const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]>) =>
+  providerLayer({
+    ...options,
+    appliedPlanState:
+      options.appliedPlanState ??
+      makePluginStateStore(
+        makeTestStateStore().service,
+        AbsolutePath.make(join(tmpdir(), `lando-contract-${crypto.randomUUID()}`)),
+        ownerOnlyFileAccess,
+      ),
+  });
 
 const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
   const frame = new Uint8Array(8 + payload.length);
@@ -123,6 +140,9 @@ const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string)
 };
 
 const makeFakeApi = () => {
+  const networks = new Map<string, object>();
+  const configs = new Map<string, unknown>();
+  const createdVolumes = new Map<string, unknown>();
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
@@ -136,10 +156,40 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),
+          )(request.body);
+          if (createdVolumes.has(body.Name)) return { status: 409, body: "{}" };
+          createdVolumes.set(body.Name, body);
+          return { status: 201, body: JSON.stringify(body) };
+        }
+
+        if (request.path.startsWith("/volumes/")) {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length).split("?")[0] ?? "");
+          if (request.method === "DELETE")
+            return { status: createdVolumes.delete(name) ? 204 : 404, body: "" };
+          const volume = createdVolumes.get(name);
+          return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
+        }
+
         if (request.path === "/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(request.body);
+          networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
-        if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
+          return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
+        }
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
+          networks.delete(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
@@ -153,6 +203,7 @@ const makeFakeApi = () => {
           const name = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1)).get("name");
           if (name !== null && name.length > 0) {
             existing.add(name);
+            configs.set(name, request.body);
             containerBinds.set(name, createBodyBinds(request.body));
             return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
           }
@@ -176,12 +227,17 @@ const makeFakeApi = () => {
           return { status: 200, body: "0" };
         }
         if (request.path.endsWith("/stop")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length));
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)).replace(
+            /-id$/u,
+            "",
+          );
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
         if (request.path.endsWith("?force=true") && request.method === "DELETE") {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+          const name = decodeURIComponent(
+            request.path.slice("/containers/".length, -"?force=true".length),
+          ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
@@ -196,6 +252,7 @@ const makeFakeApi = () => {
             status: 200,
             body: JSON.stringify({
               Id: `${name}-id`,
+              Config: configs.get(name),
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
             }),
           };
@@ -470,6 +527,15 @@ describe("provider-lando RuntimeProvider contract", () => {
     );
 
     await Effect.runPromise(runProviderContract(provider));
+    await Effect.runPromise(
+      runProviderVolumeCreationContract(
+        provider,
+        () =>
+          fake.calls.filter(
+            (call) => call.method === "POST" && /\/containers\/[^/]+\/start$/u.test(call.path),
+          ).length,
+      ),
+    );
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
   });

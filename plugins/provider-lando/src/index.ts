@@ -33,6 +33,7 @@ import {
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
+import { presentLogicalCreateConfig } from "@lando/container-runtime/podman/bring-up-recreate";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
@@ -74,6 +75,7 @@ import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   noPlanErrorFactory,
   notImplementedError,
   providerHostInputs,
@@ -998,7 +1000,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
           const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
-          if (physical === plan || runtime.networkNames === undefined) return runtime;
+          if (physical === plan) return runtime;
+          const logicalRuntime = {
+            ...runtime,
+            ...(runtime.labels === undefined
+              ? {}
+              : {
+                  labels: presentLogicalCreateConfig(runtime.labels, {
+                    physical,
+                    logical: plan,
+                    service: target.service,
+                  }),
+                }),
+          };
+          if (runtime.networkNames === undefined) return logicalRuntime;
           const logicalNames = new Map<string, string>();
           if (physical.networking !== undefined && plan.networking !== undefined) {
             logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
@@ -1009,7 +1024,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             }
           }
           return {
-            ...runtime,
+            ...logicalRuntime,
             networkNames: runtime.networkNames.map((name) => logicalNames.get(name) ?? name),
           };
         }),
@@ -1558,6 +1573,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
+          const previous = yield* appliedPlans.resolvePlan(plan.id);
+          yield* planState.ownership.prepare(
+            physicalPlan,
+            previous === undefined ? undefined : yield* physicalNetworkPlan(previous),
+          );
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
@@ -1581,6 +1601,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 ? {}
                 : { serviceEnvironment: applyOptions.serviceEnvironment }),
               reconcile: applyOptions.reconcile,
+              onVolumeCreated: applyOptions.onVolumeCreated,
               ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
               completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
             }).pipe(
@@ -1620,6 +1641,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               );
             }),
           ),
+        cleanupOwnedResources: planState.cleanupOwnedResources,
         destroy: (target, destroyOptions) =>
           withGlobalPublishedLifecycle(
             String(target.app),
@@ -1787,6 +1809,7 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),

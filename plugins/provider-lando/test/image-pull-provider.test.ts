@@ -10,7 +10,7 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
-import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
+import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ImagePullProgressEvent } from "@lando/sdk/events";
 import {
   AbsolutePath,
@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import { type EventService, RuntimeProvider } from "@lando/sdk/services";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
+import { makeProviderLayer } from "./provider-fixture.ts";
 
 const imagePullEligibility = liveIntegrationEligibility([
   {

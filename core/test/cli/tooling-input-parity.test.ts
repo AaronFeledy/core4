@@ -151,7 +151,9 @@ test.each([0, 7])("keeps CLI, event and MCP tooling argv and exit %i equal", asy
               target.spec.run(input).pipe(
                 Effect.provide(context),
                 Effect.map((value) => ({ _tag: "success", value }) as const),
-                Effect.catch((error) => Effect.succeed({ _tag: "failure", error } as const)),
+                Effect.catch((error) =>
+                  Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const),
+                ),
               ),
           },
         );

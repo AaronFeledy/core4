@@ -22,6 +22,7 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
+import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -157,13 +158,26 @@ test.each([
       Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: resolveLandofileIncludes({
-            landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
-            appRoot,
-            cacheRoot: paths.roots.userCacheRoot,
-            ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
-            stateStore: store,
-          }),
+          discover: buildLandofileLoadScope([
+            {
+              file: join(appRoot, ".lando.yml"),
+              value: { name: "profile-canary", includes: ["user:profile.yml"] },
+            },
+          ]).pipe(
+            Effect.flatMap((loadScope) =>
+              resolveLandofileIncludes({
+                landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
+                loadScope,
+                appRoot,
+                cacheRoot: paths.roots.userCacheRoot,
+                ports: {
+                  ...landofileRuntimeInputs().ports,
+                  resolveUserIncludesDir: () => paths.userIncludesDir,
+                },
+                stateStore: store,
+              }),
+            ),
+          ),
         }),
       ),
     );
