@@ -1,5 +1,5 @@
 import { dirname } from "node:path";
-import { NotImplementedError } from "@lando/sdk/errors";
+import { type LandofileParseError, NotImplementedError } from "@lando/sdk/errors";
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
@@ -47,13 +47,14 @@ const parsedStrings = (value: unknown): ReadonlyArray<string> => {
   return Object.entries(value).flatMap(([key, entry]) => [key, ...parsedStrings(entry)]);
 };
 
-export const scanContentForUnsupportedExpressions = (
+export const parseSupportedLandofileSource = (
   filePath: string,
   content: string,
-): Effect.Effect<string, NotImplementedError> => {
+): Effect.Effect<unknown, LandofileParseError | NotImplementedError> => {
+  const parsedSource = parseLandofile({ file: filePath, content, cwd: dirname(filePath) });
   const match = scanForConfigExpression(content);
   if (match === undefined || content.includes("load(") || content.includes("import(")) {
-    return Effect.succeed(content);
+    return parsedSource;
   }
   const unsupported = Effect.fail(
     new NotImplementedError({
@@ -64,13 +65,13 @@ export const scanContentForUnsupportedExpressions = (
   );
   if (!content.includes("!reset")) return unsupported;
   // Reset payloads are discarded without evaluation.
-  return parseLandofile({ file: filePath, content, cwd: dirname(filePath) }).pipe(
+  return parsedSource.pipe(
     Effect.matchEffect({
       onFailure: () => unsupported,
       onSuccess: (parsed) =>
         parsedStrings(parsed).some((value) => scanForConfigExpression(JSON.stringify(value)) !== undefined)
           ? unsupported
-          : Effect.succeed(content),
+          : Effect.succeed(parsed),
     }),
   );
 };
