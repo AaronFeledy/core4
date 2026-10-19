@@ -3,7 +3,7 @@ import { type AppConfigViewOptions, appConfigView } from "@lando/engine/operatio
 import * as Writes from "@lando/engine/operations/app-config-write";
 import { collectLandofileRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
-import { emitLandofileYaml } from "@lando/sdk/landofile";
+import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
@@ -51,8 +51,23 @@ export const appConfigGet = (options: AppConfigOptions) =>
     ),
   );
 
+/**
+ * Read the table's metadata straight from the authored mapping. A merged
+ * view is source data, so it may still carry unresolved expressions in typed
+ * fields; decoding it as a finished Landofile would hide the authored
+ * name, services, and recipe. Anything that is not a mapping yields no metadata.
+ */
+const authoredMetadata = (landofile: unknown) => {
+  const mapping = isPlainRecord(landofile) ? landofile : {};
+  const recipe = isPlainRecord(mapping.recipe) ? mapping.recipe.id : mapping.recipe;
+  return {
+    name: typeof mapping.name === "string" ? mapping.name : undefined,
+    services: Object.keys(isPlainRecord(mapping.services) ? mapping.services : {}),
+    recipe: typeof recipe === "string" ? recipe : undefined,
+  };
+};
+
 const tableRender = (result: AppConfigResult): string => {
-  const app = "app" in result ? (result.app ?? "") : "";
   if ("layers" in result)
     return result.layers
       .map(
@@ -66,12 +81,11 @@ const tableRender = (result: AppConfigResult): string => {
       : result.value !== null && typeof result.value === "object"
         ? JSON.stringify(result.value)
         : String(result.value);
-  const landofile =
-    "landofile" in result && Schema.is(LandofileShape)(result.landofile) ? result.landofile : undefined;
-  const services = Object.keys(landofile?.services ?? {});
+  const authored = authoredMetadata("landofile" in result ? result.landofile : undefined);
+  const app = ("app" in result ? result.app : undefined) ?? authored.name ?? "";
+  const { services } = authored;
   const lines = [`app\t${app}`, `services\t${services.length === 0 ? "(none)" : services.join(", ")}`];
-  if (landofile?.recipe !== undefined)
-    lines.push(`recipe\t${typeof landofile.recipe === "string" ? landofile.recipe : landofile.recipe.id}`);
+  if (authored.recipe !== undefined) lines.push(`recipe\t${authored.recipe}`);
   lines.push(...renderHostEventStatuses("hostEvents" in result ? (result.hostEvents ?? []) : []));
   return lines.join("\n");
 };

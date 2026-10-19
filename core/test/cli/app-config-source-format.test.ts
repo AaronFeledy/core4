@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { type AppConfigResult, renderAppConfigResult } from "@lando/core/cli/operations";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, type LandofileSourceValue } from "@lando/sdk/schema";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { appConfigOptionsFromInput } from "../../src/cli/command-specs/app/config/index.ts";
@@ -75,6 +75,51 @@ describe("app config yaml", () => {
     expect(renderWithFormat({ source: "resolved", app: "x", landofile: {} }, "table")).toBe(
       "app\tx\nservices\t(none)",
     );
+  });
+
+  describe("merged table", () => {
+    test("reports the authored app, services, and recipe when a typed field holds an unresolved expression", () => {
+      // Given: an authored composition that effective validation would reject (primary is not a boolean yet)
+      const result: AppConfigResult = {
+        source: "merged",
+        landofile: {
+          name: "distinct-app",
+          recipe: "node",
+          services: { web: { type: "node", primary: "{{ app.name == 'distinct-app' }}" } },
+        },
+      };
+      // When
+      const table = renderAppConfigResult(result, "table");
+      // Then
+      expect(table).toBe("app\tdistinct-app\nservices\tweb\nrecipe\tnode");
+    });
+
+    test("uses the authored object-form recipe id", () => {
+      // Given
+      const result: AppConfigResult = {
+        source: "merged",
+        landofile: { name: "distinct-app", recipe: { id: "lamp", options: { php: "8.3" } }, services: {} },
+      };
+      // When
+      const table = renderAppConfigResult(result, "table");
+      // Then
+      expect(table).toBe("app\tdistinct-app\nservices\t(none)\nrecipe\tlamp");
+    });
+
+    test.each<{ readonly label: string; readonly landofile: LandofileSourceValue }>([
+      { label: "a scalar", landofile: "not a mapping" },
+      { label: "null", landofile: null },
+      { label: "a list", landofile: ["web"] },
+      { label: "mistyped metadata", landofile: { name: ["x"], services: "oops", recipe: 42 } },
+      { label: "a recipe without a string id", landofile: { services: null, recipe: { id: 7 } } },
+    ])("renders $label source data without metadata instead of crashing", ({ landofile }) => {
+      // Given
+      const result: AppConfigResult = { source: "merged", landofile };
+      // When
+      const table = renderAppConfigResult(result, "table");
+      // Then
+      expect(table).toBe("app\t\nservices\t(none)");
+    });
   });
 
   test("appConfigOptionsFromInput preserves yaml format", () => {
