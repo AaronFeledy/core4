@@ -6,6 +6,7 @@ import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
 import { getSourceDocuments } from "../src/pipeline/source-table.ts";
+import type { TemplateEngineInputs } from "../src/ports.ts";
 import * as TsLoader from "../src/ts-loader.ts";
 import * as Validation from "../src/validation.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -116,4 +117,44 @@ describe("retained lint snapshot", () => {
       finalize.mockRestore();
     }
   });
+
+  for (const scenario of [
+    { name: "runtime input environment", override: false, value: undefined, primary: true },
+    { name: "explicit option environment", override: true, value: "option", primary: false },
+    { name: "explicit options without an environment", override: true, value: undefined, primary: false },
+  ] as const) {
+    test(`uses ${scenario.name} during effective lint finalization`, async () => {
+      // Given distinct runtime, option and host-default values.
+      const key = `ULW_LINT_SCOPE_${crypto.randomUUID().replaceAll("-", "")}`;
+      await write(
+        ".lando.yml",
+        `name: snapshot\nservices:\n  web:\n    primary: "{{ eq(default(env.${key}, 'host'), 'runtime') }}"\n`,
+      );
+      const templates: TemplateEngineInputs = {
+        modules: [],
+        ...(scenario.value === undefined
+          ? {}
+          : { context: { scope: root, bootstrapLevel: "app", env: { [key]: scenario.value } } }),
+      };
+
+      // When lint uses the same runtime-input contract as normal loading.
+      const snapshot = await Effect.runPromise(
+        lintLandofileSnapshot(
+          { cwd: root, ...(scenario.override ? { templates } : {}) },
+          {
+            ports: makeTestLandofilePorts(root),
+            stateStore: makeTestLandofileStateStore(),
+            templates: {
+              modules: [],
+              context: { scope: root, bootstrapLevel: "app", env: { [key]: "runtime" } },
+            },
+          },
+        ),
+      );
+
+      // Then explicit options win; otherwise the supplied runtime environment wins.
+      expect(snapshot.result.valid).toBe(true);
+      expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(scenario.primary);
+    });
+  }
 });

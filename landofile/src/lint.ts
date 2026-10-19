@@ -55,6 +55,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   inputs?: LandofileRuntimeInputs,
 ): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
   const cwd = options.cwd ?? process.cwd();
+  const templates = options.templates ?? inputs?.templates;
   const discovered = yield* Effect.tryPromise({
     try: () => findLandofilePath(cwd),
     catch: (cause) => cause,
@@ -91,7 +92,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   const finalized = yield* Effect.gen(function* () {
     const acquired = yield* acquireLandofileRootLayers(
       dirname(file),
-      options.templates === undefined ? inputs : { ...inputs, templates: options.templates },
+      templates === undefined ? inputs : { ...inputs, templates },
     );
     documents = acquired.sources.map(({ source, layer }) => ({
       file: source.file,
@@ -115,7 +116,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       appRoot: dirname(file),
       loadPolicy: acquired.runtime.policy,
       logger: acquired.runtime.logger,
-      ...(options.templates?.context?.env === undefined ? {} : { env: options.templates.context.env }),
+      ...(templates?.context?.env === undefined ? {} : { env: templates.context.env }),
     }).pipe(Effect.result);
     const knownDocuments = new Set(documents);
     const finalizedDocuments = getSourceDocuments(merged);
