@@ -258,6 +258,11 @@ export const buildAppHandle = Effect.fnUntraced(function* (
  * Landofile are captured once; handle methods reuse them instead of
  * re-discovering from the host's working directory. Selector precedence is
  * `id > landofile > root > cwd`.
+ * File edits, including app agentEnv:false, require re-resolution with the
+ * original selector (and an updated shape for object selectors). Exec, deep
+ * info, and tooling reuse the captured object even when agentEnv is omitted.
+ * Global ConfigService policy and the process emergency veto remain live at
+ * invocation time under their existing semantics; provider status stays live.
  */
 export const resolveApp = Effect.fn("LandoRuntime.resolveApp")(function* (
   selector?: AppSelector,
