@@ -907,6 +907,16 @@
       "before": { "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470" },
       "after": { "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327" },
       "reason": "Upstream c1855d462 adds the number-converted env example router.httpsPort=8443 and changes worker.primary to an equivalent boolean-converted env expression. Independently reproduced on integrated parent ed5ee8443; this is a parent fixture change, not an A1 merge-semantic change."
+    },
+    "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
+      "before": { "invalid": { "status": "invalid", "tag": "NotImplementedError" } },
+      "after": { "digest": "d9187cc69213c58f3db346fa9b226c97337a2e7ddbfb9930cd7373a21a6ecff5" },
+      "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
+    },
+    "docs/guides/static/fixtures/static-demo": {
+      "before": { "invalid": { "status": "invalid", "tag": "NotImplementedError" } },
+      "after": { "digest": "414f700e136b7d620b521de335df7f8f05a4b89471af7ade6d2121a756b6d3d2" },
+      "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The empty default keeps the static URL at one root slash. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
     }
   }
 }
