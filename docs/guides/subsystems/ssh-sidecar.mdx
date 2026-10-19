@@ -20,7 +20,7 @@ sshAgent:
 
 `sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. The managed `lando` provider hosts it even when the app itself runs on Docker or user-owned Podman. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
 
-That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:rebuild`.
+That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:start`.
 
 The global app builds the sidecar's image from Alpine with `openssh-client` and `socat` baked in. The first build needs network access to fetch the base image and packages. Later starts reuse the built image and cached build layers without downloading packages, so the sidecar can start offline after that first build.
 

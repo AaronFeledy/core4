@@ -108,12 +108,12 @@ services:
           user: root
 ```
 
-The last step pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod`, so a bad download fails the rebuild instead of landing on `PATH`. On the MySQL answer, drop the `ln` step: `mysql-community-client` already ships `mysql` and `mysqldump`.
+The last step pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod`, so a bad download fails the image build instead of landing on `PATH`. On the MySQL answer, drop the `ln` step: `mysql-community-client` already ships `mysql` and `mysqldump`.
 
-Rebuild, then check both additions:
+Start, then check both additions:
 
 ```sh
-lando rebuild
+lando start
 lando exec appserver -- mysqldump --version
 lando bee version
 ```
@@ -227,7 +227,7 @@ Bee prints a one-time login link for the admin account. Match `--base-url` to th
 
 ## Debug with Xdebug
 
-Turn it on for `appserver`, then rebuild:
+Turn it on for `appserver`, then start:
 
 ```yaml
 services:
@@ -236,7 +236,7 @@ services:
 ```
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 
@@ -251,7 +251,7 @@ Point your IDE at port `9003` and map `/app` to the project root. Xdebug doesn't
 
 ## Catch outgoing mail
 
-Add a Mailpit service, then rebuild. Every PHP service sends through it unless you set `mailFrom`, and Backdrop's default mail system calls PHP `mail()`, so password resets and contact forms land in its inbox:
+Add a Mailpit service, then start. Every PHP service sends through it unless you set `mailFrom`, and Backdrop's default mail system calls PHP `mail()`, so password resets and contact forms land in its inbox:
 
 ```yaml
 services:
@@ -260,7 +260,7 @@ services:
 ```
 
 ```sh
-lando rebuild
+lando start
 lando exec appserver -- php -r 'mail("you@example.test", "Mailpit check", "Hello from Backdrop");'
 lando info
 ```

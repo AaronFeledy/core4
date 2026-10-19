@@ -11,10 +11,11 @@ import {
 } from "@lando/sdk/services";
 
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
+import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
+import { ownedCleanupChanged, prepareOwnedResourceCleanupFrom } from "./owned-resource-teardown.ts";
 import { unknownPlanServiceError } from "./unknown-service.ts";
 
 const runtimeOnline = (provider: Pick<RuntimeProviderShape, "isAvailable" | "getStatus">) =>
@@ -31,9 +32,13 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(paths.root));
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const resourceOwnership = registry.resourceOwnership;
+  const ownership = yield* resourceOwnership?.(MANAGED_PROVIDER_ID, root) ?? Effect.succeed(undefined);
   const observedProvider = {
     ...provider,
     isAvailable: runtimeOnline(provider),
+    ...(resourceOwnership === undefined ? {} : { resourceOwnership: () => Effect.succeed(ownership) }),
+    canCleanupOwnedResources: Effect.succeed(provider.cleanupOwnedResources !== undefined),
   } satisfies AppliedStateProvider;
   const evidence = yield* resolveTeardownEvidence(root, [observedProvider]);
   if (evidence.kind === "applied") yield* missingRootAppliedTarget(evidence.plan, root);
@@ -59,6 +64,7 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
         group.services.map((service) => ({ name: service.service })),
       );
       break;
+    case "owned":
     case "absent":
       services = [];
       break;
@@ -84,6 +90,7 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
     case "applied":
       break;
     case "orphans":
+    case "owned":
     case "absent":
       return yield* Effect.fail(
         new AppResolveError({
@@ -175,44 +182,60 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   resolved: GlobalTeardown,
   options: { readonly volumes: boolean; readonly removeState: boolean },
 ) {
-  switch (resolved.evidence.kind) {
-    case "applied": {
-      const plan = resolved.evidence.plan;
-      const result = yield* resolved.provider.destroy({ app: plan.id, plan }, options);
-      switch (result.kind) {
-        case "no-op":
-          return { changed: false, services: [], volumesRemoved: false };
-        case "destroyed":
-          return {
-            changed: true,
-            services: Object.values(plan.services)
-              .reverse()
-              .map((service) => String(service.name)),
-            volumesRemoved: options.volumes,
-          };
-        default: {
-          const unreachable: never = result;
-          return unreachable;
+  const cleanup = yield* prepareOwnedResourceCleanupFrom(
+    resolved.evidence.kind === "absent" ? [] : (resolved.evidence.ownership ?? []),
+    resolved.paths.root,
+    options,
+  );
+  const result = yield* Effect.gen(function* () {
+    switch (resolved.evidence.kind) {
+      case "applied": {
+        const plan = resolved.evidence.plan;
+        const result = yield* resolved.provider.destroy({ app: plan.id, plan }, options);
+        switch (result.kind) {
+          case "no-op":
+            return { changed: false, services: [], volumesRemoved: false };
+          case "destroyed":
+            return {
+              changed: true,
+              services: Object.values(plan.services)
+                .reverse()
+                .map((service) => String(service.name)),
+              volumesRemoved: options.volumes,
+            };
+          default: {
+            const unreachable: never = result;
+            return unreachable;
+          }
         }
       }
+      case "orphans": {
+        const result = yield* tearDownOrphans({
+          root: resolved.paths.root,
+          groups: resolved.evidence.groups,
+          options: { volumes: options.volumes, purgeCaches: false },
+          ownedCleanup: cleanup,
+        });
+        return {
+          changed: result.services.length > 0 || result.volumesRemoved || result.ownedChanged,
+          services: result.services,
+          volumesRemoved: result.volumesRemoved,
+        };
+      }
+      case "owned":
+      case "absent":
+        return { changed: false, services: [], volumesRemoved: false };
+      default: {
+        const unreachable: never = resolved.evidence;
+        return unreachable;
+      }
     }
-    case "orphans": {
-      const result = yield* tearDownOrphans({
-        root: resolved.paths.root,
-        groups: resolved.evidence.groups,
-        options: { volumes: options.volumes, purgeCaches: false },
-      });
-      return {
-        changed: result.services.length > 0 || result.volumesRemoved,
-        services: result.services,
-        volumesRemoved: result.volumesRemoved,
-      };
-    }
-    case "absent":
-      return { changed: false, services: [], volumesRemoved: false };
-    default: {
-      const unreachable: never = resolved.evidence;
-      return unreachable;
-    }
-  }
+  });
+  if (resolved.evidence.kind === "orphans") return result;
+  const removed = yield* cleanup;
+  return {
+    changed: result.changed || ownedCleanupChanged(removed),
+    services: [...new Set([...result.services, ...removed.servicesRemoved])],
+    volumesRemoved: result.volumesRemoved || removed.volumesRemoved > 0,
+  };
 });

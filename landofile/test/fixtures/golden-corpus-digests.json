@@ -171,6 +171,10 @@
       }
     },
     {
+      "fixture": "docs/guides/corporate-network-trust/fixtures/ca-opt-out",
+      "digest": "3e8128eab07e4ea4e2ab362a7e20ec84d7a3e85905b27cc56c740b77cc6a7f8b"
+    },
+    {
       "fixture": "docs/guides/db-import-export/fixtures/one-db",
       "digest": "5e950dcb15d5873532fb2c02197ca467c762bb6406bf6fe5c4b95e2f6c9101db"
     },
@@ -271,6 +275,14 @@
     {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
       "digest": "00cb3fda23ed9ecab254b1ba53b02f27e9c769d2187006ccd7ebf53b9a9c424f"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
+      "digest": "655a03023d4ccad27bed30d049ee32d422bc24b17ae97106a5f200290bab14c0"
+    },
+    {
+      "fixture": "docs/guides/file-sync-mutagen/fixtures/accelerated-excludes",
+      "digest": "72446e8f58e661512c33405ee91996d3d5e998e4791c8c46b58f85dfae548b04"
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
@@ -892,8 +904,12 @@
   ],
   "intended": {
     "docs/guides/expressions/fixtures/expressions-typed-values": {
-      "before": { "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470" },
-      "after": { "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327" },
+      "before": {
+        "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+      },
+      "after": {
+        "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327"
+      },
       "reason": "Upstream c1855d462 adds the number-converted env example router.httpsPort=8443 and changes worker.primary to an equivalent boolean-converted env expression. Independently reproduced on integrated parent ed5ee8443; this is a parent fixture change, not an A1 merge-semantic change."
     }
   }

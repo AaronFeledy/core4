@@ -1043,7 +1043,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("    needs: [build-linux-x64, runtime-bundle-linux-x64]");
     expect(providerIntegration).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
-    expect(providerIntegration).toContain("    timeout-minutes: 25");
+    expect(providerIntegration).toContain("    timeout-minutes: 35");
     expect(providerIntegrationGate).toContain("    needs: [provider-integration-linux-x64-runner]");
     expect(providerIntegrationGate).toContain("    if: always()");
     expect(providerIntegration).toContain("      - name: Regenerate derived sources");

@@ -146,6 +146,7 @@ test.each(["fails", "interrupts"] as const)(
   async (outcome) => {
     // Given: an apply that creates its app network, then a volume whose receipt does not complete.
     const deleted: string[] = [];
+    const networks = new Map<string, object>();
     const failure = new ProviderInternalError({
       providerId: "podman",
       operation: "receipt",
@@ -161,8 +162,20 @@ test.each(["fails", "interrupts"] as const)(
               if (request.path === "/volumes/create") {
                 return { status: 201, body: JSON.stringify(Schema.decodeUnknownSync(Request)(request.body)) };
               }
-              if (request.path.startsWith("/networks/") && request.method === "GET")
-                return { status: 404, body: "{}" };
+              if (request.path === "/networks/create") {
+                const body = Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    Name: Schema.String,
+                    Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+                  }),
+                )(request.body);
+                networks.set(body.Name, { Id: body.Name, ...body });
+                return { status: 201, body: "{}" };
+              }
+              if (request.path.startsWith("/networks/") && request.method === "GET") {
+                const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
+                return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
+              }
               if (request.path.startsWith("/networks/") && request.method === "DELETE") {
                 deleted.push(request.path);
                 return { status: 204, body: "" };
