@@ -176,6 +176,7 @@ describe("Landofile package seam", () => {
         "decodeLandofileAuthoringLayer",
         "decodeLandofileLayer",
         "detectLandofileTags",
+        "directivePathProblem",
         "emitLandofileYaml",
         "emitLandofileYamlEither",
         "expandRouteSchemes",
@@ -188,6 +189,7 @@ describe("Landofile package seam", () => {
         "listLayerMergeRules",
         "mergeLandofiles",
         "mergeValues",
+        "mergeValuesWithOrigins",
         "override",
         "parseLandofile",
         "parseLegacyLandofile",
@@ -202,6 +204,8 @@ describe("Landofile package seam", () => {
         "splitComposeCommand",
         "validateConfigTranslateInput",
         "validateConfigTranslateResult",
+        "valueOriginAt",
+        "withValueOrigins",
       ].sort(),
     );
   });
