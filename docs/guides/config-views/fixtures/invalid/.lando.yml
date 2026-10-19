@@ -1,2 +1,3 @@
+# lando-lint: expect-invalid runtime type for raw and merged inspection
 name: config-views-invalid
 runtime: wrong
