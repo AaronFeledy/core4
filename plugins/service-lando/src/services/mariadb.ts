@@ -21,7 +21,7 @@ import {
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, listenPort } from "./_port-helpers.ts";
+import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -95,7 +95,8 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = mariadbCreds(ctx, ctx.serviceName, service);
-  const port = listenPort(service, ctx.serviceName, MARIADB_LISTENER);
+  assertListenerConfig(service, ctx.serviceName, MARIADB_LISTENER);
+  const port = plannedPort(service, MARIADB_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, {
@@ -120,7 +121,6 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
 
   if (
     addServerConfigMount(ctx, MARIADB_CONFIG_TARGET) &&
-    (service.port !== undefined || service.environment?.MYSQL_TCP_PORT !== undefined) &&
     service.command === undefined &&
     service.entrypoint === undefined
   ) {
@@ -149,37 +149,40 @@ export const mariadbServiceType: ServiceType = {
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = mariadbCreds(input, input.name, input.service);
-    return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => ({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "mariadb",
-        creds,
-        environment: {
-          ...input.service.environment,
-          ...familyEnvFor("mariadb", creds),
+    return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
+      assertListenerConfig(input.service, input.name, MARIADB_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "mariadb",
+          creds,
+          environment: {
+            ...input.service.environment,
+            ...familyEnvFor("mariadb", creds),
+          },
         },
-      },
-      logSources: MARIADB_LOG_SOURCES,
-      features: [{ id: MARIADB_FEATURE_ID }],
-      tooling: {
-        mariadb: {
-          description: "Open the MariaDB client for this service.",
-          dir: PortablePath.make("/"),
-          service: input.name,
-          cmd: [
-            "mariadb",
-            "-h",
-            "127.0.0.1",
-            "-P",
-            String(listenPort(input.service, input.name, MARIADB_LISTENER)),
-            "-u",
-            creds.user,
-            creds.database,
-          ],
-          env: { MYSQL_PWD: creds.password },
+        logSources: MARIADB_LOG_SOURCES,
+        features: [{ id: MARIADB_FEATURE_ID }],
+        tooling: {
+          mariadb: {
+            description: "Open the MariaDB client for this service.",
+            dir: PortablePath.make("/"),
+            service: input.name,
+            cmd: [
+              "mariadb",
+              "-h",
+              "127.0.0.1",
+              "-P",
+              String(plannedPort(input.service, MARIADB_LISTENER)),
+              "-u",
+              creds.user,
+              creds.database,
+            ],
+            env: { MYSQL_PWD: creds.password },
+          },
         },
-      },
-    }));
+      };
+    });
   },
 };

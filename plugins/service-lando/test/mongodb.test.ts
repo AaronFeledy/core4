@@ -265,7 +265,7 @@ describe("mongodb ServiceType", () => {
       readOnly: true,
       realization: "passthrough",
     });
-    expect(plan.command).toEqual(["mongod", "--config", "/etc/lando/mongod.conf"]);
+    expect(plan.command).toEqual(["mongod", "--config", "/etc/lando/mongod.conf", "--port", "27017"]);
   });
 
   test("mounts config.server but keeps an authored command", async () => {

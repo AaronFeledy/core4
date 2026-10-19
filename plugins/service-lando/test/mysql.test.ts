@@ -17,6 +17,7 @@ nativeListenPortSuite({
   variable: "MYSQL_TCP_PORT",
   defaultPort: 3306,
   serverCommand: "mysqld",
+  reservedPorts: [33060],
 });
 
 const metadata = {
@@ -172,7 +173,7 @@ describe("mysql ServiceType", () => {
     });
   });
 
-  test("mounts config.server read-only at MYSQL_CONFIG_TARGET without changing command or entrypoint", async () => {
+  test("mounts config.server read-only and pins the default port without changing entrypoint", async () => {
     const baseline = await planMysqlService({ type: "mysql" });
     const plan = await planMysqlService({
       type: "mysql",
@@ -189,7 +190,7 @@ describe("mysql ServiceType", () => {
       },
     ]);
     expect(String(MYSQL_CONFIG_TARGET)).toBe("/etc/mysql/my.cnf");
-    expect(plan.command).toEqual(baseline.command);
+    expect(plan.command).toEqual(["mysqld", "--port=3306"]);
     expect(plan.entrypoint).toEqual(baseline.entrypoint);
   });
 

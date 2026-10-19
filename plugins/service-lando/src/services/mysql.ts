@@ -24,7 +24,7 @@ import {
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, listenPort } from "./_port-helpers.ts";
+import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -35,7 +35,12 @@ export const MYSQL_ARTIFACTS = {
   "9.7": "mysql:9.7",
 } as const;
 const DEFAULT_IMAGE = MYSQL_ARTIFACTS["8.0"];
-export const MYSQL_LISTENER = { port: 3306, variable: "MYSQL_TCP_PORT", daemon: "MySQL" } as const;
+export const MYSQL_LISTENER = {
+  port: 3306,
+  variable: "MYSQL_TCP_PORT",
+  daemon: "MySQL",
+  reserved: [{ port: 33060, use: "X Protocol listener" }],
+} as const;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
 // Read directly by mysqld, even when host AppArmor blocks the image's
@@ -95,7 +100,8 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = mysqlCredsFor(appName, ctx.serviceName, service);
-  const port = listenPort(service, ctx.serviceName, MYSQL_LISTENER);
+  assertListenerConfig(service, ctx.serviceName, MYSQL_LISTENER);
+  const port = plannedPort(service, MYSQL_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("mysql", creds));
@@ -118,7 +124,6 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
 
   if (
     addServerConfigMount(ctx, MYSQL_CONFIG_TARGET) &&
-    (service.port !== undefined || service.environment?.MYSQL_TCP_PORT !== undefined) &&
     service.command === undefined &&
     service.entrypoint === undefined
   ) {
@@ -152,36 +157,39 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
       );
     }
     const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
-    return serviceTypeResolve(id, "mysql service type failed to resolve", () => ({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: id,
-        ...(image === undefined ? {} : { image }),
-        creds,
-        environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
-      },
-      logSources: MYSQL_LOG_SOURCES,
-      features: [{ id: MYSQL_FEATURE_ID }],
-      tooling: {
-        mysql: {
-          description: "Open the MySQL client for this service.",
-          dir: PortablePath.make("/"),
-          service: input.name,
-          cmd: [
-            "mysql",
-            "-h",
-            "127.0.0.1",
-            "-P",
-            String(listenPort(input.service, input.name, MYSQL_LISTENER)),
-            "-u",
-            creds.user,
-            creds.database,
-          ],
-          env: { MYSQL_PWD: creds.password },
+    return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
+      assertListenerConfig(input.service, input.name, MYSQL_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: id,
+          ...(image === undefined ? {} : { image }),
+          creds,
+          environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
         },
-      },
-    }));
+        logSources: MYSQL_LOG_SOURCES,
+        features: [{ id: MYSQL_FEATURE_ID }],
+        tooling: {
+          mysql: {
+            description: "Open the MySQL client for this service.",
+            dir: PortablePath.make("/"),
+            service: input.name,
+            cmd: [
+              "mysql",
+              "-h",
+              "127.0.0.1",
+              "-P",
+              String(plannedPort(input.service, MYSQL_LISTENER)),
+              "-u",
+              creds.user,
+              creds.database,
+            ],
+            env: { MYSQL_PWD: creds.password },
+          },
+        },
+      };
+    });
   },
 });
 

@@ -217,7 +217,7 @@ describe("mariadb ServiceType", () => {
     });
   });
 
-  test("mounts config.server read-only at MARIADB_CONFIG_TARGET without changing command or entrypoint", async () => {
+  test("mounts config.server read-only and pins the default port without changing entrypoint", async () => {
     // Given
     const baseline = await planMariadb({ type: "mariadb" });
     const definition = { type: "mariadb", config: { server: "config/my.cnf" } };
@@ -236,7 +236,7 @@ describe("mariadb ServiceType", () => {
       },
     ]);
     expect(String(MARIADB_CONFIG_TARGET)).toBe("/etc/mysql/conf.d/99-lando.cnf");
-    expect(plan.command).toEqual(baseline.command);
+    expect(plan.command).toEqual(["mariadbd", "--port=3306"]);
     expect(plan.entrypoint).toEqual(baseline.entrypoint);
   });
 

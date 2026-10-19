@@ -10,26 +10,43 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
-export const listenPort = (
+interface Listener {
+  readonly port: number;
+  readonly variable?: string;
+  readonly daemon: string;
+  readonly reserved?: readonly { readonly port: number; readonly use: string }[];
+}
+
+export const plannedPort = (service: ServiceConfig, listener: Listener): number =>
+  service.port ?? listener.port;
+
+export const assertListenerConfig = (
   service: ServiceConfig,
   serviceName: string,
-  listener: { readonly port: number; readonly variable?: string; readonly daemon: string },
-): number => {
+  listener: Listener,
+): void => {
+  const port = plannedPort(service, listener);
   const variable = listener.variable;
   const authored = variable === undefined ? undefined : service.environment?.[variable];
-  if (authored === undefined) return service.port ?? listener.port;
-  const parsed = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+  if (authored !== undefined) {
+    const value = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+    if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+      throw new Error(
+        `services.${serviceName}.environment.${variable} is ${JSON.stringify(authored)}, which is not a TCP port number. Remove it and set port: instead; Lando sets ${variable} from port:.`,
+      );
+    }
+    if (value !== port) {
+      throw new Error(
+        `services.${serviceName}.environment.${variable} is ${authored}, but the service listens on ${port}. Set port: ${value} instead; Lando sets ${variable} from port:.`,
+      );
+    }
+  }
+  const reserved = listener.reserved?.find((entry) => entry.port === port);
+  if (reserved !== undefined) {
     throw new Error(
-      `services.${serviceName}.environment.${variable} must be a TCP port number, got ${JSON.stringify(authored)}. Set port: instead, or fix ${variable}.`,
+      `services.${serviceName}.port plans ${listener.daemon} on port ${port}, which ${listener.daemon} reserves for its ${reserved.use}. Set port: to another TCP port number.`,
     );
   }
-  if (service.port !== undefined && service.port !== parsed) {
-    throw new Error(
-      `services.${serviceName} sets port: ${service.port} and environment.${variable}: ${authored}. ${listener.daemon} listens on ${variable}, so remove one or make them match.`,
-    );
-  }
-  return parsed;
 };
 
 const publicationFor = (entry: ComposePortEntry): typeof EndpointPublication.Type => ({

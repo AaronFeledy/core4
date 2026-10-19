@@ -14,7 +14,7 @@ import {
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, listenPort } from "./_port-helpers.ts";
+import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -66,7 +66,8 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
-  const port = listenPort(service, ctx.serviceName, POSTGRES_LISTENER);
+  assertListenerConfig(service, ctx.serviceName, POSTGRES_LISTENER);
+  const port = plannedPort(service, POSTGRES_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("postgres", creds));
@@ -92,10 +93,7 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
 
   if (addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
-      // A command-line port beats a port line in the custom config, so an authored port still wins.
-      const portOverride =
-        service.port === undefined && service.environment?.PGPORT === undefined ? [] : ["-c", `port=${port}`];
-      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`, ...portOverride]);
+      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`, "-c", `port=${port}`]);
     }
   }
 
@@ -123,35 +121,38 @@ export const postgresServiceType: ServiceType = {
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input);
-    return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => ({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "postgres",
-        creds,
-        environment: {
-          ...input.service.environment,
-          ...familyEnvFor("postgres", creds),
+    return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
+      assertListenerConfig(input.service, input.name, POSTGRES_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "postgres",
+          creds,
+          environment: {
+            ...input.service.environment,
+            ...familyEnvFor("postgres", creds),
+          },
         },
-      },
-      features: [{ id: POSTGRES_FEATURE_ID }],
-      tooling: {
-        psql: {
-          description: "Open the PostgreSQL client for this service.",
-          dir: PortablePath.make("/"),
-          service: input.name,
-          cmd: [
-            "psql",
-            "-p",
-            String(listenPort(input.service, input.name, POSTGRES_LISTENER)),
-            "-U",
-            creds.user,
-            "-d",
-            creds.database,
-          ],
-          env: { PGPASSWORD: creds.password },
+        features: [{ id: POSTGRES_FEATURE_ID }],
+        tooling: {
+          psql: {
+            description: "Open the PostgreSQL client for this service.",
+            dir: PortablePath.make("/"),
+            service: input.name,
+            cmd: [
+              "psql",
+              "-p",
+              String(plannedPort(input.service, POSTGRES_LISTENER)),
+              "-U",
+              creds.user,
+              "-d",
+              creds.database,
+            ],
+            env: { PGPASSWORD: creds.password },
+          },
         },
-      },
-    }));
+      };
+    });
   },
 };

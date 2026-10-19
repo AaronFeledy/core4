@@ -78,7 +78,8 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand([
       "mongod",
       ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []),
-      ...(service.port === undefined ? [] : ["--port", String(port)]),
+      "--port",
+      String(port),
     ]);
   }
 

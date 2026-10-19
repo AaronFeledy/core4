@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ServiceConfig.port` and its derived service schemas narrow pre-release to `PortNumber`, a TCP port number (integer 1-65535). Integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected pre-release, and compatibility exceptions record the narrowing.
+
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
 
 - `RuntimeProvider.cleanupOwnedResources(root, options)` and the filesystem-only `RuntimeProviderContribution.resourceOwnership(ctx, root)` are optional cleanup ports. `AppliedTeardownEvidence` adds ownership summaries and a cleanup-only `owned` variant. Inventory hints never establish applied state, physical existence, readiness, or seed eligibility. Whole-app teardown preflights all inventory providers before mutation; selected teardown and compensation retain their existing resource scope.

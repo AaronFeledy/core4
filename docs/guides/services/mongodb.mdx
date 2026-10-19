@@ -64,6 +64,8 @@ services:
 
 Lando mounts that file read-only at `/etc/lando/mongod.conf` and starts the server with `--config /etc/lando/mongod.conf`. It has to be a regular file, not a directory.
 
+Lando's planned port, `port:` or the default, beats a port line in your config file.
+
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append `--config` to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
@@ -80,6 +82,8 @@ services:
 ```
 
 Lando starts `mongod` with `--port 27018`, including when `config.server` is mounted. Other services connect to `db:27018`. The service exposes `LANDO_DB_PORT=27018`; `lando mongosh` and `lando db:*` commands use the planned port too. MongoDB has no daemon-native port environment variable.
+
+With `config.server` and no `port:`, Lando pins the default `27017` on its command line. With neither, Lando leaves the image's default command alone.
 
 If you author `command:` or `entrypoint:`, you own the daemon's flags. Include `--port 27018` in your own launcher; Lando won't append it for you.
 

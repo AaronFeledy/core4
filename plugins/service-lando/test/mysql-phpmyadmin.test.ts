@@ -42,7 +42,11 @@ for (const type of ["mysql:8.0", "mysql:8.4", "mysql:9.7"]) {
 test("aligns phpMyAdmin ports with authored host order, duplicates, and external hosts", async () => {
   const plan = await planMysqlApp({
     [ServiceName.make("zdb")]: { type: "mysql", port: PortNumber.make(13306) },
-    [ServiceName.make("adb")]: { type: "mariadb", environment: { MYSQL_TCP_PORT: "23306" } },
+    [ServiceName.make("adb")]: {
+      type: "mariadb",
+      port: PortNumber.make(23306),
+      environment: { MYSQL_TCP_PORT: "23306" },
+    },
     [ServiceName.make("pma")]: {
       type: "phpmyadmin",
       certs: false,
@@ -59,7 +63,11 @@ test("aligns phpMyAdmin ports with authored host order, duplicates, and external
 test("aligns discovered MySQL and MariaDB ports with sorted hosts", async () => {
   const plan = await planMysqlApp({
     [ServiceName.make("zdb")]: { type: "mysql", port: PortNumber.make(13306) },
-    [ServiceName.make("adb")]: { type: "mariadb", environment: { MYSQL_TCP_PORT: "23306" } },
+    [ServiceName.make("adb")]: {
+      type: "mariadb",
+      port: PortNumber.make(23306),
+      environment: { MYSQL_TCP_PORT: "23306" },
+    },
     [ServiceName.make("pma")]: { type: "phpmyadmin", certs: false },
   });
   expect(plan.services[ServiceName.make("pma")]?.environment).toMatchObject({

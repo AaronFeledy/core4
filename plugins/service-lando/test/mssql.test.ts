@@ -18,7 +18,12 @@ import {
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { nativeListenPortSuite } from "./support/listen-port.ts";
 
-nativeListenPortSuite({ serviceType: mssqlServiceType, variable: "MSSQL_TCP_PORT", defaultPort: 1433 });
+nativeListenPortSuite({
+  serviceType: mssqlServiceType,
+  variable: "MSSQL_TCP_PORT",
+  defaultPort: 1433,
+  reservedPorts: [1434],
+});
 
 const metadata = {
   resolvedAt: "2026-08-20T00:00:00Z",
@@ -117,7 +122,7 @@ const resolveMssqlService = (
   );
 
 describe("mssql dedicated admin connection port", () => {
-  test.each([{ port: 1434 }, { environment: { MSSQL_TCP_PORT: "1434" } }])(
+  test.each([{ port: 1434 }, { port: 1434, environment: { MSSQL_TCP_PORT: "1434" } }])(
     "rejects SQL Server's admin port as the listener for %j",
     async (definition) => {
       await expect(planMssqlService(mssqlServiceType, { type: "mssql", ...definition })).rejects.toThrow(

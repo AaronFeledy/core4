@@ -13,7 +13,12 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
-import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
@@ -22,10 +27,11 @@ import {
   portsForHosts,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
-import { listenPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
+const PHPMYADMIN_LISTENER = { port: DEFAULT_PORT, variable: "APACHE_PORT", daemon: "phpMyAdmin" } as const;
 const DB_TYPES = ["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "mariadb"] as const;
 const VERSIONS = ["5", "latest"] as const;
 const ARTIFACTS = {
@@ -38,11 +44,8 @@ export const PHPMYADMIN_WIRE_FEATURE_ID = "service-lando.phpmyadmin.wire";
 
 const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = listenPort(service, ctx.serviceName, {
-    port: DEFAULT_PORT,
-    variable: "APACHE_PORT",
-    daemon: "phpMyAdmin",
-  });
+  assertListenerConfig(service, ctx.serviceName, PHPMYADMIN_LISTENER);
+  const port = plannedPort(service, PHPMYADMIN_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
   ctx.addEnv("APACHE_PORT", String(port));
@@ -77,15 +80,18 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "phpmyadmin",
-        image: input.service.image ?? image,
-        certs: input.service.certs ?? true,
-      },
-      features: [{ id: PHPMYADMIN_FEATURE_ID }],
+    return serviceTypeResolve(id, "phpmyadmin service type failed to resolve", () => {
+      assertListenerConfig(input.service, input.name, PHPMYADMIN_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "phpmyadmin",
+          image: input.service.image ?? image,
+          certs: input.service.certs ?? true,
+        },
+        features: [{ id: PHPMYADMIN_FEATURE_ID }],
+      };
     });
   },
 });

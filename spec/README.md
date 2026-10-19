@@ -97,7 +97,7 @@ If you are looking for a public surface or policy:
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
-| Planned listen ports and Lando-owned clients | 06 | §6.12.1 |
+| Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Start, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Service log-source contracts | 06 | §6.14 |

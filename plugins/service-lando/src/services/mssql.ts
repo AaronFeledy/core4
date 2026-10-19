@@ -4,7 +4,7 @@ import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -16,22 +16,15 @@ import {
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, listenPort } from "./_port-helpers.ts";
+import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const MSSQL_LISTENER = { port: 1433, variable: "MSSQL_TCP_PORT", daemon: "SQL Server" } as const;
-// SQL Server binds its dedicated admin connection to TCP 1434; a main listener there never becomes ready.
-const DAC_PORT = 1434;
-
-const mssqlListenPort = (service: ServiceConfig, serviceName: string): number => {
-  const port = listenPort(service, serviceName, MSSQL_LISTENER);
-  if (port === DAC_PORT) {
-    throw new Error(
-      `services.${serviceName} plans SQL Server on port ${DAC_PORT}, which SQL Server reserves for its dedicated admin connection. Choose another port, such as 14330.`,
-    );
-  }
-  return port;
-};
+const MSSQL_LISTENER = {
+  port: 1433,
+  variable: "MSSQL_TCP_PORT",
+  daemon: "SQL Server",
+  reserved: [{ port: 1434, use: "dedicated admin connection" }],
+} as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";
 const VERSIONS = ["2019", "2022"] as const;
@@ -81,7 +74,8 @@ const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCH
 
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = mssqlListenPort(service, ctx.serviceName);
+  assertListenerConfig(service, ctx.serviceName, MSSQL_LISTENER);
+  const port = plannedPort(service, MSSQL_LISTENER);
   const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
   const creds = resolveServiceCreds({
@@ -150,27 +144,30 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
     });
     const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, input.name);
-    return serviceTypeResolve(id, "mssql service type failed to resolve", () => ({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "mssql",
-        image: input.service.image ?? image,
-        creds,
-        environment: {
-          ...authoredEnv,
-          ...familyEnvFor("mssql", creds),
+    return serviceTypeResolve(id, "mssql service type failed to resolve", () => {
+      assertListenerConfig(input.service, input.name, MSSQL_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "mssql",
+          image: input.service.image ?? image,
+          creds,
+          environment: {
+            ...authoredEnv,
+            ...familyEnvFor("mssql", creds),
+          },
         },
-      },
-      features: [{ id: MSSQL_FEATURE_ID }],
-      tooling: {
-        sqlcmd: {
-          service: input.name,
-          cmd: [...sqlcmdToolingArgv(mssqlListenPort(input.service, input.name))],
-          env: { SQLCMDPASSWORD: rootPassword },
+        features: [{ id: MSSQL_FEATURE_ID }],
+        tooling: {
+          sqlcmd: {
+            service: input.name,
+            cmd: [...sqlcmdToolingArgv(plannedPort(input.service, MSSQL_LISTENER))],
+            env: { SQLCMDPASSWORD: rootPassword },
+          },
         },
-      },
-    }));
+      };
+    });
   },
 });
 

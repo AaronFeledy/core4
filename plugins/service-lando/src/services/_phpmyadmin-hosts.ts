@@ -2,7 +2,7 @@ import { PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { AppFeatureServiceView } from "@lando/sdk/services";
-import { listenPort } from "./_port-helpers.ts";
+import { plannedPort } from "./_port-helpers.ts";
 import { MARIADB_LISTENER } from "./mariadb.ts";
 import { MYSQL_LISTENER } from "./mysql.ts";
 
@@ -15,9 +15,8 @@ export const portsForHosts = (
     const sibling = byName.get(host);
     return sibling === undefined
       ? MYSQL_LISTENER.port
-      : listenPort(
+      : plannedPort(
           sibling.normalizedConfig,
-          sibling.serviceName,
           sibling.serviceType.startsWith("mysql") ? MYSQL_LISTENER : MARIADB_LISTENER,
         );
   });

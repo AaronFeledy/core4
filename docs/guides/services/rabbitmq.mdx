@@ -67,7 +67,9 @@ services:
     port: 5673
 ```
 
-Lando sets `RABBITMQ_NODE_PORT=5673`. Setting that variable under `environment:` works too; if you set both forms, they must match or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor the planned port.
+Lando sets `RABBITMQ_NODE_PORT` from `port:`. An authored `RABBITMQ_NODE_PORT` must match the planned port, or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor the planned port.
+
+Ports `4369` (EPMD), `15672` (management UI), and `15692` (Prometheus) can't be the AMQP port. The AMQP port must leave room for distribution: at most `45535` unless you set `RABBITMQ_DIST_PORT` under `environment:`. That distribution port must be a TCP port number (1-65535), different from the AMQP port and all three reserved ports. Invalid or conflicting ports fail planning.
 
 The healthcheck and `rabbitmqctl` use the local Erlang node, not an AMQP connection. The management UI and `rabbitmqadmin` stay on `15672`: `port:` only moves AMQP. Apply the change with `lando rebuild`, then check the broker's listeners:
 

@@ -90,7 +90,7 @@ Other services connect to `database` on port `14330`; SQL Server tools write tha
 
 Port `1434` fails during planning. SQL Server reserves it for its dedicated admin connection, so a server listening there never becomes ready.
 
-Setting `MSSQL_TCP_PORT` under `environment:` works too. If you set both forms, they must match or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor that port.
+Lando sets `MSSQL_TCP_PORT` from `port:`. An authored `MSSQL_TCP_PORT` must match the planned port, or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor that port.
 
 Apply the change with `lando rebuild`, then connect through the generated client:
 

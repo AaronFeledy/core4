@@ -92,6 +92,8 @@ services:
 
 Lando mounts that file read-only at `/etc/mysql/my.cnf`. MySQL reads it directly on startup, after the image's `/etc/my.cnf`, without relying on that file's include directives. It has to be a regular file, not a directory.
 
+Lando's planned port, `port:` or the default, beats a port line in your config file. An authored `command:` or `entrypoint:` owns the daemon's flags instead.
+
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
 ## Change the port
@@ -107,7 +109,9 @@ services:
 
 Other services now connect to `db:3307`. Lando sets `MYSQL_TCP_PORT` for the server and in-container clients, and publishes the same value as `LANDO_DB_PORT`. `lando mysql` and `lando db:*` commands use that planned port.
 
-Setting `MYSQL_TCP_PORT` under `environment:` works too. If you set both forms, they must match or planning fails. With `config.server`, an authored port beats the option file's `port=` line. If you author `command:` or `entrypoint:`, you own the daemon's flags; pass `--port=3307` yourself if the option file sets another port.
+An authored `MYSQL_TCP_PORT` must match the planned port, or planning fails. With `config.server`, Lando pins `port:` or the default on its command line. If you author `command:` or `entrypoint:`, you own the daemon's flags; pass `--port=3307` yourself if the option file sets another port.
+
+Port `33060` fails during planning. MySQL's X Protocol listener already binds it, so a server listening there can't start.
 
 Apply the change with `lando rebuild`, then check the running server:
 
