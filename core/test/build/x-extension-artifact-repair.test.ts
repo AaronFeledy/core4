@@ -29,6 +29,7 @@ import {
   repairClosedExtension,
   schemaAt,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
@@ -42,7 +43,8 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
 
-const expectedLandofile = (): JsonSchema => evolveHistoricalShorthand(repairedLandofile());
+const expectedLandofile = (): JsonSchema =>
+  evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile()));
 
 describe("closed x-* extension artifact repair", () => {
   test("records the captured base artifact provenance", () => {
