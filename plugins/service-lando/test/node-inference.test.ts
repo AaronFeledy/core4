@@ -80,7 +80,7 @@ describe("bare node version inference", () => {
     [">=22", "node:24"],
     [">=24", "node:24"],
     [">=26", "node:26"],
-    ["22 || 26", "node:22"],
+    ["22 || 26", "node:26"],
   ] satisfies ReadonlyArray<readonly [string, string]>)(
     "prefers the table LTS major when engines.node %s allows it",
     (engines, artifact) => {

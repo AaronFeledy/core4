@@ -209,7 +209,7 @@ const selectMajorForEngine = (engine: string): SupportedNodeMajor | undefined =>
   const compatible = SUPPORTED_NODE_MAJORS.filter((entry) => subset(String(entry.major), engine));
   if (compatible.length === 0) return undefined;
   const lts = compatible.find((entry) => "lts" in entry && entry.lts);
-  return (lts ?? compatible[0])?.major;
+  return (lts ?? compatible.at(-1))?.major;
 };
 
 export const resolveNodeInference = (
