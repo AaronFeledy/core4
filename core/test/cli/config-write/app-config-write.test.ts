@@ -12,6 +12,7 @@ import {
   appConfigSet,
   appConfigUnset,
   appConfigValidate,
+  renderAppConfigResult,
 } from "../../../src/cli/commands/app-config.ts";
 import type { EditorRunner } from "../../../src/recipes/prompts/editor-command.ts";
 import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
@@ -272,6 +273,24 @@ describe("app config edit (S7) via injected editor seam", () => {
     );
     expect(result.changed).toBe(true);
     expect(await readLandofile()).toContain("php");
+  });
+
+  test("--dry-run validates the buffer, leaves the file untouched, and reports a dry run", async () => {
+    // Given
+    const before = await readLandofile();
+    // When
+    const result = await run(
+      appConfigEdit({
+        subcommand: "edit",
+        cwd: dir,
+        dryRun: true,
+        editorRunner: editorRunner((c) => `${c}services:\n  web:\n    type: php\n`),
+      }),
+    );
+    // Then
+    expect(result).toMatchObject({ subcommand: "edit", dryRun: true, changed: true, valid: true });
+    expect(await readLandofile()).toBe(before);
+    expect(renderAppConfigResult(result)).toBe(`${landofilePath()}: would save edited Landofile (dry run).`);
   });
 
   test("rejects an edit that fails validation, file untouched", async () => {
