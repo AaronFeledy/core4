@@ -867,5 +867,11 @@
       "digest": "1b229197340070035c8e24137c68d4da07518d323c5c41e4c9a89a1f08afe772"
     }
   ],
-  "intended": {}
+  "intended": {
+    "docs/guides/expressions/fixtures/expressions-typed-values": {
+      "before": { "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470" },
+      "after": { "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327" },
+      "reason": "Upstream c1855d462 adds the number-converted env example router.httpsPort=8443 and changes worker.primary to an equivalent boolean-converted env expression. Independently reproduced on integrated parent ed5ee8443; this is a parent fixture change, not an A1 merge-semantic change."
+    }
+  }
 }
