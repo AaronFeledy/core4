@@ -13,7 +13,11 @@ import { parseLandofile } from "./parser.ts";
 import { rememberOrigins } from "./pipeline/origins.ts";
 import { prepareOverlay } from "./pipeline/prepare.ts";
 import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
-import type { VersionConstraintEntry } from "./version-constraint.ts";
+import {
+  type VersionConstraintEntry,
+  getVersionConstraintEntries,
+  hasVersionConstraintEntries,
+} from "./version-constraint.ts";
 
 export const parseFragment = (
   fragment: FragmentResult,
@@ -124,9 +128,13 @@ export const withResolvedTooling = (
   return { ...inline, tooling: merged };
 };
 export const ownVersionConstraintEntries = (
-  landofile: { readonly lando?: unknown },
+  landofile: { readonly lando?: string | undefined },
   source: string,
   layer: VersionConstraintEntry["layer"],
   order: VersionConstraintEntry["order"],
-): ReadonlyArray<VersionConstraintEntry> =>
-  typeof landofile.lando !== "string" ? [] : [{ range: landofile.lando, source, layer, order }];
+): ReadonlyArray<VersionConstraintEntry> => {
+  // Remembered entries already name every source. The visible lando string is
+  // only the raw fallback, so re-deriving it must not drop or replay them.
+  if (hasVersionConstraintEntries(landofile)) return getVersionConstraintEntries(landofile, source);
+  return typeof landofile.lando !== "string" ? [] : [{ range: landofile.lando, source, layer, order }];
+};
