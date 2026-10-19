@@ -326,7 +326,13 @@ const makeFakeApi = () => {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
       if (request.path.includes("/logs?")) {
-        return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+        return Stream.fromIterable([
+          attachFrame(1, "2026-05-17T12:00:00.000Z ready\n"),
+          attachFrame(1, "2026-05-17T12:00:00.000Z lando-contract-split-"),
+          attachFrame(1, "2026-05-17T12:00:00.000Z line\n"),
+          attachFrame(1, `2026-05-17T12:00:00.000Z ${"L".repeat(16_384)}`),
+          attachFrame(1, `2026-05-17T12:00:00.000Z ${"L".repeat(3_616)}\n`),
+        ]);
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/archive?")) {
         const name = decodeURIComponent(

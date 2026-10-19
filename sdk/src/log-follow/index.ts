@@ -26,6 +26,9 @@ import { Clock, DateTime, Duration, Effect, Option, Result, Stream } from "effec
 import { ProviderUnavailableError } from "../errors/index.ts";
 import type { LogSource, LogSourceId, ServiceName } from "../schema/index.ts";
 import type { LogChunk, ProviderError } from "../services/index.ts";
+import { LOG_LINE_TRUNCATED_MARKER } from "./marker.ts";
+
+export { LOG_LINE_TRUNCATED_MARKER } from "./marker.ts";
 
 /** Default per-source line bound: over-long/binary lines truncate here. */
 export const DEFAULT_MAX_LINE_BYTES = 65_536;
@@ -126,7 +129,6 @@ export interface FramedLine {
 
 const LF = 0x0a;
 const CR = 0x0d;
-const TRUNCATED_MARKER = " …[truncated]";
 
 /**
  * Byte-level incremental line framer. Buffering complete lines by byte (split
@@ -141,8 +143,12 @@ export const makeLineFramer = (maxLineBytes: number = DEFAULT_MAX_LINE_BYTES) =>
   let overflowed = false;
 
   const emit = (): FramedLine => {
+    // CRs at either end are terminator residue (CRLF, or LF-CR as SQL Server writes); a
+    // leading CR would also return the cursor over a renderer's line prefix.
+    let first = 0;
+    while (first < line.length && line[first] === CR) first += 1;
     let end = line.length;
-    if (end > 0 && line[end - 1] === CR) end -= 1;
+    while (end > first && line[end - 1] === CR) end -= 1;
     if (overflowed) {
       let start = end - 1;
       while (start >= 0 && ((line[start] ?? 0) & 0xc0) === 0x80) start -= 1;
@@ -150,9 +156,9 @@ export const makeLineFramer = (maxLineBytes: number = DEFAULT_MAX_LINE_BYTES) =>
       const width = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
       if (end - start < width) end = start;
     }
-    const text = decoder.decode(Uint8Array.from(line.slice(0, end)));
+    const text = decoder.decode(Uint8Array.from(line.slice(first, end)));
     const framed: FramedLine = {
-      text: overflowed ? `${text}${TRUNCATED_MARKER}` : text,
+      text: overflowed ? `${text}${LOG_LINE_TRUNCATED_MARKER}` : text,
       truncated: overflowed,
     };
     line = [];

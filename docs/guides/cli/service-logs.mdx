@@ -15,7 +15,7 @@ lando logs --service appserver
 
 That prints a snapshot for the service, merging console output with any declared file sources. File-source lines carry their source id (`appserver stderr [myapp-error]: line`). Console lines omit a source label (`appserver stdout: line`).
 
-Every line prints whole, however the container writes it. A service that writes a line in pieces, the way SQL Server does, still gets one line stamped with the time its first piece arrived. A last line with no trailing newline prints when the output ends. While following, a partial line waits for its newline. Lines longer than 64 KiB are cut there and end in `…[truncated]`.
+Every line prints whole, however the container writes it. A service that writes a line in pieces, the way SQL Server does, still gets one line stamped with the time its first piece arrived. A last line with no trailing newline prints when the output ends. While following, a partial line waits for its newline. Lines longer than 64 KiB are cut there and end in `…[truncated]`. A known secret that straddles the cut is still masked.
 
 Declare extra in-container log files on the service that owns them:
 

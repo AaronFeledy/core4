@@ -85,6 +85,16 @@ describe("makeLineFramer (framing + bounds)", () => {
     expect(rest.map((line) => line.text)).toEqual(["héllo"]);
   });
 
+  test("drops carriage returns at both ends of a line, including LF-CR terminators", () => {
+    const framer = makeLineFramer();
+    expect(
+      framer.feed(new TextEncoder().encode("one\n\rtwo\r\r\n\r\rthree\n")).map(({ text }) => text),
+    ).toEqual(["one", "two", "three"]);
+    expect(framer.feed(new TextEncoder().encode("mid\rline\n")).map(({ text }) => text)).toEqual([
+      "mid\rline",
+    ]);
+  });
+
   test("S6 handles CRLF and flushes a final partial line at EOF", () => {
     const framer = makeLineFramer();
     const fed = framer.feed(new TextEncoder().encode("one\r\ntwo\r\npartial"));

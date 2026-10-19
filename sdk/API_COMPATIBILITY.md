@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/log-follow` additively exports `LOG_LINE_TRUNCATED_MARKER`, shared by line framing and exact-value redaction. Before that marker, string redaction also masks the longest suffix matching a proper prefix of a known exact secret, including markers inside joined log tails. Provider log lines remain raw. No schema artifacts or service signatures change.
+
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
 
 - `RuntimeProvider.cleanupOwnedResources(root, options)` and the filesystem-only `RuntimeProviderContribution.resourceOwnership(ctx, root)` are optional cleanup ports. `AppliedTeardownEvidence` adds ownership summaries and a cleanup-only `owned` variant. Inventory hints never establish applied state, physical existence, readiness, or seed eligibility. Whole-app teardown preflights all inventory providers before mutation; selected teardown and compensation retain their existing resource scope.
