@@ -764,7 +764,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     healthcheck: Schema.optionalKey(HealthcheckField),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
-    hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
+    hostnames: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Extra provider-network aliases for this service. Other services use these names to reach this one.",
+    }),
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),

@@ -25,6 +25,7 @@ describe("Compose disposition matrix", () => {
         expect(rootTargets, `${path} must normalize within its root's plan targets`).toContain(target);
       }
     }
+    expect(composeServiceDispositions.hostname?.disposition).toBe("rejected");
     expect(composeServiceDispositions["build.args"]?.planTarget).toEqual(["artifact"]);
     expect(composeServiceDispositions["depends_on.*.condition"]?.planTarget).toEqual(["dependsOn"]);
     expect(composeServiceDispositions["volumes.target"]?.planTarget).toEqual([

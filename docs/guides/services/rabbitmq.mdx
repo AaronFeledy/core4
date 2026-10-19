@@ -60,6 +60,11 @@ RabbitMQ stores its data in `/var/lib/rabbitmq`. The service mounts persistent
 storage there by default, which keeps queues and messages across ordinary
 restarts. Destroying the app removes that app-owned data.
 
+The on-disk node name is `rabbit@<hostname>`. Lando now sets a stable
+container hostname (`<app slug>-<service>`), so that directory no longer
+moves when the container id changes. Renaming the app moves it. Existing
+containers keep the old short-id hostname until their next recreate.
+
 ## Manage the broker
 
 The service adds `rabbitmqctl` and `rabbitmqadmin` tooling aliases. Run them

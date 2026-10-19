@@ -342,6 +342,7 @@ describe("container plan helpers", () => {
       }),
     ).toEqual({
       Image: "nginx:latest",
+      Hostname: "myapp-web",
       Env: ["FOO=bar", "BAZ=qux"],
       Cmd: ["sh", "-lc", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
