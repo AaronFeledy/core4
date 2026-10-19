@@ -4,8 +4,15 @@
  * poison every later loopback request in the shared test process. Production
  * entries (`core/bin/lando.ts`, the host-proxy worker, the shim) install a
  * loopback NO_PROXY guard; this preload mirrors it for the test process.
+ *
+ * The codegen guard must run before bundled-plugins is resolved. Static ESM
+ * imports are linked together, so the guard is a separate first preload in
+ * bunfig.toml and this file also awaits the plugins import after a static
+ * guard import for local/preload-flag use.
  */
-import "../core/src/runtime/bundled-plugins.ts";
+import "./require-derived-codegen-preload.ts";
+
+await import("../core/src/runtime/bundled-plugins.ts");
 
 const entries = (process.env.NO_PROXY ?? "")
   .split(",")
