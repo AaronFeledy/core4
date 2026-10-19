@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { ValidationIssuePath } from "./validation-issue.ts";
+import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
 
 // Config-lint result shapes — the stable, editor/LSP-facing output of
 // `lando app:config:lint`. Validating a Landofile against the canonical
@@ -23,6 +23,12 @@ export const ConfigLintViolation = Schema.Struct({
   line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */
   column: Schema.optionalKey(Schema.Number),
+  scope: Schema.optionalKey(
+    Schema.Literals(["fragment", "effective"]).annotate({
+      description: "Whether the finding concerns an authored fragment or the effective configuration.",
+    }),
+  ),
+  source: ValidationIssue.fields.source,
 });
 export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 

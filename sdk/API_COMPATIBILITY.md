@@ -448,7 +448,28 @@ Node imports. The block-document emitter accepts JSON-compatible values, rejects
 unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
+## Authored inspection compatibility
+
+The source schemas describe JSON data independently of runtime `LandofileShape`.
+`@lando/sdk/landofile` exports `encodeLandofileSourceValue`, shared with the directive
+codec, to preserve native directives and escape literal envelope collisions.
+Config inspection now has explicit raw, merged, resolved, projection, get, and
+write result variants. Full resolved output remains the strict runtime contract.
+`ConfigLintViolation` adds optional `scope` and the shared validation `source`;
+the built-in lint operation supplies fragment/effective scopes and retained sources.
+
+The conservative actual-parent check reports five output-union changes at `$.anyOf`
+for app-config and its registered write verbs. Issue #1502 records this intentional
+pre-release contract evolution for lead review. The scoped ledger entries do not
+assert generic output-union compatibility or relax the classifier. Existing default
+resolved output remains unchanged; clients opting into new sources discriminate
+the source and result variant.
+
 ## Additive schema exports
+
+- `LandofileSourceValue`
+- `LandofileSourceDocument`
+- `LandofileSourceProjection`
 
 - `FailureRole`
 - `LANDOFILE_MERGE_DIRECTIVE`

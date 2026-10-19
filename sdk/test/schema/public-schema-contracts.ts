@@ -22,6 +22,9 @@ export type PublicSchemaContractFixture = {
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   LandofileShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PreRestartEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileSourceValue: "sdk/test/schema/landofile-source.test.ts",
+  LandofileSourceDocument: "sdk/test/schema/landofile-source.test.ts",
+  LandofileSourceProjection: "sdk/test/schema/landofile-source.test.ts",
   PostRestartEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AuthoringExpression: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AuthoringExpressionExpectedType: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
