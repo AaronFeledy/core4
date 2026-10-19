@@ -11,6 +11,7 @@ import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
   atWirePath,
@@ -86,7 +87,7 @@ describe("embedded wire closed x-* artifact repair", () => {
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
     const repaired = evolveHistoricalShorthand(
-      normalizeJsonSchema(wireObject(repairClosedExtension(directiveCaptured.services))),
+      normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
@@ -106,10 +107,10 @@ describe("embedded wire closed x-* artifact repair", () => {
   for (const [id, path, source] of WIRE_TARGETS) {
     const surface = `schema:${id}`;
     test(`proves the complete directive-capable ${id} ${path} subtree`, async () => {
-      // Given the reviewed directive transport, with every union alternative intact.
-      const expected = directiveCaptured[source];
+      // Given the independently pinned typed grammar, with every union alternative intact.
+      const expected = typedCaptured[source];
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      // When only the separately pinned shorthand delta is replayed after historical repair.
+      // When only the separately pinned shorthand delta is replayed after closed-x repair.
       const repaired = evolveHistoricalShorthand(
         normalizeJsonSchema(wireObject(repairClosedExtension(expected))),
       );
@@ -153,7 +154,7 @@ describe("embedded wire closed x-* artifact repair", () => {
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
       const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
       const repaired = evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(directiveCaptured[source]))),
+        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
       );
       expect(jsonEquals(repaired, current)).toBe(true);
       // When the conservative classifier still reports the same coarse union delta.
