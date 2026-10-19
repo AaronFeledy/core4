@@ -27,12 +27,15 @@ Add a project constraint next to the Landofile:
 22.11.0
 ```
 
-That `.nvmrc` resolves to `node:22.11.0`. A major pin such as `22`, the Node 22
-LTS codename `jod`, or `lts/jod` resolves to `node:22`. The moving `lts/*`
-selector resolves to `node:lts`. If `package.json` also declares
-`engines.node`, its range must include the complete image selection from
-`.nvmrc`; conflicting constraints fail before Lando asks the provider to do
-anything.
+That `.nvmrc` resolves to `node:22.11.0`. A major pin such as `22`, `24`, or
+`26` selects that image channel. LTS codenames work the same way: `jod` or
+`lts/jod` resolve to `node:22`, and `krypton` or `lts/krypton` resolve to
+`node:24`. Node 26 has no codename yet. The `lts` and `lts/*` selectors resolve
+to `node:24`, the current table LTS, not the floating `node:lts` Docker tag.
+If `package.json` also declares `engines.node`, its range must include the
+complete image selection from `.nvmrc`. When the range allows more than one
+supported major, Lando prefers 24 over 26. Conflicting constraints fail before
+Lando asks the provider to do anything.
 
 <Guide>
   <Scenario id="infer-exact-version" render>
@@ -161,6 +164,11 @@ services:
 
 They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` without an extra `lando npm install -g` every rebuild.
 
+Node 26 official images ship without `yarn` and without Corepack. If you need
+Yarn 1, set `globals: { yarn: "1.22.22" }`. Install pnpm the same way. Node 22
+and Node 24 still ship `yarn` as a Yarn 1 symlink; pnpm is absent on those
+images too.
+
 Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image. Adding, removing, or re-pinning a package does, on the next `lando start`, because the normalized list is part of the image build key.
 
 Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or a dist-tag like `latest`. Anything else fails at plan time, before any container work, naming the package that broke.
@@ -189,7 +197,9 @@ tooling `dir:`. See [Compile PHP theme assets with Node](./node-theme-assets.mdx
 ## Pin the service type
 
 Use an explicit type when the Landofile, rather than project files, should own
-the version. Lando supports `node:lts` and `node:22` as explicit types:
+the version. Lando supports `node:lts`, `node:22`, `node:24`, and `node:26`.
+`type: node:lts` plans the `node:24` image for now. Moving that alias to 26 is
+a later release, not a silent tag float.
 
 ```yaml
 services:
@@ -200,8 +210,8 @@ services:
 ```yaml
 services:
   app:
-    type: "node:22"
-    image: node:22-bookworm
+    type: "node:24"
+    image: node:24-bookworm
 ```
 
 Custom `image:` values work with explicit Node types. Don't combine `image:`
