@@ -31,8 +31,8 @@ export const sanitizeContainerHostname = (raw: string): string => {
 export const defaultContainerHostname = (slug: string, service: string): string =>
   sanitizeContainerHostname(`${slug}-${service}`);
 
-/** Authored override when set; otherwise the derived `<slug>-<service>` default. */
+/** Derived `<slug>-<service>` hostname used at create time. */
 export const resolveContainerHostname = (
   plan: Pick<AppPlan, "slug">,
-  service: Pick<ServicePlan, "name" | "hostname">,
-): string => service.hostname ?? defaultContainerHostname(plan.slug, service.name);
+  service: Pick<ServicePlan, "name">,
+): string => defaultContainerHostname(plan.slug, service.name);

@@ -6,7 +6,6 @@ import { Cause, Effect, Exit } from "effect";
 
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
-import { ServiceName } from "@lando/sdk/schema";
 import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -203,29 +202,21 @@ describe("Landofile Compose rejection surface", () => {
     });
   });
 
-  test("normalizes compose hostname into the authored override", async () => {
+  test("rejects compose hostname with its matrix remediation", async () => {
     await withTempDir(async (dir) => {
       // Given
-      const { exit } = await loadYamlExit(dir, yamlService("    hostname: broker"));
-
-      // When / Then
-      expect(Exit.isSuccess(exit)).toBe(true);
-      if (!Exit.isSuccess(exit)) return;
-      expect(exit.value.services?.[ServiceName.make("web")]?.hostname).toBe("broker");
-    });
-  });
-
-  test("rejects an invalid hostname as a schema error, not a Compose-key rejection", async () => {
-    await withTempDir(async (dir) => {
-      // Given
-      const { exit } = await loadYamlExit(dir, yamlService("    hostname: Bad.Host"));
+      const { source, exit } = await loadYamlExit(dir, yamlService("    hostname: broker"));
 
       // When
       const error = failureOf(exit);
 
       // Then
-      expect(error).toBeInstanceOf(LandofileValidationError);
-      expect(error).not.toBeInstanceOf(ComposeKeyRejectedError);
+      expectRejection(error, {
+        keyPath: "hostname",
+        remediation: composeServiceDispositions.hostname?.remediation,
+        service: "web",
+        source,
+      });
     });
   });
 

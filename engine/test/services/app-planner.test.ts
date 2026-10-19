@@ -1448,23 +1448,6 @@ describe("AppPlannerLayer.layer", () => {
     }
   });
 
-  test("copies an authored container hostname onto the service plan", async () => {
-    const appPlan = await plan({
-      ...landofileFixture,
-      services: {
-        [ServiceName.make("web")]: {
-          type: "compose",
-          image: "nginx:1.27-alpine",
-          home: false,
-          appMount: false,
-          hostname: "broker",
-        },
-      },
-    });
-
-    expect(appPlan.services[ServiceName.make("web")]?.hostname).toBe("broker");
-  });
-
   test("adds configured service hostnames to shared networking aliases", async () => {
     const appPlan = await plan({
       ...landofileFixture,

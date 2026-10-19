@@ -101,7 +101,6 @@ describe("desired immutable create config", () => {
     ["healthcheck", { healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 3 } }],
     ["exposed port", { endpoints: [{ _tag: "internal", port: 8080, protocol: "tcp" }] }],
     ["host alias", { hostAliases: [{ hostname: "gateway", ip: "192.0.2.1" }] }],
-    ["hostname override", { hostname: "broker" }],
     ["user labels", { extensions: { compose: { labels: { role: "web" } } } }],
     ["host config knob", { extensions: { compose: { privileged: true } } }],
     ["top-level knob", { extensions: { compose: { stop_signal: "SIGQUIT" } } }],
@@ -247,10 +246,6 @@ describe("desired immutable create config", () => {
     // Then the self-label is computed last and never hashes itself or a session id.
     expect(labels[CREATE_CONFIG_LABEL]).toBe(fingerprint(service));
     expect(labels[AGENT_SESSION_LABEL]).toBe("session-1");
-  });
-
-  test("leaves the fingerprint unchanged when hostname is omitted", () => {
-    expect(fingerprint(service)).toBe(fingerprint({ ...service }));
   });
 
   test("emits the identical fingerprint through Compose and direct create", () => {

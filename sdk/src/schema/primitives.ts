@@ -34,30 +34,6 @@ export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-
 
 export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
 
-/**
- * A single DNS label for a container hostname. No dots, 1-63 characters,
- * lowercase letters, digits, and hyphens only, with no leading or trailing hyphen.
- */
-export const CONTAINER_HOSTNAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
-export const isContainerHostname = (value: string): boolean => CONTAINER_HOSTNAME_PATTERN.test(value);
-
-export const ContainerHostname = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(CONTAINER_HOSTNAME_PATTERN, {
-      message:
-        "Expected a single DNS label: 1-63 characters of [a-z0-9-], with no dots and no leading or trailing hyphen.",
-      toJsonSchema: () => ({ pattern: CONTAINER_HOSTNAME_PATTERN.source }),
-    }),
-  ),
-).annotate({
-  identifier: "ContainerHostname",
-  title: "Container Hostname",
-  description:
-    "Container hostname as a single DNS label. This is the name `gethostname()` and the shell prompt see, not a `hostnames:` network alias and not a route hostname.",
-});
-export type ContainerHostname = typeof ContainerHostname.Type;
-
 export const ContainerUser = Schema.String.pipe(
   Schema.check(Schema.isPattern(CONTAINER_USER_PATTERN)),
 ).annotate({

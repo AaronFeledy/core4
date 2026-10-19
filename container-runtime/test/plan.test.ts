@@ -369,12 +369,6 @@ describe("container plan helpers", () => {
     });
   });
 
-  test("uses an authored hostname override on the create body", () => {
-    expect(containerCreateBodyFragment(plan, { ...service, hostname: "broker" })).toMatchObject({
-      Hostname: "broker",
-    });
-  });
-
   test("passes the planned runtime user through to the create body", () => {
     expect(containerCreateBodyFragment(plan, { ...service, user: "root" })).toMatchObject({
       User: "root",

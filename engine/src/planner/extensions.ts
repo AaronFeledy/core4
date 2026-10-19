@@ -120,7 +120,6 @@ export const toAppFeatureDraft = (
   environment: { ...servicePlan.environment },
   ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
   ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
-  ...(servicePlan.hostname === undefined ? {} : { hostname: servicePlan.hostname }),
   ...(servicePlan.appMount === undefined
     ? {}
     : {
@@ -163,7 +162,6 @@ export const servicePlanFromDraft = (
   environment: sortRecord(draft.environment),
   ...(draft.user === undefined ? {} : { user: draft.user }),
   ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-  ...(draft.hostname === undefined ? {} : { hostname: draft.hostname }),
   ...(draft.appMount === undefined ? {} : { appMount: { ...draft.appMount, realization: "passthrough" } }),
   mounts: draft.mounts.map((mount) => ({ ...mount, realization: "passthrough" })),
   storage: draft.storage.map((storage) => ({ ...storage })),

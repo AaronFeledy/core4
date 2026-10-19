@@ -36,6 +36,15 @@ describe("sanitizeContainerHostname", () => {
     expect(sanitizeContainerHostname(cleaned).length).toBe(CONTAINER_HOSTNAME_MAX_LENGTH);
   });
 
+  test("strips a trailing hyphen left at the truncation boundary", () => {
+    const cleaned = `${"a".repeat(53)}-${"b".repeat(20)}`;
+    expect(cleaned[53]).toBe("-");
+    expect(cleaned.length).toBeGreaterThan(CONTAINER_HOSTNAME_MAX_LENGTH);
+    const actual = sanitizeContainerHostname(cleaned);
+    expect(actual).toBe(`${"a".repeat(53)}-${hash(cleaned)}`);
+    expect(actual.includes("--")).toBe(false);
+  });
+
   test("avoids collisions when long names share a naive 63-character prefix", () => {
     const left = `${"queue-worker-primary".repeat(5)}-alpha`;
     const right = `${"queue-worker-primary".repeat(5)}-beta`;
@@ -52,15 +61,15 @@ describe("sanitizeContainerHostname", () => {
   });
 });
 
-describe("default and resolved container hostnames", () => {
+describe("default container hostnames", () => {
   test("defaults to the sanitized app slug and service name", () => {
     expect(defaultContainerHostname("My App", "Web!")).toBe("my-app-web");
     expect(resolveContainerHostname({ slug: "myapp" }, { name: ServiceName.make("web") })).toBe("myapp-web");
   });
 
-  test("uses an authored override without sanitizing it again", () => {
-    expect(
-      resolveContainerHostname({ slug: "myapp" }, { name: ServiceName.make("web"), hostname: "broker" }),
-    ).toBe("broker");
+  test("collides when distinct slug-service pairs sanitize to the same label", () => {
+    expect(defaultContainerHostname("foo", "bar-web")).toBe("foo-bar-web");
+    expect(defaultContainerHostname("foo-bar", "web")).toBe("foo-bar-web");
+    expect(defaultContainerHostname("app", "web_1")).toBe(defaultContainerHostname("app", "web-1"));
   });
 });
