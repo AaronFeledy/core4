@@ -16,7 +16,8 @@ const Summary = Schema.Struct({
       warmups: Schema.Number,
       medianMs: Schema.Number,
       p95Ms: Schema.Number,
-      decodes: Schema.Null,
+      finalizations: Schema.Number,
+      layerDecodes: Schema.Number,
       ok: Schema.Boolean,
     }),
   ),
@@ -86,7 +87,8 @@ describe("bench-landofile-load", () => {
         fixture: "one-layer",
         runs: 1,
         warmups: 3,
-        decodes: null,
+        finalizations: 1,
+        layerDecodes: 0,
         ok,
       });
       expect(result.fixtures[0]?.medianMs).toBeGreaterThan(0);

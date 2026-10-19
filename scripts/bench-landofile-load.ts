@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { loadLandofileLayers } from "@lando/landofile/service";
-import { Effect, References, Schema } from "effect";
+import { Effect, References, Schema, Tracer } from "effect";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "../landofile/test/support.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -104,6 +104,21 @@ export const runBenchmark = async (options: ReturnType<typeof parseArgs>) => {
       const middle = timings.slice(Math.floor((timings.length - 1) / 2), Math.floor(timings.length / 2) + 1);
       const medianMs = middle.reduce((sum, value) => sum + value, 0) / middle.length;
       const p95Ms = percentile(timings, 0.95);
+      const spans: string[] = [];
+      const tracer = Tracer.make({
+        span(options) {
+          spans.push(options.name);
+          return new Tracer.NativeSpan(options);
+        },
+      });
+      await Effect.runPromise(
+        loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"), inputs).pipe(
+          Effect.provideService(Tracer.Tracer, tracer),
+          Effect.provideService(References.TracerEnabled, true),
+        ),
+      );
+      const finalizations = spans.filter((name) => name === "Landofile.finalize").length;
+      const layerDecodes = spans.filter((name) => name === "Landofile.decodeLayer").length;
       const prior = baseline.fixtures[name];
       const multiplier = 1 + baseline.allowedRegressionPercent / 100;
       fixtures.push({
@@ -112,10 +127,14 @@ export const runBenchmark = async (options: ReturnType<typeof parseArgs>) => {
         warmups: baseline.warmups,
         medianMs,
         p95Ms,
-        // Full schema decodes are untraced; load/prepare spans are not decode counts.
-        decodes: null,
+        finalizations,
+        layerDecodes,
         baseline: prior,
-        ok: medianMs <= prior.medianMs * multiplier && p95Ms <= prior.p95Ms * multiplier,
+        ok:
+          medianMs <= prior.medianMs * multiplier &&
+          p95Ms <= prior.p95Ms * multiplier &&
+          finalizations === 1 &&
+          layerDecodes === 0,
       });
     }
     return {
@@ -143,7 +162,7 @@ if (import.meta.main) {
       );
       for (const fixture of result.fixtures) {
         console.log(
-          `${fixture.fixture}: median ${fixture.medianMs.toFixed(3)}ms, p95 ${fixture.p95Ms.toFixed(3)}ms, decodes: unavailable`,
+          `${fixture.fixture}: median ${fixture.medianMs.toFixed(3)}ms, p95 ${fixture.p95Ms.toFixed(3)}ms, finalizations: ${fixture.finalizations}, layer decodes: ${fixture.layerDecodes}`,
         );
       }
     }
