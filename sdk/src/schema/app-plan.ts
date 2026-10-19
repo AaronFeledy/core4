@@ -21,6 +21,7 @@ import {
   AbsolutePath,
   AppId,
   CommandSpec,
+  ContainerHostname,
   PlanMetadata,
   PortablePath,
   ProviderExtensionConfig,
@@ -54,6 +55,10 @@ export const ServicePlan = Schema.Struct({
   }),
   logSources: Schema.optionalKey(Schema.Array(LogSource)),
   certs: Schema.optionalKey(CertificatePlan),
+  hostname: Schema.optionalKey(ContainerHostname).annotate({
+    description:
+      "Authored container hostname override. Omitted services get `<app slug>-<service>` at create time; that default is not fingerprinted.",
+  }),
   hostAliases: Schema.Array(HostAliasPlan),
   metadata: PlanMetadata,
   provenance: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)).annotate({

@@ -342,6 +342,7 @@ describe("container plan helpers", () => {
       }),
     ).toEqual({
       Image: "nginx:latest",
+      Hostname: "myapp-web",
       Env: ["FOO=bar", "BAZ=qux"],
       Cmd: ["sh", "-lc", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
@@ -365,6 +366,12 @@ describe("container plan helpers", () => {
         Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
+    });
+  });
+
+  test("uses an authored hostname override on the create body", () => {
+    expect(containerCreateBodyFragment(plan, { ...service, hostname: "broker" })).toMatchObject({
+      Hostname: "broker",
     });
   });
 

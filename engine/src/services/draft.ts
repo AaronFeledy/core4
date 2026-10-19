@@ -39,6 +39,7 @@ export interface DraftServicePlan {
   environment: Record<string, string>;
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];
+  hostname?: ServicePlan["hostname"];
   appMount?: ServiceAppMountIntent;
   mounts: ServiceMountIntent[];
   featureIds?: ReadonlyArray<string>;

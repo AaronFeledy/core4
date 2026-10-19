@@ -599,6 +599,9 @@ It registers no JSON Schema.
 - `ContainerUser`
 - `CONTAINER_USER_PATTERN`
 - `isContainerUser`
+- `ContainerHostname`
+- `CONTAINER_HOSTNAME_PATTERN`
+- `isContainerHostname`
 - `BuildStepSkipEvent`
 - `BuildStep`
 - `BunShellScriptFrontMatter`
@@ -1139,6 +1142,10 @@ It registers no JSON Schema.
   `.logging`, `.gpus`, and `.deploy` are new additive optional fields carrying the preserved Compose
   per-container runtime knobs under their Compose spellings. Values canonicalize to one long form;
   keys are never renamed.
+- `ServiceConfig.hostname` and `ServicePlan.hostname` are new additive optional fields for an
+  authored container hostname override. The value is a single DNS label (1-63 characters of
+  `[a-z0-9-]`, no dots, no leading or trailing hyphen). Compose `hostname` now normalizes into this
+  override. It is not a `hostnames:` network alias and is not a route hostname.
 - `PreRestartEvent.services` and `PostRestartEvent.services` are new additive optional fields. A
   full-app restart omits them so existing payloads stay unchanged.
 

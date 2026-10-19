@@ -7,6 +7,7 @@ import {
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
+import { resolveContainerHostname } from "./hostname.ts";
 import {
   ContainerPlanError,
   containerHealthcheck,
@@ -24,6 +25,11 @@ import { requiresLongMountSyntax } from "./mount-syntax.ts";
 
 export { composeConfigBindStrings };
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
+export {
+  defaultContainerHostname,
+  resolveContainerHostname,
+  sanitizeContainerHostname,
+} from "./hostname.ts";
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
 export const mergeAppliedPlan = (
@@ -324,10 +330,13 @@ export const containerCreateBodyFragment = (
   }
   const healthcheck = containerHealthcheck(service.healthcheck);
   const exposedPorts = containerExposedPorts(service.endpoints);
+  // Default `<slug>-<service>` is derived from already-fingerprinted inputs and
+  // is not part of create-config. Existing containers pick it up on recreate.
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
+    Hostname: resolveContainerHostname(plan, service),
     Env: envArrayFromRecord(options.environment ?? service.environment),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),

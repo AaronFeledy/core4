@@ -285,7 +285,7 @@
   "extends.service": "rejected",
   "external_links": "rejected",
   "healthcheck.x-*": "rejected",
-  "hostname": "rejected",
+  "hostname": "normalized",
   "ipc": "rejected",
   "isolation": "rejected",
   "label_file": "rejected",

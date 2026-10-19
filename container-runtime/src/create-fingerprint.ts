@@ -98,6 +98,12 @@ export const createConfigFingerprint = (
             : { kind: endpoint._tag, port: endpoint.port, protocol: endpoint.protocol };
       }
     }),
+    // Authored override only. The default `<slug>-<service>` hostname is
+    // derived from already-fingerprinted inputs; including it would recreate
+    // every existing container and make `lando restart` throw
+    // ServiceRestartWouldRecreateError. Existing containers pick the default
+    // up on their next recreate.
+    hostname: service.hostname,
     hostAliases: service.hostAliases,
     networks: Object.fromEntries(
       podmanNetworkNames(plan).map((name) => [

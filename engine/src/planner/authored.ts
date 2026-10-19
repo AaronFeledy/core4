@@ -66,6 +66,9 @@ export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: Serv
   return { ...servicePlan, healthcheck: merged };
 };
 
+export const applyAuthoredHostname = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan =>
+  service.hostname === undefined ? servicePlan : { ...servicePlan, hostname: service.hostname };
+
 export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authoredDependencies = new Map(
     (service.dependsOn ?? []).map((dependency) => [
@@ -189,7 +192,10 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       name,
     );
     if (withStorage instanceof LandofileValidationError) return yield* Effect.fail(withStorage);
-    const authoredServicePlanWithoutLabels = applyAuthoredDependencies(withStorage, service);
+    const authoredServicePlanWithoutLabels = applyAuthoredHostname(
+      applyAuthoredDependencies(withStorage, service),
+      service,
+    );
     const authoredServicePlan = mergeComposeKnobs(
       mergeComposeExtension(authoredServicePlanWithoutLabels, service),
       service,

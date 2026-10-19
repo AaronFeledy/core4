@@ -16,7 +16,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
-| Service keys | 43 | 107 | 212 | 362 |
+| Service keys | 44 | 107 | 211 | 362 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -87,7 +87,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | [`gpus`](#gpus) | preserved | 7 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `group_add` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | [`healthcheck`](#healthcheck) | normalized | 8 | Normalizes into `ServicePlan.healthcheck` |
-| `hostname` | rejected | — | Translate hostname with a Compose-to-Lando config translator. |
+| `hostname` | normalized | — | Normalizes into `ServicePlan.hostname` |
 | `image` | normalized | — | Normalizes into `ServicePlan.artifact` |
 | `init` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `ipc` | rejected | — | Translate ipc with a Compose-to-Lando config translator. |

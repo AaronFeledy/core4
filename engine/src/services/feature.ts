@@ -220,6 +220,7 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureErr
     environment: sortRecord(draft.environment),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
+    ...(draft.hostname === undefined ? {} : { hostname: draft.hostname }),
     ...(appMount === undefined ? {} : { appMount }),
     mounts,
     storage,
