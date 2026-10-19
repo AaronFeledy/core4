@@ -73,11 +73,26 @@ contents. The published schema lists both tags under
 
 The editor schema is a draft-07 closed object generated from the same Effect
 Schema `lando` decodes with. It covers structure: unknown keys, wrong types,
-ranges, enums, required fields. A few checks need Lando itself, because JSON
-Schema cannot express them:
+ranges, enums, required fields.
+
+It checks the file as you wrote it, so expressions pass where Lando accepts
+them. A boolean, number, list, or object field takes the literal or one
+whole-value `{{ ... }}`: `primary: "{{ recipe.primary }}"` and
+`httpPort: "{{ number(default(env.PORT, '8080')) }}"` stay green,
+`primary: maybe` goes red. That whole value is one interpolation and nothing
+else. Spaces around it are text, so `"  {{ recipe.flag }}  "` goes red at a
+typed field. `{{-` / `-}}` trim markers inside the braces are fine. Text
+fields take plain or interpolated text. The editor matches that shape and
+doesn't read the body. A valid body that contains a quoted `}}` or adjacent
+object-closing braces, for example `{{ length({a:{b:1}}) }}`, is accepted by
+the loader and the Standard Schema view, but the editor pattern can't match
+it. A few checks need Lando itself, because JSON Schema cannot express
+them:
 
 | Check | Where it runs |
 | --- | --- |
+| A plan-time scope (`app.*`, `proxy.*`, `services.*`) sits at a boolean, number, list, or object field | `lando app:config:lint` |
+| A load-time expression resolves to the type the field needs, so `{{ number(env.PORT) }}` at `name:` or `boolean('maybe')` at `primary:` fail there | `lando app:config:lint` |
 | Event names match tasks your services actually contribute | `lando app:config:lint` |
 | A versioned service type names a version Lando ships | `lando app:config:lint` |
 | Includes resolve and their lockfile is current | `lando app:config` |

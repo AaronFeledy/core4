@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { LandofileShape, RecipeManifest, getJsonSchema } from "@lando/sdk/schema";
+import {
+  LandofileAuthoringShape,
+  LandofileShape,
+  RecipeManifest,
+  getEditorJsonSchema,
+  getJsonSchema,
+} from "@lando/sdk/schema";
 import { LandofileStandardSchema, RecipeManifestStandardSchema } from "@lando/sdk/schema/standard";
 import {
   Effect,
@@ -116,11 +122,10 @@ function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
     : [];
 }
 
-test("published JSON Schema and Standard Schema agree with the Landofile decoder", async () => {
+test("runtime JSON Schema agrees with the strict Landofile decoder", async () => {
   // Given all guide/recipe Landofile data plus explicitly invalid boundary inputs.
   // The published 2020-12 document is getJsonSchema("LandofileShape"). The
-  // generated snapshot must be that same document. The draft-07 editor artifact
-  // is derived from it, so this test does not round-trip the editor dialect.
+  // generated snapshot must be that same runtime document.
   const generated = getJsonSchema("LandofileShape");
   const snapshot = JSON.parse(
     await Bun.file(new URL("../../../dist/schemas/landofile-shape.json", import.meta.url)).text(),
@@ -159,22 +164,13 @@ test("published JSON Schema and Standard Schema agree with the Landofile decoder
   );
   const disagreements: string[] = [];
   const observedExceptions: string[] = [];
-  let valid = 0;
-  let invalid = 0;
 
   // When each independent surface receives the same raw parsed data.
   for (const { id, input } of [...fixtures, ...curated, ...curatedValid]) {
     const decoded = Schema.decodeUnknownResult(LandofileShape)(input, parseOptions);
-    const standard = await LandofileStandardSchema["~standard"].validate(input);
     const accepted = Result.isSuccess(decoded);
-    if (paths.includes(id)) accepted ? valid++ : invalid++;
     if (curated.some((entry) => entry.id === id)) expect(accepted, id).toBe(false);
     if (curatedValid.some((entry) => entry.id === id)) expect(accepted, id).toBe(true);
-
-    // Then Standard Schema preserves both the verdict and every issue path/message.
-    // suggestion is ignored; ValidationIssue may add a closest-key hint the formatter does not.
-    expect(standard.issues === undefined, id).toBe(accepted);
-    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
 
     // And the published JSON Schema document agrees, except for the named inexpressible checks.
     const jsonAccepted = decodeJson(input);
@@ -186,11 +182,150 @@ test("published JSON Schema and Standard Schema agree with the Landofile decoder
   }
   expect(disagreements).toEqual([]);
   expect(observedExceptions.sort()).toEqual(INEXPRESSIBLE.map(({ id }) => id).sort());
-  expect(valid).toBeGreaterThan(100);
-  expect(valid + invalid).toBe(paths.length);
-  console.info(
-    `Landofile parity fixtures: ${valid} valid, ${invalid} invalid; ${curated.length} curated invalid`,
+  expect(paths.length).toBeGreaterThan(0);
+});
+
+const INVALID_INPUT_FIXTURES = new Map([
+  [
+    "router-and-scanner/fixtures/router-and-scanner-invalid",
+    "Retries intentionally exceed the allowed range.",
+  ],
+  ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
+  ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
+  ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
+  ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
+  [
+    "compose-service-block/fixtures/compose-service-block-rejected",
+    "Unsupported Compose service block is deliberately rejected.",
+  ],
+  ["convert-from-lando-3/fixtures/pantheon-app", "Legacy Pantheon recipe source requires translation."],
+  ["convert-from-lando-3/fixtures/lando3-blocked", "Legacy source deliberately blocked by translation."],
+  ["convert-from-lando-3/fixtures/lando3-layers", "Legacy layered source requires translation."],
+  ["config-lint/fixtures/config-lint-invalid", "Deliberate unknown keys and invalid ports."],
+]);
+
+const inputValid = [
+  { id: "recipe-boolean", input: { name: "demo", services: { web: { primary: "{{ recipe.flag }}" } } } },
+  { id: "env-boolean", input: { name: "demo", services: { web: { primary: "{{ boolean(env.FLAG) }}" } } } },
+  { id: "env-number", input: { name: "demo", router: { httpPort: "{{ number(env.PORT) }}" } } },
+  { id: "env-number-pipe", input: { name: "demo", router: { httpPort: "{{ env.PORT | number }}" } } },
+  { id: "recipe-array", input: { name: "demo", services: { web: { ports: "{{ recipe.ports }}" } } } },
+  { id: "recipe-object", input: { name: "demo", router: "{{ recipe.router }}" } },
+  { id: "env-object", input: { name: "demo", router: "{{ env.ROUTER | fromJson }}" } },
+  { id: "env-array", input: { name: "demo", services: { web: { ports: "{{ env.PORTS | fromJson }}" } } } },
+  { id: "recipe-number", input: { name: "demo", router: { httpPort: "{{ recipe.port }}" } } },
+  { id: "trim-markers", input: { name: "demo", router: { httpPort: "{{- number(env.PORT) -}}" } } },
+  {
+    id: "quoted-delimiters",
+    input: { name: "demo", services: { web: { primary: '{{ eq("}}", "}}") }}' } } },
+  },
+  {
+    id: "adjacent-object-braces",
+    input: { name: "demo", router: { httpPort: "{{ length({a:{b:1}}) }}" } },
+  },
+] as const;
+const inputInvalid = [
+  { id: "plain-boolean", input: { name: "demo", services: { web: { primary: "maybe" } } } },
+  { id: "plain-number", input: { name: "demo", router: { httpPort: "abc" } } },
+  { id: "surrounding-spaces", input: { name: "demo", router: { httpPort: "  {{ number(env.PORT) }}  " } } },
+  {
+    id: "padded-trim-markers",
+    input: { name: "demo", router: { httpPort: "  {{- number(env.PORT) -}}  " } },
+  },
+  { id: "trailing-newline", input: { name: "demo", router: { httpPort: "{{ number(env.PORT) }}\n" } } },
+  { id: "planner-boolean", input: { name: "demo", services: { web: { primary: "{{ app.flag }}" } } } },
+  { id: "proxy-boolean", input: { name: "demo", services: { web: { primary: "{{ proxy.flag }}" } } } },
+  {
+    id: "services-boolean",
+    input: { name: "demo", services: { web: { primary: "{{ boolean(services.web.flag) }}" } } },
+  },
+  { id: "composite-boolean", input: { name: "demo", services: { web: { primary: "x{{ recipe.flag }}" } } } },
+  {
+    id: "two-boolean-interpolations",
+    input: { name: "demo", services: { web: { primary: "{{ recipe.a }}{{ recipe.b }}" } } },
+  },
+  { id: "static-number-at-text", input: { name: "{{ number(env.PORT) }}" } },
+  ...curated.filter(({ id }) =>
+    [
+      "unknown-top-level",
+      "unknown-service-key",
+      "wrong-name-type",
+      "port-out-of-range",
+      "optional-null",
+      "reserved-map-key",
+    ].includes(id),
+  ),
+] as const;
+const INPUT_INEXPRESSIBLE = new Map([
+  [
+    "quoted-delimiters",
+    "The editor pattern cannot distinguish quoted closing delimiters from an interpolation terminator.",
+  ],
+  [
+    "adjacent-object-braces",
+    "The editor pattern treats adjacent object-closing braces as an interpolation terminator; balancing nested objects requires parsing.",
+  ],
+  [
+    "planner-boolean",
+    "JSON Schema cannot distinguish scope reads from quoted names without parsing the expression AST.",
+  ],
+  ["proxy-boolean", "Planner-scope reads require parsed scope analysis."],
+  ["services-boolean", "Planner-scope reads nested inside helpers require parsed scope analysis."],
+  ["static-number-at-text", "JSON Schema cannot infer helper return types at text sites."],
+  [
+    "docs/guides/expressions/fixtures/expressions-plan-time-typed-field/.lando.yml",
+    "Planner-scope rejection requires parsed scope analysis.",
+  ],
+]);
+
+test("input Standard Schema and editor JSON Schema accept every classified authoring fixture", async () => {
+  const editor = getEditorJsonSchema("LandofileShape");
+  const imported = SchemaRepresentation.fromJsonSchemaDocument(JsonSchema.fromSchemaDraft07(editor), {
+    patterns: "apply",
+    onEnter: importableNode,
+  });
+  const decode = SchemaParser.decodeUnknownEffect(imported) as (
+    input: unknown,
+    options?: Parameters<typeof SchemaParser.decodeUnknownEffect>[1],
+  ) => Effect.Effect<unknown, SchemaIssue.Issue>;
+  const paths = [
+    ...new Bun.Glob("docs/guides/**/fixtures/**/.lando.yml").scanSync({
+      cwd: fileURLToPath(root),
+      dot: true,
+    }),
+    ...new Bun.Glob("recipes/**/.lando.yml").scanSync({ cwd: fileURLToPath(root), dot: true }),
+  ].sort();
+  const fixtures = await Promise.all(
+    paths.map(async (id) => ({
+      id,
+      input: Bun.YAML.parse(await Bun.file(new URL(id, root)).text()),
+    })),
   );
+  const observedInvalid = new Set<string>();
+  const observedGaps = new Set<string>();
+  for (const { id, input } of [...fixtures, ...inputValid, ...curatedValid, ...inputInvalid]) {
+    const fixtureException = [...INVALID_INPUT_FIXTURES].find(
+      ([path]) => id === `docs/guides/${path}/.lando.yml`,
+    );
+    const expected = fixtureException === undefined && !inputInvalid.some((entry) => entry.id === id);
+    const decoded = Schema.decodeUnknownResult(LandofileAuthoringShape)(input, parseOptions);
+    const standard = await LandofileStandardSchema["~standard"].validate(input);
+    expect(standard.issues === undefined, id).toBe(Result.isSuccess(decoded));
+    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
+    expect(standard.issues === undefined, `${id}: ${fixtureException?.[1] ?? "valid authoring input"}`).toBe(
+      expected,
+    );
+    if (fixtureException) observedInvalid.add(fixtureException[0]);
+    const jsonAccepted = Exit.isSuccess(Effect.runSyncExit(decode(input, parseOptions)));
+    const gap = INPUT_INEXPRESSIBLE.get(id);
+    if (gap !== undefined) {
+      expect(jsonAccepted, `${id}: ${gap}`).toBe(!expected);
+      observedGaps.add(id);
+    } else expect(jsonAccepted, id).toBe(expected);
+  }
+  expect([...observedInvalid].sort()).toEqual([...INVALID_INPUT_FIXTURES.keys()].sort());
+  expect([...observedGaps].sort()).toEqual([...INPUT_INEXPRESSIBLE.keys()].sort());
+  expect(paths.length).toBeGreaterThan(0);
 });
 
 test("skips non-Landofile fixture files only when a reason is listed", () => {

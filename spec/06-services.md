@@ -228,7 +228,7 @@ Reserved names `run`, `scratch`, and `scratch:*` fail with `CommandAliasConflict
 
 #### 6.11.4 App-scoped features (`AppFeature`)
 
-`AppFeatureDefinition` declares `id`, optional `schema`, `priority`, optional `AppFeatureActivation` as `activatedBy`, optional `AppFeatureSelectors` as `selectors`, optional `requires.providerCapabilities`, optional `requires.globalServices`, and Effectful `apply`. Activation can match service type or feature; selectors can match `types`, `framework`, `hasFeature`, `names`, or `fromConfig`.
+`AppFeatureDefinition` declares `id`, optional `schema`, `priority`, optional `AppFeatureActivation` as `activatedBy`, optional `AppFeatureSelectors` as `selectors`, optional `requires.providerCapabilities`, optional `requires.globalServices`, and Effectful `apply`. Activation can match service type or feature; selectors can match `types`, `framework`, `hasFeature`, `names`, or `fromConfig`. A `fromConfig` selector reads one environment snapshot per plan, and the environment variables it reads are part of the `app-plan` cache key, so changing one invalidates the cached selection.
 
 Activation and selection inspect completed service drafts, never raw config or finalized plans. `AppFeatureContext` provides replay-safe plan mutators across selected services. App features run only after all service features and order only against each other. Cycles fail with `AppFeatureCycleError`; `AppFeatureError` tags are `SelectorMatchedNothing`, `MutationConflict`, and `CycleDetected`.
 

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Effect } from "effect";
-import { updateLandofileIncludes } from "../src/includes.ts";
+import { updateAuthoredIncludes as updateLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofileStateStore } from "./support.ts";
 
 const remediation =

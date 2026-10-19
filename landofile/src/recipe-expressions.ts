@@ -5,10 +5,11 @@ import {
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
-import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
+import { isLandofileOverride, isLandofileReset, isPlainRecord, override } from "@lando/sdk/landofile";
 import { Predicate, Result } from "effect";
 
 import type { ValidationIssuePath } from "@lando/sdk/schema";
+import { escapeLoadProducedText } from "./load-expression-literals.ts";
 
 /**
  * None of these scopes depend on service resolution, so the planner can
@@ -140,6 +141,7 @@ export const materializeLoadScopeExpressions = (
     context: { env: scope.env, recipe: options },
     scopes: LOAD_RESOLVABLE_EXPRESSION_SCOPES,
     unavailableScopes: options === undefined ? ["recipe"] : [],
+    producedValue: escapeLoadProducedText,
   });
   return {
     value: materialized.value,
@@ -167,6 +169,7 @@ interface MaterializeInput {
   readonly budget?: EvaluationBudget;
   readonly unavailableScopes?: ReadonlyArray<string>;
   readonly textOnly?: boolean;
+  readonly producedValue?: (value: unknown) => unknown;
   /**
    * Later passes select previously deferred sites to avoid reinterpreting
    * values produced by an earlier pass as expressions.
@@ -199,6 +202,7 @@ export function materializeExpressionScopes(
   const deferred: Array<{ readonly path: ValidationIssuePath; readonly expression: string }> = [];
 
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
+    if (isPlainRecord(value) && (value._tag === "FileRef" || value._tag === "ImportRef")) return value;
     if (isLandofileReset(value)) return value;
     if (isLandofileOverride(value)) {
       const visited = visit(value.value, path);
@@ -234,7 +238,7 @@ export function materializeExpressionScopes(
         });
         return value;
       }
-      return evaluated.success;
+      return input.producedValue === undefined ? evaluated.success : input.producedValue(evaluated.success);
     }
     if (Array.isArray(value)) {
       const visited = value.map((entry, index) => visit(entry, [...path, index]));

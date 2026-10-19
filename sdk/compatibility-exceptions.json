@@ -174,6 +174,384 @@
     "justification": "Shared HealthcheckInput adds shell strings and literal argv arrays. Every disabled spelling canonicalizes to false, dropping all fields. A disabled layer replaces lower layers wholesale; a higher object layer replaces it and starts fresh against type defaults. The checker cannot classify the widened union."
   },
   {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.agentEnv.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.commandAliases.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.configs.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.gpgAgent.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.include.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.includes.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.providers.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.proxy.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.recipe.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.remotes.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.router.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.runtime.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.secrets.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.sshAgent.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.sync.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.tooling.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.toolingDefaults.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.toolingIncludes.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.volumes.anyOf",
+    "justification": "Pre-release authoring JSON input now restricts non-text expression strings to a whole template instead of accepting arbitrary text. Literal typed values and runtime LandofileShape stay unchanged; the conservative anyOf checker requires explicit review."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.agentEnv.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.commandAliases.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.configs.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.gpgAgent.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.include.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.includes.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.providers.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.proxy.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.recipe.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.remotes.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.router.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.runtime.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.secrets.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.sshAgent.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.sync.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.tooling.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.toolingDefaults.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.toolingIncludes.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.volumes.anyOf",
+    "justification": "The wire view inherits the reviewed whole-template restriction from the authoring input. Runtime LandofileShape and typed literals remain strict and unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.agentEnv.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.commandAliases.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.configs.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.events.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.gpgAgent.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.include.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.includes.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.networks.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.providers.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.proxy.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.recipe.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.remotes.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.router.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.runtime.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.secrets.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.sshAgent.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.sync.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.tooling.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.toolingDefaults.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.toolingIncludes.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.volumes.anyOf",
+    "justification": "Translation context embeds the reviewed pre-release authoring input view, including the whole-template JSON restriction at non-text sites. Translator service signatures and runtime LandofileShape are unchanged."
+  },
+  {
     "surface": "schema:ProviderCapabilities",
     "changeKind": "enum-narrowed",
     "path": "$.volumeSnapshot",
