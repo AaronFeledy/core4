@@ -68,11 +68,8 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 
 describe("node ServiceType — supported versions", () => {
   test("exposes lts plus every table major as supported versions", () => {
-    expect([...SUPPORTED_NODE_VERSIONS]).toEqual([
-      "lts",
-      ...SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major)),
-    ]);
     expect([...SUPPORTED_NODE_VERSIONS]).toEqual(["lts", "22", "24", "26"]);
+    expect(SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major))).toEqual(["22", "24", "26"]);
   });
 });
 
