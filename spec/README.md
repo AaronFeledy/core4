@@ -28,14 +28,14 @@ The split is almost one section per file, with these principled merges and addit
 | 02 | [`02-toolchain.md`](./02-toolchain.md) | §2 | Sets Bun, TypeScript, Effect, schema, dependency, performance, dispatcher, documentation, and package-surface rules. |
 | 03 | [`03-architecture.md`](./03-architecture.md) | §3 + §11 | Defines runtime layers, bootstrap levels, core Effect services, imperative shells, redaction, the event taxonomy, subscriber model, and lifecycle ordering. |
 | 04 | [`04-pluggability.md`](./04-pluggability.md) | §4 | Catalogs every replaceable abstraction, its service tag and default, selection precedence, manifest registration, and mandatory plugin guarantees. |
-| 05 | [`05-runtime-providers.md`](./05-runtime-providers.md) | §5 | Specifies the provider contract, capability negotiation, provider-neutral plans, Compose boundary, error family, bundled providers, and one-provider-per-app limit. |
-| 06 | [`06-services.md`](./06-services.md) | §6 | Defines service bases and configuration, mounts, storage, routes, environment, types and features, the canonical catalog, build orchestration, and log sources. |
+| 05 | [`05-runtime-providers.md`](./05-runtime-providers.md) | §5 | Specifies the provider contract, capability negotiation, provider-neutral plans, create-config recreate, ownership teardown, Compose boundary, error family, bundled providers, and one-provider-per-app limit. |
+| 06 | [`06-services.md`](./06-services.md) | §6 | Defines service bases and configuration, mounts, storage, routes, environment, types and features, the canonical catalog, build orchestration, lifecycle commands, and log sources. |
 | 07 | [`07-landofile-and-config.md`](./07-landofile-and-config.md) | §7 | Covers Landofile discovery and merge, expressions and templates, translation, global config, includes, environment overrides, schema publication, and canonical serialization. |
 | 08 | [`08-cli-and-tooling.md`](./08-cli-and-tooling.md) | §8 | Defines command identity and dispatch, built-ins, tooling, recipes, rendering, interaction, help, and machine-readable output. |
 | 09 | [`09-embedding.md`](./09-embedding.md) | §16 | Defines the Effect-native library API, runtime and app handles, plugin/config policy, scope ownership, programmatic CLI access, testing exports, and compatibility. |
 | 10 | [`10-plugins.md`](./10-plugins.md) | §9 | Defines plugin identity, discovery, manifest keys, contribution surfaces, install and loading policy, constrained context, and authoring commands. |
 | 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Specifies networking, routing, tunnels, trust and downloads, SSH, probes, file sync, setup, diagnostics, host proxy, data movement, managed files, remote sync, and MCP. |
-| 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | Catalogs caches and persistent artifacts, encoding and atomicity, managed-file transactions, hot-path budgets, offline state, and `StateStore`. |
+| 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | Catalogs caches and persistent artifacts, encoding and atomicity, managed-file transactions, the durable ownership manifest, hot-path budgets, offline state, and `StateStore`. |
 | 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | Defines test layers, schema/type/quality gates, synchronized binary and library distribution, CI cadences, release channels, and boundary enforcement. |
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provides provider-neutral terminology, forbidden dependencies, the source-derived acceptance checklist, historical dispatcher rationale, and glossary. |
 | 15 | [`15-binary-build-and-release.md`](./15-binary-build-and-release.md) | §17 | Defines release stages, codegen ownership, embedded assets, signing, supply-chain artifacts, self-update, installation, release CI, and shipping criteria. |
@@ -80,6 +80,8 @@ If you are looking for a public surface or policy:
 | `RuntimeProvider` service and capability schema | 05 | §5.3 + §5.4 |
 | Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
+| Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
+| Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers and multi-provider non-goal | 05 | §5.8 + §5.9 |
@@ -96,6 +98,7 @@ If you are looking for a public surface or policy:
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
+| Start, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Six-layer Landofile merge | 07 | §7.2 |
@@ -144,6 +147,7 @@ If you are looking for a public surface or policy:
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
+| Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
 | `StateStore`, buckets, consumers, and plugin access | 12 | §12.7 |
 | Test and contract-suite layers | 13 | §13.1 |

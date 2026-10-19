@@ -140,10 +140,10 @@ services:
     xdebug: true
 ```
 
-Rebuild, then check that it loaded:
+Start, then check that it loaded:
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 
@@ -159,10 +159,10 @@ services:
     type: mailpit
 ```
 
-Rebuild, send a test message, then open the inbox URL `lando info` prints:
+Start, send a test message, then open the inbox URL `lando info` prints:
 
 ```sh
-lando rebuild
+lando start
 lando php -r 'mail("you@example.test", "Mailpit check", "Hello from Joomla");'
 lando info
 ```
