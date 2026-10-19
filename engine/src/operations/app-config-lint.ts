@@ -59,6 +59,8 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         violations: [
           ...result.violations,
           {
+            rule: "landofile.expression",
+            severity: "error",
             path,
             message: resolved.failure.message,
             scope: "effective" as const,

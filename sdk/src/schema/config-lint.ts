@@ -13,6 +13,10 @@ import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
  * diagnostics.
  */
 export const ConfigLintViolation = Schema.Struct({
+  rule: Schema.String.annotate({ description: "Stable diagnostic rule identifier." }),
+  severity: Schema.Literals(["error", "warning"]).annotate({
+    description: "Whether the finding prevents configuration validity.",
+  }),
   /** Object keys and array indexes. Empty for the document root. */
   path: ValidationIssuePath,
   /** Human-readable description of the violation. */
@@ -34,7 +38,7 @@ export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 
 /**
  * The full result of linting one Landofile against the canonical schema.
- * `valid` is `true` iff `violations` is empty.
+ * `valid` is true when no error-severity violation exists.
  */
 export const ConfigLintResult = Schema.Struct({
   /** The linted app name (the Landofile `name:`, "" when unset). */
@@ -43,7 +47,7 @@ export const ConfigLintResult = Schema.Struct({
   file: Schema.String,
   /** Whether the Landofile passed canonical-schema validation. */
   valid: Schema.Boolean,
-  /** Ordered list of violations (empty when `valid`). */
+  /** Ordered findings, including warnings that do not invalidate configuration. */
   violations: Schema.Array(ConfigLintViolation),
 });
 export type ConfigLintResult = typeof ConfigLintResult.Type;

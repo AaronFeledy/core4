@@ -1,5 +1,17 @@
 [
   {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-added",
+    "path": "$.rule",
+    "justification": "Intentional E pre-release lint result evolution: every emitted finding now carries a stable machine rule identifier. Required output metadata replaces an unclassified finding contract; it does not narrow authored Landofile grammar or alter historical schema captures. Lint, CLI rendering, doctor, and schema encoding regressions cover all producers. This exact required-property addition is recorded for lead review, not treated as a generic additive output change."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-added",
+    "path": "$.severity",
+    "justification": "Intentional E pre-release lint result evolution: every emitted finding distinguishes error from warning, and valid means no error findings. Existing failures remain errors while healthcheck warnings retain valid=true. Required severity is a deliberate output-contract change covered by lint, rendering, doctor, and schema encoding regressions. This exact addition is recorded for lead review without changing the compatibility classifier or historical captures."
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",

@@ -77,10 +77,12 @@ const violationFromIssue = (
         ? `Add the required "${key ?? formatted}" field.`
         : undefined);
   return suggestion === undefined
-    ? { path, message: issue.message }
-    : { path, message: issue.message, suggestion };
+    ? { rule: "landofile.validation", severity: "error", path, message: issue.message }
+    : { rule: "landofile.validation", severity: "error", path, message: issue.message, suggestion };
 };
 export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
+  rule: "landofile.compose-rejection",
+  severity: "error",
   path: pathFromText(match.documentPath),
   message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
   suggestion: match.remediation,
@@ -110,7 +112,13 @@ export const routeViolations = (landofile: LandofileShape): readonly ConfigLintV
   ].flatMap((result) =>
     Result.match(result, {
       onFailure: (error) => [
-        { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
+        {
+          rule: "landofile.route",
+          severity: "error",
+          path: pathFromText(error.key),
+          message: error.message,
+          suggestion: error.remediation,
+        },
       ],
       onSuccess: () => [],
     }),

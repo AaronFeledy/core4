@@ -29,7 +29,7 @@ export const sourceCoordinates = (source: SourceDocument, path: readonly (string
 };
 
 export const attributeLintIssue = (
-  issue: ValidationIssue,
+  issue: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "severity">>,
   scope: "fragment" | "effective",
   documents: readonly SourceDocument[],
 ): ConfigLintViolation => {
@@ -40,6 +40,8 @@ export const attributeLintIssue = (
       : documents.find((document) => document.file === source.file && document.layer === source.layer);
   return {
     ...issue,
+    rule: issue.rule ?? "landofile.validation",
+    severity: issue.severity ?? "error",
     scope,
     ...(retained === undefined || source === undefined ? {} : sourceCoordinates(retained, source.path)),
   };

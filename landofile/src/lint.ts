@@ -11,6 +11,7 @@ import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
 import { findLandofilePath } from "./discovery.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
+import { healthcheckWarnings } from "./lint-healthcheck.ts";
 import { attributeLintIssue } from "./lint-source.ts";
 import { appNameOf, rejectionViolation, routeViolations, violationsFromSchema } from "./lint-violations.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
@@ -70,6 +71,8 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         valid: false,
         violations: [
           {
+            rule: "landofile.discovery",
+            severity: "error",
             path: [],
             scope: "fragment",
             message:
@@ -112,6 +115,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     const retained = getSourceDocuments(merged);
     violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
     documents = retained;
+    violations.push(...healthcheckWarnings(merged, documents));
     const effective = yield* finalizeLandofile(file, merged, {
       appRoot: dirname(file),
       loadPolicy: acquired.runtime.policy,
@@ -155,6 +159,8 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
           ?.layer ??
         "canonical";
       violations.push({
+        rule: "landofile.load",
+        severity: "error",
         path: [],
         scope,
         source: { file: errorFile, layer, path: [] },
@@ -175,7 +181,12 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
   const primary = unique[0]?.source?.file ?? file;
   return {
-    result: { app, file: primary, valid: unique.length === 0, violations: unique },
+    result: {
+      app,
+      file: primary,
+      valid: !unique.some((issue) => issue.severity === "error"),
+      violations: unique,
+    },
     ...(Result.isSuccess(finalized) ? { resolved: finalized.success } : {}),
   };
 });
