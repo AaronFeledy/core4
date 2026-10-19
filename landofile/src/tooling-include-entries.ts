@@ -1,7 +1,7 @@
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 
-import { type LandofileDecodedOverlay, isMergeDirective, mergeValues } from "@lando/sdk/landofile";
+import { isMergeDirective, mergeValues } from "@lando/sdk/landofile";
 import { includeError } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
 
@@ -90,7 +90,7 @@ const groupByNamespace = (
  * a higher layer that only redirects its source.
  */
 export const composeToolingIncludeEntries = (
-  sources: ReadonlyArray<Pick<LandofileDecodedOverlay, "includes">>,
+  sources: ReadonlyArray<Record<string, unknown>>,
 ): ReadonlyArray<ObjectIncludeEntry> => {
   const composed = new Map<string, ReadonlyArray<ObjectIncludeEntry>>();
   for (const source of sources) {

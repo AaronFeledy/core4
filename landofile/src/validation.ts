@@ -1,6 +1,6 @@
 import { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
-import { isPlainRecord } from "@lando/sdk/landofile";
+import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import {
   LandofileShape,
   ServiceConfig,
@@ -10,6 +10,7 @@ import {
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { getOrigins } from "./pipeline/origins.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
 
 export type SchemaIssueLeaf = {
@@ -107,7 +108,12 @@ export const validationErrorFromCause = (file: string, parsed: unknown, cause: u
     const suggestion =
       (valuePaths.has(JSON.stringify(issue.path)) ? plannerScopeSuggestion(parsed, issue.path) : undefined) ??
       issue.suggestion;
-    return suggestion === undefined ? issue : { ...issue, suggestion };
+    const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
+    return {
+      ...issue,
+      ...(suggestion === undefined ? {} : { suggestion }),
+      ...(origins === undefined ? {} : { source: valueOriginAt(origins, issue.path).source }),
+    };
   });
   const hasValues = leaves.length === 0 || leaves.some((issue) => issue._tag !== "Unexpected");
   const compose = unknown.filter(
