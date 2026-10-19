@@ -74,6 +74,7 @@ import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   noPlanErrorFactory,
   notImplementedError,
   providerHostInputs,
@@ -1558,6 +1559,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
+          const previous = yield* appliedPlans.resolvePlan(plan.id);
+          yield* planState.ownership.prepare(
+            physicalPlan,
+            previous === undefined ? undefined : yield* physicalNetworkPlan(previous),
+          );
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
@@ -1621,6 +1627,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               );
             }),
           ),
+        cleanupOwnedResources: planState.cleanupOwnedResources,
         destroy: (target, destroyOptions) =>
           withGlobalPublishedLifecycle(
             String(target.app),
@@ -1788,6 +1795,7 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),

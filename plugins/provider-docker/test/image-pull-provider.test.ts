@@ -3,12 +3,7 @@ import { DateTime, Effect } from "effect";
 
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
-import {
-  type DockerApiClient,
-  type DockerHttpRequest,
-  type DockerHttpResponse,
-  makeRuntimeProvider,
-} from "@lando/provider-docker";
+import type { DockerApiClient, DockerHttpRequest, DockerHttpResponse } from "@lando/provider-docker";
 import { ProviderUnavailableError, type ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -18,6 +13,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("mailpit-app");
