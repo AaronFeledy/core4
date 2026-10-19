@@ -71,3 +71,29 @@ for (const foreign of [false, true]) {
     });
   });
 }
+
+test("a Git-grouped app identity still verifies, re-prepares, and cleans its recorded resources", async () => {
+  await withInventory(async ({ store, plan, root, observations, cleanup, calls }) => {
+    // Given: a worktree-style identity that carries the shared repository group key.
+    const grouped = webFor({
+      ...plan,
+      identity: { appRoot: root, ownerKey: plan.identity?.ownerKey ?? "", repoGroupKey: "repo-group" },
+    });
+    await Effect.runPromise(store.prepare(grouped));
+    await Effect.runPromise(store.prepare(grouped));
+    observations.set("/containers/lando-owned-web/json", {
+      Id: "observed-container-id",
+      Config: {
+        Labels: { "dev.lando.app": plan.id, "dev.lando.app-root": root, "dev.lando.service": "web" },
+      },
+    });
+    // When
+    const result = await Effect.runPromise(cleanup(root, { volumes: true }));
+    // Then
+    expect(result.servicesRemoved.map(String)).toEqual(["web"]);
+    expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
+      "/containers/observed-container-id?force=true",
+    ]);
+    expect(await Effect.runPromise(store.summary(root))).toBeUndefined();
+  });
+});

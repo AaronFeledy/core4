@@ -137,7 +137,13 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         attemptOwner.ownerKey !== owner.ownerKey
       )
         return yield* Effect.fail(ownershipFailure(providerId));
-      const identity = { ...owner, appId: attempt.id, providerId: attempt.provider };
+      // Only persisted owner fields enter the digest; an identity's repoGroupKey is never stored.
+      const identity = {
+        appRoot: root,
+        ownerKey: owner.ownerKey,
+        appId: attempt.id,
+        providerId: attempt.provider,
+      };
       for (const service of Object.values(attempt.services))
         resources.push(
           identify({
@@ -174,7 +180,8 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         return [
           undefined,
           {
-            ...owner,
+            appRoot: root,
+            ownerKey: owner.ownerKey,
             providerId: plan.provider,
             appIds: [...new Set(union.map((item) => item.appId))],
             resources: union,
