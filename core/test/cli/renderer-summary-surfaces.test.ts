@@ -534,6 +534,7 @@ describe("doctor summary", () => {
 
   test("counts app config lint in doctor footer when it contributes a failure", () => {
     const summary = buildDoctorReportSummary({
+      version: "4.0.0-dev",
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },
@@ -542,9 +543,11 @@ describe("doctor summary", () => {
         app: "demo",
         file: "/tmp/demo/.lando.yml",
         valid: false,
-        violations: [{ path: "bogusKey", message: "unexpected key" }],
+        violations: [
+          { rule: "landofile.validation", severity: "error", path: ["bogusKey"], message: "unexpected key" },
+        ],
       },
-    } as unknown as DoctorReport);
+    });
     expect(summary.footer).toBe("1 checks · 1 failed");
     expect(summary.tone).toBe("error");
   });

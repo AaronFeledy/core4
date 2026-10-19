@@ -3,7 +3,7 @@ import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
 import { acquireLandofileRootLayers, composeLandofileRootLayers } from "@lando/landofile/service";
 import { ConfigError, LandofileNotFoundError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
-import { LandofileShape, LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
+import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { getAtPath } from "../config-write/dot-path.ts";
@@ -22,18 +22,20 @@ export interface AppConfigViewOptions {
   readonly cwd?: string;
 }
 
-const sourceValue = (value: unknown) =>
-  Effect.try({
-    try: () => encodeLandofileSourceValue(value),
-    catch: (cause) =>
-      new ConfigError({ message: "Landofile inspection requires serializable source data.", cause }),
-  }).pipe(
-    Effect.flatMap(Schema.decodeUnknownEffect(LandofileSourceValue)),
+const inspectionValue = (value: unknown) =>
+  Schema.decodeUnknownEffect(LandofileSourceValue)(value).pipe(
     Effect.mapError(
       (cause) =>
         new ConfigError({ message: "Landofile inspection requires serializable source data.", cause }),
     ),
   );
+
+const sourceValue = (value: unknown) =>
+  Effect.try({
+    try: () => encodeLandofileSourceValue(value),
+    catch: (cause) =>
+      new ConfigError({ message: "Landofile inspection requires serializable source data.", cause }),
+  }).pipe(Effect.flatMap(inspectionValue));
 
 export const appConfigView = Effect.fn("AppOperation.configView")(function* (options: AppConfigViewOptions) {
   const source = options.source ?? "resolved";
@@ -122,8 +124,13 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
         ],
       };
       if (selector === undefined) return { source, ...metadata, landofile };
-      const selected = getAtPath(Schema.encodeSync(LandofileShape)(landofile), selector);
-      return { source, ...metadata, ...projection, ...(selected === undefined ? {} : { value: selected }) };
+      const selected = getAtPath(landofile, selector);
+      return {
+        source,
+        ...metadata,
+        ...projection,
+        ...(selected === undefined ? {} : { value: yield* inspectionValue(selected) }),
+      };
     }
   }
 });
