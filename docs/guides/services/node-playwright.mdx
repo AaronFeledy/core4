@@ -1,0 +1,170 @@
+---
+id: node-playwright
+provider: test
+timeout: 90000
+tags: [beta, docs, node, playwright, testing, tooling, service]
+---
+
+# Run Playwright end-to-end tests against your app
+
+Put Playwright in its own `e2e` service with the browsers already installed, point it at your app by service name, and run `lando playwright test`.
+
+You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Save this as `.lando.yml` in your app directory:
+
+```yaml
+name: playwright-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
+    command: [node, server.mjs]
+  e2e:
+    type: "node:22"
+    image: mcr.microsoft.com/playwright:v1.64.1-noble
+    home: false
+    ports: []
+tooling:
+  playwright:
+    service: e2e
+    dir: /app
+    cmd: [npx, playwright]
+```
+
+`web` serves the app on `3000`. `e2e` keeps the Node service wiring (app mounted at `/app`, an idle default command) but swaps in the official Playwright image, which ships the browsers Playwright drives plus their system libraries. Each other line has a job:
+
+- `home: false` skips home persistence. Lando can't infer the home directory of a Landofile-supplied image, so planning stops with `HomePathCapabilityError` without it.
+- `ports: []` gives `e2e` no endpoints. Nothing listens in that container, so there is nothing for `lando info` or the proxy to route.
+- `cmd: [npx, playwright]` runs the project's own Playwright from `/app`, with your arguments appended.
+
+Keep the image tag and the `@playwright/test` version in `package.json` on the same release. Playwright looks for browser builds that match its own version, and the image only carries the builds for its tag.
+
+## Add the app and one test
+
+Save this as `server.mjs`:
+
+```js
+import { createServer } from "node:http";
+
+const port = Number(process.env.PORT ?? 3000);
+const server = createServer((_req, res) => {
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  res.end("<!doctype html><title>Playwright demo</title><h1>hello lando</h1>\n");
+});
+server.listen(port, "0.0.0.0");
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+```
+
+Save this as `package.json`:
+
+```json
+{
+  "name": "playwright-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}
+```
+
+Save this as `playwright.config.ts`:
+
+```ts
+import { defineConfig, devices } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./e2e",
+  reporter: [["list"], ["html", { open: "never" }]],
+  use: {
+    baseURL: process.env.BASE_URL ?? "http://web:3000",
+  },
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+});
+```
+
+Save this as `e2e/home.spec.ts`:
+
+```ts
+import { expect, test } from "@playwright/test";
+
+test("home page greets lando", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveTitle("Playwright demo");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("hello lando");
+});
+```
+
+`baseURL` is `http://web:3000` because the browser runs inside `e2e`, and other services in the app reach `web` by its service key. The `lando info` URL is for your host browser, not for the test runner.
+
+## Start the app and run the suite
+
+```sh
+lando start
+lando exec e2e -- npm install
+lando playwright --version
+lando playwright test
+```
+
+No browser download on first run. The image already sat through it for you.
+
+`lando start` waits until both services are running. Install from `e2e` so `node_modules` is resolved by the same Node that runs the tests. Check that `lando playwright --version` prints the same release as the image tag, then check that `lando playwright test` reports the test as passed. A failing assertion, or a `--grep` that matches no tests, exits non-zero through `lando playwright`, so the command works as a gate in scripts. Passing proves Chromium in `e2e` loaded `web` over the app network. It doesn't prove the proxy URL works; open the `lando info` URL in your browser for that.
+
+The npm script runs the same suite without the tooling entry:
+
+```sh
+lando exec e2e -- npm run test:e2e
+```
+
+Arguments pass straight through, so `lando playwright test e2e/home.spec.ts` runs one file and `lando playwright test --project=chromium` runs one project.
+
+The image ships its own Node release, so `lando exec e2e -- node -v` reports the image's Node rather than 22. Keep `web` on the Node your app targets.
+
+## Read the report
+
+The HTML reporter writes `playwright-report/` in your app directory on the host. Open `playwright-report/index.html` in your host browser. Add `playwright-report/` and `test-results/` to `.gitignore`.
+
+Both directories are written by the container user. When your host user can't delete them, clear them from inside the service:
+
+```sh
+lando exec e2e -- sh -c 'rm -rf playwright-report test-results'
+```
+
+## Check the config
+
+`lando app:config:lint` validates the Landofile and `lando app:config` prints it resolved, without starting containers. These checks confirm the two services and the tooling entry. They don't run a browser:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="playwright-demo" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"mcr\\.microsoft\\.com/playwright:v1\\.64\\.1-noble\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ports\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"playwright\":\\s*\\{[^}]*\"service\":\\s*\"e2e\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"npx\"\\s*,\\s*\"playwright\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"node\"\\s*,\\s*\"server\\.mjs\"\\s*\\]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Tear down
+
+`lando destroy -y` removes the app containers and app-owned networks. Your source files, `node_modules`, and reports stay on the host.
+
+```sh
+lando destroy -y
+```
+
+## Next
+
+- [Run TypeScript on a Node service](./node-typescript.mdx) for typecheck and unit tests on `web`
+- [Reach services by name](../subsystems/service-dns.mdx) for which hostname to use where
+- [Add Node.js](./node.mdx) for version inference and `globals`
