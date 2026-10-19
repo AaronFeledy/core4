@@ -99,7 +99,7 @@ lando start
 lando composer --version
 ```
 
-On the 2026-10-01 live check, `lando composer --version` printed `Composer version 2.10.3` (the `composer:2` tag can float the patch). Rebuild after Dockerfile changes so the new layer lands.
+On the 2026-10-01 live check, `lando composer --version` printed `Composer version 2.10.3` (the `composer:2` tag can float the patch). Dockerfile changes land as a new layer on the next `lando start`. Use `lando rebuild` when you want to force a pull and build refresh, including floating tags.
 
 ## Pin a FrankenPHP and PHP version
 

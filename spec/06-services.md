@@ -175,6 +175,11 @@ Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`,
 
 `LANDO_GLOBAL_*` is projected only for global services required by activated `AppFeature`s (§20.6.3). Plugins MAY add typed projections through `AppFeature.apply()`.
 
+Remote consumers MUST reuse named per-service, per-key environment overrides at execution/start, not a core relationship feature or aggregate variable API. A plugin MAY project vendor-specific names from approved local endpoints or session forwarding (§10.12.5); it MUST name each consumer service and key explicitly.
+
+- The calling scope MUST own override values, secret references, and consumers. Overrides MUST replace only named keys and MUST NOT enter the reusable plan, Landofile, caches, or future-start state. Standalone pull cannot retain secrets for another process's start.
+- Invocation-only overrides MUST end with that execution. Start-time secrets MAY be visible to the provider and in its container configuration; Lando MUST NOT promise that removing an in-memory map erases them. Session consumers MUST be stopped/removed at closure, and tether MUST independently revoke forwarding before teardown (§10.12.5).
+
 `lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment, plus `LANDO_HOST_IP` when host reachability applies.
 
 #### 6.9.1 Host agent-context forwarding (`agentEnv`)
@@ -212,11 +217,13 @@ Every type MUST name `l337` or `lando`, return `ServiceTypeResolution`, and sati
 
 Contributed `logSources` MUST have unique ids, absolute paths, and compatible strategies; `console` is reserved. `redirect` requires an owned build, while a BYO/`l337` service may use only `follow`. Feature ordering and inheritance are replay-stable.
 
-`ServiceType` declares `name`, optional `versions`, explicit `base`, optional `extends`, optional `artifacts`, `schema`, and Effectful `resolve` with `ServiceTypeError`. `ServiceTypeResolution` carries `base`, `normalizedConfig`, `features`, optional `tooling`, optional `logSources`, and optional `metadata`.
+`ServiceType` declares `name`, optional `versions`, explicit `base`, optional `extends`, optional `artifacts`, `schema`, and Effectful `resolve` with `ServiceTypeError`. `ServiceTypeResolution` carries `base`, `normalizedConfig`, `features`, optional `tooling`, optional `logSources`, optional `sync` (`defaultDataset` per dataset kind and `postApply` tasks, §10.12.2), and optional `metadata`.
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, artifacts, and `sync` before child overlay. Normalized config and tooling overlay under §7.2. Feature and log-source lists merge by `id` with child precedence, and same-id feature config overlays under §7.2; an empty child list contributes nothing rather than clearing inherited entries. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
+
+`sync.defaultDataset` and `sync.postApply` MUST merge per dataset kind. An omitted child kind inherits its parent value; a child default Dataset id replaces that kind's parent id. A child `postApply` list replaces that kind's entire inherited list in declaration order, and an explicit empty list clears it; lists MUST NOT concatenate. The final merged defaults participate in §10.12 binding selection, while an explicit binding Dataset still wins. The final task lists run under §10.12.2 grouping and ordering, never once for each ancestor.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
@@ -428,5 +435,21 @@ Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-ou
 #### 6.14.6 Catalog defaults
 
 Catalog types prefer `redirect` for owned Apache, nginx, and PHP-FPM logs; MySQL/MariaDB optional slow/general logs use `follow`; framework file logs are declared by the recipe or type that knows their paths.
+
+### 6.15 Lifecycle apply
+
+`start`, bare `restart`, selected `restart`, and `rebuild` are different operations. Create-config drift is applied by ordinary start (§5.3.2). Rebuild is not that path.
+
+| Command | Contract |
+|---|---|
+| `start` | Plans and builds with the default cache policy (`refresh: false`, §6.13.3), then applies create-config drift. Keeps unchanged containers and volumes. Has no confirmation flag. |
+| bare `restart` | Stop, then start. Removes and recreates containers under existing stop semantics. Not an in-place process restart. Uses the default cache policy. |
+| `restart -s` / `--service` | In-place. No dependency closure. Refuses when the selected container is missing or would be recreated for published-port, bind-source, network, or create-config drift, or a missing `dev.lando.create-config` label. Create-config drift and a missing label fail with `ServiceRestartWouldRecreateError` reason `config`. Remediation is `lando rebuild -s <service>`. |
+| `rebuild` | Forced pull (`refresh: true`), cache and app-build refresh, explicit recreate, and confirmation. A floating-tag refresh failure falls back to the local copy and records `LANDO_ARTIFACT_REFRESH_FAILED` (§6.13.3, §12.6). |
+| explicit `global:start` | Applies new environment, bind, and image configuration. `reconcile: false`. An explicit call is not warm-skipped. `global:rebuild` remains the forced refresh. |
+
+An unchanged `build.app` command whose bind-mounted inputs alone changed retains its cached build result and skips the step (§6.13.5). `rebuild` forces that step to rerun. Changing command text, step user, or artifact inputs changes the build key, so ordinary start reruns the affected step.
+
+Rollback is unchanged. Provider apply and build pre-barrier compensation still run. Readiness failure and interruption retention are unchanged (§5.3.1).
 
 ---

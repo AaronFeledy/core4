@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
 import { waitForServiceHealth } from "../src/podman/health.ts";
 import { inspect } from "../src/podman/inspect.ts";
@@ -130,6 +131,26 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test.each<Readonly<Record<string, string>> | undefined>([
+    undefined,
+    {},
+    { "dev.lando.create-config": "v1:observed" },
+  ])("exposes actual config labels, including known missing labels: %j", async (labels) => {
+    // Given a real-shaped inspect response, not desired labels.
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: true },
+          Config: { Labels: labels },
+        }),
+      },
+    ]);
+    // When the runtime observation is decoded.
+    const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+    // Then known absence stays distinguishable from unavailable custom metadata.
+    expect(info.labels).toEqual(labels ?? {});
+  });
   test("preserves an engine restart observation without a placeholder exit code", async () => {
     const fake = apiFromResponses([
       {
@@ -198,7 +219,14 @@ describe("podman inspect health", () => {
     "distinguishes unavailable inspect fields from known-empty attachments: $fields",
     async ({ fields, reasons }) => {
       const fake = apiFromResponses([
-        { status: 200, body: JSON.stringify({ State: { Running: true }, ...fields }) },
+        {
+          status: 200,
+          body: JSON.stringify({
+            State: { Running: true },
+            Config: { Labels: commonContainerLabels(plan, service) },
+            ...fields,
+          }),
+        },
       ]);
 
       const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));

@@ -11,6 +11,7 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
@@ -72,7 +73,14 @@ const makeBringUpApi = (
         }
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return created
-            ? { status: 200, body: JSON.stringify({ State: { Running: true, Status: "running" } }) }
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Id: "lando-lifecycle-dialect-app-web-id",
+                  Config: { Labels: commonContainerLabels(plan, service) },
+                  State: { Running: true, Status: "running" },
+                }),
+              }
             : { status: 404, body: "{}" };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create?")) {

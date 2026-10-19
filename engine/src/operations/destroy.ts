@@ -62,6 +62,11 @@ import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
+import {
+  ownedCleanupChanged,
+  prepareOwnedResourceCleanup,
+  tearDownOwnedResources,
+} from "./owned-resource-teardown.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -407,26 +412,68 @@ const destroyAppWithResolvedTarget = (
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const validatedTarget = revalidate ? yield* validateResolvedAppTarget(target) : target;
+      const cleanup = yield* prepareOwnedResourceCleanup(validatedTarget.root, {
+        volumes: options?.volumes === true,
+        purgeCaches: options?.purgeCaches === true,
+      });
       if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
-        const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
-        if (appliedPlan === undefined) {
-          const { pending } = yield* readDiscardableStart(validatedTarget.app);
-          if (pending === null || pending.phase === "completed")
-            return yield* snapshotOnlyDestroy(
-              validatedTarget.plan.name,
-              validatedTarget.plan.identity?.appRoot ?? validatedTarget.plan.root,
-              options,
-            );
+        const evidence =
+          registry.resolveTeardownEvidence === undefined
+            ? yield* registry
+                .resolveAppliedPlan(validatedTarget.plan.root)
+                .pipe(
+                  Effect.map((plan) =>
+                    plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+                  ),
+                )
+            : yield* registry.resolveTeardownEvidence(validatedTarget.plan.root);
+        switch (evidence.kind) {
+          case "applied":
+            break;
+          case "orphans":
+            return yield* destroyOrphans(options ?? {}, {
+              kind: "orphans",
+              root: validatedTarget.root,
+              groups: evidence.groups,
+              landofilePresent: true,
+            });
+          case "owned":
+          case "absent": {
+            const { pending } = yield* readDiscardableStart(validatedTarget.app);
+            if (pending === null || pending.phase === "completed") {
+              const removed = yield* cleanup;
+              const snapshots = yield* snapshotOnlyDestroy(
+                validatedTarget.plan.name,
+                validatedTarget.plan.identity?.appRoot ?? validatedTarget.plan.root,
+                options,
+              );
+              return {
+                ...snapshots,
+                outcome:
+                  ownedCleanupChanged(removed) || snapshots.outcome !== "unchanged"
+                    ? "destroyed"
+                    : "unchanged",
+                servicesDestroyed: removed.servicesRemoved,
+                volumesRemoved: removed.volumesRemoved > 0,
+              };
+            }
+          }
         }
       }
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
       const provider = yield* registry.select(resolvedTarget.plan);
-      return yield* withPlanVolumeCoordination({
+      const destroyed = yield* withPlanVolumeCoordination({
         plan: resolvedTarget.plan,
         provider,
         stateStore,
         body: () => destroyAppForTargetUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
       });
+      const removed = yield* cleanup;
+      return {
+        ...destroyed,
+        servicesDestroyed: [...new Set([...destroyed.servicesDestroyed, ...removed.servicesRemoved])],
+        volumesRemoved: destroyed.volumesRemoved || removed.volumesRemoved > 0,
+      };
     }),
   );
 
@@ -443,7 +490,7 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
 const destroyOrphans = Effect.fnUntraced(function* (
   options: DestroyAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
-): Effect.fn.Return<DestroyAppResult, DestroyAppError, DestroyAppServices> {
+): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> {
   const snapshotsRemoved = yield* purgeAppSnapshots(resolution.root, options);
   return yield* tearDownOrphans({
     root: resolution.root,
@@ -452,7 +499,10 @@ const destroyOrphans = Effect.fnUntraced(function* (
   }).pipe(
     Effect.map(
       (removed): DestroyAppResult =>
-        removed.services.length === 0 && !removed.volumesRemoved && snapshotsRemoved === 0
+        removed.services.length === 0 &&
+        !removed.volumesRemoved &&
+        !removed.ownedChanged &&
+        snapshotsRemoved === 0
           ? unchangedResult(removed.app)
           : {
               app: removed.app,
@@ -488,6 +538,20 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
   return yield* target !== undefined
     ? destroyAppForTarget(options, target)
     : withTeardownResolution({
+        owned: (resolution) =>
+          tearDownOwnedResources(resolution.root, {
+            volumes: options.volumes === true,
+            purgeCaches: options.purgeCaches === true,
+          }).pipe(
+            Effect.map(
+              (removed): DestroyAppResult => ({
+                ...unchangedResult(resolution.ownership[0]?.appIds[0] ?? resolution.root),
+                outcome: ownedCleanupChanged(removed) ? "destroyed" : "unchanged",
+                servicesDestroyed: removed.servicesRemoved,
+                volumesRemoved: removed.volumesRemoved > 0,
+              }),
+            ),
+          ),
         applied: Effect.fn("AppOperation.destroy.applied")(function* (resolved) {
           const { pending } = yield* readDiscardableStart(resolved.app);
           if (pending === null || pending.phase === "completed")
@@ -604,6 +668,18 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
     resolution = yield* resolveAt(canonical);
   }
   switch (resolution.kind) {
+    case "owned": {
+      const removed = yield* tearDownOwnedResources(recordedRoot, {
+        volumes: options.volumes === true,
+        purgeCaches: options.purgeCaches === true,
+      });
+      return {
+        ...unchangedResult(resolution.ownership[0]?.appIds[0] ?? basename(root)),
+        outcome: ownedCleanupChanged(removed) ? "destroyed" : "unchanged",
+        servicesDestroyed: removed.servicesRemoved,
+        volumesRemoved: removed.volumesRemoved > 0,
+      };
+    }
     case "applied": {
       const result = yield* destroyAppWithResolvedTarget(options, resolution.target, false, false);
       const remaining = yield* resolveAt(recordedRoot);
