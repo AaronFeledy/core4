@@ -4,8 +4,8 @@ import { Schema } from "effect";
 import {
   CONTAINER_HOSTNAME_PATTERN,
   ContainerHostname,
-  isContainerHostname,
   ServiceConfig,
+  isContainerHostname,
 } from "@lando/sdk/schema";
 
 const decodeService = Schema.decodeUnknownSync(ServiceConfig);

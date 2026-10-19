@@ -7,13 +7,13 @@ import {
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
-import { resolveContainerHostname } from "./hostname.ts";
 import {
   ContainerPlanError,
   containerHealthcheck,
   normalizeCommand,
   normalizeEntrypoint,
 } from "./create-values.ts";
+import { resolveContainerHostname } from "./hostname.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL, scratchLabelsForPlan } from "./labels.ts";
 
 import {

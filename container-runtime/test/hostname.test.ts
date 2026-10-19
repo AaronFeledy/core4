@@ -55,9 +55,7 @@ describe("sanitizeContainerHostname", () => {
 describe("default and resolved container hostnames", () => {
   test("defaults to the sanitized app slug and service name", () => {
     expect(defaultContainerHostname("My App", "Web!")).toBe("my-app-web");
-    expect(
-      resolveContainerHostname({ slug: "myapp" }, { name: ServiceName.make("web") }),
-    ).toBe("myapp-web");
+    expect(resolveContainerHostname({ slug: "myapp" }, { name: ServiceName.make("web") })).toBe("myapp-web");
   });
 
   test("uses an authored override without sanitizing it again", () => {
