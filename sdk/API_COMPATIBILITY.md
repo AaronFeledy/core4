@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- Authored Landofile composition (pre-ship): `LandofileOverlayInput` and `defineLandofile` accept schema-derived expression-bearing partial layers. Runtime loading composes authored values, materializes merged recipe/env sites, assembles tooling, and strictly decodes once. Codecs obey strict encoded round trips rather than requiring runtime output to be authored input. `@lando/sdk/landofile` additionally exports `directivePathProblem` for preparation without full layer decoding. Existing editor/Standard Schema expression restrictions and produced-text literal behavior remain unchanged.
+
 - `ValidationIssue` additively accepts optional `source: { file, layer, path }`, recording the original authored location separately from the effective issue path. `LandofileValidationError` now requires `remediation`; its shared constructor takes `file` from the primary issue's source when supplied. This is a pre-release constructor requirement, not a persisted-data format migration. Command failure envelopes already support remediation and now preserve authored issue sources through their existing issue projection. `ConfigLintResult` is unchanged.
 
 - Dependency-map identity projection no longer turns scalar map values into conditions, overwrites an authored `service` member, or hides a reserved `__proto__` map key. Invalid authored maps remain available for strict validation instead of being repaired by merging; valid structured maps and service-name lists retain their declared identity merge behavior.
