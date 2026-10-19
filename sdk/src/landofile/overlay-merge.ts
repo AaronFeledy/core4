@@ -38,6 +38,7 @@ class OverlayMerge<Source> {
     const value = node.value;
     if (isLandofileReset(value)) return this.result(node, ABSENT);
     if (isLandofileOverride(value)) return this.materialize({ ...node, value: value.value });
+    if (!Array.isArray(value) && !isPlainRecord(value)) return node;
     const children = this.tracked ? new Map<string | number, ValueOrigins<Source>>() : undefined;
     if (Array.isArray(value)) {
       const result: unknown[] = [];
@@ -48,7 +49,6 @@ class OverlayMerge<Source> {
       });
       return this.result(node, result, children);
     }
-    if (!isPlainRecord(value)) return node;
     const result = Object.fromEntries(
       Object.entries(value).flatMap(([key, entry]) => {
         const child = this.materialize(this.child(node, key, entry));
