@@ -632,6 +632,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ? {}
             : { serviceEnvironment: applyOptions.serviceEnvironment }),
           reconcile: applyOptions.reconcile,
+          onVolumeCreated: applyOptions.onVolumeCreated,
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),

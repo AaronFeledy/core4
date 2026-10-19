@@ -21,7 +21,12 @@ import {
 import { resolveToolingIncludes } from "../tooling-includes.ts";
 import { rejectUnsupportedToolingFeatures, scanToolingForUnsupported } from "../tooling-unsupported.ts";
 import { validateLandofile, validationErrorFromCause } from "../validation.ts";
-import { getVersionConstraintEntries, isValidSemverRange } from "../version-constraint.ts";
+import {
+  type VersionConstraintEntry,
+  getVersionConstraintEntries,
+  isValidSemverRange,
+  rememberVersionConstraintEntries,
+} from "../version-constraint.ts";
 import {
   type LandofileLoadScope,
   buildLandofileLoadScope,
@@ -154,17 +159,32 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
       composeKeyRejectedError({ source: valueOriginAt(effectiveOrigins, path).source.file, match: compose }),
     );
   }
+  const constraints: VersionConstraintEntry[] = [];
   for (const entry of getVersionConstraintEntries(document, file)) {
-    if (!isValidSemverRange(entry.range))
+    const authored = { lando: entry.range };
+    const origins = withValueOrigins(authored, (path) => ({
+      file: entry.source,
+      layer: entry.layer,
+      path,
+    })).origins;
+    const resolved = yield* materializeLandofileLayer(
+      entry.source,
+      rememberOrigins(authored, origins),
+      scope,
+    );
+    const range = isPlainRecord(resolved) ? resolved.lando : undefined;
+    if (typeof range !== "string" || !isValidSemverRange(range))
       return yield* Effect.fail(
         new LandofileParseError({
-          message: `Landofile "lando:" is not a valid semver range: "${entry.range}". Use npm semver syntax such as ">=4.1 <5", "^4", or "4.x".`,
+          message: `Landofile "lando:" is not a valid semver range: "${range}". Use npm semver syntax such as ">=4.1 <5", "^4", or "4.x".`,
           filePath: entry.source,
           line: undefined,
           column: undefined,
         }),
       );
+    constraints.push({ ...entry, range });
   }
+  rememberVersionConstraintEntries(assembled, constraints);
   const decoded = yield* validateLandofile(file, assembled);
   return copyLandofileProvenance(assembled, decoded);
 });

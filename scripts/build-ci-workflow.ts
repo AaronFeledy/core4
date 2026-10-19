@@ -872,7 +872,6 @@ name: ci
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -918,7 +917,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference

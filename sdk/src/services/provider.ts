@@ -137,6 +137,10 @@ export interface ApplyOptions {
   readonly completionPlan?: AppPlan;
   readonly signal?: AbortSignal;
   readonly serviceEnvironment?: ServiceEnvironmentOverrides;
+  /** Await each verified creation before starting services; failure aborts apply. Never called for adoption. */
+  readonly onVolumeCreated?: (
+    fact: import("../schema/volume-initialization.ts").VolumeCreationFact,
+  ) => Effect.Effect<void, ProviderError>;
   /**
    * When true, bring-up fails instead of removing and recreating a container
    * for publish-port, bind-source, or network drift, and instead of recovering

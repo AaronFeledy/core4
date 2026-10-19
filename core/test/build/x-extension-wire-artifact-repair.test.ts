@@ -10,6 +10,8 @@ import {
 import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
   atWirePath,
@@ -71,14 +73,47 @@ describe("embedded wire closed x-* artifact repair", () => {
     expect(jsonEquals(directiveCaptured.fragment, captured.fragment)).toBe(false);
   });
 
+  test("pins repaired directive trees before applying subsequent grammar evolution", () => {
+    const digests = {
+      input: "b68b8625a33bcdcbeae07d9790e192345040b01f3e6491c6f492cb3a9f9d5903",
+      services: "4a62c70951b94daa5a71e73b4f2589383a01e7eaca222742e02857c5ceb0e714",
+      fragment: "5b719fe13342c9c39fda1d6b9405520ef5bde97c3b074b7d8578b66baa166a1b",
+    };
+    for (const source of ["input", "services", "fragment"] as const) {
+      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(directiveCaptured[source])));
+      expect(createHash("sha256").update(JSON.stringify(repaired)).digest("hex")).toBe(digests[source]);
+    }
+  }, 120_000);
+
+  test("collapses an identifier-only local ref onto the same normalized graph", async () => {
+    const repaired = evolveHistoricalShorthand(
+      normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+    );
+    const current = schemaAt(
+      await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
+      "$.context.services",
+    );
+    const aliased = normalizeJsonSchema({ $defs: { Services: current }, $ref: "#/$defs/Services" });
+    const drifted = normalizeJsonSchema({
+      $defs: { Services: { type: "number" } },
+      $ref: "#/$defs/Services",
+    });
+    expect(jsonEquals(repaired, current)).toBe(true);
+    expect(jsonEquals(repaired, aliased)).toBe(true);
+    expect(Object.hasOwn(aliased, "$ref")).toBe(false);
+    expect(jsonEquals(repaired, drifted)).toBe(false);
+  });
+
   for (const [id, path, source] of WIRE_TARGETS) {
     const surface = `schema:${id}`;
     test(`proves the complete directive-capable ${id} ${path} subtree`, async () => {
-      // Given the reviewed directive transport, with every union alternative intact.
-      const expected = directiveCaptured[source];
+      // Given the independently pinned typed grammar, with every union alternative intact.
+      const expected = typedCaptured[source];
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      // When the complete current subtree is compared with its transport baseline.
-      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(expected)));
+      // When only the separately pinned shorthand delta is replayed after closed-x repair.
+      const repaired = evolveHistoricalShorthand(
+        normalizeJsonSchema(wireObject(repairClosedExtension(expected))),
+      );
       // Then the entire normalized subtree matches, not just the reported keyword.
       expect(jsonEquals(repaired, current)).toBe(true);
       expect(classifySchemaChange(repaired, current, "strict")).toEqual([]);
@@ -118,7 +153,10 @@ describe("embedded wire closed x-* artifact repair", () => {
       // Given a current subtree whose first string constraint is independently tightened.
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
       const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
-      const repaired = normalizeJsonSchema(wireObject(repairClosedExtension(directiveCaptured[source])));
+      const repaired = evolveHistoricalShorthand(
+        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+      );
+      expect(jsonEquals(repaired, current)).toBe(true);
       // When the conservative classifier still reports the same coarse union delta.
       const findings = classifySchemaChange(
         atWirePath(captured[source], path),
