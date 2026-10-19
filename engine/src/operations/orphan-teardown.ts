@@ -5,8 +5,8 @@ import {
   teardownVolumeClasses,
   volumeClassFromLabels,
 } from "@lando/container-runtime/volume-classes";
-import type { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
-import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
+import type { AppLockTimeoutError, AppResolveError, StateStoreError } from "@lando/sdk/errors";
+import type { AbsolutePath, AppPlan, OwnedResourcesCleanupResult } from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
   PathsService,
@@ -18,6 +18,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { ownedCleanupChanged, prepareOwnedResourceCleanup } from "./owned-resource-teardown.ts";
 
 export interface OrphanTeardownOptions {
   /** Remove the data volumes recorded against the root; `stop` never does. */
@@ -31,9 +32,11 @@ export interface OrphanTeardownResult {
   /** Exactly the services whose container the provider stopped and removed. */
   readonly services: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
+  readonly ownedChanged: boolean;
 }
 
 export type OrphanTeardownError =
+  | AppResolveError
   | ProviderError
   | ProviderSelectionError
   | AppLockTimeoutError
@@ -71,48 +74,57 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
   readonly root: AbsolutePath;
   readonly groups: ReadonlyArray<AppliedOrphanGroup>;
   readonly options: OrphanTeardownOptions;
+  readonly ownedCleanup?: Effect.Effect<OwnedResourcesCleanupResult, ProviderError>;
 }): Effect.fn.Return<
   OrphanTeardownResult,
   OrphanTeardownError,
   RuntimeProviderRegistry | PathsService | PrivateFileAccessService
 > {
-  const registry = yield* RuntimeProviderRegistry;
-  const paths = yield* PathsService;
-  const relayRoots = { ...paths.roots, platform: paths.platform };
-  const removeVolumes = input.options.volumes || input.options.purgeCaches;
-  const volumeClasses = teardownVolumeClasses(input.options);
-  const services: string[] = [];
-  let volumesRemoved = false;
-  for (const group of input.groups) {
-    const plan = selectionPlan(group, input.root);
-    const ref = { id: group.appId, root: input.root };
-    yield* withAppMutationLock(
-      appLockTarget(plan),
-      Effect.gen(function* () {
-        const provider = yield* registry.select(plan);
-        for (const service of group.services) {
-          const removal = yield* provider.removeObservedService(service);
-          if (removal.kind === "removed") services.push(String(service.service));
-        }
-        if (!removeVolumes) return;
-        for (const volume of group.volumes) {
-          const generation = volume.identity?.generation;
-          if (generation === undefined) continue;
-          const volumeClass = volumeClassFromLabels(volume.labels);
-          if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
-          if (!volumeClasses.includes(volumeClass)) continue;
-          yield* provider.removeVolume(volume.ref, generation);
-          volumesRemoved = true;
-        }
-      }).pipe(
-        Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
-        Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
-      ),
-    );
-  }
-  return {
-    app: String(input.groups[0]?.appId ?? ""),
-    services,
-    volumesRemoved,
-  };
+  return yield* withAppMutationLock(
+    { id: input.groups[0]?.appId ?? input.root, root: input.root },
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      const cleanup = input.ownedCleanup ?? (yield* prepareOwnedResourceCleanup(input.root, input.options));
+      const paths = yield* PathsService;
+      const relayRoots = { ...paths.roots, platform: paths.platform };
+      const removeVolumes = input.options.volumes || input.options.purgeCaches;
+      const volumeClasses = teardownVolumeClasses(input.options);
+      const services: string[] = [];
+      let volumesRemoved = false;
+      for (const group of input.groups) {
+        const plan = selectionPlan(group, input.root);
+        const ref = { id: group.appId, root: input.root };
+        yield* withAppMutationLock(
+          appLockTarget(plan),
+          Effect.gen(function* () {
+            const provider = yield* registry.select(plan);
+            for (const service of group.services) {
+              const removal = yield* provider.removeObservedService(service);
+              if (removal.kind === "removed") services.push(String(service.service));
+            }
+            if (!removeVolumes) return;
+            for (const volume of group.volumes) {
+              const generation = volume.identity?.generation;
+              if (generation === undefined) continue;
+              const volumeClass = volumeClassFromLabels(volume.labels);
+              if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
+              if (!volumeClasses.includes(volumeClass)) continue;
+              yield* provider.removeVolume(volume.ref, generation);
+              volumesRemoved = true;
+            }
+          }).pipe(
+            Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
+            Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
+          ),
+        );
+      }
+      const owned = yield* cleanup;
+      return {
+        app: String(input.groups[0]?.appId ?? ""),
+        services: [...new Set([...services, ...owned.servicesRemoved])],
+        volumesRemoved: volumesRemoved || owned.volumesRemoved > 0,
+        ownedChanged: ownedCleanupChanged(owned),
+      };
+    }),
+  );
 });

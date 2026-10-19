@@ -133,10 +133,10 @@ services:
     type: mailpit
 ```
 
-Lando installs `msmtp` in `appserver` and points PHP's `sendmail_path` at it, so `wp_mail()` lands in Mailpit. Rebuild, send a test message, and get the inbox URL:
+Lando installs `msmtp` in `appserver` and points PHP's `sendmail_path` at it, so `wp_mail()` lands in Mailpit. Start, send a test message, and get the inbox URL:
 
 ```sh
-lando rebuild
+lando start
 lando wp eval 'var_dump( wp_mail( "you@example.test", "Mailpit check", "Hello" ) );'
 lando info
 ```
@@ -153,10 +153,10 @@ services:
     xdebug: true
 ```
 
-Rebuild so the extension lands in the image, then check it:
+Start so the extension lands in the image, then check it:
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 

@@ -1,5 +1,6 @@
 import type { Effect, Layer } from "effect";
 import type { SecretStoreUnavailableError } from "../errors/secret.ts";
+import type { AbsolutePath, ResourceOwnership } from "../schema/index.ts";
 
 import type {
   ProviderCapabilityError,
@@ -54,6 +55,10 @@ export type RuntimeProviderFactoryRequirements =
 
 export interface RuntimeProviderContribution {
   readonly id: ProviderId;
+  readonly resourceOwnership?: (
+    ctx: LandoPluginContext,
+    root: AbsolutePath,
+  ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
   /** Read durable ownership claims without connecting to or initializing the runtime. */
   readonly appliedPlans: (
     ctx: LandoPluginContext,

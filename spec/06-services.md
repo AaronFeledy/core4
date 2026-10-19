@@ -434,4 +434,20 @@ Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-ou
 
 Catalog types prefer `redirect` for owned Apache, nginx, and PHP-FPM logs; MySQL/MariaDB optional slow/general logs use `follow`; framework file logs are declared by the recipe or type that knows their paths.
 
+### 6.15 Lifecycle apply
+
+`start`, bare `restart`, selected `restart`, and `rebuild` are different operations. Create-config drift is applied by ordinary start (§5.3.2). Rebuild is not that path.
+
+| Command | Contract |
+|---|---|
+| `start` | Plans and builds with the default cache policy (`refresh: false`, §6.13.3), then applies create-config drift. Keeps unchanged containers and volumes. Has no confirmation flag. |
+| bare `restart` | Stop, then start. Removes and recreates containers under existing stop semantics. Not an in-place process restart. Uses the default cache policy. |
+| `restart -s` / `--service` | In-place. No dependency closure. Refuses when the selected container is missing or would be recreated for published-port, bind-source, network, or create-config drift, or a missing `dev.lando.create-config` label. Create-config drift and a missing label fail with `ServiceRestartWouldRecreateError` reason `config`. Remediation is `lando rebuild -s <service>`. |
+| `rebuild` | Forced pull (`refresh: true`), cache and app-build refresh, explicit recreate, and confirmation. A floating-tag refresh failure falls back to the local copy and records `LANDO_ARTIFACT_REFRESH_FAILED` (§6.13.3, §12.6). |
+| explicit `global:start` | Applies new environment, bind, and image configuration. `reconcile: false`. An explicit call is not warm-skipped. `global:rebuild` remains the forced refresh. |
+
+An unchanged `build.app` command whose bind-mounted inputs alone changed retains its cached build result and skips the step (§6.13.5). `rebuild` forces that step to rerun. Changing command text, step user, or artifact inputs changes the build key, so ordinary start reruns the affected step.
+
+Rollback is unchanged. Provider apply and build pre-barrier compensation still run. Readiness failure and interruption retention are unchanged (§5.3.1).
+
 ---
