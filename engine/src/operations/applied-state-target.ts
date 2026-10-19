@@ -2,8 +2,13 @@ import { basename } from "node:path";
 import { Effect } from "effect";
 
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
-import { type AbsolutePath, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
-import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { type AbsolutePath, type AppPlan, type ResourceOwnership, appIdentityKey } from "@lando/sdk/schema";
+import {
+  type AppliedOrphanGroup,
+  type AppliedTeardownEvidence,
+  type ProviderError,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import { type ResolvedAppTarget, resolveDesiredAppTarget, userAppRef } from "../landofile/app-resolution.ts";
@@ -90,11 +95,22 @@ export const resolveAppliedStateTarget = Effect.gen(function* () {
 
 /** What teardown may act on for the discovered app root, decided before any desired config loads. */
 export type TeardownResolution =
-  | { readonly kind: "applied"; readonly target: ResolvedAppTarget }
+  | {
+      readonly kind: "applied";
+      readonly target: ResolvedAppTarget;
+      readonly ownership?: ReadonlyArray<ResourceOwnership>;
+    }
+  | {
+      readonly kind: "owned";
+      readonly root: AbsolutePath;
+      readonly ownership: ReadonlyArray<ResourceOwnership>;
+      readonly landofilePresent: boolean;
+    }
   | {
       readonly kind: "orphans";
       readonly root: AbsolutePath;
       readonly groups: ReadonlyArray<AppliedOrphanGroup>;
+      readonly ownership?: ReadonlyArray<ResourceOwnership>;
       readonly landofilePresent: boolean;
     }
   | { readonly kind: "absent"; readonly root: AbsolutePath; readonly landofilePresent: boolean };
@@ -111,7 +127,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
   const registry = yield* RuntimeProviderRegistry;
   const resolveEvidence = registry.resolveTeardownEvidence;
   const resolveAppliedPlan = registry.resolveAppliedPlan;
-  const evidence =
+  const evidence: AppliedTeardownEvidence =
     resolveEvidence !== undefined
       ? yield* resolveEvidence(root)
       : resolveAppliedPlan !== undefined
@@ -123,9 +139,21 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
         : { kind: "absent" as const };
   switch (evidence.kind) {
     case "applied":
-      return { kind: "applied", target: yield* targetFor(evidence.plan) };
+      return {
+        kind: "applied",
+        target: yield* targetFor(evidence.plan),
+        ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
+      };
     case "orphans":
-      return { kind: "orphans", root, groups: evidence.groups, landofilePresent };
+      return {
+        kind: "orphans",
+        root,
+        groups: evidence.groups,
+        landofilePresent,
+        ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
+      };
+    case "owned":
+      return { kind: "owned", root, ownership: evidence.ownership, landofilePresent };
     case "absent":
       return { kind: "absent", root, landofilePresent };
   }
@@ -145,6 +173,9 @@ export const resolveTeardownResolution = Effect.gen(function* () {
 });
 
 export const withTeardownResolution = <A, E, R>(handlers: {
+  readonly owned: (
+    resolution: Extract<TeardownResolution, { readonly kind: "owned" }>,
+  ) => Effect.Effect<A, E, R>;
   readonly applied: (target: ResolvedAppTarget) => Effect.Effect<A, E, R>;
   readonly orphans: (
     resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
@@ -160,6 +191,8 @@ export const withTeardownResolution = <A, E, R>(handlers: {
           return handlers.applied(resolution.target);
         case "orphans":
           return handlers.orphans(resolution);
+        case "owned":
+          return handlers.owned(resolution);
         case "absent":
           return handlers.absent(resolution);
         default: {
