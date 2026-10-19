@@ -7,6 +7,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
 
+import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type FileSyncSessionSpec, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
@@ -703,15 +704,197 @@ describe("Mutagen process client", () => {
     }
   });
 
-  test("retains an incomplete preparing receipt after an ambiguous create result", async () => {
-    const { client, reopen, calls, current } = fake({ ambiguousId: true });
+  test.each(["list", "create"] as const)(
+    "%s adopts an interrupted create without creating a second session",
+    async (operation) => {
+      // Given: the daemon created the session but the client never committed its ID.
+      const { client, reopen, calls, current, stateStore } = fake({ ambiguousId: true });
+      expect(Exit.isFailure(await Effect.runPromiseExit(client.create({ name, spec })))).toBe(true);
+      expect(current()).toHaveLength(1);
+      const ledger = await Effect.runPromise(
+        stateStore.open({
+          namespace: "sessions",
+          key: "mutagen.json",
+          schema: Schema.Unknown,
+          version: 1,
+          codec: "json",
+        }),
+      );
+      // When: a fresh client resumes through either public entry point.
+      const fresh = reopen();
+      await Effect.runPromise(
+        operation === "list" ? fresh.list.pipe(Effect.asVoid) : fresh.create({ name, spec }),
+      );
+      // Then: the observed ID is durable and no duplicate create occurs.
+      expect(await Effect.runPromise(ledger.get)).toMatchObject({
+        sessions: [{ phase: "committed", identifier: id, name, spec }],
+      });
+      expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+      expect(calls.some((call) => call.args[1] === "terminate")).toBe(false);
+    },
+  );
+
+  test("clears an interrupted create with no daemon session before creating", async () => {
+    // Given: create failed before creating a daemon session.
+    const { client, reopen, calls } = fake({ failCreateOnce: true });
     expect(Exit.isFailure(await Effect.runPromiseExit(client.create({ name, spec })))).toBe(true);
-    expect(current()).toHaveLength(1);
-    expect(Exit.isFailure(await Effect.runPromiseExit(reopen().list))).toBe(true);
-    expect(Exit.isFailure(await Effect.runPromiseExit(reopen().create({ name, spec })))).toBe(true);
-    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
-    expect(calls.some((call) => call.args[1] === "terminate")).toBe(false);
+    // When: create is retried directly, without listing first.
+    await Effect.runPromise(reopen().create({ name, spec }));
+    // Then: one retry creates the sole owned session.
+    expect((await Effect.runPromise(reopen().list)).map((entry) => entry.name)).toEqual([name]);
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
   });
+
+  for (const operation of [
+    "list",
+    "create",
+    "invalidateAppDrain",
+    "drainApp",
+    "disposeApp",
+    "disposalPhase",
+  ] as const) {
+    test.each(["config", "duplicate", "extra", "source", "helper", "daemon"] as const)(
+      `${operation} fails closed with unchanged ledger when interrupted create has %s mismatch`,
+      async (mismatch) => {
+        // Given: a preparing receipt with ambiguous or foreign daemon evidence.
+        const { client, reopen, calls, current, setCurrent, stateStore } = fake({ ambiguousId: true });
+        expect(Exit.isFailure(await Effect.runPromiseExit(client.create({ name, spec })))).toBe(true);
+        const ledger = await Effect.runPromise(
+          stateStore.open({
+            namespace: "sessions",
+            key: "mutagen.json",
+            schema: Schema.Unknown,
+            version: 1,
+            codec: "json",
+          }),
+        );
+        switch (mismatch) {
+          case "config":
+            setCurrent([session({ mode: "one-way-replica" })]);
+            break;
+          case "duplicate":
+            setCurrent([session(), session({ identifier: "sync_Duplicate" })]);
+            break;
+          case "extra":
+            setCurrent([...current(), session({ name: "unowned", identifier: "sync_Unowned" })]);
+            break;
+          case "source":
+            setCurrent([session({ name: "other-name" })]);
+            break;
+          case "helper":
+            setCurrent([session({ name: "other-name", alpha: { protocol: "local", path: "C:\\other" } })]);
+            break;
+          case "daemon":
+            await Effect.runPromise(
+              ledger.set({
+                sessions: [
+                  {
+                    phase: "preparing",
+                    name,
+                    spec,
+                    target: { containerId: helper, path: "/lando-data" },
+                    dataDir: "C:\\other-daemon",
+                    dockerHost: WINDOWS_LANDO_DOCKER_HOST,
+                  },
+                ],
+              }),
+            );
+            break;
+        }
+        const before = await Effect.runPromise(ledger.get);
+        const callCount = calls.length;
+        const fresh = reopen();
+        // When: any reconciliation entry point is invoked.
+        const action: Effect.Effect<unknown, FileSyncStartError | FileSyncDriftError | FileSyncStopError> =
+          operation === "list"
+            ? fresh.list
+            : operation === "create"
+              ? fresh.create({ name, spec })
+              : fresh[operation](spec.app);
+        const exit = await Effect.runPromiseExit(action);
+        // Then: a tagged error leaves ownership and daemon state untouched.
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          const failure = Cause.findErrorOption(exit.cause);
+          expect(failure).toMatchObject({
+            _tag: "Some",
+            value: {
+              _tag:
+                operation === "drainApp" || operation === "disposeApp" || operation === "disposalPhase"
+                  ? "FileSyncStopError"
+                  : "FileSyncStartError",
+            },
+          });
+        }
+        expect(await Effect.runPromise(ledger.get)).toEqual(before);
+        expect(calls.slice(callCount).every((call) => call.args[1] === "list")).toBe(true);
+      },
+    );
+  }
+
+  for (const operation of ["invalidateAppDrain", "drainApp", "disposeApp", "disposalPhase"] as const) {
+    test.each(["adopt", "clear"] as const)(`${operation}: %s preparing receipt`, async (recovery) => {
+      // Given: a live session and either its preparing receipt or an absent sibling attempt.
+      const { client, reopen, stateStore, calls, setCurrent } = fake({ ambiguousId: true });
+      expect(Exit.isFailure(await Effect.runPromiseExit(client.create({ name, spec })))).toBe(true);
+      const ledger = await Effect.runPromise(
+        stateStore.open({
+          namespace: "sessions",
+          key: "mutagen.json",
+          schema: Schema.Unknown,
+          version: 1,
+          codec: "json",
+        }),
+      );
+      const receipt = {
+        name,
+        spec,
+        target: { containerId: helper, path: "/lando-data" },
+        dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+        dockerHost: WINDOWS_LANDO_DOCKER_HOST,
+      };
+      await Effect.runPromise(
+        ledger.set({
+          sessions:
+            recovery === "adopt"
+              ? [{ ...receipt, phase: "preparing" }]
+              : [
+                  { ...receipt, phase: "committed", identifier: id },
+                  {
+                    ...receipt,
+                    phase: "preparing",
+                    name: "absent-attempt",
+                    spec: { ...spec, source: AbsolutePath.make("C:\\other-source") },
+                    target: { containerId: "absent-helper", path: "/lando-data" },
+                  },
+                ],
+          ...(operation === "disposeApp"
+            ? { appDrains: [{ app: spec.app, phase: "drained", identifiers: [id] }] }
+            : {}),
+        }),
+      );
+      if (operation === "disposeApp") setCurrent([session({ paused: true })]);
+      // When: lifecycle recovery runs directly, without a preceding list/create.
+      const action: Effect.Effect<unknown, FileSyncStartError | FileSyncStopError> = reopen()[operation](
+        spec.app,
+      );
+      const result = await Effect.runPromise(action);
+      // Then: the operation completes with the same live ID, or its disposal tombstone.
+      expect(await Effect.runPromise(ledger.get)).toMatchObject({
+        sessions: [
+          {
+            phase: operation === "disposeApp" ? "disposed" : "committed",
+            identifier: id,
+          },
+        ],
+      });
+      if (operation === "disposalPhase") expect(result).toBe("active");
+      expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+      expect(calls.filter((call) => call.args[1] === "terminate")).toHaveLength(
+        operation === "disposeApp" ? 1 : 0,
+      );
+    });
+  }
 
   test("rejects changed daemon metadata on a recovered receipt before mutation", async () => {
     const { client, reopen, calls, setCurrent } = fake();

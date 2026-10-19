@@ -64,7 +64,7 @@ An unsupervised service that exits fails the command non-zero with `ServiceNotRe
 
 If the provider cannot inspect a service, the reason is `inspect-failed`: run `lando doctor` to restore the provider. That failure never counts as a supervised restart. Global services use `lando global:logs -s <service>` and `lando global:start`; failed groups lose their routes while independent ready groups stay applied. Scratch start and `lando run` also wait for readiness, but failed or interrupted acquisition cleans up unless you passed `scratch:start --keep-on-failure`. URL-scan warnings still do not fail start.
 
-Pressing Ctrl-C during readiness stops waiting but leaves the applied app, routes, volumes, and sessions running. The command still exits as interrupted. Interrupting earlier startup phases keeps their normal cleanup.
+Pressing Ctrl-C during readiness stops waiting but leaves the applied app, routes, volumes, and sessions running. The command still exits as interrupted. Interrupting earlier startup phases keeps their normal cleanup for containers and routes. An accelerated file-sync start is the exception: its sync sessions and targets stay, and the next `lando start`, `lando restart`, or `lando rebuild` finishes the attempt with them instead of starting over.
 
 ## Fix an image pull failure
 
