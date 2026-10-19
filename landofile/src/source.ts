@@ -52,7 +52,9 @@ const parseLandofileSource = (
 export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(function* (
   filePath: string,
   context?: LandofileLoadContext,
-  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
+  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard"> & {
+    readonly sourceReplacement?: { readonly content: string } | undefined;
+  },
 ) {
   const resolvedContext = context ?? {
     appRoot: dirname(filePath),
@@ -60,7 +62,7 @@ export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(funct
     policy: DEFAULT_LANDOFILE_LOAD_POLICY,
   };
   yield* ensureConsistentRoot(resolvedContext.appRoot, inputs);
-  const content = yield* readFileContent(filePath);
+  const content = inputs?.sourceReplacement?.content ?? (yield* readFileContent(filePath));
   const form = filePath.endsWith(".ts") ? ("typescript" as const) : ("yaml" as const);
   const parsed = yield* form === "typescript"
     ? loadLandofileTs({ filePath, appRoot: resolvedContext.appRoot, content })
