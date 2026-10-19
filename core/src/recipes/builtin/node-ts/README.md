@@ -6,10 +6,10 @@ Landofile uses environment expressions for the Node image and
 
 ## Generated services
 
-- `web`: `image: node:<LANDO_NODE_VERSION ?? "lts">`
+- `web`: `image: node:<LANDO_NODE_VERSION ?? "24">`
 
 The Node major version is resolved from `LANDO_NODE_VERSION` at
-`LandofileService` load time, with `lts` as the default. `NODE_ENV`
+`LandofileService` load time, with `24` as the default. `NODE_ENV`
 defaults to `development` and can be overridden the same way.
 
 ## Alpha limitations

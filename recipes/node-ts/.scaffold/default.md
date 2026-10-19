@@ -13,10 +13,10 @@ The generated Landofile reads two environment variables at load time:
 
 | Variable | Used for | Fallback |
 | --- | --- | --- |
-| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `lts` |
+| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `24` |
 | `NODE_ENV` | `NODE_ENV` inside the `web` service | `development` |
 
-The default `lts` tag is the recipe's authored image string. Service types
+The default image is `node:24`, not the floating `node:lts` tag. Service types
 `node:lts`, `node:22`, `node:24`, and `node:26` are the supported Node pins;
 `type: node:lts` currently means Node 24. Node 26 official images ship without
 `yarn` and without Corepack, so set `globals: { yarn: "1.22.22" }` or install
