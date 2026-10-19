@@ -3,17 +3,13 @@ import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/e
 import { decodeLandofileLayer, mergeValues } from "@lando/sdk/landofile";
 import { type ConfigLintResult, type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
-import { materializeLandofileLayer } from "./compile.ts";
 import { type ComposeRejectionMatch, analyzeComposeRejections } from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
 import { appNameOf, rejectionViolation, violationsFor } from "./lint-violations.ts";
+import { buildLandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import type { TemplateEngineInputs } from "./ports.ts";
-import {
-  type LandofileCompilationStages,
-  compileLandofileRootLayers,
-  compilePreparedLayer,
-} from "./root-compile.ts";
-import { prepareLandofileSource, readFileContent, resolveLandofileSourceExpressions } from "./source.ts";
+import { acquireLandofileRootLayers } from "./root-compile.ts";
+import { resolveLandofileSourceExpressions } from "./source.ts";
 import { landofileValidationError } from "./validation.ts";
 
 export interface LintLandofileOptions {
@@ -69,43 +65,49 @@ export const lintLandofile = Effect.fn("Landofile.lint")(function* (
     );
   const sources = new Map<string, unknown>();
   const rejections = new Map<string, readonly ComposeRejectionMatch[]>();
-  const stages: LandofileCompilationStages = {
-    readContent: readFileContent,
-    prepare: Effect.fnUntraced(function* (file, context, inputs) {
-      const source = yield* prepareLandofileSource(file, context, inputs).pipe(
-        Effect.flatMap(resolveLandofileSourceExpressions),
-      );
-      sources.set(file, source.value);
-      rejections.set(file, analyzeComposeRejections(source.value));
-      return source;
-    }),
-    compile: (prepared, scope) =>
-      compilePreparedLayer(
-        prepared,
-        scope,
-        Effect.fnUntraced(function* (file, value, loadScope) {
-          const materialized = yield* materializeLandofileLayer(file, value, loadScope);
-          return yield* decodeLandofileLayer(file, materialized).pipe(
-            Effect.catchTag("LandofileValidationError", (error) =>
-              Effect.fail(
-                error.message.startsWith("Invalid Landofile layer.")
-                  ? landofileValidationError(file, [
-                      ...(rejections.get(file) ?? []).map(rejectionViolation),
-                      ...violationsFor(materialized, rejections.get(file) ?? []),
-                    ])
-                  : error,
+  const result = yield* acquireLandofileRootLayers(
+    dirname(filePath),
+    options.templates === undefined ? undefined : { templates: options.templates },
+  ).pipe(
+    Effect.flatMap((acquired) =>
+      Effect.gen(function* () {
+        const prepared = yield* Effect.forEach(acquired.sources, ({ source, layer }) =>
+          resolveLandofileSourceExpressions(source).pipe(
+            Effect.map((value) => {
+              sources.set(source.file, value.value);
+              rejections.set(source.file, analyzeComposeRejections(value.value));
+              return { source: value, layer };
+            }),
+          ),
+        );
+        const scope = yield* buildLandofileLoadScope(
+          prepared.map(({ source }) => source),
+          options.templates?.context?.env,
+        );
+        const compiled = yield* Effect.forEach(prepared, ({ source, layer }) =>
+          materializeLandofileLayer(source.file, source.value, scope).pipe(
+            Effect.flatMap((materialized) =>
+              decodeLandofileLayer(source.file, materialized).pipe(
+                Effect.catchTag("LandofileValidationError", (error) =>
+                  Effect.fail(
+                    error.message.startsWith("Invalid Landofile layer.")
+                      ? landofileValidationError(source.file, [
+                          ...(rejections.get(source.file) ?? []).map(rejectionViolation),
+                          ...violationsFor(materialized, rejections.get(source.file) ?? []),
+                        ])
+                      : error,
+                  ),
+                ),
               ),
             ),
-          );
-        }),
-      ),
-  };
-  const result = yield* compileLandofileRootLayers(
-    dirname(filePath),
-    filePath,
-    options.templates === undefined ? undefined : { templates: options.templates },
-    stages,
-  ).pipe(Effect.result);
+            Effect.map((landofile) => ({ layer, landofile })),
+          ),
+        );
+        return { compiled };
+      }),
+    ),
+    Effect.result,
+  );
   if (Result.isFailure(result)) {
     const error = result.failure;
     if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);

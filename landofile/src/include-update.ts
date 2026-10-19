@@ -2,7 +2,6 @@ import { join } from "node:path";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
-import type { LandofileLoadScope } from "./compile.ts";
 import {
   type LandofileIncludeDeps,
   type ResolveContext,
@@ -14,6 +13,7 @@ import { byCodepointString, parseLockEntries, writeLockEntries } from "./include
 import { authoredIncludeEntries, normalizeInclude } from "./include-source.ts";
 import { resolveTree } from "./include-tree.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
+import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimePorts } from "./ports.ts";
 
 export type IncludeUpdateStatus = "added" | "updated" | "unchanged";

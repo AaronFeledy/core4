@@ -3,7 +3,6 @@ import { LandofileLockMismatchError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import type { LandofileLoadScope } from "./compile.ts";
 import {
   LOCK_REMEDIATION,
   type LandofileIncludeDeps,
@@ -16,6 +15,7 @@ import { byCodepointString, parseLockEntries } from "./include-lockfile.ts";
 import { authoredIncludeEntries } from "./include-source.ts";
 import { resolveTree } from "./include-tree.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
+import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimePorts } from "./ports.ts";
 
 export type IncludeVerifyStatus = "ok" | "mismatch" | "missing" | "stale";
