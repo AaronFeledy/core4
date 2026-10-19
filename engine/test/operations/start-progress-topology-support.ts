@@ -126,6 +126,7 @@ export const makeHarness = (
     readonly plannedApp?: AppPlan;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    readonly apply?: RuntimeProviderShape["apply"];
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly onRemoveRoutes?: () => void;
     readonly afterApplyRoutes?: Effect.Effect<void>;
@@ -225,10 +226,12 @@ export const makeHarness = (
     ...(options.disposeFileSyncTargets === undefined
       ? {}
       : { disposeFileSyncTargets: options.disposeFileSyncTargets }),
-    apply: (appliedPlan, applyOptions) =>
-      Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
-        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
-      ),
+    apply:
+      options.apply ??
+      ((appliedPlan, applyOptions) =>
+        Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
+          Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
+        )),
     inspect:
       options.inspect ??
       ((target) =>

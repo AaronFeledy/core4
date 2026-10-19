@@ -66,6 +66,8 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
+`ApplyOptions.onVolumeCreated` is an optional effectful callback receiving the same verified `VolumeCreationFact` reported in `ApplyResult.createdVolumes`. Providers MUST await it for each volume immediately after verified creation and before starting any service container. A callback failure MUST fail apply before service startup. Existing or adopted volumes MUST NOT trigger the callback; ownership labels alone are not creation evidence. Receipts already persisted survive a later apply failure without changing rollback or volume-retention policy.
+
 #### 5.3.1 Teardown resolution and orphaned resources
 
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
