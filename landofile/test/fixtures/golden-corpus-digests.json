@@ -109,6 +109,10 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/marker-warning",
+      "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
+    },
+    {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
       "invalid": {
         "status": "invalid",
@@ -122,6 +126,17 @@
     {
       "fixture": "docs/guides/config-translate/fixtures/v4-app",
       "digest": "1127a50af76baa9f02f9199b7e6b164b5a39d2a9171e997d6fd510e6686fcd78"
+    },
+    {
+      "fixture": "docs/guides/config-views/fixtures/invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-views/fixtures/layered",
+      "digest": "96db7063b2419a64caeef3043bf951d647d23d7a42f01da0fe3148bb365796f9"
     },
     {
       "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-blocked",
@@ -280,6 +295,14 @@
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/healthcheck-shorthand",
       "digest": "6e4f09c3c3bf8bfdfd3a0a7a657d15bf3a0ea35939631c0e86f63fb406d99fea"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-http",
+      "digest": "0b143156fc7568cac70514a8958228ffab1cf5da6d1530def5141ffa70890a79"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-tcp",
+      "digest": "7dd699823f33172d60df5fa568918c5f6d5a0e8737b72d2efe99b26f07d9c2cf"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",
