@@ -108,6 +108,7 @@ const makeFakeApi = (input: {
   readonly omitPortBindings?: boolean;
   readonly existingBindSource?: string;
   readonly existingContainerName?: string;
+  readonly existingNativeId?: string;
   readonly existingNetworks?: ReadonlyArray<string>;
   readonly networkExists?: boolean;
   readonly containerExists?: boolean;
@@ -167,6 +168,7 @@ const makeFakeApi = (input: {
             status: 200,
             body: JSON.stringify({
               ...inspected,
+              Id: input.existingNativeId ?? input.existingContainerName ?? containerName,
               Config: config,
               ...(input.agentMount === undefined
                 ? {}
@@ -178,7 +180,10 @@ const makeFakeApi = (input: {
           running = false;
           return { status: 204, body: "" };
         }
-        if (request.method === "DELETE" && name === (input.existingContainerName ?? containerName)) {
+        if (
+          request.method === "DELETE" &&
+          name === (input.existingNativeId ?? input.existingContainerName ?? containerName)
+        ) {
           if (input.deleteStatus === 204) {
             exists = false;
             running = false;
@@ -210,10 +215,29 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 describe("Podman publish-port recreate", () => {
+  test("recreate stops and deletes the observed owned native ID", async () => {
+    // Given
+    const fake = makeFakeApi({ deleteStatus: 204, existingNativeId: "observed-owned-id" });
+    // When
+    await Effect.runPromise(bringUp(planWithHostPort(38080), { api: fake.api, ctx }));
+    // Then
+    expect(
+      fake.calls
+        .filter((call) => call.path.endsWith("/stop") || call.method === "DELETE")
+        .map((call) => call.path),
+    ).toEqual(["/containers/observed-owned-id/stop", "/containers/observed-owned-id?force=true"]);
+  });
   test("migrates a missing create-config label once without deleting volumes", async () => {
     // Given an existing container from before create-config labels.
     const plan = planWithHostPort(38080);
-    const fake = makeFakeApi({ deleteStatus: 204, existingLabels: {} });
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingLabels: {
+        "dev.lando.app": plan.id,
+        "dev.lando.app-root": plan.root,
+        "dev.lando.service": serviceName,
+      },
+    });
     await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
     // When the same plan is applied again after migration.
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
@@ -738,7 +762,6 @@ describe("Podman publish-port recreate", () => {
     expect(createCalls(fake.calls)).toHaveLength(0);
   });
   test("recreates a global published service on only the shared network", async () => {
-    const fake = makeFakeApi({ deleteStatus: 204, existingContainerName: "lando-global-web" });
     const plan: AppPlan = {
       ...planWithHostPort(38080),
       id: AppId.make("global"),
@@ -753,6 +776,11 @@ describe("Podman publish-port recreate", () => {
       },
     };
 
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingContainerName: "lando-global-web",
+      existingPlan: plan,
+    });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     expect(result.changed).toBe(true);

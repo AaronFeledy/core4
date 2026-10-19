@@ -21,6 +21,12 @@ import type {
 } from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
 import { parseJsonOrUndefined } from "../engine-json.ts";
+import {
+  containerOwnershipLabels,
+  inspectOwnedNativeId,
+  isSharedNetwork,
+  networkOwnershipLabels,
+} from "../native-ownership.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
@@ -140,9 +146,19 @@ const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boole
     }),
   );
 
-const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolean, BringDownError> => {
+const removeNetwork = Effect.fnUntraced(function* (
+  deps: BringDownDeps,
+  plan: AppPlan,
+): Effect.fn.Return<boolean, BringDownError> {
   const name = networkName(plan);
-  return request(deps, { method: "DELETE", path: `/networks/${encodeURIComponent(name)}` }).pipe(
+  if (isSharedNetwork(plan, name)) return false;
+  const id = yield* inspectOwnedNativeId(
+    deps.api,
+    { kind: "network", name, labels: networkOwnershipLabels(plan) },
+    deps.options.ctx,
+  );
+  if (id === undefined) return false;
+  return yield* request(deps, { method: "DELETE", path: `/networks/${encodeURIComponent(id)}` }).pipe(
     Effect.flatMap((response) => {
       if (response.status === 200 || response.status === 204) {
         return Effect.succeed(true);
@@ -160,7 +176,7 @@ const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolea
       );
     }),
   );
-};
+});
 
 const parseVolumeLabels = (body: string): Readonly<Record<string, string>> | undefined => {
   const parsed = parseJsonOrUndefined(body);
@@ -259,8 +275,13 @@ const stopService = Effect.fnUntraced(function* (
     }),
   );
 
-  const stopped = yield* stopContainer(deps, name);
-  const removed = yield* removeContainer(deps, name);
+  const id = yield* inspectOwnedNativeId(
+    deps.api,
+    { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+    deps.options.ctx,
+  );
+  const stopped = id === undefined ? false : yield* stopContainer(deps, id);
+  const removed = id === undefined ? false : yield* removeContainer(deps, id);
 
   yield* publish(
     deps,

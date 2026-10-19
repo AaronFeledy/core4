@@ -34,6 +34,13 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import {
+  containerOwnershipLabels,
+  inspectOwnedNativeId,
+  isSharedNetwork,
+  networkOwnershipLabels,
+  verifiedNativeId,
+} from "../native-ownership.ts";
+import {
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
@@ -362,6 +369,7 @@ const createContainerRequest = (
 const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
+  plan: AppPlan,
 ): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
@@ -371,7 +379,15 @@ const ensureNetwork = (
       return request(deps, {
         method: "POST",
         path: "/networks/create",
-        body: { Name: name, Driver: "bridge" },
+        body: {
+          Name: name,
+          Driver: "bridge",
+          ...(isSharedNetwork(plan, name)
+            ? {}
+            : {
+                Labels: networkOwnershipLabels(plan),
+              }),
+        },
       }).pipe(
         Effect.flatMap((response) => {
           if (response.status === 201 || response.status === 200) {
@@ -619,25 +635,39 @@ const removeContainer = (
     ),
   );
 
-const removeNetworkSilent = (deps: BringUpDeps, plan: AppPlan): Effect.Effect<void> =>
-  request(deps, {
-    method: "DELETE",
-    path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
-  }).pipe(Effect.catch(() => Effect.void));
+const removeNetworkSilent = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  name = appNetworkName(plan),
+): Effect.Effect<void> =>
+  (isSharedNetwork(plan, name)
+    ? Effect.void
+    : inspectOwnedNativeId(
+        deps.api,
+        {
+          kind: "network",
+          name,
+          labels: networkOwnershipLabels(plan),
+        },
+        deps.options.ctx,
+      ).pipe(
+        Effect.flatMap((id) =>
+          id === undefined
+            ? Effect.void
+            : request(deps, {
+                method: "DELETE",
+                path: `/networks/${encodeURIComponent(id)}`,
+              }).pipe(Effect.asVoid),
+        ),
+      )
+  ).pipe(Effect.catch(() => Effect.void));
 
 const removeCreatedNetworksSilent = (
   deps: BringUpDeps,
   createdNetworks: ReadonlySet<string>,
+  plan: AppPlan,
 ): Effect.Effect<void> =>
-  Effect.forEach(
-    createdNetworks,
-    (name) =>
-      request(deps, {
-        method: "DELETE",
-        path: `/networks/${encodeURIComponent(name)}`,
-      }).pipe(Effect.catch(() => Effect.void)),
-    { discard: true },
-  );
+  Effect.forEach(createdNetworks, (name) => removeNetworkSilent(deps, plan, name), { discard: true });
 
 const publish = (
   deps: BringUpDeps,
@@ -689,6 +719,13 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = yield* inspectContainer(deps, name);
+  const existingId = inspected.exists
+    ? yield* verifiedNativeId(
+        JSON.stringify(inspected.body),
+        containerOwnershipLabels(plan, service.name),
+        deps.options.ctx,
+      )
+    : undefined;
   if (!inspected.exists && deps.options.forbidRecreate === true) {
     return yield* Effect.fail(
       new ServiceStartError({
@@ -721,8 +758,10 @@ const startService = Effect.fnUntraced(function* (
         }),
       );
     }
-    yield* stopContainerSilent(deps, name);
-    yield* removeContainer(deps, service, name);
+    if (existingId !== undefined) {
+      yield* stopContainerSilent(deps, existingId);
+      yield* removeContainer(deps, service, existingId);
+    }
     before = {
       exists: false,
       running: false,
@@ -791,8 +830,15 @@ const startService = Effect.fnUntraced(function* (
             }),
           );
         }
-        yield* stopContainerSilent(deps, name);
-        yield* removeContainer(deps, service, name);
+        const recoveryId = yield* inspectOwnedNativeId(
+          deps.api,
+          { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+          deps.options.ctx,
+        );
+        if (recoveryId !== undefined) {
+          yield* stopContainerSilent(deps, recoveryId);
+          yield* removeContainer(deps, service, recoveryId);
+        }
         recordTouched({ name, created: true, startedExisting: false });
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
@@ -902,7 +948,7 @@ const rollbackPartialApply = Effect.fnUntraced(function* (
   // Volumes are preserved so rollback does not discard persistent data.
   yield* cleanupTouchedContainers(deps, touched);
   if (deps.options.forbidRecreate !== true) yield* removeNetworkSilent(deps, plan);
-  yield* removeCreatedNetworksSilent(deps, createdNetworks);
+  yield* removeCreatedNetworksSilent(deps, createdNetworks, plan);
 });
 
 const SERVICE_START_LOG_TAIL_LINES = 50;
@@ -1035,7 +1081,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
 
   const createdNetworks = new Set<string>();
   for (const name of networkNames(plan)) {
-    if (yield* ensureNetwork(deps, name)) {
+    if (yield* ensureNetwork(deps, name, plan)) {
       createdNetworks.add(name);
     }
   }
