@@ -220,7 +220,7 @@ The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-c
 
 #### 8.2.7 The `app:check` command
 
-`app:check` runs the app's `CheckPlan` (§10.5.2) against a running app and exits `0` whatever the verdicts; a stopped app is `AppNotRunningError`. `--only <id>` selects checks by id. The result is `checks[]` with `{ id, kind, verdict, status?, exitCode?, message?, next?, excerpt?, matchedBy }`; `app:start`, `app:restart`, and `app:rebuild` carry the same array when they ran checks. Only `lando-error` verdicts enter `warnings`. Events are `cli-app:check-*` plus the §10.5.2 task tree.
+`app:check` runs the app's `CheckPlan` (§10.5.2) against a running app and exits `0` whatever the verdicts; a stopped app is `AppNotRunningError`. `--only <id>` selects checks by id. The result is `checks[]` with `{ id, kind, service?, url?, verdict, statusCode?, exitCode?, message?, detail?, next?, excerpt?, matchedBy? }`: `http` checks carry `service`, `url`, and the observed `statusCode`; `command` checks carry `exitCode` and omit `service` when they target the host; `matchedBy` is the provenance of the rule that matched; `app:start`, `app:restart`, and `app:rebuild` carry the same array when they ran checks. Only `lando-error` verdicts enter `warnings`. Events are `cli-app:check-*` plus the §10.5.2 task tree.
 
 ### 8.3 Command contract
 
