@@ -62,7 +62,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => 
       flags: input.flags,
       cwd: process.cwd(),
     },
-    formatError: (error) => commandErrorMessage(error, "meta:mcp"),
+    formatError: (failure) => commandErrorMessage(failure, "meta:mcp"),
   });
 };
 

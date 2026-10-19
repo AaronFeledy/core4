@@ -1180,7 +1180,7 @@ describe("scratch run rendering", () => {
           ...(streamingMode === undefined ? {} : { streamingMode }),
           io,
           resultSchema: appsScratchRunSpec.resultSchema,
-          formatError: String,
+          formatError: ({ error }) => String(error),
         },
       );
       const frames = io

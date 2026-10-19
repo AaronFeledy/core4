@@ -72,7 +72,7 @@ describe("env_file machine-output redaction", () => {
       resultSchema: ExecJsonResultSchema,
       io,
       redactionTokens: extractTokens,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -103,7 +103,7 @@ describe("env_file machine-output redaction", () => {
         resultSchema: appConfigSpec.resultSchema,
         io,
         redactionTokens: appConfigRedactionTokens,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );

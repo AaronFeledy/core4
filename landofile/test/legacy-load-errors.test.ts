@@ -18,6 +18,20 @@ afterEach(async () => {
 });
 const load = () => loadLandofileLayers(root, join(root, ".lando.yml"));
 
+test("preserves dialect-mix detection for a legacy layer that fails during preparation", async () => {
+  // Given
+  const canonicalFile = join(root, ".lando.yml");
+  await writeFile(canonicalFile, "name: native\n");
+  await writeFile(join(root, ".lando.base.yml"), "recipe: lamp\nconfig: {}\nmounts:\n  - {a: 1}\n");
+  // When
+  const result = await Effect.runPromise(load().pipe(Effect.result));
+  // Then
+  expect(Result.isFailure(result) && result.failure).toMatchObject({
+    _tag: "LandofileDialectMixError",
+    canonicalFile,
+  });
+});
+
 test.each([
   "recipe: lamp\nconfig:\n  php: '8.3'\n",
   "services:\n  web:\n    api: 3\n",

@@ -9,6 +9,7 @@ import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } f
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
@@ -262,7 +263,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
         runnable.map((entry) => entry.step),
         validateCommand,
         runnable.map((entry) => ({ authoredIndex: entry.sourceIndex, source: entry.source })),
-      ).pipe(Effect.mapError((error) => eventError(error, event, first.step, redactor, first.source)));
+      ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
       const context: ExpressionContext = payload === undefined ? {} : { event: payload };
       yield* runToolingStepProgram(
         program,
@@ -277,7 +278,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           redactorFor,
           runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
         }),
-      ).pipe(Effect.mapError((error) => eventError(error, event, first.step, redactor, first.source)));
+      ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
     }),
   );
 });

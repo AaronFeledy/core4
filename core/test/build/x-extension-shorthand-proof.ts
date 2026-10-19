@@ -6,7 +6,7 @@ import {
   isJsonObject,
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
-import { wireObject } from "./x-extension-wire-proof.ts";
+import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
 export const shorthandDelta = wireObject(
   await Bun.file(resolve(import.meta.dirname, "fixtures/x-extension-shorthand.delta.json")).json(),
@@ -89,6 +89,15 @@ export const evolveHistoricalShorthand = (historical: JsonSchema): JsonSchema =>
         for (const addition of unionHealthcheck) {
           if (!contains(members, addition)) members.push(addition);
         }
+        const typedExpression = members.some(
+          (member) =>
+            isJsonObject(member) &&
+            member.type === "string" &&
+            member.pattern === TYPED_EXPRESSION_PATTERN &&
+            Object.keys(member).length === 2,
+        );
+        // Shell-command shorthand also accepts non-expression text; do not erase a constrained branch.
+        if (typedExpression) members.push({ type: "string" });
       }
       if (members.some(hasAppMountKeys) && !contains(members, wireObject(shorthandDelta.appMountString))) {
         members.push(wireObject(shorthandDelta.appMountString));

@@ -366,7 +366,7 @@ describe("LandofileService layer — TS form schema validation", () => {
     });
   });
 
-  test("returned value with unsupported MVP keys surfaces LandofileValidationError", async () => {
+  test("returned value with unknown keys surfaces LandofileValidationError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.ts"),

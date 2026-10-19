@@ -1,15 +1,8 @@
-import { join } from "node:path";
 import { Effect } from "effect";
 
-import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { type LandofileDecodedOverlay, decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
-import {
-  type AppPlan,
-  type LandofileShape,
-  LandofileShape as LandofileShapeSchema,
-  formatValidationIssueLine,
-  validationIssuesFromCause,
-} from "@lando/sdk/schema";
+import { GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
+import { mergeLandofiles } from "@lando/sdk/landofile";
+import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type AppPlannerError,
@@ -21,9 +14,10 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { decodeOrFail } from "@lando/landofile/decode";
-import { DEFAULT_LANDOFILE, DEFAULT_POST_LANDOFILES, DEFAULT_PRE_LANDOFILES } from "@lando/landofile/merge";
-import { parseLandofile } from "@lando/landofile/parser";
+import { landofileLayerPaths } from "@lando/landofile/layers";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
+import { type LandofileCompileError, compileLandofileContentLayers } from "@lando/landofile/root-compile";
+import { validateLandofile } from "@lando/landofile/validation";
 
 import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 
@@ -43,6 +37,7 @@ export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanRes
 
 export type LoadGlobalPlanError =
   | AppPlannerError
+  | LandofileCompileError
   | ProviderSelectionError
   | FileSystemError
   | GlobalAppError
@@ -50,30 +45,29 @@ export type LoadGlobalPlanError =
 
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
-const validationIssues = (cause: unknown) =>
-  validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
-
-const validateGlobalLandofile = (
-  filePath: string,
-  parsed: unknown,
-): Effect.Effect<LandofileShape, LandofileValidationError> =>
-  decodeOrFail(LandofileShapeSchema, (cause) => {
-    const issues = validationIssues(cause);
-    return new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
-      file: filePath,
-      issues,
-    });
-  })(parsed, { onExcessProperty: "error", errors: "all" });
-
 export const decodeGlobalLandofile = (input: {
   readonly file: string;
   readonly content: string;
   readonly cwd: string;
-}): Effect.Effect<LandofileShape, LandofileParseError | LandofileValidationError> =>
-  parseLandofile(input).pipe(
-    Effect.flatMap((parsed) => decodeLandofileLayer(input.file, parsed)),
-    Effect.flatMap((overlay) => validateGlobalLandofile(input.file, mergeLandofiles([overlay]))),
+}): Effect.Effect<LandofileShape, LandofileCompileError> =>
+  compileLandofileContentLayers(
+    [
+      {
+        filePath: input.file,
+        content: input.content,
+        layer: "canonical",
+        order: 3,
+        basename: ".lando",
+      },
+    ],
+    {
+      appRoot: input.cwd,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    },
+  ).pipe(
+    Effect.flatMap(({ compiled }) =>
+      validateLandofile(input.file, mergeLandofiles(compiled.map(({ landofile }) => landofile))),
+    ),
   );
 
 const withProcessCwd = <A, E, R>(
@@ -100,7 +94,7 @@ const withProcessCwd = <A, E, R>(
 
 export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function* (): Effect.fn.Return<
   MissingGlobalPlanResult | Omit<LoadedGlobalPlanResult, "plan">,
-  GlobalAppError | FileSystemError | LandofileParseError | LandofileValidationError,
+  GlobalAppError | FileSystemError | LandofileCompileError,
   FileSystem | GlobalAppService
 > {
   const globalApp = yield* GlobalAppService;
@@ -109,19 +103,19 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   const exists = yield* fileSystem.exists(paths.distLandofile);
   if (!exists) return { materialized: false, paths };
 
-  const layers: LandofileDecodedOverlay[] = [];
-  for (const basename of [...DEFAULT_PRE_LANDOFILES, DEFAULT_LANDOFILE, ...DEFAULT_POST_LANDOFILES]) {
-    const file = join(paths.root, basename);
+  const rawLayers = [];
+  for (const position of landofileLayerPaths(paths.root)) {
+    const file = position.yamlPath;
     if (!(yield* fileSystem.exists(file))) continue;
     const content = yield* fileSystem.readText(file);
-    layers.push(
-      yield* parseLandofile({ file, content, cwd: paths.root }).pipe(
-        Effect.flatMap((parsed) => decodeLandofileLayer(file, parsed)),
-      ),
-    );
+    rawLayers.push({ ...position, filePath: file, content });
   }
-  const landofile = yield* validateGlobalLandofile(paths.userLandofile, {
-    ...mergeLandofiles(layers),
+  const { compiled } = yield* compileLandofileContentLayers(rawLayers, {
+    appRoot: paths.root,
+    policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+  });
+  const landofile = yield* validateLandofile(paths.userLandofile, {
+    ...mergeLandofiles(compiled.map(({ landofile }) => landofile)),
     name: "global",
     provider: MANAGED_PROVIDER_ID,
   });

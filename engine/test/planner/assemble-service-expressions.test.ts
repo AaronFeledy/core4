@@ -112,6 +112,29 @@ const failure = async (landofile: LandofileShape): Promise<ConfigExpressionError
   return result.failure as ConfigExpressionError;
 };
 
+test("rejects non-string results in the deferred service-credential pass", () =>
+  withAppRoot(async (root) => {
+    // Given
+    const landofile = rememberLandofileAppRoot(
+      {
+        name: "typed",
+        services: {
+          [ServiceName.make("database")]: { type: databaseType.id },
+          [ServiceName.make("web")]: {
+            type: appType.id,
+            database: "{{ eq(services.database.creds.user, 'lando') }}",
+          },
+        },
+      },
+      root,
+    );
+    // When
+    const error = await failure(landofile);
+    // Then
+    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.web.database" });
+    expect(error.message).toContain("takes text");
+  }));
+
 test("resolves services.<name>.creds.* before the reading service's type runs, whatever the declaration order", () =>
   withAppRoot(async (root) => {
     const landofile = rememberLandofileAppRoot(

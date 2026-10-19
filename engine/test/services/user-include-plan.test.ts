@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 
+import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
@@ -29,9 +30,14 @@ test("plans user profile build context and env_file from the consuming app root"
     "services:\n  web:\n    type: compose\n    home: false\n    build:\n      context: ./docker\n    env_file:\n      - ./app.env\n    environment:\n      VALUE: '${secret:OPAQUE}'\n",
   );
   try {
+    const authored = { name: "user-paths", includes: ["user:profile.yml"] };
+    const loadScope = await Effect.runPromise(
+      buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: authored }]),
+    );
     const landofile = await Effect.runPromise(
       resolveLandofileIncludes({
-        landofile: { name: "user-paths", includes: ["user:profile.yml"] },
+        landofile: authored,
+        loadScope,
         appRoot,
         cacheRoot: join(root, "cache"),
         ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => includesRoot },

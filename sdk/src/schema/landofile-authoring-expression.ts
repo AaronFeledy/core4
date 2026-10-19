@@ -105,7 +105,7 @@ const hasExpression = (template: ExpressionTemplate): boolean =>
 export const classifyAuthoringSource = (source: string): AuthoringSourceClass => {
   const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
   return Result.match(parsed, {
-    onFailure: () => "invalid",
+    onFailure: () => (source.includes("{{") ? "invalid" : "plain"),
     onSuccess: (template) => (hasExpression(template) ? "expression" : "plain"),
   });
 };
@@ -115,14 +115,14 @@ export const isPlainAuthoringString = (source: string): boolean =>
 
 // ==== Static helper return kinds deliberately leave runtime-dependent values unknown.
 const helperTypes: ReadonlyMap<string, AuthoringExpressionExpectedType> = new Map([
-  ..."eq ne lt gt le ge not contains startsWith endsWith semver.satisfies"
+  ..."boolean eq ne lt gt le ge not contains startsWith endsWith semver.satisfies"
     .split(" ")
     .map((name) => [name, "boolean"] as const),
   ..."lower upper trim join replace url.build shellQuote shellJoin json b64encode b64decode"
     .split(" ")
     .map((name) => [name, "string"] as const),
   ...["split", "keys", "values", "entries", "map", "filter", "range"].map((name) => [name, "array"] as const),
-  ...["length", "semver.compare"].map((name) => [name, "number"] as const),
+  ...["number", "length", "semver.compare"].map((name) => [name, "number"] as const),
 ]);
 
 const agree = (
@@ -208,12 +208,24 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
 // ==== Memoized wire-to-expression slots enforce the site's static constraints.
 const slots = new Map<AuthoringExpressionExpectedType, Schema.Codec<AuthoringExpression, string>>();
 
+// JSON Schema approximates syntax only; parsed scope/type checks remain authoritative.
+const wholeTemplatePattern = /^\{\{-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
+
 export const authoringExpressionSlot = (
   expectedType: AuthoringExpressionExpectedType,
 ): Schema.Codec<AuthoringExpression, string> => {
   const cached = slots.get(expectedType);
   if (cached !== undefined) return cached;
-  const slot = Schema.String.pipe(
+  const input =
+    expectedType === "string" || expectedType === "unknown"
+      ? Schema.String
+      : Schema.String.check(
+          Schema.makeFilter(() => true, {
+            "~structural": true,
+            toJsonSchema: () => ({ pattern: wholeTemplatePattern.source }),
+          }),
+        );
+  const slot = input.pipe(
     Schema.decodeTo(
       Schema.toType(AuthoringExpression),
       SchemaTransformation.transformEffect<AuthoringExpression, string>({
@@ -234,6 +246,12 @@ export const authoringExpressionSlot = (
           if (!template.whole && expectedType !== "string")
             return fail("Composite expressions require a string site.");
           const analysis = analyzeTemplate(template);
+          if (
+            expectedType !== "string" &&
+            expectedType !== "unknown" &&
+            analysis.scopes.some((head) => ["app", "proxy", "services"].includes(head))
+          )
+            return fail("Planner scopes require a string site.");
           if (analysis.scopes.some((head) => !allowedScopes.has(head)))
             return fail("Expression references an unknown scope.");
           if ([...analysis.callees].some((callee) => !EXPRESSION_HELPER_NAMES.has(callee)))

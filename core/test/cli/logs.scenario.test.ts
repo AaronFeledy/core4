@@ -523,7 +523,7 @@ describe("lando logs", () => {
       streaming: StreamFrame,
       streamingMode: "live",
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const frames = io.stdoutLines().map((line) => JSON.parse(line) as { _tag: string; source?: string });
@@ -671,7 +671,7 @@ describe("lando logs", () => {
       streaming: StreamFrame,
       streamingMode: "live",
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const frames = io.stdoutLines().map((line) => JSON.parse(line) as { _tag: string });
@@ -766,7 +766,7 @@ describe("lando logs", () => {
       streaming: StreamFrame,
       streamingMode: "live",
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const out = io.stdout();
