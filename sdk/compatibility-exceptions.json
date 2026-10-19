@@ -1,5 +1,35 @@
 [
   {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Intentional pre-release A2 output evolution, tracked in issue #1502: explicit raw/merged/resolved full views, per-layer raw projections, document projections, get, and actual write variants replace the permissive resolved-only object. Default full resolved retains strict LandofileShape and its existing encoding. New-source consumers must discriminate source/shape; this is not a generic additive output-union compatibility claim. Regression suites cover malformed-result rejection, selectors, CLI/MCP forwarding, and redaction. Lead review remains required."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared app-config result schema now explicitly distinguishes full views, projections, get, set, unset, edit and validate. Edit emits only its exact filePath/changed/valid/dryRun variant; no permissive write fallback can accept a malformed resolved view. Existing edit output and byte-preserving publication are covered by write regressions. Lead review remains required."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared result schema replaces a permissive resolved-only object with explicit source/view/projection/get/write variants. Set retains key/value/filePath/changed/dryRun and now requires its actual subcommand fields; source values are strict recursive JSON. Existing output and authored/effective write safety are regression tested. This is an explicit reviewed output evolution, not a generic additive-union waiver; lead review remains required."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared result schema uses strict source/view/projection/get/write variants rather than a permissive object. Unset retains key/filePath/changed/dryRun, requires its actual fields, validates unchanged candidates, and creates no absent target for a no-op. Regression tests preserve those behaviors. This scoped output-contract change still requires lead review and does not relax the compatibility classifier."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared app-config schema now discriminates explicit full views, projections, get, and actual writes; validate retains filePath/valid/issues and requires the validate subcommand. Full resolved results remain strict LandofileShape. Existing validate/global/meta regressions stay green. This scoped output union evolution is recorded for lead review, not classified as generically compatible."
+  },
+  {
     "surface": "schema:HealthcheckInput",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
