@@ -197,7 +197,25 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v23.bin")));
+    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v24.bin")));
+  });
+
+  test("app-plan rejects the previous schema fixture", async () => {
+    const fixture = await readFile(join(fixtureRoot, "app-plan-v23.bin"));
+    const cacheRoot = join(tmpdir(), `lando-app-plan-v23-${crypto.randomUUID()}`);
+    const path = appPlanCachePath(cacheRoot, "fixture-app", "/workspace/fixture-app");
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, fixture);
+    expect(
+      await writeWithCache(
+        readCachedAppPlan({
+          cacheRoot,
+          appName: "fixture-app",
+          appRoot: "/workspace/fixture-app",
+          key: "fixture-key",
+        }),
+      ),
+    ).toBeNull();
   });
 
   test("app-plan writes magic, schema version, and payload checksum in the binary header", async () => {
