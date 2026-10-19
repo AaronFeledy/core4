@@ -92,8 +92,17 @@ export const table = {
     },
     { name: "start_interval stays raw", input: { start_interval: "5s" }, expected: { startInterval: "5s" } },
     {
-      name: "none discards ignored Compose keys",
-      input: { ...ignoredComposeKeys, kind: "none", retries: "3", start_interval: "5s" },
+      name: "none discards valid Compose and shared fields",
+      input: {
+        test: ["CMD", "x"],
+        disable: false,
+        interval: "5s",
+        timeout: "2s",
+        start_period: "3s",
+        kind: "none",
+        retries: "3",
+        start_interval: "5s",
+      },
       expected: false,
     },
     {
