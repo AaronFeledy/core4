@@ -763,6 +763,13 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       );
     }
     const observed = yield* inspectAll;
+    // App mounts of one app share a source, so committed siblings are not traces of an interrupted create.
+    const committedIds = new Set(
+      current.sessions.flatMap((entry) =>
+        entry.phase !== "preparing" && entry.identifier !== undefined ? [entry.identifier] : [],
+      ),
+    );
+    const unowned = observed.filter((entry) => !committedIds.has(entry.identifier));
     const sessions: Array<SessionReceipt> = [];
     for (const receipt of current.sessions) {
       if (receipt.phase !== "preparing") {
@@ -784,7 +791,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         sessions.push({ ...receipt, phase: "committed", identifier: session.identifier });
       } else if (
         matching.length !== 0 ||
-        observed.some(
+        unowned.some(
           (entry) =>
             (entry.alpha.protocol === "local" && sameRealpath(receipt.spec.source, entry.alpha.path)) ||
             (entry.beta.protocol === "docker" &&

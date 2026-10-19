@@ -745,6 +745,51 @@ describe("Mutagen process client", () => {
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
   });
 
+  test("clears an interrupted sibling create that shares a committed session's source", async () => {
+    // Given: one committed app-mount session and a sibling create, for the same app root,
+    // that was interrupted before Mutagen created anything.
+    const { client, reopen, stateStore, calls } = fake({ ambiguousId: true });
+    expect(Exit.isFailure(await Effect.runPromiseExit(client.create({ name, spec })))).toBe(true);
+    const ledger = await Effect.runPromise(
+      stateStore.open({
+        namespace: "sessions",
+        key: "mutagen.json",
+        schema: Schema.Unknown,
+        version: 1,
+        codec: "json",
+      }),
+    );
+    const receipt = {
+      name,
+      spec,
+      target: { containerId: helper, path: "/lando-data" },
+      dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+      dockerHost: WINDOWS_LANDO_DOCKER_HOST,
+    };
+    await Effect.runPromise(
+      ledger.set({
+        sessions: [
+          { ...receipt, phase: "committed", identifier: id },
+          {
+            ...receipt,
+            phase: "preparing",
+            name: "sibling-attempt",
+            spec: { ...spec, service: "appserver" },
+            target: { containerId: "sibling-helper", path: "/lando-data" },
+          },
+        ],
+      }),
+    );
+    // When: a fresh client lists the app's sessions.
+    const listed = await Effect.runPromise(reopen().list);
+    // Then: the committed session stays owned and the trace-free sibling receipt is dropped.
+    expect(listed.map((entry) => entry.name)).toEqual([name]);
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "committed", identifier: id, name }],
+    });
+    expect(calls.filter((call) => call.args[1] === "terminate")).toHaveLength(0);
+  });
+
   for (const operation of [
     "list",
     "create",
