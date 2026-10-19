@@ -281,7 +281,7 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
             : "committed",
       ...(analysis.committed === undefined ? {} : { committed: analysis.committed }),
       ...(analysis.noMutation === undefined ? {} : { noMutation: analysis.noMutation }),
-      next: analysis.committed === undefined ? "" : "run `lando rebuild`",
+      next: analysis.committed === undefined ? "" : "run `lando start`",
     } satisfies AppConfigMigrateResult;
   },
   (effect, _options: AppConfigMigrateOptions = {}) => Effect.scoped(effect),

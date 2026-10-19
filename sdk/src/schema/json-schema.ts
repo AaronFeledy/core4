@@ -16,6 +16,7 @@ import {
   LandofileSourceValue,
 } from "./landofile-source.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
+import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 
 import {
   AxisToken,
@@ -616,6 +617,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   VolumeInfo,
   VolumeLocator,
   VolumeIdentity,
+  ResourceOwnership,
+  OwnedResourcesCleanupResult,
   VolumeCreationFact,
   VolumeInitializationRecord,
   VolumeFilter,
@@ -1085,6 +1088,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
+  ResourceOwnership: "Provider cleanup inventory hints, not readiness evidence.",
+  OwnedResourcesCleanupResult: "Verified physical resource cleanup counts.",
   VolumeIdentity: "Owner-bound observed physical volume generation.",
   VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
   VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",

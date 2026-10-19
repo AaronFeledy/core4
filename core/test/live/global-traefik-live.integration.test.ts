@@ -15,8 +15,19 @@ import {
 import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "@lando/proxy-traefik";
 
 const providerId = ProviderId.make("lando");
-const TRAEFIK_WEB_PORT = 38080;
-const SHOP_BACKEND_PORT = 31081;
+// Host ports are per run: a fixed port collides with any other runtime on a shared loopback.
+const freeHostPort = (): number => {
+  const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+  const port = probe.port;
+  probe.stop(true);
+  if (port === undefined) throw new Error("No free loopback port was assigned.");
+  return port;
+};
+const TRAEFIK_WEB_PORT = freeHostPort();
+// The real global app owns `lando-global-*`; this synthetic router is a separate app that still joins the
+// shared cross-app network, so it must never claim (or tear down) the reserved "global" identity.
+const TRAEFIK_APP_SLUG = `traefik-live-${crypto.randomUUID().slice(0, 8)}`;
+const SHOP_BACKEND_PORT = freeHostPort();
 const SHOP_HOSTNAME = "web.shop.lndo.site";
 const SHOP_BACKEND = `web.shop.internal:${SHOP_BACKEND_PORT}`;
 
@@ -166,23 +177,23 @@ describe("global Traefik routing — live integration", () => {
 
       const api = makePodmanApiClient(socketPath);
       const shopPlan = appPlan("shop", nginxService());
-      const globalPlan = appPlan("global", traefikService());
+      const traefikPlan = appPlan(TRAEFIK_APP_SLUG, traefikService());
 
-      await Effect.runPromise(Effect.result(bringDown(globalPlan, { api })));
+      await Effect.runPromise(Effect.result(bringDown(traefikPlan, { api })));
       await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
 
       try {
         const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api }));
         expect(shopApplied.changed).toBe(true);
 
-        const traefikApplied = await Effect.runPromise(bringUp(globalPlan, { api }));
+        const traefikApplied = await Effect.runPromise(bringUp(traefikPlan, { api }));
         expect(traefikApplied.changed).toBe(true);
 
         const response = await fetchThroughTraefik(120_000);
         expect(response.status).toBe(200);
         expect(await response.text()).toContain("nginx");
       } finally {
-        await Effect.runPromise(Effect.result(bringDown(globalPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(traefikPlan, { api })));
         await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
       }
     },

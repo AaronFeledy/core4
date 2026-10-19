@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Schema } from "effect";
 
-import { makeRuntimeProvider } from "@lando/provider-docker";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const plan: AppPlan = {
   id: AppId.make("creation"),
@@ -10,7 +10,7 @@ const plan: AppPlan = {
   slug: "creation",
   root: AbsolutePath.make("/owner"),
   provider: ProviderId.make("docker"),
-  identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: "owner" },
+  identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: appIdentityKey("owner", "/owner") },
   services: {},
   routes: [],
   networks: [],

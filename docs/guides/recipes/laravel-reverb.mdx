@@ -246,9 +246,9 @@ If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s w
 
 | You see | Fix |
 | --- | --- |
-| `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando rebuild -y`. |
+| `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando start`. |
 | `tempnam(): file created in the system's temporary directory` on the app URL | Run `chmod -R a+rwX storage bootstrap/cache`. |
-| A changed `command:` doesn't take effect after `lando start` | Run `lando restart`. |
+| Selected `lando restart -s` refuses after a `command:` change | That restart stays in place. Run `lando start`, or `lando rebuild -s <service>` for a forced refresh. |
 
 ## Tear down
 

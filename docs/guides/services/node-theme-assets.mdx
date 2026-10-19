@@ -42,10 +42,10 @@ tooling:
 them there. Tailwind, Vite, PostCSS, and Prettier can use the same sidecar;
 follow each tool's package and configuration requirements.
 
-Rebuild, install, and compile:
+Start, install, and compile:
 
 ```sh
-lando rebuild -y
+lando start
 lando npm install
 lando npm run build:sass
 lando exec node -- test -s /app/web/themes/contrib/bootstrap5/css/style.css

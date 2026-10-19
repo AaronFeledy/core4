@@ -96,7 +96,7 @@ Forwarding is opt-in, and it fails closed. A provider without `agentSocket` deli
 | `GpgAgentTransportError` | `broker` or `bridge` | The relay broke. Run `lando restart`. |
 | `GpgAgentTransportError` | `worker` | Check the relay and service home preparation. Install `gpg` in the service image and ensure the service user can write `GNUPGHOME`. |
 
-If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTransportError` and the applied app is torn down. Install `gpg` in the service image, fix write permissions for the service user, then run `lando rebuild`.
+If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTransportError` and the applied app is torn down. Install `gpg` in the service image, fix write permissions for the service user, then run `lando start`.
 
 The relay socket on the host is mode `0666` inside a per-user `0700` run directory. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token, so another local account on that host could reach it while the app runs. Private keys still never leave `gpg-agent`; the restricted socket only signs.
 

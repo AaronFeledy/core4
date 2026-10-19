@@ -99,6 +99,7 @@ export const ServiceRestartWouldRecreateReason = Schema.Literals([
   "bind-source",
   "network",
   "host-port",
+  "config",
 ]);
 export type ServiceRestartWouldRecreateReason = typeof ServiceRestartWouldRecreateReason.Type;
 

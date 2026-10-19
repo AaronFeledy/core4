@@ -1,6 +1,13 @@
 import { Effect, Result } from "effect";
 import { ProviderInternalError } from "../errors/index.ts";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, type VolumeCreationFact } from "../schema/index.ts";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  type VolumeCreationFact,
+  appIdentityKey,
+} from "../schema/index.ts";
 import type { RuntimeProviderShape } from "../services/index.ts";
 import { type ContractFailure, makeTestAppPlan, mapProviderFailure, requireContract } from "./_shared.ts";
 
@@ -16,7 +23,7 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
       id: AppId.make(id),
       slug: id,
       root,
-      identity: { appRoot: root, ownerKey: id },
+      identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
       stores: [
         { name: `${id}-data`, scope: "app", kind: "data" },
         { name: `${id}-cache`, scope: "app", kind: "cache" },

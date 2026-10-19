@@ -169,6 +169,35 @@ describe("managed Windows published lifecycle", () => {
         ping: Effect.void,
         request: (request) => {
           calls.push(`${request.method} ${request.path}`);
+          if (request.method === "GET" && request.path.startsWith("/containers/")) {
+            const reference = decodeURIComponent(
+              request.path.slice("/containers/".length).split("/")[0] ?? "",
+            );
+            const service = Object.values(newer.services).find((service) => {
+              const name = `lando-${newer.slug}-${service.name}`;
+              return reference === name || reference === `${name}-id`;
+            });
+            return Effect.succeed(
+              service === undefined
+                ? { status: 404, body: "{}" }
+                : {
+                    status: 200,
+                    body: JSON.stringify({
+                      Id: `lando-${newer.slug}-${service.name}-id`,
+                      Config: {
+                        Labels: {
+                          "dev.lando.app": newer.id,
+                          "dev.lando.app-root": newer.root,
+                          "dev.lando.service": service.name,
+                        },
+                      },
+                    }),
+                  },
+            );
+          }
+          if (request.method === "GET" && request.path.startsWith("/networks/")) {
+            return Effect.succeed({ status: 404, body: "{}" });
+          }
           return Effect.succeed({ status: 204, body: "" });
         },
       };
@@ -225,7 +254,7 @@ describe("managed Windows published lifecycle", () => {
         await Effect.runPromise(persistAppliedPlan(stateStore, newer));
         releaseLock.resolve();
         await teardown;
-        expect(calls).toContain("POST /containers/lando-global-metrics/stop");
+        expect(calls).toContain("POST /containers/lando-global-metrics-id/stop");
       } finally {
         releaseLock.resolve();
         await hold;

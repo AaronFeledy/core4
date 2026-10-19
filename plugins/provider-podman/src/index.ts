@@ -58,6 +58,7 @@ import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   noPlanErrorFactory,
   providerHostInputs,
   rememberAppliedPlan,
@@ -774,6 +775,7 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* planState.ownership.prepare(plan, yield* appliedPlans.resolvePlan(plan.id));
         return yield* bringUp(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
@@ -791,6 +793,7 @@ const assembleRuntimeProvider = (
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
       }),
+      cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
         const plan = target.plan ?? (yield* resolvePlan(target.app));
         if (plan === undefined) return DESTROY_NO_OP;
@@ -930,6 +933,8 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        resourceOwnership: (ctx, root) =>
+          makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan } = yield* providerHostInputs;

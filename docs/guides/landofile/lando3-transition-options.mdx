@@ -31,7 +31,7 @@ lando rebuild --yes -s api -s api --format=json
 
 Repeated names count once. Lando stops and force-builds the selected closure in dependency order, then starts that closure again. Unrelated services and services that depend on your selection keep running.
 
-Use an app-wide rebuild when you changed shared configuration:
+Run `lando start` to apply shared configuration changes across the app. Use an app-wide rebuild when you want to force an image pull and build refresh for every service:
 
 ```sh
 lando rebuild
