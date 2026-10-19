@@ -53,7 +53,7 @@ import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -766,8 +766,13 @@ const makeScratchAppService = (
         ),
       ),
     );
-    yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false, serviceEnvironment })).pipe(
-      Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
+    yield* Effect.scoped(
+      provider.apply(builtPlan, {
+        reconcile: false,
+        serviceEnvironment,
+        onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+      }),
+    ).pipe(
       // A failed start can leave a materialized dir and partial provider state; the scope
       // finalizer only covers a successful start, so reclaim on the failure path too.
       Effect.tapError(() => (keepOnFailure ? Effect.void : destroyScratchResources)),
