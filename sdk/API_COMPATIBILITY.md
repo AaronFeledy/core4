@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
+
+- `RuntimeProvider.cleanupOwnedResources(root, options)` and the filesystem-only `RuntimeProviderContribution.resourceOwnership(ctx, root)` are optional cleanup ports. `AppliedTeardownEvidence` adds ownership summaries and a cleanup-only `owned` variant. Inventory hints never establish applied state, physical existence, readiness, or seed eligibility. Whole-app teardown preflights all inventory providers before mutation; selected teardown and compensation retain their existing resource scope.
+
 - `ServiceRestartWouldRecreateReason` additively accepts `config`. Ordinary start replaces containers whose desired immutable create config changed or whose create-config label is missing. Selected restart refuses that replacement before stopping the service and directs the caller to `lando rebuild -s <service>`. Built-in inspect exposes actual container labels through the existing optional `ServiceRuntimeInfo.labels` field.
 
 - `ApplyOptions.onVolumeCreated` additively accepts an optional effectful callback for each verified `VolumeCreationFact`. Providers await it immediately after creation, before any service starts; callback failure aborts apply. Engine callers persist creation receipts there, with only the persist step uninterruptible, rather than waiting for whole-apply success. Adoption never grants freshness. This type-only addition does not change the frozen `RuntimeProvider.apply` signature or JSON Schema artifacts.
@@ -440,6 +444,9 @@ unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
 ## Additive schema exports
+
+- `ResourceOwnership`
+- `OwnedResourcesCleanupResult`
 
 - `FailureRole`
 - `LANDOFILE_MERGE_DIRECTIVE`
