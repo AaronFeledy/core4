@@ -61,6 +61,10 @@ These are authored values: Lando merges before interpreting shorthand or adding 
 
 Inspect the effective result with `lando app:config --format=json`. A bad local value carries its effective `issues[].path` plus `issues[].source` with the original file, layer, and authored path. The error's `remediation` is separate from those locations. Source coordinates appear only when the parser actually recorded them.
 
+Compare individual layers with `lando app:config --source raw --format=json`, or inspect their authored composition with `--source merged`. Both can show values that effective validation rejects. See [Inspect each stage of your Landofile](./config-views.mdx).
+
+`lando app:config set` and `unset` change the canonical YAML source, not the merged result. Before saving, Lando validates that partial authored candidate and the effective stack with the candidate substituted at canonical precedence. A bad higher overlay blocks the save. `edit` can repair malformed YAML and saves your exact buffer, including template directives. `--dry-run` performs the same validation without writing; an unchanged unset creates no file. Set/unset don't rewrite templated or TypeScript sources.
+
 - Routes match by scheme, case-insensitive hostname, and path prefix in either shorthand or object spelling. Omitted scheme means HTTPS and omitted path means `/`. A `both` route participates in both scheme identities; an HTTPS-only overlay leaves its HTTP route alone. Backends and filters are not route identity.
 - `dependsOn` matches by service, in list, map, or object-entry form. Logs match by `id`, which defaults to the path basename.
 - Route filters match by `name`, otherwise by `type`. Named filters never match unnamed ones. Changing a matched filter's type replaces that entry.
