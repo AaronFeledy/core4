@@ -5,6 +5,13 @@
 ## Compatibility notes
 
 - Shared Landofile field contracts are published once per JSON Schema document as `$defs` and referenced by catalog service configs. This changes schema publication only; decode and encode behavior and public exports are unchanged.
+
+- `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
+
+- `RuntimeProvider.cleanupOwnedResources(root, options)` and the filesystem-only `RuntimeProviderContribution.resourceOwnership(ctx, root)` are optional cleanup ports. `AppliedTeardownEvidence` adds ownership summaries and a cleanup-only `owned` variant. Inventory hints never establish applied state, physical existence, readiness, or seed eligibility. Whole-app teardown preflights all inventory providers before mutation; selected teardown and compensation retain their existing resource scope.
+
+- `ServiceRestartWouldRecreateReason` additively accepts `config`. Ordinary start replaces containers whose desired immutable create config changed or whose create-config label is missing. Selected restart refuses that replacement before stopping the service and directs the caller to `lando rebuild -s <service>`. Built-in inspect exposes actual container labels through the existing optional `ServiceRuntimeInfo.labels` field.
+
 - `ApplyOptions.onVolumeCreated` additively accepts an optional effectful callback for each verified `VolumeCreationFact`. Providers await it immediately after creation, before any service starts; callback failure aborts apply. Engine callers persist creation receipts there, with only the persist step uninterruptible, rather than waiting for whole-apply success. Adoption never grants freshness. This type-only addition does not change the frozen `RuntimeProvider.apply` signature or JSON Schema artifacts.
 - Landofile input views are authoring-aware: `LandofileStandardSchema` validates through `LandofileAuthoringShape` and returns parsed `AuthoringExpression` slots, not evaluated runtime values. `LandofileStandardJSONSchema` describes that codec's input and decoded authoring output. `getEditorJsonSchema("LandofileShape")` and the published `landofile.schema.json` accept whole-value expressions at boolean, numeric, array, and object sites. Runtime `LandofileShape`, `getJsonSchema("LandofileShape")`, and `landofile-shape.json` remain strict. No in-repository production consumer needs a runtime Standard Schema view.
 - Typed expression slots reject `app`, `proxy`, and `services` scope reads before evaluation; planner scopes remain text-only. Static helper return types must agree with the site. Standard Schema parses the original source without trimming and requires the parser's `whole` flag at non-text sites. The JSON Schema expression arm uses `^\{\{-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])`: surrounding whitespace (including a trailing newline), composite text, and adjacent interpolations are rejected. Trim markers inside the delimiters remain allowed. This is a syntax approximation, not an expression parser: it accepts malformed bodies and cannot check scope heads or helper return types. It rejects quoted delimiters such as `{{ eq("}}", "}}") }}` and adjacent object-closing braces such as `{{ length({a:{b:1}}) }}`, both accepted by Standard Schema. These false negatives are listed explicitly in input parity coverage. Standard Schema preserves the authoring decoder's issue paths and messages across the fixture corpus and curated cases. Shell-only text outside the expression grammar stays plain authoring text.
@@ -443,6 +450,9 @@ unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
 ## Additive schema exports
+
+- `ResourceOwnership`
+- `OwnedResourcesCleanupResult`
 
 - `FailureRole`
 - `LANDOFILE_MERGE_DIRECTIVE`

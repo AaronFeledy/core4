@@ -10,6 +10,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
@@ -103,7 +104,19 @@ const makePodmanApi = (
           return containers.has(name)
             ? {
                 status: 200,
-                body: JSON.stringify({ Id: ids.get(name), State: { Running: running.has(name) } }),
+                body: JSON.stringify({
+                  Id: ids.get(name),
+                  Config: {
+                    Labels: commonContainerLabels(
+                      planWithDependency(dependentNames.web, true),
+                      name.endsWith("-db")
+                        ? (planWithDependency(dependentNames.web, true).services[dbName] ??
+                            servicePlan(dbName, false))
+                        : servicePlan(dependentNames.web, true),
+                    ),
+                  },
+                  State: { Running: running.has(name) },
+                }),
               }
             : { status: 404, body: "{}" };
         }

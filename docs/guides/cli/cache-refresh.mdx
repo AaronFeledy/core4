@@ -34,11 +34,11 @@ A missing tooling command after one of those edits is the usual tell. The router
 
 Bind sources that start with `~` or `~/`, in an app Landofile or the global Landofile, expand to your host home directory when Lando plans. The plan cache is keyed on that home. When your home changes, the next command that plans the app or the global app plans it again, even if your `LANDO_USER_*` roots stay the same. You don't need to delete any cache files.
 
-A new plan does not touch containers that are already running. They keep the old mount until you recreate them:
+A new plan does not itself touch containers that are already running. The next `lando start` applies changed mounts, including a home path that expanded differently. `lando global:start` does the same for global services, including the SSH sidecar. `lando rebuild` and `lando global:rebuild` force a pull and build refresh. They are not the ordinary apply.
 
 ```sh
-lando rebuild          # app services
-lando global:rebuild   # global services, including the SSH sidecar
+lando start
+lando global:start
 ```
 
 `lando app:config` prints the authored Landofile. It does not rebuild the plan. Use `app:cache:refresh` when you need planner or command-index output, not just the YAML you wrote.

@@ -210,6 +210,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   VolumeInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeLocator: "sdk/test/schema/volume-identity.test.ts",
   VolumeIdentity: "sdk/test/schema/volume-identity.test.ts",
+  ResourceOwnership: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  OwnedResourcesCleanupResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeCreationFact: "sdk/test/schema/volume-initialization.test.ts",
   VolumeInitializationRecord: "sdk/test/schema/volume-initialization.test.ts",
   VolumeFilter: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

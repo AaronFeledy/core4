@@ -5,6 +5,7 @@ import type { Effect } from "effect";
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  AppResolveError,
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
@@ -92,6 +93,7 @@ type LegacyPlanAppChannel =
   | LandofileUnknownEventError;
 
 type LegacyOrphanTeardownError =
+  | AppResolveError
   | ProviderError
   | ProviderUnavailableError
   | ProviderConfigError
@@ -210,7 +212,7 @@ describe("Engine plan-carrying error channels", () => {
     assertType<
       Equal<
         OrphanTeardownError,
-        ProviderError | ProviderSelectionError | AppLockTimeoutError | StateStoreError
+        AppResolveError | ProviderError | ProviderSelectionError | AppLockTimeoutError | StateStoreError
       >
     >(true);
     expect(true).toBe(true);

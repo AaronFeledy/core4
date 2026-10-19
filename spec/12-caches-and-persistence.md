@@ -19,7 +19,8 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `cwd-app-map` | `<userCacheRoot>/cwd-app-map.bin` | binary | Bounded CWD-to-app-root index with Landofile freshness metadata; stale entries fall back to discovery. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
 | `app-plugin` | `<userCacheRoot>/apps/<app-id>/plugins.json` | JSON | App plugin lock resolution and local install metadata. |
-| `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. The key includes the environment dependencies of app-feature `fromConfig` selectors, captured once for both key derivation and selector evaluation: statically referenced names, with unset values distinct from strings, or the complete captured environment when a selector reads it whole or by computed member. |
+| `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. The key includes the environment dependencies of app-feature `fromConfig` selectors, captured once for both key derivation and selector evaluation: statically referenced names, with unset values distinct from strings, or the complete captured environment when a selector reads it whole or by computed member. The key MUST also include §7.4.2 input/metadata/translator/context fingerprints and generated-output digests; changed fingerprints invalidate it. No session secrets or live endpoints. |
+| `remote-metadata` | `<userCacheRoot>/apps/<app-id>/remote-metadata.bin` | Effect Schema binary | Nonsecret translation snapshots keyed by source/config identity, resolved remote, environment, branch, and schema version, carrying revision/content digest (§7.4.2). Only explicit translation refresh, the initial refresh of pull-with-code or switch, and §8.8.13 init materialization MAY fetch and populate it, always under the final app identity; no TTL network refresh on routine lifecycle commands. |
 | `global-app-plan` | `<userCacheRoot>/global/plan.bin` | Effect Schema binary | Cross-app-readable global `AppPlan` (§20.5), invalidated by global layers/config/contributions or lifecycle changes. |
 | `global-app-info` | `<userCacheRoot>/global/info.json` | JSON | Last known global `ServiceInfo[]`. |
 | `scratch-app-plan` | `<userCacheRoot>/scratch/<scratch-id>/plan.bin` | Effect Schema binary | Scratch `AppPlan`, tooling graphs, and expressions; removed atomically at destroy (§21.5). |
@@ -70,7 +71,8 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userCacheRoot>/scratch/registry.bin`, `registry.lock` | Durable scratch registry and cross-process lock (§21.11). |
 | `<userDataRoot>/plugins/`, `apps/<app-id>/plugins/`, `plugin-auth.json` | User and app plugins plus private-registry auth. |
 | `<userDataRoot>/global/`, `global/.lando.dist.yml` | Global app root and generated contribution layer (§20.3). |
-| `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys, certificates, and checksum/version-pinned helper binaries. |
+| `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates, and checksum/version-pinned helper binaries. |
+| `<userDataRoot>/secrets/` | Persistent writable `lando` user-grant store (§9.5.1), including refresh grants: private directory, owner-only files, locked atomic replacement; excluded from managed-file backups, journals, exports, and support bundles. Access tokens/resource credentials remain session-only. |
 | `<userDataRoot>/runtime/config/`, `bin/`, `storage/`, `run/`, `machines/` | Default-provider private config, binaries, storage, sockets/PIDs, and managed VM state. |
 | `<userDataRoot>/run/<app-id>/host-proxy.sock` | Owner-only user-app host-proxy socket (§10.10). |
 | `<userDataRoot>/run/scratch/<scratch-id>/host-proxy.sock` | Owner-only scratch host-proxy socket, removed at destroy or scope close. |
@@ -86,16 +88,38 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | State-store transaction journal | Owner-only managed-file transaction plan and recovery state. |
 | `<target>.lando-stage.<transaction-id>` | Same-directory owner-only staged target with recorded digest and mode. |
 | `<file>.bak.<full-before-sha256>` | Immutable digest-named backup retained until user removal. |
+| Provider-private `resource-ownership` namespace | Durable ownership manifest, one JSON document per canonical owner (§12.4.2). Not a fingerprint cache. |
+
+`lando-session` values and metadata MUST NOT persist. Private config payloads, stages, backups, and snapshots (§10.12.7) are distinct from credential stores and from caches/logs; approved payload persistence MUST NOT authorize storing control-plane grants or access tokens in them.
 
 #### 12.4.1 Managed-file transaction lifecycle
 
-Explicit conversion and migration (§7.4.1, §8.2.1) MUST use the private `@lando/managed-file` transaction coordinator with `ManagedFileService`, `FileSystem`, and `StateStore`; commands and translators MUST NOT bypass it. It locks the canonical app root, rejects source/destination symlinks, and requires targets, backups, and stage parents to remain under that root. Only the journal under the state-store root is exempt.
+Conversion and migration (§7.4.1, §8.2.1), and every declared translation materialization (§7.4.2), MUST use the private `@lando/managed-file` transaction coordinator with `ManagedFileService`, `FileSystem`, and `StateStore`. This includes explicit refresh, init, automatic lifecycle refresh, and both code-sync commands; commands, lifecycle handlers, and translators MUST NOT bypass it. It locks the canonical app root, rejects source/destination symlinks, and requires targets, backups, and stage parents to remain under that root. Only the journal under the state-store root is exempt.
+
+Init acquisition and pure preview are not generated-file materialization. Init MUST place permitted source files and establish the final canonical root before committing generated fragments/Landofiles through this coordinator (§8.8.13). It MUST NOT create transaction or ownership records in an acquisition-cache root and relocate them later. Failures after source placement MUST retain truthful side-effect/recovery context rather than promise whole-init rollback.
 
 Every existing regular input MUST have an immutable digest-named backup. Reuse requires exact digest, regular non-symlink type, and owner-safe mode. Stages are exclusive and same-directory. Existing nonsecret outputs preserve mode; new outputs are restrictive; secret outputs are owner-only. Raw bytes and secrets MUST NOT enter events, diagnostics, telemetry, transcripts, or journals (§3.5, §3.7).
+
+For config datasets, every secret-bearing target, stage, backup, and snapshot MUST pass §10.12.7 before mutation: owner-only file access, owner-controlled repository parents without group/world write access, containment, gitignore coverage for each repository path, and export/support-bundle exclusion. Repository parents MAY be `0755`; Lando-owned secret-storage directories MUST remain private, with equivalent protections through Windows ACLs. Ignoring the target alone MUST NOT authorize a sibling stage or backup. An unsafe required backup MUST block the transaction, not be skipped or written publicly.
 
 The journal state is `prepared` → `committing` → `committed` or `blocked`. Before mutation, a complete ordered before/after plan MUST be durably recorded. Commit rechecks digests around each rename and durably records completion before cleanup. Recovery derives applied operations from recorded before/after state, MUST preflight every path, and MUST NOT overwrite concurrent edits forward or backward. Conflicts preserve user files and mark `blocked`; cooperative locking is not filesystem-wide atomicity against noncooperative editors.
 
 A crash before `prepared` MUST alter no target. Unjournaled stages MUST NOT be guessed or auto-deleted. Recovery and scoped cancellation remove only identity- and digest-verified owned stages. Committed journals are removed after cleanup; immutable backups remain. A transaction guard MUST run before native loading and start, recovering safely or refusing blocked state. Dry-run reports recovery but MUST NOT lock for writing or mutate anything.
+
+#### 12.4.2 Durable ownership manifest
+
+This durable provider-private identity record lets stop and destroy finish when a failed attempt or rollback left resources (§5.3.1). It survives app-plan cache invalidation. Verified absent or removed containers and private networks are retired; volume identities remain until the existing volume flags select their cleanup.
+
+| Field | Contract |
+|---|---|
+| Namespace | `resource-ownership` on the provider-private `ctx.stateStore`, keyed by canonical owner. |
+| Document | One JSON object per owner, version 1. |
+| Mode | `0600`. |
+| Lock | Advisory. |
+| Corruption or version mismatch | Fail closed. Do not treat the hint as absent. |
+| Payload | Container, private-network, and volume identities and digests only, with expected app, provider, root, and owner, and the actual physical name. No raw config, no per-value hashes, no resolved secret values. |
+
+`ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the Lando-managed provider (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
 
 ### 12.5 Hot-path read budgets
 
@@ -117,6 +141,8 @@ After successful materialization/build, resolved plugins and includes, provider 
 
 Missing managed dependencies fail with a tagged error naming the missing artifact and online repair command. Routine offline-capable commands MUST NOT silently retry the network. Telemetry and update checks are best-effort and MUST NOT invalidate caches or alter local-command exit status.
 
+Automatic translation MUST use local snapshots and stored same-identity nonsecret metadata without API probes or TTL refresh (§7.4.2). Missing required metadata/output MUST block mutation with explicit refresh remediation. Explicit translation/code-sync metadata fetch failures MUST fail visibly, never use stale-success fallback or another environment's cache. Init populates required metadata before it reports success (§8.8.13), so first-start translation needs no vendor API call; this does not waive normal runtime/image/build dependency acquisition. Remote sync and tether require their declared connectivity and are not routine offline workflows.
+
 ### 12.7 State store
 
 `CacheService` is the process-lifetime memo and raw atomic-cache service. `StateStore` is the level-`minimal` core Effect service for durable, schema-validated, versioned, atomic, optionally cross-process-locked files (§3.4). It is host/test-overridable but MUST NOT be a plugin contribution surface (§4.2).
@@ -133,7 +159,7 @@ Hot-path caches remain under their existing readers and MAY adopt `StateStore` o
 
 #### 12.7.2 Reference consumers
 
-The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. These subsystems MUST NOT implement bespoke persistence primitives.
+The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). These subsystems MUST NOT implement bespoke persistence primitives.
 
 #### 12.7.3 Plugins and embedding hosts
 

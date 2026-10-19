@@ -163,7 +163,7 @@ const ScanVerdictSchema = Schema.Literals(["ready", "app-error", "service-error"
 export type ScanVerdict = typeof ScanVerdictSchema.Type;
 
 export const CheckResult = Schema.Struct({
-  id: Schema.String.annotate({ description: "Stable check identifier: http:<service>:<path>." }),
+  id: Schema.String.annotate({ description: "Stable check identifier: http:<service>:<url>." }),
   kind: Schema.Literal("http").annotate({ description: "Observation kind." }),
   service: ServiceName.annotate({ description: "Service that owns the checked endpoint." }),
   url: Schema.String.annotate({ description: "Checked host-facing URL." }),
