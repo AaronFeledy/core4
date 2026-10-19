@@ -50,9 +50,30 @@ default username and password are both `lando`, so the local connection URL is:
 amqp://lando:lando@queue:5672
 ```
 
+That URL uses the default AMQP port. Use your authored `port:` in application connection URLs.
+
 RabbitMQ also exposes its management UI on port `15672`. Lando gives that UI a
 default route, so check `lando info` for the app URL instead of guessing a host
 port. Sign in with `lando` and `lando`.
+
+## Change the port
+
+Set `port:` to move the AMQP listener and endpoint together:
+
+```yaml
+services:
+  queue:
+    type: rabbitmq
+    port: 5673
+```
+
+Lando sets `RABBITMQ_NODE_PORT=5673`. Setting that variable under `environment:` works too; if you set both forms, they must match or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor the planned port.
+
+The healthcheck and `rabbitmqctl` use the local Erlang node, not an AMQP connection. The management UI and `rabbitmqadmin` stay on `15672`: `port:` only moves AMQP. Apply the change with `lando rebuild`, then check the broker's listeners:
+
+```sh
+lando rabbitmqctl eval 'rabbit_networking:active_listeners().'
+```
 
 ## Keep queue data
 

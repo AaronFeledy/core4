@@ -64,6 +64,7 @@ describe("postgres ServiceType", () => {
       POSTGRES_DB: "myapp",
       PGDATA: "/var/lib/postgresql/data",
       PGPORT: "5432",
+      LANDO_DB_PORT: "5432",
     });
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-postgresql-data");
@@ -89,6 +90,7 @@ describe("postgres ServiceType", () => {
       POSTGRES_PASSWORD: "secret",
       POSTGRES_DB: "appdb",
       PGPORT: "15432",
+      LANDO_DB_PORT: "15432",
     });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
     expect(plan.healthcheck?.command).toEqual([
@@ -174,13 +176,13 @@ describe("postgres ServiceType", () => {
   });
 
   test("resolves psql tooling with the service creds", async () => {
-    const resolution = await resolvePostgres({ type: "postgres" });
+    const resolution = await resolvePostgres({ type: "postgres", environment: { PGPORT: "6543" } });
 
     expect(resolution.tooling?.psql).toEqual({
       description: "Open the PostgreSQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["psql", "-U", "lando", "-d", "myapp"],
+      cmd: ["psql", "-p", "6543", "-U", "lando", "-d", "myapp"],
       env: { PGPASSWORD: DEFAULT_PASSWORD },
     });
     expect(resolution.normalizedConfig.creds).toEqual({

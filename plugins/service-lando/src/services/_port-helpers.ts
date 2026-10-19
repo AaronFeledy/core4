@@ -6,8 +6,31 @@ import {
   type InternalEndpointInput,
   PortNumber,
   type PublishedEndpointInput,
+  type ServiceConfig,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
+
+export const listenPort = (
+  service: ServiceConfig,
+  serviceName: string,
+  listener: { readonly port: number; readonly variable?: string; readonly daemon: string },
+): number => {
+  const variable = listener.variable;
+  const authored = variable === undefined ? undefined : service.environment?.[variable];
+  if (authored === undefined) return service.port ?? listener.port;
+  const parsed = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error(
+      `services.${serviceName}.environment.${variable} must be a TCP port number, got ${JSON.stringify(authored)}. Set port: instead, or fix ${variable}.`,
+    );
+  }
+  if (service.port !== undefined && service.port !== parsed) {
+    throw new Error(
+      `services.${serviceName} sets port: ${service.port} and environment.${variable}: ${authored}. ${listener.daemon} listens on ${variable}, so remove one or make them match.`,
+    );
+  }
+  return parsed;
+};
 
 const publicationFor = (entry: ComposePortEntry): typeof EndpointPublication.Type => ({
   ...(entry.hostIp === undefined ? {} : { bindAddress: entry.hostIp }),

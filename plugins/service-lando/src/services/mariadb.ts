@@ -1,7 +1,7 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -11,18 +11,24 @@ import {
   type ServiceCreds,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  addEnvRecord,
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { addServicePortEndpoints, listenPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mariadb:11.4";
 const VERSIONS = ["11.4"] as const;
 const ARTIFACTS = { "11.4": DEFAULT_IMAGE } as const;
-const DEFAULT_PORT = 3306;
+export const MARIADB_LISTENER = { port: 3306, variable: "MYSQL_TCP_PORT", daemon: "MariaDB" } as const;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
 export const MARIADB_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
@@ -89,28 +95,37 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = mariadbCreds(ctx, ctx.serviceName, service);
+  const port = listenPort(service, ctx.serviceName, MARIADB_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, {
     ...familyEnvFor("mariadb", creds),
-    ...landoDbEnvFor(creds),
+    ...landoDbEnvFor(creds, port),
+    MYSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
     store: `${appName}-mariadb-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
+  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(
     commandHealthcheck(
-      ["sh", "-c", 'mariadb-admin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      ["sh", "-c", `mariadb-admin ping -h 127.0.0.1 -P ${port} -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent`],
       60,
     ),
   );
 
   applyAuthoredProcessFields(ctx);
 
-  addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
+  if (
+    addServerConfigMount(ctx, MARIADB_CONFIG_TARGET) &&
+    (service.port !== undefined || service.environment?.MYSQL_TCP_PORT !== undefined) &&
+    service.command === undefined &&
+    service.entrypoint === undefined
+  ) {
+    ctx.setCommand(["mariadbd", `--port=${port}`]);
+  }
 };
 
 export const mariadbServiceFeature: ServiceFeatureDefinition = {
@@ -134,7 +149,7 @@ export const mariadbServiceType: ServiceType = {
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = mariadbCreds(input, input.name, input.service);
-    return Effect.succeed({
+    return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => ({
       base: "lando",
       normalizedConfig: {
         ...input.service,
@@ -152,10 +167,19 @@ export const mariadbServiceType: ServiceType = {
           description: "Open the MariaDB client for this service.",
           dir: PortablePath.make("/"),
           service: input.name,
-          cmd: ["mariadb", "-h", "127.0.0.1", "-u", creds.user, creds.database],
+          cmd: [
+            "mariadb",
+            "-h",
+            "127.0.0.1",
+            "-P",
+            String(listenPort(input.service, input.name, MARIADB_LISTENER)),
+            "-u",
+            creds.user,
+            creds.database,
+          ],
           env: { MYSQL_PWD: creds.password },
         },
       },
-    });
+    }));
   },
 };

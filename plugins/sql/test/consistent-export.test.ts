@@ -29,7 +29,7 @@ for (const family of ["mysql", "mariadb"] as const) {
 
 test("omits MySQL-only GTID flags when building a MariaDB export", () => {
   // Given: a MariaDB target and explicit credentials.
-  const creds = { user: "alice", database: "appdb" };
+  const creds = { user: "alice", database: "appdb", port: 3306 };
   // When: the export command is built.
   const command = dumpCommand("mariadb", creds);
   // Then: MariaDB receives its own supported command-line contract.
@@ -37,6 +37,8 @@ test("omits MySQL-only GTID flags when building a MariaDB export", () => {
     "mariadb-dump",
     "-h",
     "127.0.0.1",
+    "-P",
+    "3306",
     "-u",
     "alice",
     "--single-transaction",

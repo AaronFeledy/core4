@@ -10,6 +10,14 @@ import {
   mysqlServiceType,
 } from "../src/services/mysql.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: mysqlServiceType,
+  variable: "MYSQL_TCP_PORT",
+  defaultPort: 3306,
+  serverCommand: "mysqld",
+});
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -141,7 +149,7 @@ describe("mysql ServiceType", () => {
       description: "Open the MySQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["mysql", "-h", "127.0.0.1", "-u", "alice", "appdb"],
+      cmd: ["mysql", "-h", "127.0.0.1", "-P", "3306", "-u", "alice", "appdb"],
       env: { MYSQL_PWD: "s3cret" },
     });
     expect(resolution.tooling?.mysql?.cmd).not.toContain("s3cret");
@@ -152,7 +160,11 @@ describe("mysql ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      command: [
+        "sh",
+        "-c",
+        'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+      ],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,

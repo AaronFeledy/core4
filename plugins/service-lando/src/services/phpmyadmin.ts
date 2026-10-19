@@ -19,8 +19,10 @@ import {
   type PmaCreds,
   authoredPmaCreds,
   credentialsFor,
+  portsForHosts,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
+import { listenPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
@@ -36,9 +38,14 @@ export const PHPMYADMIN_WIRE_FEATURE_ID = "service-lando.phpmyadmin.wire";
 
 const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const port = listenPort(service, ctx.serviceName, {
+    port: DEFAULT_PORT,
+    variable: "APACHE_PORT",
+    daemon: "phpMyAdmin",
+  });
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
+  ctx.addEnv("APACHE_PORT", String(port));
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(port),
@@ -122,10 +129,11 @@ const addSiblingDependencies = (
 
 const applyPmaEnv = (
   mutator: AppFeatureServiceMutators,
-  hosts: ReadonlyArray<string>,
+  target: { readonly hosts: ReadonlyArray<string>; readonly siblings: ReadonlyArray<AppFeatureServiceView> },
   creds: PmaCreds,
 ): void => {
-  mutator.addEnv("PMA_HOSTS", hosts.join(","));
+  mutator.addEnv("PMA_HOSTS", target.hosts.join(","));
+  mutator.addEnv("PMA_PORTS", portsForHosts(target.hosts, target.siblings).join(","));
   mutator.addEnv("PMA_USER", creds.user);
   mutator.addEnv("PMA_PASSWORD", creds.password);
 };
@@ -160,13 +168,13 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
     if (mutator.service.serviceType !== "phpmyadmin") return;
     const override = authored.get(mutator.service.serviceName);
     if (override !== undefined) {
-      applyPmaEnv(mutator, override.hosts, override.creds);
+      applyPmaEnv(mutator, { hosts: override.hosts, siblings: override.matched }, override.creds);
       addSiblingDependencies(mutator, override.matched);
       return;
     }
     applyPmaEnv(
       mutator,
-      siblings.map((sibling) => sibling.serviceName),
+      { hosts: siblings.map((sibling) => sibling.serviceName), siblings },
       credentialsFor(siblings),
     );
     addSiblingDependencies(mutator, siblings);

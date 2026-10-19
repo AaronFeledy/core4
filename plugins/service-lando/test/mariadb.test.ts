@@ -12,6 +12,14 @@ import {
   mariadbServiceType,
 } from "../src/services/mariadb.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: mariadbServiceType,
+  variable: "MYSQL_TCP_PORT",
+  defaultPort: 3306,
+  serverCommand: "mariadbd",
+});
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -182,7 +190,7 @@ describe("mariadb ServiceType", () => {
       description: "Open the MariaDB client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["mariadb", "-h", "127.0.0.1", "-u", authoredCreds.user, authoredCreds.database],
+      cmd: ["mariadb", "-h", "127.0.0.1", "-P", "3306", "-u", authoredCreds.user, authoredCreds.database],
       env: { MYSQL_PWD: authoredCreds.password },
     });
   });
@@ -197,7 +205,11 @@ describe("mariadb ServiceType", () => {
     // Then
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["sh", "-c", 'mariadb-admin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      command: [
+        "sh",
+        "-c",
+        'mariadb-admin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+      ],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,

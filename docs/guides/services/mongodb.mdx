@@ -68,6 +68,27 @@ The path has to stay inside the app root. Absolute paths, paths that climb out o
 
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append `--config` to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
 
+## Change the port
+
+Set `port:` to move the daemon's listener, healthcheck, endpoint, and Lando's own clients together:
+
+```yaml
+services:
+  db:
+    type: mongodb
+    port: 27018
+```
+
+Lando starts `mongod` with `--port 27018`, including when `config.server` is mounted. Other services connect to `db:27018`. The service exposes `LANDO_DB_PORT=27018`; `lando mongosh` and `lando db:*` commands use the planned port too. MongoDB has no daemon-native port environment variable.
+
+If you author `command:` or `entrypoint:`, you own the daemon's flags. Include `--port 27018` in your own launcher; Lando won't append it for you.
+
+Apply the change with `lando rebuild`, then ping through the generated client:
+
+```sh
+lando mongosh --eval 'db.runCommand({ping:1})'
+```
+
 ## Pin a version
 
 Set `image:` to use `mongo:6` or `mongo:8` instead of `mongo:7`:

@@ -7,6 +7,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { listenPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_AMQP_PORT = Schema.decodeUnknownSync(PortNumber)(5672);
@@ -23,10 +24,16 @@ export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
+  const port = listenPort(service, ctx.serviceName, {
+    port: DEFAULT_AMQP_PORT,
+    variable: "RABBITMQ_NODE_PORT",
+    daemon: "RabbitMQ",
+  });
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["4"] });
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
   ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
+  ctx.addEnv("RABBITMQ_NODE_PORT", String(port));
   ctx.addStorage({
     store: `${appName}-rabbitmq-data`,
     target: DATA_TARGET,
@@ -34,7 +41,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   });
   ctx.addEndpoint({
     _tag: "internal",
-    port: service.port ?? DEFAULT_AMQP_PORT,
+    port: Schema.decodeUnknownSync(PortNumber)(port),
     protocol: "tcp",
     name: ctx.serviceName,
   });

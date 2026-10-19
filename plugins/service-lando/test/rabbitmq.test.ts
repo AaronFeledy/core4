@@ -12,6 +12,13 @@ import {
   rabbitmqServiceType,
 } from "../src/services/rabbitmq.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: rabbitmqServiceType,
+  variable: "RABBITMQ_NODE_PORT",
+  defaultPort: 5672,
+});
 
 const metadata = {
   resolvedAt: "2026-08-18T00:00:00Z",

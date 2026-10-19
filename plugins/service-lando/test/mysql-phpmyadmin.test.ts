@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { ServiceName } from "@lando/sdk/schema";
+import { PortNumber, ServiceName } from "@lando/sdk/schema";
 
 import { planMysqlApp } from "./support/mysql-planner.ts";
 
@@ -10,6 +10,7 @@ for (const type of ["mysql:8.0", "mysql:8.4", "mysql:9.7"]) {
       const services = {
         [ServiceName.make("db")]: {
           type,
+          port: PortNumber.make(13306),
           creds: { user: "alice", password: "db-secret", database: "example" },
           healthcheck: { kind: "command" as const, command: ["mysqladmin", "ping"] },
         },
@@ -25,6 +26,7 @@ for (const type of ["mysql:8.0", "mysql:8.4", "mysql:9.7"]) {
       const pma = plan.services[ServiceName.make("pma")];
       expect(pma?.environment).toMatchObject({
         PMA_HOSTS: "db",
+        PMA_PORTS: "13306",
         PMA_USER: "alice",
         PMA_PASSWORD: "db-secret",
       });
@@ -36,3 +38,32 @@ for (const type of ["mysql:8.0", "mysql:8.4", "mysql:9.7"]) {
     });
   }
 }
+
+test("aligns phpMyAdmin ports with authored host order, duplicates, and external hosts", async () => {
+  const plan = await planMysqlApp({
+    [ServiceName.make("zdb")]: { type: "mysql", port: PortNumber.make(13306) },
+    [ServiceName.make("adb")]: { type: "mariadb", environment: { MYSQL_TCP_PORT: "23306" } },
+    [ServiceName.make("pma")]: {
+      type: "phpmyadmin",
+      certs: false,
+      hosts: ["zdb", "remote.example.com", "adb", "zdb"],
+      creds: { user: "lando", password: "lando", database: "app" },
+    },
+  });
+  expect(plan.services[ServiceName.make("pma")]?.environment).toMatchObject({
+    PMA_HOSTS: "zdb,remote.example.com,adb,zdb",
+    PMA_PORTS: "13306,3306,23306,13306",
+  });
+});
+
+test("aligns discovered MySQL and MariaDB ports with sorted hosts", async () => {
+  const plan = await planMysqlApp({
+    [ServiceName.make("zdb")]: { type: "mysql", port: PortNumber.make(13306) },
+    [ServiceName.make("adb")]: { type: "mariadb", environment: { MYSQL_TCP_PORT: "23306" } },
+    [ServiceName.make("pma")]: { type: "phpmyadmin", certs: false },
+  });
+  expect(plan.services[ServiceName.make("pma")]?.environment).toMatchObject({
+    PMA_HOSTS: "adb,zdb",
+    PMA_PORTS: "23306,13306",
+  });
+});

@@ -1,14 +1,20 @@
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  addEnvRecord,
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { addServicePortEndpoints, listenPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -20,7 +26,7 @@ const ARTIFACTS = {
   "18": "postgres:18",
 } as const;
 const DEFAULT_IMAGE = ARTIFACTS["16"];
-const DEFAULT_PORT = 5432;
+const POSTGRES_LISTENER = { port: 5432, variable: "PGPORT", daemon: "Postgres" } as const;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
 export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");
@@ -56,33 +62,15 @@ const credsFor = (input: {
   });
 };
 
-// Authored PGPORT reaches the server, so it must agree with the endpoint and healthcheck port.
-const listenPort = (service: ServiceConfig, serviceName: string): number => {
-  const authored = service.environment?.PGPORT;
-  if (authored === undefined) return service.port ?? DEFAULT_PORT;
-  const parsed = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
-    throw new Error(
-      `services.${serviceName}.environment.PGPORT must be a TCP port number, got ${JSON.stringify(authored)}. Set port: instead, or fix PGPORT.`,
-    );
-  }
-  if (service.port !== undefined && service.port !== parsed) {
-    throw new Error(
-      `services.${serviceName} sets port: ${service.port} and environment.PGPORT: ${authored}. Postgres listens on PGPORT, so remove one or make them match.`,
-    );
-  }
-  return parsed;
-};
-
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
-  const port = listenPort(service, ctx.serviceName);
+  const port = listenPort(service, ctx.serviceName, POSTGRES_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("postgres", creds));
-  addEnvRecord(ctx, landoDbEnvFor(creds));
+  addEnvRecord(ctx, landoDbEnvFor(creds, port));
   // Postgres 18+ images default PGDATA to /var/lib/postgresql/<major>/docker and refuse to boot
   // with a volume at the pre-18 path, so every major keeps its data on the Lando volume.
   ctx.addEnv("PGDATA", DATA_TARGET);
@@ -135,7 +123,7 @@ export const postgresServiceType: ServiceType = {
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input);
-    return Effect.succeed({
+    return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => ({
       base: "lando",
       normalizedConfig: {
         ...input.service,
@@ -152,10 +140,18 @@ export const postgresServiceType: ServiceType = {
           description: "Open the PostgreSQL client for this service.",
           dir: PortablePath.make("/"),
           service: input.name,
-          cmd: ["psql", "-U", creds.user, "-d", creds.database],
+          cmd: [
+            "psql",
+            "-p",
+            String(listenPort(input.service, input.name, POSTGRES_LISTENER)),
+            "-U",
+            creds.user,
+            "-d",
+            creds.database,
+          ],
           env: { PGPASSWORD: creds.password },
         },
       },
-    });
+    }));
   },
 };
