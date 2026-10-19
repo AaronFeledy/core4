@@ -412,9 +412,11 @@ Build failures are tagged `BuildPlanCycleError`, `BuildStepFailedError`, `BuildP
 
 Landofile `LogSourceInput` requires `path` and optionally accepts `id`, `label`, `stream`, and `timestamps`; it always resolves to `follow`. Service types may declare `redirect`.
 
-#### 6.14.2 `LogChunk.source`
+#### 6.14.2 `LogChunk` source and line
 
 `LogChunk` contains service, optional source, stream, line, and optional timestamp. Missing source means `console`; renderers label interleaved sources.
+
+Each `LogChunk.line` is one complete line. For the console source, providers MUST reassemble engine log messages per stream before emitting: a line written as several partial messages becomes one chunk carrying its first message's timestamp, engine timestamp prefixes on continuation messages are discarded, lines get the same complete UTF-8 framing and line bound as follow sources, and a trailing partial line is emitted only when the stream completes successfully, never on idle, failure, or interruption.
 
 #### 6.14.3 Reification
 

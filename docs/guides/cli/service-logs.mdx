@@ -15,6 +15,8 @@ lando logs --service appserver
 
 That prints a snapshot for the service, merging console output with any declared file sources. File-source lines carry their source id (`appserver stderr [myapp-error]: line`). Console lines omit a source label (`appserver stdout: line`).
 
+Every line prints whole, however the container writes it. A service that writes a line in pieces, the way SQL Server does, still gets one line stamped with the time its first piece arrived. A last line with no trailing newline prints when the output ends. While following, a partial line waits for its newline. Lines longer than 64 KiB are cut there and end in `…[truncated]`.
+
 Declare extra in-container log files on the service that owns them:
 
 ```yaml
@@ -68,7 +70,7 @@ Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Foll
 
 ## Read a start-failure log tail
 
-When the provider cannot apply a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 lines within 4,000 characters; an oversized line keeps its end.
+When the provider cannot apply a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.
 
 After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their enabled healthchecks. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. Lando retains the applied app, routes, and volumes so you can inspect the failure:
 

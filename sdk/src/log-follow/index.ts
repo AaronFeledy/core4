@@ -143,6 +143,13 @@ export const makeLineFramer = (maxLineBytes: number = DEFAULT_MAX_LINE_BYTES) =>
   const emit = (): FramedLine => {
     let end = line.length;
     if (end > 0 && line[end - 1] === CR) end -= 1;
+    if (overflowed) {
+      let start = end - 1;
+      while (start >= 0 && ((line[start] ?? 0) & 0xc0) === 0x80) start -= 1;
+      const lead = line[start] ?? 0;
+      const width = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+      if (end - start < width) end = start;
+    }
     const text = decoder.decode(Uint8Array.from(line.slice(0, end)));
     const framed: FramedLine = {
       text: overflowed ? `${text}${TRUNCATED_MARKER}` : text,

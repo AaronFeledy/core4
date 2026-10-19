@@ -45,7 +45,7 @@ import type {
 } from "@lando/container-runtime/podman/compose";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
-import { logs } from "@lando/container-runtime/podman/logs";
+import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
 import {
   bindResolvedProviderOps,
   composeAdaptersFor,
@@ -65,7 +65,6 @@ import {
   postServiceLifecycle,
   removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
-import { makeLogDecoder as makeRuntimeLogDecoder } from "@lando/container-runtime/streams";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
@@ -86,11 +85,7 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
-  type LogChunk,
-  type LogOptions,
-  type LogTarget,
   PathsService,
-  type ProviderError,
   RuntimeProvider,
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
@@ -198,13 +193,6 @@ const request = Effect.fn("DockerApi.request")(
   ): Effect.Effect<DockerHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
     api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input),
 );
-
-const stream = (
-  api: DockerApiClient,
-  operation: string,
-  input: DockerHttpRequest,
-): Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError> =>
-  api.stream === undefined ? Stream.fail(missingApi(operation)) : api.stream(input);
 
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
@@ -406,60 +394,6 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
     })
     .filter((container): container is DiscoveredContainer => container !== undefined);
 });
-
-const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: string): LogChunk => {
-  const match = /^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)$/u.exec(line);
-  if (match === null) {
-    return { service: service.name, stream: streamName, line };
-  }
-  const timestamp = DateTime.make(match[1] ?? "");
-  return Option.isNone(timestamp)
-    ? { service: service.name, stream: streamName, line }
-    : {
-        service: service.name,
-        stream: streamName,
-        line: match[2] ?? "",
-        timestamp: DateTime.toDate(timestamp.value),
-      };
-};
-
-interface LogsRuntime {
-  readonly api: DockerApiClient;
-  readonly logFileAccess?: LogFileAccess;
-}
-
-const logsWithoutPlan = (
-  containerNameOrId: string,
-  serviceName: ServiceName,
-  _target: LogTarget,
-  options: Partial<LogOptions>,
-  runtime: LogsRuntime,
-): Stream.Stream<LogChunk, ProviderError> => {
-  const query = new URLSearchParams({
-    stdout: "true",
-    stderr: "true",
-    follow: String(options.follow ?? true),
-    timestamps: "true",
-  });
-  if (options.tail !== undefined) {
-    query.set("tail", String(options.tail));
-  }
-  if (options.since !== undefined) {
-    query.set("since", options.since);
-  }
-
-  return Stream.suspend(() => {
-    const decodeChunk = makeRuntimeLogDecoder({
-      parseLine: (streamName, line) => parseLogLine({ name: serviceName } as ServicePlan, streamName, line),
-    });
-    const consoleStream = stream(runtime.api, "logs", {
-      method: "GET",
-      path: `/containers/${encodeURIComponent(containerNameOrId)}/logs?${query}`,
-    }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
-
-    return consoleStream;
-  });
-};
 
 const makeUnavailable = (operation: string) => notImplementedError(PROVIDER_ID, operation);
 
@@ -702,7 +636,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 ),
               ).pipe(
                 Stream.flatMap((container) =>
-                  logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
+                  containerConsoleLogs(dockerApi, DOCKER_CTX, container.name, target.service, logOptions),
                 ),
               );
             }),
