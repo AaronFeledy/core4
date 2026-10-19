@@ -1392,9 +1392,16 @@ jobs:
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          UBUNTU_SNAPSHOT=20260922T000000Z
-          printf 'APT::Snapshot "%s";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-          sudo apt-get update
+          UBUNTU_SNAPSHOT=20261019T000000Z
+          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
+          for DELAY in 0 5 15 45; do
+            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
+            if sudo apt-get update --error-on=any; then break; fi
+            if [ "$DELAY" -eq 45 ]; then
+              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
+              exit 1
+            fi
+          done
           PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
           sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
           for PACKAGE in "${PACKAGES[@]}"; do
