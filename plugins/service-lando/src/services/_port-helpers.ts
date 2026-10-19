@@ -36,8 +36,11 @@ export const assertListenerConfig = (
       );
     }
     if (value !== port) {
+      const reservedValue = listener.reserved?.find((entry) => entry.port === value);
       throw new Error(
-        `services.${serviceName}.environment.${variable} is ${authored}, but the service listens on ${port}. Set port: ${value} instead; Lando sets ${variable} from port:.`,
+        reservedValue === undefined
+          ? `services.${serviceName}.environment.${variable} is ${authored}, but the service listens on ${port}. Set port: ${value} instead; Lando sets ${variable} from port:.`
+          : `services.${serviceName}.environment.${variable} is ${authored}, which ${listener.daemon} reserves for its ${reservedValue.use}. Remove it and set port: to another TCP port number; Lando sets ${variable} from port:.`,
       );
     }
   }

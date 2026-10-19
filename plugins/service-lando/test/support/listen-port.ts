@@ -85,6 +85,11 @@ export const nativeListenPortSuite = (input: {
       }
     });
     for (const reservedPort of input.reservedPorts ?? []) {
+      test(`rejects a native ${input.variable} set to reserved port ${reservedPort}`, async () => {
+        await expect(plan({ environment: { [input.variable]: String(reservedPort) } })).rejects.toThrow(
+          "Remove it and set port: to another TCP port number",
+        );
+      });
       test(`rejects reserved port ${reservedPort}`, async () => {
         await expect(plan({ port: reservedPort })).rejects.toThrow("reserves for its");
       });
