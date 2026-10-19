@@ -29,6 +29,7 @@ import {
   repairClosedExtension,
   schemaAt,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -41,15 +42,24 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
 
+const expectedLandofile = (): JsonSchema => evolveHistoricalShorthand(repairedLandofile());
+
 describe("closed x-* extension artifact repair", () => {
   test("records the captured base artifact provenance", () => {
     expect(captured.provenanceCommit).toBe("15133ee26729942dde7b9d4f0e033b4ced46406d");
     expect(captured.pattern).toBe(EXTENSION_PATTERN);
   });
 
+  test("pins historical repair independently of later shorthand evolution", () => {
+    expect(createHash("sha256").update(JSON.stringify(repairedLandofile())).digest("hex")).toBe(
+      "3e1bf2dce0e33bc8d22bc9664928c429355c5866dda24640dd9e6372be4e7ba2",
+    );
+    expect(shorthandDelta.provenanceCommit).toBe("4b13bf3bf278475b194cf0d82a3bc01de83325b2");
+  });
+
   test("repairs the captured landofile onto every current production embedding", async () => {
     // Given the normalized base landofile captured from commit 15133ee26.
-    const repaired = repairedLandofile();
+    const repaired = expectedLandofile();
     const surfaces = [
       ...CONFIG_COMMANDS.map((command) => `command:${command}`),
       "schema:TemplateRenderContext",
@@ -188,12 +198,49 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("fails when an unrelated field in the repaired subtree changes", async () => {
-    const repaired = repairedLandofile();
+    const repaired = expectedLandofile();
     const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
     expect(jsonEquals(repaired, current)).toBe(true);
     const properties = requireObject(current.properties, "properties");
     const mutated: JsonSchema = { ...current, properties: { ...properties, name: { type: "number" } } };
     expect(jsonEquals(repaired, mutated)).toBe(false);
+  });
+
+  test("rejects a constraint hidden inside the approved healthcheck union", async () => {
+    const expected = expectedLandofile();
+    const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const properties = requireObject(current.properties, "properties");
+    const services = requireObject(properties.services, "services");
+    const serviceProperties = requireObject(services.additionalProperties, "service");
+    const fields = requireObject(serviceProperties.properties, "service properties");
+    const healthcheck = requireObject(fields.healthcheck, "healthcheck");
+    if (!Array.isArray(healthcheck.anyOf)) throw new Error("approved healthcheck union missing");
+    const argv = healthcheck.anyOf.find(
+      (branch) => isJsonObject(branch) && branch.type === "array" && isJsonObject(branch.items),
+    );
+    if (!isJsonObject(argv) || !isJsonObject(argv.items)) throw new Error("approved argv branch missing");
+    const tightened = { ...argv, items: { ...argv.items, type: "number" } };
+    const mutated: JsonSchema = {
+      ...current,
+      properties: {
+        ...properties,
+        services: {
+          ...services,
+          additionalProperties: {
+            ...serviceProperties,
+            properties: {
+              ...fields,
+              healthcheck: {
+                ...healthcheck,
+                anyOf: healthcheck.anyOf.map((branch) => (branch === argv ? tightened : branch)),
+              },
+            },
+          },
+        },
+      },
+    };
+    expect(jsonEquals(expected, current)).toBe(true);
+    expect(jsonEquals(expected, mutated)).toBe(false);
   });
 
   test("does not repair a tighter propertyNames constraint", () => {
