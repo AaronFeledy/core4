@@ -179,6 +179,7 @@ describe("Landofile package seam", () => {
         "directivePathProblem",
         "emitLandofileYaml",
         "emitLandofileYamlEither",
+        "encodeLandofileSourceValue",
         "expandRouteSchemes",
         "isLandofileOverride",
         "isLandofileReset",
