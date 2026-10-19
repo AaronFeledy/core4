@@ -124,6 +124,10 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly providerOverrides?: Partial<RuntimeProviderShape>;
+    readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
+    readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
+    readonly resolveTeardownEvidence?: typeof RuntimeProviderRegistry.Service.resolveTeardownEvidence;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly apply?: RuntimeProviderShape["apply"];
@@ -172,6 +176,7 @@ export const makeHarness = (
         (options.providerCanPrepareFileSync === false ? undefined : "missing"));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    ...options.providerOverrides,
     id: "lando",
     capabilities,
     isAvailable: Effect.succeed(true),
@@ -275,8 +280,11 @@ export const makeHarness = (
   const runtimeProviderRegistry = {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(provider),
-    resolveAppliedPlan: () => Effect.succeed(plannedApp),
+    select: options.selectProvider ?? (() => Effect.succeed(provider)),
+    resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)),
+    ...(options.resolveTeardownEvidence === undefined
+      ? {}
+      : { resolveTeardownEvidence: options.resolveTeardownEvidence }),
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(

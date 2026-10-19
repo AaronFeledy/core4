@@ -7,12 +7,11 @@ import { DateTime, Duration, Effect, Stream } from "effect";
 
 import type { RetryPolicy } from "@lando/sdk/probe";
 
-import {
-  type PodmanApiClient,
-  type PodmanHttpRequest,
-  type PodmanHttpResponse,
-  type PodmanServiceRunner,
-  makeRuntimeProvider,
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+  PodmanServiceRunner,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -25,6 +24,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { runScoped, runScopedExit } from "./scope-helpers.ts";
 
 const fastReadinessPolicy: RetryPolicy = {

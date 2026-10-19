@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import { commonContainerLabels } from "@lando/container-runtime/plan";
 import {
   ProviderUnavailableError,
   ServiceNotFoundError,
@@ -147,6 +148,49 @@ const runSelected = (
 };
 
 describe("selected service restart", () => {
+  test.each(["missing", "changed"] as const)(
+    "refuses %s create config before stopping any selected service",
+    async (scenario) => {
+      // Given two selected services and an old or missing create-config label on web.
+      const original = twoServicePlan();
+      const desired: AppPlan = {
+        ...original,
+        services: {
+          ...original.services,
+          [web.name]: { ...web, environment: { ...web.environment, MODE: "after" } },
+        },
+      };
+      const selected = runSelected(desired, {
+        services: [web.name, redis.name],
+        inspect: (target) =>
+          Effect.succeed(
+            runtimeFor(desired, target.service, {
+              labels:
+                target.service === web.name
+                  ? scenario === "missing"
+                    ? {}
+                    : commonContainerLabels(original, web)
+                  : commonContainerLabels(original, redis),
+            }),
+          ),
+      });
+      // When selected restart preflights the whole selection.
+      const error = await Effect.runPromise(Effect.flip(selected.operation));
+      // Then it refuses config recreation before stopping even an unchanged selected service.
+      expect(error).toMatchObject({
+        _tag: "ServiceRestartWouldRecreateError",
+        reason: "config",
+        service: "web",
+      });
+      if (!(error instanceof ServiceRestartWouldRecreateError)) {
+        throw new TypeError("expected ServiceRestartWouldRecreateError");
+      }
+      expect(error.remediation).toContain("lando rebuild -s web");
+      expect(selected.stopCalls).toEqual([]);
+      expect(selected.applyCalls).toEqual([]);
+    },
+  );
+
   test("refuses a missing container before stopping any selected service", async () => {
     // Given the provider's missing-container inspect response.
     const selected = runSelected(twoServicePlan(), {
