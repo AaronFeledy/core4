@@ -1,0 +1,170 @@
+import { LandofileParseError } from "@lando/sdk/errors";
+import { isPlainRecord, mergeValuesWithOrigins, valueOriginAt, withValueOrigins } from "@lando/sdk/landofile";
+import { LandofileShape } from "@lando/sdk/schema";
+import type { Logger } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
+import { composeKeyRejectedError, firstComposeRejection } from "../compose/rejections.ts";
+import { copyLandofileProvenance } from "../copy-provenance.ts";
+import type { LandofileRelaxedRead } from "../include-context.ts";
+import { includeAcquisitionView } from "../include-layer-overlays.ts";
+import { getLocalIncludePaths, rememberLocalIncludePaths } from "../include-provenance.ts";
+import type { LandofileLoadPolicy } from "../load-expression-file.ts";
+import {
+  getLandofileReferencedFiles,
+  rememberLandofileReferencedFiles,
+} from "../load-expression-provenance.ts";
+import {
+  getInternalToolingTasks,
+  rememberInternalToolingTasks,
+  winningInternalToolingTasks,
+} from "../tooling-include-provenance.ts";
+import { resolveToolingIncludes } from "../tooling-includes.ts";
+import { rejectUnsupportedToolingFeatures, scanToolingForUnsupported } from "../tooling-unsupported.ts";
+import { validateLandofile, validationErrorFromCause } from "../validation.ts";
+import { getVersionConstraintEntries, isValidSemverRange } from "../version-constraint.ts";
+import {
+  type LandofileLoadScope,
+  buildLandofileLoadScope,
+  materializeLandofileLayer,
+} from "./materialize.ts";
+import { getOrigins, rememberOrigins } from "./origins.ts";
+import type { AuthoredOrigin } from "./prepare.ts";
+import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
+
+export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
+  file: string,
+  document: Record<string, unknown>,
+  context: {
+    readonly appRoot: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly scope?: LandofileLoadScope;
+    readonly loadPolicy?: LandofileLoadPolicy;
+    readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
+    readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
+  },
+) {
+  const scope = context.scope ?? (yield* buildLandofileLoadScope([{ file, value: document }], context.env));
+  const materialized = yield* materializeLandofileLayer(file, document, scope);
+  const value = isPlainRecord(materialized) ? copyLandofileProvenance(document, materialized) : document;
+  const acquisition = yield* Effect.try({
+    try: () => includeAcquisitionView(value),
+    catch: (cause) => validationErrorFromCause(file, value, cause),
+  });
+  const origin: AuthoredOrigin = { file, layer: "canonical", path: [] };
+  const ownOrigins = getOrigins(value) ?? withValueOrigins(value, (path) => ({ ...origin, path })).origins;
+  const logger = context.logger;
+  const onRelaxedRead =
+    context.onRelaxedRead ??
+    (logger === undefined
+      ? undefined
+      : (read: LandofileRelaxedRead) =>
+          logger
+            .info("Landofile load used outside-root policy override", {
+              sourcePath: read.sourcePath,
+              authoredPath: read.authoredPath,
+              absolutePath: read.absolutePath,
+              appRoot: read.appRoot,
+            })
+            .pipe(Effect.catch(() => Effect.void)));
+  const tooling = yield* resolveToolingIncludes({
+    landofile: acquisition,
+    loadScope: scope,
+    appRoot: context.appRoot,
+    sourceRoot: context.appRoot,
+    ...(context.loadPolicy === undefined ? {} : { loadPolicy: context.loadPolicy }),
+    ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
+    layerForSource: (source) => {
+      for (const [namespace, entry] of Object.entries(acquisition.toolingIncludes ?? {})) {
+        if (entry.file === source)
+          return valueOriginAt(ownOrigins, ["toolingIncludes", namespace]).source.layer;
+      }
+      const index = (acquisition.includes ?? []).findIndex(
+        (entry) => typeof entry !== "string" && entry.source === source,
+      );
+      return valueOriginAt(ownOrigins, index < 0 ? [] : ["includes", index]).source.layer;
+    },
+  });
+  rememberSourceDocuments(document, [...getSourceDocuments(document), ...tooling.sources]);
+  rememberSourceDocuments(value, getSourceDocuments(document));
+  const includedOrigins = withValueOrigins({ tooling: tooling.tooling }, (path) => ({
+    ...origin,
+    path,
+  })).origins;
+  const includedChildren = new Map(includedOrigins.children);
+  const taskOrigins = getOrigins(tooling.tooling);
+  if (taskOrigins !== undefined) includedChildren.set("tooling", taskOrigins);
+  const merged = mergeValuesWithOrigins(
+    LandofileShape,
+    { value: { tooling: tooling.tooling }, origins: { ...includedOrigins, children: includedChildren } },
+    { value: Object.hasOwn(value, "tooling") ? { tooling: value.tooling } : {}, origins: ownOrigins },
+  );
+  const tasks = isPlainRecord(merged.value) ? merged.value.tooling : undefined;
+  const { include: _include, includes: _includes, toolingIncludes: _toolingIncludes, ...rest } = value;
+  const assembled = copyLandofileProvenance(value, {
+    ...rest,
+    ...(isPlainRecord(tasks) && Object.keys(tasks).length > 0 ? { tooling: tasks } : {}),
+  });
+  const children = new Map(ownOrigins.children);
+  const toolingOrigins = merged.origins.children.get("tooling");
+  if (toolingOrigins !== undefined) children.set("tooling", toolingOrigins);
+  rememberOrigins(assembled, { ...ownOrigins, children });
+  rememberLandofileReferencedFiles(assembled, [
+    ...getLandofileReferencedFiles(value),
+    ...tooling.referencedFiles,
+  ]);
+  rememberLocalIncludePaths(assembled, [
+    ...new Set([...getLocalIncludePaths(value), ...tooling.localFragmentPaths]),
+  ]);
+  rememberInternalToolingTasks(
+    assembled,
+    winningInternalToolingTasks([
+      { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
+      {
+        tooling: isPlainRecord(value.tooling) ? value.tooling : undefined,
+        internalTaskIds: getInternalToolingTasks(value),
+      },
+    ]),
+  );
+  const effectiveOrigins = getOrigins(assembled) ?? ownOrigins;
+  const unsupported = scanToolingForUnsupported(assembled);
+  const unsupportedPath =
+    unsupported === undefined
+      ? []
+      : unsupported.event === undefined
+        ? [
+            "tooling",
+            unsupported.task,
+            ...unsupported.key
+              .replace(/\[(\d+)\]/g, ".$1")
+              .split(".")
+              .map((part) => (/^\d+$/.test(part) ? Number(part) : part)),
+          ]
+        : ["events", unsupported.event];
+  yield* rejectUnsupportedToolingFeatures(
+    valueOriginAt(effectiveOrigins, unsupportedPath).source.file,
+    assembled,
+  );
+  const compose = firstComposeRejection(assembled);
+  if (compose !== undefined) {
+    const path = compose.documentPath
+      .replace(/\[(\d+)\]/g, ".$1")
+      .split(".")
+      .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+    return yield* Effect.fail(
+      composeKeyRejectedError({ source: valueOriginAt(effectiveOrigins, path).source.file, match: compose }),
+    );
+  }
+  for (const entry of getVersionConstraintEntries(document, file)) {
+    if (!isValidSemverRange(entry.range))
+      return yield* Effect.fail(
+        new LandofileParseError({
+          message: `Landofile "lando:" is not a valid semver range: "${entry.range}". Use npm semver syntax such as ">=4.1 <5", "^4", or "4.x".`,
+          filePath: entry.source,
+          line: undefined,
+          column: undefined,
+        }),
+      );
+  }
+  const decoded = yield* validateLandofile(file, assembled);
+  return copyLandofileProvenance(assembled, decoded);
+});
