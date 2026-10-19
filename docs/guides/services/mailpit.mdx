@@ -71,7 +71,7 @@ services:
       - web
 ```
 
-Run `lando rebuild`, then send a message from `web`:
+Run `lando start`, then send a message from `web`:
 
 ```sh
 lando exec web -- php -r 'mail("you@example.test", "Mailpit check", "Hello from PHP");'

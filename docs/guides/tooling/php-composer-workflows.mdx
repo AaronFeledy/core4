@@ -9,7 +9,7 @@ tags: [beta, docs, tooling, php, composer]
 
 [Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task. This guide makes `composer install` part of the build so you do not run it by hand after every `lando start`.
 
-Put it under `build.app`. It runs every time the app starts or rebuilds, after the project code is mounted:
+Put it under `build.app`. It runs on first start or when its build key changes, after the project code is mounted. `lando rebuild` forces it to run again:
 
 ```yaml
 name: php-composer-workflows-demo
@@ -51,7 +51,7 @@ The object form is additive. `composer: "2"` and `composer: false` keep working,
 
 Packages install with `composer global require` into `/usr/local/composer`, with the generated binary proxies written to `/usr/local/bin`, so `phpcs` and `phpstan` are callable by name without editing `PATH`. The Composer home is left world readable so a non-root service user can run them too.
 
-Lando normalizes the map before it reaches the build: package names and version constraints are validated at plan time, and the packages are installed in sorted order. Reordering the YAML does not rebuild the image; adding, removing, or re-pinning a package does, because the normalized list is part of the image build key.
+Lando normalizes the map before it reaches the build: package names and version constraints are validated at plan time, and the packages are installed in sorted order. Reordering the YAML does not rebuild the image. Adding, removing, or re-pinning a package does, on the next `lando start`, because the normalized list is part of the image build key.
 
 Names must be lowercase `vendor/name`, and constraints are ordinary Composer constraints such as `^13.0`, `13.0.0`, or `>=1.0,<2.0`. Anything else fails at plan time, before any container work, with the offending package named.
 
@@ -86,7 +86,7 @@ services:
 
 Exact pin `2.7.7` is valid on PHP 8.1 through 8.4 and fails at plan time on PHP 8.5+.
 
-Unknown versions fail at plan time with remediation. Changing `composer:` rebuilds the artifact layer because the selected pin is part of the image build key.
+Unknown versions fail at plan time with remediation. Changing `composer:` changes the image build key, so the next `lando start` rebuilds that artifact layer.
 
 <Guide>
   <Scenario id="project-dependency-install" render>

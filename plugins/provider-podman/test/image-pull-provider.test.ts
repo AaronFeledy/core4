@@ -8,7 +8,6 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
-import { makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -18,6 +17,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("mailpit-app");

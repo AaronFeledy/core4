@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
 
-import { type DockerApiClient, type DockerHttpResponse, makeRuntimeProvider } from "@lando/provider-docker";
+import { commonContainerLabels } from "@lando/container-runtime/plan";
+import type { DockerApiClient, DockerHttpResponse } from "@lando/provider-docker";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServicePlan } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("bring-up-order-app");
@@ -70,10 +72,13 @@ const makeFakeApi = (
   failedStarts: ReadonlyArray<string> = [],
 ) => {
   const requests: string[] = [];
+  const labels = new Map<string, Readonly<Record<string, string>>>();
   const existingNames = new Set(existing);
   const runningNames = new Set<string>();
   const failedStartNames = new Set(failedStarts);
   const images = new Set<string>();
+  const resolveContainer = (ref: string) =>
+    [...existingNames].find((name) => name === ref || `${name}-id` === ref) ?? ref;
   const responseFor = (method: string, path: string): DockerHttpResponse => {
     if (method === "GET" && path.startsWith("/networks/")) return { status: 404, body: "" };
     if (path === "/networks/create") return { status: 201, body: "" };
@@ -99,7 +104,14 @@ const makeFakeApi = (
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
       const name = path.slice("/containers/".length, -"/json".length);
       return existingNames.has(name)
-        ? { status: 200, body: JSON.stringify({ State: { Running: runningNames.has(name) } }) }
+        ? {
+            status: 200,
+            body: JSON.stringify({
+              Id: `${name}-id`,
+              Config: { Labels: labels.get(name) },
+              State: { Running: runningNames.has(name) },
+            }),
+          }
         : { status: 404, body: "" };
     }
     if (path.startsWith("/containers/create?")) {
@@ -118,13 +130,18 @@ const makeFakeApi = (
       return { status: 200, body: JSON.stringify({ ExitCode: healthExitCode }) };
     }
     if (path.endsWith("/stop")) {
-      runningNames.delete(path.slice("/containers/".length, -"/stop".length));
+      const name = resolveContainer(path.slice("/containers/".length, -"/stop".length));
+      if (!existingNames.has(name)) return { status: 404, body: "" };
+      runningNames.delete(name);
       return { status: 204, body: "" };
     }
     if (method === "DELETE") {
       if (path.startsWith("/containers/")) {
-        existingNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
-        runningNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
+        const name = resolveContainer(path.slice("/containers/".length).split("?")[0] ?? "");
+        const removed = existingNames.delete(name);
+        runningNames.delete(name);
+        labels.delete(name);
+        return { status: removed ? 204 : 404, body: "" };
       }
       return { status: 204, body: "" };
     }
@@ -132,8 +149,17 @@ const makeFakeApi = (
   };
   const api: DockerApiClient = {
     info: Effect.succeed({}),
-    request: ({ method, path }) => {
+    request: ({ method, path, body }) => {
       requests.push(`${method} ${path}`);
+      if (method === "POST" && path.startsWith("/containers/create?")) {
+        const name = new URL(`http://localhost${path}`).searchParams.get("name") ?? "";
+        labels.set(
+          name,
+          Schema.decodeUnknownSync(Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }))(
+            body,
+          ).Labels,
+        );
+      }
       return Effect.succeed(responseFor(method, path));
     },
     stream: ({ method, path }) => {
@@ -144,7 +170,7 @@ const makeFakeApi = (
       return Stream.empty;
     },
   };
-  return { api, requests };
+  return { api, requests, labels };
 };
 
 const apply = async (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal, reconcile = false) => {
@@ -165,12 +191,13 @@ describe("provider-docker bringUp dependency order", () => {
     const name = "lando-bring-up-order-app-web";
     const fake = makeFakeApi(0, [name]);
     const plan = planWith([service("web", { dependsOn: [] })]);
+    fake.labels.set(name, commonContainerLabels(plan, service("web", { dependsOn: [] })));
 
     // When
     await apply(plan, fake.api, undefined, true);
 
     // Then
-    const removed = fake.requests.indexOf(`DELETE /containers/${name}?force=true`);
+    const removed = fake.requests.indexOf(`DELETE /containers/${name}-id?force=true`);
     const created = fake.requests.indexOf(`POST /containers/create?name=${name}`);
     expect(removed).toBeGreaterThan(-1);
     expect(created).toBeGreaterThan(removed);
@@ -182,6 +209,7 @@ describe("provider-docker bringUp dependency order", () => {
     const name = "lando-bring-up-order-app-web";
     const fake = makeFakeApi(0, [name]);
     const plan = planWith([service("web", { dependsOn: [] })]);
+    fake.labels.set(name, commonContainerLabels(plan, service("web", { dependsOn: [] })));
 
     // When
     await apply(plan, fake.api, undefined, false);
@@ -257,6 +285,7 @@ describe("provider-docker bringUp dependency order", () => {
     const plan = planWith([web, healthyDb]);
     const db = "lando-bring-up-order-app-db";
     const fake = makeFakeApi(1, [db]);
+    fake.labels.set(db, commonContainerLabels(plan, healthyDb));
 
     // When
     await applyFailure(plan, fake.api);
