@@ -1,4 +1,4 @@
-import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Exit, Stream } from "effect";
 import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
 
 import {
@@ -137,6 +137,7 @@ export interface BringUpOptions {
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
   readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
+  readonly onVolumeCreated?: ApplyOptions["onVolumeCreated"];
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
@@ -1013,7 +1014,7 @@ const rollbackAfterStartFailure = (
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   plan: AppPlan,
   options: BringUpOptions,
-): Effect.fn.Return<ApplyResult, BringUpError> {
+): Effect.fn.Return<ApplyResult, ProviderError> {
   const api = options.api;
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
@@ -1041,9 +1042,20 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const createdVolumes: VolumeCreationFact[] = [];
-  for (const store of plan.stores) {
-    createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
-  }
+  // Volume creation and its receipts run before any container exists; a failure or interrupt
+  // here still removes the networks this apply created. Volumes and recorded receipts stay.
+  yield* Effect.gen(function* () {
+    for (const store of plan.stores) {
+      for (const fact of yield* ensureVolume(deps, plan, store)) {
+        if (options.onVolumeCreated !== undefined) yield* options.onVolumeCreated(fact);
+        createdVolumes.push(fact);
+      }
+    }
+  }).pipe(
+    Effect.onExit((exit) =>
+      Exit.isFailure(exit) ? rollbackPartialApply(deps, plan, [], createdNetworks) : Effect.void,
+    ),
+  );
   const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {

@@ -78,6 +78,7 @@ If you are looking for a public surface or policy:
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
 | `RuntimeProvider` service and capability schema | 05 | §5.3 + §5.4 |
+| Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
