@@ -93,7 +93,7 @@ lando drush updatedb -y
 lando drush config:export -y
 ```
 
-`user:login` prints a one-time login link for the admin account. `lando drush` builds links from the current app URL, including a nondefault proxy port. To pin another URL, set `DRUSH_OPTIONS_URI` under `services.appserver.environment` and run `lando rebuild`, or pass Drush `--uri` on one command.
+`user:login` prints a one-time login link for the admin account. `lando drush` builds links from the current app URL, including a nondefault proxy port. To pin another URL, set `DRUSH_OPTIONS_URI` under `services.appserver.environment` and run `lando start`, or pass Drush `--uri` on one command.
 
 Lando keeps `--format`, `--json`, `--debug`, and `--verbose` for itself when they come before `--`. Put `--` in front of Drush arguments that use them:
 
@@ -139,7 +139,7 @@ lando exec appserver -- php -r 'echo ini_get("memory_limit"), PHP_EOL;'
 
 ## Debug with Xdebug
 
-Add `xdebug: true` under `services.appserver` in `.lando.yml`, then rebuild:
+Add `xdebug: true` under `services.appserver` in `.lando.yml`, then start:
 
 ```yaml
 services:
@@ -148,7 +148,7 @@ services:
 ```
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 
@@ -156,7 +156,7 @@ Xdebug connects to your IDE on port `9003`. Map `/app` in the container to your 
 
 ## Capture outgoing mail
 
-Add a Mailpit service next to `appserver`, then rebuild and send a test message:
+Add a Mailpit service next to `appserver`, then start and send a test message:
 
 ```yaml
 services:
@@ -165,12 +165,12 @@ services:
 ```
 
 ```sh
-lando rebuild
+lando start
 lando exec appserver -- php -r 'mail("you@example.test", "Mailpit check", "Hello from Drupal CMS");'
 lando info
 ```
 
-The rebuild installs `msmtp` in `appserver` and points PHP's `sendmail_path` at `inbox`, so mail Drupal sends through PHP lands there. Open the `inbox` URL that `lando info` prints.
+Start installs `msmtp` in `appserver` and points PHP's `sendmail_path` at `inbox`, so mail Drupal sends through PHP lands there. Open the `inbox` URL that `lando info` prints.
 
 ## Read logs and open a shell
 

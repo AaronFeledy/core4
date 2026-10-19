@@ -63,7 +63,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:config` | none | `app` | Read or write the current Landofile (§8.2.1) |
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
 | `app:config:migrate` | none | `plugins` | Commit recipe migrations; `--yes`, `--dry-run`, `--format json` |
-| `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; never plans or contacts a provider |
+| `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; or materialize declared entries with `--refresh [<id>]`, optionally `--check` for local read-only drift (§7.4.2). Never plans or contacts a runtime provider. |
 | `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
@@ -71,7 +71,17 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:info` | `info` | `app` | Runtime info; repeatable `--service/-s`; `--format json\|table\|yaml` |
 | `app:logs` | `logs` | `app` | Stream logs; `--service`, `--follow`, `--tail`, `--since`, `--no-viewer` |
 | `app:open` | `open` | `app` | Open or print URLs; `--service`, `--route`, `--all`, `--print` |
+| `app:pull` | `pull` | `app` | Pull remote datasets and optionally code (§10.12); `[<remote>@<env>]`, `--remote`, `--branch`, `--only`, `--fresh`, `--code`, `--no-snapshot`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json` |
+| `app:push` | `push` | `app` | Push local datasets (§10.12); explicit `<remote>@<env>` and target bindings; `--remote`, `--branch`, `--only`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json`. No code, fresh, or snapshot flags. |
 | `app:rebuild` | `rebuild` | `app` | Rebuild selected prerequisite closure; repeatable `--service/-s` |
+| `app:remote:add` | none | `app` | Add a `remotes.<name>` entry; `[<name>] [<source>]`, repeated `--set key=value` |
+| `app:remote:env:list` | none | `app` | List environments of a remote; `--remote`, `--format json` |
+| `app:remote:list` | none | `app` | List configured remotes with redacted config; `--remote`, `--format json` |
+| `app:remote:remove` | none | `app` | Remove a `remotes.<name>` entry; declares `--yes` (§8.3.1) |
+| `app:remote:setup` | none | `app` | Credential/SSH setup (§10.12.3); `--remote`, `--force`, `--no-interactive` (existing references only), `--format json` |
+| `app:remote:switch` | `switch` | `app` | Check out exact code ref of `<remote>@<env>`, reload/replan, then pull (§10.12.1); `--branch`, `--no-pull`, `--only`, `--fresh`, `--no-snapshot`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json` |
+| `app:remote:tether` | none | `app` | Foreground session against explicit `<remote>@<env>` and repeatable `--unit` (§10.12.5); interactive CLI only, initially stopped app, revocable forwarding. Declares CLI-owned `--yes`/`-y` (§8.3.1) but MUST reject a true value; no protection bypass or programmatic dispatch. |
+| `app:remote:test` | none | `app` | Verify remote reachability and credentials; `[<remote>@<env>]`, `--remote`, `--format json` |
 | `app:restart` | `restart` | `app` | Stop then start inside restart events |
 | `app:shell` | `shell` | `app` | Interactive host or service shell; `--service`, `--no-history` |
 | `app:share` | `share` | `app` | Start tunnel; `--target`, `--provider`, `--detach`, `--format json` |
@@ -176,7 +186,11 @@ Ordinary writes target the canonical YAML Landofile. A private source-replacemen
 
 Lint validates retained root/include fragments in their authoring role and attempts normal effective finalization. Findings distinguish `scope: "fragment" | "effective"` and carry `{ file, layer, path }` source attribution, preserving effective versus authored paths. Coordinates MUST come from retained content. Different sources/scopes MUST NOT be deduplicated by path/message alone. The private lint snapshot retains the exact successful resolved object even alongside independent fragment findings; engine event validation reuses it without acquiring or evaluating sources again.
 
-Translation is preview-only without `--write`, MUST be explicit or unambiguous, MUST load translators only for conversion, and MUST NOT build an `AppPlan` or contact a provider. Only encoders with registered safe target mappings MAY write. `--file` MUST remain within that layer's authorized dependency closure. Preview and write MUST produce identical ordered, redacted diagnostics: `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. Unsupported input or unpreservable loss MUST block writing.
+Conversion is preview-only without `--write`, MUST be explicit or unambiguous, and MUST NOT build an `AppPlan` or contact a runtime provider. Declared refresh is the separate §7.4.2 mode: `--refresh [<id>]` materializes and MAY fetch nonsecret remote metadata; `--refresh [<id>] --check` MUST use local state only and MUST NOT write. Conversion selectors and `--write` MUST NOT combine with refresh mode. Translators MAY also load in the bounded lifecycle refresh phase, never discovery or ordinary loading.
+
+Only encoders with registered safe target mappings MAY write. `--file` MUST remain within that layer's authorized dependency closure. Preview and write MUST produce identical ordered, redacted diagnostics: `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. Unsupported input or unpreservable loss MUST block writing.
+
+All remote commands MUST enforce central effective protection (§10.12.8), independent of dispatcher. Push/destructive actions MUST name every target; protected typed confirmation MUST NOT be satisfied by `--yes`, MCP elicitation, recipe/tooling flags, or library input. Tether MUST reject those entry points outright (§10.12.5).
 
 `app:config:explain` MUST report producer identity, options, defaults, current values, value-based acceptance/chosen heuristics, current expression sites, and taken-over sites. It MUST validate producer identity and the injective `recipe.services` map. Opaque or unmatched provenance blocks semantic comparison but retains bounded current facts. Explain MUST NOT write, execute app or recipe code, follow includes, plan, or contact a provider.
 
@@ -214,7 +228,7 @@ The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-c
 
 #### 8.2.7 The `app:check` command
 
-`app:check` runs the app's `CheckPlan` (§10.5.2) against a running app and exits `0` whatever the verdicts; a stopped app is `AppNotRunningError`. `--only <id>` selects checks by id. The result is `checks[]` with `{ id, kind, verdict, status?, exitCode?, message?, next?, excerpt?, matchedBy }`; `app:start`, `app:restart`, and `app:rebuild` carry the same array when they ran checks. Only `lando-error` verdicts enter `warnings`. Events are `cli-app:check-*` plus the §10.5.2 task tree.
+`app:check` runs the app's `CheckPlan` (§10.5.2) against a running app and exits `0` whatever the verdicts; a stopped app is `AppNotRunningError`. `--only <id>` selects checks by id. The result is `checks[]` with `{ id, kind, service?, url?, verdict, statusCode?, exitCode?, message?, detail?, next?, excerpt?, matchedBy? }`: `http` checks carry `service`, `url`, and the observed `statusCode`; `command` checks carry `exitCode` and omit `service` when they target the host; `matchedBy` is the provenance of the rule that matched; `app:start`, `app:restart`, and `app:rebuild` carry the same array when they ran checks. Only `lando-error` verdicts enter `warnings`. Events are `cli-app:check-*` plus the §10.5.2 task tree.
 
 ### 8.3 Command contract
 
@@ -356,7 +370,9 @@ Tooling adds invocation-time scopes `task.name`, `task.subnamespace`, `task.comm
 
 #### 8.5.7 Events as tasks
 
-Landofile `events:` accepts the same step types as `cmds` and adds decoded `.event` payload context. Event-triggered tasks execute directly and MUST NOT register router commands. The valid event set MUST be extended from fully resolved tooling before validation, including `pre-restart`, `post-restart`, and `pre-<tool>`/`post-<tool>`.
+Landofile `events:` accepts the same step types as `cmds` and adds decoded `.event` payload context. Event-triggered tasks execute directly and MUST NOT register router commands. Before load/plan validation, the valid event set MUST contain the reserved app lifecycle names (including `pre-restart` and `post-restart`) and reserved remote hooks `post-pull`, `post-push`, `post-switch`, and `post-code-sync` (§10.12.2), whether or not a remote connector is installed. It is then extended with `pre-<tool>`/`post-<tool>` from fully resolved tooling.
+
+A tooling-derived event name MUST NOT collide with a reserved app or remote hook. A collision MUST fail with `LandofileValidationError` at the tooling declaration, naming the task, reserved event, and rename remediation; it MUST NOT bind one step list to two triggers. Command alias disabling or remapping MUST NOT release an event-name reservation. The four remote hooks are triggered only by the corresponding core remote operation, never by a similarly named tooling task.
 
 Each `events.<name>` step list replaces its inherited list wholesale across layers; a step's `service` is an execution target, not a merge identity (§7.2).
 
@@ -441,7 +457,7 @@ Tooling failures preserve these `_tag` values:
 
 Persistable nonsecret options MUST appear in inert `recipe.options` with producer identity and `RecipeManifest.version`. Generated option-derived values MUST use valid `{{ recipe.<option> }}` expressions. Expressions MAY produce values but MUST NOT determine structure. `init` uses the bundled `recipe` translator and `lando4` encoder, MUST NOT build an `AppPlan`, and MUST NOT contact a provider itself.
 
-`files:` and `postInit:` are init-only and run only after translation, encoding, validation, and §12.4 commit.
+`files:` and `postInit:` are init-only and MUST follow the canonical §8.8.9 sequence, including final-root generated-file commit (§12.4.1) and required metadata publication (§8.8.13). Neither may run while any prerequisite remains incomplete.
 
 - Later failure reports committed files and failed action without claiming rollback.
 - Diagnostics are ordered translation then encoding diagnostics.
@@ -452,7 +468,7 @@ Persistable nonsecret options MUST appear in inert `recipe.options` with produce
 `apps:init [destination]` accepts `--recipe`, `--source`, `--name`, repeated `--answer`, `--answers`, `--no-interactive`, `--yes`/`-y`, `--full`, and `--from-source`.
 
 - Destination defaults to `--name` or cwd and MAY contain files. Existing Landofile destinations fail with `InitTargetExistsError`; any other scaffold conflict skips the scaffold set while free Landofile destinations remain writable.
-- Omitted interactive `--recipe` prompts from bundled recipes. `--source` layers an `InitSource` beneath recipe files.
+- Omitted interactive `--recipe` prompts from bundled recipes. `--source` names a built-in or contributed `InitSource` (§8.8.13) layered beneath recipe files; its prompts are answered as `source.<prompt>`.
 - `--answer` and `--answers` accept nonsecret values; later values win. Raw secret keys are rejected. Secret-store answers accept only existing `${secret:...}` references.
 - `--no-interactive` fails unanswered prompts without defaults with `RecipeMissingAnswerError`. `--yes` accepts defaults; `--full` accepts the full default set. The command runs at `plugins` bootstrap without provider contact.
 
@@ -521,13 +537,13 @@ Recipe values use §7.3.1 expressions. Auxiliary files MAY use `TemplateRenderer
 
 #### 8.8.7 File manifest semantics
 
-Auxiliary files write in manifest order after Landofile transaction commit. Landofile basenames are reserved for encoder output. Existing Landofiles fail with `InitTargetExistsError`; scaffold conflicts skip the scaffold set; duplicate destinations fail. Assets default to verbatim and templates to rendered. POSIX `mode` is ignored on Windows. False `when` entries are skipped and reported.
+Auxiliary files write in manifest order only after both the final-root generated-file transaction and required metadata publication succeed, following §8.8.9. Landofile basenames are reserved for encoder output. Existing Landofiles fail with `InitTargetExistsError`; scaffold conflicts skip the scaffold set; duplicate destinations fail. Assets default to verbatim and templates to rendered. POSIX `mode` is ignored on Windows. False `when` entries are skipped and reported.
 
-Files use `ManagedFileService` whole-file ownership and §12.3 atomicity. Authoring fragments, Landofile, manifests, and templates MUST validate before commit; failures return `RecipeOutputValidationError` with no partial files. Post-commit failures report committed state.
+Files use `ManagedFileService` whole-file ownership and §12.3 atomicity. Authoring fragments, Landofile, manifests, and templates MUST validate before source placement and generated-file commit. Pre-placement validation failures return `RecipeOutputValidationError` without partial destination files. A failure after source placement MUST report retained paths and transaction state under §8.8.13; post-commit failures report committed state, not whole-init rollback.
 
 #### 8.8.8 Post-init actions
 
-Actions run in order only after successful commit and auxiliary writes. Named `postInit.stdin` and `postInit.secretEnv.<name>` bindings identify prompt and action without serializing raw answers.
+Actions run in order only after successful generated-file commit, required metadata publication (§8.8.13), and auxiliary writes. Named `postInit.stdin` and `postInit.secretEnv.<name>` bindings identify prompt and action without serializing raw answers.
 
 | Action | Contract |
 |---|---|
@@ -544,7 +560,7 @@ All Bun actions are destination-bounded, redacted, recursion-guarded, lifecycle-
 
 #### 8.8.9 Init lifecycle
 
-`apps:init` resolves and validates sources, collects answers through `InteractionService`, decomposes and encodes, prevalidates all outputs, commits through §12.4, then writes auxiliaries and runs post-init actions. It publishes canonical `apps:init` lifecycle events. Optional `app:start` is a separate nested command after scaffolding.
+`apps:init` resolves sources and answers, acquires source bytes, merges source and recipe declarations, acquires their required nonsecret metadata, then decomposes/encodes and previews all outputs against the effective destination after conflict decisions. Under §8.8.13 it then places permitted source files, rechecks final-root inputs/conflicts, commits Landofiles and generated translation fragments together through §12.4.1, publishes required final-identity metadata, writes auxiliaries, and runs post-init actions. It publishes canonical `apps:init` lifecycle events. Optional `app:start` is a separate nested command only after those prerequisites succeed.
 
 #### 8.8.10 Canonical recipes shipped in core
 
@@ -577,7 +593,23 @@ Declarative recipes MUST NOT execute arbitrary code, install plugins, mutate glo
 
 #### 8.8.13 Init sources beyond recipes
 
-`InitSource` (§4.2) contributes `cwd`, `git`, `tarball`, and future source material. Source files precede recipe files; recipe files win according to conflict policy. Source and recipe validation MUST succeed before Landofile commit. Init sources MUST NOT plan or contact a provider.
+`InitSource` (§4.2) supplies the material a recipe is layered onto: the built-in `cwd`, `git`, and `tarball` sources, and plugin sources contributed under `provides.initSources[]` as `{ id, module, summary }`, typically one per hoster. Source files precede recipe files; recipe files win according to conflict policy. Source and recipe validation MUST succeed before Landofile commit. Init sources MUST NOT plan or contact a provider.
+
+The contract is `id`, `summary`, `prompts`, optional `auth`, optional `choices`, and `resolve`:
+
+- `prompts` is an ordered list of §8.8.5 prompt definitions. Core collects them through `InteractionService` under the §8.8.1 answer rules, with ids namespaced `source.<prompt>` so `--answer source.site=...` and `--answers` address them beside recipe answers. A secret-typed prompt yields a credential reference in `answers`, never a raw value.
+- `auth(ctx)` is the optional source-auth phase. When required, it runs before authenticated choices or acquisition, shares the `RemoteSource.setup` logic and context (§10.12.3), and returns the credential references later phases use. It is the only init phase that may open a browser or write a credential. Non-interactive authenticated sources MUST reuse an existing authorized reference or fail with `InitSourceAuthError` before network or browser activity. Local and public unauthenticated sources MUST work without credential references or an auth phase, including with `--no-interactive`.
+- `choices(promptId, answers)` resolves dynamic options (site, application, or project lists) through `HttpClient` with those references. Results are bounded and render through the §8.8.5 `select` type; a source with no dynamic prompts omits it.
+- `resolve(answers)` returns `InitSourceResolution`: `code` as a `CodeLocator` (§10.12.1), an `ArchiveLocator` (`url`, `checksum`, `archiveFormat`), or `none` for an existing checkout; an optional `LandofileAuthoringFragment` carrying the recipe choice and options, `remotes:`, `sync:`, and `translate:` entries; and nothing else. It MUST NOT return raw secrets, and core normalizes the fragment into the authoring merge exactly once beneath recipe output.
+- Core acquires source bytes with host Git or `Downloader`. SSH locators use §10.4 identity and host verification; HTTPS follows §10.3.1 TLS/proxy policy without requiring an SSH agent. Public/local sources need no credential reference. New source bytes stage under `<userCacheRoot>/init/<id>/`; existing-checkout sources are inspected in place, never relocated.
+- After acquisition and the source/recipe declaration merge, core MUST acquire required nonsecret metadata through `RemoteSource.metadata` BEFORE translation, fingerprinting, or output preview, using the existing auth context without a second login or remote-resource creation. Missing inputs/metadata or fetch failure MUST stop before preview and placement with `ConfigRefreshError`; sources without metadata-dependent translations skip acquisition and remain credential-free where applicable.
+- With that metadata available, core MUST preview the source/recipe merge and newly emitted `translate:` entries before destination placement. It MUST canonically encode, parse, materialize, and validate candidate bytes against bounded source and metadata snapshots (§7.4.2), not inject translator objects into runtime loading. The acquisition tree MUST contain no generated managed files, ownership ledger, transaction stages, backups, or journal. This preview stays at `plugins` bootstrap and contacts no runtime provider.
+- Preview MUST apply the existing destination conflict policy: occupied Landofile targets fail, scaffold conflicts skip the scaffold set, and pre-existing/adopted files are not silently overwritten. A required generated output that cannot be committed MUST fail init. After preview, core MAY place only permitted source files, establish the final canonical app root, and recheck final inputs and conflicts; a change since preview MUST fail without overwriting it.
+- Only then MUST core commit generated fragments and Landofiles together through the final-root §12.4.1 transaction. Transaction inputs, backups, journals, and ownership records MUST use final-root identities and paths, never acquisition-cache paths; no path-bound recovery state is relocated. Required metadata MUST be published under the final destination's app/source/config/remote/environment/branch identity before auxiliaries, any post-init action (including optional start), or success. First-start translation MUST need no vendor fetch; ordinary runtime/image/build acquisition still follows §12.6.
+- A failure after source placement MUST return typed failure context containing a redacted side-effect receipt: retained source paths, actual generated-file transaction/recovery state, metadata publication, auxiliaries, and auth effects as applicable. It MUST NOT claim whole-init rollback or successful metadata-ready initialization. In particular, metadata publication failure after generated-file commit is failed init with retained committed state.
+- Credentials stored and keys registered by `auth` are reported in the init receipt as side effects; a later scaffold failure MUST NOT claim to roll them back.
+
+Events are `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, and `post-init-source-acquire`. Tagged errors are `InitSourceError`, `InitSourceAuthError`, and `InitSourceAcquireError`. `TestInitSource` and `runInitSourceContract` support contract testing.
 
 #### 8.8.14 Programmatic recipes (`recipe.ts`)
 

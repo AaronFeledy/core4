@@ -31,10 +31,10 @@ Plugin defaults land in the generated `<userDataRoot>/global/.lando.dist.yml`. Y
 ```sh
 lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
 lando global:config --format=json
-lando global:rebuild
+lando global:start
 ```
 
-Run this after `lando global:install`. `lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your value there before you rebuild. Don't edit `.lando.dist.yml`, because Lando regenerates it. See [Read and write global config](../config/global-config.mdx) for the full layer order.
+Run this after `lando global:install`. `lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Don't edit `.lando.dist.yml`, because Lando regenerates it. See [Read and write global config](../config/global-config.mdx) for the full layer order.
 
 ## When one global service fails
 
