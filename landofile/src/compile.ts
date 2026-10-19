@@ -60,5 +60,11 @@ export const compileLandofileLayer: (
 ) => Effect.Effect<LandofileDecodedOverlay, LandofileParseError | LandofileValidationError> =
   Effect.fnUntraced(function* (file: string, value: unknown, scope: LandofileLoadScope) {
     const materialized = yield* materializeLandofileLayer(file, value, scope);
-    return yield* decodeLandofileLayer(file, materialized, (plain) => validateLandofile(file, plain));
+    return yield* decodeMaterializedLandofileLayer(file, materialized);
   });
+
+export const decodeMaterializedLandofileLayer = (
+  file: string,
+  value: unknown,
+): Effect.Effect<LandofileDecodedOverlay, LandofileParseError | LandofileValidationError> =>
+  decodeLandofileLayer(file, value, (plain) => validateLandofile(file, plain));

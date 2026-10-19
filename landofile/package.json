@@ -46,6 +46,8 @@
     "./recipe-expressions": "./src/recipe-expressions.ts",
     "./route-filters": "./src/route-filters.ts",
     "./route-normalize": "./src/route-normalize.ts",
+    "./root-compile": "./src/root-compile.ts",
+    "./source": "./src/source.ts",
     "./schema": "./src/schema.ts",
     "./secret-reference": "./src/secret-reference.ts",
     "./serializer": "./src/serializer.ts",

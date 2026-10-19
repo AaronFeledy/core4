@@ -9,7 +9,6 @@ import { Effect } from "effect";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 import { getLandofileIncludeSources, getLocalIncludePaths } from "../src/include-provenance.ts";
-import { resolveLandofileIncludes as resolveLandofileIncludesPackage } from "../src/includes.ts";
 import type {
   GitIncludeCloner,
   NpmIncludeExtractor,
@@ -18,6 +17,10 @@ import type {
   ResolveIncludesError,
 } from "../src/includes.ts";
 import { loadLandofileLayers } from "../src/service.ts";
+import {
+  authoredRecipe,
+  resolveAuthoredIncludes as resolveLandofileIncludesPackage,
+} from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>
@@ -114,10 +117,9 @@ describe("resolveLandofileIncludes", () => {
     // When
     const result = await Effect.runPromise(
       resolveLandofileIncludes({
-        landofile: { includes: ["./fragment.yml"] },
+        landofile: { includes: ["./fragment.yml"], recipe: authoredRecipe({ flag: false }) },
         appRoot,
         cacheRoot,
-        loadScope: { env: {}, recipe: { flag: false } },
       }),
     );
     // Then

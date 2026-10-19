@@ -58,6 +58,46 @@ const provenance = (options: string) =>
   ].join("\n");
 
 describe("recipe option expressions in a loaded Landofile", () => {
+  test.each([
+    'environment:\n      FOO: "{{ env.LANDO_QA_LITERAL }}"',
+    'environment: "{{ { FOO: env.LANDO_QA_LITERAL } }}"',
+  ])("escapes load-produced text before decoding %s", async (field) => {
+    // Given
+    await withEnv({ LANDO_QA_LITERAL: " {{ app.name }} ${VALUE}" }, () =>
+      withApp(
+        {
+          ".lando.yml": `name: literal\nservices:\n  web:\n    type: node:22\n    ${field}\n`,
+        },
+        async (root) => {
+          // When
+          const loaded = await Effect.runPromise(load(root));
+          // Then
+          expect(loaded.services?.[ServiceName.make("web")]?.environment?.FOO).toBe(
+            " {{{{ app.name }} $${VALUE}",
+          );
+        },
+      ),
+    );
+  });
+
+  test("escapes strings recursively inside load-produced objects and arrays", async () => {
+    // Given
+    await withEnv({ LANDO_QA_LITERAL: "{{ app.name }}", LANDO_QA_SHELL: "${VALUE}" }, () =>
+      withApp(
+        {
+          ".lando.yml":
+            'name: literal\nx-produced: "{{ { nested: { values: [env.LANDO_QA_LITERAL, env.LANDO_QA_SHELL] } } }}"\n',
+        },
+        async (root) => {
+          // When
+          const loaded = await Effect.runPromise(load(root));
+          // Then
+          expect(loaded["x-produced"]).toEqual({ nested: { values: ["{{{{ app.name }}", "${VALUE}"] } });
+        },
+      ),
+    );
+  });
+
   test.each([".lando.yml", ".lando.local.yml"])(
     "reports a preparation failure in %s before compiling dependent lower layers",
     async (brokenFile) => {

@@ -28,7 +28,7 @@ import type {
   IncludeVerifyStatus,
   LandofileIncludeDeps,
 } from "@lando/landofile/includes";
-import { compileLandofileRootLayers } from "@lando/landofile/service";
+import { compileLandofileRootLayers } from "@lando/landofile/root-compile";
 import { validateLandofile } from "@lando/landofile/validation";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 
