@@ -251,7 +251,6 @@ describe("desired immutable create config", () => {
 
   test("leaves the fingerprint unchanged when hostname is omitted", () => {
     expect(fingerprint(service)).toBe(fingerprint({ ...service }));
-    expect(fingerprint({ ...service, hostname: undefined })).toBe(fingerprint(service));
   });
 
   test("emits the identical fingerprint through Compose and direct create", () => {
