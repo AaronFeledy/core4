@@ -4,6 +4,9 @@
 
 ## Compatibility notes
 
+- Config lint findings now require schema-derived `rule: string` and `severity: "error" | "warning"` metadata. `valid` means no error-severity finding, not an empty findings array. Stable healthcheck warning rules are `healthcheck.bare-compose-marker` and `healthcheck.mixed-dialects`; all existing validation failures remain errors. This intentionally evolves the pre-release result contract, without changing authored Landofile grammar or historical schema captures.
+- Disabled healthcheck objects validate supplied siblings before canonicalizing to false. Lando-over-Compose precedence is unchanged for enabled Lando intent. Authored HTTP/TCP healthchecks remain schema-accepted but fail planning with the existing `LandofileValidationError`, without widening planner error channels.
+
 - Authored Landofile composition (pre-ship): `LandofileOverlayInput` and `defineLandofile` accept schema-derived expression-bearing partial layers. Runtime loading composes authored values, materializes merged recipe/env sites, assembles tooling, and strictly decodes once. Codecs obey strict encoded round trips rather than requiring runtime output to be authored input. `@lando/sdk/landofile` additionally exports `directivePathProblem` for preparation without full layer decoding. Existing editor/Standard Schema expression restrictions and produced-text literal behavior remain unchanged.
 
 - `ValidationIssue` additively accepts optional `source: { file, layer, path }`, recording the original authored location separately from the effective issue path. `LandofileValidationError` now requires `remediation`; its shared constructor takes `file` from the primary issue's source when supplied. This is a pre-release constructor requirement, not a persisted-data format migration. Command failure envelopes already support remediation and now preserve authored issue sources through their existing issue projection. `ConfigLintResult` is unchanged.
