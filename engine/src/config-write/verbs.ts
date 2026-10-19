@@ -41,7 +41,7 @@ export interface ConfigVerbIo<
 > {
   readonly file: string;
   readonly readTree: Effect.Effect<Record<string, unknown>, ERead, R>;
-  readonly decode: (next: unknown) => D;
+  readonly decode: (next: unknown) => D | Effect.Effect<D, EAfter, R>;
   readonly afterDecode?: (decoded: D) => EAfter | undefined;
   readonly writeText: (file: string, text: string) => Effect.Effect<void, EWrite, R>;
 }
@@ -57,7 +57,8 @@ const decodeAndWrite = Effect.fnUntraced(function* <
   next: unknown,
   shouldWrite: boolean,
 ): Effect.fn.Return<void, LandofileWriteValidationError | EAfter | EWrite, R> {
-  const decoded = input.decode(next);
+  const decoding = input.decode(next);
+  const decoded = yield* Effect.isEffect(decoding) ? decoding : Effect.succeed(decoding);
   const issues = decodeIssues(decoded);
   if (issues.length > 0) {
     return yield* Effect.fail(writeValidationErrorFromIssues({ file: input.file, issues, path: input.key }));

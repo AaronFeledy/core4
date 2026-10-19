@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -7,9 +7,11 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@lando/core/cli/operations";
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
+import type { GitIncludeCloner } from "@lando/landofile/includes";
 import { appIncludesVerifySpec } from "../../src/cli/command-specs/app/includes/verify.ts";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -34,6 +36,110 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
     await rm(dir, { recursive: true, force: true });
   }
 };
+
+test.each(["recipe: lamp\nconfig:\n  php: '8.3'\n", "recipe: lamp\nconfig: {}\nmounts:\n  - {a: 1}\n"])(
+  "includes verify rejects a legacy local layer alongside a valid canonical layer: %s",
+  async (legacy) => {
+    await withTempCwd(async (dir) => {
+      // Given
+      const canonicalFile = join(dir, ".lando.yml");
+      await writeFile(canonicalFile, "name: native\n");
+      await writeFile(join(dir, ".lando.local.yml"), legacy);
+      // When
+      const error = await Effect.runPromise(
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer), Effect.flip),
+      );
+      // Then
+      expect(error).toMatchObject({ _tag: "LandofileDialectMixError", canonicalFile });
+    });
+  },
+);
+
+test("verifies typed root layers and fragments with their merged recipe scope", async () => {
+  // Given
+  await withTempCwd(async (dir) => {
+    await writeFile(
+      join(dir, ".lando.yml"),
+      [
+        "name: typed",
+        "recipe:",
+        "  id: lamp",
+        "  version: 0.1.0",
+        "  options:",
+        "    flag: false",
+        "  producer:",
+        "    sourceKind: bundled",
+        '    packageName: "@lando/recipe-lamp"',
+        "    recipeId: lamp",
+        "    manifestVersion: 0.1.0",
+        `    contentDigest: sha256:${"0".repeat(64)}`,
+        "includes:",
+        "  - ./fragment.yml",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(dir, ".lando.base.yml"), 'services:\n  web:\n    primary: "{{ recipe.flag }}"\n');
+    await writeFile(join(dir, "fragment.yml"), 'services:\n  api:\n    primary: "{{ recipe.flag }}"\n');
+    // When
+    const result = await Effect.runPromise(
+      appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
+    );
+    // Then
+    expect(result.ok).toBe(true);
+    expect(result.mismatches).toEqual([]);
+  });
+});
+
+test("verifies locked sources from both base and canonical include trees", async () => {
+  // Given
+  await withTempCwd(async (dir) => {
+    const cacheRoot = join(dir, ".cache");
+    const fragment = "services: {}\n";
+    const checksum = new Bun.CryptoHasher("sha256").update(fragment).digest("hex");
+    const sources = [
+      { layer: ".lando.base.yml", repo: "base", commit: "base123" },
+      { layer: ".lando.yml", repo: "canonical", commit: "canonical456" },
+    ];
+    for (const source of sources) {
+      await writeFile(
+        join(dir, source.layer),
+        `includes:\n  - source: github:acme/${source.repo}\n    path: fragment.yml\n`,
+      );
+      const cached = join(cacheRoot, "includes", "git", source.commit);
+      await mkdir(cached, { recursive: true });
+      await writeFile(join(cached, "fragment.yml"), fragment);
+    }
+    await writeFile(
+      join(dir, ".lando.lock.yml"),
+      `includes:\n${sources
+        .map(
+          (source) =>
+            `  - source: github:acme/${source.repo}/fragment.yml\n    resolved: ${source.commit}\n    checksum: ${checksum}\n`,
+        )
+        .join("")}`,
+    );
+    const gitCloner: GitIncludeCloner = {
+      clone: async ({ url, stagingDir }) => {
+        await mkdir(stagingDir, { recursive: true });
+        await writeFile(join(stagingDir, "fragment.yml"), fragment);
+        return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
+      },
+    };
+    await withEnvVar("LANDO_USER_CACHE_ROOT", cacheRoot, async () => {
+      // When
+      const report = await Effect.runPromise(
+        appIncludesVerify({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+      );
+      // Then
+      expect(report.ok).toBe(true);
+      expect(report.entries.map(({ source, status }) => ({ source, status }))).toEqual([
+        { source: "github:acme/base/fragment.yml", status: "ok" },
+        { source: "github:acme/canonical/fragment.yml", status: "ok" },
+      ]);
+      expect(report.mismatches).toEqual([]);
+    });
+  });
+});
 
 const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResult> => {
   const proc = Bun.spawn({
