@@ -1,18 +1,20 @@
 import { ServiceRestartWouldRecreateError } from "@lando/sdk/errors";
 import { AGENT_SOCKET_CONTAINER_DIR, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
 
-import { fingerprintPlannedPublishPorts } from "../plan.ts";
+import { CREATE_CONFIG_LABEL } from "../create-fingerprint.ts";
+import { commonContainerLabels, fingerprintPlannedPublishPorts } from "../plan.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
 // Private SSH sidecar protocol: the optional POSIX host socket bind endpoint.
 const SSH_SIDECAR_HOST_SOCKET_DIRECTORY = "/ssh-auth";
 
-export type BringUpRecreateReason = "publish-port" | "bind-source" | "network";
+export type BringUpRecreateReason = "publish-port" | "bind-source" | "network" | "config";
 
 export interface BringUpInspectSnapshot {
   readonly publishFingerprint?: string | undefined;
   readonly bindSources?: Readonly<Record<string, string>> | ReadonlyMap<string, string> | undefined;
   readonly networkNames?: ReadonlyArray<string> | ReadonlySet<string> | undefined;
+  readonly labels?: Readonly<Record<string, string>> | undefined;
 }
 
 const sourceLookup = (
@@ -62,6 +64,17 @@ export const inspectNetworkNames = (body: unknown): ReadonlyArray<string> | unde
   const networks = Reflect.get(settings, "Networks");
   if (typeof networks !== "object" || networks === null || Array.isArray(networks)) return undefined;
   return Object.keys(networks);
+};
+
+export const inspectContainerLabels = (body: unknown): Readonly<Record<string, string>> => {
+  if (typeof body !== "object" || body === null) return {};
+  const config: unknown = Reflect.get(body, "Config");
+  if (typeof config !== "object" || config === null) return {};
+  const labels: unknown = Reflect.get(config, "Labels");
+  if (typeof labels !== "object" || labels === null || Array.isArray(labels)) return {};
+  return Object.fromEntries(
+    Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
 };
 
 export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspectSnapshot): boolean => {
@@ -125,6 +138,13 @@ export const bringUpRecreateReasons = (
   if (!skipAbsent || inspected.networkNames !== undefined) {
     if (plannedNetworkMissing(plan, inspected)) reasons.push("network");
   }
+  if (!skipAbsent || inspected.labels !== undefined) {
+    if (
+      inspected.labels?.[CREATE_CONFIG_LABEL] !== commonContainerLabels(plan, service)[CREATE_CONFIG_LABEL]
+    ) {
+      reasons.push("config");
+    }
+  }
   return reasons;
 };
 
@@ -140,6 +160,8 @@ const recreateMessage = (
       return `Restarting ${service} would recreate it because a bind mount source changed.`;
     case "network":
       return `Restarting ${service} would recreate it because a planned network is missing.`;
+    case "config":
+      return `Restarting ${service} would recreate it because its create configuration changed.`;
     case "host-port":
       return operation === "bringUp.start"
         ? `${service} was stopped and is still down because its assigned host port is already in use. Run \`lando rebuild -s ${service}\`.`

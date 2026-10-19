@@ -11,6 +11,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
 
 const providerId = ProviderId.make("lando");
@@ -62,6 +63,37 @@ const plan: AppPlan = {
 };
 
 describe("bringUpRecreateReasons", () => {
+  test("reports known missing config labels even when absent custom metadata is skipped", () => {
+    // Given known-empty labels from a real container inspect.
+    const snapshot = { labels: {} };
+    // When preflight compares the desired config.
+    const reasons = bringUpRecreateReasons(plan, service, snapshot, { skipAbsentFields: true });
+    // Then missing labels request the migration recreation.
+    expect(reasons).toEqual(["config"]);
+  });
+
+  test("preserves existing reason priority before config drift", () => {
+    // Given drift in all four recreate conditions.
+    const snapshot = {
+      labels: {},
+      publishFingerprint: "different",
+      bindSources: { "/run/lando/ssh-agent": "bind:/old" },
+      networkNames: ["unrelated"],
+    };
+    // When the shared recreation policy runs.
+    const reasons = bringUpRecreateReasons(plan, service, snapshot);
+    // Then config follows the existing port, mount, and network reasons.
+    expect(reasons).toEqual(["publish-port", "bind-source", "network", "config"]);
+  });
+
+  test("keeps a container with matching desired config labels", () => {
+    // Given the labels actually emitted for the desired service.
+    const snapshot = { labels: commonContainerLabels(plan, service) };
+    // When only config metadata is available at custom-provider preflight.
+    const reasons = bringUpRecreateReasons(plan, service, snapshot, { skipAbsentFields: true });
+    // Then no recreation is needed.
+    expect(reasons).toEqual([]);
+  });
   test("skipAbsentFields ignores drift when inspect snapshot fields are omitted", () => {
     expect(bringUpRecreateReasons(plan, service, {}, { skipAbsentFields: true })).toEqual([]);
   });

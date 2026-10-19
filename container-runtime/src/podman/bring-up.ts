@@ -1,5 +1,5 @@
 import { Cause, type Context, DateTime, Duration, Effect, Exit, Stream } from "effect";
-import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
+import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
   ProviderInternalError,
@@ -58,6 +58,7 @@ import { waitForExit } from "../wait-for-exit.ts";
 import {
   bringUpRecreateReasons,
   inspectBindSources,
+  inspectContainerLabels,
   inspectNetworkNames,
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
@@ -71,13 +72,7 @@ const networkNames = podmanNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 const sharedNetworkName = landoSharedNetworkName;
 
-export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
-  const scratch = plan.extensions["@lando/core/scratch"];
-  const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
-  return scratchId === plan.id && typeof scratchId === "string"
-    ? { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: scratchId }
-    : {};
-};
+export { scratchLabelsForPlan } from "../labels.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringUpError =
@@ -103,6 +98,7 @@ interface InspectResult {
   readonly publishFingerprint: string;
   readonly bindSources: Readonly<Record<string, string>> | undefined;
   readonly networkNames: ReadonlyArray<string> | undefined;
+  readonly labels?: Readonly<Record<string, string>>;
   readonly body?: unknown;
 }
 
@@ -248,6 +244,7 @@ const inspectContainer = Effect.fnUntraced(function* (
       publishFingerprint: fingerprintInspectPublishPorts(body),
       bindSources: inspectBindSources(body),
       networkNames: inspectNetworkNames(body),
+      labels: inspectContainerLabels(body),
       body,
     };
   }
@@ -257,6 +254,7 @@ const inspectContainer = Effect.fnUntraced(function* (
     publishFingerprint: fingerprintInspectPublishPorts(body),
     bindSources: inspectBindSources(body),
     networkNames: inspectNetworkNames(body),
+    labels: inspectContainerLabels(body),
     body,
   };
 });
@@ -326,7 +324,7 @@ const createContainerRequest = (
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
-      labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+      labels: commonContainerLabels(plan, service),
       hostConfig: {
         ...baseHostConfig,
         ...knobs.hostConfig,
@@ -710,7 +708,7 @@ const startService = Effect.fnUntraced(function* (
     plannedFingerprint.length > 0 &&
     inspected.publishFingerprint.length > 0 &&
     inspected.publishFingerprint !== plannedFingerprint;
-  const recreateReasons = bringUpRecreateReasons(plan, service, inspected);
+  const recreateReasons = inspected.exists ? bringUpRecreateReasons(plan, service, inspected) : [];
   let before = inspected;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     if (deps.options.forbidRecreate === true && recreateReasons.length > 0) {
