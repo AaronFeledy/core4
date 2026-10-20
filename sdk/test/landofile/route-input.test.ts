@@ -1,6 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { parseRouteHostname, parseRoutePathPrefix, parseRouteShorthand } from "@lando/sdk/landofile";
+import {
+  parseRouteHostname,
+  parseRoutePathPrefix,
+  parseRouteShorthand,
+  routeInputKey,
+  routeInputObject,
+} from "@lando/sdk/landofile";
 import { Result } from "effect";
+
+test("keeps long template source keyed without applying concrete DNS length limits", () => {
+  // Given
+  const hostname = `{{ env.${"A".repeat(64)} }}.site`;
+  // When
+  const route = routeInputObject(`${hostname}:8080/api`);
+  // Then
+  expect(route).toEqual({ hostname, endpoint: 8080, pathPrefix: "/api" });
+  expect(routeInputKey(`${hostname}:8080/api`)).toBe(routeInputKey({ hostname, pathPrefix: "/api" }));
+  expect(routeInputKey(route)).toBeDefined();
+});
 
 describe("concrete route hostname", () => {
   test.each(["app.lndo.site", "*.app.site", "*-app.site", "wild.*.app.site", "a**b.*x*.site", "APP-1"])(

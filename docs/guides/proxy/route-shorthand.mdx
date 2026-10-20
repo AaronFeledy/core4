@@ -35,7 +35,7 @@ lando app:config:lint
 
 | Piece | Rule | Example |
 | --- | --- | --- |
-| `hostname` | Dot-separated labels. Letters, digits, hyphens, and `*`. No leading or trailing hyphen on a label | `app.lndo.site` |
+| `hostname` | Dot-separated labels. Letters, digits, hyphens, and `*`. No leading or trailing hyphen on a label. Each label at most 63 characters; whole hostname at most 253 | `app.lndo.site` |
 | `:port` | Numeric, 1 through 65535. Becomes the route's `endpoint` | `app.lndo.site:8080` |
 | `/path` | Starts with `/`. Becomes the route's `pathPrefix` | `app.lndo.site/admin` |
 

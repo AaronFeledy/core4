@@ -31,7 +31,7 @@ const objectFieldErrors = (route: RouteObjectInput, ctx: RouteContext): Readonly
             ...routeSource(ctx),
             key: `${ctx.keyPath}.hostname`,
             message: hostname.failure,
-            remediation: `Set ${ctx.keyPath}.hostname to a host pattern such as app.lndo.site; put any port in endpoint and any path in pathPrefix, or write the route as hostname[:port][/pathPrefix] shorthand.`,
+            remediation: `Set ${ctx.keyPath}.hostname to the host pattern only, such as app.lndo.site; put a scheme, port, or path in scheme, endpoint, or pathPrefix, or write the route as hostname[:port][/pathPrefix] shorthand.`,
           }),
         ]
       : []),

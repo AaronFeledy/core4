@@ -217,6 +217,7 @@ import {
   LifecycleCommandId,
 } from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
+import { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
   repairLandofileExtensions,
@@ -531,6 +532,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   StorageScope,
   BindAddress,
   PortNumber,
+  RouteHostname,
+  RoutePathPrefix,
+  DomainName,
   InternalEndpoint,
   PublishedEndpoint,
   EndpointPlan,
@@ -996,6 +1000,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   StorageScope: "Public Lando schema contract for Storage Scope.",
   BindAddress: "Validated host IP address for explicit endpoint publication.",
   PortNumber: "Integer network port in the inclusive range 1 through 65535.",
+  RouteHostname: "Concrete route host pattern with DNS label and hostname length limits.",
+  RoutePathPrefix: "Request path prefix without whitespace, query strings, or fragments.",
+  DomainName: "Plain DNS domain without a scheme, port, path, or wildcard.",
   InternalEndpoint: "Service-facing endpoint that is never published on the host.",
   PublishedEndpoint: "Service endpoint carrying explicit nested host-publication intent.",
   EndpointPlan: "Public Lando schema contract for Endpoint Plan.",
