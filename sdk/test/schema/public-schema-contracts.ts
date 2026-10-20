@@ -826,7 +826,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     stream: "stderr",
     strategy: "follow",
   },
-  LogSourceInput: { path: "/var/log/app.log" },
+  LogSourceInput: { path: "/var/log/app.log", timestamps: true },
   MountInput: "./src:/app",
   StorageInput: "/data",
   CertsInput: true,
