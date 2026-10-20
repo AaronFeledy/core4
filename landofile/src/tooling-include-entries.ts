@@ -30,7 +30,7 @@ const TOOLING_ONLY_FIELDS = [
   "vars",
 ] as const;
 
-const TOOLING_TRANSPORT_FIELDS = ["path", "version", "checksum"] as const;
+const TOOLING_TRANSPORT_FIELDS = ["path", "version"] as const;
 
 const NAMESPACE_REMEDIATION =
   "Set namespace: on the tooling include, or set flatten: true to register its tasks unprefixed.";
@@ -41,7 +41,7 @@ const FLATTEN_ALIASES_REMEDIATION =
 const KIND_REMEDIATION =
   'Move the field to a kind: "tooling" include, or drop it from this Landofile fragment include.';
 const LOCAL_SOURCE_REMEDIATION =
-  "Use a local tooling-fragment path and remove transport-only path, version, or checksum fields.";
+  "Use a local tooling-fragment path and remove transport-only path or version fields.";
 
 const isRemoteSource = (source: string): boolean =>
   source.startsWith("npm:") ||

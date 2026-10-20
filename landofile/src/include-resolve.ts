@@ -78,6 +78,7 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
     mode: "pin",
     lockEntries: yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath),
     stagedLocks: new Map(),
+    walk: { selectors: new Map(), issues: new Map(), complete: true },
     noNetwork: false,
     loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
     ...(options.ports === undefined ? {} : { ports: options.ports }),

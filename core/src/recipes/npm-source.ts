@@ -11,7 +11,7 @@
  * Version policy: an `@version` suffix is honored as an exact published version
  * or a dist-tag; with no suffix the registry's `latest` dist-tag is used.
  */
-import { createHash } from "node:crypto";
+import { checkNpmPackageDistIntegrity } from "@lando/landofile/npm-integrity";
 
 import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
 import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
@@ -235,42 +235,19 @@ export const verifyNpmPackageDistIntegrity = (
   dist: NpmPackageDist,
   source: string,
 ): void => {
-  if (dist.integrity !== undefined && dist.integrity.trim() !== "") {
-    const entry = dist.integrity.trim().split(/\s+/u)[0] ?? "";
-    const dash = entry.indexOf("-");
-    const algorithm = dash > 0 ? entry.slice(0, dash) : "";
-    const expected = dash > 0 ? entry.slice(dash + 1) : "";
-    if (algorithm !== "" && expected !== "") {
-      try {
-        const actual = createHash(algorithm).update(bytes).digest("base64");
-        if (actual !== expected) {
-          throw sourceError({
-            message: `npm tarball ${source} failed ${algorithm} integrity verification.`,
-            source,
-            kind: "integrity-mismatch",
-            remediation:
-              "The downloaded tarball does not match the registry integrity; retry or report the package.",
-          });
-        }
-        return;
-      } catch (cause) {
-        if (cause instanceof RecipeSourceError) throw cause;
-      }
-    }
-  }
-  if (dist.shasum !== undefined && dist.shasum.trim() !== "") {
-    const actual = createHash("sha1").update(bytes).digest("hex");
-    if (actual.toLowerCase() !== dist.shasum.trim().toLowerCase()) {
+  const integrity = checkNpmPackageDistIntegrity(bytes, dist);
+  switch (integrity.status) {
+    case "verified":
+    case "unverifiable":
+      return;
+    case "mismatch":
       throw sourceError({
-        message: `npm tarball ${source} failed sha1 shasum verification.`,
+        message: `npm tarball ${source} ${integrity.description}`,
         source,
         kind: "integrity-mismatch",
-        remediation:
-          "The downloaded tarball does not match the registry shasum; retry or report the package.",
+        remediation: integrity.remediation,
       });
-    }
   }
-  // Neither field present ⇒ nothing to verify against; treat as unverifiable rather than failing closed.
 };
 
 export const resolveNpmRecipeSource = async (
