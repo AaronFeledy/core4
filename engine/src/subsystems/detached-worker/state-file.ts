@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { lstat, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
@@ -48,3 +48,18 @@ export const withDetachedWorkerLock = <A, E>(
   },
   body: Effect.Effect<A, E>,
 ) => withAdvisoryLockUsing(options.privateFileAccess)(options.path, options.label, body);
+
+/**
+ * Whether a worker record may be trusted: a regular file owned by this user with no group or other
+ * access. `PrivateFileAccess.verify` checks Windows ACLs; on POSIX it is a no-op, so check mode and owner.
+ */
+export const isOwnerOnlyRecordFile = (
+  path: string,
+  privateFileAccess: PrivateFileAccess,
+): Effect.Effect<boolean> =>
+  Effect.tryPromise(async () => {
+    await privateFileAccess.verify(path);
+    if (process.platform === "win32") return true;
+    const metadata = await lstat(path);
+    return metadata.isFile() && (metadata.mode & 0o077) === 0 && metadata.uid === process.getuid?.();
+  }).pipe(Effect.catch(() => Effect.succeed(false)));

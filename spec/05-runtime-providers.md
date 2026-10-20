@@ -64,6 +64,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `copyToService`, `copyFromService` | Transfers bytes to or from a service. |
 | `exportArtifact`, `importArtifact` | Streams artifacts across the provider boundary. |
 | `openAgentSocketBridge` | Scoped; makes a host-side agent relay reachable to one app's services as a directory containing the named socket (§10.4). |
+| `prepareFileSyncTargets`, `inspectAppliedFileSync`, `disposeFileSyncTargets` (optional) | Accelerated-mount targets for a slow-IO provider (§10.6.3). `prepareFileSyncTargets` creates or re-verifies one labeled sync volume and helper per planned session, is idempotent on retry, fails closed on foreign or unlabeled resources, and returns no rollback: targets outlive a failed start and the next start resumes them. `inspectAppliedFileSync` reports `accelerated`, `ordinary`, `missing`, or `unknown` for the applied app. `disposeFileSyncTargets` removes the targets during destroy. A provider without these members realizes accelerated plans as ordinary binds. |
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
@@ -106,6 +107,8 @@ Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only
 
 This inventory MUST NOT widen partial `provider.destroy`, selected rebuild, or global `-s`. Selected global orphan refusal (§20.7) is unchanged. Orphan lifecycle events are unchanged. Apply and build pre-barrier compensation still run. Readiness failure and interruption during readiness still retain the applied app, routes, and volumes. Neither path deletes volumes unless the existing flags select them.
 
+Prepared file-sync targets are not in this inventory. An unfinished accelerated-start journal (§10.6.3) is the ownership evidence for them: it names the attempt's provider, app, root, engine, target volumes, and sessions, and `prepareFileSyncTargets` re-verifies each target's ownership labels live before a resume touches it. The §12.4.2 manifest is consulted beside it only to reject a foreign provider or app; its absence is not a refusal. `stop` with an unfinished attempt runs the full plan stop from any phase (provider teardown that stops writers, then engine drain or session termination, then the owned cleanup above) and leaves the attempt unfinished for the next start. `destroy` disposes the attempt's sessions and targets from any phase, then clears the journal; a target with no session is disposed only when no app writer could have used it, so a post-apply-intent target with no matching session refuses until the session's synchronization history is restored in the engine and `lando start` finishes the attempt. Both fail closed when the journal's identity does not match the current app, provider, or engine; "from any phase" is subject to those ownership and data-preservation checks, not a guarantee in every resource state.
+
 #### 5.3.2 Create-config identity
 
 Ordinary `start` and explicit `global:start` plan and build with the default cache policy (§6.13.3), then apply changed immutable container create configuration, keeping unchanged containers and volumes. Bare `restart` stops and removes containers, then starts the app with the default cache policy (§6.15). `start` has no confirmation flag.
@@ -117,6 +120,7 @@ Ordinary `start` and explicit `global:start` plan and build with the default cac
 | Missing opaque `dev.lando.create-config` label | One-time recreate. |
 | Unchanged `${secret:...}` reference whose store value changed | Not a config-identity change. MUST NOT recreate for that reason alone. |
 | Per-session credentials, allocations, and timestamps | Excluded from identity. |
+| Host-proxy session (`dev.lando.host-proxy-session`) | Excluded from identity. A changed session recreates eligible services through the host-proxy session rule (§10.10.1), never as config drift, so selected restart is unaffected. |
 
 The label value is `v1:` plus one SHA-256 digest of the desired create configuration. It stores no raw values and no per-value hashes. A `${secret:...}` input contributes the reference text, not the resolved SecretStore value. Literal env-file and YAML config, including a literal password, is desired configuration and is inside that single outer digest. The digest does not prevent dictionary inference and MUST NOT be described as proof that no secret was hashed.
 

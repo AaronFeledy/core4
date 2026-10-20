@@ -38,13 +38,14 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
-import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
+import { withStartedHostProxy } from "./start-host-proxy.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
@@ -92,6 +93,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | EventService
   | PathsService
   | PrivateFileAccessService
+  | ShellRunner
+  | RedactionService
 > {
   const { signal, managed } = options;
   const registry = yield* RuntimeProviderRegistry;
@@ -121,27 +124,34 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
       withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
         platform: provider.platform,
         ...(managed === undefined ? {} : { managed }),
-        use: Effect.fnUntraced(function* (applyPlan) {
-          const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(applyPlan);
-          yield* Effect.scoped(
-            provider.apply(applyPlan, {
-              reconcile: true,
-              completionPlan: readinessPlan,
-              recordedPlan: {
-                ...target.plan,
-                services: { ...target.plan.services, ...builtPlan.services },
-              },
-              ...(signal === undefined ? {} : { signal }),
-              serviceEnvironment,
-              onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
+        use: (agentPlan) =>
+          withStartedHostProxy(agentPlan, target.app, provider.capabilities, {
+            platform: provider.platform,
+            workerPlan: target.plan,
+            reusePolicy: "adopt",
+            ...(managed === undefined ? {} : { managed }),
+            use: Effect.fnUntraced(function* (applyPlan) {
+              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(applyPlan);
+              yield* Effect.scoped(
+                provider.apply(applyPlan, {
+                  reconcile: true,
+                  completionPlan: readinessPlan,
+                  recordedPlan: {
+                    ...target.plan,
+                    services: { ...target.plan.services, ...builtPlan.services },
+                  },
+                  ...(signal === undefined ? {} : { signal }),
+                  serviceEnvironment,
+                  onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
+                }),
+              ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected)));
+              yield* Effect.forEach(services, (service) =>
+                inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
+                  Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
+                ),
+              );
             }),
-          ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected)));
-          yield* Effect.forEach(services, (service) =>
-            inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
-              Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
-            ),
-          );
-        }),
+          }),
       }),
   });
   yield* withBuildProvider(
@@ -184,11 +194,17 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
       provider,
       stateStore,
       body: Effect.fnUntraced(function* () {
-        yield* requireNoPendingAcceleratedStart(resolvedTarget.app, plan);
+        const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
+        if (pending !== null)
+          yield* startApp(
+            options.signal === undefined ? {} : { signal: options.signal },
+            resolvedTarget,
+            managed,
+          );
         const stopPreflight = yield* preflightStopApp(resolvedTarget);
         yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
         yield* ensureStartTransactionConsistent(resolvedTarget);
-        yield* runAppInitEvents(plan);
+        if (pending === null) yield* runAppInitEvents(plan);
         const proxy = yield* RouterService;
         const ref: AppRef = resolvedTarget.app;
         const timestamp = () => DateTime.nowUnsafe();

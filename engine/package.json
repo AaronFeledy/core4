@@ -60,6 +60,7 @@
     "./lifecycle/subscribers": "./src/lifecycle/subscribers.ts",
     "./logging/service": "./src/logging/service.ts",
     "./operations/accelerated-start-inventory": "./src/operations/accelerated-start-inventory.ts",
+    "./operations/accelerated-start-journal": "./src/operations/accelerated-start-journal.ts",
     "./operations/agent-skills": "./src/operations/agent-skills.ts",
     "./operations/app-config-lint": "./src/operations/app-config-lint.ts",
     "./operations/app-mutation-lock": "./src/operations/app-mutation-lock.ts",

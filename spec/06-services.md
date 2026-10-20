@@ -82,7 +82,7 @@ Every bind `MountPlan` has `realization: passthrough | accelerated` selected fro
 
 The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive the derived patterns, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
 
-`mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, `file-sync-sessions` cache, and lifecycle events. Changing excludes changes the key.
+`mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, the engine's durable session state (§10.6.2), and lifecycle events. Changing excludes changes the key.
 
 ### 6.5 Storage
 
@@ -121,11 +121,11 @@ Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<d
 
 `hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2). Layered route matching uses the same scheme, case-insensitive hostname, and path-prefix identity as planning (§7.2), regardless of shorthand or object spelling.
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`. Shorthand and object routes share hostname and path-prefix constraints: in object form `hostname` contains only the host pattern, with any port in `endpoint` and any path in `pathPrefix`, and an explicit `pathPrefix` MUST begin with `/` and contain no whitespace, query string, or fragment. Each hostname label is at most 63 characters and the whole hostname at most 253. The constraints apply to concrete values, so lint and planning check a route that holds an expression after it is evaluated (§7.8). `RoutePlan.hostname` and optional `RoutePlan.pathPrefix` use the public `RouteHostname` and `RoutePathPrefix` schemas, and final plan validation enforces those grammars for authored routes, generated defaults, and plugin contributions. Invalid object fields identify `hostname` or `pathPrefix`, invalid shorthand identifies the route entry, and both carry actionable remediation. Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Prefix stripping MUST NOT be implicit (§10.2). Layered route matching uses the same scheme, case-insensitive hostname, and path-prefix identity as planning (§7.2), regardless of shorthand or object spelling.
 
 Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
-Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. When a service authors neither `services.<name>.routes` nor `proxy.<name>`, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. A service that authors either gets exactly its authored routes, so an explicitly empty list opts it out of routing without affecting published endpoints. LAN publication is opt-in and warns. Internal endpoints never bind the host.
+Default route hostnames are `<service>.<app>.<domain>`, where `<domain>` is the global `proxy.defaultDomain` (default `lndo.site`). It MUST satisfy `DomainName`: dot-separated ASCII letter, digit, and hyphen labels without empty labels or leading or trailing hyphens, at most 63 characters per label and 253 overall; schemes, ports, paths, whitespace, trailing dots, and wildcards are invalid. Global-config decoding and schema-validated writes reject other values, and `lando config set --dry-run` performs the same validation without writing. When a service authors neither `services.<name>.routes` nor `proxy.<name>`, core finalization routes that hostname over HTTPS to its first HTTP or HTTPS endpoint; service types contribute endpoints, not default routes. A service that authors either gets exactly its authored routes, so an explicitly empty list opts it out of routing without affecting published endpoints. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
 Service types MAY contribute default checks (§10.5.2) for the endpoints they declare, such as a `tcp` check for a database, and `service-error` rules for their own server pages (a web server's 502 when its upstream is down). Authored service-level `checks` tune or disable them. Types never contribute `expected` or `app-error` rules; those come from profiles and the Landofile.
 
@@ -137,7 +137,7 @@ Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--
 
 `HealthcheckInput` accepts `false`, command forms, or an object. `false` disables checks; `load()` MAY provide any form (§7.3). `HealthcheckRunner` executes `HealthcheckPlan`; the default uses the selected `RuntimeProvider.exec` and `runProbe`.
 
-Start, restart, rebuild (full or selected), and global-service start MUST complete a concurrent readiness barrier before publishing `post-app-start` or `post-start`. Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, naming the service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Resources applied before a readiness failure MUST be retained, not rolled back. Once apply has committed, app-build has finished, and routes are applied, interruption during the readiness barrier MUST stop waiting and retain the applied app, routes, volumes, sessions, journal, and managed scopes; interruption MUST still propagate to the CLI. Interruptions before the barrier keep their existing cleanup. URL-scan failures MUST warn, not fail startup.
+Start, restart, rebuild (full or selected), and global-service start MUST complete a concurrent readiness barrier before publishing `post-app-start` or `post-start`. Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, naming the service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Resources applied before a readiness failure MUST be retained, not rolled back. Once apply has committed, app-build has finished, and routes are applied, interruption during the readiness barrier MUST stop waiting and retain the applied app, routes, volumes, sessions, and managed scopes; interruption MUST still propagate to the CLI. The accelerated-start journal is already completed once apply commits (§10.6.3), so readiness retention never involves it. Interruptions before the barrier keep their existing cleanup for containers, routes, and managed scopes; prepared sync targets and sessions stay for the next start to resume (§10.6.3). URL-scan failures MUST warn, not fail startup.
 
 A target of a `service_completed_successfully` dependency in the full plan is a completion-intent service: it MUST have verified exit code 0 and MUST skip healthcheck waiting, including selected operations. Other unsupervised services MUST remain running throughout readiness; services without enabled healthchecks settle against their current container start, with the remaining host-side wait bounded to two seconds despite engine clock skew. Container replacement or restart invalidates unsupervised readiness. Successful rows are `ready` after a healthcheck passes, `running` without an enabled healthcheck, or `completed` after verified successful completion.
 
@@ -412,9 +412,11 @@ Build failures are tagged `BuildPlanCycleError`, `BuildStepFailedError`, `BuildP
 
 Landofile `LogSourceInput` requires `path` and optionally accepts `id`, `label`, `stream`, and `timestamps`; it always resolves to `follow`. Service types may declare `redirect`.
 
-#### 6.14.2 `LogChunk.source`
+#### 6.14.2 `LogChunk` source and line
 
 `LogChunk` contains service, optional source, stream, line, and optional timestamp. Missing source means `console`; renderers label interleaved sources.
+
+Each `LogChunk.line` is one complete line; line terminators, including a carriage return at either end, are not part of it. For the console source, providers MUST reassemble engine log messages per stream before emitting: a line written as several partial messages becomes one chunk carrying its first message's timestamp, engine timestamp prefixes on continuation messages are discarded, lines get the same complete UTF-8 framing and line bound as follow sources, and a trailing partial line is emitted only when the stream completes successfully, never on idle, failure, or interruption.
 
 #### 6.14.3 Reification
 
@@ -430,6 +432,8 @@ Providers declaring `serviceLogSources` MUST support finite snapshots and scoped
 
 Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-output boundaries apply `RedactionService` exactly once. Library log streams and app-owned files remain raw.
 
+A line cut by the line bound ends in the SDK truncation marker. Redaction masks any trailing prefix of a known secret value before that marker, so the bound never exposes part of a secret.
+
 #### 6.14.6 Catalog defaults
 
 Catalog types prefer `redirect` for owned Apache, nginx, and PHP-FPM logs; MySQL/MariaDB optional slow/general logs use `follow`; framework file logs are declared by the recipe or type that knows their paths.
@@ -441,13 +445,13 @@ Catalog types prefer `redirect` for owned Apache, nginx, and PHP-FPM logs; MySQL
 | Command | Contract |
 |---|---|
 | `start` | Plans and builds with the default cache policy (`refresh: false`, §6.13.3), then applies create-config drift. Keeps unchanged containers and volumes. Has no confirmation flag. |
-| bare `restart` | Stop, then start. Removes and recreates containers under existing stop semantics. Not an in-place process restart. Uses the default cache policy. |
+| bare `restart` | Stop, then start. Removes and recreates containers under existing stop semantics. Not an in-place process restart. Uses the default cache policy. With an unfinished accelerated attempt, first resumes it under the same lock (§10.6.3). |
 | `restart -s` / `--service` | In-place. No dependency closure. Refuses when the selected container is missing or would be recreated for published-port, bind-source, network, or create-config drift, or a missing `dev.lando.create-config` label. Create-config drift and a missing label fail with `ServiceRestartWouldRecreateError` reason `config`. Remediation is `lando rebuild -s <service>`. |
-| `rebuild` | Forced pull (`refresh: true`), cache and app-build refresh, explicit recreate, and confirmation. A floating-tag refresh failure falls back to the local copy and records `LANDO_ARTIFACT_REFRESH_FAILED` (§6.13.3, §12.6). |
+| `rebuild` | Forced pull (`refresh: true`), cache and app-build refresh, explicit recreate, and confirmation. A floating-tag refresh failure falls back to the local copy and records `LANDO_ARTIFACT_REFRESH_FAILED` (§6.13.3, §12.6). With an unfinished accelerated attempt, first resumes it under the same lock (§10.6.3). `rebuild -s` gives the rebuilt services the running app's host-proxy session and reuses healthy agent relays (§10.10.1, §10.4). |
 | explicit `global:start` | Applies new environment, bind, and image configuration. `reconcile: false`. An explicit call is not warm-skipped. `global:rebuild` remains the forced refresh. |
 
 An unchanged `build.app` command whose bind-mounted inputs alone changed retains its cached build result and skips the step (§6.13.5). `rebuild` forces that step to rerun. Changing command text, step user, or artifact inputs changes the build key, so ordinary start reruns the affected step.
 
-Rollback is unchanged. Provider apply and build pre-barrier compensation still run. Readiness failure and interruption retention are unchanged (§5.3.1).
+Rollback is unchanged. Provider apply and build pre-barrier compensation still run. Readiness failure and interruption retention are unchanged (§5.3.1). Restart and rebuild, full or selected, that find an unfinished accelerated-start journal run the start path first under the app mutation lock, which performs the pending-aware preflight, the transaction check, the init events, and the resumed attempt; the restart or rebuild then continues without running init events again, and a failed resume fails the command (§10.6.3).
 
 ---
