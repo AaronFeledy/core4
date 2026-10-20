@@ -128,8 +128,10 @@ describe("ci runbook", () => {
     );
     expect(runbook).toContain("## Provider matrix");
     expect(runbook).toContain(
-      "runs weekly, on manual dispatch, and automatically after the runtime-bundle publisher",
+      "runs weekly, on manual dispatch, on pull request when provider-matrix or Docker exec paths change",
     );
+    expect(runbook).toContain("automatically after the runtime-bundle publisher");
+    expect(runbook).toContain("provider-contracts-docker-latest");
     expect(runbook).toContain("release-blocking cells fail the workflow when they fail or skip");
     expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
     expect(runbook).toContain("provider-matrix-diagnostics-<cell>");

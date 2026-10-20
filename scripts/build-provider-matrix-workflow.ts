@@ -21,9 +21,10 @@ const setupBunSteps = `      - name: Setup Bun
       - name: Install dependencies
         run: bun install --frozen-lockfile`;
 
-const matrixInclude = cells
-  .map(
-    (cell) => `          - cell: ${cell.id}
+const renderMatrixInclude = (includeCells: readonly ProviderAcceptanceCellPlan[]): string =>
+  includeCells
+    .map(
+      (cell) => `          - cell: ${cell.id}
             engine: ${cell.engine}
             runs-on: ${cell.runsOn}
             provider: ${cell.provider}
@@ -32,8 +33,13 @@ const matrixInclude = cells
             setup: ${cell.setup}
             advisory-skip: ${cell.advisorySkipReason === undefined ? "false" : "true"}
             notice: ${yamlString(cell.advisorySkipReason ?? "GitHub-hosted CI runtime is available.")}`,
-  )
-  .join("\n");
+    )
+    .join("\n");
+
+const dockerLatestCell = cells.find((cell) => cell.id === "docker-engine-linux-latest");
+if (dockerLatestCell === undefined) {
+  throw new Error("provider-matrix requires the docker-engine-linux-latest cell");
+}
 
 const landoRootlessPrereqStep = landoRootlessPrereqSteps.replace(
   "      - name: Provision rootless runtime prerequisites",
@@ -103,21 +109,12 @@ const managedLandoTeardown = `      - name: Teardown managed Lando runtime
             "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true
           fi`;
 
-export const renderProviderMatrixWorkflow = (): string => `${GENERATED_HEADER}
-name: provider-matrix
-
-on:
-  schedule:
-    - cron: '0 8 * * 1'
-  workflow_dispatch:
-  pull_request:
-
-permissions:
-  contents: read
-
-jobs:
-  provider-contracts:
-    if: \${{ github.event_name != 'pull_request' || matrix.cell == 'docker-engine-linux-latest' }}
+const renderProviderContractsJob = (args: {
+  readonly id: string;
+  readonly condition: string;
+  readonly includeCells: readonly ProviderAcceptanceCellPlan[];
+}): string => `  ${args.id}:
+    if: \${{ ${args.condition} }}
     env:
       LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE }}
       LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE }}
@@ -126,7 +123,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-${matrixInclude}
+${renderMatrixInclude(args.includeCells)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
@@ -233,6 +230,38 @@ ${managedLandoTeardown}
           path: provider-matrix-diagnostics
           if-no-files-found: ignore
           retention-days: 7
+`;
+
+export const renderProviderMatrixWorkflow = (): string => `${GENERATED_HEADER}
+name: provider-matrix
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - container-runtime/**
+      - plugins/provider-docker/**
+      - scripts/provider-matrix*
+      - scripts/build-provider-matrix-workflow.ts
+      - .github/workflows/provider-matrix.yml
+
+permissions:
+  contents: read
+
+jobs:
+${renderProviderContractsJob({
+  id: "provider-contracts",
+  condition: "github.event_name != 'pull_request'",
+  includeCells: cells,
+})}
+
+${renderProviderContractsJob({
+  id: "provider-contracts-docker-latest",
+  condition: "github.event_name == 'pull_request'",
+  includeCells: [dockerLatestCell],
+})}
 `;
 
 const main = async (): Promise<void> => {

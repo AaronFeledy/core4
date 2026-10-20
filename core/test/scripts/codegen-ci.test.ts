@@ -213,6 +213,14 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("- cron: '0 8 * * 1'");
       expect(firstWorkflow).toContain("workflow_dispatch:");
       expect(firstWorkflow).toContain("pull_request:");
+      expect(firstWorkflow).toContain("- container-runtime/**");
+      expect(firstWorkflow).toContain("- plugins/provider-docker/**");
+      expect(firstWorkflow).toContain("- scripts/provider-matrix*");
+      expect(firstWorkflow).toContain("- scripts/build-provider-matrix-workflow.ts");
+      expect(firstWorkflow).toContain("- .github/workflows/provider-matrix.yml");
+      expect(firstWorkflow).toContain("if: ${{ github.event_name != 'pull_request' }}");
+      expect(firstWorkflow).toContain("if: ${{ github.event_name == 'pull_request' }}");
+      expect(firstWorkflow).toContain("provider-contracts-docker-latest:");
       expect(firstWorkflow).toContain("contents: read");
       expect(firstWorkflow).toContain("engine: Docker Desktop");
       expect(firstWorkflow).toContain("engine: Docker Engine");

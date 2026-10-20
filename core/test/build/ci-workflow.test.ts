@@ -111,9 +111,18 @@ describe("ci workflow", () => {
     expect(triggers).toContain("    - cron: '0 8 * * 1'");
     expect(triggers).toContain("  workflow_dispatch:");
     expect(triggers).toContain("  pull_request:");
-    expect(providerContracts).toContain(
-      "    if: ${{ github.event_name != 'pull_request' || matrix.cell == 'docker-engine-linux-latest' }}",
-    );
+    expect(triggers).toContain("    paths:");
+    expect(triggers).toContain("      - container-runtime/**");
+    expect(triggers).toContain("      - plugins/provider-docker/**");
+    expect(triggers).toContain("      - scripts/provider-matrix*");
+    expect(triggers).toContain("      - scripts/build-provider-matrix-workflow.ts");
+    expect(triggers).toContain("      - .github/workflows/provider-matrix.yml");
+    expect(providerContracts).toContain("    if: ${{ github.event_name != 'pull_request' }}");
+    const dockerLatest = findIndentedBlock(jobs, "provider-contracts-docker-latest", 2);
+    expect(dockerLatest).toContain("    if: ${{ github.event_name == 'pull_request' }}");
+    expect(dockerLatest).toContain("          - cell: docker-engine-linux-latest");
+    expect(dockerLatest).not.toContain("          - cell: docker-engine-linux\n");
+    expect(dockerLatest).not.toContain("          - cell: docker-desktop-macos");
     expect(permissions).toContain("  contents: read");
     expect(providerContracts).toContain("      fail-fast: false");
     expect(providerContracts).toContain("            engine: Docker Desktop");
