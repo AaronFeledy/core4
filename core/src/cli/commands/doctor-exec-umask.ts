@@ -111,10 +111,12 @@ export const collectExecUmaskDoctorCheck = Effect.fnUntraced(function* (input: {
   readonly runtimeStatus: string;
   readonly selection: DoctorSelectionRecord;
 }): Effect.fn.Return<DoctorCheck> {
-  const listed = yield* input.provider.list({}).pipe(Effect.catch(() => Effect.succeed([])));
+  const listed = input.runtime.running
+    ? yield* input.provider.list({}).pipe(Effect.catch(() => Effect.succeed([])))
+    : [];
   const service = runningService(listed);
   const probed =
-    service === undefined
+    service === undefined || service.containerId === undefined
       ? undefined
       : yield* input.provider
           .exec(

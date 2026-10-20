@@ -87,6 +87,7 @@ describe("collectExecUmaskDoctorCheck", () => {
                 service: ServiceName.make("web"),
                 providerId: ProviderId.make("docker"),
                 status: "running",
+                containerId: "cid-web",
               },
             ]),
           exec: (_target, command) =>
@@ -124,6 +125,77 @@ describe("collectExecUmaskDoctorCheck", () => {
       }),
     );
 
+    expect(check.status).toBe("pass");
+    expect(check.context.execUmask).toBe("unprobed");
+    expect(check.context.compensating).toBe("false");
+  });
+
+  test("stays unprobed when the runtime is not running", async () => {
+    let listCalls = 0;
+    let execCalls = 0;
+    const check = await Effect.runPromise(
+      collectExecUmaskDoctorCheck({
+        provider: {
+          ...provider,
+          list: () => {
+            listCalls += 1;
+            return Effect.succeed([
+              {
+                app: AppId.make("demo"),
+                service: ServiceName.make("web"),
+                providerId: ProviderId.make("docker"),
+                status: "running",
+                containerId: "cid-web",
+              },
+            ]);
+          },
+          exec: () => {
+            execCalls += 1;
+            return Effect.succeed({ exitCode: 0, stdout: "Umask:\t0000\n", stderr: "" });
+          },
+        },
+        engineVersion: "29.6.0",
+        runtime: { running: false, message: "runtime socket unreachable" },
+        runtimeStatus: "runtime socket unreachable",
+        selection,
+      }),
+    );
+
+    expect(listCalls).toBe(0);
+    expect(execCalls).toBe(0);
+    expect(check.status).toBe("pass");
+    expect(check.context.execUmask).toBe("unprobed");
+    expect(check.context.compensating).toBe("false");
+  });
+
+  test("stays unprobed when the running service has no container id", async () => {
+    let execCalls = 0;
+    const check = await Effect.runPromise(
+      collectExecUmaskDoctorCheck({
+        provider: {
+          ...provider,
+          list: () =>
+            Effect.succeed([
+              {
+                app: AppId.make("demo"),
+                service: ServiceName.make("web"),
+                providerId: ProviderId.make("docker"),
+                status: "running",
+              },
+            ]),
+          exec: () => {
+            execCalls += 1;
+            return Effect.succeed({ exitCode: 0, stdout: "Umask:\t0000\n", stderr: "" });
+          },
+        },
+        engineVersion: "28.0.4",
+        runtime,
+        runtimeStatus: "ready",
+        selection,
+      }),
+    );
+
+    expect(execCalls).toBe(0);
     expect(check.status).toBe("pass");
     expect(check.context.execUmask).toBe("unprobed");
     expect(check.context.compensating).toBe("false");
