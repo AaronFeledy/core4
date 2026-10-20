@@ -1426,7 +1426,6 @@ export const IncludeEntry = Schema.Union([
     }),
     path: Schema.optionalKey(Schema.String),
     version: Schema.optionalKey(Schema.String),
-    checksum: Schema.optionalKey(Schema.String),
     namespace: Schema.optionalKey(Schema.String).annotate({
       description:
         'kind: "tooling" only — the sub-namespace included tasks register under. Required unless flatten is true.',

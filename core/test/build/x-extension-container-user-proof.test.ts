@@ -14,6 +14,7 @@ import {
   parseCapturedExtension,
   repairClosedExtension,
   schemaAt,
+  withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
@@ -135,7 +136,7 @@ test.each([
 ] as const)("whole-current-subtree equality detects %s", async (_name, user) => {
   // Given the independently repaired historical input and a green current subtree baseline.
   const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
-  const repaired = repairClosedExtension(captured.landofile);
+  const repaired = repairClosedExtension(withIntentionalChangesSinceCapture(captured.landofile));
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
   const expected = evolveHistoricalServicePort(
     evolveHistoricalTimestamps(

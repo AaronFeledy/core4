@@ -110,7 +110,7 @@ describe("lando init git source native CLI dispatch", () => {
                   join(stagingDir, "recipe.yml"),
                   "id: git-recipe\ntitle: Git Recipe\ndescription: Parsed before render.\nversion: 0.0.1\nprompts:\n  - name: name\n    type: text\n    message: App name\nfiles:\n  - src: .lando.yml\n    dest: .lando.yml\n",
                 );
-                return { commitSha: "123abc" };
+                return { commitSha: "a".repeat(40) };
               },
             },
           });

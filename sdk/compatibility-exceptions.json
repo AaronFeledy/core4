@@ -1191,79 +1191,79 @@
     "surface": "command:app:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:edit",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:set",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:unset",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:validate",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:edit",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:set",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:unset",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:validate",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "schema:IncludeEntry",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "schema:LandofileShape",
     "changeKind": "unsupported-construct",
     "path": "$.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "schema:TemplateRenderContext",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config",
