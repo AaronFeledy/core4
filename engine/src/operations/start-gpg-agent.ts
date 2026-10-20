@@ -94,7 +94,7 @@ export const startGpgAgentSession = Effect.fnUntraced(function* (
     privateFileAccess,
     ...(options.spawnWorker === undefined ? {} : { spawnWorker: options.spawnWorker }),
   }).pipe(Effect.mapError(gpgTransportError));
-  // Starting the worker resets its state directory, so the keyring is published only once the worker owns it.
+  // Refresh public material after ensure, even when the worker and its directory are reused.
   const keyringDir = join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring");
   yield* exportPublicKeyring({ runner, destDir: keyringDir }).pipe(
     Effect.onError(() => Effect.promise(() => session.close())),
