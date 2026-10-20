@@ -35,7 +35,10 @@ export interface HandlerOptions {
   readonly control: {
     readonly token: string;
     readonly transport: HostProxyTransportKind;
-    readonly protocolVersion: 1;
+    readonly protocolVersion: 2;
+    readonly configDigest: string;
+    readonly providerId?: string;
+    readonly configure?: (body: unknown) => Promise<void>;
     readonly pid: number;
     readonly shutdown: () => Promise<void>;
   };

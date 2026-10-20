@@ -88,9 +88,9 @@ const unresolvedExpressionError = (
  * `recipe`/`env`) untouched because only the planner knows the app slug and
  * the proxy default domain. This pass evaluates those sites across the whole
  * document so service configuration, environment, and tooling see the same
- * values route hostnames do. `app.name` is the normalized slug, matching the
- * route-hostname pass. A document with no deferred sites is returned as-is so
- * object identity and provenance are untouched on the common path.
+ * values route hostnames do. `app.name` is the normalized slug. A document
+ * with no deferred sites is returned as-is so object identity and provenance
+ * are untouched on the common path.
  *
  * Sites that read `services.<name>.creds.*` are reported as deferred: those
  * values exist only once a service type has resolved, so

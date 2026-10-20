@@ -47,4 +47,6 @@ Runtime slugs are capped at 57 characters. The `lando-` prefix consumes six char
 
 Default routes use `<service>.<slug>.<domain>`, where `<domain>` is `proxy.defaultDomain` from global config (`lndo.site` unless you change it). Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
 
+Set `proxy.defaultDomain` to a plain DNS domain like `lndo.test`, without a scheme, port, path, or wildcard. `lando config set` rejects other values with an issue naming `proxy.defaultDomain`. See [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
+
 A 100-character lowercase name is preserved in `lando app:config`, but its runtime slug is the first 57 characters. The network and route stay valid instead of producing an overlong label.

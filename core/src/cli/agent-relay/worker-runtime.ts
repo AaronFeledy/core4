@@ -97,6 +97,7 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
     appRoot: input.app.root,
     sessionId: randomUUID(),
     kind: input.kind,
+    configDigest: input.configDigest,
     protocolVersion: AGENT_RELAY_WORKER_PROTOCOL_VERSION,
     pid: process.pid,
   };
