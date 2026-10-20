@@ -69,6 +69,14 @@ Stopping pauses the app's sessions and retains their history. Starting resumes t
 
 `lando destroy` removes the app's sync sessions and disposable sync caches after syncing pending changes in included paths back to the project. Resolve reported sync errors before retrying destroy. The normal destroy rules for application data volumes still apply.
 
+## Finish an interrupted start
+
+```sh
+lando start
+```
+
+If a start fails or you press Ctrl-C before provider apply finishes, the sync sessions and their targets stay where they are, even if some containers already ran and wrote to them. The next `lando start`, `lando restart`, or `lando rebuild` finishes that attempt with the same sessions and their history. Lando never reseeds an existing target from your project. `lando doctor` lists the unfinished attempt until then. `lando stop` and `lando destroy` work on it like any other app, with one exception: destroy refuses when a sync target may hold app writes and its session is gone, until you restore that session's history in Mutagen. See [Finish an interrupted accelerated start](../subsystems/doctor-walkthrough.mdx#finish-an-interrupted-accelerated-start).
+
 ## Resolve a file conflict
 
 If start reports a conflict, keep the session and inspect the affected paths:
