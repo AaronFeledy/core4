@@ -255,7 +255,7 @@ describe("meta:doctor command", () => {
       ok: true,
       result: {
         timestamp: "1970-01-01T00:00:00.000Z",
-        checks: 2,
+        checks: 3,
         failed: 0,
         warned: 0,
       },
@@ -769,7 +769,11 @@ describe("meta:doctor command", () => {
             ),
           ),
         );
-        expect(result.checks.map((check) => check.name)).toEqual(["selected-provider", "runtime-service"]);
+        expect(result.checks.map((check) => check.name)).toEqual([
+          "selected-provider",
+          "runtime-service",
+          "exec-umask",
+        ]);
       } finally {
         await rm(dataRoot, { recursive: true, force: true });
       }
