@@ -63,6 +63,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
                 : validationIssuesFromCause(nested, { fallback: detail });
             return new LandofileValidationError({
               message: detail,
+              remediation: "Correct the reported global configuration before planning the app.",
               file: landofilePath,
               issues: issues.length > 0 ? issues : [validationIssue([], detail)],
             });
@@ -85,6 +86,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
       (error) =>
         new LandofileValidationError({
           message: `Failed to enumerate plugin contributions: ${causeMessage(error)}.`,
+          remediation: "Repair the failing plugin registration and retry planning.",
           file: landofilePath,
           issues: [],
         }),
@@ -143,6 +145,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
         catch: (cause) =>
           new LandofileValidationError({
             message: cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
+            remediation: "Ensure the app root and its Landofile are readable, then retry planning.",
             file: landofilePath,
             issues: [
               validationIssue(

@@ -134,7 +134,6 @@ const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | und
 };
 
 const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthcheckCanonical.Type => {
-  if (input.kind === "none") return false;
   const landoWins =
     "kind" in input ||
     "command" in input ||
@@ -143,7 +142,28 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
     "intervalSeconds" in input ||
     "timeoutSeconds" in input ||
     "startPeriodSeconds" in input;
-  if (!landoWins && normalizeDisable(input.disable) === true) return false;
+  const disabled = input.kind === "none" || (!landoWins && normalizeDisable(input.disable) === true);
+  if (disabled || (!landoWins && normalizeTest(input.test) === false)) {
+    normalizeDisable(input.disable);
+    normalizeTest(input.test);
+    normalizeRetries(input.retries);
+    for (const duration of [
+      input.interval,
+      input.timeout,
+      input.start_period,
+      input.start_interval,
+      input.startInterval,
+    ]) {
+      if (duration !== undefined) parseComposeDuration(duration);
+    }
+    if (input.command !== undefined && input.command.length === 0) {
+      throw new SchemaIssue.InvalidValue(
+        { message: "Disabled healthcheck command must not be empty; omit command instead." },
+        input.command,
+      );
+    }
+    return false;
+  }
   const test = landoWins ? {} : normalizeTest(input.test);
   if (test === false) return false;
   const retries = normalizeRetries(input.retries);

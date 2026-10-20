@@ -163,6 +163,11 @@ describe("resolveLandofileIncludes", () => {
           path: ["services", "api", "imgae"],
           message: "Expected no excess property",
           suggestion: 'Did you mean "image"?',
+          source: {
+            file: join(appRoot, "fragment.yml"),
+            layer: "canonical",
+            path: ["services", "api", "imgae"],
+          },
         },
         expect.objectContaining({ path: ["services", "api", "home"] }),
       ]),

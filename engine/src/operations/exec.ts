@@ -160,7 +160,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   let landofile: LandofileShape;
   if (appTarget?.plan !== undefined) {
     plan = appTarget.plan;
-    landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
+    landofile = appTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, appTarget.root));
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
   }

@@ -148,6 +148,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   }),
   Layer.succeed(RedactionService, {
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
   }),
 )));
@@ -326,9 +327,12 @@ const tools = JSON.parse(stdout);`}
     </Step>
   </Scenario>
 
-The two read-only tools are `app:config:get`, which reads one resolved
-configuration key (`args.key` is required), and `app:config:view`, which
-reads the complete resolved Landofile. Umbrella and write-capable ids:
+The two read-only tools are `app:config:get` and `app:config:view`. Both accept
+optional `flags.source` (`raw`, `merged`, or `resolved`) and `flags.path`.
+The source defaults to `resolved`. Get selects `args.key ?? flags.path`, so
+`args.key` is optional but one selector is required. View reads the complete
+source unless `flags.path` selects a value. The fixed `lando://app/config`
+resource still returns resolved configuration. Umbrella and write-capable ids:
 `app:config`, `app:config:set`, `app:config:unset`, `app:config:edit`,
 `app:config:validate` are not MCP tools, even through explicit allow
 configuration.
@@ -361,12 +365,20 @@ const catalog = buildCatalog({
   effective: computeEffectiveAllowlist({ defaults: ["app:config:get", "app:config:view"] }),
 });
 expect(catalog.tools.map((tool) => tool.toolId)).toEqual(["app:config:get", "app:config:view"]);
-expect(catalog.tools.find((tool) => tool.toolId === "app:config:get")?.inputSchema).toMatchObject({
-  properties: { args: { required: ["key"] }, flags: { properties: {} } },
-});
-expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSchema).toMatchObject({
-  properties: { args: { properties: {} }, flags: { properties: {} } },
-});
+const getInput = catalog.tools.find((tool) => tool.toolId === "app:config:get")?.inputSchema;
+expect(getInput).toHaveProperty("properties.args.properties.key.type", "string");
+expect(getInput).not.toHaveProperty("properties.args.required");
+for (const tool of catalog.tools) {
+  expect(tool.inputSchema).toMatchObject({
+    properties: { flags: { properties: {
+      source: { type: "string", enum: ["raw", "merged", "resolved"] },
+      path: { type: "string" },
+    } } },
+  });
+  expect(tool.inputSchema).not.toHaveProperty("properties.flags.required");
+}
+expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSchema)
+  .toHaveProperty("properties.args.properties", {});
 const release = yield* Deferred.make<void>();
 const runtimeLayer = Layer.succeed(LandofileService, {
   discover: Deferred.await(release).pipe(Effect.as({ name: "mcp-guide", services: {} })),
@@ -379,6 +391,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   }),
   Layer.succeed(RedactionService, {
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
   }),
 )));
@@ -455,6 +468,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   }),
   Layer.succeed(RedactionService, {
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
   }),
 )));

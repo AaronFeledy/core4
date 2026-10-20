@@ -77,10 +77,12 @@ const violationFromIssue = (
         ? `Add the required "${key ?? formatted}" field.`
         : undefined);
   return suggestion === undefined
-    ? { path, message: issue.message }
-    : { path, message: issue.message, suggestion };
+    ? { rule: "landofile.validation", severity: "error", path, message: issue.message }
+    : { rule: "landofile.validation", severity: "error", path, message: issue.message, suggestion };
 };
 export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
+  rule: "landofile.compose-rejection",
+  severity: "error",
   path: pathFromText(match.documentPath),
   message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
   suggestion: match.remediation,
@@ -94,24 +96,41 @@ export const violationsFor = (
 ): ReadonlyArray<ConfigLintViolation> => {
   const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
   if (Result.isSuccess(decoded)) {
-    return [
-      ...Object.entries(decoded.success.services ?? {}).map(([name, service]) =>
-        normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
-      ),
-      ...Object.entries(decoded.success.proxy ?? {}).map(([name, routes]) =>
-        normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
-      ),
-    ].flatMap((result) =>
-      Result.match(result, {
-        onFailure: (error) => [
-          { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
-        ],
-        onSuccess: () => [],
-      }),
-    );
+    return routeViolations(decoded.success);
   }
-  const suggestions = closestKeySuggestions(decoded.failure.issue);
-  return schemaIssueLeaves(decoded.failure.issue)
+  return violationsFromSchema(decoded.failure.issue, parsed, rejections);
+};
+
+export const routeViolations = (landofile: LandofileShape): readonly ConfigLintViolation[] =>
+  [
+    ...Object.entries(landofile.services ?? {}).map(([name, service]) =>
+      normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
+    ),
+    ...Object.entries(landofile.proxy ?? {}).map(([name, routes]) =>
+      normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
+    ),
+  ].flatMap((result) =>
+    Result.match(result, {
+      onFailure: (error) => [
+        {
+          rule: "landofile.route",
+          severity: "error",
+          path: pathFromText(error.key),
+          message: error.message,
+          suggestion: error.remediation,
+        },
+      ],
+      onSuccess: () => [],
+    }),
+  );
+
+export const violationsFromSchema = (
+  issue: SchemaIssue.Issue,
+  parsed: unknown,
+  rejections: readonly ComposeRejectionMatch[] = [],
+): readonly ConfigLintViolation[] => {
+  const suggestions = closestKeySuggestions(issue);
+  return schemaIssueLeaves(issue)
     .map((issue) => {
       const violation = violationFromIssue(issue, suggestions);
       const suggestion = issue._tag === "Type" ? plannerScopeSuggestion(parsed, violation.path) : undefined;

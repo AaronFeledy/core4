@@ -10,6 +10,11 @@ import {
   GpgAgentConfig,
   SshAgentConfig,
 } from "./agent-forwarding.ts";
+import {
+  LandofileSourceDocument,
+  LandofileSourceProjection,
+  LandofileSourceValue,
+} from "./landofile-source.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
 import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 
@@ -239,17 +244,21 @@ import {
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   AppMountInput,
+  CaInput,
+  CertsInput,
   CommandAliasesShape,
   EndpointInput,
   HealthcheckInput,
   IncludeEntry,
   LandofileShape,
+  MountInput,
   PhpComposerConfig,
   RouteInput,
   RouteObjectInput,
   ServiceConfig,
   ServiceConfigInput,
   ServiceFileConfig,
+  StorageInput,
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingFlagShape,
@@ -301,6 +310,7 @@ import {
   AppId,
   BootstrapLevel,
   CommandSpec,
+  ContainerUser,
   HostArchitecture,
   HostPlatform,
   HostPlatformFamily,
@@ -527,7 +537,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServicePlan,
   AppMountInput,
   AppMountPlan,
+  MountInput,
   MountPlan,
+  StorageInput,
+  CertsInput,
+  CaInput,
   DataStorePlan,
   DataStoreMountPlan,
   StorageScope,
@@ -672,6 +686,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PluginName,
   PortablePath,
   CommandSpec,
+  ContainerUser,
   PlanMetadata,
   ProviderExtensionConfig,
   HostPlatform,
@@ -838,6 +853,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
     readonly PreRestartEvent: typeof PreRestartEvent;
     readonly PostRestartEvent: typeof PostRestartEvent;
     readonly LandofileShape: typeof LandofileShape;
+    readonly LandofileSourceValue: typeof LandofileSourceValue;
+    readonly LandofileSourceDocument: typeof LandofileSourceDocument;
+    readonly LandofileSourceProjection: typeof LandofileSourceProjection;
     readonly AuthoringExpression: typeof AuthoringExpression;
     readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
     readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
@@ -863,6 +881,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   } = {
   LandofileShape,
   PreRestartEvent,
+  LandofileSourceValue,
+  LandofileSourceDocument,
+  LandofileSourceProjection,
   PostRestartEvent,
   AuthoringExpression,
   AuthoringExpressionExpectedType,
@@ -993,7 +1014,13 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServicePlan: "Public Lando schema contract for Service Plan.",
   AppMountInput: "Application source mount destination, options, or false to disable it.",
   AppMountPlan: "Public Lando schema contract for App Mount Plan.",
+  MountInput: "Service mount as a short source:target string or an expanded bind, tmpfs, or volume object.",
   MountPlan: "Public Lando schema contract for Mount Plan.",
+  StorageInput:
+    "Named data or cache volume as a short target path or an expanded store object with optional scope, kind, and key.",
+  CertsInput:
+    "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key.",
+  CaInput: "Trusted CA certificate as a path string or an import reference for a service security.ca entry.",
   DataStorePlan: "Public Lando schema contract for Data Store Plan.",
   DataStoreMountPlan: "Public Lando schema contract for Data Store Mount Plan.",
   StorageScope: "Public Lando schema contract for Storage Scope.",
@@ -1030,6 +1057,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
   CommandAliasesShape: "Per-app top-level command alias policy.",
   LandofileShape: "Public Lando schema contract for Landofile Shape.",
+  LandofileSourceValue: "Recursive authored source JSON and directive transport.",
+  LandofileSourceDocument: "A complete acquired authored layer document.",
+  LandofileSourceProjection: "An acquired layer with an optional selected document value.",
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
@@ -1135,6 +1165,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginName: "Public Lando schema contract for Plugin Name.",
   PortablePath: "Public Lando schema contract for Portable Path.",
   CommandSpec: "Public Lando schema contract for Command Spec.",
+  ContainerUser: "Container identity as name or uid, optionally with a group or gid.",
   PlanMetadata: "Public Lando schema contract for Plan Metadata.",
   ProviderExtensionConfig: "Public Lando schema contract for Provider Extension Config.",
   HostPlatform: "Public Lando schema contract for Host Platform.",

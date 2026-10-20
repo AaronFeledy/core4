@@ -4,6 +4,17 @@
 
 ## Compatibility notes
 
+- Config lint findings now require schema-derived `rule: string` and `severity: "error" | "warning"` metadata. `valid` means no error-severity finding, not an empty findings array. Stable healthcheck warning rules are `healthcheck.bare-compose-marker` and `healthcheck.mixed-dialects`; all existing validation failures remain errors. This intentionally evolves the pre-release result contract, without changing authored Landofile grammar or historical schema captures.
+- Disabled healthcheck objects validate supplied siblings before canonicalizing to false. Lando-over-Compose precedence is unchanged for enabled Lando intent. Authored HTTP/TCP healthchecks remain schema-accepted but fail planning with the existing `LandofileValidationError`, without widening planner error channels.
+
+- Authored Landofile composition (pre-ship): `LandofileOverlayInput` and `defineLandofile` accept schema-derived expression-bearing partial layers. Runtime loading composes authored values, materializes merged recipe/env sites, assembles tooling, and strictly decodes once. Codecs obey strict encoded round trips rather than requiring runtime output to be authored input. `@lando/sdk/landofile` additionally exports `directivePathProblem` for preparation without full layer decoding. Existing editor/Standard Schema expression restrictions and produced-text literal behavior remain unchanged.
+
+- `ValidationIssue` additively accepts optional `source: { file, layer, path }`, recording the original authored location separately from the effective issue path. `LandofileValidationError` now requires `remediation`; its shared constructor takes `file` from the primary issue's source when supplied. This is a pre-release constructor requirement, not a persisted-data format migration. Command failure envelopes already support remediation and now preserve authored issue sources through their existing issue projection. `ConfigLintResult` is unchanged.
+
+- Dependency-map identity projection no longer turns scalar map values into conditions, overwrites an authored `service` member, or hides a reserved `__proto__` map key. Invalid authored maps remain available for strict validation instead of being repaired by merging; valid structured maps and service-name lists retain their declared identity merge behavior.
+
+- `@lando/sdk/landofile` adds `mergeValuesWithOrigins`, `withValueOrigins`, `valueOriginAt`, and the erased generic `ValueOrigins` / `ValueWithOrigins` types. The origin map is a path trie: mapping merges retain child locations, keyed collections relocate them, replacements discard inherited locations, and resets retain deletion tombstones. Source payloads remain caller-owned so original authored paths survive projection. `mergeValues(root, left, right, path?)` keeps its signature and uses the same merge traversal without recording origins.
+
 - Shared Landofile field contracts are published once per JSON Schema document as `$defs` and referenced by catalog service configs. This changes schema publication only; decode and encode behavior and public exports are unchanged.
 
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
@@ -397,6 +408,10 @@
 - `@lando/sdk/schema` additively canonicalizes the Compose `ports`, `expose`, and `volumes` service vocabulary at the `ServiceConfig` **field** level (`ServiceConfig` remains a plain `Schema.Struct`; no top-level transform). `ServiceConfig.ports` decodes Compose short strings (`"8080:80"`, `"127.0.0.1:8080:80/udp"`, `"[::1]:8080:80"`, container-only `"80"`, and equal-length published/target ranges) as well as the Compose long object form into a canonical `ComposePortEntry` list (`{ target, published?, hostIp?, protocol, name?, appProtocol? }`); string port tokens are decimal-only, `published` accepts a YAML decimal string or number and canonicalizes to a number, `protocol` is exactly `tcp`/`udp` (Compose `sctp` fails because `EndpointPlan.protocol` has no such member), and a container-only or equal-length mapped range expands at decode time into one canonical entry per port. A published range against a scalar target, and a long-form ranged `published`, fail with remediation to enumerate individual mappings, because `EndpointPublication.hostPort` is a single number. `EndpointInput` and `EndpointPlan` add optional `appProtocol` metadata; Compose port `name` and `app_protocol` normalize into endpoint `name` and `appProtocol` without changing the transport `protocol`. `ServiceConfig.expose` is a new additive optional field decoding a decimal string/number/range list into container-only port numbers that are never host-published. `ServiceConfig.volumes` changes from `readonly string[]` to a canonical `ComposeVolumeEntry` list (`{ type, source?, target, readOnly, subpath?, createHostPath?, tmpfs? }`), decoding Compose short strings (`./src:/app`, `named:/data:ro`, anonymous `/data`, Windows `C:\src:/app:ro`) and type-coherent long objects; incompatible `bind`, `volume`, and `tmpfs` option blocks fail before normalization. `bind.create_host_path` defaults to `true`; explicit `false` normalizes into optional `MountPlan.createHostPath` and `volume.subpath` into optional `DataStoreMountPlan.subpath`, and the bundled emitters realize both through structured mount forms. Encoding is lawful and always emits the canonical long object form, so `Schema.encode(ServiceConfig)` round-trips. `ComposePortEntry` and `ComposeVolumeEntry` are type-only exports and `parseShortVolume` is a named runtime export; no new JSON Schema name is registered. Named Compose keys rejected in the committed disposition matrix (`ports.mode`, `volumes.consistency`, `volumes.bind.propagation|recursive|selinux`, `volumes.volume.nocopy|labels`, `volumes.image.*`) fail structurally under default and strict decode options; tagged matrix-sourced rejection and wildcard `x-*` handling remain owned by the later rejection-surface story. Short-volume access-mode tokens `nocopy`, `z`, `Z`, and propagation tokens fail with remediation naming their matrix key, while unknown tokens are ignored for compose-go parity. No new provider capability was added because the existing bind-mount and persistent-storage capabilities already gate the provider-neutral plan fields. Restructuring `ServiceConfig.ports` and `ServiceConfig.volumes` from string lists to canonical object lists is a pre-ship shape change with no compatibility shim.
 - `HealthcheckInput` is the authoring codec used by `ServiceConfig.healthcheck`: a non-empty string is a shell command, and a non-empty bare string array is literal argv (without Compose marker interpretation). Lando and Compose object forms remain accepted: `test` recognizes `CMD`/`CMD-SHELL`/`NONE`, duration strings normalize to seconds, and decimal-string `retries` and boolean-string `disable` normalize to typed values. Lando fields retain family-level precedence. Every disabled spelling (`false`, `kind: none`, Compose `disable: true`, or `test: [NONE]`) canonicalizes to `false`, dropping all probe fields and timings. The decoded object kind is only `command`, `http`, or `tcp`. A disabled layer replaces lower layers wholesale; a higher object layer replaces that false value and starts fresh. For example, base `false` plus local `{ interval: 5s }` on mysql restores the type-default probe with a five-second interval, never an older authored command. Planning `false` emits `kind: none` with only the type-default interval/timeout/retries (or 10/5/5); it never inherits a target or start period. Raw `start_interval` on enabled objects decodes to `startInterval` and encodes back to `start_interval`; planning retains it in the Compose extension without changing `HealthcheckPlan` or `HealthcheckRunner`.
 - `AppMountInput` is the authoring codec used by `ServiceConfig.appMount`: `false`, a destination string, or `{ target, readOnly?, excludes?, includes? }`. Strings decode to `{ target }`; all destination validation remains a planning concern at `services.<name>.appMount.target`, including the string `disabled`. Invalid destinations carry remediation to choose an absolute container path or use `false` to disable the mount. Generic mount `type`/`source` keys are structurally rejected by both the codec and its published JSON Schema. The decoded mount model and feature consumers are unchanged.
+
+- `CertsInput` and `CaInput` are additive public schema exports. `CertsInput` is the leaf TLS authoring codec used by `ServiceConfig.certs` (boolean, path string, or `{ cert, key }`). `CaInput` is the trusted-CA entry used under `ServiceConfig.security.ca` (path string or `StringImportRef`). Both are registered in `JSON_SCHEMA_REGISTRY` with field descriptions and no description exemptions.
+- `MountInput` and `StorageInput` are registered public schema contracts (previously exported but unregistered). `ServiceConfig.user` narrows from free-form string to `ContainerUser` so unsafe identities fail at the Landofile boundary; valid name/uid and name:group/gid forms are unchanged.
+- `ContainerUser` is registered in `JSON_SCHEMA_REGISTRY` as a public schema contract.
 - `ServiceConfig.composeBuild` is removed pre-release with no compatibility shim. `ServiceConfig.build` is now shape-discriminated between the Lando build-script family (`artifact`, `app`) and the Compose image-build family (`context`, `dockerfile`, `dockerfile_inline`, `args`, `target`); it accepts the Compose bare-string short form and the `args` `KEY=value` list form, defaults `context` to `"."`, and rejects blocks that mix the two families. The canonical decoded form retains `dockerfileInline`, which encodes back to `dockerfile_inline`. `ArtifactBuildSpec` additively gains optional `specInline`, carrying Compose `dockerfile_inline` into the provider-neutral artifact model; the bundled container providers realize it by injecting a Lando-owned Dockerfile into the packed build context, and it participates in the artifact build key. Compose builds normalize into `ServicePlan.artifact` in the planner for every service type, so the existing `artifactBuild` provider-capability check applies; `build.artifact` scripts now emit artifact-phase build steps.
 - `@lando/sdk/schema` additively exports the Compose per-container runtime knob field schemas used by `ServiceConfig` preservation (`ComposeBooleanOrStringField`, `ComposeByteSizeField`, `ComposeCapAddField`, `ComposeCapDropField`, `ComposeDeploy`, `ComposeDeployField`, `ComposeDeployResources`, `ComposeDeploymentDevice`, `ComposeDevice`, `ComposeDevicesField`, `ComposeDiscreteResourceSpec`, `ComposeDnsField`, `ComposeDnsOptField`, `ComposeDnsSearchField`, `ComposeDurationSecondsField`, `ComposeExtraHostsField`, `ComposeGenericResource`, `ComposeGpuRequest`, `ComposeGpusField`, `ComposeGroupAddField`, `ComposeLogging`, `ComposePullPolicyField`, `ComposeResourceLimits`, `ComposeResourceReservations`, `ComposeRestartField`, `ComposeScalarMap`, `ComposeScalarMapField`, `ComposeSecurityOptField`, `ComposeShmSizeField`, `ComposeStopGracePeriodField`, `ComposeStringListField`, `ComposeSysctlsField`, `ComposeTmpfsField`, `ComposeUlimit`, `ComposeUlimitsField`). These are additive runtime schema exports alongside the existing `ComposeServiceKnobKey` / `ComposeKnobCapabilities` surface; they register no new JSON Schema name.
 - `@lando/sdk/services` additively exports the `AppPlanSanitizer` service tag (`sanitizeForPersistence(plan)`) and the `LogFileHelperAssets` service tag (`payloads`) so plugin provider factories can depend on plan redaction and bundled log-helper asset bytes without reaching into core internals.
@@ -440,6 +455,8 @@
 
 ## Additive YAML exports
 
+- `@lando/sdk/landofile` additively exports `flowMappingRemediation`, `GENERIC_FLOW_MAPPING_REMEDIATION`, and the type-only `FlowMappingRemediationOptions` for concrete block-mapping rewrite suggestions when rejecting populated YAML flow mappings. The pure helper is also available at `@lando/sdk/landofile/flow-mapping-remediation` (Effect-free) for cold-path recipe parsing. No error channel or JSON Schema changes.
+
 - `@lando/sdk/landofile` additively exports `splitComposeCommand` and the type-only `SplitCommand` result. The pure splitter matches Compose/go-shellwords tokenization with environment and command substitution disabled, reports unquoted-operator truncation, accepts empty argv, and returns `undefined` for malformed input. Both native Compose services and Lando 3 translation share this implementation; no error channel or JSON Schema changes.
 
 `@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
@@ -449,8 +466,28 @@ Node imports. The block-document emitter accepts JSON-compatible values, rejects
 unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
+## Authored inspection compatibility
+
+The source schemas describe JSON data independently of runtime `LandofileShape`.
+`@lando/sdk/landofile` exports `encodeLandofileSourceValue`, shared with the directive
+codec, to preserve native directives and escape literal envelope collisions.
+Config inspection now has explicit raw, merged, resolved, projection, get, and
+write result variants. Full resolved output remains the strict runtime contract.
+`ConfigLintViolation` adds optional `scope` and the shared validation `source`;
+the built-in lint operation supplies fragment/effective scopes and retained sources.
+
+The conservative actual-parent check reports five output-union changes at `$.anyOf`
+for app-config and its registered write verbs. Issue #1502 records this intentional
+pre-release contract evolution for lead review. The scoped ledger entries do not
+assert generic output-union compatibility or relax the classifier. Existing default
+resolved output remains unchanged; clients opting into new sources discriminate
+the source and result variant.
+
 ## Additive schema exports
 
+- `LandofileSourceValue`
+- `LandofileSourceDocument`
+- `LandofileSourceProjection`
 - `ResourceOwnership`
 - `OwnedResourcesCleanupResult`
 
@@ -600,6 +637,7 @@ It registers no JSON Schema.
 - `BuildScript`
 - `BuildScriptStep`
 - `ContainerUser`
+- `CaInput`
 - `CONTAINER_USER_PATTERN`
 - `isContainerUser`
 - `BuildStepSkipEvent`
@@ -618,6 +656,7 @@ It registers no JSON Schema.
 - `EventTaskStep`
 - `LandofileEvents` (named lifecycle fields plus a string index signature for pre-task and post-task brackets; name validation follows tooling resolution)
 - `CertificatePlan`
+- `CertsInput`
 - `CommandResultEnvelope`
 - `CommandTrace`
 - `CommandTraceSpan`

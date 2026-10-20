@@ -31,6 +31,7 @@ export const plannedContainerDestination = (
   if (!parsed.ok) {
     return new LandofileValidationError({
       message: containerDestinationRefusalMessage(parsed.reason, target),
+      remediation: "Use an absolute in-container destination without parent traversal.",
       file: `${appRoot}/.lando.yml`,
       issues: [validationIssue(issue, containerDestinationRefusalMessage(parsed.reason, target))],
     });
@@ -56,6 +57,7 @@ export const authoredStorageScopes = (
         byStore,
         invalidCacheEntry: new LandofileValidationError({
           message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+          remediation: "Remove scope: service from cache storage; caches are shared across apps.",
           file: `${appRoot}/.lando.yml`,
           issues: [
             validationIssue(

@@ -116,8 +116,15 @@ const composeHealthcheckFixtures = [
     expected: { startInterval: "5s" },
   },
   {
-    name: "none discards shared fields and ignored Compose keys",
-    input: { ...ignoredComposeKeys, kind: "none", retries: "3", start_interval: "5s" },
+    name: "none validates and discards shared and Compose fields",
+    input: {
+      test: ["CMD", "x"],
+      disable: false,
+      interval: "5s",
+      kind: "none",
+      retries: "3",
+      start_interval: "5s",
+    },
     expected: false,
   },
   {
@@ -175,6 +182,24 @@ const acceptedFixtures = composeHealthcheckFixtures.filter((fixture) => "expecte
 const rejectedFixtures = composeHealthcheckFixtures.filter((fixture) => "expectedErrorFragment" in fixture);
 
 describe("HealthcheckInput", () => {
+  test.each([
+    { disable: true, retries: "bad" },
+    { disable: true, interval: "bad" },
+    { disable: true, timeout: "bad" },
+    { disable: true, start_period: "bad" },
+    { disable: true, start_interval: "bad" },
+    { disable: true, test: ["CMD"] },
+    { kind: "none", retries: "bad" },
+    { kind: "none", disable: "yes" },
+    { kind: "none", interval: "bad" },
+    { kind: "none", command: [] },
+    { kind: "none", command: "" },
+    { test: ["NONE"], retries: "bad" },
+    { test: ["NONE"], timeout: "bad" },
+  ])("rejects malformed siblings before disabling: %j", (input) => {
+    const result = Schema.decodeUnknownResult(HealthcheckInput)(input, { onExcessProperty: "error" });
+    expect(Result.isFailure(result)).toBe(true);
+  });
   test.each(acceptedFixtures)("normalizes and wires ServiceConfig: $name", ({ input, expected }) => {
     // Given / When
     const decoded = [

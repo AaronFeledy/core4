@@ -31,6 +31,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
+        remediation: "Provide FileSystem so env files can be read.",
         file: `${input.appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -51,6 +52,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
         (cause) =>
           new LandofileValidationError({
             message: `Unable to read env file ${source} ${input.readContext}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
+            remediation: "Create a readable env file at that path or remove it from env_file.",
             file: source,
             issues: [
               validationIssue(
@@ -66,6 +68,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
       return yield* Effect.fail(
         new LandofileValidationError({
           message: `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
+          remediation: "Use KEY=VALUE entries, optionally prefixed with export.",
           file: parsed.issue.source,
           issues: [
             validationIssue(

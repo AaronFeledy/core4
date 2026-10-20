@@ -1,0 +1,9 @@
+name: wait-disabled
+services:
+  app:
+    type: "node:22"
+    primary: true
+    command:
+      - node
+      - server.mjs
+    healthcheck: curl -fsS http://localhost:3000/

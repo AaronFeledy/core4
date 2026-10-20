@@ -1,5 +1,4 @@
-import { dirname } from "node:path";
-import { loadLandofileLayers } from "@lando/landofile/service";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveKnownEventSet } from "../planner/event-set.ts";
@@ -16,7 +15,7 @@ import type {
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import type { LintLandofileOptions } from "@lando/landofile/lint";
-import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
+import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
@@ -35,22 +34,15 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   | NotImplementedError,
   PluginRegistry
 > {
-  const result = yield* lintLandofile(options);
-  if (!result.valid) return result;
-  const runtimeInputs = yield* scopedLandofileRuntimeInputs;
-  const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
-    ...runtimeInputs,
-    ...(options.templates === undefined ? {} : { templates: options.templates }),
-  }).pipe(Effect.result);
-  if (Result.isFailure(loaded)) {
-    return { ...result, valid: false, violations: [{ path: [], message: loaded.failure.message }] };
-  }
+  const snapshot = yield* lintLandofileSnapshot(options);
+  const { result } = snapshot;
+  if (snapshot.resolved === undefined) return result;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
   const resolved = yield* resolveKnownEventSet({
-    landofile: loaded.success,
+    landofile: snapshot.resolved,
     pluginRegistry,
     configService,
     fileSystem,
@@ -59,11 +51,21 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   }).pipe(Effect.result);
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
+      const path = configExpressionIssuePath(resolved.failure);
+      const source = getLandofileValueSource(snapshot.resolved, path);
       return {
         ...result,
         valid: false,
         violations: [
-          { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
+          ...result.violations,
+          {
+            rule: "landofile.expression",
+            severity: "error",
+            path,
+            message: resolved.failure.message,
+            scope: "effective" as const,
+            ...(source === undefined ? {} : { source }),
+          },
         ],
       };
     }

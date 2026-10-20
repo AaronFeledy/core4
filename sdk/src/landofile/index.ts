@@ -15,6 +15,7 @@ export {
 } from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
 export { decodeLandofileLayer, type LandofileLayerValidator } from "./layer-decode.ts";
+export { directivePathProblem } from "./directive-paths.ts";
 export { decodeLandofileAuthoringLayer } from "./authoring-layer-decode.ts";
 export {
   override,
@@ -36,9 +37,16 @@ export {
   isPlainRecord,
   mergeLandofiles,
   mergeValues,
+  mergeValuesWithOrigins,
   routeFilterIdentity,
   routeFilterMatches,
 } from "./overlay-merge.ts";
+export {
+  withValueOrigins,
+  valueOriginAt,
+  type ValueOrigins,
+  type ValueWithOrigins,
+} from "./overlay-origins.ts";
 export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
 export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
 export {
@@ -64,6 +72,12 @@ export {
   parseLandofile,
   type ParseOptions,
 } from "./parser.ts";
+
+export {
+  GENERIC_FLOW_MAPPING_REMEDIATION,
+  flowMappingRemediation,
+  type FlowMappingRemediationOptions,
+} from "./flow-mapping-remediation.ts";
 export type { ImportRefValue as ImportRef } from "../schema/landofile-reference.ts";
 export {
   isLegacyTagged,
@@ -85,3 +99,4 @@ export {
   type LegacyTree,
   parseLegacyLandofile,
 } from "./legacy/index.ts";
+export { encodeLandofileSourceValue } from "../schema/landofile-directive-codec.ts";

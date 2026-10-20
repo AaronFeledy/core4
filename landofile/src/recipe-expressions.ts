@@ -31,8 +31,8 @@ export const PLAN_SERVICE_EXPRESSION_SCOPES: ReadonlyArray<string> = [
  *
  * `app`, `proxy`, and `services` stay unevaluated until the planner knows the
  * app identity, the proxy domain, and the resolved service credentials.
- * `recipe` and `env` resolve before layer validation, against the merged root
- * recipe projections and one captured environment. Mixed-scope sites remain
+ * `recipe` and `env` resolve after authored composition and before effective
+ * validation, against merged recipe options and one captured environment. Mixed-scope sites remain
  * wholly deferred to the planner.
  */
 export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = PLAN_SERVICE_EXPRESSION_SCOPES;

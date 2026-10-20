@@ -44,6 +44,8 @@ export const validateAuthoredAppMount = (
   if (!(target instanceof LandofileValidationError)) return;
   return new LandofileValidationError({
     message: target.message,
+    remediation:
+      "Set appMount to an absolute container path such as /app, or false to disable the app mount.",
     file: target.file,
     issues: target.issues.map((issue) => ({
       ...issue,
