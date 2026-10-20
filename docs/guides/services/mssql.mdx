@@ -75,6 +75,29 @@ The type ships the `sqlcmd` client task. After start:
 lando sqlcmd -Q "SELECT @@VERSION"
 ```
 
+## Change the port
+
+Set `port:` to move the daemon's listener, healthcheck, endpoint, and Lando's own clients together:
+
+```yaml
+services:
+  database:
+    type: mssql
+    port: 14330
+```
+
+Other services connect to `database` on port `14330`; SQL Server tools write that as `database,14330`. Lando sets `MSSQL_TCP_PORT` for the server and exposes the same value as `LANDO_DB_PORT`. The `sqlcmd` task and `lando db:*` commands pass `-S localhost,14330`.
+
+Port `1434` fails during planning. SQL Server reserves it for its dedicated admin connection, so a server listening there never becomes ready.
+
+Lando sets `MSSQL_TCP_PORT` from `port:`. An authored `MSSQL_TCP_PORT` must match the planned port, or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor that port.
+
+Apply the change with `lando rebuild`, then connect through the generated client:
+
+```sh
+lando sqlcmd -Q "SELECT @@VERSION"
+```
+
 ## Plan on amd64
 
 Upstream SQL Server images are amd64-only. On a non-amd64 host the type fails at plan time unless the provider declares architecture emulation. Use an amd64 host or a provider with architecture emulation. This is a capability check, not a container start failure.

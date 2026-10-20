@@ -14,11 +14,17 @@ import {
 } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  addEnvRecord,
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -29,7 +35,12 @@ export const MYSQL_ARTIFACTS = {
   "9.7": "mysql:9.7",
 } as const;
 const DEFAULT_IMAGE = MYSQL_ARTIFACTS["8.0"];
-const DEFAULT_PORT = 3306;
+export const MYSQL_LISTENER = {
+  port: 3306,
+  variable: "MYSQL_TCP_PORT",
+  daemon: "MySQL",
+  reserved: [{ port: 33060, use: "X Protocol listener" }],
+} as const;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
 // Read directly by mysqld, even when host AppArmor blocks the image's
@@ -89,26 +100,35 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = mysqlCredsFor(appName, ctx.serviceName, service);
+  assertListenerConfig(service, ctx.serviceName, MYSQL_LISTENER);
+  const port = plannedPort(service, MYSQL_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("mysql", creds));
-  addEnvRecord(ctx, landoDbEnvFor(creds));
+  addEnvRecord(ctx, landoDbEnvFor(creds, port));
+  ctx.addEnv("MYSQL_TCP_PORT", String(port));
   ctx.addStorage({
     store: `${appName}-${ctx.serviceName}-mysql-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
+  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(
     commandHealthcheck(
-      ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      ["sh", "-c", `mysqladmin ping -h 127.0.0.1 -P ${port} -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent`],
       60,
     ),
   );
 
   applyAuthoredProcessFields(ctx);
 
-  addServerConfigMount(ctx, MYSQL_CONFIG_TARGET);
+  if (
+    addServerConfigMount(ctx, MYSQL_CONFIG_TARGET) &&
+    service.command === undefined &&
+    service.entrypoint === undefined
+  ) {
+    ctx.setCommand(["mysqld", `--port=${port}`]);
+  }
 };
 
 export const mysqlServiceFeature: ServiceFeatureDefinition = {
@@ -137,26 +157,38 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
       );
     }
     const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: id,
-        ...(image === undefined ? {} : { image }),
-        creds,
-        environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
-      },
-      logSources: MYSQL_LOG_SOURCES,
-      features: [{ id: MYSQL_FEATURE_ID }],
-      tooling: {
-        mysql: {
-          description: "Open the MySQL client for this service.",
-          dir: PortablePath.make("/"),
-          service: input.name,
-          cmd: ["mysql", "-h", "127.0.0.1", "-u", creds.user, creds.database],
-          env: { MYSQL_PWD: creds.password },
+    return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
+      assertListenerConfig(input.service, input.name, MYSQL_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: id,
+          ...(image === undefined ? {} : { image }),
+          creds,
+          environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
         },
-      },
+        logSources: MYSQL_LOG_SOURCES,
+        features: [{ id: MYSQL_FEATURE_ID }],
+        tooling: {
+          mysql: {
+            description: "Open the MySQL client for this service.",
+            dir: PortablePath.make("/"),
+            service: input.name,
+            cmd: [
+              "mysql",
+              "-h",
+              "127.0.0.1",
+              "-P",
+              String(plannedPort(input.service, MYSQL_LISTENER)),
+              "-u",
+              creds.user,
+              creds.database,
+            ],
+            env: { MYSQL_PWD: creds.password },
+          },
+        },
+      };
     });
   },
 });
