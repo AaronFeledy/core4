@@ -255,6 +255,22 @@ describe("renderIncludesVerifyResult", () => {
 });
 
 describe("lando app:includes:verify (source dispatch)", () => {
+  test("corrupt lock renders only include-lock recovery advice", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(join(dir, ".lando.yml"), "name: demo\nincludes:\n  - github:acme/shared/web.yml\n");
+      await writeFile(join(dir, ".lando.lock.yml"), "::: corrupt :::\n");
+      // When
+      const result = await runCli(["app:includes:verify", "--renderer=plain"], dir);
+      // Then
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
+      );
+      expect(result.stderr).not.toContain("The durable state file is corrupt");
+      expect(result.stderr).not.toContain("StateStoreError");
+    });
+  });
   test("a Landofile with no includes verifies ok and exits 0", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: demo\nrecipe: lamp\n");

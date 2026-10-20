@@ -502,11 +502,11 @@ Migration snapshot helper names remain the closed pure §7.3.1 set, including sc
 |---|---|
 | bare id | Built-in `recipes/<id>/` |
 | relative or absolute path | Local directory |
-| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/` |
+| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/`; an `@ref` suffix selects a tag, branch, or full commit SHA |
 | `npm:` | `<userCacheRoot>/recipes/npm/` |
 | `registry:` | Reserved for `recipes.lando.dev`; implementation sequenced in the ROADMAP |
 
-Resolution is content-addressed and cached for offline reuse.
+Resolution is content-addressed and cached for offline reuse. A cached full commit SHA is reused without network access; a branch, tag, or default-branch request is fetched again on each resolution and falls back to the cached commit for the same source and ref only where a warning can be shown (`lando init --source=git`) and only when the fetch fails for a reason other than authentication; otherwise the failure stands.
 
 #### 8.8.5 Prompt types
 

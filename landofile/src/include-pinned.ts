@@ -8,6 +8,7 @@ import {
   type NormalizedInclude,
   type ResolveContext,
 } from "./include-context.ts";
+import { hasIncludeCycle } from "./include-graph.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { fileExists, readText } from "./include-local.ts";
 import { lockValue } from "./include-lockfile.ts";
@@ -24,13 +25,16 @@ export const RESOLVED_FORMAT = {
 // An include without version: or @ref follows the remote default.
 const selectorLabel = (selector: string | undefined): string => selector ?? "<default>";
 
+export type RemoteFragmentResult = FragmentResult & { readonly snapshotRoot: string };
+
 export interface RemoteFragmentLayout {
   readonly sourceId: string;
   readonly version: string | undefined;
   readonly cacheKind: "git" | "npm";
   readonly publishedDirName: (resolved: string) => string;
   readonly fragmentRelPath: string;
-  readonly acquire: (resolved: string | undefined) => Promise<FragmentResult>;
+  readonly snapshotSubdir: "" | "package";
+  readonly acquire: (resolved: string | undefined) => Promise<RemoteFragmentResult>;
 }
 
 // One pinned-read path for loads, verify, and offline updates. The callback is
@@ -39,8 +43,14 @@ export const readPinnedFragment = async (
   entry: NormalizedInclude,
   ctx: ResolveContext,
   layout: RemoteFragmentLayout,
-): Promise<FragmentResult | undefined> => {
+): Promise<RemoteFragmentResult | undefined> => {
   const { sourceId, version } = layout;
+  if (hasIncludeCycle(ctx.ancestors ?? [], sourceId))
+    throw includeError({
+      message: `Landofile include cycle detected at ${entry.source}.`,
+      source: entry.source,
+      kind: "cycle",
+    });
   if (ctx.walk.selectors.has(sourceId) && ctx.walk.selectors.get(sourceId) !== version)
     throw includeError({
       message: `Conflicting selectors for ${sourceId}: ${selectorLabel(ctx.walk.selectors.get(sourceId))} and ${selectorLabel(version)}.`,
@@ -77,7 +87,6 @@ export const readPinnedFragment = async (
       ctx.walk.complete = false;
       return undefined;
     }
-    if (locked !== undefined) throw mismatch(selectorLabel(locked.version), selectorLabel(version));
     return layout.acquire(undefined);
   }
   try {
@@ -98,7 +107,13 @@ export const readPinnedFragment = async (
       entry.source,
       "remote source",
     );
-    let fragment: FragmentResult;
+    const snapshotRoot = await assertUnderRoot(
+      publishedDir,
+      join(publishedDir, layout.snapshotSubdir),
+      entry.source,
+      "remote source",
+    );
+    let fragment: RemoteFragmentResult;
     if (await fileExists(filePath)) {
       fragment = {
         sourceId,
@@ -109,6 +124,7 @@ export const readPinnedFragment = async (
         content: await readText(filePath, entry.source),
         filePath,
         root: dirname(filePath),
+        snapshotRoot,
         userOwned: false,
         locked: true,
       };

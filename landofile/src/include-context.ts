@@ -62,7 +62,6 @@ export interface NormalizedInclude {
   readonly source: string;
   readonly path?: string;
   readonly version?: string;
-  readonly checksum?: string;
 }
 export interface LockEntry {
   readonly source: string;
@@ -70,7 +69,17 @@ export interface LockEntry {
   readonly resolved: string;
   readonly checksum: string;
 }
+export interface RemoteIncludeOrigin {
+  readonly kind: "git" | "npm";
+  readonly identity: string;
+  readonly acquisitionSource: string;
+  readonly resolved: string;
+  readonly snapshotRoot: string;
+  readonly cacheRoot: string;
+}
 export interface ResolveContext {
+  readonly ancestors?: ReadonlyArray<string>;
+  readonly remoteOrigin?: RemoteIncludeOrigin | undefined;
   readonly loadScope: LandofileLoadScope;
   readonly appRoot: string;
   readonly sourceRoot: string;
@@ -97,6 +106,7 @@ export interface ResolveContext {
   readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
 export interface FragmentResult {
+  readonly remoteOrigin?: RemoteIncludeOrigin;
   readonly sourceId: string;
   readonly inventoryId: string;
   readonly authoredSource: string;

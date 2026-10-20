@@ -130,10 +130,12 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
   const drift = entries.some((entry) => entry.status !== "unchanged") || removed.length > 0;
   let wrote = false;
   if (!checkMode && drift) {
-    const finalEntries = scoped
-      ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
-      : [...ctx.stagedLocks.values()];
-    yield* writeLockEntries(options.stateStore, options.appRoot, lockfilePath, finalEntries);
+    yield* writeLockEntries(options.stateStore, {
+      appRoot: options.appRoot,
+      lockfilePath,
+      entries: [...ctx.stagedLocks.values()],
+      merge: scoped,
+    });
     wrote = true;
   }
   return { lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources };

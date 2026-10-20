@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,26 +117,32 @@ test("network pin checks parent bytes before parsing its child", async () => {
   expect(refs).toEqual([SHA]);
 });
 
-const npmDeps = (specs: string[], version = "1.2.3") => ({
-  npmRecipeSource: {
-    resolve: async (spec: string) => {
-      specs.push(spec);
-      return {
-        packageName: "@acme/fragments",
-        version,
-        dist: { tarball: "https://registry.example/pkg.tgz" },
-      };
+const npmDeps = (specs: string[], version = "1.2.3") => {
+  const bytes = new Uint8Array([1]);
+  return {
+    npmRecipeSource: {
+      resolve: async (spec: string) => {
+        specs.push(spec);
+        return {
+          packageName: "@acme/fragments",
+          version,
+          dist: {
+            tarball: "https://registry.example/pkg.tgz",
+            shasum: createHash("sha1").update(bytes).digest("hex"),
+          },
+        };
+      },
     },
-  },
-  npmFetcher: { fetch: async () => new Uint8Array([1]) },
-  npmExtractor: {
-    extract: async (_bytes: Uint8Array, dest: string) => {
-      await mkdir(join(dest, "package"), { recursive: true });
-      await Bun.write(join(dest, "package", "web.yml"), CONTENT);
-      await Bun.write(join(dest, "package", "cache.yml"), "services:\n  cache:\n    type: redis\n");
+    npmFetcher: { fetch: async () => bytes },
+    npmExtractor: {
+      extract: async (_bytes: Uint8Array, dest: string) => {
+        await mkdir(join(dest, "package"), { recursive: true });
+        await Bun.write(join(dest, "package", "web.yml"), CONTENT);
+        await Bun.write(join(dest, "package", "cache.yml"), "services:\n  cache:\n    type: redis\n");
+      },
     },
-  },
-});
+  };
+};
 
 test("two npm fragments from one package have distinct pins and unambiguous cache layout", async () => {
   // Given

@@ -10,7 +10,7 @@ import {
   type ResolveContext,
   missingRuntimeInput,
 } from "./include-context.ts";
-import { includeError } from "./include-guard.ts";
+import { includeError, realpathOrSelf } from "./include-guard.ts";
 
 const CORRUPT_LOCK_REMEDIATION =
   "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.";
@@ -163,7 +163,7 @@ export const parseLockEntries = (
               line: undefined,
               column: undefined,
               ...(cause.reason === "decode" ? { remediation: CORRUPT_LOCK_REMEDIATION } : {}),
-              cause,
+              cause: cause.reason === "decode" ? cause.cause : cause,
             }),
         ),
       ),
@@ -176,30 +176,55 @@ export const parseLockEntries = (
   );
 export const writeLockEntries = (
   stateStore: StateStoreShape | undefined,
-  appRoot: string,
-  lockfilePath: string,
-  entries: ReadonlyArray<LockEntry>,
-): Effect.Effect<void, LandofileIncludeError> =>
-  openLockfileBucket(stateStore, appRoot, lockfilePath).pipe(
-    Effect.flatMap((bucket) => bucket.set(entries)),
-    Effect.mapError(() =>
-      includeError({
-        message: `Could not write include lockfile ${lockfilePath}.`,
-        source: lockfilePath,
-        kind: "fetch-failed",
+  input: {
+    readonly appRoot: string;
+    readonly lockfilePath: string;
+    readonly entries: ReadonlyArray<LockEntry>;
+    readonly merge: boolean;
+  },
+): Effect.Effect<void, LandofileIncludeError | LandofileParseError> =>
+  Effect.gen(function* () {
+    if (stateStore === undefined) return yield* Effect.fail(missingRuntimeInput("StateStore"));
+    const canonicalPath = yield* Effect.tryPromise(async () =>
+      resolve(await realpathOrSelf(dirname(input.lockfilePath)), basename(input.lockfilePath)),
+    );
+    yield* stateStore.withLock(
+      `landofile-include-lock:${sha256Hex(canonicalPath)}`,
+      Effect.gen(function* () {
+        const current = yield* parseLockEntries(stateStore, input.appRoot, input.lockfilePath);
+        const merged = new Map(input.merge ? current : []);
+        for (const entry of input.entries) merged.set(entry.source, entry);
+        const bucket = yield* openLockfileBucket(stateStore, input.appRoot, input.lockfilePath);
+        yield* bucket.set([...merged.values()]);
       }),
+    );
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof LandofileParseError
+        ? cause
+        : includeError({
+            message: `Could not write include lockfile ${input.lockfilePath}.`,
+            source: input.lockfilePath,
+            kind: "fetch-failed",
+          }),
     ),
   );
-export const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, LandofileIncludeError> => {
+export const writeLockfileIfNeeded = (
+  ctx: ResolveContext,
+): Effect.Effect<void, LandofileIncludeError | LandofileParseError> => {
   if (ctx.stagedLocks.size === 0) return Effect.void;
-  const merged = new Map(ctx.lockEntries);
-  for (const [source, entry] of ctx.stagedLocks) merged.set(source, entry);
-  return writeLockEntries(ctx.stateStore, ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
+  return writeLockEntries(ctx.stateStore, {
+    appRoot: ctx.appRoot,
+    lockfilePath: ctx.lockfilePath,
+    entries: [...ctx.stagedLocks.values()],
+    merge: true,
+  });
 };
 export const stageFragmentLock = (fragment: FragmentResult, ctx: ResolveContext): Effect.Effect<void> => {
   // readPinnedFragment already verified pinned fragments; a load keeps existing entries as written.
   if (!fragment.locked || fragment.resolved === undefined) return Effect.void;
-  if (ctx.mode === "pin" && ctx.lockEntries.has(fragment.sourceId)) return Effect.void;
+  const locked = ctx.lockEntries.get(fragment.sourceId);
+  if (ctx.mode === "pin" && locked !== undefined && locked.version === fragment.version) return Effect.void;
   ctx.stagedLocks.set(fragment.sourceId, {
     source: fragment.sourceId,
     resolved: fragment.resolved,

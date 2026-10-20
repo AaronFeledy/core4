@@ -20,6 +20,7 @@ import {
   rememberLandofileIncludeSources,
   rememberLocalIncludePaths,
 } from "./include-provenance.ts";
+import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
 import { authoredIncludeEntries, classify, normalizeInclude } from "./include-source.ts";
 import {
@@ -94,7 +95,7 @@ export const resolveTree = Effect.fnUntraced(function* (
           });
         switch (kind) {
           case "local":
-            return fetchLocal(entry, ctx);
+            return ctx.remoteOrigin === undefined ? fetchLocal(entry, ctx) : fetchRemoteRelative(entry, ctx);
           case "user":
             return fetchUser(entry, ctx);
           case "git":
@@ -121,7 +122,13 @@ export const resolveTree = Effect.fnUntraced(function* (
     const parsed = yield* parseFragment(fragment, ctx, layer);
     const nested = yield* resolveTree(
       parsed as LandofileShape,
-      { ...ctx, sourceRoot: fragment.root, userOwned: fragment.userOwned },
+      {
+        ...ctx,
+        ancestors: [...stack, fragment.sourceId],
+        sourceRoot: fragment.root,
+        userOwned: fragment.userOwned,
+        remoteOrigin: fragment.remoteOrigin,
+      },
       depth + 1,
       [...stack, fragment.sourceId],
       fragment.sourceId,

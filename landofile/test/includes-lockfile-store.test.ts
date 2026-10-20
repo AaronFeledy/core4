@@ -11,6 +11,7 @@ import { makeStateStore } from "@lando/state-store/service";
 
 import type { GitIncludeCloner } from "../src/includes.ts";
 import {
+  resolveAuthoredIncludes,
   updateAuthoredIncludes as updateLandofileIncludes,
   verifyAuthoredIncludes as verifyLandofileIncludes,
 } from "./include-pipeline.ts";
@@ -103,7 +104,7 @@ describe("store-backed include lockfile", () => {
       }),
     );
     expect(report.wrote).toBe(true);
-    expect(opens).toBe(2);
+    expect(opens).toBe(3);
     const written = await readFile(lockPath, "utf8");
     const expected = renderExpectedLockfile([
       { source: "github:acme/fragments/postgres.yml", resolved: "a".repeat(40), checksum: sha256(FRAGMENT) },
@@ -183,5 +184,41 @@ describe("store-backed include lockfile", () => {
     });
     expect((await readdir(appRoot)).some((name) => name.startsWith(".lando.lock.yml.corrupt-"))).toBe(false);
     expect(await readFile(lockPath, "utf8")).toBe(corrupt);
+  });
+
+  test("load preserves a parse error when the lockfile becomes corrupt before the locked write", async () => {
+    // Given
+    const lockPath = join(appRoot, ".lando.lock.yml");
+    await writeFile(lockPath, "includes:\n", "utf8");
+    const corruptingStore: StateStoreShape = {
+      ...stateStore,
+      withLock: (key, body) =>
+        stateStore.withLock(
+          key,
+          Effect.promise(() => writeFile(lockPath, "::: corrupt lock :::\n", "utf8")).pipe(
+            Effect.andThen(body),
+          ),
+        ),
+    };
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        resolveAuthoredIncludes({
+          landofile: landofile(),
+          appRoot,
+          cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
+          stateStore: corruptingStore,
+          deps: { gitCloner: clonerReturning("a".repeat(40)) },
+        }),
+      ),
+    );
+    // Then
+    expect(error).toMatchObject({
+      _tag: "LandofileParseError",
+      filePath: lockPath,
+      remediation:
+        "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
+    });
   });
 });

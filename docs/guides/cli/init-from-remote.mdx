@@ -8,9 +8,10 @@ tags: [beta, docs, cli, init, recipes]
 
 # Init from a remote recipe
 
-`lando init` can scaffold an app from a recipe hosted somewhere other than
-the bundled set: a git repository, a tarball, an npm package, or the recipe
-registry. Each source requires the flag that tells Lando where to find
+`lando init` can load a recipe hosted somewhere other than the bundled set: a
+git repository, a tarball, an npm package, or the recipe registry. It fetches
+and validates the recipe, then stops before writing files, because file
+rendering only works for bundled recipes so far. Each source requires the flag that tells Lando where to find
 `recipe.yml`, and each fails fast, before any clone or download, when that
 flag is missing:
 
@@ -53,8 +54,10 @@ value is rejected outright.
 lando init --source=git --url=<git-url>
 ```
 
-Clones the repository, then reads `recipe.yml` from the clone root. Add
-`--path` when `recipe.yml` lives in a subdirectory of a monorepo:
+Fetches the repository's default branch, then reads `recipe.yml` from its
+root. Append `@ref` to the URL for a tag, branch, or full commit SHA, such as
+`--url=https://github.com/acme/lando-recipes.git@v2.1.0`. Add `--path` when
+`recipe.yml` lives in a subdirectory of a monorepo:
 
 ```sh
 lando init --source=git --url=<git-url> --path=packages/my-recipe

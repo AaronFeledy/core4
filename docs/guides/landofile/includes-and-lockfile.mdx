@@ -162,7 +162,10 @@ moves it forward.
 The first load resolves the include and adds an entry to `.lando.lock.yml`:
 the `source` (repository or package plus fragment path), the `version` you
 asked for (omitted when you didn't pin one), the `resolved` commit SHA or
-package version, and the fragment's SHA-256 `checksum`. Commit the lockfile.
+package version, and the fragment's SHA-256 `checksum`. Lando checks an npm
+package against the registry's integrity hash or shasum before unpacking it,
+and refuses a package the registry publishes neither for. Commit the
+lockfile.
 
 After that, loads use the lockfile instead of the network. Lando reads the
 pinned revision from the include cache under your user cache root and checks
@@ -171,19 +174,29 @@ tooling keep working offline. On a machine without the cache, Lando fetches
 exactly the pinned commit or package version. A branch that moves upstream
 doesn't change your app until you run `lando app:includes:update`.
 
-Changing `version:` fails the next load with `LandofileLockMismatchError`,
-naming the pinned and requested versions. Refresh that include, then review
-and commit the lockfile change:
-
-```sh
-lando app:includes:update github:acme/lando-shared
-```
+Change `version:` and the next load fetches the new version and replaces that
+include's lockfile entry. Review and commit the lockfile change with the
+Landofile change. In CI, run `lando app:includes:verify`; it fails when the
+committed lockfile doesn't pin what the Landofile asks for.
 
 A cached fragment whose bytes no longer match its checksum fails closed with
-`LandofileLockMismatchError` too. If `.lando.lock.yml` can't be decoded, for
+`LandofileLockMismatchError`. If `.lando.lock.yml` can't be decoded, for
 example after a merge conflict, Lando fails with `LandofileParseError`
 instead of dropping your pins. Restore the file from version control or
 remove it, then run `lando app:includes:update`.
+
+A remote fragment can include files beside it with relative paths:
+
+```yaml
+# fragments/php.yml in acme/lando-shared
+includes:
+  - ./php-extensions.yml
+```
+
+`./php-extensions.yml` comes from the same commit or package version as
+`php.yml` and gets its own lockfile entry, so it's pinned and checked the
+same way. A relative path that climbs out of the repository or package fails
+with `LandofileIncludeError`.
 
 ## Refresh and check the lockfile
 

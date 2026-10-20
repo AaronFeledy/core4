@@ -547,14 +547,18 @@ describe("resolveLandofileIncludes", () => {
   });
 
   test("creates an npm include lock entry with resolved version and checksum", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
     const npmRecipeSource: NpmIncludeRecipeSource = {
       resolve: async () => ({
         packageName: "@acme/fragments",
         version: "1.2.3",
-        dist: { tarball: "https://registry.example/pkg.tgz" },
+        dist: {
+          tarball: "https://registry.example/pkg.tgz",
+          shasum: createHash("sha1").update(bytes).digest("hex"),
+        },
       }),
     };
-    const fetcher: NpmIncludeFetcher = { fetch: async () => new Uint8Array([1, 2, 3]) };
+    const fetcher: NpmIncludeFetcher = { fetch: async () => bytes };
     const extractor: NpmIncludeExtractor = {
       extract: async (_bytes, destDir) => {
         await mkdir(join(destDir, "package", "fragments"), { recursive: true });

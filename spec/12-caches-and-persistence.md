@@ -159,7 +159,7 @@ Hot-path caches remain under their existing readers and MAY adopt `StateStore` o
 
 #### 12.7.2 Reference consumers
 
-The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). These subsystems MUST NOT implement bespoke persistence primitives.
+The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec in an unlocked bucket, and its writers re-read and merge under a host-wide `StateStore.withLock` operation lock so no lock file lands beside it; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). These subsystems MUST NOT implement bespoke persistence primitives.
 
 #### 12.7.3 Plugins and embedding hosts
 

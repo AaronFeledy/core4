@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- Pre-release removal: `IncludeEntry.checksum` is no longer accepted. Declaration-site checksums were never verified; remote include integrity is enforced by `.lando.lock.yml`. No compatibility shim is provided. Lockfile checksums and referenced-file checksums are unchanged.
+
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
 
 - `RuntimeProvider.cleanupOwnedResources(root, options)` and the filesystem-only `RuntimeProviderContribution.resourceOwnership(ctx, root)` are optional cleanup ports. `AppliedTeardownEvidence` adds ownership summaries and a cleanup-only `owned` variant. Inventory hints never establish applied state, physical existence, readiness, or seed eligibility. Whole-app teardown preflights all inventory providers before mutation; selected teardown and compensation retain their existing resource scope.

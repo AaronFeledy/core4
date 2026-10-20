@@ -1,5 +1,6 @@
 import { isAbsolute, posix } from "node:path";
 import type { IncludeEntry, LandofileShape } from "@lando/sdk/schema";
+import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "./git-ref.ts";
 import type { NormalizedInclude } from "./include-context.ts";
 import { includeError } from "./include-guard.ts";
 import { hasToolingIncludes } from "./tooling-include-entries.ts";
@@ -11,7 +12,6 @@ export const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
         source: entry.source,
         ...(entry.path === undefined ? {} : { path: entry.path }),
         ...(entry.version === undefined ? {} : { version: entry.version }),
-        ...(entry.checksum === undefined ? {} : { checksum: entry.checksum }),
       };
 export const authoredIncludeEntries = (
   landofile: Pick<LandofileShape, "include" | "includes">,
@@ -52,25 +52,10 @@ const safeRelativeSubpath = (subpath: string | undefined, source: string): strin
     });
   return normalized;
 };
-const parseSourceRef = (raw: string): { readonly value: string; readonly ref?: string } => {
-  const at = raw.lastIndexOf("@");
-  if (at <= 0) return { value: raw };
-  const authority = raw.indexOf("://");
-  const boundary =
-    authority >= 0 ? raw.indexOf("/", authority + 3) : raw.startsWith("git@") ? raw.indexOf(":") : 0;
-  if (boundary < 0 || at <= boundary) return { value: raw };
-  const ref = raw.slice(at + 1);
-  return ref === "" ? { value: raw } : { value: raw.slice(0, at), ref };
-};
 export const classify = (source: string): "local" | "user" | "git" | "npm" => {
   if (source.startsWith("user:")) return "user";
   if (source.startsWith("npm:")) return "npm";
-  if (
-    source.startsWith("git@") ||
-    source.startsWith("github:") ||
-    /^(?:git\+)?(?:https?|ssh):\/\//u.test(source)
-  )
-    return "git";
+  if (isGitSource(source)) return "git";
   return "local";
 };
 const gitHubPathFromSource = (source: string): string | undefined => {
@@ -78,31 +63,11 @@ const gitHubPathFromSource = (source: string): string | undefined => {
   const parts = source.slice("github:".length).split("/");
   return parts.length > 2 ? parts.slice(2).join("/") : undefined;
 };
-const gitCloneUrl = (source: string): string => {
-  if (!source.startsWith("github:")) return source.replace(/^git\+/u, "");
-  const [owner, repo] = source.slice("github:".length).split("/");
-  return owner === undefined || repo === undefined ? source : `https://github.com/${owner}/${repo}.git`;
-};
 const gitRepoIdentity = (source: string): string => {
   if (!source.startsWith("github:")) return source;
   const [owner, repo] = source.slice("github:".length).split("/");
   return owner === undefined || repo === undefined ? source : `github:${owner}/${repo}`;
 };
-// git check-ref-format rules for one literal ref (a full SHA also passes). A
-// leading "-" or "+" would otherwise reach git fetch as an option or refspec.
-const INVALID_REF_PATTERNS = [
-  /^$/u,
-  /^@$/u,
-  /^[+/-]/u,
-  /[\p{Cc}\s~^:?*[\\]/u,
-  /\.\./u,
-  /\/\//u,
-  /@\{/u,
-  /[/.]$/u,
-  /(?:^|\/)\./u,
-  /\.lock(?:\/|$)/u,
-] as const;
-const isLiteralGitRef = (ref: string): boolean => !INVALID_REF_PATTERNS.some((pattern) => pattern.test(ref));
 export const parseGitInclude = (
   entry: NormalizedInclude,
 ): {
@@ -111,7 +76,7 @@ export const parseGitInclude = (
   readonly path: string;
   readonly ref?: string;
 } => {
-  const parsed = parseSourceRef(entry.source);
+  const parsed = splitSourceRef(entry.source);
   const path = safeRelativeSubpath(entry.path ?? gitHubPathFromSource(parsed.value), entry.source);
   const ref = entry.version ?? parsed.ref;
   if (ref !== undefined && !isLiteralGitRef(ref))
@@ -137,7 +102,7 @@ export const parseNpmInclude = (
   readonly requestedVersion?: string;
   readonly path: string;
 } => {
-  const parsed = parseSourceRef(entry.source.slice("npm:".length));
+  const parsed = splitSourceRef(entry.source.slice("npm:".length));
   const requestedVersion = entry.version ?? parsed.ref;
   const parts = parsed.value.split("/");
   const packageName = parsed.value.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] ?? "");

@@ -154,7 +154,54 @@ test("moving upstream HEAD does not affect a pinned load", async () => {
   expect(loaded.services?.[ServiceName.make("web")]?.type).toBe("php");
 });
 
-test("selector changes reject load and offline update without acquisition or lock writes", async () => {
+test("selector changes re-resolve the requested ref and replace only its lock entry", async () => {
+  // Given
+  const locked = await writeLock("v1");
+  const other = `  - source: github:acme/other/php.yml\n    resolved: ${SHA}\n    checksum: ${checksum(CONTENT)}\n`;
+  await Bun.write(join(root, ".lando.lock.yml"), locked + other);
+  const calls: Array<string | undefined> = [];
+  // When
+  await Effect.runPromise(
+    resolveAuthoredIncludes({ ...options("v2"), deps: { gitCloner: cloner(calls, NEW_SHA) } }),
+  );
+  // Then
+  expect(calls).toEqual(["v2"]);
+  const entries = Bun.YAML.parse(await Bun.file(join(root, ".lando.lock.yml")).text());
+  expect(entries).toEqual({
+    includes: [
+      { source: "github:acme/other/php.yml", resolved: SHA, checksum: checksum(CONTENT) },
+      { source: SOURCE, version: "v2", resolved: NEW_SHA, checksum: checksum(CONTENT) },
+    ],
+  });
+});
+
+test("selector changes fail closed when acquisition is offline", async () => {
+  // Given
+  const locked = await writeLock("v1");
+  const calls: Array<string | undefined> = [];
+  // When
+  const error = await Effect.runPromise(
+    Effect.flip(
+      resolveAuthoredIncludes({
+        ...options("v2"),
+        deps: {
+          gitCloner: {
+            clone: async ({ ref }) => {
+              calls.push(ref);
+              throw new Error("offline");
+            },
+          },
+        },
+      }),
+    ),
+  );
+  // Then
+  expect(error).toMatchObject({ _tag: "LandofileIncludeError", kind: "fetch-failed" });
+  expect(calls).toEqual(["v2"]);
+  expect(await Bun.file(join(root, ".lando.lock.yml")).text()).toBe(locked);
+});
+
+test("selector changes reject offline update without acquisition or lock writes", async () => {
   // Given
   const locked = await writeLock("v1");
   const calls: Array<string | undefined> = [];
@@ -167,12 +214,10 @@ test("selector changes reject load and offline update without acquisition or loc
     deps: { gitCloner: cloner(calls) },
   };
   // When
-  const loadError = await Effect.runPromise(Effect.flip(resolveAuthoredIncludes(input)));
   const updateError = await Effect.runPromise(
     Effect.flip(updateAuthoredIncludes({ ...input, noNetwork: true })),
   );
   // Then
-  expect(loadError).toMatchObject({ _tag: "LandofileLockMismatchError", expected: "v1", actual: "v2" });
   expect(updateError).toMatchObject({ _tag: "LandofileIncludeError", kind: "source-unresolved" });
   expect(calls).toEqual([]);
   expect(writes).toBe(0);

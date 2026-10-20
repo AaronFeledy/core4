@@ -55,7 +55,7 @@ const makeCloner = (
     const recipeRoot = options.subpath === undefined ? stagingDir : join(stagingDir, options.subpath);
     await mkdir(recipeRoot, { recursive: true });
     if (options.manifest !== undefined) await writeFile(join(recipeRoot, "recipe.yml"), options.manifest);
-    return { commitSha: options.commitSha ?? "abc123def456" };
+    return { commitSha: options.commitSha ?? "a".repeat(40) };
   },
 });
 
@@ -69,6 +69,49 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("resolveGitRecipeSource", () => {
+  for (const structuredAuth of [false, true]) {
+    test(`cached recipe ${structuredAuth ? "never hides a structured auth failure" : "cannot fall back without a warning sink"}`, async () => {
+      // Given
+      await withTempRoot(async (dir) => {
+        const url = "https://example.test/recipes.git";
+        const userDataRoot = join(dir, "data");
+        await resolveGitRecipeSource({
+          url,
+          userDataRoot,
+          gitRecipeCloner: makeCloner({ manifest: VALID_RECIPE }),
+        });
+        const warnings: string[] = [];
+        const failure = structuredAuth
+          ? new RecipeSourceError({
+              message: "Access rejected",
+              source: url,
+              kind: "auth",
+              remediation: "Sign in again.",
+            })
+          : new Error("Connection refused");
+        // When
+        const acquisition = resolveGitRecipeSource({
+          url,
+          userDataRoot,
+          gitRecipeCloner: makeCloner({ fail: failure }),
+          ...(structuredAuth
+            ? {
+                onWarn: (warning: string) => {
+                  warnings.push(warning);
+                },
+              }
+            : {}),
+        });
+        // Then
+        await expect(acquisition).rejects.toMatchObject({
+          _tag: "RecipeSourceError",
+          kind: structuredAuth ? "auth" : "clone-failed",
+        });
+        expect(warnings).toEqual([]);
+      });
+    });
+  }
+
   test("clones through the seam and publishes under userDataRoot/recipe-cache/git/<commitSha>", async () => {
     await withTempRoot(async (dir) => {
       const calls: Array<{ readonly url: string; readonly stagingDir: string }> = [];
@@ -76,16 +119,16 @@ describe("resolveGitRecipeSource", () => {
       const result = await resolveGitRecipeSource({
         url: "https://example.test/recipes.git",
         userDataRoot,
-        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "feedface" }),
+        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "feedface".repeat(5) }),
       });
 
       expect(calls).toHaveLength(1);
       expect(calls[0]?.url).toBe("https://example.test/recipes.git");
       expect(calls[0]?.stagingDir).toContain(join(userDataRoot, "recipe-cache", "git", ".staging-"));
-      expect(result.root).toBe(join(userDataRoot, "recipe-cache", "git", "feedface"));
+      expect(result.root).toBe(join(userDataRoot, "recipe-cache", "git", "feedface".repeat(5)));
       if (result.root === undefined) throw new Error("expected a cached recipe root");
       expect(result.source).toBe(join(result.root, "recipe.yml"));
-      expect(result.commitSha).toBe("feedface");
+      expect(result.commitSha).toBe("feedface".repeat(5));
       expect(await Bun.file(result.source).exists()).toBe(true);
     });
   });
@@ -93,14 +136,14 @@ describe("resolveGitRecipeSource", () => {
   test("cache hit keeps the existing published dir and discards staging", async () => {
     await withTempRoot(async (dir) => {
       const userDataRoot = join(dir, "data");
-      const published = join(userDataRoot, "recipe-cache", "git", "cafebabe");
+      const published = join(userDataRoot, "recipe-cache", "git", "cafebabe".repeat(5));
       const calls: Array<{ readonly url: string; readonly stagingDir: string }> = [];
       await mkdir(published, { recursive: true });
       await writeFile(join(published, "recipe.yml"), VALID_RECIPE.replace("Remote Recipe", "Cached Recipe"));
       const result = await resolveGitRecipeSource({
         url: "https://example.test/recipes.git",
         userDataRoot,
-        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "cafebabe" }),
+        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "cafebabe".repeat(5) }),
       });
 
       expect(calls).toHaveLength(1);
@@ -163,7 +206,7 @@ describe("resolveGitRecipeSource", () => {
       );
 
       expect(result.root).toBe(
-        join(userDataRoot, "recipe-cache", "git", "abc123def456", "packages", "remote-recipe"),
+        join(userDataRoot, "recipe-cache", "git", "a".repeat(40), "packages", "remote-recipe"),
       );
       expect(manifest.id).toBe("remote-recipe");
     });
@@ -211,7 +254,7 @@ describe("resolveGitRecipeSource", () => {
         }),
       );
       expect(expectFailure(exit)).toBeInstanceOf(RecipeManifestNotFoundError);
-      const manifestPath = join(dir, "data", "recipe-cache", "git", "abc123def456", "recipe.yml");
+      const manifestPath = join(dir, "data", "recipe-cache", "git", "a".repeat(40), "recipe.yml");
       expect(expectFailure(exit)).toMatchObject({
         message: `recipe.yml not found at ${manifestPath}.`,
         source: manifestPath,

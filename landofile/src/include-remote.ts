@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { isPathWithin } from "@lando/paths";
 import { LandofileIncludeError, RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import {
@@ -8,10 +8,11 @@ import {
   type ResolveContext,
   requiredPorts,
 } from "./include-context.ts";
-import { assertUnderRoot, includeError } from "./include-guard.ts";
+import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { fileExists, readText } from "./include-local.ts";
-import { RESOLVED_FORMAT, readPinnedFragment } from "./include-pinned.ts";
+import { RESOLVED_FORMAT, type RemoteFragmentResult, readPinnedFragment } from "./include-pinned.ts";
 import { parseGitInclude, parseNpmInclude } from "./include-source.ts";
+import { checkNpmPackageDistIntegrity } from "./npm-integrity.ts";
 
 const publishFragment = async (
   input: {
@@ -23,19 +24,27 @@ const publishFragment = async (
     readonly cacheRoot: string;
     readonly publishedDir: string;
     readonly path: string;
+    readonly snapshotSubdir: "" | "package";
   },
   ctx: ResolveContext,
-): Promise<FragmentResult> => {
+): Promise<RemoteFragmentResult> => {
   const { entry, sourceId, version, resolved, stagingDir, cacheRoot, path } = input;
   // publishedDir is joined from cacheRoot plus a revision-derived name; reject a
   // name that escapes before anything is removed or published there.
-  const publishedDir = input.publishedDir;
-  if (!isPathWithin(cacheRoot, publishedDir) || publishedDir === cacheRoot)
+  if (!isPathWithin(cacheRoot, input.publishedDir) || input.publishedDir === cacheRoot)
     throw includeError({
       message: `Include ${entry.source} resolves outside the include cache.`,
       source: entry.source,
       kind: "outside-root",
     });
+  const canonicalRoot = await realpathOrSelf(cacheRoot);
+  const publishedDir = await assertUnderRoot(
+    canonicalRoot,
+    join(canonicalRoot, basename(input.publishedDir)),
+    entry.source,
+    "include cache",
+  );
+  await assertUnderRoot(canonicalRoot, await realpathOrSelf(stagingDir), entry.source, "include cache");
   const stagedPath = await assertUnderRoot(stagingDir, join(stagingDir, path), entry.source, "remote source");
   const content = await readText(stagedPath, entry.source);
   const publishedPath = await assertUnderRoot(
@@ -47,8 +56,16 @@ const publishFragment = async (
   if ((await fileExists(publishedPath)) && (await readText(publishedPath, entry.source)) === content) {
     await rm(stagingDir, { recursive: true, force: true });
   } else {
-    await rm(publishedDir, { recursive: true, force: true });
+    const aside = await assertUnderRoot(
+      canonicalRoot,
+      join(canonicalRoot, `.replaced-${crypto.randomUUID()}`),
+      entry.source,
+      "include cache",
+    );
+    const replacing = await fileExists(publishedDir);
+    if (replacing) await rename(publishedDir, aside);
     await (ctx.deps.publication ?? requiredPorts(ctx).publication).publish(stagingDir, publishedDir);
+    if (replacing) await rm(aside, { recursive: true, force: true });
   }
   const filePath = join(publishedDir, path);
   return {
@@ -60,6 +77,12 @@ const publishFragment = async (
     content,
     filePath,
     root: dirname(filePath),
+    snapshotRoot: await assertUnderRoot(
+      publishedDir,
+      join(publishedDir, input.snapshotSubdir),
+      entry.source,
+      "remote source",
+    ),
     userOwned: false,
     locked: true,
   };
@@ -70,12 +93,13 @@ export const fetchGit = async (
   ctx: ResolveContext,
 ): Promise<FragmentResult | undefined> => {
   const parsed = parseGitInclude(entry);
-  return readPinnedFragment(entry, ctx, {
+  const fragment = await readPinnedFragment(entry, ctx, {
     sourceId: parsed.sourceId,
     version: parsed.ref,
     cacheKind: "git",
     publishedDirName: (resolved) => resolved,
     fragmentRelPath: parsed.path,
+    snapshotSubdir: "",
     acquire: async (resolved) => {
       const gitRoot = join(ctx.cacheRoot, "includes", "git");
       await mkdir(gitRoot, { recursive: true });
@@ -106,6 +130,7 @@ export const fetchGit = async (
             cacheRoot: gitRoot,
             publishedDir: join(gitRoot, commitSha),
             path: parsed.path,
+            snapshotSubdir: "",
           },
           ctx,
         );
@@ -120,6 +145,19 @@ export const fetchGit = async (
       }
     },
   });
+  return fragment === undefined
+    ? undefined
+    : {
+        ...fragment,
+        remoteOrigin: {
+          kind: "git",
+          identity: parsed.sourceId.slice(0, -(parsed.path.length + 1)),
+          acquisitionSource: parsed.cloneUrl,
+          resolved: fragment.resolved ?? "",
+          snapshotRoot: fragment.snapshotRoot,
+          cacheRoot: join(ctx.cacheRoot, "includes", "git"),
+        },
+      };
 };
 
 export const fetchNpm = async (
@@ -128,12 +166,13 @@ export const fetchNpm = async (
 ): Promise<FragmentResult | undefined> => {
   const parsed = parseNpmInclude(entry);
   const publishedDirName = (version: string) => `${parsed.packageName.replace("/", "+")}@${version}`;
-  return readPinnedFragment(entry, ctx, {
+  const fragment = await readPinnedFragment(entry, ctx, {
     sourceId: parsed.sourceId,
     version: parsed.requestedVersion,
     cacheKind: "npm",
     publishedDirName,
     fragmentRelPath: join("package", parsed.path),
+    snapshotSubdir: "package",
     acquire: async (resolved) => {
       const packageSpec = resolved === undefined ? parsed.packageSpec : `${parsed.packageName}@${resolved}`;
       const resolvedPackage = await (ctx.deps.npmRecipeSource ?? requiredPorts(ctx).npmRecipeSource)
@@ -161,6 +200,25 @@ export const fetchNpm = async (
         const archive = await (ctx.deps.npmFetcher ?? requiredPorts(ctx).tarball).fetch(
           resolvedPackage.dist.tarball,
         );
+        const integrity = checkNpmPackageDistIntegrity(archive, resolvedPackage.dist);
+        switch (integrity.status) {
+          case "verified":
+            break;
+          case "mismatch":
+            throw includeError({
+              message: `npm include ${entry.source} ${integrity.description}`,
+              source: entry.source,
+              kind: "fetch-failed",
+              remediation: integrity.remediation,
+            });
+          case "unverifiable":
+            throw includeError({
+              message: `npm include ${entry.source}: the registry published no integrity hash or shasum.`,
+              source: entry.source,
+              kind: "fetch-failed",
+              remediation: "Publish to a registry that reports dist.integrity or dist.shasum.",
+            });
+        }
         await (ctx.deps.npmExtractor ?? requiredPorts(ctx).tarball).extract(archive, stagingDir);
         return await publishFragment(
           {
@@ -172,6 +230,7 @@ export const fetchNpm = async (
             cacheRoot: npmRoot,
             publishedDir: join(npmRoot, publishedDirName(resolvedPackage.version)),
             path: join("package", parsed.path),
+            snapshotSubdir: "package",
           },
           ctx,
         );
@@ -186,4 +245,17 @@ export const fetchNpm = async (
       }
     },
   });
+  return fragment === undefined
+    ? undefined
+    : {
+        ...fragment,
+        remoteOrigin: {
+          kind: "npm",
+          identity: `npm:${parsed.packageName}`,
+          acquisitionSource: parsed.packageName,
+          resolved: fragment.resolved ?? "",
+          snapshotRoot: fragment.snapshotRoot,
+          cacheRoot: join(ctx.cacheRoot, "includes", "npm"),
+        },
+      };
 };
