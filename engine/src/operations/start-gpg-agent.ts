@@ -22,7 +22,7 @@ import {
   startDetachedAgentRelayWorker,
 } from "../subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../subsystems/ssh-agent/session.ts";
-import { withRetainedSession } from "./retained-session.ts";
+import { type PublishSession, withRetainedSession } from "./retained-session.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
 type AgentError = GpgAgentUnavailableError | GpgAgentTransportError;
@@ -41,6 +41,7 @@ interface GpgAgentSession {
 }
 
 export interface GpgAgentSessionOptions {
+  readonly managed?: { readonly scope: Scope.Scope };
   readonly spawnWorker?: DetachedAgentRelayWorkerOptions["spawnWorker"];
   readonly discovery?: Pick<GpgAgentDiscoveryOptions, "inspectPath" | "probeRestricted">;
 }
@@ -83,23 +84,30 @@ export const startGpgAgentSession = Effect.fnUntraced(function* (
     ...options.discovery,
   });
   const privateFileAccess = yield* PrivateFileAccessService;
-  const session = yield* startDetachedAgentRelayWorker({
-    app,
-    plan,
-    upstream: { _tag: "unix", path: upstream.path },
-    delivery,
-    kind: "gpg",
-    socketName: GPG_AGENT_SOCKET_NAME,
-    paths: { ...paths.roots, platform: paths.platform },
-    privateFileAccess,
-    ...(options.spawnWorker === undefined ? {} : { spawnWorker: options.spawnWorker }),
-  }).pipe(Effect.mapError(gpgTransportError));
-  // Refresh public material after ensure, even when the worker and its directory are reused.
   const keyringDir = join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring");
-  yield* exportPublicKeyring({ runner, destDir: keyringDir }).pipe(
-    Effect.onError(() => Effect.promise(() => session.close())),
+  return yield* withRetainedSession(
+    (publish: PublishSession<AgentRelaySession>) =>
+      startDetachedAgentRelayWorker({
+        publish,
+        app,
+        plan,
+        upstream: { _tag: "unix", path: upstream.path },
+        delivery,
+        kind: "gpg",
+        socketName: GPG_AGENT_SOCKET_NAME,
+        paths: { ...paths.roots, platform: paths.platform },
+        privateFileAccess,
+        ...(options.spawnWorker === undefined ? {} : { spawnWorker: options.spawnWorker }),
+      }).pipe(Effect.mapError(gpgTransportError)),
+    (session) =>
+      exportPublicKeyring({ runner, destDir: keyringDir }).pipe(
+        Effect.as({ session, keyringDir } satisfies GpgAgentSession),
+      ),
+    {
+      close: (session) => Effect.promise(() => session.close()),
+      ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+    },
   );
-  return { session, keyringDir } satisfies GpgAgentSession;
 });
 
 /** Seeds each opted-in service's GNUPGHOME from the mounted public keyring and links the relayed agent socket. */
@@ -144,8 +152,8 @@ export const withStartedGpgAgent = Effect.fnUntraced(function* <A, E, R>(
     readonly exec: RuntimeProviderShape["exec"];
     readonly managed?: { readonly scope: Scope.Scope };
     /**
-     * `prepareGpgHome` must run right after the provider applies the overlaid plan, inside the
-     * caller's apply compensation, so a failed GNUPGHOME seed tears the started app down.
+     * `prepareGpgHome` must run right after the provider applies the overlaid plan.
+     * A failed seed leaves the applied app and its agent owned for the next start.
      */
     readonly use: (
       plan: AppPlan,
@@ -162,17 +170,21 @@ export const withStartedGpgAgent = Effect.fnUntraced(function* <A, E, R>(
   ) {
     return yield* options.use(plan, Effect.void);
   }
-  const acquire = options.startSession?.() ?? startGpgAgentSession(plan, app, capabilities, intent);
-  return yield* withRetainedSession(
-    acquire,
-    (agent) =>
-      options.use(
-        withGpgAgentOverlay(plan, agent.session, agent.keyringDir),
-        prepareGpgHome(plan, options.exec),
-      ),
-    {
-      close: (agent) => Effect.promise(() => agent.session.close()),
-      ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
-    },
+  const { startSession } = options;
+  const agent = yield* startSession === undefined
+    ? startGpgAgentSession(plan, app, capabilities, intent, {
+        ...(options.managed === undefined ? {} : { managed: options.managed }),
+      })
+    : withRetainedSession(
+        (publish: PublishSession<GpgAgentSession>) => startSession().pipe(Effect.tap(publish)),
+        Effect.succeed,
+        {
+          close: (agent) => Effect.promise(() => agent.session.close()),
+          ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+        },
+      );
+  return yield* options.use(
+    withGpgAgentOverlay(plan, agent.session, agent.keyringDir),
+    prepareGpgHome(plan, options.exec),
   );
 });

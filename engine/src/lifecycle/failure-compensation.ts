@@ -1,7 +1,6 @@
 import { FailureRoleAnnotation } from "@lando/sdk/command-result";
 import type { FailureRole } from "@lando/sdk/schema";
-import { Cause, Context, Effect, Exit, Option } from "effect";
-import { isReadinessInterruptCause } from "./readiness-failure.ts";
+import { Cause, Context, Effect, Exit } from "effect";
 
 export const mergeFailure = <E, E2>(
   primary: Cause.Cause<E>,
@@ -40,27 +39,15 @@ export const runAllAndMergeFailures = Effect.fn("Lifecycle.runAllAndMergeFailure
   );
 });
 
-export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(
-  effect: Effect.Effect<A, E, R>,
-  cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
-  skip: (error: E) => boolean,
-): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
-  Effect.matchCauseEffect(effect, {
-    onSuccess: Effect.succeed,
-    onFailure: (failureCause) => {
-      const failed = Cause.findErrorOption(failureCause);
-      if (isReadinessInterruptCause(failureCause) || (Option.isSome(failed) && skip(failed.value))) {
-        return Effect.failCause(failureCause);
-      }
-      return Effect.matchCauseEffect(cleanup, {
-        onSuccess: () => Effect.failCause(failureCause),
-        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, "rollback")),
-      });
-    },
-  });
-
 export const compensateFailure = <A, E, R, CleanupError, CleanupServices>(
   effect: Effect.Effect<A, E, R>,
   cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
 ): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
-  compensateFailureUnless(effect, cleanup, () => false);
+  Effect.matchCauseEffect(effect, {
+    onSuccess: Effect.succeed,
+    onFailure: (failureCause) =>
+      Effect.matchCauseEffect(cleanup, {
+        onSuccess: () => Effect.failCause(failureCause),
+        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, "rollback")),
+      }),
+  });

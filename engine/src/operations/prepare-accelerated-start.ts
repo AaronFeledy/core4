@@ -18,7 +18,7 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
   },
 ) {
-  if (plan.fileSync.length === 0) return { pendingStart: undefined, sessionLease: undefined };
+  if (plan.fileSync.length === 0) return { pendingStart: undefined };
   const prepare = provider.prepareFileSyncTargets;
   const engineId = plan.fileSync[0]?.engineId ?? "unknown";
   if (prepare === undefined)
@@ -58,12 +58,12 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
         remediation: "Fix the engine's app binding before retrying accelerated startup.",
       }),
     );
-  const sessionLease = yield* startFileSyncSessions(
+  yield* startFileSyncSessions(
     plan,
     execution.events,
     execution.managed,
     bound,
     pendingStart.resumedFrom === "apply-intent",
   );
-  return { pendingStart, sessionLease };
+  return { pendingStart };
 });
