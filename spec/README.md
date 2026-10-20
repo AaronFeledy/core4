@@ -142,6 +142,7 @@ If you are looking for a public surface or policy:
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
+| Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
