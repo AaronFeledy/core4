@@ -44,6 +44,8 @@ export interface DetachedAgentRelayWorkerOptions extends TerminateAgentRelayWork
   readonly paths?: RootOverrides;
   readonly privateFileAccess: PrivateFileAccess;
   readonly spawnWorker?: (spec: DetachedWorkerSpawnSpec) => DetachedWorkerProcess<AgentRelayWorkerReady>;
+  /** Takes ownership in the same uninterruptible step that keeps the worker. */
+  readonly publish?: (session: AgentRelaySession) => Effect.Effect<void>;
 }
 
 const workerError = (cause: unknown) =>
@@ -79,7 +81,8 @@ export const startDetachedAgentRelayWorker = (
         configDigest: sha256Hex(canonicalJson({ ...configuration, workerEntry: entry })),
       };
       const reused = yield* reuseAgentRelayWorker(options.app, options, input.configDigest);
-      if (reused !== undefined) return reused;
+      const publish = options.publish ?? (() => Effect.void);
+      if (reused !== undefined) return yield* publish(reused).pipe(Effect.as(reused));
       const keep = yield* Ref.make(false);
       yield* replaceExistingAgentRelayWorker(options.app, options);
       return yield* Effect.acquireUseRelease(
@@ -121,14 +124,12 @@ export const startDetachedAgentRelayWorker = (
                 workerError("Worker readiness does not match the requested app session."),
               );
             }
-            yield* writeAgentRelayWorkerRecord(options.app, options, ready);
             let closePromise: Promise<void> | undefined;
             let resolveClosed: () => void = () => undefined;
             const closed = new Promise<void>((resolve) => {
               resolveClosed = resolve;
             });
-            yield* Ref.set(keep, true);
-            return {
+            const session: AgentRelaySession = {
               appId: ready.appId,
               sessionId: ready.sessionId,
               kind: ready.kind,
@@ -158,6 +159,13 @@ export const startDetachedAgentRelayWorker = (
                 return closePromise;
               },
             };
+            yield* Effect.uninterruptible(
+              writeAgentRelayWorkerRecord(options.app, options, ready).pipe(
+                Effect.andThen(Ref.set(keep, true)),
+                Effect.andThen(publish(session)),
+              ),
+            );
+            return session;
           }),
         (worker) =>
           Ref.get(keep).pipe(

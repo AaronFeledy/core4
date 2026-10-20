@@ -21,6 +21,7 @@ import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderStartRetentionContract,
   runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
@@ -292,6 +293,165 @@ const makeFakeApi = () => {
   return { api, calls };
 };
 
+const makeFakeApiWithHooks = () => {
+  const networks = new Map<string, object>();
+  const configs = new Map<string, unknown>();
+  const createdVolumes = new Map<string, unknown>();
+  const running = new Set<string>();
+  const existing = new Set<string>();
+  const containerIds = new Map<string, string>();
+  const idToName = new Map<string, string>();
+  let createGeneration = 0;
+  const calls: EngineHttpRequest[] = [];
+  const failStartFor = new Set<string>();
+  let abortAfterStarts = 0;
+  let abortController: AbortController | undefined;
+  let successfulStarts = 0;
+
+  const resolveContainerName = (key: string): string => {
+    if (existing.has(key)) return key;
+    return idToName.get(key) ?? key.replace(/-id$/u, "");
+  };
+
+  const retentionHooks = {
+    setFailStartFor: (containerNames: ReadonlyArray<string>) => {
+      failStartFor.clear();
+      for (const name of containerNames) failStartFor.add(name);
+    },
+    setAbortAfterStarts: (count: number, controller?: AbortController) => {
+      abortAfterStarts = count;
+      abortController = controller;
+      successfulStarts = 0;
+    },
+    hasNetwork: (networkName: string) => networks.has(networkName),
+    hasVolume: (volumeName: string) => createdVolumes.has(volumeName),
+  };
+
+  const api: PodmanApiClient = {
+    info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
+    request: (request) =>
+      Effect.sync((): EngineHttpResponse => {
+        calls.push(request);
+        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),
+          )(request.body);
+          if (createdVolumes.has(body.Name)) return { status: 409, body: "{}" };
+          createdVolumes.set(body.Name, body);
+          return { status: 201, body: JSON.stringify(body) };
+        }
+        if (request.path.startsWith("/volumes/")) {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length).split("?")[0] ?? "");
+          if (request.method === "DELETE")
+            return { status: createdVolumes.delete(name) ? 204 : 404, body: "" };
+          const volume = createdVolumes.get(name);
+          return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
+        }
+        if (request.path === "/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(request.body);
+          networks.set(body.Name, { Id: body.Name, ...body });
+          return { status: 201, body: "{}" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
+          return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
+        }
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
+          networks.delete(decodeURIComponent(request.path.slice("/networks/".length)));
+          return { status: 204, body: "" };
+        }
+        if (request.path.startsWith("/containers/create")) {
+          const name = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1)).get("name");
+          if (name !== null && name.length > 0) {
+            if (existing.has(name)) return { status: 409, body: "already exists" };
+            createGeneration += 1;
+            const id = `${name}-g${createGeneration}`;
+            existing.add(name);
+            configs.set(name, request.body);
+            containerIds.set(name, id);
+            idToName.set(id, name);
+            return { status: 201, body: JSON.stringify({ Id: id }) };
+          }
+        }
+        if (request.path.endsWith("/start")) {
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/start".length)),
+          );
+          if (failStartFor.has(name)) {
+            return { status: 500, body: `forced start failure for ${name}` };
+          }
+          if (running.has(name)) return { status: 304, body: "" };
+          existing.add(name);
+          running.add(name);
+          successfulStarts += 1;
+          if (abortAfterStarts > 0 && successfulStarts >= abortAfterStarts && abortController !== undefined) {
+            abortController.abort();
+          }
+          return { status: 204, body: "" };
+        }
+        if (request.path.endsWith("/stop")) {
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)),
+          );
+          running.delete(name);
+          return { status: 204, body: "" };
+        }
+        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length)),
+          );
+          const id = containerIds.get(name);
+          const existed = existing.delete(name);
+          running.delete(name);
+          containerIds.delete(name);
+          if (id !== undefined) idToName.delete(id);
+          return { status: existed ? 204 : 404, body: "" };
+        }
+        if (request.path.endsWith("/json") && request.path.startsWith("/containers/")) {
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/json".length)),
+          );
+          if (!existing.has(name)) return { status: 404, body: "" };
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Id: containerIds.get(name) ?? `${name}-id`,
+              Config: configs.get(name),
+              State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
+            }),
+          };
+        }
+        if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Os: "linux",
+              Architecture: "amd64",
+              RepoDigests: ["img@sha256:test"],
+            }),
+          };
+        }
+        return {
+          status: 500,
+          body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
+        };
+      }),
+    stream: (request) => {
+      calls.push(request);
+      return Stream.empty;
+    },
+  };
+
+  return { api, calls, existing, running, createdVolumes, retentionHooks };
+};
+
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
 
@@ -544,6 +704,22 @@ describe("provider-lando RuntimeProvider contract", () => {
     );
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
+  });
+
+  test("runs the provider start-retention contract through the managed Podman API", async () => {
+    const fake = makeFakeApiWithHooks();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
+            podmanApi: fake.api,
+          }),
+        ),
+      ),
+    );
+    await Effect.runPromise(runProviderStartRetentionContract(provider, fake.retentionHooks));
   });
 
   test("lists volumes through the Podman API", async () => {
