@@ -68,6 +68,55 @@ describe("route normalization", () => {
   });
 
   test.each([
+    "myapp.lndo.site:8080/api",
+    "myapp.lndo.site:8080",
+    "myapp.lndo.site/api",
+    "https://app.lndo.site",
+    "",
+    "api..lndo.site",
+    "a b",
+    "-app.site",
+  ])("rejects object hostname %j at its field", (hostname) => {
+    // Given
+    const ctx = { keyPath: "services.web.routes[0]", file: "/app/.lando.yml" };
+    // When
+    const result = normalizeRoute({ hostname }, ctx);
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(RouteInputError);
+      expect(result.failure).toMatchObject({ key: `${ctx.keyPath}.hostname`, file: ctx.file });
+      expect(result.failure.message).toContain(JSON.stringify(hostname));
+      if (/[:/]/.test(hostname)) expect(result.failure.remediation).toMatch(/endpoint.*pathPrefix/);
+    }
+  });
+
+  test.each(["nope", "/a b", "/a?x", "/a#x"])("rejects object pathPrefix %j at its field", (pathPrefix) => {
+    // Given
+    const ctx = { keyPath: "services.web.routes[0]", file: "/app/.lando.yml" };
+    // When
+    const result = normalizeRoute({ hostname: "app.site", pathPrefix }, ctx);
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure).toMatchObject({ key: `${ctx.keyPath}.pathPrefix`, file: ctx.file });
+  });
+
+  test.each(["*.app.site", "*-app.site", "wild.*.app.site", "a**b.*x*.site"])(
+    "preserves wildcard object hostname %s and route-entry provenance",
+    (hostname) => {
+      // Given
+      const ctx = { keyPath: "services.web.routes[0]", file: "/app/.lando.yml" };
+      // When
+      const result = normalizeRoute({ hostname }, ctx);
+      // Then
+      expect(result).toEqual(
+        Result.succeed({ hostname, filters: [], source: { key: ctx.keyPath, file: ctx.file } }),
+      );
+    },
+  );
+
+  test.each([
     "",
     " ",
     "\t",
