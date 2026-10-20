@@ -212,6 +212,7 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("name: provider-matrix");
       expect(firstWorkflow).toContain("- cron: '0 8 * * 1'");
       expect(firstWorkflow).toContain("workflow_dispatch:");
+      expect(firstWorkflow).toContain("pull_request:");
       expect(firstWorkflow).toContain("contents: read");
       expect(firstWorkflow).toContain("engine: Docker Desktop");
       expect(firstWorkflow).toContain("engine: Docker Engine");

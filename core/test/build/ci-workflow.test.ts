@@ -110,6 +110,10 @@ describe("ci workflow", () => {
     expect(triggers).toContain("  schedule:");
     expect(triggers).toContain("    - cron: '0 8 * * 1'");
     expect(triggers).toContain("  workflow_dispatch:");
+    expect(triggers).toContain("  pull_request:");
+    expect(providerContracts).toContain(
+      "    if: ${{ github.event_name != 'pull_request' || matrix.cell == 'docker-engine-linux-latest' }}",
+    );
     expect(permissions).toContain("  contents: read");
     expect(providerContracts).toContain("      fail-fast: false");
     expect(providerContracts).toContain("            engine: Docker Desktop");

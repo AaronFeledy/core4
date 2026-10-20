@@ -137,6 +137,18 @@ const dockerChecks = [
   },
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
+const dockerLatestChecks = [
+  ...dockerChecks,
+  {
+    id: "exec-umask-mode",
+    label: "lando exec creates 0644 files",
+    command: bunTest(
+      "plugins/provider-docker/test/exec-umask.integration.test.ts",
+      "lando exec creates 0644 files",
+    ),
+  },
+] as const satisfies readonly ProviderAcceptanceCheckPlan[];
+
 export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = [
   {
     id: "docker-desktop-macos",
@@ -170,7 +182,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
     installPodman6: false,
     setup: "docker-engine-latest",
     requiredEnv: "LANDO_TEST_DOCKER_SOCKET",
-    checks: dockerChecks,
+    checks: dockerLatestChecks,
   },
   {
     id: "podman-desktop-macos",
