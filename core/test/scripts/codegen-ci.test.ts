@@ -323,7 +323,7 @@ describe("ci workflow codegen", () => {
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
-      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
+      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
       expect(runtimeBundleWorkflow).not.toContain("bun-version: ");
