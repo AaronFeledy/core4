@@ -756,6 +756,10 @@
       "digest": "9dce88da8079c961c84e858a22f69b68d2335cd5a97db681d6ca26508eb29d9a"
     },
     {
+      "fixture": "docs/guides/service-logs/fixtures/declared-source",
+      "digest": "802eac09e8bb6b718e699734419905d47507fe5acc480fde50bb684fd6ba090a"
+    },
+    {
       "fixture": "docs/guides/share-target/fixtures/share-target-demo",
       "digest": "75b80e5a92fca57b7e42ea5d9921433e11a0486e97b66a59b1a80649f2ca74dc"
     },
