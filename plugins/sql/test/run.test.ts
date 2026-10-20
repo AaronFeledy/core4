@@ -838,6 +838,16 @@ describe("executeDbCommand", () => {
 
       const forced = await run(harness.deps, { action: "export", file: "-", yes: false, forceTty: true });
       expect(Exit.isSuccess(forced)).toBe(true);
+
+      const fdDenied = await run(harness.deps, { action: "export", file: "/dev/fd/1", yes: false });
+      expect(Exit.isFailure(fdDenied)).toBe(true);
+      if (!Exit.isFailure(fdDenied)) throw new Error("expected failure");
+      const fdError = Option.getOrUndefined(Cause.findErrorOption(fdDenied.cause));
+      expect(fdError).toBeInstanceOf(SqlDumpTtyError);
+      if (fdError instanceof SqlDumpTtyError) {
+        expect(fdError.path).toBe("/dev/fd/1");
+        expect(fdError.remediation).toContain("--force-tty");
+      }
     });
   });
 

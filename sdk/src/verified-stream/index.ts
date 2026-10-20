@@ -1,5 +1,5 @@
 /**
- * `@lando/sdk/verified-stream` — stream -> SHA-256 persist helper.
+ * `@lando/sdk/verified-stream`: stream -> SHA-256 persist helper.
  *
  * Regular-file destinations write through a unique temp file and atomically
  * rename onto the target after checksum/size checks. An existing destination
@@ -30,6 +30,18 @@ export class VerifiedStreamError extends Schema.TaggedError<VerifiedStreamError>
   cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
+/** Destination closed after a partial write (EPIPE). CLI maps this to exit 141. */
+export class VerifiedStreamPartialError extends Schema.TaggedError<VerifiedStreamPartialError>()(
+  "VerifiedStreamPartialError",
+  {
+    message: Schema.String,
+    bytesWritten: Schema.Number,
+    path: Schema.String,
+    remediation: Schema.String,
+    cause: Schema.optionalKey(Schema.Unknown),
+  },
+) {}
+
 export interface VerifiedStreamResult {
   readonly sha256: string;
   readonly sizeBytes: number;
@@ -59,6 +71,35 @@ const removeIfPresent = (path: string): Promise<void> =>
 const persistError = (message: string, cause: unknown): VerifiedStreamError =>
   new VerifiedStreamError({ reason: "persist", message, cause });
 
+const isBrokenPipe = (cause: unknown): boolean => {
+  if (typeof cause !== "object" || cause === null) return false;
+  if ("code" in cause && (cause.code === "EPIPE" || cause.code === "ERR_STREAM_DESTROYED")) return true;
+  return "message" in cause && typeof cause.message === "string" && cause.message.startsWith("EPIPE");
+};
+
+const writtenFromCause = (cause: unknown): number =>
+  typeof cause === "object" &&
+  cause !== null &&
+  "bytesWritten" in cause &&
+  typeof cause.bytesWritten === "number"
+    ? cause.bytesWritten
+    : 0;
+
+const withPartialBytes = (cause: unknown, bytesWritten: number): unknown =>
+  typeof cause === "object" && cause !== null
+    ? Object.assign(cause, { bytesWritten })
+    : Object.assign(new Error("write failed"), { bytesWritten, cause });
+
+const partialStreamError = (path: string, bytesWritten: number, cause: unknown): VerifiedStreamPartialError =>
+  new VerifiedStreamPartialError({
+    message: `Wrote ${bytesWritten} bytes before the destination closed.`,
+    bytesWritten,
+    path,
+    remediation:
+      "The consumer closed the pipe before the dump finished. Rerun without truncating the stream.",
+    cause,
+  });
+
 const existingDestination = (path: string) =>
   Effect.promise(() =>
     stat(path).then(
@@ -78,8 +119,27 @@ const inheritedWriteFd = (path: string): number | undefined => {
 
 const writeAllToFd = (fd: number, chunk: Uint8Array): void => {
   let offset = 0;
-  while (offset < chunk.byteLength) {
-    offset += writeSync(fd, chunk.subarray(offset));
+  try {
+    while (offset < chunk.byteLength) {
+      offset += writeSync(fd, chunk.subarray(offset));
+    }
+  } catch (cause) {
+    throw withPartialBytes(cause, offset);
+  }
+};
+
+const writeAllToHandle = async (
+  handle: { write: (chunk: Uint8Array) => Promise<{ bytesWritten: number }> },
+  chunk: Uint8Array,
+): Promise<void> => {
+  let offset = 0;
+  try {
+    while (offset < chunk.byteLength) {
+      const result = await handle.write(chunk.subarray(offset));
+      offset += result.bytesWritten;
+    }
+  } catch (cause) {
+    throw withPartialBytes(cause, offset);
   }
 };
 
@@ -88,15 +148,23 @@ const writeHashedBody = <E, R>(
   body: Stream.Stream<Uint8Array, E, R>,
   hash: ReturnType<typeof createHash>,
   size: Ref.Ref<number>,
-): Effect.Effect<void, E | VerifiedStreamError, R> =>
+  path: string,
+): Effect.Effect<void, E | VerifiedStreamError | VerifiedStreamPartialError, R> =>
   Stream.runForEach(body, (chunk) =>
-    Effect.tryPromise({
-      try: async () => {
-        await writeChunk(chunk);
-        hash.update(chunk);
-      },
-      catch: (cause) => persistError("Failed to write artifact bytes.", cause),
-    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+    Effect.gen(function* () {
+      const already = yield* Ref.get(size);
+      yield* Effect.tryPromise({
+        try: async () => {
+          await writeChunk(chunk);
+          hash.update(chunk);
+        },
+        catch: (cause) =>
+          isBrokenPipe(cause)
+            ? partialStreamError(path, already + writtenFromCause(cause), cause)
+            : persistError("Failed to write artifact bytes.", cause),
+      });
+      yield* Ref.update(size, (n) => n + chunk.length);
+    }),
   );
 
 const verify = (
@@ -134,7 +202,11 @@ const verify = (
  */
 export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(function* <E, R>(
   params: PersistVerifiedStreamParams<E, R>,
-): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
+): Effect.fn.Return<
+  VerifiedStreamResult,
+  E | VerifiedStreamError | VerifiedStreamPartialError,
+  Scope.Scope | R
+> {
   const inheritedFd = inheritedWriteFd(params.destinationPath);
   const existing = inheritedFd === undefined ? yield* existingDestination(params.destinationPath) : undefined;
   const direct = existing !== undefined && !existing.isFile() && !existing.isDirectory();
@@ -148,6 +220,7 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
         params.body,
         hash,
         size,
+        params.destinationPath,
       );
     } else {
       const handle = yield* Effect.acquireRelease(
@@ -157,7 +230,13 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
         }),
         (h) => Effect.promise(() => h.close().catch(() => undefined)),
       );
-      yield* writeHashedBody((chunk) => handle.write(chunk), params.body, hash, size);
+      yield* writeHashedBody(
+        (chunk) => writeAllToHandle(handle, chunk),
+        params.body,
+        hash,
+        size,
+        params.destinationPath,
+      );
       yield* Effect.promise(() => handle.sync().catch(() => undefined));
     }
     const sizeBytes = yield* Ref.get(size);
@@ -191,7 +270,13 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
     (h) => Effect.promise(() => h.close().catch(() => undefined)),
   );
 
-  yield* writeHashedBody((chunk) => handle.write(chunk), params.body, hash, size);
+  yield* writeHashedBody(
+    (chunk) => writeAllToHandle(handle, chunk),
+    params.body,
+    hash,
+    size,
+    params.destinationPath,
+  );
 
   const sizeBytes = yield* Ref.get(size);
   const sha256 = hash.digest("hex");

@@ -35,7 +35,7 @@ MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses
 
 ## Stream a dump through stdout or stdin
 
-Pass `-` as the dump path. `db:export -` writes the dump on stdout and the checksum on stderr. `db:import - --yes` reads stdin. `-` does not skip confirmation: stdin is the dump, so you still pass `--yes`.
+Pass `-` as the dump path. `db:export -` writes the dump on stdout and the checksum on stderr. `db:import - --yes` reads stdin. `-` does not skip confirmation: stdin is the dump, so you still pass `--yes`. Empty stdin (`</dev/null`) fails.
 
 ```sh
 lando db:export - > dump.sql
@@ -43,7 +43,9 @@ lando db:export - | gzip > dump.sql.gz
 lando db:import - --yes < dump.sql
 ```
 
-Export to stdout is uncompressed. Pipe to `gzip` or `zstd` when you want a compressed file. Named pipes and process substitution stay pipes: Lando writes the dump in place instead of renaming a temp file onto them.
+Export to stdout is uncompressed. There is no `--compression` flag, and `/dev/stdout` has no suffix, so pipe through `gzip` or `zstd` when you want a compressed file. Named pipes and process substitution stay pipes for an uncompressed dump: Lando writes in place instead of renaming a temp file onto them.
+
+A compressed export to a named pipe such as `dump.sql.gz` still stages the uncompressed dump in the host temp directory, then compresses onto the pipe. Imports from stdin or a named pipe always stage in that temp directory so retries can reread the dump and SQL Server restore can seek. Staging has no size cap and no free-space check.
 
 ```sh
 lando db:export /dev/stdout | gzip > dump.sql.gz

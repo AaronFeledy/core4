@@ -1099,7 +1099,7 @@ describe("BunDataMover.layer", () => {
         expect(await readFile(target, "utf8")).toBe("outside");
 
         const trustedDest = join(outsideDir, "trusted-dest.txt");
-        await Effect.runPromise(
+        const trustedDestExit = await Effect.runPromiseExit(
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
@@ -1115,7 +1115,86 @@ describe("BunDataMover.layer", () => {
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
         );
-        expect(await readFile(trustedDest, "utf8")).toBe("inside");
+        expect(trustedDestExit._tag).toBe("Failure");
+        if (trustedDestExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(trustedDestExit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
+        }
+
+        if (process.platform !== "win32") {
+          await Effect.runPromise(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const dataMover = yield* DataMover;
+                yield* dataMover.transfer({
+                  from: { _tag: "hostPath", path: absolute(inside) },
+                  to: { _tag: "hostPath", path: absolute("/dev/null"), trusted: true },
+                  overwrite: true,
+                });
+              }),
+            ).pipe(
+              Effect.provide(BunDataMover.layer),
+              Effect.provide(providerLayer()),
+              Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            ),
+          );
+        }
+
+        const stagedDir = await mkdtemp(join(tmpdir(), ".lando-dump-"));
+        const stagedDest = join(stagedDir, "dump");
+        try {
+          await Effect.runPromise(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const dataMover = yield* DataMover;
+                yield* dataMover.transfer({
+                  from: { _tag: "hostPath", path: absolute(inside) },
+                  to: { _tag: "hostPath", path: absolute(stagedDest), trusted: true },
+                  overwrite: true,
+                });
+              }),
+            ).pipe(
+              Effect.provide(BunDataMover.layer),
+              Effect.provide(providerLayer()),
+              Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            ),
+          );
+          expect(await readFile(stagedDest, "utf8")).toBe("inside");
+        } finally {
+          await rm(stagedDir, { recursive: true, force: true });
+        }
+
+        if (process.platform !== "win32") {
+          const fifoDest = join(outsideDir, "trusted-dest.fifo");
+          const mk = Bun.spawn(["mkfifo", "-m", "0600", fifoDest], { stdout: "ignore", stderr: "pipe" });
+          expect(await mk.exited).toBe(0);
+          const reader = Bun.spawn(["cat", fifoDest], { stdout: "pipe", stderr: "ignore" });
+          try {
+            await Effect.runPromise(
+              Effect.scoped(
+                Effect.gen(function* () {
+                  const dataMover = yield* DataMover;
+                  yield* dataMover.transfer({
+                    from: { _tag: "hostPath", path: absolute(inside) },
+                    to: { _tag: "hostPath", path: absolute(fifoDest), trusted: true },
+                    overwrite: true,
+                  });
+                }),
+              ).pipe(
+                Effect.provide(BunDataMover.layer),
+                Effect.provide(providerLayer()),
+                Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+              ),
+            );
+            expect(await reader.exited).toBe(0);
+            expect(await new Response(reader.stdout).text()).toBe("inside");
+          } catch (error) {
+            reader.kill();
+            await reader.exited.catch(() => undefined);
+            throw error;
+          }
+        }
 
         const traversalTarget = `${dir}/missing/../../../host-root-bypass.txt`;
         const escapedTarget = resolve(traversalTarget);

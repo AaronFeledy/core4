@@ -6,7 +6,9 @@ import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
   SqlDumpCompressionError,
+  SqlDumpEmptyError,
   SqlDumpNotFoundError,
+  SqlDumpStageError,
   SqlDumpTtyError,
   SqlSeedSourceError,
   SqlServiceAmbiguousError,
@@ -163,6 +165,45 @@ describe("SqlDumpTtyError", () => {
     expect(decoded._tag).toBe("SqlDumpTtyError");
     expect(decoded.path).toBe("/dev/stdout");
     expect(decoded.remediation).toContain("--force-tty");
+  });
+});
+
+describe("SqlDumpStageError", () => {
+  test("encodes and decodes with _tag intact when uncompressed dump staging fails", () => {
+    const error = new SqlDumpStageError({
+      message: "Failed to stage dump file: /dev/stdin",
+      path: "/dev/stdin",
+      remediation: "Confirm the dump is readable and the host temp directory is writable, then retry.",
+    });
+
+    expect(error._tag).toBe("SqlDumpStageError");
+    expect(Schema.is(SqlDumpStageError)(error)).toBe(true);
+
+    const encoded = Schema.encodeUnknownSync(SqlDumpStageError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlDumpStageError)(encoded);
+
+    expect(decoded._tag).toBe("SqlDumpStageError");
+    expect(decoded.path).toBe("/dev/stdin");
+    expect(decoded.message).not.toMatch(/gzip/i);
+  });
+});
+
+describe("SqlDumpEmptyError", () => {
+  test("encodes and decodes with _tag intact when stdin is empty", () => {
+    const error = new SqlDumpEmptyError({
+      message: "Dump is empty: /dev/stdin",
+      path: "/dev/stdin",
+      remediation: "Pass a non-empty dump. Empty stdin is rejected.",
+    });
+
+    expect(error._tag).toBe("SqlDumpEmptyError");
+    expect(Schema.is(SqlDumpEmptyError)(error)).toBe(true);
+
+    const encoded = Schema.encodeUnknownSync(SqlDumpEmptyError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlDumpEmptyError)(encoded);
+
+    expect(decoded._tag).toBe("SqlDumpEmptyError");
+    expect(decoded.path).toBe("/dev/stdin");
   });
 });
 

@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { Socket } from "node:net";
-import { createStdioRendererIO } from "@lando/renderer/io";
+import { BROKEN_PIPE_EXIT_CODE, createStdioRendererIO } from "@lando/renderer/io";
 import { writeResultLine } from "@lando/renderer/output";
+import { DataTransferPartialStreamError } from "@lando/sdk/errors";
 import { Deferred, Effect, Layer } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 
@@ -111,4 +112,32 @@ test("finalizers still run when a stream breaks", async () => {
   expect(result).toBeUndefined();
   expect(finalized).toBe(true);
   expect(stderr.chunks.join("")).toBe("");
+});
+
+test("a partial-stream dump error exits 141", async () => {
+  const stdout = fakeStream();
+  const stderr = fakeStream();
+  const exitCodes: number[] = [];
+  await runWithRendererHandling(
+    Effect.fail(
+      new DataTransferPartialStreamError({
+        message: "Wrote 10 bytes before the destination closed.",
+        bytesWritten: 10,
+        path: "/dev/stdout",
+        remediation:
+          "The consumer closed the pipe before the dump finished. Rerun without truncating the stream.",
+      }),
+    ),
+    {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io: createStdioRendererIO(stdout.stream, stderr.stream, fakeStdin),
+      formatError: ({ error }) => String(error),
+      setExitCode: (code) => {
+        exitCodes.push(code);
+      },
+    },
+  );
+  expect(exitCodes).toEqual([BROKEN_PIPE_EXIT_CODE]);
+  expect(BROKEN_PIPE_EXIT_CODE).toBe(141);
 });

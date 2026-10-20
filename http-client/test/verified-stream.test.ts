@@ -8,6 +8,7 @@ import { Effect, Fiber, Schema, Stream } from "effect";
 
 import {
   VerifiedStreamError,
+  VerifiedStreamPartialError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
@@ -248,38 +249,106 @@ describe("persistVerifiedStream", () => {
 
   test("stdout persist writes only the dump bytes on stdout", async () => {
     if (process.platform === "win32") return;
+    const payload = "STDOUT-DUMP-ONLY";
+    const proc = Bun.spawn([process.execPath, join(import.meta.dir, "fixtures/stdout-persist.ts")], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (code !== 0) throw new Error(stderr || `stdout dump helper exited ${code}`);
+    expect(stdout).toBe(payload);
+    expect(stderr).toBe("");
+  });
+
+  test("writes socket-backed /dev/fd destinations without reopening the path", async () => {
+    if (process.platform === "win32") return;
     await withTempDir(async (dir) => {
-      const script = join(dir, "stdout-dump.ts");
-      const payload = "STDOUT-DUMP-ONLY";
-      const verifiedStream = join(import.meta.dir, "..", "..", "sdk/src/verified-stream/index.ts");
-      await writeFile(
-        script,
-        `import { Effect, Stream } from "effect";
-import { persistVerifiedStream } from ${JSON.stringify(verifiedStream)};
-const payload = new TextEncoder().encode(${JSON.stringify(payload)});
-await Effect.runPromise(
-  Effect.scoped(
-    persistVerifiedStream({
-      body: Stream.fromIterable([payload]),
-      destinationPath: "/dev/stdout",
-    }),
-  ),
-);
-`,
-      );
-      const proc = Bun.spawn([process.execPath, script], {
-        cwd: join(import.meta.dir, "..", ".."),
-        stdout: "pipe",
-        stderr: "pipe",
+      const { createConnection, createServer } = await import("node:net");
+      const sockPath = join(dir, "dump.sock");
+      const payload = bytes("socket-dump-bytes");
+      const server = createServer();
+      const received = new Promise<Uint8Array>((resolve, reject) => {
+        server.once("error", reject);
+        server.once("connection", (socket) => {
+          const chunks: Buffer[] = [];
+          socket.on("data", (chunk) => chunks.push(chunk));
+          socket.on("end", () => resolve(concat(chunks.map((chunk) => new Uint8Array(chunk)))));
+          socket.on("error", reject);
+        });
       });
-      const [stdout, stderr, code] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]);
-      if (code !== 0) throw new Error(stderr || `stdout dump helper exited ${code}`);
-      expect(stdout).toBe(payload);
-      expect(stderr).toBe("");
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(sockPath, () => resolve());
+      });
+      try {
+        const client = await new Promise<import("node:net").Socket>((resolve, reject) => {
+          const socket = createConnection(sockPath);
+          socket.once("connect", () => resolve(socket));
+          socket.once("error", reject);
+        });
+        const fd =
+          "fd" in client && typeof client.fd === "number"
+            ? client.fd
+            : (client as { _handle?: { fd?: number } })._handle?.fd;
+        if (typeof fd !== "number") {
+          client.destroy();
+          throw new Error("socket fd unavailable");
+        }
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            persistVerifiedStream({
+              body: Stream.fromIterable([payload]),
+              destinationPath: `/dev/fd/${fd}`,
+            }),
+          ),
+        );
+        client.end();
+        expect(result.sha256).toBe(sha256Hex(payload));
+        expect(result.sizeBytes).toBe(payload.length);
+        expect(Array.from(await received)).toEqual(Array.from(payload));
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+  });
+
+  test("partial pipe writes fail with bytesWritten and keep the FIFO", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const fifo = join(dir, "dump.fifo");
+      const payload = bytes("partial-pipe-bytes-xxxxxxxxxxxxxxxx");
+      const mk = Bun.spawn(["mkfifo", "-m", "0600", fifo], { stdout: "ignore", stderr: "pipe" });
+      expect(await mk.exited).toBe(0);
+      const reader = Bun.spawn(["head", "-c", "10"], {
+        stdin: Bun.file(fifo),
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      try {
+        const error = await Effect.runPromise(
+          Effect.scoped(
+            persistVerifiedStream({
+              body: Stream.fromIterable([payload]),
+              destinationPath: fifo,
+            }),
+          ).pipe(Effect.flip),
+        );
+        expect(await reader.exited).toBe(0);
+        expect(error).toBeInstanceOf(VerifiedStreamPartialError);
+        if (!(error instanceof VerifiedStreamPartialError)) return;
+        expect(error.bytesWritten).toBeGreaterThan(0);
+        expect(error.bytesWritten).toBeLessThan(payload.length);
+        expect((await stat(fifo)).isFIFO()).toBe(true);
+      } catch (caught) {
+        reader.kill();
+        await reader.exited.catch(() => undefined);
+        throw caught;
+      }
     });
   });
 });

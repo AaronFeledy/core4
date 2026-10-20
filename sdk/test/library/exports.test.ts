@@ -394,6 +394,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DownloaderUnavailableError).toBeDefined();
     expect(errors.HttpTrustError).toBeDefined();
     expect(errors.DataTransferError).toBeDefined();
+    expect(errors.DataTransferPartialStreamError).toBeDefined();
     expect(errors.DataEndpointUnsupportedError).toBeDefined();
     expect(errors.DataChecksumMismatchError).toBeDefined();
     expect(errors.DataSourceOutsideRootError).toBeDefined();
@@ -625,6 +626,7 @@ describe("@lando/sdk package exports", () => {
     expect(verifiedStream.persistVerifiedStream).toBeDefined();
     expect(verifiedStream.collectVerifiedStream).toBeDefined();
     expect(verifiedStream.VerifiedStreamError).toBeDefined();
+    expect(verifiedStream.VerifiedStreamPartialError).toBeDefined();
   });
 
   test("probe entry point exports the pure retry/verdict primitive", async () => {

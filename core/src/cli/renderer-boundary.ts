@@ -1,10 +1,11 @@
 import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Schema, Scope, Tracer } from "effect";
 
 import { failureOutcomeFromCause } from "@lando/sdk/command-result";
-import { JqExpressionError } from "@lando/sdk/errors";
+import { DataTransferPartialStreamError, JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
+import { VerifiedStreamPartialError } from "@lando/sdk/verified-stream";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
@@ -12,6 +13,7 @@ import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
 import {
+  BROKEN_PIPE_EXIT_CODE,
   type RendererIO,
   createStdioRendererIO,
   onStdioBrokenPipe,
@@ -279,6 +281,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const failure = failureOutcomeFromCause(cause);
         if (failure.error instanceof JqExpressionError) {
           setExitCode(2);
+          return;
+        }
+        if (
+          failure.error instanceof DataTransferPartialStreamError ||
+          failure.error instanceof VerifiedStreamPartialError
+        ) {
+          setExitCode(BROKEN_PIPE_EXIT_CODE);
           return;
         }
         setExitCode(options.failureExitCode?.(failure.error) ?? 1);

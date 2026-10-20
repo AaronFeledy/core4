@@ -533,6 +533,7 @@
       "DataSourceOutsideRootError",
       "DataTargetExistsError",
       "DataTransferError",
+      "DataTransferPartialStreamError",
       "DataTreeOwnershipCapabilityError",
       "DatasetApplyError",
       "DatasetBindingError",
@@ -707,7 +708,9 @@
       "SqlCommandFailedError",
       "SqlConfirmRequiredError",
       "SqlDumpCompressionError",
+      "SqlDumpEmptyError",
       "SqlDumpNotFoundError",
+      "SqlDumpStageError",
       "SqlDumpTtyError",
       "SqlRecoveryOperationError",
       "SqlRecoveryUnavailableError",
@@ -1875,7 +1878,12 @@
       "resolveHostKey",
       "toolVersionMarkerPath"
     ],
-    "./verified-stream": ["VerifiedStreamError", "collectVerifiedStream", "persistVerifiedStream"],
+    "./verified-stream": [
+      "VerifiedStreamError",
+      "VerifiedStreamPartialError",
+      "collectVerifiedStream",
+      "persistVerifiedStream"
+    ],
     "./yaml": [
       "YamlEmitError",
       "emitYamlDocument",
