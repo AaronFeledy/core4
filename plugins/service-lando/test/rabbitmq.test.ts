@@ -12,6 +12,14 @@ import {
   rabbitmqServiceType,
 } from "../src/services/rabbitmq.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: rabbitmqServiceType,
+  variable: "RABBITMQ_NODE_PORT",
+  defaultPort: 5672,
+  reservedPorts: [4369, 15672, 15692],
+});
 
 const metadata = {
   resolvedAt: "2026-08-18T00:00:00Z",
@@ -54,6 +62,34 @@ const resolveRabbitMQService = (serviceType: ServiceType, serviceDefinition: Rec
   );
 
 describe("rabbitmq ServiceType", () => {
+  test.each([
+    [{ port: 50000 }, "distribution port"],
+    [{ port: 5673, environment: { RABBITMQ_DIST_PORT: "5673" } }, "AMQP listener"],
+    ...[4369, 15672, 15692].map(
+      (port) => [{ environment: { RABBITMQ_DIST_PORT: String(port) } }, "conflicts"] as const,
+    ),
+    ...["0", "65536", "1.5", "invalid"].map(
+      (port) => [{ environment: { RABBITMQ_DIST_PORT: port } }, "not a TCP port number"] as const,
+    ),
+  ] as const)("rejects invalid distribution configuration %j", async (definition, message) => {
+    await expect(
+      planRabbitMQService(rabbitmqServiceType, { type: "rabbitmq", ...definition }),
+    ).rejects.toThrow(message);
+    await expect(
+      resolveRabbitMQService(rabbitmqServiceType, { type: "rabbitmq", ...definition }),
+    ).rejects.toThrow(message);
+  });
+
+  test("accepts an explicit distribution port when AMQP leaves no default room", async () => {
+    const plan = await planRabbitMQService(rabbitmqServiceType, {
+      type: "rabbitmq",
+      port: 50000,
+      environment: { RABBITMQ_DIST_PORT: "25672" },
+    });
+    expect(plan.environment.RABBITMQ_NODE_PORT).toBe("50000");
+    expect(plan.environment.RABBITMQ_DIST_PORT).toBe("25672");
+  });
+
   for (const [id, image, serviceType] of [
     ["rabbitmq:3", "rabbitmq:3-management", rabbitmq3ServiceType],
     ["rabbitmq:4", "rabbitmq:4-management", rabbitmq4ServiceType],

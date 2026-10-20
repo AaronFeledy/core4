@@ -6,6 +6,31 @@
  */
 export type DatabaseFamily = "mysql" | "mariadb" | "postgres" | "mongodb" | "mssql";
 
+/** Service environment key carrying a database service's planned container listen port. */
+export const DATABASE_PORT_ENV_KEY = "LANDO_DB_PORT";
+
+/** Each family's published listen port, used when a service declares no planned port. */
+export const DATABASE_FAMILY_DEFAULT_PORTS = {
+  mysql: 3306,
+  mariadb: 3306,
+  postgres: 5432,
+  mongodb: 27017,
+  mssql: 1433,
+} as const satisfies Record<DatabaseFamily, number>;
+
+/**
+ * Read the planned listen port from a database service environment. An absent value, or one
+ * that is not a decimal TCP port, yields the family's published port.
+ */
+export const databaseEnvPort = (
+  family: DatabaseFamily,
+  environment: Readonly<Record<string, string>>,
+): number => {
+  const value = environment[DATABASE_PORT_ENV_KEY];
+  const port = value !== undefined && /^[0-9]+$/.test(value) ? Number(value) : 0;
+  return port >= 1 && port <= 65_535 ? port : DATABASE_FAMILY_DEFAULT_PORTS[family];
+};
+
 export type DatabaseEnvCreds = {
   readonly user: string | undefined;
   readonly password: string | undefined;

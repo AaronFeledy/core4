@@ -60,7 +60,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, {
     ...familyEnvFor(FAMILY, creds),
-    ...landoDbEnvFor(creds),
+    ...landoDbEnvFor(creds, port),
   });
   ctx.addStorage({
     store: `${appName}-mongodb-data`,
@@ -69,10 +69,18 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   });
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
-  if (addServerConfigMount(ctx, MONGODB_CONFIG_TARGET)) {
-    if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(["mongod", "--config", MONGODB_CONFIG_TARGET]);
-    }
+  const serverConfig = addServerConfigMount(ctx, MONGODB_CONFIG_TARGET);
+  if (
+    (serverConfig || service.port !== undefined) &&
+    service.command === undefined &&
+    service.entrypoint === undefined
+  ) {
+    ctx.setCommand([
+      "mongod",
+      ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []),
+      "--port",
+      String(port),
+    ]);
   }
 
   applyAuthoredProcessFields(ctx);
@@ -116,7 +124,7 @@ export const mongodbServiceType: ServiceType = {
       tooling: {
         mongosh: {
           service: input.name,
-          cmd: ["mongosh"],
+          cmd: ["sh", "-c", 'exec mongosh "$MONGO_URI" "$@"', "mongosh"],
           env: { MONGO_URI: mongoUri(creds, input.service.port ?? DEFAULT_PORT) },
         },
       },

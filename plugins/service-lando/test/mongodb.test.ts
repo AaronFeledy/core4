@@ -53,6 +53,25 @@ const resolveMongodb = (definition: Record<string, unknown>, appName = "myapp") 
   );
 
 describe("mongodb ServiceType", () => {
+  test("makes the authored port beat the mounted mongod config", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      port: 47017,
+      config: { server: "config/mongod.conf" },
+    });
+    expect(plan.command).toEqual(["mongod", "--config", "/etc/lando/mongod.conf", "--port", "47017"]);
+  });
+
+  test("does not append daemon flags to an authored entrypoint", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      port: 47017,
+      entrypoint: ["custom-start"],
+      config: { server: "config/mongod.conf" },
+    });
+    expect(plan.entrypoint).toEqual(["custom-start"]);
+    expect(plan.command).toBeUndefined();
+  });
   test("plans a default MongoDB service with persistent data volume and credentials", async () => {
     const plan = await planMongodb({ type: "mongodb" });
 
@@ -141,6 +160,8 @@ describe("mongodb ServiceType", () => {
     const plan = await planMongodb({ type: "mongodb", port: 47017 });
 
     expect(firstEndpointPort(plan)).toBe(47017);
+    expect(plan.command).toEqual(["mongod", "--port", "47017"]);
+    expect(plan.environment.LANDO_DB_PORT).toBe("47017");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/47017"]);
   });
 
@@ -194,7 +215,7 @@ describe("mongodb ServiceType", () => {
     expect(resolution.tooling).toEqual({
       mongosh: {
         service: "db",
-        cmd: ["mongosh"],
+        cmd: ["sh", "-c", 'exec mongosh "$MONGO_URI" "$@"', "mongosh"],
         env: {
           MONGO_URI: `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:27017/${encodeURIComponent(creds.database)}?authSource=admin`,
         },
@@ -244,12 +265,13 @@ describe("mongodb ServiceType", () => {
       readOnly: true,
       realization: "passthrough",
     });
-    expect(plan.command).toEqual(["mongod", "--config", "/etc/lando/mongod.conf"]);
+    expect(plan.command).toEqual(["mongod", "--config", "/etc/lando/mongod.conf", "--port", "27017"]);
   });
 
   test("mounts config.server but keeps an authored command", async () => {
     const plan = await planMongodb({
       type: "mongodb",
+      port: 47017,
       config: { server: "config/mongod.conf" },
       command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"],
     });

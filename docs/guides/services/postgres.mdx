@@ -65,7 +65,7 @@ services:
     type: postgres
 ```
 
-`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. `lando info` redacts the password, so it's no place to copy it from. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. The URL uses the default port; update it when you author `port:`. `lando info` redacts the password, so it's no place to copy it from. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 ## Open the client
 
@@ -103,13 +103,15 @@ services:
 
 Lando mounts that file read-only at `/etc/lando/postgresql.conf` and starts the server with `-c config_file=/etc/lando/postgresql.conf`. It has to be a regular file, not a directory.
 
+Lando's planned port, `port:` or the default, beats a port line in your config file.
+
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append the `-c config_file=...` flag to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
 
 ## Change the port
 
-Set `port:` when something else needs `5432`. Lando moves the server's listener, the healthcheck, and the endpoint together:
+Set `port:` when something else needs `5432`. Lando moves the server's listener, healthcheck, endpoint, and its own clients together:
 
 ```yaml
 services:
@@ -118,7 +120,15 @@ services:
     port: 5433
 ```
 
-Other services then connect to `db:5433`. Lando passes the port to the server as `PGPORT`. Setting `PGPORT` under `environment:` works the same way; if you set both, they have to match or planning fails. An authored port also beats a `port` line in a custom `postgresql.conf`.
+Other services then connect to `db:5433`. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails. With `config.server`, Lando pins `port:` or the default on its command line.
+
+The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you author `command:` or `entrypoint:`, you own the daemon's flags; make your launcher honor the planned port, including when you load a config file yourself.
+
+Apply the change with `lando rebuild`, then check the running listener:
+
+```sh
+lando psql -c 'SHOW port;'
+```
 
 ## Pin a version
 
