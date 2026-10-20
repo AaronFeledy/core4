@@ -52,6 +52,7 @@ const landofileRuntimeInputs = {
 };
 
 const prepareCalls: HostProxyShimTarget[] = [];
+const prepareCacheRoots: string[] = [];
 const tempDirs: string[] = [];
 const previousComposition = globalThis.__landoEngineCompositionInputs;
 
@@ -138,6 +139,7 @@ const runtimeLayer = Layer.mergeAll(
 
 beforeEach(() => {
   prepareCalls.length = 0;
+  prepareCacheRoots.length = 0;
   const composition = {
     bundledPluginModules: [],
     builtInCommandIds: [],
@@ -147,8 +149,9 @@ beforeEach(() => {
       entryPath: undefined,
       bunSourceEntryPath: "/tmp/lando-start-host-proxy-missing-entry.ts",
     }),
-    resolveContainerHelper: (target: HostProxyShimTarget) => {
+    resolveContainerHelper: (target: HostProxyShimTarget, options: { readonly cacheRoot: string }) => {
       prepareCalls.push(target);
+      prepareCacheRoots.push(options.cacheRoot);
       return Effect.fail(
         new ContainerHelperUnavailableError({ target, message: "prepare-spy", remediation: "prepare-spy" }),
       );
@@ -250,6 +253,7 @@ describe("startHostProxyRunLandoSession prepare port", () => {
 
     // Then
     expectPrepareSpy(exit, X64_TARGET);
+    expect(prepareCacheRoots).toEqual([join(roots.userCacheRoot, "tool-downloads", "container-helper")]);
   });
 
   test("invokes the composition preparer with linux-arm64 before worker spawn", async () => {
@@ -263,6 +267,7 @@ describe("startHostProxyRunLandoSession prepare port", () => {
 
     // Then
     expectPrepareSpy(exit, ARM64_TARGET);
+    expect(prepareCacheRoots).toEqual([join(roots.userCacheRoot, "tool-downloads", "container-helper")]);
   });
 
   test("skips the preparer when hostReachability is none", async () => {

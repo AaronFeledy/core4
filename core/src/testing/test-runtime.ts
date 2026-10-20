@@ -2,6 +2,7 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import {
   Cause,
   Clock,
@@ -55,6 +56,7 @@ import {
   type LandoEvent,
   LandofileService,
   Logger,
+  PathsService,
   PluginRegistry,
   type PluginTrustState,
   PluginTrustStore,
@@ -1008,7 +1010,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   );
 
   const providerLayer: Layer.Layer<ProviderTestRuntimeServices> = Layer.mergeAll(
-    ContainerHelperAssetsLayer.layer,
+    ContainerHelperAssetsLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
     minimalLayer,
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),

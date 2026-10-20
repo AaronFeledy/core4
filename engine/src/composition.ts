@@ -11,6 +11,7 @@ export interface EngineCompositionInputs {
   readonly hostProxyWorkerEntry: () => HostProxyWorkerEntry;
   readonly resolveContainerHelper: (
     target: ContainerHelperTarget,
+    options: { readonly cacheRoot: string },
   ) => Effect.Effect<ContainerHelperArtifact, ContainerHelperUnavailableError>;
 }
 
@@ -50,5 +51,6 @@ export const hostProxyWorkerEntry = (): HostProxyWorkerEntry => requireCompositi
 
 export const resolveContainerHelper = (
   target: ContainerHelperTarget,
+  options: { readonly cacheRoot: string },
 ): Effect.Effect<ContainerHelperArtifact, ContainerHelperUnavailableError> =>
-  requireComposition().resolveContainerHelper(target);
+  requireComposition().resolveContainerHelper(target, options);

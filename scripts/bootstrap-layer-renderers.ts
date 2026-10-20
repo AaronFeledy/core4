@@ -155,7 +155,7 @@ export const renderProvider = (): string =>
     "export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {",
     "  // Effect 4 memoizes leaf layers, not composite traversal. Share this dependency graph too.",
     "  const pluginsRuntimeLayer = Layer.suspend(() => makeCommandsBootstrapBaseLayer(inputs));",
-    "  const providerSupportLayer = Layer.mergeAll(AppPlanSanitizerLayer.layer, ContainerHelperAssetsLayer.layer);",
+    "  const providerSupportLayer = Layer.mergeAll(AppPlanSanitizerLayer.layer, ContainerHelperAssetsLayer.layer.pipe(Layer.provide(pluginsRuntimeLayer)));",
     "  const providerRegistryLayer = makeRuntimeProviderRegistryWithPrivateFileAccess(bundledPluginModules()).pipe(",
     "    Layer.provide(Layer.mergeAll(pluginsRuntimeLayer, providerSupportLayer)),",
     "  );",

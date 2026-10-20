@@ -128,7 +128,9 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
     (tree) =>
       Effect.gen(function* () {
         yield* tree.startTask("session");
-        const helper = yield* resolveContainerHelper(shimTarget).pipe(Effect.mapError(helperUnavailable));
+        const helper = yield* resolveContainerHelper(shimTarget, {
+          cacheRoot: landoPaths.toolDownloadsDir("container-helper"),
+        }).pipe(Effect.mapError(helperUnavailable));
         return yield* withRetainedSession(
           (publish: PublishSession<HostProxyRunLandoSession & { readonly reused?: boolean }>) =>
             startDetachedHostProxyWorker({

@@ -183,7 +183,7 @@ test.each([
       ),
     );
     const layer = Layer.mergeAll(
-      ContainerHelperAssetsLayer.layer,
+      ContainerHelperAssetsLayer.layer.pipe(Layer.provide(dependencies)),
       dependencies,
       AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
       BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),

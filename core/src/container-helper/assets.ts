@@ -8,7 +8,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperArtifact, type ContainerHelperTarget } from "@lando/sdk/schema";
-import { ContainerHelperAssets } from "@lando/sdk/services";
+import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 
 import {
@@ -140,7 +140,16 @@ export const resolveContainerHelper = (
   });
 };
 
-export const layer = Layer.succeed(
-  ContainerHelperAssets,
-  ContainerHelperAssets.of({ resolve: (target) => resolveContainerHelper(target) }),
-);
+export const layerWith = (input: Parameters<typeof resolveContainerHelper>[1] = {}) =>
+  Layer.effect(
+    ContainerHelperAssets,
+    Effect.gen(function* () {
+      const paths = yield* PathsService;
+      return ContainerHelperAssets.of({
+        resolve: (target) =>
+          resolveContainerHelper(target, { ...input, cacheRoot: paths.toolDownloadsDir("container-helper") }),
+      });
+    }),
+  );
+
+export const layer = layerWith();

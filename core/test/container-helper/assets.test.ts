@@ -3,14 +3,17 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { Effect } from "effect";
+import { makeLandoPaths } from "@lando/paths";
+import { Effect, Layer } from "effect";
 
 import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 
 import {
   type EmbeddedHelperFile,
   extractEmbeddedContainerHelper,
+  layerWith,
   resolveContainerHelper,
 } from "../../src/container-helper/assets.ts";
 
@@ -29,6 +32,42 @@ const embedded = (name: string, bytes: Uint8Array): EmbeddedHelperFile =>
   Object.assign(new Blob([gzipSync(bytes)]), { name });
 
 describe("resolveContainerHelper", () => {
+  test("the standalone assets layer extracts under its configured PathsService cache root", async () => {
+    // Given
+    const userCacheRoot = join(await tempRoot(), "runtime-cache");
+    const paths = makeLandoPaths({ userCacheRoot });
+    const bytes = new TextEncoder().encode("runtime-root-helper");
+    const digest = sha256Hex(bytes);
+    const assetsLayer = layerWith({
+      env: {},
+      standalone: true,
+      embeddedFiles: [embedded(`lando-container-helper-linux-x64-${digest}.gz`, bytes)],
+    }).pipe(Layer.provide(Layer.succeed(PathsService, paths)));
+
+    // When
+    const resolved = await Effect.runPromise(
+      Effect.gen(function* () {
+        const assets = yield* ContainerHelperAssets;
+        return yield* assets.resolve(target);
+      }).pipe(Effect.provide(assetsLayer)),
+    );
+
+    // Then
+    expect(resolved.path).toBe(
+      AbsolutePath.make(
+        join(
+          userCacheRoot,
+          "tool-downloads",
+          "container-helper",
+          "linux-x64",
+          digest,
+          "lando-container-helper",
+        ),
+      ),
+    );
+    expect(await readFile(resolved.path)).toEqual(Buffer.from(bytes));
+  });
+
   test("uses LANDO_CONTAINER_HELPER_DIR/linux-<arch>/lando-container-helper", async () => {
     const root = await tempRoot();
     const path = join(root, "linux-x64", "lando-container-helper");
