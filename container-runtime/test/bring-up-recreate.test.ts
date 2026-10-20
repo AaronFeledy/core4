@@ -214,6 +214,55 @@ const makeFakeApi = (input: {
 const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<EngineHttpRequest> =>
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
+test.each([false, true])(
+  "host-proxy session rotation recreates containers without deleting volumes (changed=%s)",
+  async (changed) => {
+    const base = planWithHostPort(18080);
+    const original = base.services[serviceName];
+    if (original === undefined) throw new Error("Missing service");
+    const previous = {
+      ...original,
+      environment: {
+        LANDO_HOST_PROXY_SESSION: "previous-session",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+      },
+      mounts: [
+        {
+          type: "bind" as const,
+          source: "/home/user/session/host-proxy.sock",
+          target: PortablePath.make("/run/lando/host-proxy.sock"),
+          readOnly: true,
+          realization: "passthrough" as const,
+        },
+      ],
+    };
+    const desired = {
+      ...previous,
+      environment: {
+        ...previous.environment,
+        LANDO_HOST_PROXY_SESSION: changed ? "next-session" : "previous-session",
+      },
+    };
+    const planned = { ...base, services: { [serviceName]: desired } };
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingPlan: { ...base, services: { [serviceName]: previous } },
+      existingBindSource: "/home/user/session/host-proxy.sock",
+      existingNetworks: ["recreate-ports-network"],
+      networkExists: true,
+    });
+    const result = await Effect.runPromise(bringUp(planned, { api: fake.api, ctx, reconcile: false }));
+    expect(result.changed).toBe(changed);
+    expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
+    const deletes = fake.calls.filter((call) => call.method === "DELETE");
+    expect(deletes).toHaveLength(changed ? 1 : 0);
+    for (const call of deletes) {
+      expect(call.path).toStartWith("/containers/");
+      expect(call.path).not.toMatch(/[?&]v=(true|1)/);
+    }
+  },
+);
+
 describe("Podman publish-port recreate", () => {
   test("recreate stops and deletes the observed owned native ID", async () => {
     // Given

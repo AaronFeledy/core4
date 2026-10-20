@@ -15,7 +15,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import type { LintLandofileOptions } from "@lando/landofile/lint";
+import { type LintLandofileOptions, routeViolations } from "@lando/landofile/lint";
 import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
@@ -69,5 +69,6 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     }
     return yield* Effect.fail(resolved.failure);
   }
-  return result;
+  const violations = routeViolations(resolved.success.landofile, { deferExpressions: false });
+  return violations.length === 0 ? result : { ...result, valid: false, violations };
 });

@@ -12,6 +12,8 @@ import { acquireLandofileRootLayers } from "./root-compile.ts";
 import { resolveLandofileSourceExpressions } from "./source.ts";
 import { landofileValidationError } from "./validation.ts";
 
+export { routeViolations } from "./lint-violations.ts";
+
 export interface LintLandofileOptions {
   readonly cwd?: string;
   readonly templates?: TemplateEngineInputs;

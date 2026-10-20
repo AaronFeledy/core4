@@ -4,6 +4,7 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { HostEvents } from "./host-events.ts";
+import { DomainName } from "./hostname.ts";
 import { ScannerConfig } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
@@ -276,11 +277,9 @@ export const GlobalConfig = Schema.Struct({
    */
   proxy: Schema.optionalKey(
     Schema.Struct({
-      defaultDomain: Schema.String.pipe(
-        Schema.withDecodingDefaultKey(Effect.sync(() => "lndo.site")),
-      ).annotate({
+      defaultDomain: DomainName.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "lndo.site"))).annotate({
         description:
-          "Default local domain used when routes omit a custom domain (global proxy.defaultDomain).",
+          "Plain DNS domain used when routes omit a custom domain (global proxy.defaultDomain), without a scheme, port, path, or wildcard.",
       }),
     }),
   ).annotate({
