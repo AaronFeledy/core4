@@ -7,7 +7,7 @@
 - `FileSyncEngineShape.recoverSession` optionally restores a missing session from retained synchronization history, returning `Option.none()` if none survives. It follows the SDK's existing `DeprecationService` Option-return convention and must never create a session without history. Resuming a process-persistent attempt after apply intent requires this proof for any missing session.
 - `RuntimeProviderShape.prepareFileSyncTargets` no longer returns `rollback`. Prepared targets outlive failed starts; the next `lando start`, restart, or rebuild resumes the same attempt. Stop drains unfinished attempts and destroy disposes them.
 
-- Pre-ship narrowing: `RoutePlan.hostname` and `RoutePlan.pathPrefix` now use the shared concrete route grammar with DNS length limits. `GlobalConfig.proxy.defaultDomain` and `ProxyConfig.defaultDomain` accept only plain DNS domains without a scheme, port, path, or wildcard. Values outside these grammars never produced a working route or hostname.
+- Pre-ship narrowing: `RoutePlan.hostname` and `RoutePlan.pathPrefix` now use the shared concrete route grammar with DNS length limits. `GlobalConfig.proxy.defaultDomain` and `ProxyConfig.defaultDomain` accept only plain DNS domains without a scheme, port, path, or wildcard. Previously schema-accepted values outside these grammars are intentionally no longer supported.
 
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
 
