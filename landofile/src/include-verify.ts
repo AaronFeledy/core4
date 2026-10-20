@@ -7,12 +7,11 @@ import type { LandofileLoadScope } from "./compile.ts";
 import {
   LOCK_REMEDIATION,
   type LandofileIncludeDeps,
-  type LockEntry,
   type ResolveContext,
   type ResolveIncludesError,
   resolveCacheRoot,
 } from "./include-context.ts";
-import { byCodepointString, parseLockEntries } from "./include-lockfile.ts";
+import { byCodepointString, lockValue, parseLockEntries } from "./include-lockfile.ts";
 import { authoredIncludeEntries } from "./include-source.ts";
 import { resolveTree } from "./include-tree.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
@@ -52,7 +51,6 @@ export interface VerifyLandofileIncludesOptions {
   readonly stateStore?: StateStoreShape;
 }
 const MISSING_LOCK_VALUE = "<missing>";
-const lockValue = (entry: LockEntry): string => `${entry.resolved}:${entry.checksum}`;
 const encodeLockMismatch = Schema.encodeSync(LandofileLockMismatchError);
 const verifyMismatchMessage = (source: string, status: IncludeVerifyStatus): string => {
   if (status === "missing") return `Landofile include ${source} is not recorded in the lockfile.`;
@@ -73,10 +71,11 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
     lockfilePath,
     deps: options.deps ?? {},
     maxDepth: options.maxDepth ?? 8,
-    mode: "refresh",
+    mode: "verify",
     lockEntries: existing,
     loadScope: options.loadScope,
     stagedLocks: new Map(),
+    walk: { selectors: new Map(), issues: new Map(), complete: true },
     noNetwork: false,
     loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
     ...(options.ports === undefined ? {} : { ports: options.ports }),
@@ -93,22 +92,28 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
       3,
     );
   const staged = ctx.stagedLocks;
-  const sources = [...new Set([...existing.keys(), ...staged.keys()])].sort(byCodepointString);
+  const sources = [
+    ...new Set([...(ctx.walk.complete ? existing.keys() : []), ...staged.keys(), ...ctx.walk.issues.keys()]),
+  ].sort(byCodepointString);
   const entries: IncludeVerifyEntry[] = [];
   const mismatches: IncludeVerifyMismatch[] = [];
   for (const source of sources) {
     const lock = existing.get(source);
     const fresh = staged.get(source);
-    const expected = lock === undefined ? null : lockValue(lock);
-    const actual = fresh === undefined ? null : lockValue(fresh);
+    const issue = ctx.walk.issues.get(source);
+    const expected = issue === undefined ? (lock === undefined ? null : lockValue(lock)) : issue.expected;
+    const actual = issue === undefined ? (fresh === undefined ? null : lockValue(fresh)) : issue.actual;
     const status: IncludeVerifyStatus =
-      lock !== undefined && fresh !== undefined
-        ? lock.resolved === fresh.resolved && lock.checksum === fresh.checksum
+      issue?.status ??
+      (lock !== undefined && fresh !== undefined
+        ? lock.version === fresh.version &&
+          lock.resolved === fresh.resolved &&
+          lock.checksum === fresh.checksum
           ? "ok"
           : "mismatch"
         : fresh !== undefined
           ? "missing"
-          : "stale";
+          : "stale");
     entries.push({ source, status, expected, actual });
     if (status !== "ok")
       mismatches.push(

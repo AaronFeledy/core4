@@ -10,6 +10,7 @@ import {
 import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
@@ -110,9 +111,9 @@ describe("embedded wire closed x-* artifact repair", () => {
       // Given the independently pinned typed grammar, with every union alternative intact.
       const expected = typedCaptured[source];
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      // When only the separately pinned shorthand delta is replayed after closed-x repair.
-      const repaired = evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(expected))),
+      // When the separately pinned shorthand and include-checksum deltas follow closed-x repair.
+      const repaired = evolveHistoricalIncludeChecksum(
+        evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(expected)))),
       );
       // Then the entire normalized subtree matches, not just the reported keyword.
       expect(jsonEquals(repaired, current)).toBe(true);
@@ -153,8 +154,10 @@ describe("embedded wire closed x-* artifact repair", () => {
       // Given a current subtree whose first string constraint is independently tightened.
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
       const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
-      const repaired = evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+      const repaired = evolveHistoricalIncludeChecksum(
+        evolveHistoricalShorthand(
+          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+        ),
       );
       expect(jsonEquals(repaired, current)).toBe(true);
       // When the conservative classifier still reports the same coarse union delta.

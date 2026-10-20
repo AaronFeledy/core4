@@ -32,9 +32,17 @@ A tarball source needs a url. A registry source needs an id. Any other source va
 
 ## How git caching works
 
-Clones land under the Lando user data root at `<userDataRoot>/recipe-cache/git/<commitSha>/`. The default cloner is a shallow clone (`--depth 1`), then `git rev-parse HEAD`. If that commit directory already exists, Lando drops the staging clone and reuses the cache.
+Append `@ref` to the URL to pick a tag, branch, or full 40-character commit SHA. Without it, Lando uses the repository's default branch.
 
-Interactive git prompts are off (`GIT_TERMINAL_PROMPT=0`). Auth failures fail fast as `RecipeSourceError` kind `auth`.
+```sh
+lando init --source=git --url=https://github.com/acme/lando-recipes.git@v2.1.0 --path=drupal
+```
+
+A recipe's `extends:` takes the same suffix, such as `extends: github:acme/lando-recipes/drupal@v2.1.0`.
+
+Lando fetches exactly that ref, shallow and without tags, and caches the files under the Lando user data root at `<userDataRoot>/recipe-cache/git/<commitSha>/`. A full commit SHA that's already cached is reused without touching the network. A branch, tag, or the default branch is fetched again on every init so you get its current commit. If that fetch fails for a reason other than authentication and an earlier init cached the same URL and ref, `lando init --source=git` warns and uses the cached commit. An `extends:` parent on a branch or tag has no such fallback and fails instead.
+
+Interactive git prompts are off (`GIT_TERMINAL_PROMPT=0`). Auth failures fail fast as `RecipeSourceError` kind `auth`. A ref that isn't a valid tag, branch, or full commit SHA fails before Lando runs git.
 
 Other source kinds parse the same way and hit the same file-rendering stop. They are not a finished init path either.
 
