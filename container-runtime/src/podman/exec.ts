@@ -33,17 +33,19 @@ import {
   EXEC_UMASK_PROBE_COMMAND,
   EXEC_UMASK_SHELL_PROBE_COMMAND,
   type ExecUmaskProbeResult,
+  type ShellProbeOutcome,
   claimMissingShellWarning,
-  isInternalExecProbeCommand,
-  isUmaskProbeCommand,
   isWorldWritableUmask,
   isWrappedExecCommand,
   missingShellWarning,
   parseProcSelfStatusUmask,
+  peekContainerHasShell,
   peekExecUmask,
-  peekServiceHasShell,
+  peekUnavailableExecUmask,
+  rememberContainerHasShell,
   rememberExecUmask,
-  rememberServiceHasShell,
+  rememberUnavailableExecUmask,
+  shellProbeOutcome,
   wrapExecCommand,
 } from "./exec-umask.ts";
 
@@ -67,7 +69,7 @@ interface ExecInspectResponse {
 export interface ExecOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
-  /** Skip umask probe and wrap. Used for the connection probe itself. */
+  /** Skip umask probe and wrap. Internal probes set this; argv matching must not. */
   readonly raw?: boolean;
   readonly onWarn?: (message: string) => void;
 }
@@ -344,7 +346,27 @@ const interruptOnSignal = (signal: AbortSignal | undefined): Effect.Effect<void>
         return Effect.sync(() => signal.removeEventListener("abort", abort));
       });
 
-const rawExecCommand = (command: ReadonlyArray<string>): CommandSpec => ({ command: [...command] });
+const rawExecCommand = (command: ReadonlyArray<string>): CommandSpec => ({
+  command: [...command],
+  raw: true,
+});
+
+const inspectContainerId = (session: ExecSession, plan: AppPlan): Effect.Effect<string | undefined, never> =>
+  request(session, {
+    method: "GET",
+    path: `/containers/${encodeURIComponent(containerName(plan, session.service))}/json`,
+  }).pipe(
+    Effect.map((response): string | undefined => {
+      if (response.status < 200 || response.status >= 300) return undefined;
+      try {
+        const decoded = JSON.parse(response.body) as { readonly Id?: unknown };
+        return typeof decoded.Id === "string" && decoded.Id.length > 0 ? decoded.Id : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
 
 const probeUmask = (
   plan: AppPlan,
@@ -360,29 +382,50 @@ const probeUmask = (
     Effect.catch(() => Effect.succeed({ status: "unavailable" as const })),
   );
 
-const probeServiceHasShell = (
+const probeContainerHasShell = (
   plan: AppPlan,
   target: ExecTarget,
   options: ExecOptions,
-): Effect.Effect<boolean, never, Scope.Scope> =>
+): Effect.Effect<ShellProbeOutcome, never, Scope.Scope> =>
   exec(plan, target, rawExecCommand(EXEC_UMASK_SHELL_PROBE_COMMAND), { ...options, raw: true }).pipe(
-    Effect.map((result) => result.exitCode === 0),
-    Effect.catch(() => Effect.succeed(false)),
+    Effect.map((result) => shellProbeOutcome(result.exitCode)),
+    Effect.catch(() => Effect.succeed("unknown" as const)),
   );
 
 const warnMissingShell = Effect.fnUntraced(function* (
   session: ExecSession,
   options: ExecOptions,
+  containerId: string | undefined,
 ): Effect.fn.Return<void> {
-  const service = String(session.service.name);
-  if (!claimMissingShellWarning(session.api, service)) return;
-  const message = missingShellWarning(service);
+  if (containerId !== undefined && !claimMissingShellWarning(session.api, containerId)) return;
+  const message = missingShellWarning(String(session.service.name));
   options.onWarn?.(message);
   const events = yield* Effect.serviceOption(EventService);
   if (Option.isNone(events)) return;
   yield* events.value
     .publish(MessageWarnEvent.make({ body: message, timestamp: yield* DateTime.now }))
     .pipe(Effect.catch(() => Effect.void));
+});
+
+const resolveExecUmask = Effect.fnUntraced(function* (
+  session: ExecSession,
+  plan: AppPlan,
+  target: ExecTarget,
+  options: ExecOptions,
+  containerId: string | undefined,
+): Effect.fn.Return<ExecUmaskProbeResult, never, Scope.Scope> {
+  const cachedOk = peekExecUmask(session.api);
+  if (cachedOk !== undefined) return cachedOk;
+  if (containerId !== undefined && peekUnavailableExecUmask(session.api, containerId)) {
+    return { status: "unavailable" };
+  }
+  const probed = yield* probeUmask(plan, target, options);
+  if (probed.status === "ok") {
+    rememberExecUmask(session.api, probed);
+    return probed;
+  }
+  if (containerId !== undefined) rememberUnavailableExecUmask(session.api, containerId);
+  return probed;
 });
 
 const resolveExecCommand = Effect.fnUntraced(function* (
@@ -392,49 +435,38 @@ const resolveExecCommand = Effect.fnUntraced(function* (
   command: CommandSpec,
   options: ExecOptions,
 ): Effect.fn.Return<CommandSpec, never, Scope.Scope> {
-  if (
-    options.raw === true ||
-    isInternalExecProbeCommand(command.command) ||
-    isWrappedExecCommand(command.command)
-  ) {
+  if (options.raw === true || command.raw === true || isWrappedExecCommand(command.command)) {
     return command;
   }
 
-  const cachedUmask = peekExecUmask(session.api);
-  const umaskResult =
-    cachedUmask ??
-    (yield* probeUmask(plan, target, options).pipe(
-      Effect.tap((result) => Effect.sync(() => rememberExecUmask(session.api, result))),
-    ));
+  const containerId = yield* inspectContainerId(session, plan);
+  const umaskResult = yield* resolveExecUmask(session, plan, target, options, containerId);
   if (umaskResult.status !== "ok" || !isWorldWritableUmask(umaskResult.umask)) {
     return command;
   }
 
-  const cachedShell = peekServiceHasShell(session.api, String(session.service.name));
-  const hasShell =
-    cachedShell ??
-    (yield* probeServiceHasShell(plan, target, options).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => rememberServiceHasShell(session.api, String(session.service.name), result)),
-      ),
-    ));
-  if (!hasShell) {
-    yield* warnMissingShell(session, options);
+  const cachedShell = containerId === undefined ? undefined : peekContainerHasShell(session.api, containerId);
+  const shell =
+    cachedShell === true
+      ? "present"
+      : cachedShell === false
+        ? "missing"
+        : yield* probeContainerHasShell(plan, target, options).pipe(
+            Effect.tap((outcome) =>
+              Effect.sync(() => {
+                if (containerId === undefined) return;
+                if (outcome === "present") rememberContainerHasShell(session.api, containerId, true);
+                if (outcome === "missing") rememberContainerHasShell(session.api, containerId, false);
+              }),
+            ),
+          );
+  if (shell !== "present") {
+    if (shell === "missing") yield* warnMissingShell(session, options, containerId);
     return command;
   }
 
   return { ...command, command: wrapExecCommand(command.command) };
 });
-
-const rememberProbeResult = (
-  api: EngineHttpApi | undefined,
-  command: CommandSpec,
-  result: ExecResult,
-): void => {
-  if (api === undefined || !isUmaskProbeCommand(command.command)) return;
-  const umask = parseProcSelfStatusUmask(`${result.stdout}${result.stderr}`);
-  rememberExecUmask(api, umask === undefined ? { status: "unavailable" } : { status: "ok", umask });
-};
 
 export const execStream = (
   plan: AppPlan,
@@ -660,7 +692,5 @@ export const exec = Effect.fn("RuntimeProvider.exec")(function* (
     }
   }
 
-  const result = { exitCode, stdout, stderr };
-  rememberProbeResult(options.api, command, result);
-  return result;
+  return { exitCode, stdout, stderr };
 }, Effect.scoped);

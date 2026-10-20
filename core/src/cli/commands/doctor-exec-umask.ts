@@ -117,7 +117,10 @@ export const collectExecUmaskDoctorCheck = Effect.fnUntraced(function* (input: {
     service === undefined
       ? undefined
       : yield* input.provider
-          .exec({ app: service.app, service: service.service }, { command: [...EXEC_UMASK_PROBE_COMMAND] })
+          .exec(
+            { app: service.app, service: service.service },
+            { command: [...EXEC_UMASK_PROBE_COMMAND], raw: true },
+          )
           .pipe(
             Effect.map((result) => (result.exitCode === 0 ? `${result.stdout}${result.stderr}` : undefined)),
             Effect.catch(() => Effect.succeed(undefined)),

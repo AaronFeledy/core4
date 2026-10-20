@@ -10,19 +10,40 @@ export const EXEC_UMASK_PROBE_COMMAND = ["cat", "/proc/self/status"] as const;
 export const EXEC_UMASK_SHELL_PROBE_COMMAND = [EXEC_UMASK_WRAPPER_SHELL, "-c", "exit 0"] as const;
 
 const UMASK_LINE = /^Umask:\s*([0-7]{3,4})\b/mu;
+const MISSING_SHELL_EXITS = new Set([126, 127]);
 
 export type ExecUmaskProbeResult =
   | { readonly status: "ok"; readonly umask: string }
   | { readonly status: "unavailable" };
 
-const umaskResolved = new WeakMap<EngineHttpApi, ExecUmaskProbeResult>();
-const umaskFlights = new WeakMap<EngineHttpApi, Promise<ExecUmaskProbeResult>>();
+export type ShellProbeOutcome = "present" | "missing" | "unknown";
+
+const umaskOk = new WeakMap<EngineHttpApi, Extract<ExecUmaskProbeResult, { readonly status: "ok" }>>();
+const umaskUnavailableByContainer = new WeakMap<EngineHttpApi, Set<string>>();
 const shellResolved = new WeakMap<EngineHttpApi, Map<string, boolean>>();
-const shellFlights = new WeakMap<EngineHttpApi, Map<string, Promise<boolean>>>();
 const missingShellWarned = new WeakMap<EngineHttpApi, Set<string>>();
 
 const sameArgv = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
+
+const containerSet = (store: WeakMap<EngineHttpApi, Set<string>>, api: EngineHttpApi): Set<string> => {
+  const existing = store.get(api);
+  if (existing !== undefined) return existing;
+  const created = new Set<string>();
+  store.set(api, created);
+  return created;
+};
+
+const containerMap = <Value>(
+  store: WeakMap<EngineHttpApi, Map<string, Value>>,
+  api: EngineHttpApi,
+): Map<string, Value> => {
+  const existing = store.get(api);
+  if (existing !== undefined) return existing;
+  const created = new Map<string, Value>();
+  store.set(api, created);
+  return created;
+};
 
 export const parseProcSelfStatusUmask = (text: string): string | undefined => {
   const match = UMASK_LINE.exec(text);
@@ -32,6 +53,14 @@ export const parseProcSelfStatusUmask = (text: string): string | undefined => {
 };
 
 export const isWorldWritableUmask = (umask: string): boolean => umask === WORLD_WRITABLE_UMASK;
+
+export const isMissingShellExit = (exitCode: number): boolean => MISSING_SHELL_EXITS.has(exitCode);
+
+export const shellProbeOutcome = (exitCode: number): ShellProbeOutcome => {
+  if (exitCode === 0) return "present";
+  if (isMissingShellExit(exitCode)) return "missing";
+  return "unknown";
+};
 
 export const wrapExecCommand = (command: ReadonlyArray<string>): ReadonlyArray<string> => [
   EXEC_UMASK_WRAPPER_SHELL,
@@ -54,78 +83,39 @@ export const isUmaskProbeCommand = (command: ReadonlyArray<string>): boolean =>
 export const isShellProbeCommand = (command: ReadonlyArray<string>): boolean =>
   sameArgv(command, EXEC_UMASK_SHELL_PROBE_COMMAND);
 
-export const isInternalExecProbeCommand = (command: ReadonlyArray<string>): boolean =>
-  isUmaskProbeCommand(command) || isShellProbeCommand(command);
-
-export const peekExecUmask = (api: EngineHttpApi): ExecUmaskProbeResult | undefined => umaskResolved.get(api);
+export const peekExecUmask = (api: EngineHttpApi): ExecUmaskProbeResult | undefined => umaskOk.get(api);
 
 export const rememberExecUmask = (api: EngineHttpApi, result: ExecUmaskProbeResult): void => {
-  umaskResolved.set(api, result);
-  umaskFlights.set(api, Promise.resolve(result));
+  if (result.status !== "ok") return;
+  umaskOk.set(api, result);
 };
 
 export const seedNonCompensatingExecUmask = (api: EngineHttpApi): void => {
   rememberExecUmask(api, { status: "ok", umask: EXEC_UMASK_COMPENSATION });
 };
 
-export const loadExecUmask = (
+export const peekUnavailableExecUmask = (api: EngineHttpApi, containerId: string): boolean =>
+  umaskUnavailableByContainer.get(api)?.has(containerId) === true;
+
+export const rememberUnavailableExecUmask = (api: EngineHttpApi, containerId: string): void => {
+  containerSet(umaskUnavailableByContainer, api).add(containerId);
+};
+
+export const peekContainerHasShell = (api: EngineHttpApi, containerId: string): boolean | undefined =>
+  shellResolved.get(api)?.get(containerId);
+
+export const rememberContainerHasShell = (
   api: EngineHttpApi,
-  probe: () => Promise<ExecUmaskProbeResult>,
-): Promise<ExecUmaskProbeResult> => {
-  const resolved = umaskResolved.get(api);
-  if (resolved !== undefined) return Promise.resolve(resolved);
-  const existing = umaskFlights.get(api);
-  if (existing !== undefined) return existing;
-  const flight = probe().then((result) => {
-    umaskResolved.set(api, result);
-    return result;
-  });
-  umaskFlights.set(api, flight);
-  return flight;
+  containerId: string,
+  hasShell: boolean,
+): void => {
+  containerMap(shellResolved, api).set(containerId, hasShell);
 };
 
-const serviceShellMap = <Value>(
-  store: WeakMap<EngineHttpApi, Map<string, Value>>,
-  api: EngineHttpApi,
-): Map<string, Value> => {
-  const existing = store.get(api);
-  if (existing !== undefined) return existing;
-  const created = new Map<string, Value>();
-  store.set(api, created);
-  return created;
-};
-
-export const peekServiceHasShell = (api: EngineHttpApi, service: string): boolean | undefined =>
-  shellResolved.get(api)?.get(service);
-
-export const rememberServiceHasShell = (api: EngineHttpApi, service: string, hasShell: boolean): void => {
-  serviceShellMap(shellResolved, api).set(service, hasShell);
-  serviceShellMap(shellFlights, api).set(service, Promise.resolve(hasShell));
-};
-
-export const loadServiceHasShell = (
-  api: EngineHttpApi,
-  service: string,
-  probe: () => Promise<boolean>,
-): Promise<boolean> => {
-  const resolved = peekServiceHasShell(api, service);
-  if (resolved !== undefined) return Promise.resolve(resolved);
-  const flights = serviceShellMap(shellFlights, api);
-  const existing = flights.get(service);
-  if (existing !== undefined) return existing;
-  const flight = probe().then((hasShell) => {
-    serviceShellMap(shellResolved, api).set(service, hasShell);
-    return hasShell;
-  });
-  flights.set(service, flight);
-  return flight;
-};
-
-export const claimMissingShellWarning = (api: EngineHttpApi, service: string): boolean => {
-  const warned = missingShellWarned.get(api) ?? new Set<string>();
-  if (missingShellWarned.get(api) === undefined) missingShellWarned.set(api, warned);
-  if (warned.has(service)) return false;
-  warned.add(service);
+export const claimMissingShellWarning = (api: EngineHttpApi, containerId: string): boolean => {
+  const warned = containerSet(missingShellWarned, api);
+  if (warned.has(containerId)) return false;
+  warned.add(containerId);
   return true;
 };
 
