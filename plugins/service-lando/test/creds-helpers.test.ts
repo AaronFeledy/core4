@@ -190,13 +190,14 @@ describe("landoDbEnvFor", () => {
     };
 
     // When
-    const env = landoDbEnvFor(creds);
+    const env = landoDbEnvFor(creds, 15432);
 
     // Then
     expect(env).toEqual({
       LANDO_DB_USER: "alice",
       LANDO_DB_PASSWORD: "secret",
       LANDO_DB_NAME: "appdb",
+      LANDO_DB_PORT: "15432",
     });
     expect(env).not.toHaveProperty("LANDO_DB_ROOT_PASSWORD");
   });

@@ -20,6 +20,9 @@ import {
   phpmyadminServiceType,
 } from "../src/services/phpmyadmin.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({ serviceType: phpmyadminServiceType, variable: "APACHE_PORT", defaultPort: 80 });
 
 const metadata = {
   resolvedAt: "2026-08-19T00:00:00Z",
@@ -247,6 +250,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "lando",
       PMA_PASSWORD: "lando",
     });
@@ -293,6 +297,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
     });
@@ -313,6 +318,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "dbuser",
       PMA_PASSWORD: "dbpass",
     });
@@ -332,6 +338,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "maria",
       PMA_PASSWORD: "maria-secret",
     });
@@ -377,6 +384,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "adb,zdb",
+      PMA_PORTS: "3306,3306",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
     });
@@ -406,6 +414,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "db-a,db-b",
+      PMA_PORTS: "3306,3306",
       PMA_USER: "pmauser",
       PMA_PASSWORD: "pmapass",
     });
@@ -429,6 +438,7 @@ describe("phpMyAdmin AppFeature", () => {
       PMA_HOSTS: "database",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
+      PMA_PORTS: "3306",
     });
     expect(captures.get("pma")?.deps).toEqual([
       { service: "database", condition: "service_healthy", required: true },
@@ -488,6 +498,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "remote.example.com",
+      PMA_PORTS: "3306",
       PMA_USER: "pmauser",
       PMA_PASSWORD: "pmapass",
     });

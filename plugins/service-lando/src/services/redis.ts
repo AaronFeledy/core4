@@ -23,9 +23,13 @@ export const REDIS_FEATURE_ID = "service-lando.redis";
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
+  const port = service.port ?? DEFAULT_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  const command = service.persist === false ? EPHEMERAL_COMMAND : DEFAULT_COMMAND;
+  const command = [
+    ...(service.persist === false ? EPHEMERAL_COMMAND : DEFAULT_COMMAND),
+    ...(service.port === undefined ? [] : ["--port", String(port)]),
+  ];
   ctx.setCommand(
     service.command ??
       (service.password === undefined
@@ -38,8 +42,8 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
       target: DATA_TARGET,
       readOnly: false,
     });
-  ctx.setHealthcheck(commandHealthcheck(["redis-cli", "ping"], 15));
-  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
+  ctx.setHealthcheck(commandHealthcheck(["redis-cli", "-p", String(port), "ping"], 15));
+  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
@@ -100,7 +104,7 @@ export const redisServiceType: ServiceType = {
       tooling: {
         "redis-cli": {
           service: input.name,
-          cmd: ["redis-cli"],
+          cmd: ["redis-cli", ...(input.service.port === undefined ? [] : ["-p", String(input.service.port)])],
           ...(password === undefined ? {} : { env: auth }),
         },
       },
