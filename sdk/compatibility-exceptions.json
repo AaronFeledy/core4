@@ -3196,5 +3196,89 @@
     "changeKind": "enum-widened",
     "path": "$.outcome",
     "justification": "Task completion adds the neutral `info` outcome for reader-owned results such as an app answering post-start checks with an error. The field stays optional, `ok` and `warn` keep their meaning, and consumers that treat unknown outcomes as `ok` keep working; renderers that paint `warn` were updated in the same change."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
   }
 ]
