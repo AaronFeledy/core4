@@ -231,13 +231,17 @@ test("retained sessions transfer to managed ownership even when readiness fails"
     remediation: "Read logs",
   });
   const exit = await Effect.runPromiseExit(
-    withRetainedSession(Effect.succeed("session"), () => Effect.fail(error), {
-      scope,
-      close: () =>
-        Effect.sync(() => {
-          closed++;
-        }),
-    }),
+    withRetainedSession(
+      (publish) => publish("session").pipe(Effect.as("session")),
+      () => Effect.fail(error),
+      {
+        scope,
+        close: () =>
+          Effect.sync(() => {
+            closed++;
+          }),
+      },
+    ),
   );
   expect(readinessError(exit)).toBe(error);
   expect(closed).toBe(0);
