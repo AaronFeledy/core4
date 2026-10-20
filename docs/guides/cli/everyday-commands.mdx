@@ -56,6 +56,8 @@ Bare `restart` stops then starts the app, removing and recreating its containers
 
 `lando restart --service redis` (or `-s`, repeatable) restarts only those named services in place. Other services keep running and keep their host ports. Lando does not pull in dependencies. If a selected container is missing, or would have to be recreated for published-port, bind-source, network, or create-config drift, or because it has no `dev.lando.create-config` label, the command refuses with `ServiceRestartWouldRecreateError`. Create-config drift and a missing label use reason `config`. The error tells you to run `lando rebuild -s <name>`.
 
+`lando rebuild -s <name>` recreates the named services and the services they depend on. They rejoin the host proxy the running app already uses, so `lando` and `open` inside a rebuilt `type: lando` service still reach your host, and the services you did not rebuild keep working. Running `lando start` again on a running app reuses that host proxy too, even after you edit the Landofile.
+
 If another process takes a selected service's host port after it stops, restart fails and leaves that service down. Check `lando info`, free the port or run `lando rebuild -s <name>`, then check `lando info` again.
 
 Start, restart, and rebuild wait for every affected service's enabled healthcheck before reporting success or running post-start steps. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.

@@ -24,6 +24,8 @@ import {
 } from "../schema/index.ts";
 import type { AppSelector, ExecChunk, LogChunk, RuntimeProviderShape } from "../services/index.ts";
 import {
+  CONTRACT_LONG_LINE,
+  CONTRACT_SPLIT_LINE,
   type ContractFailure,
   TEST_APP_ID,
   TEST_PROVIDER_ID,
@@ -40,6 +42,7 @@ import {
   mapProviderFailure,
   mapProviderOrContractFailure,
   requireContract,
+  runsContractServiceScript,
   sampleBytes,
   streamBytes,
   testCapabilities,
@@ -539,15 +542,18 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
     );
   },
   logs: (target, options) => {
-    const consoleChunk: LogChunk = {
+    const lines = runsContractServiceScript(target.plan?.services[target.service])
+      ? ["ready", CONTRACT_SPLIT_LINE, CONTRACT_LONG_LINE]
+      : ["ready"];
+    const consoleChunks: LogChunk[] = lines.map((line) => ({
       service: target.service,
       stream: "stdout",
-      line: "ready",
-    };
+      line,
+    }));
 
     const sources = options.sources ?? [];
     const followSources = sources.filter((source) => source.strategy === "follow");
-    if (followSources.length === 0) return Stream.make(consoleChunk);
+    if (followSources.length === 0) return Stream.fromIterable(consoleChunks);
 
     const fs = makeMemoryLogFileAccess();
     for (const source of followSources) {
@@ -565,7 +571,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       }),
     );
 
-    return Stream.concat(Stream.make(consoleChunk), followers);
+    return Stream.concat(Stream.fromIterable(consoleChunks), followers);
   },
   inspect: Effect.fn("RuntimeProvider.inspect")(function* (target) {
     return yield* Effect.succeed({

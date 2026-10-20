@@ -9,11 +9,12 @@ import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,
-  readWorkerRecord,
   readWorkerRecordAt,
+  readWorkerRecordStateAt,
   withWorkerRecordLock,
   workerStatePath,
 } from "./worker-state-file.ts";
@@ -33,11 +34,19 @@ export const replaceExistingHostProxyWorker = (
   app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions,
 ) =>
-  readWorkerRecord(app, options.paths).pipe(
-    Effect.flatMap((record) => {
-      if (record === undefined) return removeRunDir(app, options.paths);
-      return terminateControlRecord(record, options, removeRunDir(app, options.paths));
-    }),
+  readWorkerRecordStateAt(workerStatePath(app, options.paths)).pipe(
+    Effect.flatMap(
+      Effect.fnUntraced(function* (state) {
+        if (!(yield* isOwnerOnlyRecordFile(workerStatePath(app, options.paths), options.privateFileAccess)))
+          return yield* removeRunDir(app, options.paths);
+        if (state._tag === "absent" || state._tag === "malformed")
+          return yield* removeRunDir(app, options.paths);
+        const root = state._tag === "current" ? state.record.appRoot : state.appRoot;
+        if (state.record.appId !== app.id || (root !== undefined && root !== app.root))
+          return yield* removeRunDir(app, options.paths);
+        return yield* terminateControlRecord(state.record, options, removeRunDir(app, options.paths));
+      }),
+    ),
   );
 
 export const terminateOwnedHostProxyWorker = (
@@ -47,10 +56,19 @@ export const terminateOwnedHostProxyWorker = (
   withWorkerRecordLock(
     app,
     options.paths,
-    readWorkerRecord(app, options.paths).pipe(
-      Effect.flatMap((record): Effect.Effect<TerminateOwnershipResult> => {
-        if (record === undefined) return removeRunDir(app, options.paths).pipe(Effect.as("absent" as const));
-        return terminateControlRecord(record, options, removeRunDir(app, options.paths)).pipe(
+    isOwnerOnlyRecordFile(workerStatePath(app, options.paths), options.privateFileAccess).pipe(
+      Effect.flatMap((trusted) =>
+        trusted
+          ? readWorkerRecordStateAt(workerStatePath(app, options.paths))
+          : Effect.succeed({ _tag: "malformed" as const }),
+      ),
+      Effect.flatMap((state): Effect.Effect<TerminateOwnershipResult> => {
+        if (state._tag === "absent" || state._tag === "malformed")
+          return removeRunDir(app, options.paths).pipe(Effect.as("absent" as const));
+        const root = state._tag === "current" ? state.record.appRoot : state.appRoot;
+        if (state.record.appId !== app.id || (root !== undefined && root !== app.root))
+          return removeRunDir(app, options.paths).pipe(Effect.as("absent" as const));
+        return terminateControlRecord(state.record, options, removeRunDir(app, options.paths)).pipe(
           Effect.as("terminated" as const),
           Effect.catch(() => Effect.succeed("absent" as const)),
         );
@@ -80,11 +98,20 @@ export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const recordPath = resolve(paths.hostProxyRunRoot, entry.name, "worker.json");
+      if (!(yield* isOwnerOnlyRecordFile(recordPath, options.privateFileAccess))) {
+        yield* Effect.promise(() => rm(dirname(recordPath), { recursive: true, force: true }));
+        continue;
+      }
       const record = yield* readWorkerRecordAt(recordPath);
       if (record === undefined) {
         const legacyRecord = yield* readLegacyWorkerRecordAt(recordPath);
         if (legacyRecord === undefined) continue;
-        const legacyDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId));
+        const state = yield* readWorkerRecordStateAt(recordPath);
+        if (state._tag !== "legacy" || state.appRoot === null) continue;
+        const legacyDir =
+          state.appRoot === undefined
+            ? resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId))
+            : resolve(paths.hostProxyRunDir(legacyRecord.appId, state.appRoot));
         if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) continue;
         yield* withAdvisoryLockUsing(options.privateFileAccess)(
           recordPath,

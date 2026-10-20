@@ -13,7 +13,7 @@ import {
 import type { SchemaIssue } from "effect";
 import { Predicate, Result, Schema } from "effect";
 import type { ComposeRejectionMatch } from "./compose/rejections.ts";
-import { normalizeRoutes } from "./route-normalize.ts";
+import { routeInputErrors } from "./route-normalize.ts";
 import { type SchemaIssueLeaf, plannerScopeSuggestion, schemaIssueLeaves } from "./validation.ts";
 
 const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
@@ -88,27 +88,36 @@ export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViol
 const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
   path === rejectedPath || path.startsWith(`${rejectedPath}.`) || path.startsWith(`${rejectedPath}[`);
 
+export const routeViolations = (
+  landofile: LandofileShape,
+  options: { readonly deferExpressions: boolean },
+): ReadonlyArray<ConfigLintViolation> =>
+  [
+    ...Object.entries(landofile.services ?? {}).map(([name, service]) => ({
+      keyPath: `services.${name}.routes`,
+      routes: service.routes ?? [],
+    })),
+    ...Object.entries(landofile.proxy ?? {}).map(([name, routes]) => ({ keyPath: `proxy.${name}`, routes })),
+  ].flatMap(({ keyPath, routes }) =>
+    routes.flatMap((route, index) => {
+      const texts = typeof route === "string" ? [route] : [route.hostname, route.pathPrefix ?? ""];
+      if (options.deferExpressions && texts.some((text) => text.includes("{{") || text.includes("${")))
+        return [];
+      return routeInputErrors(route, { keyPath: `${keyPath}[${index}]` }).map((error) => ({
+        path: pathFromText(error.key),
+        message: error.message,
+        suggestion: error.remediation,
+      }));
+    }),
+  );
+
 export const violationsFor = (
   parsed: unknown,
   rejections: ReadonlyArray<ComposeRejectionMatch> = [],
 ): ReadonlyArray<ConfigLintViolation> => {
   const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
   if (Result.isSuccess(decoded)) {
-    return [
-      ...Object.entries(decoded.success.services ?? {}).map(([name, service]) =>
-        normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
-      ),
-      ...Object.entries(decoded.success.proxy ?? {}).map(([name, routes]) =>
-        normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
-      ),
-    ].flatMap((result) =>
-      Result.match(result, {
-        onFailure: (error) => [
-          { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
-        ],
-        onSuccess: () => [],
-      }),
-    );
+    return routeViolations(decoded.success, { deferExpressions: true });
   }
   const suggestions = closestKeySuggestions(decoded.failure.issue);
   return schemaIssueLeaves(decoded.failure.issue)

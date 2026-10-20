@@ -1,13 +1,16 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { startDetachedAgentRelayWorker } from "@lando/engine/subsystems/ssh-agent/detached-worker";
+import { type AgentRelaySession, sshAgentSessionPaths } from "@lando/engine/subsystems/ssh-agent/session";
 import {
   AGENT_RELAY_WORKER_COMMAND,
   AgentRelayWorkerReady,
   identifyAgentRelayWorker,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
-import { Schema } from "effect";
+import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   test(`source dispatcher publishes authenticated readiness and shuts down on ${signal}`, async () => {
@@ -41,6 +44,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
           app: { kind: "user", id: "test", root },
           plan: { id: "test", provider: "docker" },
           kind: "ssh",
+          configDigest: "sha256-process-test",
           upstream: { _tag: "unix", path: join(root, "upstream.sock") },
           delivery: "bind-directory",
           socketName: "agent.sock",
@@ -61,6 +65,8 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         pid: proc.pid,
         appId: "test",
         sessionId: ready.sessionId,
+        configDigest: "sha256-process-test",
+        protocolVersion: 2,
       });
       if (ready.mount._tag !== "bind-directory") throw new Error("Expected bind-directory mount");
       expect((await stat(join(ready.mount.directory, ready.socketName))).mode & 0o777).toBe(0o666);
@@ -98,6 +104,7 @@ test("bridge failure exits non-zero before readiness", async () => {
         app: { kind: "user", id: "test", root },
         plan: { id: "test", provider: "docker" },
         kind: "ssh",
+        configDigest: "sha256-failure-test",
         upstream: { _tag: "loopback-tcp", port: 43210 },
         delivery: "volume-relay",
         socketName: "agent.sock",
@@ -120,3 +127,60 @@ test("bridge failure exits non-zero before readiness", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["ssh", "gpg"] as const)(
+  "real %s ensure reuses the authenticated process and directory",
+  async (kind) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-agent-ensure-"));
+    const app = { kind: "user" as const, id: "ensure", root: AbsolutePath.make(root) };
+    const options = {
+      app,
+      kind,
+      plan: { id: AppId.make(app.id), provider: ProviderId.make("docker") },
+      upstream: { _tag: "unix" as const, path: join(root, "upstream.sock") },
+      delivery: "bind-directory" as const,
+      socketName: "agent.sock",
+      paths: { userDataRoot: root },
+      privateFileAccess: {
+        enforce: async (path: string) => chmod(path, 0o600),
+        verify: async (path: string) => {
+          if (((await stat(path)).mode & 0o777) !== 0o600) throw new Error("Not private");
+        },
+      },
+    };
+    const paths = sshAgentSessionPaths(app, options.paths, kind);
+    let session: AgentRelaySession | undefined;
+    try {
+      session = await Effect.runPromise(startDetachedAgentRelayWorker(options));
+      const firstRecord = await readFile(paths.recordPath, "utf8");
+      const before = await stat(paths.socketDir);
+      await writeFile(join(paths.stateDir, "retained"), "keep");
+      // When
+      const reused = await Effect.runPromise(startDetachedAgentRelayWorker(options));
+      session = reused;
+      // Then
+      expect(await readFile(paths.recordPath, "utf8")).toBe(firstRecord);
+      expect((await stat(paths.socketDir)).ino).toBe(before.ino);
+      expect(await readFile(join(paths.stateDir, "retained"), "utf8")).toBe("keep");
+      const record = Schema.decodeUnknownSync(AgentRelayWorkerReady)({
+        ...JSON.parse(firstRecord),
+        _tag: "ready",
+      });
+      expect(await identifyAgentRelayWorker(record)).toMatchObject({
+        pid: record.pid,
+        sessionId: reused.sessionId,
+        configDigest: record.configDigest,
+        protocolVersion: 2,
+      });
+      await reused.close();
+      await expect(identifyAgentRelayWorker(record)).rejects.toMatchObject({
+        _tag: "SshAgentTransportError",
+      });
+    } finally {
+      await session?.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);

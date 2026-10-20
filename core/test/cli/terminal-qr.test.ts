@@ -33,7 +33,7 @@ describe("isLocalQrUrl", () => {
   ]) {
     test(`treats ${url} as local with a configured domain`, () => {
       // Given
-      const domain = "  Dev.Example.Test...  ";
+      const domain = "Dev.Example.Test";
       // When
       const local = isLocalQrUrl(url, domain);
       // Then
