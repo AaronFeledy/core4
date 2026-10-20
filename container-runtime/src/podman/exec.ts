@@ -439,6 +439,11 @@ const resolveExecCommand = Effect.fnUntraced(function* (
     return command;
   }
 
+  const cachedOk = peekExecUmask(session.api);
+  if (cachedOk !== undefined && !isWorldWritableUmask(cachedOk.umask)) {
+    return command;
+  }
+
   const containerId = yield* inspectContainerId(session, plan);
   const umaskResult = yield* resolveExecUmask(session, plan, target, options, containerId);
   if (umaskResult.status !== "ok" || !isWorldWritableUmask(umaskResult.umask)) {
