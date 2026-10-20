@@ -241,17 +241,13 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
         "/run/lando/host-proxy.sock",
       );
       expect(spawns).toBe(state === "configure-rejected" ? 2 : 1);
-      expect(terminations).toBe(state === "failed-fresh" ? 1 : 0);
+      expect(terminations).toBe(0);
       expect(shutdowns).toBe(state === "configure-rejected" ? 1 : 0);
       if (before !== undefined)
         expect(configuredPlans).toContainEqual(Schema.encodeUnknownSync(AppPlan)(selected));
       const record = await Effect.runPromise(readWorkerRecord(app, paths.roots));
       expect(record?.sessionId).toBe(
-        state === "failed-fresh"
-          ? undefined
-          : state === "configure-rejected"
-            ? "session-2"
-            : (before?.sessionId ?? "session-1"),
+        state === "configure-rejected" ? "session-2" : (before?.sessionId ?? "session-1"),
       );
       if (state === "missing") {
         await Effect.runPromise(

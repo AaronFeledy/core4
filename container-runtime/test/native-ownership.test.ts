@@ -150,8 +150,8 @@ for (const legacy of [{ Labels: {} }, { Labels: null }, {}]) {
   });
 }
 
-test("bring-up rollback removes a legacy unlabeled private network and never the shared one", async () => {
-  // Given
+test("bring-up failure retains a legacy unlabeled private network and never mutates the shared one", async () => {
+  // Given: foreign container blocks create; legacy private network was observed.
   const fake = fakeApi(
     new Map([
       ["/networks/private", { Id: "legacy-network", Name: "private", Labels: {} }],
@@ -161,16 +161,14 @@ test("bring-up rollback removes a legacy unlabeled private network and never the
   );
   // When
   const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.result));
-  // Then
+  // Then: no compensation teardown — retention leaves networks untouched for inventory cleanup.
   expect(Result.isFailure(result)).toBe(true);
-  expect(fake.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
-    "/networks/legacy-network",
-  ]);
+  expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([]);
 });
 
-for (const rollback of [false, true]) {
+for (const path of ["bring-up", "bring-down"] as const) {
   test.each(["lando_bridge_network", undefined])(
-    `refuses unlabeled network aliases (rollback=${rollback}): %s`,
+    `refuses unlabeled network aliases (${path}): %s`,
     async (name) => {
       // Given a private name resolved as another network's ID prefix or without name evidence.
       const aliased = {
@@ -184,9 +182,9 @@ for (const rollback of [false, true]) {
           ["/containers/lando-owned-web/json", { Id: "foreign", Config: { Labels: {} } }],
         ]),
       );
-      // When teardown or failed bring-up attempts private-network cleanup.
+      // When bring-up fails closed or bring-down validates ownership.
       const result = await Effect.runPromise(
-        (rollback
+        (path === "bring-up"
           ? bringUp(aliased, { api: fake.api, ctx })
           : bringDown({ ...aliased, services: {} }, { api: fake.api, ctx })
         ).pipe(Effect.result),
@@ -247,7 +245,7 @@ for (const name of ["shared", "lando_bridge_network"]) {
     expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([]);
   });
 
-  test(`bring-up never labels or rolls back shared network ${name} disguised as private`, async () => {
+  test(`bring-up never labels or deletes shared network ${name} disguised as private`, async () => {
     // Given
     const calls: EngineHttpRequest[] = [];
     const disguised: AppPlan = {

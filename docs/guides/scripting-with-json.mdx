@@ -300,6 +300,17 @@ first, followed by `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`
 or `Also failed (<tag>)`. Each block includes its own remediation and distinct
 diagnostic fields, without stack traces or repeated command context.
 
+A failed `lando start` does not undo established app resources, so its
+envelope does not carry app-wide `rollback` entries. Other commands still
+can: role `rollback` means that command tried to undo partial work.
+Acquisition-local cleanup can still fail and show up with role `cleanup`.
+Whatever start established stays in place. The human report adds one warning
+after the error. It lists running, created/stopped, and unverified services,
+and says agent forwarding and file sync stay active where they were
+established. That warning is not in the JSON or YAML envelope. Call
+`lando info --format=json` to see what is there, then `lando start` again
+to converge.
+
 The error also keeps its remaining JSON-safe fields directly under `error`.
 For example, `ConfigExpressionError` carries `error.path` (a dotted string),
 `error.expression`, and `error.filePath`; `ConfigError` can carry `error.path`.

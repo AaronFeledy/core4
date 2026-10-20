@@ -4,7 +4,7 @@ import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { DataTransferPartialStreamError, JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
-import type { EventService, Renderer } from "@lando/sdk/services";
+import { type EventService, Renderer } from "@lando/sdk/services";
 import { VerifiedStreamPartialError } from "@lando/sdk/verified-stream";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
@@ -319,6 +319,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         return;
       }
       let message = options.formatError({ error, additionalErrors });
+      // Failure notices (for example what an incomplete start left in place) follow the error.
+      let notices = yield* commandWarnings.failureNotices;
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (redaction._tag === "Some") {
         const redactor = yield* redaction.value.forProfile("secrets", {
@@ -326,9 +328,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           redactionTokens: extraTokens,
         });
         message = redactor.redactString(message);
+        notices = notices.map((notice) => redactor.redactString(notice));
       }
       if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
       yield* writeDiagnosticLine(message);
+      const renderer = yield* Renderer;
+      for (const notice of notices) yield* renderer.message.warn(notice);
       yield* setFailureExitCode(cause);
     });
     const executeCommand = Effect.gen(function* () {

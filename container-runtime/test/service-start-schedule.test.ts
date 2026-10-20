@@ -415,34 +415,28 @@ describe("runServiceStartSchedule", () => {
     expect(result).toEqual({ _tag: "Settled", changed: true, blocked: [] });
   });
 
-  test("cleans only the failed optional dependency before starting its dependent", async () => {
+  test("optional start failure retains without cleanup and still starts its dependent", async () => {
     // Given
     const plan = planOf([
       service("db"),
       service("cache", { dependsOn: [dependency("db", "service_started", false)] }),
     ]);
     const calls: Array<string> = [];
-    const handlers = {
-      ...recordingHandlers(calls, {
-        startService: (target: ServicePlan) =>
-          String(target.name) === "db"
-            ? Effect.fail(new Error("optional dependency failed"))
-            : Effect.sync(() => {
-                calls.push(`start:${String(target.name)}`);
-                return { changed: true };
-              }),
-      }),
-      cleanupOptionalStartFailure: (target: ServicePlan) =>
-        Effect.sync(() => {
-          calls.push(`cleanup:${String(target.name)}`);
-        }),
-    };
+    const handlers = recordingHandlers(calls, {
+      startService: (target: ServicePlan) =>
+        String(target.name) === "db"
+          ? Effect.fail(new Error("optional dependency failed"))
+          : Effect.sync(() => {
+              calls.push(`start:${String(target.name)}`);
+              return { changed: true };
+            }),
+    });
 
     // When
     await Effect.runPromise(runServiceStartSchedule(plan, handlers));
 
-    // Then
-    expect(calls).toEqual(["cleanup:db", "start:cache"]);
+    // Then: schedule tolerates the optional failure and never invokes cleanup.
+    expect(calls).toEqual(["start:cache"]);
   });
 
   test("does not tolerate interruption of an optional-only dependency start", async () => {

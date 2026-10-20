@@ -6,6 +6,7 @@ import type { Context } from "effect";
 export interface GitAcquisitionPort {
   readonly clone: (input: {
     readonly url: string;
+    readonly ref?: string;
     readonly stagingDir: string;
     readonly dest: string;
   }) => Promise<{ readonly commitSha: string }>;

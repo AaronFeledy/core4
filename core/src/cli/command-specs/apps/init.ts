@@ -109,7 +109,10 @@ export const initSpec: LandoCommandSpec<never> = {
   flags: {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
     source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, registry, template)." }),
-    url: Flags.string({ description: "Remote recipe source URL (for --source=git/tarball)." }),
+    url: Flags.string({
+      description:
+        "Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA).",
+    }),
     id: Flags.string({ description: "Recipe id for --source=registry." }),
     "registry-url": Flags.string({
       description: "Override the recipe registry base URL (for --source=registry).",
