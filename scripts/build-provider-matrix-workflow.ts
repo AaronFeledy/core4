@@ -109,6 +109,9 @@ const managedLandoTeardown = `      - name: Teardown managed Lando runtime
             "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true
           fi`;
 
+// GitHub evaluates a job-level `if` before the matrix expands, so a
+// `matrix.cell` filter there is a workflow-file issue. Weekly and PR
+// jobs share these steps; each job's `if` uses only github.event_name.
 const renderProviderContractsJob = (args: {
   readonly id: string;
   readonly condition: string;
