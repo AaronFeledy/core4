@@ -73,6 +73,21 @@ describe("LogSource", () => {
 });
 
 describe("LogSourceInput", () => {
+  test.each([false, true])("preserves timestamps=%s through a strict encoded round trip", (timestamps) => {
+    // Given an authored source with an explicit timestamp policy.
+    const input = { path: "/tmp/app.log", timestamps };
+
+    // When decoding and round-tripping through the authored shape.
+    const decoded = Schema.decodeUnknownSync(LogSourceInput, { onExcessProperty: "error" })(input);
+    const encoded = Schema.encodeSync(LogSourceInput)(decoded);
+    const roundTripped = Schema.decodeUnknownSync(LogSourceInput, { onExcessProperty: "error" })(encoded);
+
+    // Then timestamp handling survives both directions.
+    expect(decoded.timestamps).toBe(timestamps);
+    expect(encoded.timestamps).toBe(timestamps);
+    expect(roundTripped).toEqual(decoded);
+  });
+
   test("defaults id to the path basename, stream to stderr, and always follows", () => {
     const decoded = Schema.decodeUnknownSync(LogSourceInput)({
       path: "/var/log/apache2/error.log",
@@ -107,13 +122,15 @@ describe("LogSourceInput", () => {
     expect(Result.isFailure(result)).toBe(true);
   });
 
-  test("rejects encoding sources that cannot be represented in Landofile logs input", () => {
+  test.each([
+    { strategy: "redirect", required: false },
+    { strategy: "follow", required: true },
+  ])("rejects encoding sources outside the authored follow/optional contract (%j)", (policy) => {
     const source = Schema.decodeUnknownSync(LogSource)({
       id: "error",
       path: "/var/log/app.log",
       stream: "stderr",
-      strategy: "redirect",
-      required: true,
+      ...policy,
       timestamps: true,
     });
     const result = Schema.encodeResult(LogSourceInput)(source);
@@ -121,6 +138,15 @@ describe("LogSourceInput", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) expect(String(result.failure)).toContain("Landofile log source input");
   });
+
+  test.each([{ timestamps: "true" }, { strategy: "follow" }, { required: false }])(
+    "rejects invalid authored fields when strictly decoding (%j)",
+    (fields) => {
+      const input = { path: "/tmp/app.log", ...fields };
+      const result = Schema.decodeUnknownResult(LogSourceInput, { onExcessProperty: "error" })(input);
+      expect(Result.isFailure(result)).toBe(true);
+    },
+  );
 
   test("encodes decoded Landofile input and decodes it back to the same source", () => {
     const decoded = Schema.decodeUnknownSync(LogSourceInput)({
@@ -138,6 +164,7 @@ describe("LogSourceInput", () => {
       label: "Application log",
       path: "/var/log/app.log",
       stream: "stdout",
+      timestamps: false,
     });
     expect(decodedAgain).toEqual(decoded);
   });

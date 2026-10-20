@@ -11,6 +11,7 @@ import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
@@ -86,8 +87,11 @@ describe("embedded wire closed x-* artifact repair", () => {
   }, 120_000);
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
-    const repaired = evolveHistoricalShorthand(
-      normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+    const repaired = evolveHistoricalTimestamps(
+      evolveHistoricalShorthand(
+        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+      ),
+      "authoring",
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
@@ -110,9 +114,10 @@ describe("embedded wire closed x-* artifact repair", () => {
       // Given the independently pinned typed grammar, with every union alternative intact.
       const expected = typedCaptured[source];
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      // When only the separately pinned shorthand delta is replayed after closed-x repair.
-      const repaired = evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(expected))),
+      // When the separately reviewed shorthand and timestamps deltas follow closed-x repair.
+      const repaired = evolveHistoricalTimestamps(
+        evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(expected)))),
+        "authoring",
       );
       // Then the entire normalized subtree matches, not just the reported keyword.
       expect(jsonEquals(repaired, current)).toBe(true);
@@ -153,8 +158,11 @@ describe("embedded wire closed x-* artifact repair", () => {
       // Given a current subtree whose first string constraint is independently tightened.
       const current = schemaAt(await loadNormalizedArtifact(surface), path);
       const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
-      const repaired = evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+      const repaired = evolveHistoricalTimestamps(
+        evolveHistoricalShorthand(
+          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+        ),
+        "authoring",
       );
       expect(jsonEquals(repaired, current)).toBe(true);
       // When the conservative classifier still reports the same coarse union delta.
