@@ -36,7 +36,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Canonical ids permitted through `HostProxyService.runLando` (§10.10). |
 | `mcp-allowlist` | `<userCacheRoot>/mcp-allowlist.bin` | binary | Default non-destructive MCP command allowlist, refined by configured allow/deny policy (§10.14). |
 | `tunnel-registry` | `<userCacheRoot>/tunnels/registry.bin` | binary | Locked detached-tunnel registry with redacted public summaries (§10.2.2). |
-| `file-sync-sessions` | `<userCacheRoot>/file-sync/sessions/<app-id>.bin` | binary | Reconciliable per-app file-sync session metadata; survives stop but not destroy or plan rebuild (§10.6). |
+| `file-sync-sessions` | `<userCacheRoot>/file-sync/sessions/` | opaque | The bundled file-sync engine's configured `MUTAGEN_DATA_DIRECTORY`: daemon session history that is durable state, not regenerable plan-cache metadata. Stop, rebuild, and plan-cache invalidation MUST preserve it; verified disposal at destroy retires the app's session state (§10.6.2, §12.4). Listed here for its location only. |
 | `build-results` | `<userCacheRoot>/apps/<app-id>/build-results.bin` | binary | Bounded build outcome index pointing to persistent transcripts (§6.13.5). |
 | `update` | `<userCacheRoot>/update-cache.json` | JSON | Plugin update-channel metadata. |
 | `tool-downloads` | `<userCacheRoot>/tool-downloads/<toolId>/<filename>` | raw binary | Checksum-keyed verified tool artifacts; matching pinned artifacts require no network (§10.3.4). |
@@ -79,7 +79,8 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userDataRoot>/run/tunnels/<session-id>.{pid,sock,json}` | Best-effort detached-tunnel process handles reconciled against `tunnel-registry`. |
 | `<userDataRoot>/bin/mutagen[.exe]`, `bin/mutagen-agents/` | Isolated verified Mutagen host and guest binaries; never sourced from containers. |
 | `<userDataRoot>/run/file-sync/daemon.sock`, `daemon.pid` | Lando-owned file-sync daemon endpoint and orphan-detection PID; Windows uses the corresponding named pipe. |
-| `<userDataRoot>/file-sync/mutagen-data/` | Opaque embedded-Mutagen state; uninstall owns final removal. |
+| `<userDataRoot>/plugins/@lando/file-sync-mutagen/sessions/mutagen.json` | Plugin-private ledger of the bundled process client (§12.7.3): durable session ownership and app drain/disposal receipts. Survives stop, rebuild, and plan-cache invalidation; verified disposal retires the app's entries (§10.6.2). |
+| `<userCacheRoot>/file-sync/sessions/` | Opaque embedded-Mutagen daemon history, the configured `MUTAGEN_DATA_DIRECTORY`. Durable, not a regenerable cache: stop, rebuild, and plan-cache invalidation MUST preserve it; uninstall owns final removal. |
 | `<userDataRoot>/builds/<app-id>/...`, `builds/global/...`, `builds/scratch/...` | Per-step build transcripts, never telemetry; user/global retention follows build policy and scratch transcripts disappear at destroy (§6.13.6). |
 | `<userDataRoot>/snapshots/<app-id>/<store>/<snapshot-id>.<format>` | Snapshot archives and `SnapshotInfo` sidecars; survive ordinary destroy, and explicit purge and pruning, including automatic recovery retention, remove them (§10.11.2). |
 | `<userDataRoot>/snapshots/<app-id>/index.bin` | `StateStore` snapshot index. |
@@ -89,6 +90,7 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<target>.lando-stage.<transaction-id>` | Same-directory owner-only staged target with recorded digest and mode. |
 | `<file>.bak.<full-before-sha256>` | Immutable digest-named backup retained until user removal. |
 | Provider-private `resource-ownership` namespace | Durable ownership manifest, one JSON document per canonical owner (§12.4.2). Not a fingerprint cache. |
+| `<userDataRoot>/accelerated-starts/<sha256(appRootIdentityKey)>.json` | Accelerated-start journal (§10.6.3): one owner-only (`0600`) JSON document per app root, version 2, advisory-locked, fail-closed on corruption; version 1 documents are migrated when read and the version 2 representation is persisted on the next journal mutation. Holds the attempt id, app, root, provider, engine, mount-plan digest, phase, and planned target and session identities. Survives stop and every failed or interrupted start; destroy or a successful provider apply completes it. |
 
 `lando-session` values and metadata MUST NOT persist. Private config payloads, stages, backups, and snapshots (§10.12.7) are distinct from credential stores and from caches/logs; approved payload persistence MUST NOT authorize storing control-plane grants or access tokens in them.
 
@@ -159,7 +161,7 @@ Hot-path caches remain under their existing readers and MAY adopt `StateStore` o
 
 #### 12.7.2 Reference consumers
 
-The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). These subsystems MUST NOT implement bespoke persistence primitives.
+The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
 
 #### 12.7.3 Plugins and embedding hosts
 
