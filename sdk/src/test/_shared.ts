@@ -127,17 +127,24 @@ export const planMetadata: PlanMetadata = {
   runtime: 4,
 };
 
+/** The contract service writes this line in two delayed pieces. */
+export const CONTRACT_SPLIT_LINE = "lando-contract-split-line";
+/** Longer than Docker's 16 KiB partial-message split, shorter than the 64 KiB line bound. */
+export const CONTRACT_LONG_LINE = "L".repeat(20_000);
+const CONTRACT_SERVICE_SCRIPT =
+  "process.stdout.write('lando-contract-split-'); setTimeout(() => { process.stdout.write('line\\n'); process.stdout.write('L'.repeat(20000) + '\\n'); console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000); }, 300)";
+
+/** Whether a planned service runs the contract program, whose console output fakes simulate. */
+export const runsContractServiceScript = (service: ServicePlan | undefined): boolean =>
+  typeof service?.command !== "string" && service?.command?.[2] === CONTRACT_SERVICE_SCRIPT;
+
 export const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   name: TEST_SERVICE_NAME,
   type: "node",
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: [
-    "node",
-    "-e",
-    "console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000)",
-  ],
+  command: ["node", "-e", CONTRACT_SERVICE_SCRIPT],
   environment: {},
   mounts: [],
   storage: [],

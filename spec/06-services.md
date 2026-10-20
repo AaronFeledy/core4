@@ -412,9 +412,11 @@ Build failures are tagged `BuildPlanCycleError`, `BuildStepFailedError`, `BuildP
 
 Landofile `LogSourceInput` requires `path` and optionally accepts `id`, `label`, `stream`, and `timestamps`; it always resolves to `follow`. Service types may declare `redirect`.
 
-#### 6.14.2 `LogChunk.source`
+#### 6.14.2 `LogChunk` source and line
 
 `LogChunk` contains service, optional source, stream, line, and optional timestamp. Missing source means `console`; renderers label interleaved sources.
+
+Each `LogChunk.line` is one complete line; line terminators, including a carriage return at either end, are not part of it. For the console source, providers MUST reassemble engine log messages per stream before emitting: a line written as several partial messages becomes one chunk carrying its first message's timestamp, engine timestamp prefixes on continuation messages are discarded, lines get the same complete UTF-8 framing and line bound as follow sources, and a trailing partial line is emitted only when the stream completes successfully, never on idle, failure, or interruption.
 
 #### 6.14.3 Reification
 
@@ -429,6 +431,8 @@ Providers declaring `serviceLogSources` MUST support finite snapshots and scoped
 #### 6.14.5 Redaction
 
 Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-output boundaries apply `RedactionService` exactly once. Library log streams and app-owned files remain raw.
+
+A line cut by the line bound ends in the SDK truncation marker. Redaction masks any trailing prefix of a known secret value before that marker, so the bound never exposes part of a secret.
 
 #### 6.14.6 Catalog defaults
 

@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/log-follow` additively exports `LOG_LINE_TRUNCATED_MARKER`, shared by line framing and exact-value redaction. Before that marker, string redaction also masks the longest suffix matching a proper prefix of a known exact secret, including markers inside joined log tails. Provider log lines remain raw. No schema artifacts or service signatures change.
+
 - `FileSyncEngineShape.recoverSession` optionally restores a missing session from retained synchronization history, returning `Option.none()` if none survives. It follows the SDK's existing `DeprecationService` Option-return convention and must never create a session without history. Resuming a process-persistent attempt after apply intent requires this proof for any missing session.
 - `RuntimeProviderShape.prepareFileSyncTargets` no longer returns `rollback`. Prepared targets outlive failed starts; the next `lando start`, restart, or rebuild resumes the same attempt. Stop drains unfinished attempts and destroy disposes them.
 
