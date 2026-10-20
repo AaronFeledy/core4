@@ -82,7 +82,7 @@ Every bind `MountPlan` has `realization: passthrough | accelerated` selected fro
 
 The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive the derived patterns, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
 
-`mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, `file-sync-sessions` cache, and lifecycle events. Changing excludes changes the key.
+`mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, the engine's durable session state (§10.6.2), and lifecycle events. Changing excludes changes the key.
 
 ### 6.5 Storage
 
@@ -137,7 +137,7 @@ Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--
 
 `HealthcheckInput` accepts `false`, command forms, or an object. `false` disables checks; `load()` MAY provide any form (§7.3). `HealthcheckRunner` executes `HealthcheckPlan`; the default uses the selected `RuntimeProvider.exec` and `runProbe`.
 
-Start, restart, rebuild (full or selected), and global-service start MUST complete a concurrent readiness barrier before publishing `post-app-start` or `post-start`. Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, naming the service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Resources applied before a readiness failure MUST be retained, not rolled back. Once apply has committed, app-build has finished, and routes are applied, interruption during the readiness barrier MUST stop waiting and retain the applied app, routes, volumes, sessions, journal, and managed scopes; interruption MUST still propagate to the CLI. Interruptions before the barrier keep their existing cleanup. URL-scan failures MUST warn, not fail startup.
+Start, restart, rebuild (full or selected), and global-service start MUST complete a concurrent readiness barrier before publishing `post-app-start` or `post-start`. Unsupervised exited services and exhausted healthchecks MUST fail with `ServiceNotReadyError`, naming the service, reason, available stopped-container exit code, bounded redacted log tail, and remediation. Resources applied before a readiness failure MUST be retained, not rolled back. Once apply has committed, app-build has finished, and routes are applied, interruption during the readiness barrier MUST stop waiting and retain the applied app, routes, volumes, sessions, and managed scopes; interruption MUST still propagate to the CLI. The accelerated-start journal is already completed once apply commits (§10.6.3), so readiness retention never involves it. Interruptions before the barrier keep their existing cleanup for containers, routes, and managed scopes; prepared sync targets and sessions stay for the next start to resume (§10.6.3). URL-scan failures MUST warn, not fail startup.
 
 A target of a `service_completed_successfully` dependency in the full plan is a completion-intent service: it MUST have verified exit code 0 and MUST skip healthcheck waiting, including selected operations. Other unsupervised services MUST remain running throughout readiness; services without enabled healthchecks settle against their current container start, with the remaining host-side wait bounded to two seconds despite engine clock skew. Container replacement or restart invalidates unsupervised readiness. Successful rows are `ready` after a healthcheck passes, `running` without an enabled healthcheck, or `completed` after verified successful completion.
 
@@ -441,13 +441,13 @@ Catalog types prefer `redirect` for owned Apache, nginx, and PHP-FPM logs; MySQL
 | Command | Contract |
 |---|---|
 | `start` | Plans and builds with the default cache policy (`refresh: false`, §6.13.3), then applies create-config drift. Keeps unchanged containers and volumes. Has no confirmation flag. |
-| bare `restart` | Stop, then start. Removes and recreates containers under existing stop semantics. Not an in-place process restart. Uses the default cache policy. |
+| bare `restart` | Stop, then start. Removes and recreates containers under existing stop semantics. Not an in-place process restart. Uses the default cache policy. With an unfinished accelerated attempt, first resumes it under the same lock (§10.6.3). |
 | `restart -s` / `--service` | In-place. No dependency closure. Refuses when the selected container is missing or would be recreated for published-port, bind-source, network, or create-config drift, or a missing `dev.lando.create-config` label. Create-config drift and a missing label fail with `ServiceRestartWouldRecreateError` reason `config`. Remediation is `lando rebuild -s <service>`. |
-| `rebuild` | Forced pull (`refresh: true`), cache and app-build refresh, explicit recreate, and confirmation. A floating-tag refresh failure falls back to the local copy and records `LANDO_ARTIFACT_REFRESH_FAILED` (§6.13.3, §12.6). |
+| `rebuild` | Forced pull (`refresh: true`), cache and app-build refresh, explicit recreate, and confirmation. A floating-tag refresh failure falls back to the local copy and records `LANDO_ARTIFACT_REFRESH_FAILED` (§6.13.3, §12.6). With an unfinished accelerated attempt, first resumes it under the same lock (§10.6.3). |
 | explicit `global:start` | Applies new environment, bind, and image configuration. `reconcile: false`. An explicit call is not warm-skipped. `global:rebuild` remains the forced refresh. |
 
 An unchanged `build.app` command whose bind-mounted inputs alone changed retains its cached build result and skips the step (§6.13.5). `rebuild` forces that step to rerun. Changing command text, step user, or artifact inputs changes the build key, so ordinary start reruns the affected step.
 
-Rollback is unchanged. Provider apply and build pre-barrier compensation still run. Readiness failure and interruption retention are unchanged (§5.3.1).
+Rollback is unchanged. Provider apply and build pre-barrier compensation still run. Readiness failure and interruption retention are unchanged (§5.3.1). Restart and rebuild, full or selected, that find an unfinished accelerated-start journal run the start path first under the app mutation lock, which performs the pending-aware preflight, the transaction check, the init events, and the resumed attempt; the restart or rebuild then continues without running init events again, and a failed resume fails the command (§10.6.3).
 
 ---
