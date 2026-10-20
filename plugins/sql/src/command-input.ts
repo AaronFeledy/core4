@@ -18,7 +18,10 @@ export const hostFile = (
 ): string => {
   const file = input.file ?? `${input.service}.sql.gz`;
   if (file === "-") {
-    return resolveStdioDumpPath(file, input.action === "import" || input.action === "seed" ? "stdin" : "stdout");
+    return resolveStdioDumpPath(
+      file,
+      input.action === "import" || input.action === "seed" ? "stdin" : "stdout",
+    );
   }
   if (isAbsolute(file)) return file;
   const hostCwd = input.hostCwd ?? process.cwd();

@@ -143,9 +143,9 @@ describe("confirmation argv and help", () => {
     expect(parsed.args.file).toBe("-");
     expect(parsed.flags["force-tty"]).toBe(true);
     expect(spec.payloadStdout?.({ argv: [], parsedArgv: ["-"], flags: {}, args: { file: "-" } })).toBe(true);
-    expect(spec.payloadStdout?.({ argv: [], parsedArgv: ["dump.sql"], flags: {}, args: { file: "dump.sql" } })).toBe(
-      false,
-    );
+    expect(
+      spec.payloadStdout?.({ argv: [], parsedArgv: ["dump.sql"], flags: {}, args: { file: "dump.sql" } }),
+    ).toBe(false);
   });
 
   test("db:import help advertises a dash stdin dump", () => {

@@ -20,8 +20,8 @@ import {
 
 import type { DumpCompression } from "./compression.ts";
 import { withHostDumpCompression } from "./compression.ts";
-import { isNonRegularExistingPath, isStdoutDumpArg } from "./dump-stdio.ts";
 import type { SqlCreds } from "./creds.ts";
+import { isNonRegularExistingPath, isStdoutDumpArg } from "./dump-stdio.ts";
 import {
   type SqlFamily,
   dumpCommand,

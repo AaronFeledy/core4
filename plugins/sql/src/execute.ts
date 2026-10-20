@@ -86,7 +86,12 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       : undefined;
   const file = hostFile(deps.plan, { ...input, service: target.name });
   const action = input.action;
-  if (action === "export" && isStdoutDumpArg(file) && process.stdout.isTTY === true && input.forceTty !== true) {
+  if (
+    action === "export" &&
+    isStdoutDumpArg(file) &&
+    process.stdout.isTTY === true &&
+    input.forceTty !== true
+  ) {
     return yield* Effect.fail(
       new SqlDumpTtyError({
         message: "Refusing to write a binary dump to a terminal.",
@@ -102,7 +107,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       ? yield* ensureReadableDump(file, deps.plan.root)
       : undefined;
   const expectedDigest = dump?.streaming === true ? undefined : dump?.digest;
-  const compression = dump?.streaming === true ? "none" : (dump?.compression ?? compressionFromExportPath(file));
+  const compression =
+    dump?.streaming === true ? "none" : (dump?.compression ?? compressionFromExportPath(file));
   const steps: DbCommandStep[] = [
     {
       id: action,

@@ -7,7 +7,8 @@ import { Effect } from "effect";
 import { Renderer } from "@lando/sdk/services";
 import { makeInteractionContractRenderer } from "@lando/sdk/test";
 
-import { hostFile, dbInputFromCommand } from "../src/command-input.ts";
+import { dbInputFromCommand, hostFile } from "../src/command-input.ts";
+import { spec as exportSpec } from "../src/commands/export.ts";
 import {
   STDIN_DUMP_PATH,
   STDOUT_DUMP_PATH,
@@ -16,7 +17,6 @@ import {
   isStdoutDumpArg,
   resolveStdioDumpPath,
 } from "../src/dump-stdio.ts";
-import { spec as exportSpec } from "../src/commands/export.ts";
 import type { SqlPlan } from "../src/views.ts";
 import { canUseFifo, mkfifo, withFifoDir } from "./support/fifo.ts";
 

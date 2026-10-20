@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Schema } from "effect";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ToolingCommandLookupError } from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
@@ -11,7 +12,6 @@ import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/buil
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
-import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   isPluginOwnedCommandId,
   pluginOwnedCliFlagError,

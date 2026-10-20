@@ -10,13 +10,7 @@ describe("@lando/sdk/verified-stream import boundary", () => {
       (match) => match[1] ?? match[2],
     );
 
-    expect(importSpecifiers).toEqual([
-      "node:crypto",
-      "node:fs",
-      "node:fs/promises",
-      "node:path",
-      "effect",
-    ]);
+    expect(importSpecifiers).toEqual(["node:crypto", "node:fs", "node:fs/promises", "node:path", "effect"]);
     expect(source).not.toMatch(/\b(?:Context|Layer|Runtime|ManagedRuntime)\b/u);
   });
 });

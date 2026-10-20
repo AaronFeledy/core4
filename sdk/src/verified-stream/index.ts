@@ -84,7 +84,7 @@ const writeAllToFd = (fd: number, chunk: Uint8Array): void => {
 };
 
 const writeHashedBody = <E, R>(
-  writeChunk: (chunk: Uint8Array) => Promise<unknown> | void,
+  writeChunk: (chunk: Uint8Array) => Promise<unknown>,
   body: Stream.Stream<Uint8Array, E, R>,
   hash: ReturnType<typeof createHash>,
   size: Ref.Ref<number>,
@@ -143,7 +143,12 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
 
   if (inheritedFd !== undefined || direct) {
     if (inheritedFd !== undefined) {
-      yield* writeHashedBody((chunk) => writeAllToFd(inheritedFd, chunk), params.body, hash, size);
+      yield* writeHashedBody(
+        (chunk) => Promise.resolve(writeAllToFd(inheritedFd, chunk)),
+        params.body,
+        hash,
+        size,
+      );
     } else {
       const handle = yield* Effect.acquireRelease(
         Effect.tryPromise({

@@ -212,54 +212,53 @@ const stageStreamingImport = (
     }),
   );
 
-export const withHostDumpCompression = <E, R>(input: {
+export const withHostDumpCompression = Effect.fn("Sql.withHostDumpCompression")(function* <E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly direction: "export" | "import";
   readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<DataTransferResult, E, R>;
-}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataChecksumMismatchError, R> =>
-  Effect.gen(function* () {
-    const special = yield* isNonRegularExistingPath(input.path);
-    if (input.direction === "import" && special) {
-      return yield* Effect.scoped(
-        Effect.gen(function* () {
-          const directory = yield* Effect.acquireRelease(
-            acquireStagedDump(tmpdir(), "gzip", "decompress"),
-            releaseStagedDump,
-          );
-          const staged = join(directory, "dump");
-          const stagedDump = yield* stageStreamingImport(input.path, staged);
-          return yield* input.transfer(staged, stagedDump.digest);
-        }),
-      );
-    }
-    const compression = input.compression;
-    if (compression === "none") return yield* input.transfer(input.path);
+}) {
+  const special = yield* isNonRegularExistingPath(input.path);
+  if (input.direction === "import" && special) {
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const directory = yield* Effect.acquireRelease(
-          acquireStagedDump(
-            input.direction === "export" && !special ? dirname(input.path) : tmpdir(),
-            compression,
-            input.direction === "export" ? "compress" : "decompress",
-          ),
+          acquireStagedDump(tmpdir(), "gzip", "decompress"),
           releaseStagedDump,
         );
         const staged = join(directory, "dump");
-        if (input.direction === "import") {
-          const decompressed = yield* writeDumpTransform(
-            input.path,
-            staged,
-            compression,
-            "decompress",
-            input.expectedDigest,
-          );
-          return yield* input.transfer(staged, decompressed.digest);
-        }
-        const result = yield* input.transfer(staged);
-        const compressed = yield* writeDumpTransform(staged, input.path, compression, "compress");
-        return { ...result, ...compressed };
+        const stagedDump = yield* stageStreamingImport(input.path, staged);
+        return yield* input.transfer(staged, stagedDump.digest);
       }),
     );
-  });
+  }
+  const compression = input.compression;
+  if (compression === "none") return yield* input.transfer(input.path);
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireRelease(
+        acquireStagedDump(
+          input.direction === "export" && !special ? dirname(input.path) : tmpdir(),
+          compression,
+          input.direction === "export" ? "compress" : "decompress",
+        ),
+        releaseStagedDump,
+      );
+      const staged = join(directory, "dump");
+      if (input.direction === "import") {
+        const decompressed = yield* writeDumpTransform(
+          input.path,
+          staged,
+          compression,
+          "decompress",
+          input.expectedDigest,
+        );
+        return yield* input.transfer(staged, decompressed.digest);
+      }
+      const result = yield* input.transfer(staged);
+      const compressed = yield* writeDumpTransform(staged, input.path, compression, "compress");
+      return { ...result, ...compressed };
+    }),
+  );
+});

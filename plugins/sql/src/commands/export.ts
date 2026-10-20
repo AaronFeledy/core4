@@ -26,7 +26,8 @@ export const spec = {
   },
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
-  payloadStdout: (input) => isStdoutDumpArg(typeof input.args.file === "string" ? input.args.file : undefined),
+  payloadStdout: (input) =>
+    isStdoutDumpArg(typeof input.args.file === "string" ? input.args.file : undefined),
   run: (input) => runDbCommand(dbInputFromCommand("export", input)),
   render: ({ input, result }) => {
     const file = typeof input.args.file === "string" ? input.args.file : undefined;

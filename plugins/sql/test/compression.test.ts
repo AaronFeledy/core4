@@ -159,7 +159,9 @@ describe("dump compression helpers", () => {
     const fifo = join(dir, "dump.sql.gz");
     const payload = "select 3;\n";
     const compressed = Buffer.from(
-      await new Response(new Blob([payload]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer(),
+      await new Response(
+        new Blob([payload]).stream().pipeThrough(new CompressionStream("gzip")),
+      ).arrayBuffer(),
     );
     const source = await writeFifoPayload(dir, "plain.sql.gz", compressed);
     await mkfifo(fifo);
