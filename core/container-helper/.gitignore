@@ -1,0 +1,6 @@
+/dist/
+/.cache/
+# Lando's default app-mount excludes, created by `lando start`.
+/node_modules/
+/tmp/
+/vendor/

@@ -1,0 +1,13 @@
+name: lando-container-helper
+runtime: 4
+services:
+  builder:
+    type: compose
+    image: golang:1.23.12-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+    home: false
+    command: sleep infinity
+    environment:
+      CGO_ENABLED: "0"
+      GOCACHE: /app/.cache/go-build
+      GOFLAGS: -mod=mod
+      GOTOOLCHAIN: local
