@@ -21,6 +21,7 @@ export const VOLUME_INSTANCE_LABEL = "dev.lando.volume-instance" as const;
 export const SCRATCH_LABEL = "dev.lando.scratch" as const;
 export const SCRATCH_ID_LABEL = "dev.lando.scratch-id" as const;
 export const AGENT_SESSION_LABEL = "dev.lando.agent-session" as const;
+export const HOST_PROXY_SESSION_LABEL = "dev.lando.host-proxy-session" as const;
 
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"];

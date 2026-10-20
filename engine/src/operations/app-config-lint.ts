@@ -14,7 +14,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import type { LintLandofileOptions } from "@lando/landofile/lint";
+import { type LintLandofileOptions, routeViolations } from "@lando/landofile/lint";
 import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
@@ -37,12 +37,13 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const snapshot = yield* lintLandofileSnapshot(options);
   const { result } = snapshot;
   if (snapshot.resolved === undefined) return result;
+  const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
   const resolved = yield* resolveKnownEventSet({
-    landofile: snapshot.resolved,
+    landofile,
     pluginRegistry,
     configService,
     fileSystem,
@@ -52,7 +53,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
       const path = configExpressionIssuePath(resolved.failure);
-      const source = getLandofileValueSource(snapshot.resolved, path);
+      const source = getLandofileValueSource(landofile, path);
       return {
         ...result,
         valid: false,
@@ -71,5 +72,16 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     }
     return yield* Effect.fail(resolved.failure);
   }
-  return result;
+  const key = (violation: { readonly path: ReadonlyArray<string | number>; readonly message: string }) =>
+    JSON.stringify([violation.path, violation.message]);
+  const reported = new Set(result.violations.map(key));
+  const evaluated = routeViolations(resolved.success.landofile, { deferExpressions: false })
+    .filter((violation) => !reported.has(key(violation)))
+    .map((violation) => {
+      const source = getLandofileValueSource(landofile, violation.path);
+      return { ...violation, scope: "effective" as const, ...(source === undefined ? {} : { source }) };
+    });
+  return evaluated.length === 0
+    ? result
+    : { ...result, valid: false, violations: [...result.violations, ...evaluated] };
 });

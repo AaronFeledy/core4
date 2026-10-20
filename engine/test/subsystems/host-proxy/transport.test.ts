@@ -145,6 +145,8 @@ const sessionFor = async (
     readonly concurrency?: number;
     readonly bodyReadTimeoutMs?: number;
     readonly shimArtifactPath?: string;
+    readonly configDigest?: string;
+    readonly configure?: (body: unknown) => Promise<void>;
   } = {},
 ) => {
   const shimArtifactPath = overrides.shimArtifactPath ?? (await fakeExecutable());
@@ -161,6 +163,9 @@ const sessionFor = async (
         ? {}
         : { bodyReadTimeoutMs: overrides.bodyReadTimeoutMs }),
       shimArtifactPath,
+      ...(overrides.configDigest === undefined ? {} : { configDigest: overrides.configDigest }),
+      ...(overrides.configure === undefined ? {} : { configure: overrides.configure }),
+      providerId: "lando",
     }),
   );
 };
@@ -299,12 +304,140 @@ describe("host-proxy runLando physical transport", () => {
       appId: "demo",
       sessionId: session.sessionId,
       transport: "unix-socket",
-      protocolVersion: 1,
+      protocolVersion: 2,
+      configDigest: "",
+      appRoot: app.root,
+      providerId: "lando",
     });
     expect(denied.statusCode).toBe(401);
     expect(missingRoute.statusCode).toBe(404);
     expect(wrongMethod.statusCode).toBe(405);
     await session.close();
+  });
+
+  test.each(["token", "session", "app"] as const)(
+    "identify rejects a wrong session %s even with the control credential",
+    async (field) => {
+      const session = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), {
+        configDigest: "worker-config",
+      });
+      try {
+        const headers = {
+          "x-lando-host-proxy-control": session.controlToken,
+          authorization: `Bearer ${field === "token" ? "wrong" : session.token}`,
+          "x-lando-host-proxy-session": field === "session" ? "wrong" : session.sessionId,
+          "x-lando-host-proxy-app": field === "app" ? "wrong" : session.appId,
+        };
+        const denied = await controlHttpExchange(
+          socketPathOf(session),
+          "GET",
+          "/_lando/host-proxy/identify",
+          headers,
+        );
+        expect(denied.statusCode).toBe(401);
+        const accepted = await controlHttpExchange(
+          socketPathOf(session),
+          "GET",
+          "/_lando/host-proxy/identify",
+          {
+            ...headers,
+            authorization: `Bearer ${session.token}`,
+            "x-lando-host-proxy-session": session.sessionId,
+            "x-lando-host-proxy-app": session.appId,
+          },
+        );
+        expect(accepted.statusCode).toBe(200);
+        expect(JSON.parse(accepted.body)).toMatchObject({
+          configDigest: "worker-config",
+          protocolVersion: 2,
+          sessionId: session.sessionId,
+        });
+        expect(accepted.body).not.toContain(session.token);
+        expect(denied.body).not.toContain(session.controlToken);
+      } finally {
+        await session.close();
+      }
+    },
+  );
+
+  test("configure requires every credential and changes state only for valid bounded JSON", async () => {
+    let current: unknown = "initial";
+    const session = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), {
+      configure: async (body) => {
+        current = body;
+      },
+      bodyReadTimeoutMs: 20,
+    });
+    const headers = {
+      "x-lando-host-proxy-control": session.controlToken,
+      authorization: `Bearer ${session.token}`,
+      "x-lando-host-proxy-session": session.sessionId,
+      "x-lando-host-proxy-app": session.appId,
+    };
+    try {
+      for (const key of Object.keys(headers)) {
+        const denied = await controlHttpExchange(
+          socketPathOf(session),
+          "POST",
+          "/_lando/host-proxy/configure",
+          { ...headers, [key]: "wrong" },
+          "{}",
+        );
+        expect(denied.statusCode).toBe(401);
+        expect(current).toBe("initial");
+      }
+      const missing = await controlHttpExchange(
+        socketPathOf(session),
+        "POST",
+        "/_lando/host-proxy/configure",
+        { "x-lando-host-proxy-control": session.controlToken },
+        "{}",
+      );
+      expect(missing.statusCode).toBe(401);
+      for (const body of ["{broken", JSON.stringify("x".repeat(16 * 1024 * 1024))]) {
+        const invalid = await controlHttpExchange(
+          socketPathOf(session),
+          "POST",
+          "/_lando/host-proxy/configure",
+          headers,
+          body,
+        );
+        expect(invalid.statusCode).toBe(400);
+        expect(current).toBe("initial");
+      }
+      const stalled = await new Promise<number | undefined>((resolve, reject) => {
+        const request = httpRequest(
+          {
+            socketPath: socketPathOf(session),
+            method: "POST",
+            path: "/_lando/host-proxy/configure",
+            headers: { ...headers, "content-length": "100" },
+          },
+          (response) => {
+            response.resume();
+            response.on("end", () => {
+              request.destroy();
+              resolve(response.statusCode);
+            });
+          },
+        );
+        request.on("error", reject);
+        request.write("{");
+      });
+      expect(stalled).toBe(400);
+      expect(current).toBe("initial");
+      const configured = await controlHttpExchange(
+        socketPathOf(session),
+        "POST",
+        "/_lando/host-proxy/configure",
+        headers,
+        '{"routes":[]}',
+      );
+      expect(configured.statusCode).toBe(200);
+      expect(current).toEqual({ routes: [] });
+    } finally {
+      await session.close();
+    }
   });
 
   test("shutdown control endpoint accepts then closes the session", async () => {
@@ -1042,6 +1175,7 @@ const controlHttpExchange = (
   method: "GET" | "POST",
   path: string,
   headers: Readonly<Record<string, string>> = {},
+  payload?: string,
 ): Promise<{ readonly statusCode: number | undefined; readonly body: string }> =>
   new Promise((resolveResponse, reject) => {
     let body = "";
@@ -1053,7 +1187,7 @@ const controlHttpExchange = (
       res.on("end", () => resolveResponse({ statusCode: res.statusCode, body }));
     });
     req.on("error", reject);
-    req.end();
+    req.end(payload);
   });
 
 const rawSocketExchange = async (

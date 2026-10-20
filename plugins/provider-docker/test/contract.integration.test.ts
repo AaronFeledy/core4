@@ -485,7 +485,13 @@ const makeFakeApi = () => {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
       if (request.path.includes("/logs?")) {
-        return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+        return Stream.fromIterable([
+          attachFrame(1, "2026-05-17T12:00:00.000Z ready\n"),
+          attachFrame(1, "2026-05-17T12:00:00.000Z lando-contract-split-"),
+          attachFrame(1, "2026-05-17T12:00:00.000Z line\n"),
+          attachFrame(1, `2026-05-17T12:00:00.000Z ${"L".repeat(16_384)}`),
+          attachFrame(1, `2026-05-17T12:00:00.000Z ${"L".repeat(3_616)}\n`),
+        ]);
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/archive?")) {
         const name = decodeURIComponent(
@@ -1205,14 +1211,14 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
-    expect(logs).toEqual([
-      {
+    expect(logs).toEqual(
+      ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
         service: serviceName,
         stream: "stdout",
-        line: "ready",
+        line,
         timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
-      },
-    ]);
+      })),
+    );
     expect(
       fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
     ).toMatchObject({
@@ -1768,14 +1774,14 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
-    expect(logs).toEqual([
-      {
+    expect(logs).toEqual(
+      ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
         service: serviceName,
         stream: "stdout",
-        line: "ready",
+        line,
         timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
-      },
-    ]);
+      })),
+    );
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "GET /networks/lando-myapp",
       "POST /networks/create",

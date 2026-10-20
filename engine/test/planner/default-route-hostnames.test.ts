@@ -1,17 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Option } from "effect";
+import { DateTime, Effect } from "effect";
 
-import { ConfigExpressionError, LandofileValidationError } from "@lando/sdk/errors";
 import { AppId, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 
-import { finalizeServices, resolveRoute } from "../../src/planner/endpoints.ts";
+import { finalizeServices } from "../../src/planner/endpoints.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
 
 const APP_ROOT = "/tmp/myapp";
-const APP_NAME = "myapp";
 const APP_SLUG = "myapp";
 const DEFAULT_DOMAIN = "lndo.site";
 const PROVIDER = ProviderId.make("lando");
@@ -20,22 +18,6 @@ const HTTP_ENDPOINT = {
   protocol: "http" as const,
   port: 80,
   name: "http",
-};
-
-const expressionInput = {
-  routeIndex: 0,
-  appName: APP_NAME,
-  appSlug: APP_SLUG,
-  defaultDomain: DEFAULT_DOMAIN,
-};
-
-const hostnameTemplate = "{{ app.name }}.{{ proxy.defaultDomain }}";
-
-const requireConfigExpressionError = (failure: unknown): ConfigExpressionError => {
-  if (!(failure instanceof ConfigExpressionError)) {
-    throw new Error("expected ConfigExpressionError");
-  }
-  return failure;
 };
 
 const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): PlannedServiceDraft => ({
@@ -73,58 +55,6 @@ const metadata: ServicePlan["metadata"] = {
   runtime: 4,
 };
 
-describe("resolveRoute hostname expressions", () => {
-  test("evaluates an authored php hostname template to app.lndo.site", async () => {
-    // Given
-    const route: NormalizedRoute = { hostname: hostnameTemplate, filters: [] };
-
-    // When
-    const planned = await Effect.runPromise(
-      resolveRoute(APP_ROOT, "appserver", [HTTP_ENDPOINT], route, expressionInput),
-    );
-
-    // Then
-    expect(planned.hostname).toBe(`${APP_NAME}.${DEFAULT_DOMAIN}`);
-  });
-
-  test("maps an unknown scope to ConfigExpressionError with the YAML path", async () => {
-    // Given
-    const route: NormalizedRoute = { hostname: "{{ env.HOME }}", filters: [] };
-
-    // When
-    const exit = await Effect.runPromiseExit(
-      resolveRoute(APP_ROOT, "appserver", [HTTP_ENDPOINT], route, expressionInput),
-    );
-
-    // Then
-    if (Exit.isSuccess(exit)) throw new Error("expected ConfigExpressionError");
-    const failure = requireConfigExpressionError(Option.getOrThrow(Cause.findErrorOption(exit.cause)));
-    expect(failure).toMatchObject({
-      _tag: "ConfigExpressionError",
-      expression: "{{ env.HOME }}",
-      path: "services.appserver.routes.0.hostname",
-      filePath: `${APP_ROOT}/.lando.yml`,
-    });
-    expect(failure.remediation).toContain("proxy.defaultDomain");
-  });
-
-  test("surfaces expression failure before endpoint mismatch", async () => {
-    // Given
-    const route: NormalizedRoute = { hostname: "{{ env.HOME }}", endpoint: 9999, filters: [] };
-
-    // When
-    const exit = await Effect.runPromiseExit(
-      resolveRoute(APP_ROOT, "appserver", [HTTP_ENDPOINT], route, expressionInput),
-    );
-
-    // Then
-    if (Exit.isSuccess(exit)) throw new Error("expected ConfigExpressionError");
-    const failure = requireConfigExpressionError(Option.getOrThrow(Cause.findErrorOption(exit.cause)));
-    expect(failure).not.toBeInstanceOf(LandofileValidationError);
-    expect(failure.path).toBe("services.appserver.routes.0.hostname");
-  });
-});
-
 describe("finalizeServices auto-generated hostnames", () => {
   test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
     // Given
@@ -148,7 +78,6 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
-        appName: APP_NAME,
         defaultDomain: "lando.test",
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
@@ -175,7 +104,6 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
-        appName: APP_NAME,
         defaultDomain: DEFAULT_DOMAIN,
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,

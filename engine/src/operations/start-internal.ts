@@ -330,6 +330,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
         use: (agentPlan) =>
           withStartedHostProxy(agentPlan, ref, provider.capabilities, {
             platform: provider.platform,
+            workerPlan: plan,
+            reusePolicy: "exact",
             ...(managed === undefined ? {} : { managed }),
             use: Effect.fnUntraced(function* (applyPlan) {
               const builtPlan = yield* withBuildProvider(

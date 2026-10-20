@@ -29,6 +29,7 @@ describe("agent relay worker runtime", () => {
           app: { kind: "user", id: "test", root },
           plan: { id: "test", provider: "docker" },
           kind: "ssh",
+          configDigest: "runtime-digest",
           upstream: { _tag: "named-pipe", path: "\\\\.\\pipe\\agent" },
           delivery,
           socketName: "agent.sock",
@@ -93,7 +94,8 @@ describe("agent relay worker runtime", () => {
                   kind: "ssh",
                   pid: process.pid,
                   sessionId: ready.sessionId,
-                  protocolVersion: 1,
+                  protocolVersion: 2,
+                  configDigest: "runtime-digest",
                 });
                 expect(closed).toEqual([]);
                 return ready;
@@ -160,6 +162,7 @@ describe("agent relay worker runtime", () => {
       app: { kind: "user", id: "test", root },
       plan: { id: "test", provider: "docker" },
       kind: "ssh",
+      configDigest: "runtime-digest",
       upstream: { _tag: "unix", path: "/agent.sock" },
       delivery: "volume-relay",
       socketName: "agent.sock",
@@ -234,6 +237,7 @@ describe("agent relay worker runtime", () => {
       app: { kind: "user", id: "test", root },
       plan: { id: "test", provider: "docker" },
       kind: "ssh",
+      configDigest: "runtime-digest",
       upstream: { _tag: "unix", path: join(root, "upstream.sock") },
       delivery: "bind-directory",
       socketName: "agent.sock",
@@ -293,6 +297,7 @@ describe("agent relay worker runtime", () => {
       app: { kind: "user", id: "test", root },
       plan: { id: "test", provider: "docker" },
       kind: "ssh",
+      configDigest: "runtime-digest",
       upstream: { _tag: "named-pipe", path: "\\\\.\\pipe\\agent" },
       delivery: "guest-bridge",
       socketName: "agent.sock",
