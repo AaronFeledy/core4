@@ -193,7 +193,10 @@ export const makeDownloaderService = (
         sizeBytes: result.sizeBytes,
         fromCache: false,
       } satisfies DownloadResult;
-    }).pipe(Effect.catchTag("VerifiedStreamError", (error) => Effect.fail(mapVerifiedError(error, origin))));
+    }).pipe(
+      Effect.catchTag("VerifiedStreamError", (error) => Effect.fail(mapVerifiedError(error, origin))),
+      Effect.catchTag("VerifiedStreamPartialError", (error) => Effect.fail(mapVerifiedError(error, origin))),
+    );
 
     const publishPost = Effect.fnUntraced(function* (exit: Exit.Exit<DownloadResult, DownloadError>) {
       const bodyBytes = yield* Ref.get(progress);

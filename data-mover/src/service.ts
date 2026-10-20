@@ -748,27 +748,25 @@ const isNonRegularExistingHostPath = (path: string): Effect.Effect<boolean> =>
     }
   });
 
-const skipTrustedHostPathRoot = (
+const skipTrustedHostPathRoot = Effect.fnUntraced(function* (
   endpoint: Extract<DataEndpoint, { readonly _tag: "hostPath" }>,
   role: "from" | "to",
-): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    if (endpoint.trusted !== true) return false;
-    if (role === "from") return true;
-    if (isStdioHostPath(endpoint.path) || isStagedDumpHostPath(endpoint.path)) return true;
-    return yield* isNonRegularExistingHostPath(endpoint.path);
-  });
+) {
+  if (endpoint.trusted !== true) return false;
+  if (role === "from") return true;
+  if (isStdioHostPath(endpoint.path) || isStagedDumpHostPath(endpoint.path)) return true;
+  return yield* isNonRegularExistingHostPath(endpoint.path);
+});
 
-const validateHostEndpoint = (
+const validateHostEndpoint = Effect.fnUntraced(function* (
   endpoint: DataEndpoint,
   role: "from" | "to",
   root: string,
-): Effect.Effect<void, DataSourceOutsideRootError> =>
-  Effect.gen(function* () {
-    if (endpoint._tag !== "hostPath" && endpoint._tag !== "hostArchive") return;
-    if (endpoint._tag === "hostPath" && (yield* skipTrustedHostPathRoot(endpoint, role))) return;
-    yield* ensureInsideRoot(endpoint.path, root);
-  });
+) {
+  if (endpoint._tag !== "hostPath" && endpoint._tag !== "hostArchive") return;
+  if (endpoint._tag === "hostPath" && (yield* skipTrustedHostPathRoot(endpoint, role))) return;
+  yield* ensureInsideRoot(endpoint.path, root);
+});
 
 const validateHostEndpoints = Effect.fnUntraced(function* (spec: DataTransferSpec, scratchDir: string) {
   const scratchHostCopy =

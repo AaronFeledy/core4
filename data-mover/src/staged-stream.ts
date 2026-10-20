@@ -6,6 +6,7 @@ import { Effect, type Scope, type Stream } from "effect";
 
 import {
   type VerifiedStreamError,
+  type VerifiedStreamPartialError,
   type VerifiedStreamResult,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
@@ -25,7 +26,7 @@ export type StageStreamInput<E, R> = {
 
 export const stageVerifiedStream = Effect.fnUntraced(function* <E, R>(
   input: StageStreamInput<E, R>,
-): Effect.fn.Return<StagedStream, E | VerifiedStreamError, Scope.Scope | R> {
+): Effect.fn.Return<StagedStream, E | VerifiedStreamError | VerifiedStreamPartialError, Scope.Scope | R> {
   const path = join(input.scratchDir, `.lando-stage-${input.prefix}-${randomUUID()}`);
   yield* Effect.addFinalizer(() => Effect.promise(() => unlink(path).catch(() => undefined)));
   const verified = yield* persistVerifiedStream({

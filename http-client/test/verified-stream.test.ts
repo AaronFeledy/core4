@@ -98,6 +98,7 @@ describe("persistVerifiedStream", () => {
         ).pipe(Effect.flip),
       );
       expect(error).toBeInstanceOf(VerifiedStreamError);
+      if (!(error instanceof VerifiedStreamError)) return;
       expect(error.reason).toBe("checksum");
       // existing file untouched
       expect(Array.from(await readFile(target))).toEqual(Array.from(bytes("original-bytes")));
@@ -321,14 +322,10 @@ describe("persistVerifiedStream", () => {
     if (process.platform === "win32") return;
     await withTempDir(async (dir) => {
       const fifo = join(dir, "dump.fifo");
-      const payload = bytes("partial-pipe-bytes-xxxxxxxxxxxxxxxx");
+      const payload = new Uint8Array(256 * 1024).fill(97);
       const mk = Bun.spawn(["mkfifo", "-m", "0600", fifo], { stdout: "ignore", stderr: "pipe" });
       expect(await mk.exited).toBe(0);
-      const reader = Bun.spawn(["head", "-c", "10"], {
-        stdin: Bun.file(fifo),
-        stdout: "pipe",
-        stderr: "ignore",
-      });
+      const reader = Bun.spawn(["head", "-c", "10", fifo], { stdout: "pipe", stderr: "ignore" });
       try {
         const error = await Effect.runPromise(
           Effect.scoped(
@@ -350,6 +347,50 @@ describe("persistVerifiedStream", () => {
         throw caught;
       }
     });
+  });
+
+  test("stdout persist exits 141 with bytesWritten when the pipe closes early", async () => {
+    if (process.platform === "win32") return;
+    const script = `import { Effect, Stream } from "effect";
+import { persistVerifiedStream, VerifiedStreamPartialError } from "@lando/sdk/verified-stream";
+const payload = new Uint8Array(256 * 1024).fill(97);
+try {
+  await Effect.runPromise(
+    Effect.scoped(
+      persistVerifiedStream({
+        body: Stream.fromIterable([payload]),
+        destinationPath: "/dev/stdout",
+      }),
+    ),
+  );
+  process.exit(0);
+} catch (error) {
+  const partial =
+    error instanceof VerifiedStreamPartialError
+      ? error
+      : typeof error === "object" && error !== null && "_tag" in error && error._tag === "VerifiedStreamPartialError"
+        ? error
+        : undefined;
+  if (partial === undefined) throw error;
+  process.stderr.write(String(partial.bytesWritten));
+  process.exit(141);
+}
+`;
+    const proc = Bun.spawn(["bash", "-o", "pipefail", "-c", '"$BUN" -e "$SCRIPT" | head -c 10'], {
+      cwd: join(import.meta.dir, "..", ".."),
+      env: { ...process.env, BUN: process.execPath, SCRIPT: script },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stderr, stdout] = await Promise.all([
+      proc.exited,
+      new Response(proc.stderr).text(),
+      new Response(proc.stdout).text(),
+    ]);
+    expect(stdout).toHaveLength(10);
+    expect(code).toBe(141);
+    expect(Number(stderr)).toBeGreaterThan(0);
+    expect(Number(stderr)).toBeLessThan(256 * 1024);
   });
 });
 
