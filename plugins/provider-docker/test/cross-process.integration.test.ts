@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   type DockerApiClient,
@@ -200,6 +201,7 @@ const makeFakeApi = () => {
       return Stream.empty;
     },
   };
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 

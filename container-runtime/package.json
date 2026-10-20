@@ -61,6 +61,7 @@
     "./podman/inspect": "./src/podman/inspect.ts",
     "./podman/discover": "./src/podman/discover.ts",
     "./podman/exec": "./src/podman/exec.ts",
+    "./podman/exec-umask": "./src/podman/exec-umask.ts",
     "./podman/logs": "./src/podman/logs.ts",
     "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
     "./podman/container-events": "./src/podman/container-events.ts",

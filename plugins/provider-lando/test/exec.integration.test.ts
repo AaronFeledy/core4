@@ -6,6 +6,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -117,6 +118,7 @@ const makeFakeApi = (
       }),
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
