@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Result, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Result, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -142,11 +142,12 @@ test.each([false, true])(
 );
 
 test.each(["fails", "interrupts"] as const)(
-  "a receipt that %s removes the networks this apply created",
+  "a receipt that %s retains the networks and volume this apply created",
   async (outcome) => {
     // Given: an apply that creates its app network, then a volume whose receipt does not complete.
     const deleted: string[] = [];
     const networks = new Map<string, object>();
+    const volumes = new Map<string, typeof Request.Type>();
     const failure = new ProviderInternalError({
       providerId: "podman",
       operation: "receipt",
@@ -160,7 +161,9 @@ test.each(["fails", "interrupts"] as const)(
           request: (request) =>
             Effect.sync(() => {
               if (request.path === "/volumes/create") {
-                return { status: 201, body: JSON.stringify(Schema.decodeUnknownSync(Request)(request.body)) };
+                const volume = Schema.decodeUnknownSync(Request)(request.body);
+                volumes.set(volume.Name, volume);
+                return { status: 201, body: JSON.stringify(volume) };
               }
               if (request.path === "/networks/create") {
                 const body = Schema.decodeUnknownSync(
@@ -176,7 +179,7 @@ test.each(["fails", "interrupts"] as const)(
                 const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
                 return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
               }
-              if (request.path.startsWith("/networks/") && request.method === "DELETE") {
+              if (request.method === "DELETE") {
                 deleted.push(request.path);
                 return { status: 204, body: "" };
               }
@@ -185,11 +188,14 @@ test.each(["fails", "interrupts"] as const)(
         },
       }),
     );
-    // Then: the original outcome propagates and the created network is removed.
+    // Then: the original outcome propagates without deleting established resources.
     expect(exit._tag).toBe("Failure");
-    if (outcome === "fails" && exit._tag === "Failure") {
-      expect(JSON.stringify(exit.cause)).toContain("No receipt.");
+    if (Exit.isFailure(exit)) {
+      if (outcome === "fails") expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBe(failure);
+      else expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     }
-    expect(deleted.length).toBeGreaterThan(0);
+    expect(networks.has("lando-creation")).toBe(true);
+    expect(volumes.get("data")?.Labels["dev.lando.volume-instance"]).toBeDefined();
+    expect(deleted).toEqual([]);
   },
 );

@@ -13,8 +13,8 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 for (const operation of ["stop", "destroy"] as const) {
-  test(`${operation} removes the owned network after apply and rollback both fail`, async () => {
-    // Given a failed first apply, with success-only applied state and a failed rollback.
+  test(`${operation} removes the retained owned network after a failed apply`, async () => {
+    // Given a failed first apply with success-only applied state.
     const plannedApp: AppPlan = {
       ...plan,
       identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) },
@@ -74,7 +74,7 @@ for (const operation of ["stop", "destroy"] as const) {
       ).pipe(Effect.provide(harness.layer), Effect.result),
     );
     expect(Result.isFailure(failed)).toBe(true);
-    expect(rollbackAttempts).toBe(1);
+    expect(rollbackAttempts).toBe(0);
     expect(networkExists).toBe(true);
 
     // When whole-app teardown runs later, without a successful applied plan.
