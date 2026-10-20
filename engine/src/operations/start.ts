@@ -1,10 +1,9 @@
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 
 import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { shouldRetainReadinessResources } from "../lifecycle/readiness-failure.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -29,7 +28,6 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly beforeStart?: Effect.Effect<void>;
-    readonly onFailedStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
@@ -63,11 +61,6 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
                   });
                 }),
               ),
-              Effect.onExit((exit) =>
-                Exit.isFailure(exit) && !shouldRetainReadinessResources(exit.cause)
-                  ? (execution.onFailedStart ?? Effect.void).pipe(Effect.uninterruptible)
-                  : Effect.void,
-              ),
             )
             .pipe(Effect.provide(context)),
       });
@@ -83,7 +76,6 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly beforeStart?: Effect.Effect<void>;
-    readonly onFailedStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
