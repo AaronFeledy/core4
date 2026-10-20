@@ -167,7 +167,7 @@ export const parseFlagsAndPositionals = (
       continue;
     }
 
-    if (!options.strict || !arg.startsWith("-")) positionals.push(arg);
+    if (!options.strict || !arg.startsWith("-") || arg === "-") positionals.push(arg);
   }
 
   return { flags, positionals };

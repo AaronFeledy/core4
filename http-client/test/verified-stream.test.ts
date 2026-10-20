@@ -251,10 +251,11 @@ describe("persistVerifiedStream", () => {
     await withTempDir(async (dir) => {
       const script = join(dir, "stdout-dump.ts");
       const payload = "STDOUT-DUMP-ONLY";
+      const verifiedStream = join(import.meta.dir, "..", "..", "sdk/src/verified-stream/index.ts");
       await writeFile(
         script,
         `import { Effect, Stream } from "effect";
-import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { persistVerifiedStream } from ${JSON.stringify(verifiedStream)};
 const payload = new TextEncoder().encode(${JSON.stringify(payload)});
 await Effect.runPromise(
   Effect.scoped(
@@ -276,7 +277,7 @@ await Effect.runPromise(
         new Response(proc.stderr).text(),
         proc.exited,
       ]);
-      expect(code).toBe(0);
+      if (code !== 0) throw new Error(stderr || `stdout dump helper exited ${code}`);
       expect(stdout).toBe(payload);
       expect(stderr).toBe("");
     });

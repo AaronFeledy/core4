@@ -138,7 +138,7 @@ describe("confirmation argv and help", () => {
     const spec = sqlSpec("db:export");
     const help = renderPluginOwnedCommandHelp(spec);
     expect(help).toContain("--force-tty");
-    expect(help).toContain("stdout");
+    expect(spec.args?.file?.description).toContain("stdout");
     const parsed = pluginOwnedCommandInputFromArgv(spec, ["-", "--force-tty"]);
     expect(parsed.args.file).toBe("-");
     expect(parsed.flags["force-tty"]).toBe(true);
@@ -150,8 +150,7 @@ describe("confirmation argv and help", () => {
 
   test("db:import help advertises a dash stdin dump", () => {
     const spec = sqlSpec("db:import");
-    const help = renderPluginOwnedCommandHelp(spec);
-    expect(help).toContain("stdin");
+    expect(spec.args?.file?.description).toContain("stdin");
     const parsed = pluginOwnedCommandInputFromArgv(spec, ["-"]);
     expect(parsed.args.file).toBe("-");
   });

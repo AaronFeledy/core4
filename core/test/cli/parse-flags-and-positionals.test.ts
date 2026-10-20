@@ -44,6 +44,12 @@ describe("parseFlagsAndPositionals", () => {
     expect(parseFlagsAndPositionals(argv, definitions, { strict: false }).positionals).toEqual(argv);
   });
 
+  test("strict mode keeps a lone dash as a positional stdout/stdin path", () => {
+    const parsed = parseFlagsAndPositionals(["-", "--verbose"], definitions, { strict: true });
+    expect(parsed.positionals).toEqual(["-"]);
+    expect(parsed.flags).toEqual({ verbose: true });
+  });
+
   test("a trailing value-flag with no value is dropped without consuming anything", () => {
     const parsed = parseFlagsAndPositionals(["web", "--tail"], definitions, { strict: true });
     expect(parsed.flags).toEqual({});

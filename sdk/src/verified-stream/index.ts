@@ -4,13 +4,16 @@
  * Regular-file destinations write through a unique temp file and atomically
  * rename onto the target after checksum/size checks. An existing destination
  * that is not a regular file (character device, FIFO, socket) is written in
- * place: no temp sibling, no rename. The temp file is removed on stream
- * failure, checksum mismatch, size mismatch, persistence failure, and
+ * place: no temp sibling, no rename. `/dev/stdout`, `/dev/stderr`, and
+ * `/dev/fd/N` write the inherited descriptor instead of reopening the path,
+ * because an anonymous pipe cannot be reopened. The temp file is removed on
+ * stream failure, checksum mismatch, size mismatch, persistence failure, and
  * `Effect.interrupt` for the atomic path; a verified rename never fires until
  * both checks pass, so an existing regular file is never clobbered by a bad
  * fetch. Direct writes to special files cannot unwrite partial bytes.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { constants, writeSync } from "node:fs";
 import { chmod, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -64,8 +67,24 @@ const existingDestination = (path: string) =>
     ),
   );
 
+const inheritedWriteFd = (path: string): number | undefined => {
+  if (path === "/dev/stdout") return 1;
+  if (path === "/dev/stderr") return 2;
+  const match = /^(?:\/dev\/fd|\/proc\/self\/fd)\/(\d+)$/u.exec(path);
+  if (match === null) return undefined;
+  const fd = Number(match[1]);
+  return Number.isInteger(fd) ? fd : undefined;
+};
+
+const writeAllToFd = (fd: number, chunk: Uint8Array): void => {
+  let offset = 0;
+  while (offset < chunk.byteLength) {
+    offset += writeSync(fd, chunk.subarray(offset));
+  }
+};
+
 const writeHashedBody = <E, R>(
-  handle: { write: (chunk: Uint8Array) => Promise<unknown> },
+  writeChunk: (chunk: Uint8Array) => Promise<unknown> | void,
   body: Stream.Stream<Uint8Array, E, R>,
   hash: ReturnType<typeof createHash>,
   size: Ref.Ref<number>,
@@ -73,7 +92,7 @@ const writeHashedBody = <E, R>(
   Stream.runForEach(body, (chunk) =>
     Effect.tryPromise({
       try: async () => {
-        await handle.write(chunk);
+        await writeChunk(chunk);
         hash.update(chunk);
       },
       catch: (cause) => persistError("Failed to write artifact bytes.", cause),
@@ -109,31 +128,37 @@ const verify = (
  * Stream `body` into `destinationPath` with checksum/size verification.
  * Regular files use a temp sibling and atomic rename. Existing non-regular
  * destinations (character devices, FIFOs, sockets) are written in place.
+ * Stdout, stderr, and `/dev/fd/N` write the inherited fd and never close it.
  * Requires an ambient `Scope`: a finalizer removes the temp file unless the
  * verified rename committed. Direct writes never unlink the destination.
  */
 export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(function* <E, R>(
   params: PersistVerifiedStreamParams<E, R>,
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
-  const existing = yield* existingDestination(params.destinationPath);
+  const inheritedFd = inheritedWriteFd(params.destinationPath);
+  const existing = inheritedFd === undefined ? yield* existingDestination(params.destinationPath) : undefined;
   const direct = existing !== undefined && !existing.isFile() && !existing.isDirectory();
   const hash = createHash("sha256");
   const size = yield* Ref.make(0);
 
-  if (direct) {
-    const handle = yield* Effect.acquireRelease(
-      Effect.tryPromise({
-        try: () => open(params.destinationPath, "w"),
-        catch: (cause) => persistError("Failed to open destination.", cause),
-      }),
-      (h) => Effect.promise(() => h.close().catch(() => undefined)),
-    );
-    yield* writeHashedBody(handle, params.body, hash, size);
+  if (inheritedFd !== undefined || direct) {
+    if (inheritedFd !== undefined) {
+      yield* writeHashedBody((chunk) => writeAllToFd(inheritedFd, chunk), params.body, hash, size);
+    } else {
+      const handle = yield* Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () => open(params.destinationPath, constants.O_WRONLY),
+          catch: (cause) => persistError("Failed to open destination.", cause),
+        }),
+        (h) => Effect.promise(() => h.close().catch(() => undefined)),
+      );
+      yield* writeHashedBody((chunk) => handle.write(chunk), params.body, hash, size);
+      yield* Effect.promise(() => handle.sync().catch(() => undefined));
+    }
     const sizeBytes = yield* Ref.get(size);
     const sha256 = hash.digest("hex");
     const mismatch = verify(sha256, sizeBytes, params.expectedSha256, params.expectedSizeBytes);
     if (mismatch !== undefined) return yield* Effect.fail(mismatch);
-    yield* Effect.promise(() => handle.sync().catch(() => undefined));
     return { sha256, sizeBytes } satisfies VerifiedStreamResult;
   }
 
@@ -161,7 +186,7 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
     (h) => Effect.promise(() => h.close().catch(() => undefined)),
   );
 
-  yield* writeHashedBody(handle, params.body, hash, size);
+  yield* writeHashedBody((chunk) => handle.write(chunk), params.body, hash, size);
 
   const sizeBytes = yield* Ref.get(size);
   const sha256 = hash.digest("hex");
