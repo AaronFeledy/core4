@@ -373,6 +373,22 @@ describe("LandofileShape — schema gate", () => {
 });
 
 describe("LandofileShape (MVP)", () => {
+  test.each([0, 70000, 1.5])("rejects service port %s outside the TCP port domain", (port) => {
+    const result = Schema.decodeUnknownResult(LandofileShape)({
+      name: "port-test",
+      services: { db: { type: "mysql", port } },
+    });
+    expect(Result.isFailure(result)).toBe(true);
+  });
+
+  test("accepts a valid authored TCP port", () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "port-test",
+      services: { db: { type: "mysql", port: 3307 } },
+    });
+    expect(decoded.services?.[ServiceName.make("db")]?.port).toBe(3307);
+  });
+
   test("decodes a minimal Landofile with one app name + one service block + Compose-subset keys", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)(minimalLandofileFixture);
     expect(decoded.name).toBe("myapp");
