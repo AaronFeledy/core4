@@ -38,6 +38,10 @@ export interface DetachedHostProxyWorkerOptions {
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
   readonly privateFileAccess: PrivateFileAccess;
   readonly reusePolicy?: "exact" | "adopt";
+  /** Takes ownership in the same uninterruptible step that keeps the worker. */
+  readonly publish?: (
+    session: HostProxyRunLandoSession & { readonly reused?: boolean },
+  ) => Effect.Effect<void>;
 }
 
 export const startDetachedHostProxyWorker = (
@@ -51,6 +55,7 @@ export const startDetachedHostProxyWorker = (
     options.paths,
     Effect.gen(function* () {
       const landoPaths = makeLandoPaths(options.paths);
+      const publish = options.publish ?? (() => Effect.void);
       const input = {
         app: { kind: options.app.kind, id: options.app.id, root: options.app.root },
         plan: Schema.encodeUnknownSync(AppPlan)(options.plan),
@@ -68,7 +73,7 @@ export const startDetachedHostProxyWorker = (
         }),
       );
       const reused = yield* reuseHostProxyWorker(options, configDigest);
-      if (reused !== undefined) return reused;
+      if (reused !== undefined) return yield* publish(reused).pipe(Effect.as(reused));
       const keepWorker = yield* Ref.make(false);
       return yield* Effect.acquireUseRelease(
         Effect.gen(function* () {
@@ -128,7 +133,6 @@ export const startDetachedHostProxyWorker = (
                   },
                   options.privateFileAccess,
                 ).pipe(
-                  Effect.tap(Ref.set(keepWorker, true)),
                   Effect.as({
                     appId: ready.appId,
                     sessionId: ready.sessionId,
@@ -146,6 +150,11 @@ export const startDetachedHostProxyWorker = (
                     },
                     closed,
                   }),
+                  Effect.flatMap((session) =>
+                    Effect.uninterruptible(
+                      Ref.set(keepWorker, true).pipe(Effect.andThen(publish(session)), Effect.as(session)),
+                    ),
+                  ),
                 );
               }),
             ),

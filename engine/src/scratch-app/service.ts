@@ -803,7 +803,6 @@ const makeScratchAppService = (
           provider,
           plan: builtPlan,
           services: Object.values(builtPlan.services).map((service) => service.name),
-          retainOnInterrupt: false,
         }),
       ),
       Effect.onInterrupt(() => (keepOnFailure ? Effect.void : destroyScratchResources)),

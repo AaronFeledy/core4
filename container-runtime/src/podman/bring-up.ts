@@ -1,4 +1,4 @@
-import { Cause, type Context, DateTime, Duration, Effect, Exit, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
@@ -94,7 +94,7 @@ type BringUpError =
  * failure by returning `undefined`.
  */
 export const APPLY_REMEDIATION =
-  "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
+  "Fix the reported error, then run `lando start`; it reuses what this attempt created. Run `lando doctor` if the failure persists.";
 
 export const GLOBAL_APPLY_REMEDIATION =
   "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists.";
@@ -610,11 +610,6 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
     Effect.catch(() => Effect.void),
   );
 
-const removeContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.catch(() => Effect.void),
-  );
-
 const removeContainer = (
   deps: BringUpDeps,
   service: ServicePlan,
@@ -634,40 +629,6 @@ const removeContainer = (
           ),
     ),
   );
-
-const removeNetworkSilent = (
-  deps: BringUpDeps,
-  plan: AppPlan,
-  name = appNetworkName(plan),
-): Effect.Effect<void> =>
-  (isSharedNetwork(plan, name)
-    ? Effect.void
-    : inspectOwnedNativeId(
-        deps.api,
-        {
-          kind: "network",
-          name,
-          labels: networkOwnershipLabels(plan),
-        },
-        deps.options.ctx,
-      ).pipe(
-        Effect.flatMap((id) =>
-          id === undefined
-            ? Effect.void
-            : request(deps, {
-                method: "DELETE",
-                path: `/networks/${encodeURIComponent(id)}`,
-              }).pipe(Effect.asVoid),
-        ),
-      )
-  ).pipe(Effect.catch(() => Effect.void));
-
-const removeCreatedNetworksSilent = (
-  deps: BringUpDeps,
-  createdNetworks: ReadonlySet<string>,
-  plan: AppPlan,
-): Effect.Effect<void> =>
-  Effect.forEach(createdNetworks, (name) => removeNetworkSilent(deps, plan, name), { discard: true });
 
 const publish = (
   deps: BringUpDeps,
@@ -692,7 +653,6 @@ const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
-  recordTouched: (container: TouchedContainer) => void,
 ): Effect.fn.Return<StartResult, BringUpError> {
   const name = containerName(plan, service);
   const providerId = ProviderId.make(deps.options.ctx.providerId);
@@ -770,11 +730,6 @@ const startService = Effect.fnUntraced(function* (
       networkNames: undefined,
     };
   }
-  recordTouched({
-    name,
-    created: !before.exists,
-    startedExisting: before.exists && !before.running,
-  });
   const publishHost = classifyServicePublishHost({
     platform: deps.options.platform ?? process.platform,
     ...(deps.options.daemonUrl === undefined ? {} : { daemonUrl: deps.options.daemonUrl }),
@@ -839,7 +794,6 @@ const startService = Effect.fnUntraced(function* (
           yield* stopContainerSilent(deps, recoveryId);
           yield* removeContainer(deps, service, recoveryId);
         }
-        recordTouched({ name, created: true, startedExisting: false });
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
         if (
@@ -915,40 +869,6 @@ const startService = Effect.fnUntraced(function* (
   );
 
   return { changed };
-});
-
-interface TouchedContainer {
-  readonly name: string;
-  readonly created: boolean;
-  readonly startedExisting: boolean;
-}
-
-const cleanupTouchedContainers = Effect.fnUntraced(function* (
-  deps: BringUpDeps,
-  touched: ReadonlyArray<TouchedContainer>,
-): Effect.fn.Return<void> {
-  yield* Effect.forEach(
-    touched.filter((container) => container.created || container.startedExisting),
-    (container) => stopContainerSilent(deps, container.name),
-    { discard: true },
-  );
-  yield* Effect.forEach(
-    touched.filter((container) => container.created),
-    (container) => removeContainerSilent(deps, container.name),
-    { discard: true },
-  );
-});
-
-const rollbackPartialApply = Effect.fnUntraced(function* (
-  deps: BringUpDeps,
-  plan: AppPlan,
-  touched: ReadonlyArray<TouchedContainer>,
-  createdNetworks: ReadonlySet<string>,
-): Effect.fn.Return<void> {
-  // Volumes are preserved so rollback does not discard persistent data.
-  yield* cleanupTouchedContainers(deps, touched);
-  if (deps.options.forbidRecreate !== true) yield* removeNetworkSilent(deps, plan);
-  yield* removeCreatedNetworksSilent(deps, createdNetworks, plan);
 });
 
 const SERVICE_START_LOG_TAIL_LINES = 50;
@@ -1032,11 +952,9 @@ const withServiceStartLogTail = (
         logTail,
       });
 
-const rollbackAfterStartFailure = (
+const captureStartFailure = (
   deps: BringUpDeps,
   plan: AppPlan,
-  touched: ReadonlyArray<TouchedContainer>,
-  createdNetworks: ReadonlySet<string>,
   error: BringUpError,
 ): Effect.Effect<never, BringUpError> => {
   const aborted = deps.options.signal?.aborted === true;
@@ -1046,7 +964,6 @@ const rollbackAfterStartFailure = (
       : undefined;
   const capture = named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
   return capture.pipe(
-    Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
     Effect.flatMap((logTail) =>
       deps.options.signal?.aborted === true
         ? Effect.interrupt
@@ -1079,50 +996,25 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
   };
 
-  const createdNetworks = new Set<string>();
   for (const name of networkNames(plan)) {
-    if (yield* ensureNetwork(deps, name, plan)) {
-      createdNetworks.add(name);
-    }
+    yield* ensureNetwork(deps, name, plan);
   }
   const createdVolumes: VolumeCreationFact[] = [];
-  // Volume creation and its receipts run before any container exists; a failure or interrupt
-  // here still removes the networks this apply created. Volumes and recorded receipts stay.
-  yield* Effect.gen(function* () {
-    for (const store of plan.stores) {
-      for (const fact of yield* ensureVolume(deps, plan, store)) {
-        if (options.onVolumeCreated !== undefined) yield* options.onVolumeCreated(fact);
-        createdVolumes.push(fact);
-      }
+  for (const store of plan.stores) {
+    for (const fact of yield* ensureVolume(deps, plan, store)) {
+      if (options.onVolumeCreated !== undefined) yield* options.onVolumeCreated(fact);
+      createdVolumes.push(fact);
     }
-  }).pipe(
-    Effect.onExit((exit) =>
-      Exit.isFailure(exit) ? rollbackPartialApply(deps, plan, [], createdNetworks) : Effect.void,
-    ),
-  );
-  const touched: TouchedContainer[] = [];
+  }
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      const started = yield* startService(deps, plan, service, (container) => {
-        // Recovery replaces the touched record so rollback removes the recreation exactly once.
-        const index = touched.findIndex((entry) => entry.name === container.name);
-        if (index === -1) touched.push(container);
-        else touched[index] = container;
-      }).pipe(
+      const started = yield* startService(deps, plan, service).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
       return { changed: started.changed };
-    }),
-    cleanupOptionalStartFailure: Effect.fnUntraced(function* (service) {
-      const name = containerName(plan, service);
-      const index = touched.findIndex((container) => container.name === name);
-      const container = touched[index];
-      if (container === undefined) return;
-      yield* cleanupTouchedContainers(deps, [container]);
-      touched.splice(index, 1);
     }),
     execHealthcheck: (service, command) =>
       exec(
@@ -1142,13 +1034,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         },
       ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
-  }).pipe(
-    Effect.catch((error) => rollbackAfterStartFailure(deps, plan, touched, createdNetworks, error)),
-    Effect.onInterrupt(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
-  );
+  }).pipe(Effect.catch((error) => captureStartFailure(deps, plan, error)));
 
   if (result._tag === "Cycle") {
-    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
     return yield* Effect.fail(
       new ProviderInternalError({
         providerId: options.ctx.providerId,
@@ -1172,7 +1060,6 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
     return yield* capture.pipe(
-      Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
       Effect.flatMap((logTail): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {

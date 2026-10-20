@@ -681,6 +681,8 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runProviderContract).toBeDefined();
     expect(sdkTest.runProviderContractMatrix).toBeDefined();
     expect(sdkTest.runProviderDataPlaneContract).toBeDefined();
+    expect(sdkTest.runProviderVolumeCreationContract).toBeDefined();
+    expect(sdkTest.runProviderStartRetentionContract).toBeDefined();
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 

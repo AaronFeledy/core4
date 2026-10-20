@@ -603,10 +603,10 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
-    expect(fake.networks.has("lando-bringupapp")).toBe(false);
+    expect(fake.networks.has("lando-bringupapp")).toBe(true);
     expect(fake.networks.has("lando_bridge_network")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      true,
+      false,
     );
   });
 
@@ -633,7 +633,7 @@ describe("provider-lando bringUp", () => {
     expect(nodeCreateBody?.Cmd).toEqual(["sh", "-lc", command]);
   });
 
-  test("cleans up already-started services when cancellation is observed", async () => {
+  test("retains already-started services when cancellation is observed", async () => {
     const fake = makeFakeApi();
     const controller = new AbortController();
     const eventService = {
@@ -650,41 +650,42 @@ describe("provider-lando bringUp", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.running.size).toBe(0);
-    expect(fake.calls.some((call) => call.path.includes("/stop"))).toBe(true);
+    expect(fake.running.size).toBe(1);
+    expect(fake.calls.some((call) => call.path.includes("/stop"))).toBe(false);
   });
 
-  test("rolls back containers and network when the first service start fails after network create", async () => {
+  test("retains the container and networks when the first service start fails", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
 
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.size).toBe(0);
-    expect(fake.networks.has("lando-bringupapp")).toBe(false);
+    expect(fake.existing.size).toBe(1);
+    expect(fake.running.size).toBe(0);
+    expect(fake.networks.has("lando-bringupapp")).toBe(true);
     expect(fake.networks.has("lando_bridge_network")).toBe(true);
     expect(
       fake.calls.some(
         (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-database"),
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      true,
+      false,
     );
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
   });
 
-  test("rolls back the first service and network when the second service start fails", async () => {
+  test("retains both containers and networks when the second service start fails", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-node"]) });
 
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.size).toBe(0);
-    expect(fake.running.size).toBe(0);
-    expect(fake.networks.has("lando-bringupapp")).toBe(false);
+    expect(fake.existing.size).toBe(2);
+    expect(fake.running.size).toBe(1);
+    expect(fake.networks.has("lando-bringupapp")).toBe(true);
     expect(fake.networks.has("lando_bridge_network")).toBe(true);
     const databaseDeleted = fake.calls.some(
       (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-database"),
@@ -692,8 +693,8 @@ describe("provider-lando bringUp", () => {
     const nodeDeleted = fake.calls.some(
       (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-node"),
     );
-    expect(databaseDeleted).toBe(true);
-    expect(nodeDeleted).toBe(true);
+    expect(databaseDeleted).toBe(false);
+    expect(nodeDeleted).toBe(false);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
@@ -720,7 +721,8 @@ describe("provider-lando bringUp", () => {
     expect(startError.operation).toBe("bringUp.start");
     expect(startError.service).toBe("database");
     expect(typeof startError.message).toBe("string");
-    expect(startError.remediation).toMatch(/lando destroy/u);
+    expect(startError.remediation).not.toMatch(/lando destroy/u);
+    expect(startError.remediation).toMatch(/lando start/u);
     expect(startError.details).toEqual({
       status: 500,
       body: "forced start failure for lando-bringupapp-database",

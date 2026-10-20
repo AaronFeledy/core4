@@ -1,4 +1,4 @@
-import { Cause, DateTime, Effect, Exit, Option, Ref, Schema } from "effect";
+import { DateTime, Effect, Option, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
@@ -6,7 +6,7 @@ import {
   FileSyncStartError,
   GlobalAutoStartError,
   type LandofileLoadExpressionError,
-  type ProxyError,
+  ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import {
   MessageWarnEvent,
@@ -28,7 +28,6 @@ import {
   ManagedFileTransactionGuard,
   type PathsService,
   type PluginRegistry,
-  type ProviderError,
   RouterService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
@@ -46,20 +45,9 @@ import {
   publishedTargetsFromEndpoints,
   rewriteCrossEngineProxyRoutes,
 } from "../lifecycle/cross-engine-routes.ts";
-import {
-  compensateFailure,
-  compensateFailureUnless,
-  mapFailureErrors,
-  mergeFailure,
-  runAllAndMergeFailures,
-} from "../lifecycle/failure-compensation.ts";
-import {
-  isReadinessFailure,
-  isReadinessInterruptCause,
-  shouldRetainReadinessResources,
-} from "../lifecycle/readiness-failure.ts";
+import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
-import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
+import { applyAppRoutes } from "../lifecycle/routes.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
@@ -83,6 +71,7 @@ import type { StartManagedScope } from "./start-file-sync.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
+import { markStartMutation } from "./start-incomplete-notice.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
@@ -264,13 +253,6 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
     }
   }
   const ref = target.app;
-  const applyStarted = yield* Ref.make(false);
-  const applyCommitted = yield* Ref.make(false);
-  const routesApplied = yield* Ref.make(false);
-  const routesAttempted = yield* Ref.make(false);
-  const routesRemoved = yield* Ref.make(false);
-  const writersStopped = yield* Ref.make(false);
-  const leaseCleanupDone = yield* Ref.make(false);
 
   yield* events.publish(
     PreAppStartEvent.make({
@@ -302,7 +284,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
     }).pipe(
       mapFailureErrors((cause) =>
-        isReadinessFailure(cause)
+        cause instanceof ServiceNotReadyError
           ? cause
           : new GlobalAutoStartError({
               message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,
@@ -320,6 +302,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
 
   const sshAgentIntent = yield* resolveStartSshAgentIntent(target);
   const gpgIntent = yield* resolveStartGpgAgentIntent(target);
+  yield* markStartMutation(target.plan);
   return yield* withStartedGpgAgent(plan, ref, provider.capabilities, gpgIntent, {
     exec: provider.exec,
     ...(managed === undefined ? {} : { managed }),
@@ -340,7 +323,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
               );
               const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
               const serviceList = Object.values(builtPlan.services);
-              const { pendingStart, sessionLease } = yield* prepareAcceleratedStart(builtPlan, provider, {
+              const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
                 app: ref,
                 events,
                 managed,
@@ -349,169 +332,102 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   : { preparedTargets: execution.preparedTargets }),
               });
 
-              const teardownForFailure = teardownAppliedApp(provider, plan).pipe(
-                Effect.tap(() => Ref.set(writersStopped, true)),
-              );
-              const removeRoutesForFailure = proxy
-                .removeRoutes(plan.id)
-                .pipe(Effect.tap(() => Ref.set(routesRemoved, true)));
-              const removeRoutesAndTeardown =
-                sessionLease === undefined
-                  ? removeRoutesAndDestroyApp(proxy, provider, plan)
-                  : runAllAndMergeFailures<ProviderError | ProxyError, never>([
-                      removeRoutesForFailure,
-                      teardownForFailure,
-                    ]);
-              const finishStart = Effect.gen(function* () {
-                const initialRuntime = new Map<string, ServiceRuntimeInfo>();
-                if (pendingStart !== undefined) yield* pendingStart.advance("sessions-ready");
-                const applyAndInspect = Effect.gen(function* () {
-                  yield* verifyActiveVolumeCoordination(provider);
-                  if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
-                  yield* Ref.set(applyStarted, true);
-                  yield* Effect.scoped(
-                    provider.apply(builtPlan, {
-                      reconcile: resolvedOptions.reconcile ?? false,
-                      serviceEnvironment,
-                      onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
-                      ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                    }),
-                  );
-                  if (pendingStart !== undefined) yield* pendingStart.complete;
-                  yield* Ref.set(applyCommitted, true);
-                  yield* prepareGpgHome;
-                  return yield* Effect.forEach(serviceList, (service) =>
-                    inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
-                      Effect.map((runtime) => {
-                        initialRuntime.set(String(service.name), runtime);
-                        const sourceEndpoints = runtime.endpoints ?? service.endpoints;
-                        return {
-                          ...startedServiceRow(service, runtime),
-                          published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
-                        };
-                      }),
-                    ),
-                  );
-                });
-                const inspectedServices = yield* compensateFailureUnless(
-                  withApplyProgress({ events, plan, services: serviceList, work: applyAndInspect }),
-                  sessionLease === undefined ? teardownAppliedApp(provider, plan) : teardownForFailure,
-                  isReadinessFailure,
-                );
-
-                yield* compensateFailure(
-                  withBuildProvider(
-                    builds.buildApp(builtPlan, {
-                      ...(execution.forceAppBuild === true ? { force: true } : {}),
-                      ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                    }),
-                    provider,
-                  ),
-                  removeRoutesAndTeardown,
-                );
-
-                const routedPlan = {
-                  ...builtPlan,
-                  routes: rewriteCrossEngineProxyRoutes({
-                    plan: builtPlan,
-                    published: inspectedServices.flatMap((service) => service.published),
+              const initialRuntime = new Map<string, ServiceRuntimeInfo>();
+              if (pendingStart !== undefined) yield* pendingStart.advance("sessions-ready");
+              const applyAndInspect = Effect.gen(function* () {
+                yield* verifyActiveVolumeCoordination(provider);
+                if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
+                yield* Effect.scoped(
+                  provider.apply(builtPlan, {
+                    reconcile: resolvedOptions.reconcile ?? false,
+                    serviceEnvironment,
+                    onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+                    ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                   }),
-                };
-                const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
-                yield* Ref.set(routesAttempted, true);
-                const proxyResult = yield* compensateFailure(
-                  routedPlan.routes.length === 0
-                    ? applyRoutes
-                    : withRoutesStartProgress({ events, plan, work: applyRoutes }),
-                  removeRoutesAndTeardown,
                 );
-                yield* Ref.set(routesApplied, true);
-                const readyServices = yield* waitForServiceReadiness({
-                  provider,
-                  plan: builtPlan,
-                  services: serviceList.map((service) => service.name),
-                  initial: initialRuntime,
-                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                });
-                const proxyUrls = appliedProxyUrlsByService(proxyResult);
-                const servicesStarted = readyServices.map((service) => ({
-                  ...service,
-                  endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
-                }));
-
-                yield* compensateFailure(
-                  events.publish(
-                    PostAppStartEvent.make({
-                      eventName: "post-app-start",
-                      appRef: ref,
-                      providerId: plan.provider,
-                      timestamp: now(),
+                if (pendingStart !== undefined) yield* pendingStart.complete;
+                yield* prepareGpgHome;
+                return yield* Effect.forEach(serviceList, (service) =>
+                  inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
+                    Effect.map((runtime) => {
+                      initialRuntime.set(String(service.name), runtime);
+                      const sourceEndpoints = runtime.endpoints ?? service.endpoints;
+                      return {
+                        ...startedServiceRow(service, runtime),
+                        published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
+                      };
                     }),
                   ),
-                  removeRoutesAndTeardown,
                 );
-                const postStart = PostStartEvent.make({
-                  _tag: "post-start",
-                  scope: "app",
-                  app: ref,
-                  plan,
-                  timestamp: now(),
-                });
-                yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
-                const scanner = yield* Effect.serviceOption(UrlScanner);
-                const checks = Option.isSome(scanner)
-                  ? yield* runPostStartScan({
-                      scanner: scanner.value,
-                      plan: builtPlan,
-                      events,
-                      urls: startupScanUrls(builtPlan, servicesStarted),
-                    })
-                  : undefined;
-
-                return { app: plan.name, servicesStarted, ...(checks === undefined ? {} : { checks }) };
               });
-              if (sessionLease === undefined) return yield* finishStart;
-              return yield* Effect.uninterruptibleMask((restore) =>
-                Effect.gen(function* () {
-                  const exit = yield* Effect.exit(restore(finishStart));
-                  if (Exit.isSuccess(exit)) return exit.value;
-                  if ((yield* Ref.get(applyCommitted)) && shouldRetainReadinessResources(exit.cause))
-                    return yield* Effect.failCause(exit.cause);
-                  const cleanupExit = yield* Effect.exit(
-                    Effect.gen(function* () {
-                      const needRoutes =
-                        (yield* Ref.get(routesAttempted)) && !(yield* Ref.get(routesRemoved));
-                      const needWriters = (yield* Ref.get(applyStarted)) && !(yield* Ref.get(writersStopped));
-                      yield* runAllAndMergeFailures<ProviderError | ProxyError, never>([
-                        ...(needRoutes ? [removeRoutesForFailure] : []),
-                        ...(needWriters ? [teardownForFailure] : []),
-                      ]);
-                      yield* sessionLease.rollback;
-                      yield* Ref.set(leaseCleanupDone, true);
-                    }),
-                  );
-                  if (Exit.isFailure(cleanupExit)) {
-                    const failure = mergeFailure(exit.cause, cleanupExit.cause, "rollback");
-                    return yield* Effect.failCause(failure);
-                  }
-                  return yield* Effect.failCause(exit.cause);
+              const inspectedServices = yield* withApplyProgress({
+                events,
+                plan,
+                services: serviceList,
+                work: applyAndInspect,
+              });
+
+              yield* withBuildProvider(
+                builds.buildApp(builtPlan, {
+                  ...(execution.forceAppBuild === true ? { force: true } : {}),
+                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                }),
+                provider,
+              );
+
+              const routedPlan = {
+                ...builtPlan,
+                routes: rewriteCrossEngineProxyRoutes({
+                  plan: builtPlan,
+                  published: inspectedServices.flatMap((service) => service.published),
+                }),
+              };
+              const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
+              const proxyResult = yield* routedPlan.routes.length === 0
+                ? applyRoutes
+                : withRoutesStartProgress({ events, plan, work: applyRoutes });
+              const readyServices = yield* waitForServiceReadiness({
+                provider,
+                plan: builtPlan,
+                services: serviceList.map((service) => service.name),
+                initial: initialRuntime,
+                ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+              });
+              const proxyUrls = appliedProxyUrlsByService(proxyResult);
+              const servicesStarted = readyServices.map((service) => ({
+                ...service,
+                endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
+              }));
+
+              yield* events.publish(
+                PostAppStartEvent.make({
+                  eventName: "post-app-start",
+                  appRef: ref,
+                  providerId: plan.provider,
+                  timestamp: now(),
                 }),
               );
+              const postStart = PostStartEvent.make({
+                _tag: "post-start",
+                scope: "app",
+                app: ref,
+                plan,
+                timestamp: now(),
+              });
+              yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
+              const scanner = yield* Effect.serviceOption(UrlScanner);
+              const checks = Option.isSome(scanner)
+                ? yield* runPostStartScan({
+                    scanner: scanner.value,
+                    plan: builtPlan,
+                    events,
+                    urls: startupScanUrls(builtPlan, servicesStarted),
+                  })
+                : undefined;
+
+              return { app: plan.name, servicesStarted, ...(checks === undefined ? {} : { checks }) };
             }),
           }),
       }),
-  }).pipe(
-    Effect.onExit((exit) => {
-      if (Exit.isSuccess(exit) || !Cause.hasInterrupts(exit.cause)) return Effect.void;
-      if (isReadinessInterruptCause(exit.cause)) return Effect.void;
-      return Effect.all([Ref.get(applyStarted), Ref.get(routesApplied), Ref.get(leaseCleanupDone)]).pipe(
-        Effect.flatMap(([started, routed, cleaned]) => {
-          if (cleaned) return Effect.void;
-          if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
-          return Effect.void;
-        }),
-        Effect.orDie,
-      );
-    }),
-  );
+  });
 });

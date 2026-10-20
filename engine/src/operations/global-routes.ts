@@ -8,7 +8,7 @@ import { routerEnabled } from "../config/router-config.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 
 /**
- * Replace the global route file with routes of started services and active owned siblings.
+ * Replace the global route file only after all selected groups succeed, retaining active owned siblings.
  */
 export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
   router: RouterServiceShape,
@@ -19,6 +19,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     readonly failed: ReadonlySet<string>;
   },
 ): Effect.fn.Return<ReadonlyMap<ServiceName, ReadonlyArray<string>>, ProxyApplyError | ProviderError> {
+  if (outcome.failed.size > 0) return new Map<ServiceName, ReadonlyArray<string>>();
   if (plan.routes.length === 0 || !routerEnabled(plan)) {
     // Best-effort: a route-free or router-disabled plan must not leave previously published hostnames live.
     yield* router.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));

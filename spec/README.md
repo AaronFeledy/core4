@@ -90,7 +90,7 @@ If you are looking for a public surface or policy:
 | App mounts and mount realization | 06 | §6.4 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Endpoints, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Healthchecks, certificates, and trust injection | 06 | §6.7 + §6.8 |
+| Healthchecks, start-failure retention, certificates, and trust injection | 06 | §6.7 + §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo` schema | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
@@ -98,7 +98,7 @@ If you are looking for a public surface or policy:
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
-| Start, bare restart, selected restart, and rebuild | 06 | §6.15 |
+| Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Six-layer Landofile merge | 07 | §7.2 |

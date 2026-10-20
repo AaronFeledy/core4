@@ -1,11 +1,50 @@
 import { expect, test } from "bun:test";
 import { failureOutcomeFromCause } from "@lando/sdk/command-result";
-import { GlobalAppError } from "@lando/sdk/errors";
+import { GlobalAppError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
+import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { mergeFailure } from "../../src/lifecycle/failure-compensation.ts";
+import { withIncompleteStartNotice } from "../../src/operations/start-incomplete-notice.ts";
 import { startAppForTarget } from "../../src/operations/start.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
+
+test("a failed user start preserves the primary tag without rollback-role errors", async () => {
+  const primary = new ServiceStartError({
+    service: "web",
+    providerId: "lando",
+    operation: "apply",
+    message: "dependency gate failed",
+    remediation: "Repair the dependency and retry start.",
+  });
+  let destroyed = 0;
+  const harness = makeHarness({
+    apply: () => Effect.fail(primary),
+    onDestroy: () => {
+      destroyed++;
+    },
+    destroyEffect: Effect.fail(
+      new ProviderUnavailableError({ providerId: "lando", operation: "destroy", message: "must not run" }),
+    ),
+  });
+  const exit = await Effect.runPromiseExit(
+    startAppForTarget(
+      {},
+      {
+        plan,
+        root: plan.root,
+        app: { kind: "user", id: plan.id, root: plan.root },
+      },
+    ).pipe(Effect.provide(harness.layer)),
+  );
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toBe(primary);
+    expect(outcome.additionalErrors).toEqual([]);
+  }
+  expect(destroyed).toBe(0);
+});
 
 test("startForTarget global error mapping preserves secondary roles and reasons", async () => {
   const primary = new GlobalAppError({ message: "global start", remediation: "repair" });
@@ -40,4 +79,67 @@ test("startForTarget global error mapping preserves secondary roles and reasons"
       error: { _tag: "GlobalAutoStartError", cause: primary },
       additionalErrors: [{ role: "rollback", error: { _tag: "GlobalAutoStartError", cause: rollback } }],
     });
+});
+
+const noticeTarget = {
+  plan,
+  root: plan.root,
+  app: { kind: "user" as const, id: plan.id, root: plan.root },
+};
+
+test("a provider apply failure records the left-in-place inventory notice", async () => {
+  // Given: a start whose provider apply fails after the attempt began changing the app.
+  const warnings = makeCommandWarnings(false);
+  const harness = makeHarness({
+    apply: () =>
+      Effect.fail(new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "down" })),
+    inspect: (target) =>
+      Effect.succeed({
+        app: plan.id,
+        service: target.service,
+        providerId: plan.provider,
+        status: "running",
+        containerId: "web-id",
+      }),
+  });
+  // When: the start fails under the CLI notice wrapper.
+  const exit = await Effect.runPromiseExit(
+    withIncompleteStartNotice(startAppForTarget({}, noticeTarget)).pipe(
+      Effect.provideService(CommandWarnings, warnings),
+      Effect.provide(harness.layer),
+    ),
+  );
+  // Then: one notice lists the retained running service.
+  expect(Exit.isFailure(exit)).toBe(true);
+  const notices = await Effect.runPromise(warnings.failureNotices);
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toContain("Resources were left in place. Running: web;");
+});
+
+test("a failure before any app mutation records the no-change notice", async () => {
+  // Given: global auto-start fails before any app-owned acquisition or provider apply.
+  const warnings = makeCommandWarnings(false);
+  const harness = makeHarness();
+  const plannedApp = { ...plan, requires: { globalServices: ["traefik"] } };
+  // When: the start fails under the CLI notice wrapper.
+  const exit = await Effect.runPromiseExit(
+    withIncompleteStartNotice(startAppForTarget({}, { ...noticeTarget, plan: plannedApp })).pipe(
+      Effect.provideService(GlobalAppService, {
+        id: "global",
+        root: Effect.succeed(plan.root),
+        paths: Effect.die("unused"),
+        ensureRoot: Effect.fail(new GlobalAppError({ message: "global start", remediation: "repair" })),
+        ensureUserLandofile: Effect.die("unused"),
+        regenerateDist: () => Effect.die("unused"),
+        ensureRunning: () => Effect.die("unused"),
+      }),
+      Effect.provideService(CommandWarnings, warnings),
+      Effect.provide(harness.layer),
+    ),
+  );
+  // Then: the notice says nothing in the app changed.
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(await Effect.runPromise(warnings.failureNotices)).toEqual([
+    "Start did not complete. No app resources changed. Fix the reported error, then run `lando start`.",
+  ]);
 });

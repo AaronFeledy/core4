@@ -115,7 +115,8 @@ describe("bringUp start-failure remediation hook", () => {
     // Then
     expect(error._tag).toBe("ServiceStartError");
     expect(error.remediation).toBe(APPLY_REMEDIATION);
-    expect(APPLY_REMEDIATION).toContain("lando destroy");
+    expect(APPLY_REMEDIATION).not.toContain("lando destroy");
+    expect(APPLY_REMEDIATION).toContain("lando start");
     expect(APPLY_REMEDIATION).toContain("lando doctor");
   });
 

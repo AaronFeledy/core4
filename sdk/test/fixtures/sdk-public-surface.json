@@ -1839,6 +1839,7 @@
       "runProviderContract",
       "runProviderContractMatrix",
       "runProviderDataPlaneContract",
+      "runProviderStartRetentionContract",
       "runProviderVolumeCreationContract",
       "runRecipeDecomposerContractSuite",
       "runRedactionContract",

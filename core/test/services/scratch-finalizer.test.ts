@@ -370,7 +370,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       ).toBe(keepOnFailure);
     });
   });
-  test("keep-on-failure leaves the registry entry and scratch root after apply fails", async () => {
+  test.each([false, true])("apply failure obeys scratch keep-on-failure=%s", async (keepOnFailure) => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];
       const destroyCalls: DestroyCall[] = [];
@@ -382,7 +382,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
             service.acquire({
               source: { kind: "fork" },
               detached: true,
-              keepOnFailure: true,
+              keepOnFailure,
             }),
           ).pipe(Effect.result);
           const entries = yield* registry.list();
@@ -391,14 +391,13 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       );
 
       expect(retained.outcome._tag).toBe("Failure");
-      expect(retained.entries).toHaveLength(1);
-      expect(retained.entries[0]?.status).toBe("acquiring");
-      expect(destroyCalls).toEqual([]);
+      expect(retained.entries).toHaveLength(keepOnFailure ? 1 : 0);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", retained.entries[0]?.id ?? ""),
+          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
-      ).toBe(true);
+      ).toBe(keepOnFailure);
     });
   });
 
