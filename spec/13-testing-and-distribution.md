@@ -39,7 +39,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Desktop notification bounds contract | Notification fields validate before publication and sanitization precedes capability-gated presentation. Default TTY notifications use query-free OSC 99 without loading OpenTUI (§8.9.7). |
 | HostProxy exact-union contract | `HostProxyRequest` contains exactly `openUrl`, `openPath`, `runLando`, and `runBun`. |
 | OpenTUI native one-of-eight pruning contract | Each release target embeds one matching native package and stubs the other seven without redirecting testing or relative imports. |
-| SDK compatibility/schema-snapshot artifact-set contract | The additive SDK inventory and every schema-backed surface match `sdk/API_COMPATIBILITY.md` and generated artifacts. |
+| SDK compatibility/schema-snapshot artifact-set contract | The SDK public surface and every schema-backed surface match `sdk/test/fixtures/sdk-public-surface.json` and generated artifacts. |
 | Tooling engine contract | Engines execute dependency-ordered programs, cancel children, publish redacted events, honor up-to-date checks, and tag failures. |
 | Route filter contract | Filters are pure, deterministic, idempotent, provider-neutral, capability-truthful, and stably ordered. |
 | Secret store contract | Test `env`, fake-runner `1password`, durable `lando`, and scoped `lando-session`: exclusive scheme ownership, grammar/namespace injectivity, cross-session/closed-scope refusal, ids-only list, metadata-only describe, exact read/write errors, unavailable `has`, no CLI backend enumeration, insecure POSIX/Windows storage refusal, locked atomic rotation, and redaction before use (§9.5.1). |

@@ -74,8 +74,9 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates, and checksum/version-pinned helper binaries. |
 | `<userDataRoot>/secrets/` | Persistent writable `lando` user-grant store (§9.5.1), including refresh grants: private directory, owner-only files, locked atomic replacement; excluded from managed-file backups, journals, exports, and support bundles. Access tokens/resource credentials remain session-only. |
 | `<userDataRoot>/runtime/config/`, `bin/`, `storage/`, `run/`, `machines/` | Default-provider private config, binaries, storage, sockets/PIDs, and managed VM state. |
-| `<userDataRoot>/run/<app-id>/host-proxy.sock` | Owner-only user-app host-proxy socket (§10.10). |
-| `<userDataRoot>/run/scratch/<scratch-id>/host-proxy.sock` | Owner-only scratch host-proxy socket, removed at destroy or scope close. |
+| `<userDataRoot>/run/<app-id>-<root-hash>/host-proxy.sock` | Owner-only host-proxy socket for a user or scratch app (§10.10). `<root-hash>` is the first 12 hex digits of the SHA-256 of the app root. Removed at stop, destroy, or scratch scope close. |
+| `<userDataRoot>/run/<app-id>-<root-hash>/worker.json` | Owner-only host-proxy worker record (§10.10.1): pid, transport endpoint, protocol version, configuration digest, and the session id, bearer token, and control token a later start reuses. Removed at stop, destroy, uninstall, or replacement. |
+| `<userDataRoot>/run/<app-id>-<root-hash>-<kind>-agent/worker.json` | Owner-only SSH or gpg relay worker record (§10.4): pid, control endpoint and token, delivered mount, protocol version, and configuration digest. Removed with the relay directory at stop, destroy, or uninstall; replacement keeps the mounted directories. |
 | `<userDataRoot>/run/tunnels/<session-id>.{pid,sock,json}` | Best-effort detached-tunnel process handles reconciled against `tunnel-registry`. |
 | `<userDataRoot>/bin/mutagen[.exe]`, `bin/mutagen-agents/` | Isolated verified Mutagen host and guest binaries; never sourced from containers. |
 | `<userDataRoot>/run/file-sync/daemon.sock`, `daemon.pid` | Lando-owned file-sync daemon endpoint and orphan-detection PID; Windows uses the corresponding named pipe. |

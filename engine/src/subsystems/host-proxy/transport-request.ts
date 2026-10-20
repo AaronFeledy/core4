@@ -18,11 +18,16 @@ export const headerValue = (request: IncomingMessage, name: string): string => {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 };
 
-export const bodyText = (request: IncomingMessage, timeoutMs: number): Promise<string> =>
+export const bodyText = (
+  request: IncomingMessage,
+  timeoutMs: number,
+  maxBytes = HOST_PROXY_MAX_FRAME_BYTES,
+): Promise<string> =>
   new Promise((resolveText, reject) => {
     let body = "";
     let settled = false;
     let draining = false;
+    let bytes = 0;
     const socket = request.socket;
     const timeout = setTimeout(() => {
       // Bun 1.4 IncomingMessage/socket destroy does not close the client while a
@@ -60,7 +65,8 @@ export const bodyText = (request: IncomingMessage, timeoutMs: number): Promise<s
     const onData = (chunk: string): void => {
       if (draining) return;
       if (settled) return;
-      if (body.length + chunk.length > HOST_PROXY_MAX_FRAME_BYTES) {
+      bytes += Buffer.byteLength(chunk);
+      if (bytes > maxBytes) {
         rejectOnce(new Error("Host-proxy request exceeded maximum frame size."));
         return;
       }

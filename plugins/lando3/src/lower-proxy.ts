@@ -1,12 +1,11 @@
-import { isLegacyTagged } from "@lando/sdk/landofile";
+import { isLegacyTagged, parseRouteHostname } from "@lando/sdk/landofile";
 import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
+import { Result } from "effect";
 import { CATALOG, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
 import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
-const HOSTNAME =
-  /^[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?(?:\.[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?)*$/;
 const expression = (text: string) => text.includes("{{") || text.includes("${");
 
 const parseRoute = (value: unknown): RouteObjectInput | undefined => {
@@ -19,7 +18,7 @@ const parseRoute = (value: unknown): RouteObjectInput | undefined => {
   const authority = slash < 0 ? text : text.slice(0, slash);
   const colon = authority.indexOf(":");
   const hostname = colon < 0 ? authority : authority.slice(0, colon);
-  if (!HOSTNAME.test(hostname)) return undefined;
+  if (Result.isFailure(parseRouteHostname(hostname))) return undefined;
   const port = object?.port !== undefined ? object.port : colon < 0 ? undefined : authority.slice(colon + 1);
   if (
     port !== undefined &&
