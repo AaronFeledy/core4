@@ -139,6 +139,18 @@ bun test core/test/library sdk/test/library
 bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 ```
 
+## In-container helper
+
+Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
+
+```bash
+bun run build:container-helper
+```
+
+That starts the `lando-container-helper` builder app with the source-mode CLI and writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` includes this step. The compiled-binary wrapper refuses to embed binaries older than their sources, so rebuild after you edit the Go code. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way.
+
+In CI, the `container-helper` job sets up Lando with the Docker provider, builds and tests the helper, runs `core/test/container-helper/helper.integration.test.ts` against it, and uploads the `container-helper` artifact. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
+
 ## Platform binary builds
 
 CI builds and smokes one binary per required PR platform:

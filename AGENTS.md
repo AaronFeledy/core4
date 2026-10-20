@@ -33,6 +33,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial. The live-socket gate connects to the candidate rather than stat-ing it, so a socket file left behind by a dead daemon makes those suites skip instead of fail; `LANDO_TEST_PODMAN_SOCKET` keeps its precedence but is not exempt from that check.
 - `NIGHTLY_TIER_TESTS` in `scripts/test-shards.ts` (the CI-workflow codegen suite and the Linux acceptance suite) is excluded from PR shards, so drift those files guard can reach `main` without a red PR. Run them by path whenever you touch their generator.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
+- The in-container helper (host-proxy `lando` client and `lando logs --source` reader) is static Go in `core/container-helper/`, built with Lando: `bun run build:container-helper` (`--test` runs `go vet`/`go test`) writes `core/container-helper/dist/`; never install Go on the host. Compiling `lando` refuses helpers older than their sources; tests that compile but never run the helper set `LANDO_CONTAINER_HELPER_DIR` to stubs (`core/test/build/fixtures/container-helper-stubs.ts`). `core/test/container-helper/helper.integration.test.ts` needs the real build.
 
 ## Generated Files
 

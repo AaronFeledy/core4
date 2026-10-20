@@ -133,7 +133,7 @@ No OCLIF tarball or third distribution form ships. Both forms use the same nativ
 
 Bundled plugins and renderer contributions are generated as static imports from the ship list. Bundled recipes are generated from the canonical recipe set; the target architecture embeds complete recipe trees, while the current implementation embeds the generated manifest records. Library consumers opt into bundled plugin and recipe discovery (§16.4).
 
-Runtime bundles and native helpers are immutable, pinned, checksum-verified, on-demand downloads under Lando-owned data paths; they are not embedded in the main binary. CI MUST verify setup against a current-commit local bundle manifest without disabling checksum validation.
+Runtime bundles and native host helpers are immutable, pinned, checksum-verified, on-demand downloads under Lando-owned data paths; they are not embedded in the main binary. The in-container helper is a build-known asset embedded per Linux architecture (§17.3). CI MUST verify setup against a current-commit local bundle manifest without disabling checksum validation.
 
 Releases include public schema and command-schema artifacts, declaration bundles, and `@lando/sdk`. The docs site combines authored guides with generated schema, API, command, event, and error references; executable-guide behavior follows §19.
 

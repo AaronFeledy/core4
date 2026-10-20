@@ -114,6 +114,7 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
 - **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. The CLI surface lives in `core/src/cli/spec/` (spec machinery), `core/src/cli/command-specs/` (per-command declarations), and `core/src/cli/commands/` (operation invocation and render helpers). OCLIF is not a shipping engine.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
+- **In-container helper:** a small static Go program in `core/container-helper/`, built with Lando itself (`bun run build:container-helper`). You don't need Go installed.
 
 ## Building from source
 

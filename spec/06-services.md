@@ -420,7 +420,7 @@ Each `LogChunk.line` is one complete line; line terminators, including a carriag
 
 #### 6.14.3 Reification
 
-`redirect` routes owned daemon logs to stdout/stderr during build and requires an owned image path, not `serviceLogSources`. `follow` is implemented by `RuntimeProvider.logs`, never a core shell-out, and requires `serviceLogSources`.
+`redirect` routes owned daemon logs to stdout/stderr during build and requires an owned image path, not `serviceLogSources`. `follow` is implemented by `RuntimeProvider.logs`, never a core shell-out, and requires `serviceLogSources`. Providers that read container files through exec install the static in-container helper (§17.3) once per followed source, serve every read for that source from one helper session, and remove the helper when the follow ends. The helper does not depend on the image's libc.
 
 Without that capability, required follow sources fail with `CapabilityError`; optional sources are explicitly reported unavailable and skipped. Sources are never silently dropped.
 
