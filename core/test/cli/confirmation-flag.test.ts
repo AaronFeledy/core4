@@ -134,6 +134,28 @@ describe("confirmation argv and help", () => {
     }
   });
 
+  test("db:export help advertises --force-tty and a dash stdout dump", () => {
+    const spec = sqlSpec("db:export");
+    const help = renderPluginOwnedCommandHelp(spec);
+    expect(help).toContain("--force-tty");
+    expect(help).toContain("stdout");
+    const parsed = pluginOwnedCommandInputFromArgv(spec, ["-", "--force-tty"]);
+    expect(parsed.args.file).toBe("-");
+    expect(parsed.flags["force-tty"]).toBe(true);
+    expect(spec.payloadStdout?.({ argv: [], parsedArgv: ["-"], flags: {}, args: { file: "-" } })).toBe(true);
+    expect(spec.payloadStdout?.({ argv: [], parsedArgv: ["dump.sql"], flags: {}, args: { file: "dump.sql" } })).toBe(
+      false,
+    );
+  });
+
+  test("db:import help advertises a dash stdin dump", () => {
+    const spec = sqlSpec("db:import");
+    const help = renderPluginOwnedCommandHelp(spec);
+    expect(help).toContain("stdin");
+    const parsed = pluginOwnedCommandInputFromArgv(spec, ["-"]);
+    expect(parsed.args.file).toBe("-");
+  });
+
   for (const flag of ["--yes", "-y"]) {
     test(`scratch:destroy accepts ${flag} in CLI flag validation`, () => {
       // Given

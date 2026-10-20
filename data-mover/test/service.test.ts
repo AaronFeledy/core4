@@ -1098,6 +1098,25 @@ describe("BunDataMover.layer", () => {
         );
         expect(await readFile(target, "utf8")).toBe("outside");
 
+        const trustedDest = join(outsideDir, "trusted-dest.txt");
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(inside) },
+                to: { _tag: "hostPath", path: absolute(trustedDest), trusted: true },
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+        expect(await readFile(trustedDest, "utf8")).toBe("inside");
+
         const traversalTarget = `${dir}/missing/../../../host-root-bypass.txt`;
         const escapedTarget = resolve(traversalTarget);
         const traversalExit = await Effect.runPromiseExit(

@@ -20,6 +20,7 @@ import {
 
 import type { DumpCompression } from "./compression.ts";
 import { withHostDumpCompression } from "./compression.ts";
+import { isNonRegularExistingPath, isStdoutDumpArg } from "./dump-stdio.ts";
 import type { SqlCreds } from "./creds.ts";
 import {
   type SqlFamily,
@@ -96,12 +97,16 @@ export const runExport = Effect.fn("Sql.export")(function* (
 ) {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
+  const special = yield* isNonRegularExistingPath(input.file);
+  const trustHost = special || isStdoutDumpArg(input.file);
   return yield* withHostDumpCompression({
     path: input.file,
     compression: input.compression,
     direction: "export",
     transfer: (workingPath) => {
       const path = AbsolutePath.make(workingPath);
+      const trusted = trustHost || workingPath !== input.file;
+      const to = { _tag: "hostPath" as const, path, ...(trusted ? { trusted: true } : {}) };
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
         const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
@@ -116,7 +121,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
               service,
               path: PortablePath.make(bak),
             },
-            to: { _tag: "hostPath", path },
+            to,
             overwrite: true,
           });
         });
@@ -129,7 +134,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
           command: dumpCommand(input.family, input.creds),
           env: input.env,
         },
-        to: { _tag: "hostPath", path },
+        to,
         overwrite: true,
       });
     },

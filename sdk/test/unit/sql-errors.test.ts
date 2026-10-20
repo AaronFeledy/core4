@@ -7,6 +7,7 @@ import {
   SqlConfirmRequiredError,
   SqlDumpCompressionError,
   SqlDumpNotFoundError,
+  SqlDumpTtyError,
   SqlSeedSourceError,
   SqlServiceAmbiguousError,
   SqlServiceNotFoundError,
@@ -142,6 +143,26 @@ describe("SqlDumpNotFoundError", () => {
     expect(decoded.path).toBe("/tmp/sql-app/_backups/missing.sql.gz");
     expect(decoded.appRoot).toBe("/tmp/sql-app");
     expect(decoded.remediation).toContain("app root");
+  });
+});
+
+describe("SqlDumpTtyError", () => {
+  test("encodes and decodes with _tag intact when stdout is a terminal", () => {
+    const error = new SqlDumpTtyError({
+      message: "Refusing to write a binary dump to a terminal.",
+      path: "/dev/stdout",
+      remediation: "Redirect stdout, or pass --force-tty to write the dump to this terminal.",
+    });
+
+    expect(error._tag).toBe("SqlDumpTtyError");
+    expect(Schema.is(SqlDumpTtyError)(error)).toBe(true);
+
+    const encoded = Schema.encodeUnknownSync(SqlDumpTtyError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlDumpTtyError)(encoded);
+
+    expect(decoded._tag).toBe("SqlDumpTtyError");
+    expect(decoded.path).toBe("/dev/stdout");
+    expect(decoded.remediation).toContain("--force-tty");
   });
 });
 

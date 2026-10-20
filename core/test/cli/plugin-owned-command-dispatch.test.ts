@@ -11,12 +11,14 @@ import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/buil
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   isPluginOwnedCommandId,
   pluginOwnedCliFlagError,
   pluginOwnedCommandEffect,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
+  resultIoForPayloadStdout,
 } from "../../src/cli/run-plugin-owned-command.ts";
 
 const DbImportResult = Schema.Struct({
@@ -283,5 +285,15 @@ describe("plugin-owned command dispatch", () => {
     if (error instanceof UnknownCliFlagError) {
       expect(error.flag).toBe("--servce");
     }
+  });
+
+  test("routes result envelopes to stderr when the payload owns stdout", () => {
+    const io = createBufferedRendererIO();
+    const routed = resultIoForPayloadStdout(io);
+    expect(routed.writeStdout("dump-bytes")).toBe(true);
+    expect(io.stdout()).toBe("");
+    expect(io.stderr()).toBe("dump-bytes");
+    expect(routed.writeStderr("progress\n")).toBe(true);
+    expect(io.stderr()).toBe("dump-bytesprogress\n");
   });
 });

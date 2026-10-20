@@ -750,7 +750,7 @@ const validateHostEndpoints = Effect.fnUntraced(function* (spec: DataTransferSpe
   });
   yield* Effect.all(
     endpoints.map((endpoint) =>
-      endpoint === spec.from && endpoint._tag === "hostPath" && endpoint.trusted === true
+      endpoint._tag === "hostPath" && endpoint.trusted === true
         ? Effect.void
         : ensureInsideRoot(endpoint.path, root),
     ),

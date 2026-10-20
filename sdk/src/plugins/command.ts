@@ -89,6 +89,12 @@ export interface ExecutableCommandSpec<
    */
   readonly render?: ExecutableCommandRender<A, E, R, Input>;
   /**
+   * When true for this invocation, the command writes a payload on stdout
+   * (for example `db:export -`). Result envelopes, progress, and checksum
+   * lines must use stderr so the payload stays byte-clean.
+   */
+  readonly payloadStdout?: (input: Input) => boolean;
+  /**
    * Exact secret values to seed RedactionService when encoding the command
    * envelope. Tokens must not be required fields on resultSchema.
    */

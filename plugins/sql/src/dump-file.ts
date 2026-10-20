@@ -31,8 +31,9 @@ const dumpNotFound = (path: string, appRoot: string, kind: DumpMiss): SqlDumpNot
 };
 
 export type ReadableDump = {
-  readonly digest: string;
+  readonly digest?: string;
   readonly compression: DumpCompression;
+  readonly streaming?: boolean;
 };
 
 export const ensureReadableDump = (
@@ -47,6 +48,11 @@ export const ensureReadableDump = (
       // permission explicitly so import fails here, before the count probe and
       // overwrite confirmation, instead of inside DataMover.
       await access(path, constants.R_OK);
+      // FIFOs, stdin, and other non-regular sources can be read only once.
+      // Hashing them here would consume the dump before DataMover or host
+      // decompression ran. Detect compression from magic during that later
+      // single pass instead.
+      if (!info.isFile()) return { compression: "none" as const, streaming: true };
       const hash = new Bun.CryptoHasher("sha256");
       let prefix: Uint8Array = new Uint8Array();
       for await (const chunk of Bun.file(path).stream()) {

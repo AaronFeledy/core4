@@ -8,6 +8,8 @@ import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/e
 import type { DataTransferResult } from "@lando/sdk/schema";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 
+import { isNonRegularExistingPath } from "./dump-stdio.ts";
+
 export type DumpCompression = "gzip" | "zstd" | "none";
 
 const GZIP_MAGIC = [0x1f, 0x8b] as const;
@@ -143,39 +145,121 @@ export const acquireStagedDump = (
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
   Effect.promise(() => rm(path, { recursive: true, force: true }));
 
+const peekDumpSource = async (
+  path: string,
+): Promise<{ readonly compression: DumpCompression; readonly source: ReadableStream<Uint8Array> }> => {
+  const reader = Bun.file(path).stream().getReader();
+  let prefix: Uint8Array = new Uint8Array();
+  const pending: Uint8Array[] = [];
+  while (prefix.byteLength < 4) {
+    const next = await reader.read();
+    if (next.done) break;
+    pending.push(next.value);
+    prefix = collectDumpPrefix(next.value, prefix);
+  }
+  let index = 0;
+  return {
+    compression: detectDumpCompression(prefix),
+    source: new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        const queued = pending[index];
+        if (queued !== undefined) {
+          index += 1;
+          controller.enqueue(queued);
+          return;
+        }
+        const next = await reader.read();
+        if (next.done) {
+          reader.releaseLock();
+          controller.close();
+          return;
+        }
+        controller.enqueue(next.value);
+      },
+      cancel: () => reader.cancel(),
+    }),
+  };
+};
+
+const stageStreamingImport = (
+  sourcePath: string,
+  destPath: string,
+): Effect.Effect<{ readonly digest: string; readonly sizeBytes: number }, SqlDumpCompressionError> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peeked = yield* Effect.tryPromise({
+        try: () => peekDumpSource(sourcePath),
+        catch: () => dumpCompressionError(sourcePath, "gzip", "decompress"),
+      });
+      const body =
+        peeked.compression === "none"
+          ? peeked.source
+          : streamThrough(peeked.source, peeked.compression, "decompress");
+      const persistError =
+        peeked.compression === "none"
+          ? dumpCompressionError(sourcePath, "gzip", "decompress")
+          : dumpCompressionError(sourcePath, peeked.compression, "decompress");
+      const result = yield* persistVerifiedStream({
+        body: Stream.fromReadableStream({
+          evaluate: () => body,
+          onError: () => persistError,
+          releaseLockOnEnd: true,
+        }),
+        destinationPath: destPath,
+        mode: 0o600,
+      }).pipe(Effect.mapError(() => persistError));
+      return { digest: result.sha256, sizeBytes: result.sizeBytes };
+    }),
+  );
+
 export const withHostDumpCompression = <E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly direction: "export" | "import";
   readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<DataTransferResult, E, R>;
-}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataChecksumMismatchError, R> => {
-  const compression = input.compression;
-  if (compression === "none") return input.transfer(input.path);
-  return Effect.scoped(
-    Effect.gen(function* () {
-      const directory = yield* Effect.acquireRelease(
-        acquireStagedDump(
-          input.direction === "export" ? dirname(input.path) : tmpdir(),
-          compression,
-          input.direction === "export" ? "compress" : "decompress",
-        ),
-        releaseStagedDump,
+}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataChecksumMismatchError, R> =>
+  Effect.gen(function* () {
+    const special = yield* isNonRegularExistingPath(input.path);
+    if (input.direction === "import" && special) {
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const directory = yield* Effect.acquireRelease(
+            acquireStagedDump(tmpdir(), "gzip", "decompress"),
+            releaseStagedDump,
+          );
+          const staged = join(directory, "dump");
+          const stagedDump = yield* stageStreamingImport(input.path, staged);
+          return yield* input.transfer(staged, stagedDump.digest);
+        }),
       );
-      const staged = join(directory, "dump");
-      if (input.direction === "import") {
-        const decompressed = yield* writeDumpTransform(
-          input.path,
-          staged,
-          compression,
-          "decompress",
-          input.expectedDigest,
+    }
+    const compression = input.compression;
+    if (compression === "none") return yield* input.transfer(input.path);
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(
+          acquireStagedDump(
+            input.direction === "export" && !special ? dirname(input.path) : tmpdir(),
+            compression,
+            input.direction === "export" ? "compress" : "decompress",
+          ),
+          releaseStagedDump,
         );
-        return yield* input.transfer(staged, decompressed.digest);
-      }
-      const result = yield* input.transfer(staged);
-      const compressed = yield* writeDumpTransform(staged, input.path, compression, "compress");
-      return { ...result, ...compressed };
-    }),
-  );
-};
+        const staged = join(directory, "dump");
+        if (input.direction === "import") {
+          const decompressed = yield* writeDumpTransform(
+            input.path,
+            staged,
+            compression,
+            "decompress",
+            input.expectedDigest,
+          );
+          return yield* input.transfer(staged, decompressed.digest);
+        }
+        const result = yield* input.transfer(staged);
+        const compressed = yield* writeDumpTransform(staged, input.path, compression, "compress");
+        return { ...result, ...compressed };
+      }),
+    );
+  });

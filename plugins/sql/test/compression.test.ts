@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,8 +11,10 @@ import {
   collectDumpPrefix,
   compressionFromExportPath,
   detectDumpCompression,
+  withHostDumpCompression,
   writeDumpTransform,
 } from "../src/compression.ts";
+import { canUseFifo, captureFifo, feedFifo, mkfifo, stopProc, writeFifoPayload } from "./support/fifo.ts";
 
 describe("dump compression helpers", () => {
   let dir = "";
@@ -87,5 +89,98 @@ describe("dump compression helpers", () => {
     if (!(error instanceof SqlDumpCompressionError)) return;
     expect(error.compression).toBe("zstd");
     expect(error.operation).toBe("decompress");
+  });
+
+  test("compresses an export onto a FIFO without renaming it into a regular file", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql.gz");
+    const captured = join(dir, "captured.gz");
+    await mkfifo(fifo);
+    const reader = captureFifo(fifo, captured);
+    try {
+      const payload = "select 1;\n";
+      await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "gzip",
+          direction: "export",
+          transfer: (path) =>
+            Effect.promise(async () => {
+              await writeFile(path, payload);
+              return { accelerated: true, sizeBytes: payload.length };
+            }),
+        }),
+      );
+      expect(await reader.exited).toBe(0);
+      expect((await stat(fifo)).isFIFO()).toBe(true);
+      expect(new Uint8Array(await readFile(captured)).subarray(0, 2)).toEqual(Uint8Array.from([0x1f, 0x8b]));
+      const restored = await new Response(
+        new Blob([await readFile(captured)]).stream().pipeThrough(new DecompressionStream("gzip")),
+      ).text();
+      expect(restored).toBe(payload);
+    } catch (error) {
+      await stopProc(reader);
+      throw error;
+    }
+  });
+
+  test("imports an uncompressed FIFO without seeking the source", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql");
+    const payload = "select 2;\n";
+    const source = await writeFifoPayload(dir, "plain.sql", payload);
+    await mkfifo(fifo);
+    const writer = feedFifo(source, fifo);
+    try {
+      const result = await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "none",
+          direction: "import",
+          transfer: (workingPath, digest) =>
+            Effect.promise(async () => {
+              expect(await readFile(workingPath, "utf8")).toBe(payload);
+              expect(digest).toHaveLength(64);
+              return { accelerated: false, sizeBytes: payload.length, digest };
+            }),
+        }),
+      );
+      expect(await writer.exited).toBe(0);
+      expect(result.digest).toHaveLength(64);
+    } catch (error) {
+      await stopProc(writer);
+      throw error;
+    }
+  });
+
+  test("imports a gzip FIFO by decompressing in one pass to a staged file", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql.gz");
+    const payload = "select 3;\n";
+    const compressed = Buffer.from(
+      await new Response(new Blob([payload]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer(),
+    );
+    const source = await writeFifoPayload(dir, "plain.sql.gz", compressed);
+    await mkfifo(fifo);
+    const writer = feedFifo(source, fifo);
+    try {
+      await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "none",
+          direction: "import",
+          transfer: (workingPath, digest) =>
+            Effect.promise(async () => {
+              expect(await readFile(workingPath, "utf8")).toBe(payload);
+              expect(digest).toHaveLength(64);
+              return { accelerated: false, sizeBytes: payload.length, digest };
+            }),
+        }),
+      );
+      expect(await writer.exited).toBe(0);
+    } catch (error) {
+      await stopProc(writer);
+      throw error;
+    }
   });
 });

@@ -13,7 +13,7 @@ export const spec = {
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },
   args: {
-    file: { type: "string", required: true, description: "Dump file to import." },
+    file: { type: "string", required: true, description: "Dump file to import, or - for stdin." },
   },
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,

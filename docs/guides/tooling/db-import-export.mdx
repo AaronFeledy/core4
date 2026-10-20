@@ -33,6 +33,26 @@ lando db:import backups/app.sql.zst --service database --yes
 
 MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.
 
+## Stream a dump through stdout or stdin
+
+Pass `-` as the dump path. `db:export -` writes the dump on stdout and the checksum on stderr. `db:import - --yes` reads stdin. `-` does not skip confirmation: stdin is the dump, so you still pass `--yes`.
+
+```sh
+lando db:export - > dump.sql
+lando db:export - | gzip > dump.sql.gz
+lando db:import - --yes < dump.sql
+```
+
+Export to stdout is uncompressed. Pipe to `gzip` or `zstd` when you want a compressed file. Named pipes and process substitution stay pipes: Lando writes the dump in place instead of renaming a temp file onto them.
+
+```sh
+lando db:export /dev/stdout | gzip > dump.sql.gz
+mkfifo dump.fifo
+lando db:export dump.fifo
+```
+
+`db:export -` refuses a terminal so a binary dump does not land in your shell. Redirect stdout, or pass `--force-tty` if you really want the dump in this terminal.
+
 ## Snapshots
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
@@ -99,6 +119,7 @@ lando db:reset --yes
     <Step name="help">
       <Run command="lando db:export --help" />
       <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />
+      <Verify command="lando db:export --help" expect={{ stdout: { regex: "--force-tty" } }} />
     </Step>
   </Scenario>
 
@@ -129,6 +150,17 @@ lando db:reset --yes
       <UseFixture name="one-db" />
       <Run command="lando db:reset --format=json" expectExit={1} />
       <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Reset will destroy" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="import-stdin-requires-yes" render={false} reason="Regression for stdin import confirmation">
+    <Step name="import-stdin">
+      <UseFixture name="one-db" />
+      <Run command="lando db:import - --format=json" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Pass --yes" }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

@@ -33,6 +33,7 @@ export type DbCommandInput = {
   readonly hostCwd?: string;
   readonly keepLatest?: number;
   readonly preview?: boolean;
+  readonly forceTty?: boolean;
 };
 
 export type SqlCommandDeps = SqlMover &

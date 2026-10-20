@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
@@ -10,6 +10,7 @@ import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
   SqlDumpNotFoundError,
+  SqlDumpTtyError,
   SqlRecoveryOperationError,
   SqlRecoveryUnavailableError,
   SqlSeedSourceError,
@@ -22,7 +23,19 @@ import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schem
 import { dumpCommand, loadCommand } from "../src/families.ts";
 import { type SqlCommandDeps, dbInputFromCommand, executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { canUseFifo, feedFifo, mkfifo, stopProc, writeFifoPayload } from "./support/fifo.ts";
 import { sourcePlan } from "./support/source-plan.ts";
+
+const withStdoutTty = async <A>(tty: boolean, fn: () => Promise<A>): Promise<A> => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: tty });
+  try {
+    return await fn();
+  } finally {
+    if (descriptor === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+    else Object.defineProperty(process.stdout, "isTTY", descriptor);
+  }
+};
 
 const SECRET = "s3cret-pass";
 
@@ -807,6 +820,98 @@ describe("executeDbCommand", () => {
     }
     expect(harness.transfers()).toEqual([]);
     expect(harness.published()).toEqual([]);
+  });
+
+  test("refuses db:export - when stdout is a terminal unless --force-tty", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+    await withStdoutTty(true, async () => {
+      const denied = await run(harness.deps, { action: "export", file: "-", yes: false });
+      expect(Exit.isFailure(denied)).toBe(true);
+      if (!Exit.isFailure(denied)) throw new Error("expected failure");
+      const error = Option.getOrUndefined(Cause.findErrorOption(denied.cause));
+      expect(error).toBeInstanceOf(SqlDumpTtyError);
+      if (error instanceof SqlDumpTtyError) {
+        expect(error.path).toBe("/dev/stdout");
+        expect(error.remediation).toContain("--force-tty");
+      }
+      expect(harness.transfers()).toEqual([]);
+
+      const forced = await run(harness.deps, { action: "export", file: "-", yes: false, forceTty: true });
+      expect(Exit.isSuccess(forced)).toBe(true);
+    });
+  });
+
+  test("exports dash to /dev/stdout without prompting when stdout is not a TTY", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+    await withStdoutTty(false, async () => {
+      const exit = await run(harness.deps, { action: "export", file: "-", yes: false });
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) throw new Error("expected success");
+      expect(exit.value.file).toBe("/dev/stdout");
+      const transfer = harness.transfers()[0];
+      expect(transfer?.to._tag).toBe("hostPath");
+      if (transfer?.to._tag === "hostPath") {
+        expect(transfer.to.path).toBe("/dev/stdout");
+        expect(transfer.to.trusted).toBe(true);
+      }
+    });
+  });
+
+  test("fails stdin import without --yes and hints to pass --yes", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const exit = await run(harness.deps, { action: "import", file: "-", yes: false });
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(SqlConfirmRequiredError);
+    if (error instanceof SqlConfirmRequiredError) {
+      expect(error.remediation).toContain("Pass --yes");
+      expect(error.remediation).toContain("stdin");
+    }
+    expect(harness.transfers()).toEqual([]);
+  });
+
+  test("exports onto a FIFO without replacing it with a regular file", async () => {
+    if (!canUseFifo) return;
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const fifo = join(harness.root, "dump.fifo");
+    await mkfifo(fifo);
+    const exit = await run(harness.deps, { action: "export", file: fifo, yes: false });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(statSync(fifo).isFIFO()).toBe(true);
+    const transfer = harness.transfers()[0];
+    expect(transfer?.to._tag).toBe("hostPath");
+    if (transfer?.to._tag === "hostPath") expect(transfer.to.trusted).toBe(true);
+  });
+
+  test("imports uncompressed and gzip dumps from a FIFO with --yes", async () => {
+    if (!canUseFifo) return;
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const plainFifo = join(harness.root, "plain.fifo");
+    const gzipFifo = join(harness.root, "gzip.fifo");
+    const plainSource = await writeFifoPayload(harness.root, "plain-src.sql", "select 1;\n");
+    await writeCompressed(join(harness.root, "gzip-src.sql.gz"), "select 2;\n", "gzip");
+    await mkfifo(plainFifo);
+    await mkfifo(gzipFifo);
+    const plainWriter = feedFifo(plainSource, plainFifo);
+    try {
+      const plain = await run(harness.deps, { action: "import", file: plainFifo, yes: true });
+      expect(Exit.isSuccess(plain)).toBe(true);
+      expect(await plainWriter.exited).toBe(0);
+    } catch (error) {
+      await stopProc(plainWriter);
+      throw error;
+    }
+    const gzipWriter = feedFifo(join(harness.root, "gzip-src.sql.gz"), gzipFifo);
+    try {
+      const gzip = await run(harness.deps, { action: "import", file: gzipFifo, yes: true });
+      expect(Exit.isSuccess(gzip)).toBe(true);
+      expect(await gzipWriter.exited).toBe(0);
+    } catch (error) {
+      await stopProc(gzipWriter);
+      throw error;
+    }
+    expect(harness.transfers().length).toBeGreaterThanOrEqual(2);
   });
 
   test("resolves a relative import dump from hostCwd when it is inside the app root", async () => {

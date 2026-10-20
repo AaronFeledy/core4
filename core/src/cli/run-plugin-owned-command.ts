@@ -1,6 +1,6 @@
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 
-import type { RendererIO } from "@lando/renderer/io";
+import { type RendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import {
   type CommandInputValidationError,
   type ConfigError,
@@ -39,6 +39,12 @@ import { yesFlag } from "./spec/confirmation-flag";
 const PLUGIN_OWNED_COMMAND_ID = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 
 export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_COMMAND_ID.test(token);
+
+/** Route command results onto stderr when the command's payload owns stdout. */
+export const resultIoForPayloadStdout = (io: RendererIO): RendererIO => ({
+  ...io,
+  writeStdout: (chunk) => io.writeStderr(chunk),
+});
 
 export interface RunPluginOwnedCommandOptions {
   readonly io?: RendererIO;
@@ -206,11 +212,17 @@ const runPluginOwnedCommand = (
       await renderPluginOwnedPreCommandFailure(flagError, options.io);
       return;
     }
+    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+    const input = { argv, parsedArgv: parsed.raw, flags: parsed.flags, args: parsed.args };
+    const io =
+      spec.payloadStdout?.(input) === true
+        ? resultIoForPayloadStdout(options.io ?? createStdioRendererIO())
+        : options.io;
     await runCompiledCommand(
       pluginOwnedCommandEffect(spec, argv, activeResultFormat === "text"),
       defaultPluginRuntime(spec.bootstrap),
       () => undefined,
-      compiledPluginOptions(spec, options),
+      compiledPluginOptions(spec, { ...options, ...(io === undefined ? {} : { io }) }),
     );
   });
 

@@ -64,6 +64,12 @@ export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressi
   },
 ) {}
 
+export class SqlDumpTtyError extends Schema.TaggedError<SqlDumpTtyError>()("SqlDumpTtyError", {
+  message: Schema.String,
+  path: Schema.String,
+  remediation: Schema.String,
+}) {}
+
 export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryUnavailableError>()(
   "SqlRecoveryUnavailableError",
   {
