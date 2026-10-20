@@ -6,7 +6,7 @@ import {
   PUBLIC_DEFAULT_CREDENTIALS,
   isPublicDefaultCredential,
 } from "@lando/sdk/secrets";
-import surface from "../fixtures/sdk-mvp-surface.json";
+import surface from "../fixtures/sdk-public-surface.json";
 
 test("keeps the published default credential exports available on the public secrets subpath", () => {
   // Given
