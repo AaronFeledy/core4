@@ -4,7 +4,7 @@ import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/s
 import ts from "typescript";
 
 test("renderer IO keeps stdout structurally outside the narration contract", async () => {
-  const fixture = await Bun.file(new URL("../fixtures/sdk-mvp-surface.json", import.meta.url)).json();
+  const fixture = await Bun.file(new URL("../fixtures/sdk-public-surface.json", import.meta.url)).json();
   const source = ts.createSourceFile(
     "renderer.ts",
     readFileSync(new URL("../../src/renderer/index.ts", import.meta.url), "utf8"),
