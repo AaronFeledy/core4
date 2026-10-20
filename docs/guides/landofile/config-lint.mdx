@@ -12,11 +12,11 @@ tags: [beta, docs, landofile, config, lint]
 lando app:config:lint
 ```
 
-That validates the current app's Landofile against the canonical schema, then checks that every key under `events:` names an event Lando can actually run. No translators, no doctor checks, no provider probes, no container runtime. A clean Landofile exits `0`.
+That validates every retained root and include fragment against its authoring schema, then validates the effective composition and checks that every key under `events:` names an event Lando can actually run. No translators, no doctor checks, no provider probes, no container runtime. A clean Landofile exits `0`.
 
 Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Plan-time sites (`app.*`, `proxy.*`, `services.<name>.creds.*`) stay text; one at a boolean or number field is a violation with a suggestion to use a literal or a recipe/env expression. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 
-Lint reports every problem in one run. A Landofile with three independent mistakes gets three violations, not one, so you fix the file once instead of playing whack-a-mole with the validator.
+Lint retains each acquired source once. It can report a bad lower fragment even when a higher layer masks the value and the effective configuration is valid. Fragment and effective findings stay separate; identical paths in different files aren't collapsed. Event checks reuse the resolved snapshot instead of loading or evaluating TypeScript again.
 
 ## Print JSON
 
@@ -27,28 +27,30 @@ lando app:config:lint --format=json
 JSON output is a stable `ConfigLintResult` for editor integrations:
 
 ```
-{ app, file, valid, violations: [{ path, message, suggestion?, line?, column? }] }
+{ app, file, valid, violations: [{ rule, severity, path, message, scope, source: { file, layer, path }, suggestion?, line?, column? }] }
 ```
 
-Each violation is a `ValidationIssue`, the same shape `LandofileValidationError.issues` and recipe-manifest errors carry. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it.
+Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of `error` or `warning`. `valid` means there are no error-severity findings; warnings alone leave it true. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it.
+
+`scope` is `fragment` or `effective`. `source.path` is the original authored path, so `working_dir` can be the source of an effective `workingDirectory` finding. Coordinates come only from retained source content; transformed templates and TypeScript don't get guessed YAML coordinates.
 
 This shape is frozen by the schema artifact-set gate. `--format` defaults to `text`. Pass `--format=json` for machine output.
 
 ## Read schema violations
 
-Text output prints one line per issue, the dot-joined path first:
-
-```
-services.web.imgae: Expected no excess property
-services.web.home: Expected false | object
-services.web.ports[0].target: Expected a value between 1 and 65535
-```
+Text output prints the path, severity, rule identifier, and message for each finding.
 
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
 ## Read rejected Compose keys
 
 A rejected Compose key keeps its full authored path, for example `["services", "web", "deploy", "replicas"]`. The `suggestion` comes from the pinned Compose disposition matrix instead of a generic unknown-key message.
+
+## Fix healthcheck warnings
+
+`healthcheck.bare-compose-marker` means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
+
+`healthcheck.mixed-dialects` means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
 
 ## Read unknown event names
 
@@ -79,7 +81,7 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     <Step name="lint-invalid">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"violations\":\\s*\\[\\s*\\{\\s*\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"imgae\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"imgae\"\\s*\\]" } }} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^,}]*image" } }} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"home\"\\s*\\]" } }} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"ports\",\\s*0,\\s*\"target\"\\s*\\]" } }} />
@@ -87,6 +89,15 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="warning-only-marker" render>
+    <Step name="lint-literal-argv">
+      <UseFixture name="marker-warning" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "healthcheck.bare-compose-marker" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"severity\":\\s*\"warning\"" } }} />
     </Step>
   </Scenario>
 </Guide>

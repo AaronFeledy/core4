@@ -57,6 +57,7 @@ import {
 } from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
+import { validateAuthoredHealthchecks } from "./authored-healthcheck.ts";
 import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -125,6 +126,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     capabilities: providerCapabilities,
     ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
   });
+  yield* validateAuthoredHealthchecks(authoredLandofile, landofilePath);
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -139,6 +141,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     catch: (cause) =>
       new LandofileValidationError({
         message: `Global network trust configuration is invalid: ${causeMessage(cause)}`,
+        remediation: "Correct the global network trust configuration and retry planning.",
         file: landofilePath,
         issues: [
           validationIssue(
@@ -172,6 +175,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         (error) =>
           new LandofileValidationError({
             message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
+            remediation: `Install or repair the plugin that provides app feature ${ref.id}.`,
             file: landofilePath,
             issues: [
               validationIssue(

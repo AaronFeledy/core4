@@ -77,7 +77,15 @@ describe("renderConfigLintResult", () => {
       app: "bad",
       file: "/x/.lando.yml",
       valid: false,
-      violations: [{ path: ["bogus"], message: "is unexpected", suggestion: "Remove the unsupported key" }],
+      violations: [
+        {
+          rule: "landofile.validation",
+          severity: "error",
+          path: ["bogus"],
+          message: "is unexpected",
+          suggestion: "Remove the unsupported key",
+        },
+      ],
     };
     restoreExitCode(() => {
       process.exitCode = 37;
@@ -93,7 +101,9 @@ describe("renderConfigLintResult", () => {
       app: "bad",
       file: "/x/.lando.yml",
       valid: false,
-      violations: [{ path: ["bogus"], message: "is unexpected" }],
+      violations: [
+        { rule: "landofile.validation", severity: "error", path: ["bogus"], message: "is unexpected" },
+      ],
     };
     restoreExitCode(() => {
       const encoded = Schema.encodeSync(ConfigLintResult)(result);
@@ -103,6 +113,18 @@ describe("renderConfigLintResult", () => {
 });
 
 describe("lando app:config:lint (source dispatch)", () => {
+  test("warning-only lint renders its stable rule and exits successfully", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        'name: warning\nservices:\n  web:\n    type: node:lts\n    healthcheck: [CMD, "echo ready"]\n',
+      );
+      const result = await runCli(["app:config:lint"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("healthcheck.bare-compose-marker");
+      expect(result.stdout).toContain("warning");
+    });
+  });
   test("help --all names the typeable lint command and its canonical id", async () => {
     await withTempCwd(async (dir) => {
       const help = await runCli(["help", "--all"], dir);

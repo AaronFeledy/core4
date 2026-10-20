@@ -29,6 +29,7 @@ import {
   repairClosedExtension,
   schemaAt,
 } from "./x-extension-closed-record.ts";
+import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
@@ -68,7 +69,7 @@ describe("closed x-* extension artifact repair", () => {
     ];
     // When each current embedding is normalized with the lawful normalizer.
     for (const surface of surfaces) {
-      const current = schemaAt(await loadNormalizedArtifact(surface), "$.landofile");
+      const current = configOutputLandofile(await loadNormalizedArtifact(surface));
       // Then the whole subtree matches, including the nested service map.
       expect(jsonEquals(repaired, current)).toBe(true);
     }
@@ -122,7 +123,7 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("admits declared names and x- extensions on the current command schema", async () => {
-    const landofile = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const landofile = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     expect(admitsExtensionKey(landofile, "name")).toBe(true);
     expect(admitsDeclaredName(landofile, "myapp")).toBe(true);
     expect(admitsExtensionKey(landofile, "x-team")).toBe(true);
@@ -153,7 +154,7 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("still flags the old artifact unless the exception path and surface match", async () => {
-    const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     const findings = classifySchemaChange(
       { type: "object", properties: { landofile: captured.landofile } },
       { type: "object", properties: { landofile: current } },
@@ -201,7 +202,7 @@ describe("closed x-* extension artifact repair", () => {
 
   test("fails when an unrelated field in the repaired subtree changes", async () => {
     const repaired = expectedLandofile();
-    const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     expect(jsonEquals(repaired, current)).toBe(true);
     const properties = requireObject(current.properties, "properties");
     const mutated: JsonSchema = { ...current, properties: { ...properties, name: { type: "number" } } };
@@ -210,7 +211,7 @@ describe("closed x-* extension artifact repair", () => {
 
   test("rejects a constraint hidden inside the approved healthcheck union", async () => {
     const expected = expectedLandofile();
-    const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     const properties = requireObject(current.properties, "properties");
     const services = requireObject(properties.services, "services");
     const serviceProperties = requireObject(services.additionalProperties, "service");

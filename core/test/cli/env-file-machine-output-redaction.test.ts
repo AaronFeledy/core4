@@ -38,6 +38,7 @@ const dispatchDeps = (entry: McpCommandEntry): McpDispatchDeps => ({
     Effect.succeed({
       _tag: "success",
       value: {
+        source: "resolved" as const,
         landofile: authoredLandofile,
       },
     } satisfies CommandResultOutcome),

@@ -104,6 +104,7 @@ const INEXPRESSIBLE = [
 
 const SKIPPED = [
   { suffix: ".lando.ts", reason: "TypeScript program, not a YAML Landofile document." },
+  { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.recipe.yml", reason: "Recipe overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.tasks.yml", reason: "Tooling include fragment, not a canonical Landofile document." },
@@ -202,6 +203,7 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["convert-from-lando-3/fixtures/lando3-blocked", "Legacy source deliberately blocked by translation."],
   ["convert-from-lando-3/fixtures/lando3-layers", "Legacy layered source requires translation."],
   ["config-lint/fixtures/config-lint-invalid", "Deliberate unknown keys and invalid ports."],
+  ["config-views/fixtures/invalid", "Deliberate invalid runtime for raw and merged inspection."],
 ]);
 
 const inputValid = [

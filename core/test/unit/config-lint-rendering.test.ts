@@ -4,6 +4,8 @@ import { renderConfigLintViolation } from "../../src/cli/commands/config-lint-re
 
 test("config lint text visibly escapes terminal controls", () => {
   const rendered = renderConfigLintViolation({
+    rule: "landofile.validation",
+    severity: "error",
     path: ["services", "web\u001b[31m"],
     message: "Rejected key\u0007",
     suggestion: "Remove it\u009b",

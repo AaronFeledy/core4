@@ -3,6 +3,7 @@ import type { ProjectedFailure } from "@lando/sdk/command-result";
 import type { FailureRole } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { redactDetails, redactString } from "./redact";
+import { formatStructuredIssue } from "./validation-issue-text";
 
 export type RendererMode = "lando" | "plain" | "json" | "verbose";
 
@@ -248,35 +249,6 @@ const formatServiceStartLogTail = (
   if (Reflect.get(value, "timedOut") === true) parts.push("timed out");
   if (Reflect.get(value, "truncated") === true) parts.push("truncated");
   return { label: parts.length === 0 ? "logTail" : `logTail (${parts.join(", ")})`, text };
-};
-
-const formatIssuePath = (path: readonly (string | number)[]): string => {
-  let formatted = "";
-  for (const segment of path) {
-    formatted =
-      typeof segment === "number"
-        ? `${formatted}[${segment}]`
-        : formatted.length === 0
-          ? segment
-          : `${formatted}.${segment}`;
-  }
-  return formatted;
-};
-
-const formatStructuredIssue = (issue: unknown): string | undefined => {
-  if (typeof issue !== "object" || issue === null) return undefined;
-  const path = Reflect.get(issue, "path");
-  const message = Reflect.get(issue, "message");
-  const suggestion = Reflect.get(issue, "suggestion");
-  if (typeof message !== "string" || !Array.isArray(path)) return undefined;
-  const segments: Array<string | number> = [];
-  for (const segment of path) {
-    if (typeof segment !== "string" && typeof segment !== "number") return undefined;
-    segments.push(segment);
-  }
-  const where = formatIssuePath(segments);
-  const hint = typeof suggestion === "string" ? ` ${suggestion}` : "";
-  return where.length === 0 ? `${message}${hint}` : `${where}: ${message}${hint}`;
 };
 
 const landofileNotFoundHint = (record: Record<string, unknown> | undefined): string | undefined =>

@@ -1,0 +1,952 @@
+{
+  "fixtures": [
+    {
+      "fixture": "docs/guides/apache/fixtures/apache-demo",
+      "digest": "0570a254096a54de8402f0ed2aaa7458a8fb978e8f2d29607763bcf91626c3ae"
+    },
+    {
+      "fixture": "docs/guides/apache/fixtures/apache-webroot",
+      "digest": "71432eed01bb2be44868429ead1be7a0e3b99990eb2c2a06c35ceda936360e4b"
+    },
+    {
+      "fixture": "docs/guides/app-lifecycle/fixtures/app-lifecycle-demo",
+      "digest": "454dc13afc986c631bf6031d98efd3586a524c5a3fd5a92f7b191ad29017ebd6"
+    },
+    {
+      "fixture": "docs/guides/app-name-edge-cases/fixtures/non-kebab-landofile",
+      "digest": "a405b1cb3fd658d7c4e931719704002bdd2a02e25741f3ff034ec708a67e2358"
+    },
+    {
+      "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
+      "digest": "c50fa9b247ad9e117cfd51bc4e0459514362225bf9d0a18d739bb48ce9102013"
+    },
+    {
+      "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
+      "digest": "e99e4d894c91996b3cce021214b5a072f463d2c6480f98d72df6396a1e30d736"
+    },
+    {
+      "fixture": "docs/guides/build-steps/fixtures/build-steps-invalid-user",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/command-conflict",
+      "digest": "d8542d338b4e92526b12db77475a61875368fb034ee7326a55c15154c677f18a"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/exit-code",
+      "digest": "46a9e4c5d4a02001f2e9e6b50f1413d231fe01941fc9b4d45dde7d5f49f666ad"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/host-task",
+      "digest": "32fe922f5c0aacdbbbfa5bcb5c7486cf6158bb72120bafe7a3496a5f081d6064"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/missing-front-matter",
+      "digest": "6c888bdc32825b680c353e10e63b052c20746b501869941a8ae22a66b2b39acf"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
+      "digest": "5d9430ae3101cc9c235fb83376a77bd7f6ba7ad82fa6ffdcf4348a56215a0cce"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/service-front-matter",
+      "digest": "c8908ae8cdde6782efb6da50655cbbbb10edbb29e67128afda04016c9ec09be8"
+    },
+    {
+      "fixture": "docs/guides/cache-refresh/fixtures/cache-refresh-demo",
+      "digest": "19ca47822cd36b2ff703ef380c3c2c6beaaa677667103e38390774781099904d"
+    },
+    {
+      "fixture": "docs/guides/ci-github-actions/fixtures/ci-github-actions-demo",
+      "digest": "7cfd04435d03ae54cfa73ba9187764f510ac48751a78a13f62e9173f2101d530"
+    },
+    {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-passthrough-demo",
+      "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-configs-phpini",
+      "digest": "31d47121fc6cd3b48dd655d7fb64f7f87228dcf731f426277748e68ab1579589"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-service-block-demo",
+      "digest": "085f959213aad951b20bc2130f18c8c9d1f1d4c1c8705814fe436a28ed3b0545"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-service-block-rejected",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/composer-php/fixtures/composer-php-demo",
+      "digest": "c182bfdea97ec80f9a9545b64c90a56d9964f7632102f7f6a739dd2d6fd3814b"
+    },
+    {
+      "fixture": "docs/guides/config-explain/fixtures/bare-recipe",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-explain/fixtures/managed-lamp",
+      "digest": "1b6ee8a107f12fccad545ea906217a41ddbec0788a42aac74d243cb500ac1b99"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
+      "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/marker-warning",
+      "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
+    },
+    {
+      "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-translate/fixtures/layered-app",
+      "digest": "08cc44f1413d48211e3301cf5bf8076cdd9b06fe5f3574a614597d92efd99e64"
+    },
+    {
+      "fixture": "docs/guides/config-translate/fixtures/v4-app",
+      "digest": "1127a50af76baa9f02f9199b7e6b164b5a39d2a9171e997d6fd510e6686fcd78"
+    },
+    {
+      "fixture": "docs/guides/config-views/fixtures/invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-views/fixtures/layered",
+      "digest": "96db7063b2419a64caeef3043bf951d647d23d7a42f01da0fe3148bb365796f9"
+    },
+    {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-blocked",
+      "invalid": {
+        "status": "invalid",
+        "tag": "Lando3LandofileDetected"
+      }
+    },
+    {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-layers",
+      "invalid": {
+        "status": "invalid",
+        "tag": "Lando3LandofileDetected"
+      }
+    },
+    {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-old-versions",
+      "digest": "09cb67cb6bd8b615a2c276a7f1b0ea5c5ed6e13fefacc934e206744f0abc4c60"
+    },
+    {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/pantheon-app",
+      "invalid": {
+        "status": "invalid",
+        "tag": "Lando3LandofileDetected"
+      }
+    },
+    {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/v4-with-lando3-local",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileDialectMixError"
+      }
+    },
+    {
+      "fixture": "docs/guides/corporate-network-trust/fixtures/ca-opt-out",
+      "digest": "3e8128eab07e4ea4e2ab362a7e20ec84d7a3e85905b27cc56c740b77cc6a7f8b"
+    },
+    {
+      "fixture": "docs/guides/db-import-export/fixtures/one-db",
+      "digest": "5e950dcb15d5873532fb2c02197ca467c762bb6406bf6fe5c4b95e2f6c9101db"
+    },
+    {
+      "fixture": "docs/guides/db-import-export/fixtures/two-db",
+      "digest": "6db0deec81cc31573d452ac3d9fa36ee0625e40d0b59793e82eb77aabca4405c"
+    },
+    {
+      "fixture": "docs/guides/defaults-and-aliases/fixtures/command-aliases",
+      "digest": "3c1e445ebedff08876515593e08d3c33d4dfa0fa514104a4f3092d5cfdb9d2fc"
+    },
+    {
+      "fixture": "docs/guides/defaults-and-aliases/fixtures/tooling-defaults",
+      "digest": "1f56920584d949d4ccbc2d7b392e327d44bb72581ed56fac16f98be05d40c64b"
+    },
+    {
+      "fixture": "docs/guides/dotnet/fixtures/dotnet-demo",
+      "digest": "9c29214f8e2f3d5a130753620d8822c95ec029b238f0a63b2526276857464bb6"
+    },
+    {
+      "fixture": "docs/guides/drupal-multisite/fixtures/drupal-multisite-demo",
+      "digest": "a6dd02054dc37a4c2314ee5eb40c4f61c62d535e571635015998369fb3857f75"
+    },
+    {
+      "fixture": "docs/guides/drupal-stack-overrides/fixtures/bind-mounted-config",
+      "digest": "f35723ca43b18df7411e660027cba8e24eca56104144f2165cd3667f3ac890b6"
+    },
+    {
+      "fixture": "docs/guides/drupal-stack-overrides/fixtures/database-image-pin",
+      "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
+    },
+    {
+      "fixture": "docs/guides/drupal-stack-overrides/fixtures/drush-uri-webroot",
+      "digest": "07bd827b51d427ce207a5730b1fd39845941bb6a36f49b020764d444cdd9e724"
+    },
+    {
+      "fixture": "docs/guides/drupal-stack-overrides/fixtures/php-version-override",
+      "digest": "e9c8353c63312c3e7afd24121dab15a33cccd3611a756434149c2d3c54e60d65"
+    },
+    {
+      "fixture": "docs/guides/drupal-stack-overrides/fixtures/two-database-services",
+      "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
+    },
+    {
+      "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-demo",
+      "invalid": {
+        "status": "invalid",
+        "tag": "NotImplementedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/env-overrides/fixtures/top-level-env-file",
+      "digest": "5f9d3b1b360c8bf4aac495c2e0a3bffb8ca64d11cf51b0a7882b993a92716238"
+    },
+    {
+      "fixture": "docs/guides/events/fixtures/events-demo",
+      "digest": "d3621a7a9bcfe691a5b4ccef869c9c6d1aca38882d33a33fc705c36cd5db6e33"
+    },
+    {
+      "fixture": "docs/guides/events/fixtures/events-failure",
+      "digest": "d968e715ac7ddda28b941702cc01ecbe7894bf2f1b875aaf096db2cf8bbda952"
+    },
+    {
+      "fixture": "docs/guides/exec/fixtures/exec-demo",
+      "digest": "a7bf0e1d29ba95e31e4cc4b16402bc44eceb83a55c7e3af12cb35d09d384ee70"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-missing-creds",
+      "digest": "35d13d408375ea22d127f106d09db098d80f3d76e1697063f3a86c02d6bf3f35"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-missing-value",
+      "digest": "2df2c11ea20f8e6b241c35d70ab3979caedf1bf063c5a10f9c57d6588f2734ef"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-plan-time-typed-field",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-plan-time",
+      "digest": "09d1a74db14a5428d62b434724eaf9c77030210ad3f1bd2260168253c28a3b9f"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
+      "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-typed-values",
+      "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+    },
+    {
+      "fixture": "docs/guides/external-access/fixtures/external-access-demo",
+      "digest": "167f5aa0981074f86f93925c54bfc7c9c9d96654132433fd01353049d08111e0"
+    },
+    {
+      "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
+      "digest": "00cb3fda23ed9ecab254b1ba53b02f27e9c769d2187006ccd7ebf53b9a9c424f"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
+      "digest": "655a03023d4ccad27bed30d049ee32d422bc24b17ae97106a5f200290bab14c0"
+    },
+    {
+      "fixture": "docs/guides/file-sync-mutagen/fixtures/accelerated-excludes",
+      "digest": "72446e8f58e661512c33405ee91996d3d5e998e4791c8c46b58f85dfae548b04"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
+      "digest": "c5606017647f40a8e6a69bc7592efbc951ee0f83686e41c93c709b5cfb956cba"
+    },
+    {
+      "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
+      "digest": "93e781d9036aeddf186f20ba3b21f899ae6f8f3f516dfc2397c81d8e8b6be7b6"
+    },
+    {
+      "fixture": "docs/guides/git-worktrees/fixtures/shop-feature",
+      "digest": "8af3a9210e786e4c66360725a43ca244fa5a8e1837abb4247764f878029ef7d0"
+    },
+    {
+      "fixture": "docs/guides/go/fixtures/go-demo",
+      "digest": "c8c3ca1678dc5a74395dc63caf54151328793516b9ad7808555f77d4934e29eb"
+    },
+    {
+      "fixture": "docs/guides/gpg-agent/fixtures/forward",
+      "digest": "002d3d9ecd5beed8468a20029de810f5f524343d9ab9e9f9826625c18a4dee89"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/healthcheck-shorthand",
+      "digest": "6e4f09c3c3bf8bfdfd3a0a7a657d15bf3a0ea35939631c0e86f63fb406d99fea"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-http",
+      "digest": "0b143156fc7568cac70514a8958228ffab1cf5da6d1530def5141ffa70890a79"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-tcp",
+      "digest": "7dd699823f33172d60df5fa568918c5f6d5a0e8737b72d2efe99b26f07d9c2cf"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",
+      "digest": "8877b309bfae036b7b516a76f8b2cd63033a40632e0d171fd3df5ffa88373372"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-explicit-path",
+      "digest": "a007e971e60fa3c78d2e445125571aae2f63fa433a8d17d16b8599589adf1dc5"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-unknown-home",
+      "digest": "2fcfc6c5a00ae68feaaae6aea33fc3e6b0cf8770f8f5d54869a8e78530846aaf"
+    },
+    {
+      "fixture": "docs/guides/import-a-database/fixtures/import-a-database-demo",
+      "digest": "f05651b95f9836b21facfac69fc82f9940798b6021dce4bd1dd817fe91ac86a9"
+    },
+    {
+      "fixture": "docs/guides/in-container-context/fixtures/in-container-context-demo",
+      "digest": "eecdc6a40547a6b5a56ecce4f679bf88bdfb0851730e3ecb3304d25e3c420de8"
+    },
+    {
+      "fixture": "docs/guides/includes-and-lockfile/fixtures/includes-lockfile-demo",
+      "digest": "dac15e79383511055bbdca9031249a4e86808972c1ed2226d86bbb5c7f24ce89"
+    },
+    {
+      "fixture": "docs/guides/includes-and-lockfile/fixtures/user-profile-demo",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileIncludeError"
+      }
+    },
+    {
+      "fixture": "docs/guides/jekyll-workflow/fixtures/park-builder",
+      "digest": "80564cb2f11f3d55eb6fe2be88469bc154300ac8a9b352dc56aa5422124f3aa8"
+    },
+    {
+      "fixture": "docs/guides/jekyll-workflow/fixtures/serve-built-site",
+      "digest": "ec10e40877e993f393bac84a5bbf5b39a97f07f492b70e69c5af2df2f32fec41"
+    },
+    {
+      "fixture": "docs/guides/lamp-stack-variants/fixtures/bind-mounted-config",
+      "digest": "c4c30bbd524ef5cc5929d364b45532652d5258e3e800c8681e2341b834d47d4c"
+    },
+    {
+      "fixture": "docs/guides/lamp-stack-variants/fixtures/multiple-database-services",
+      "digest": "d09bd5f2ca6b4cd8be7ae2bebfa4f332827981a250923a1a865296e811adedaa"
+    },
+    {
+      "fixture": "docs/guides/lamp-stack-variants/fixtures/mysql-replacement",
+      "digest": "c194ab9cb3c106c7883a335e68660d9328d309c3aa001e75afe16c72000707db"
+    },
+    {
+      "fixture": "docs/guides/lamp-stack-variants/fixtures/postgres-replacement",
+      "digest": "f26cb5cf3878cc470a1bd908fca19b26e7ff2ac898540c8a5903c60373d588ac"
+    },
+    {
+      "fixture": "docs/guides/lamp-stack-variants/fixtures/tooling-aliases",
+      "digest": "04549afb0187dbbf6a48e3cde4bb6c3c7cf61b1fe91c0a17a04ee24ec2a24144"
+    },
+    {
+      "fixture": "docs/guides/lando3-transition-options/fixtures/scoped-services",
+      "digest": "3df20fd7811e1e9ea9b8a5c766b11eb66788e7ff2453c7ab6b45609052643a74"
+    },
+    {
+      "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
+      "digest": "3335bddbb3845e1d908937f8aa1b54438f7968a655319cc34ac580f83724ced5"
+    },
+    {
+      "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
+      "digest": "327f073ed97ef99d37bbbeab31398043483b11459b40b9a5f200150cf783801e"
+    },
+    {
+      "fixture": "docs/guides/locale/fixtures/locale-demo",
+      "digest": "020f24b8d43a8efd4f99e762ec00d472fb5bb78c11a54bf154ec202b8588ce07"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-demo",
+      "digest": "0259f2d81b5170c7da88d33f880c1ce1280f79531320126f20daa2360d2394a3"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/invalid-target",
+      "digest": "1a813e0ee00435605c4d9dce72db846f0e6ce9f86b7674510df1547ec4a4baf6"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/mailhog-legacy",
+      "digest": "680a96b342884bf6afdde51e94fbd9f46a4cecd663f77511a690a57cf4cd0a55"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/mailpit-demo",
+      "digest": "4f0b83eed9321a3857c974bd2f0193308f00681c747c415257070be807e7ab36"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/selected-php",
+      "digest": "9e0d728afa636d94ce8083aed0027c684db2a9fcf0acefc58f1c41241e2bde86"
+    },
+    {
+      "fixture": "docs/guides/mariadb/fixtures/mariadb-demo",
+      "digest": "c9c9136dde9088335ea92c3cd10df75dd116b5d96c2fb1fd946c6144a971937f"
+    },
+    {
+      "fixture": "docs/guides/meilisearch/fixtures/meilisearch-demo",
+      "digest": "bcc1c9b80cbdbb4548afa41e05380dce69a9095ecf92a9f691c42ee1f7242723"
+    },
+    {
+      "fixture": "docs/guides/memcached/fixtures/memcached-demo",
+      "digest": "8da476be455b53ca3518fc6d259ebf22b2618cd634904ec7556bd51fbf178be9"
+    },
+    {
+      "fixture": "docs/guides/migrating-recipes/fixtures/bare-recipe",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/migrating-recipes/fixtures/includes-app",
+      "digest": "37537289e2b2b6e51b4bacbdf1d9a7683a23a4020c1d2e073589213280013a30"
+    },
+    {
+      "fixture": "docs/guides/migrating-recipes/fixtures/managed-lamp",
+      "digest": "d1ec760c78d917e906d28b410071b263da8af6e64c7e0dfe0fcf85a39773a68f"
+    },
+    {
+      "fixture": "docs/guides/migrating-recipes/fixtures/programmatic-app",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileFormConflictError"
+      }
+    },
+    {
+      "fixture": "docs/guides/minio/fixtures/minio-demo",
+      "digest": "79f208993b344ac83d9e11c69b60fe84c5dd8ec0d812138f626602e27f79ea35"
+    },
+    {
+      "fixture": "docs/guides/mongodb/fixtures/mongodb-demo",
+      "digest": "2896907ac9f7480907d73bc5a1abedd3d4c6fdde39fc116a2155ee213174ef42"
+    },
+    {
+      "fixture": "docs/guides/mssql/fixtures/mssql-demo",
+      "digest": "2798b1b10b1da4a3aea0d2ffc3dd451796ab08b8da8aa012d96598c4c40cdb78"
+    },
+    {
+      "fixture": "docs/guides/mysql/fixtures/mysql-demo",
+      "digest": "7a9fb91ab0023bac0648956ec7bd5c08d1694319d34e3f417038362492b516c2"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-demo",
+      "digest": "e155261b86dca3423e48c1a886d0bb5ff225b0afc4f34211d60e87cb5503f75a"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-php",
+      "digest": "729600228625fabbdf78e4c0521fc8e0907d03062bc64084dfaca40a6a894a70"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-public",
+      "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
+    },
+    {
+      "fixture": "docs/guides/node-postgres-scaffold/fixtures/invalid-service-type",
+      "digest": "5d44c18a040b444d7daef194e8a3ca0c400bdc8e2e0748e1ab2fa456c3829bfd"
+    },
+    {
+      "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
+      "digest": "aaa394deb61e140ce3b663c0dfed95f78a68d6f50db3aedb523c097dda4beb62"
+    },
+    {
+      "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-drupal",
+      "digest": "d9418601f67326cea8fbc252fd70d2ea28a72c52d67d6d26eef662c70dd5e3ba"
+    },
+    {
+      "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-infer",
+      "digest": "5b2a9f3c0bbec5b9fcc7b800c11d17f9e592909e9c3a27516f55ae623b058553"
+    },
+    {
+      "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-package-root-pinned",
+      "digest": "21730d3c8a6526171a29351f736118f7d35505e5e8c19dfe03a3b72aa9ef265c"
+    },
+    {
+      "fixture": "docs/guides/node-typescript/fixtures/node-typescript-demo",
+      "digest": "59a1e519e86676129c7fd05c6ae078bdbfbed10e09cef07f782b50197d2ee599"
+    },
+    {
+      "fixture": "docs/guides/node-typescript/fixtures/node-typescript-server",
+      "digest": "2136f0844c69bfe70731e8e17465706eba8d327ca21409e3b3a49bd80b88046b"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-demo",
+      "digest": "7e1d4e88e109f8fd0aa8cd8cd07882668fa0c517465190ec803983911bcd8fbf"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-globals-invalid",
+      "digest": "39d385ee49b32daf59bd73d3484e7a9a2920018ee991c4185a46851835282a34"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-globals",
+      "digest": "5e954f1839a6a33e3498d7f6f7d2c86213cd0af35db5cd1f9de25fdadd3fe8e8"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-inference",
+      "digest": "8058b8279ce6c19da800eeff5c85c7f9ca180a58c23ab2e11ed8b175aaf9d531"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-port",
+      "digest": "a46c69af113f682cd3e3bc9d35e0798c4118f96b40310286ad2fb85632210963"
+    },
+    {
+      "fixture": "docs/guides/offline-dev/fixtures/offline-dev-demo",
+      "digest": "d4ca26563b33f554f10a29552e6b81f010f86a5d92365d7bfa70fd275734709a"
+    },
+    {
+      "fixture": "docs/guides/opensearch/fixtures/opensearch-demo",
+      "digest": "d3c56e3f0c881c2f6f158d600bad70287b305c66739cac7753024ea1d03892b3"
+    },
+    {
+      "fixture": "docs/guides/output-streaming/fixtures/clean-output",
+      "digest": "fc9da4217f2b7bdf2b00200a4692dc1ff7a4aff643bc96b50ab40a1f881312c5"
+    },
+    {
+      "fixture": "docs/guides/output-streaming/fixtures/stream-container",
+      "digest": "b8e2a251576a526c9c5de65258ac4ee7208397b1af40b0993103fc2e118e2a8d"
+    },
+    {
+      "fixture": "docs/guides/php-build-failures/fixtures/failing-build",
+      "digest": "f9e620e671090153b8f279c317ebc51881ef95402e2c2d09e94dcc69937764be"
+    },
+    {
+      "fixture": "docs/guides/php-build-failures/fixtures/happy-build",
+      "digest": "14bc73abe9be6c62ddf02d7ec4cadfebdf5362d78c52cd038d892bb100662643"
+    },
+    {
+      "fixture": "docs/guides/php-command-resolution/fixtures/php-command-resolution-demo",
+      "digest": "7a9f7c132622b8bf8e46e267b57c38799ea5fc05ce8d405c381574b5e352dd62"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-exact",
+      "digest": "864d1b338105330603105ae36ce667cea1a271d7bec9dd2e3d38298647d914ce"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-incompatible",
+      "digest": "31e21f7f076e5f31dbbfd76b0a0d9ea74e8c76856c5aea3b677d101453782335"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-invalid",
+      "digest": "420a88208cb01e8d787a62b7a2725a2bfc6a799e59a15bb7f4223694570bb1c4"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-packages-invalid",
+      "digest": "89dae7e718df139badf529b1ae0f05259329ea6ab56a1ab623ed9903ee2e5230"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-packages",
+      "digest": "8df4c6b154a62ee10d174fbe0d41339ead7e50fafe005e64304d0d774edc7222"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-skip",
+      "digest": "2d2718e8b73a5e33321d9629e8e2cfa40165215c58b7704a8f969ff6c1417520"
+    },
+    {
+      "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-workflows-demo",
+      "digest": "2ed49e6f139843f32c5154a8ed046a2949fbc35c4f04d82fffe8f41e2b6de82e"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/db-client-auto",
+      "digest": "b4443bb3b06f5b31ea9b5045c339cbce57e5131e1e6a805e5171a3323a6eb07f"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/db-client-disabled",
+      "digest": "f097d8ed9ff2db9df4ef4ab9a709074f37be0dac9db398409db895a4ed892a49"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/db-client-explicit",
+      "digest": "66444cc40052e17dfcfeaff397ceea9c45d769fdbaf448bf1ff7286747ebf61f"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/db-client-invalid",
+      "digest": "5474223c2077a06039f420a87422fee6e8912f396437412310541b075779b4cc"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/extra-extension-pie",
+      "digest": "b9fbcc5708017f35ee208ab2be1bb81ec8c7d6e45babe691d4e3a65d53999cab"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/extra-extension",
+      "digest": "839b2ed6496fa0a61362b0afae33023f61d03b79589b234d02997a1d9268f16a"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/php-customization-demo",
+      "digest": "4d92e9c8c362499873f468eb8c42d4502c0fe936e7d1c85eeab3d43541659e61"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/php-ini-configs",
+      "digest": "a68c379502df95d53ba66520de684d6c2b5ecdc2456fc45d7f475739498c9739"
+    },
+    {
+      "fixture": "docs/guides/php-customization/fixtures/php-ini-mount",
+      "digest": "6dd24aea8de78226c343072aad09dcb9c5b1e2e4a99dc6ac693720831dec8553"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-81",
+      "digest": "3b6fffcafc0bb668041f8a77101c654b7ad66878f9cdb136484771db02dc70a5"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-82",
+      "digest": "9748c5b8a68eb7e60307f42d074e0859c9dc23c2aa2cb2f2c33db1c599fea0ff"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-83",
+      "digest": "bd7c635a66f516909469b01f4569548f42f58aaadf710498d60c756333378867"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-84",
+      "digest": "60e0289fc92f9adff54b4e3b91810ebfecdc97c60fd919fd82ec34d7d279a71e"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-85",
+      "digest": "09387fb4b966c4a1dc9265a01f032a1bfe844f5ee682958845e0ad3b5db57c1f"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-86",
+      "digest": "028cd0a1ee8da4c39d7acfb53ac6878939506adb1b29d190df019aae51048bc2"
+    },
+    {
+      "fixture": "docs/guides/php-version-matrix/fixtures/php-unsupported-8-0",
+      "digest": "7f6fd21d0c1d3e9249c5c9a4348e0f76050eac7a71d33d13ec2ab4e7ac3b4213"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-demo",
+      "digest": "536eff5da204c3ce0f04b075242584963a956dd342be87293eefa172ece45bba"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-fpm-nginx",
+      "digest": "f1d973b3bfa3802f2900de503422f333037b90d8b013199d4fca1970af132e77"
+    },
+    {
+      "fixture": "docs/guides/phpmyadmin/fixtures/phpmyadmin-demo",
+      "digest": "ac8ba6c81a9d56b47f54cf5c3d4c87f24e252ea4d71f516629f772f1c47fe7ca"
+    },
+    {
+      "fixture": "docs/guides/planetscale/fixtures/planetscale-demo",
+      "digest": "75de5295d6f89ecf6538bb1f980e508abe9159d1c0d27010a33ad69b5a673bc5"
+    },
+    {
+      "fixture": "docs/guides/postgres-pgvector/fixtures/pgvector-demo",
+      "digest": "0ebf4df0f481601fa8e74c0f68e66c0a352e0e6d39f9e6cf9caf8af89416e25e"
+    },
+    {
+      "fixture": "docs/guides/postgres/fixtures/postgres-demo",
+      "digest": "a9c5d23d76c646f8f1c68d0663c3b8f9cb9a649b1d40fdbd2349946f0fde9e4c"
+    },
+    {
+      "fixture": "docs/guides/poweroff/fixtures/poweroff-demo",
+      "digest": "80e40bcb9df13af80098f3885ab401a93c3c37ce637f585e20a52209d1ff93f9"
+    },
+    {
+      "fixture": "docs/guides/project-skills/fixtures/project-skills-app",
+      "digest": "0cee390a27c7a29e083c5efef281fce7f25b6fc81fff72c2791bd17b39fcbea7"
+    },
+    {
+      "fixture": "docs/guides/proxy-traefik/fixtures/proxy-host-ports",
+      "digest": "200b07b41524bdf33f3235d490f2870acb6ddec1e937669441e511151d59d00a"
+    },
+    {
+      "fixture": "docs/guides/proxy-traefik/fixtures/proxy-preferred-only",
+      "digest": "ad065f85992297bd6e1568a73f9acdfa7a369a6c840acf8af21b6c4c03b473a1"
+    },
+    {
+      "fixture": "docs/guides/python/fixtures/python-demo",
+      "digest": "d32812d3c08c5cab627d5b4c7416ee74a2abc3a74c44ec5e8aa615399d6b2851"
+    },
+    {
+      "fixture": "docs/guides/python/fixtures/python-fastapi",
+      "digest": "0bb20c828ce0fc902c44b933af2a0ccabe8ca1349953badbaa09488a14459c92"
+    },
+    {
+      "fixture": "docs/guides/python/fixtures/python-unsupported-webroot",
+      "digest": "66ffb1362f58d5059abe3f95707aa166b5bc794a7ee34901fff04eeebbc671bb"
+    },
+    {
+      "fixture": "docs/guides/rabbitmq/fixtures/rabbitmq-demo",
+      "digest": "de88a1e8aca8ba165c38ea35a4670ff2b6eb0c970ef7d190a23e7aab49c5bb32"
+    },
+    {
+      "fixture": "docs/guides/redis/fixtures/ephemeral",
+      "digest": "970ad5a1dfccb859f7b38b16ced1daafeacf263586b645d1bd72a8818f6d3890"
+    },
+    {
+      "fixture": "docs/guides/redis/fixtures/redis-demo",
+      "digest": "060f75e1e04c35daaa174af392ecf82f5f9729dfcfdec4e529ef0f95a2190c1e"
+    },
+    {
+      "fixture": "docs/guides/route-shorthand/fixtures/catalog-endpoints",
+      "digest": "f7b43479c39b1adc7a95655db4d2c3bb4b91ae20c3bd84ee665c4c120470fe4a"
+    },
+    {
+      "fixture": "docs/guides/route-shorthand/fixtures/route-identity",
+      "digest": "8424f84debb532205bd39c048222da1dd0ef23cdfb9e12bd0b659e29d5ff9416"
+    },
+    {
+      "fixture": "docs/guides/route-shorthand/fixtures/route-shorthand-demo",
+      "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
+    },
+    {
+      "fixture": "docs/guides/route-shorthand/fixtures/route-shorthand-invalid",
+      "digest": "75c6b0888f2b55069d05df887fa90ba2dfc49b47ea1865739311fd890fed0c9b"
+    },
+    {
+      "fixture": "docs/guides/route-shorthand/fixtures/route-shorthand-layered",
+      "digest": "37aa5ec2e995864e8213e3076c89b6b1aa8327f22393052d89f998faa6445390"
+    },
+    {
+      "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-disabled",
+      "digest": "41c59781220d70b0bd5059b7174676ca7ac971cd9288dfe261db13852c20e735"
+    },
+    {
+      "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-tuned",
+      "digest": "76beef5676c878b01cf31783f9aa0902dff39ecd06a66234babe55912c4f5402"
+    },
+    {
+      "fixture": "docs/guides/ruby/fixtures/ruby-demo",
+      "digest": "77dba28dbe895de7dcb67bd7f01a3488a0602d9ae48592af386b9bddcfb94279"
+    },
+    {
+      "fixture": "docs/guides/ruby/fixtures/ruby-unmounted-webroot",
+      "digest": "03cac783553c63c735d82f0c694c227a9530ad616cea2762db78258687ae06b8"
+    },
+    {
+      "fixture": "docs/guides/scripting-with-json/fixtures/project-script",
+      "digest": "9942ee3c3be445567566a7dd2c59733ed33fb9e1339411438ee165c383b74a47"
+    },
+    {
+      "fixture": "docs/guides/scripting-with-json/fixtures/unknown-service-key",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
+      "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
+    },
+    {
+      "fixture": "docs/guides/service-dns/fixtures/service-dns-demo",
+      "digest": "9dce88da8079c961c84e858a22f69b68d2335cd5a97db681d6ca26508eb29d9a"
+    },
+    {
+      "fixture": "docs/guides/share-target/fixtures/share-target-demo",
+      "digest": "75b80e5a92fca57b7e42ea5d9921433e11a0486e97b66a59b1a80649f2ca74dc"
+    },
+    {
+      "fixture": "docs/guides/solr/fixtures/solr-bad-core",
+      "digest": "617dae527339ab367aafbb4d8a2c5af3f7b2359b7d63062b62647247012e9920"
+    },
+    {
+      "fixture": "docs/guides/solr/fixtures/solr-demo",
+      "digest": "b497a6982802f343b171edb3f361316a92ec40aad19655045bd15aeaae315e46"
+    },
+    {
+      "fixture": "docs/guides/solr10/fixtures/solr10-demo",
+      "digest": "af52f8b657a1349fc157b50d79d9629754cc761c1263b32016d8eb5a9b03109f"
+    },
+    {
+      "fixture": "docs/guides/ssh-host-agent/fixtures/host-agent-1password",
+      "digest": "5a9190f732b23967b7db07b8b8764a0b4d4b1b03ebf10c9cc17dbf25080a016b"
+    },
+    {
+      "fixture": "docs/guides/ssh-sidecar/fixtures/sidecar-default",
+      "digest": "7ebd87c42308f62bb70cf51309e319747b5482a21fdb59b347015b09c969c117"
+    },
+    {
+      "fixture": "docs/guides/static/fixtures/static-demo",
+      "invalid": {
+        "status": "invalid",
+        "tag": "NotImplementedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/switching-databases/fixtures/after-postgres",
+      "digest": "a7378edb19bc466fdad6f9af0ad011d3fe81c1f02ed99ede54601f883e3377ef"
+    },
+    {
+      "fixture": "docs/guides/switching-databases/fixtures/before-mysql",
+      "digest": "3467551888c3fb5100e7b24d46197f2261db37bff7137c08fef8946adb346d4a"
+    },
+    {
+      "fixture": "docs/guides/task-events/fixtures/bracketed-build",
+      "digest": "6b376bae7b430d2124401e4ff54fb8a3628b3cbb4bc4bedd68532d18a0f6c1ac"
+    },
+    {
+      "fixture": "docs/guides/task-events/fixtures/build-body-fails",
+      "digest": "34618e83e3ed13f6e543a8a20c95263c3b01ddf84dbcf1a30739310d7434aa59"
+    },
+    {
+      "fixture": "docs/guides/task-events/fixtures/post-build-fails",
+      "digest": "4adf454be6f21768333f4d4415c6c904b7b40bd4a1510ba3b1549a6baf89b118"
+    },
+    {
+      "fixture": "docs/guides/task-events/fixtures/service-task-events",
+      "digest": "6e1ce641991f3aa6a60bd92d094d44d915e8f96952b8e053da55015298d8fe06"
+    },
+    {
+      "fixture": "docs/guides/task-events/fixtures/unknown-event",
+      "digest": "93e9ad142110fcf488b4c1d01a22945a858375972ab8f7bbaade9239d1ea69e0"
+    },
+    {
+      "fixture": "docs/guides/timezone/fixtures/timezone-demo",
+      "digest": "2d197f30db67a4d5f016750a5ebe9c902f9c1355037177d23842c0377c77b639"
+    },
+    {
+      "fixture": "docs/guides/timezone/fixtures/timezone-rejected-interpolation",
+      "invalid": {
+        "status": "invalid",
+        "tag": "NotImplementedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/tomcat/fixtures/tomcat-demo",
+      "digest": "3332dd4bab34e19862f939a3360700c654dc40cd4b17206cf66ae34471c3d95c"
+    },
+    {
+      "fixture": "docs/guides/tomcat/fixtures/tomcat-port",
+      "digest": "9184002b1c60b15ac72996847e4e7ebed7e55dd3822808acea9be6351eeccb94"
+    },
+    {
+      "fixture": "docs/guides/tooling-includes/fixtures/tooling-includes-demo",
+      "digest": "240168b11409f3c43c0474745f4a7814ef92c3171cb404fb88d16800bdb1f347"
+    },
+    {
+      "fixture": "docs/guides/typesense/fixtures/typesense-demo",
+      "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
+    },
+    {
+      "fixture": "docs/guides/valkey/fixtures/valkey-demo",
+      "digest": "a8d914d0169c21885170d31067f200410b9dec6fb3c973badd5246df77ca8a95"
+    },
+    {
+      "fixture": "docs/guides/varnish/fixtures/varnish-demo",
+      "digest": "181e8c161a40440594fe0ad139df66c856ae6f8b0bd86a7d4487e9e0a07c1f38"
+    },
+    {
+      "fixture": "docs/guides/varnish/fixtures/varnish-unknown-backend",
+      "digest": "8827f31b0a039e240264992e1edba873a77eee6806d3c8ea86a36d6de45166f7"
+    },
+    {
+      "fixture": "docs/guides/vscode/fixtures/vscode-demo",
+      "digest": "73ea7bef30c9322a030af6ebcd01c068220211e5ea260ca90602c67802dbaf3b"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/command-form",
+      "digest": "92f08d2367bf66b8d539ce908b66aef8643d4b6425889ec17ae3298ed14e9c42"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/disabled",
+      "digest": "b853a254137be7a7099a5cbda45917de8871e481c0801182fa0737e7ff249d6c"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/object-form",
+      "digest": "22a9ed76520c5ca9f641346c1030d21a800dd5123e47d32f8de2430376ebbeb3"
+    },
+    {
+      "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
+      "digest": "e255b8a8f88085098cc3f1ab03162cee3441074b5c2cfd55e384e6bdfed690e3"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",
+      "digest": "49ca1d149841fa3580959de29d57c29834bde43cd0cedff3fbb51482051a2f48"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-invalid",
+      "digest": "497659277c73b4fceb9d7eb115d3f6e744e62ed10368cdddd4b468e169f436cd"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/empty-routes-overlay",
+      "digest": "097f0e2646abd0984cb33c6aa15193c8018ddeb1883184e708d08ba82e85e98b"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/merge-directives",
+      "digest": "77a782119d0778d6ea2135f6e6d299fe5fb9bd7cda7055a016cfc92d34726d9f"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/schema-merge-rules",
+      "digest": "4c084b4b9d168141c77cf669e80c2ee93bf0990725783b5d481bf6c12adfc937"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/your-landofile-demo",
+      "digest": "f1b3be8f4f993aa3e9c5d2b22e87a6e48210303d5395e6ecc9a4ce722637b91c"
+    },
+    {
+      "fixture": "docs/guides/zero-services/fixtures/zero-services-demo",
+      "digest": "1b229197340070035c8e24137c68d4da07518d323c5c41e4c9a89a1f08afe772"
+    }
+  ],
+  "intended": {
+    "docs/guides/expressions/fixtures/expressions-typed-values": {
+      "before": {
+        "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+      },
+      "after": {
+        "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327"
+      },
+      "reason": "Upstream c1855d462 adds the number-converted env example router.httpsPort=8443 and changes worker.primary to an equivalent boolean-converted env expression. Independently reproduced on integrated parent ed5ee8443; this is a parent fixture change, not an A1 merge-semantic change."
+    },
+    "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
+      "before": {
+        "invalid": {
+          "status": "invalid",
+          "tag": "NotImplementedError"
+        }
+      },
+      "after": {
+        "digest": "d9187cc69213c58f3db346fa9b226c97337a2e7ddbfb9930cd7373a21a6ecff5"
+      },
+      "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
+    },
+    "docs/guides/static/fixtures/static-demo": {
+      "before": {
+        "invalid": {
+          "status": "invalid",
+          "tag": "NotImplementedError"
+        }
+      },
+      "after": {
+        "digest": "414f700e136b7d620b521de335df7f8f05a4b89471af7ade6d2121a756b6d3d2"
+      },
+      "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The empty default keeps the static URL at one root slash. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
+    }
+  }
+}

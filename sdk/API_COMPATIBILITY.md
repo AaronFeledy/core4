@@ -4,6 +4,17 @@
 
 ## Compatibility notes
 
+- Config lint findings now require schema-derived `rule: string` and `severity: "error" | "warning"` metadata. `valid` means no error-severity finding, not an empty findings array. Stable healthcheck warning rules are `healthcheck.bare-compose-marker` and `healthcheck.mixed-dialects`; all existing validation failures remain errors. This intentionally evolves the pre-release result contract, without changing authored Landofile grammar or historical schema captures.
+- Disabled healthcheck objects validate supplied siblings before canonicalizing to false. Lando-over-Compose precedence is unchanged for enabled Lando intent. Authored HTTP/TCP healthchecks remain schema-accepted but fail planning with the existing `LandofileValidationError`, without widening planner error channels.
+
+- Authored Landofile composition (pre-ship): `LandofileOverlayInput` and `defineLandofile` accept schema-derived expression-bearing partial layers. Runtime loading composes authored values, materializes merged recipe/env sites, assembles tooling, and strictly decodes once. Codecs obey strict encoded round trips rather than requiring runtime output to be authored input. `@lando/sdk/landofile` additionally exports `directivePathProblem` for preparation without full layer decoding. Existing editor/Standard Schema expression restrictions and produced-text literal behavior remain unchanged.
+
+- `ValidationIssue` additively accepts optional `source: { file, layer, path }`, recording the original authored location separately from the effective issue path. `LandofileValidationError` now requires `remediation`; its shared constructor takes `file` from the primary issue's source when supplied. This is a pre-release constructor requirement, not a persisted-data format migration. Command failure envelopes already support remediation and now preserve authored issue sources through their existing issue projection. `ConfigLintResult` is unchanged.
+
+- Dependency-map identity projection no longer turns scalar map values into conditions, overwrites an authored `service` member, or hides a reserved `__proto__` map key. Invalid authored maps remain available for strict validation instead of being repaired by merging; valid structured maps and service-name lists retain their declared identity merge behavior.
+
+- `@lando/sdk/landofile` adds `mergeValuesWithOrigins`, `withValueOrigins`, `valueOriginAt`, and the erased generic `ValueOrigins` / `ValueWithOrigins` types. The origin map is a path trie: mapping merges retain child locations, keyed collections relocate them, replacements discard inherited locations, and resets retain deletion tombstones. Source payloads remain caller-owned so original authored paths survive projection. `mergeValues(root, left, right, path?)` keeps its signature and uses the same merge traversal without recording origins.
+
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
 
 - `RuntimeProvider.cleanupOwnedResources(root, options)` and the filesystem-only `RuntimeProviderContribution.resourceOwnership(ctx, root)` are optional cleanup ports. `AppliedTeardownEvidence` adds ownership summaries and a cleanup-only `owned` variant. Inventory hints never establish applied state, physical existence, readiness, or seed eligibility. Whole-app teardown preflights all inventory providers before mutation; selected teardown and compensation retain their existing resource scope.
@@ -453,8 +464,28 @@ Node imports. The block-document emitter accepts JSON-compatible values, rejects
 unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
+## Authored inspection compatibility
+
+The source schemas describe JSON data independently of runtime `LandofileShape`.
+`@lando/sdk/landofile` exports `encodeLandofileSourceValue`, shared with the directive
+codec, to preserve native directives and escape literal envelope collisions.
+Config inspection now has explicit raw, merged, resolved, projection, get, and
+write result variants. Full resolved output remains the strict runtime contract.
+`ConfigLintViolation` adds optional `scope` and the shared validation `source`;
+the built-in lint operation supplies fragment/effective scopes and retained sources.
+
+The conservative actual-parent check reports five output-union changes at `$.anyOf`
+for app-config and its registered write verbs. Issue #1502 records this intentional
+pre-release contract evolution for lead review. The scoped ledger entries do not
+assert generic output-union compatibility or relax the classifier. Existing default
+resolved output remains unchanged; clients opting into new sources discriminate
+the source and result variant.
+
 ## Additive schema exports
 
+- `LandofileSourceValue`
+- `LandofileSourceDocument`
+- `LandofileSourceProjection`
 - `ResourceOwnership`
 - `OwnedResourcesCleanupResult`
 

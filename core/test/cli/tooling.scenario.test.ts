@@ -40,8 +40,8 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -960,6 +960,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "planned failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });
@@ -987,6 +988,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "original planning failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });

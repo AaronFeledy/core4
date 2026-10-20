@@ -1,4 +1,5 @@
 import { Schema, type SchemaAST, SchemaIssue } from "effect";
+import { LandofileLayer } from "./landofile-reference.ts";
 
 /**
  * Location of a validation issue inside an authored document: object keys
@@ -23,6 +24,15 @@ export const ValidationIssue = Schema.Struct({
   suggestion: Schema.optionalKey(Schema.String).annotate({
     description: "Likely fix, such as the closest allowed key for an unknown key.",
   }),
+  source: Schema.optionalKey(
+    Schema.Struct({
+      file: Schema.String.annotate({ description: "Authored Landofile or fragment containing the value." }),
+      layer: LandofileLayer.annotate({ description: "Root layer that contributed the authored value." }),
+      path: ValidationIssuePath.annotate({
+        description: "Original authored path before alias canonicalization or list relocation.",
+      }),
+    }),
+  ).annotate({ description: "Physical source of the effective value, when known." }),
 }).annotate({ identifier: "ValidationIssue" });
 export type ValidationIssue = typeof ValidationIssue.Type;
 

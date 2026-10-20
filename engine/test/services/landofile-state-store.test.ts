@@ -2,8 +2,8 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import type { ResolveIncludesError } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import type { StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 import {
