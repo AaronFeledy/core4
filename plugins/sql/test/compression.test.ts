@@ -141,6 +141,7 @@ describe("dump compression helpers", () => {
             Effect.promise(async () => {
               expect(await readFile(workingPath, "utf8")).toBe(payload);
               expect(digest).toHaveLength(64);
+              if (digest === undefined) throw new Error("expected digest");
               return { accelerated: false, sizeBytes: payload.length, digest };
             }),
         }),
@@ -173,6 +174,7 @@ describe("dump compression helpers", () => {
             Effect.promise(async () => {
               expect(await readFile(workingPath, "utf8")).toBe(payload);
               expect(digest).toHaveLength(64);
+              if (digest === undefined) throw new Error("expected digest");
               return { accelerated: false, sizeBytes: payload.length, digest };
             }),
         }),

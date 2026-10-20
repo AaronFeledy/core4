@@ -851,7 +851,7 @@ describe("executeDbCommand", () => {
       const transfer = harness.transfers()[0];
       expect(transfer?.to._tag).toBe("hostPath");
       if (transfer?.to._tag === "hostPath") {
-        expect(transfer.to.path).toBe("/dev/stdout");
+        expect(String(transfer.to.path)).toBe("/dev/stdout");
         expect(transfer.to.trusted).toBe(true);
       }
     });

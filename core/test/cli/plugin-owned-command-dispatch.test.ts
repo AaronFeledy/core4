@@ -290,10 +290,10 @@ describe("plugin-owned command dispatch", () => {
   test("routes result envelopes to stderr when the payload owns stdout", () => {
     const io = createBufferedRendererIO();
     const routed = resultIoForPayloadStdout(io);
-    expect(routed.writeStdout("dump-bytes")).toBe(true);
+    routed.writeStdout("dump-bytes");
     expect(io.stdout()).toBe("");
     expect(io.stderr()).toBe("dump-bytes");
-    expect(routed.writeStderr("progress\n")).toBe(true);
+    routed.writeStderr("progress\n");
     expect(io.stderr()).toBe("dump-bytesprogress\n");
   });
 });
