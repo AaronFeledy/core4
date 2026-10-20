@@ -59,7 +59,8 @@ export const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     bunTarget: "bun-linux-x64",
     binaryName: "lando",
     timeoutMinutes: 30,
-    providerTimeoutMinutes: 25,
+    // The live setup-driven suite runs 20-25 minutes; keep headroom above it.
+    providerTimeoutMinutes: 35,
     liveProviderIntegration: true,
   },
   {

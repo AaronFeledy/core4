@@ -58,14 +58,18 @@ export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
 export const RouteObjectInput = Schema.Struct({
-  hostname: Schema.String.annotate({ description: "Host header pattern for this route." }),
+  hostname: Schema.String.annotate({
+    description: "Host pattern only, without a port or path; use endpoint and pathPrefix for those.",
+  }),
   scheme: Schema.optionalKey(Schema.Literals(["http", "https", "both"])).annotate({
     description: "HTTP or HTTPS schemes served by this route.",
   }),
   endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])).annotate({
     description: "Target service endpoint name or port.",
   }),
-  pathPrefix: Schema.optionalKey(Schema.String).annotate({ description: "Request path prefix to match." }),
+  pathPrefix: Schema.optionalKey(Schema.String).annotate({
+    description: "Request path prefix to match, beginning with / and without a query string or fragment.",
+  }),
   filters: Schema.optionalKey(
     layerMerge(Schema.Array(RouteFilter), {
       kind: "keyed",

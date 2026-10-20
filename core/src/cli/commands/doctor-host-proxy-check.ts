@@ -17,7 +17,7 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
   hostProxy: typeof HostProxyService.Service,
   fix: boolean,
 ): Effect.fn.Return<DoctorSubsystemCheck, never, HostDnsResolver> {
-  const baseDomain = (yield* resolveProxyDefaultDomain).trim().toLowerCase().replace(/\.+$/, "");
+  const baseDomain = (yield* resolveProxyDefaultDomain).toLowerCase();
   const status = yield* Effect.result(hostProxy.status());
   const context: Record<string, string> = {
     subsystem: "host-proxy",

@@ -14,8 +14,10 @@ import {
   ProviderCapabilities,
   ProviderId,
 } from "../schema/index.ts";
-import type { RuntimeProviderShape } from "../services/index.ts";
+import type { LogChunk, RuntimeProviderShape } from "../services/index.ts";
 import {
+  CONTRACT_LONG_LINE,
+  CONTRACT_SPLIT_LINE,
   type ContractFailure,
   REQUIRED_CAPABILITY_KEYS,
   TEST_APP_ID,
@@ -336,19 +338,37 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
   yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
 
-  const logChunks = yield* Effect.timeoutOrElse(
-    provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
-      Stream.take(1),
-      Stream.runCollect,
-      Effect.map((chunks) => Array.from(chunks)),
+  const logChunks: LogChunk[] = [];
+  let sawSplitLine = false;
+  let sawLongLine = false;
+  const logDetails = () =>
+    logChunks.map((chunk) => ({ ...chunk, line: chunk.line.slice(0, 120), length: chunk.line.length }));
+  yield* Effect.timeoutOrElse(
+    provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: testAppPlan }, { follow: true }).pipe(
+      Stream.takeUntil((chunk) => {
+        logChunks.push(chunk);
+        sawSplitLine ||= chunk.line === CONTRACT_SPLIT_LINE;
+        sawLongLine ||= chunk.line === CONTRACT_LONG_LINE;
+        return sawSplitLine && sawLongLine;
+      }),
+      Stream.runDrain,
       Effect.mapError(mapProviderFailure("logs emits structured chunks")),
     ),
     {
-      duration: Duration.seconds(15),
-      orElse: () => Effect.fail((() => contractFailure("logs emits at least one chunk", []))()),
+      duration: Duration.seconds(30),
+      orElse: () => Effect.fail(contractFailure("logs emits both complete console lines", logDetails())),
     },
   );
-  yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);
+  yield* requireContract(
+    logChunks.filter((chunk) => chunk.line === CONTRACT_SPLIT_LINE).length === 1,
+    "logs reassemble a line written in pieces",
+    logDetails(),
+  );
+  yield* requireContract(
+    logChunks.filter((chunk) => chunk.line === CONTRACT_LONG_LINE).length === 1,
+    "logs reassemble a line longer than the engine split size",
+    logDetails(),
+  );
   for (const chunk of logChunks) {
     yield* requireContract(chunk.service === TEST_SERVICE_NAME, "log chunk includes service name", chunk);
     yield* requireContract(

@@ -431,7 +431,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     plannedServiceDrafts,
     appId,
     appRoot,
-    appName,
     appSlug,
     defaultDomain,
     provider,

@@ -4,7 +4,7 @@ import { Effect, type Scope } from "effect";
 import { type HostProxySocketStaleError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { EventService } from "@lando/sdk/services";
 
-import type { RedactionService } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { type HostProxyInFlightRequest, makeHostProxyRunLandoHandler } from "./transport-handler.ts";
 import { closeHostProxyServer, removeSessionState } from "./transport-lifecycle.ts";
 import { listenHostProxyServer } from "./transport-listener.ts";
@@ -19,6 +19,7 @@ import {
   sessionPaths,
 } from "./transport-session.ts";
 import { installHostProxyShim } from "./transport-shim.ts";
+import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 
 export {
   HOST_PROXY_CONTAINER_LANDO,
@@ -60,6 +61,7 @@ export const createHostProxyRunLandoSession = (
     const sessionId = makeHostProxyToken();
     const token = makeHostProxyToken();
     const controlToken = options.controlToken ?? makeHostProxyToken();
+    yield* (yield* RedactionService).registerValues([sessionId, token, controlToken]);
     const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
     const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
     const bodyReadTimeoutMs = options.bodyReadTimeoutMs ?? DEFAULT_BODY_READ_TIMEOUT_MS;
@@ -82,11 +84,17 @@ export const createHostProxyRunLandoSession = (
     const server = createServer(
       makeHostProxyRunLandoHandler({
         ...options,
+        get mountInfo() {
+          return options.mountInfo;
+        },
         session,
         control: {
           token: controlToken,
           transport: paths.transport,
-          protocolVersion: 1,
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          configDigest: options.configDigest ?? "",
+          ...(options.providerId === undefined ? {} : { providerId: options.providerId }),
+          ...(options.configure === undefined ? {} : { configure: options.configure }),
           pid: process.pid,
           shutdown: () => shutdownRef.current?.() ?? Promise.resolve(),
         },

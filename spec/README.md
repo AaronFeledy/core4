@@ -138,12 +138,14 @@ If you are looking for a public surface or policy:
 | Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
-| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
+| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
+| Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
+| Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
 | `DataMover`, endpoints, snapshots, and errors | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |

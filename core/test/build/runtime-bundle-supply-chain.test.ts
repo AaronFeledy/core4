@@ -23,7 +23,11 @@ const actionReferences = (workflow: string): ReadonlyArray<string> =>
     return actionReference === undefined ? [] : [actionReference];
   });
 
-const runPrerequisiteScript = async (aptCacheBody: string, installedVersion: string): Promise<number> => {
+const runPrerequisiteScript = async (
+  aptCacheBody: string,
+  installedVersion: string,
+  updateBody = "exit 0",
+) => {
   const fakeBin = await mkdtemp(resolve(tmpdir(), "runtime-bundle-apt-"));
   const writeCommand = async (name: string, body: string): Promise<void> => {
     const path = resolve(fakeBin, name);
@@ -32,17 +36,43 @@ const runPrerequisiteScript = async (aptCacheBody: string, installedVersion: str
   };
 
   try {
-    await writeCommand("sudo", 'if [ "$1" = "tee" ]; then cat >/dev/null; fi');
+    await Bun.write(resolve(fakeBin, "updates"), "");
+    await Bun.write(resolve(fakeBin, "sleeps"), "");
+    await writeCommand(
+      "sudo",
+      `if [ "$1" = "tee" ]; then
+  cat >"$APT_TEST_ROOT/config"
+elif [ "$1" = "apt-get" ] && [ "$2" = "update" ]; then
+  shift 2
+  printf '%s\\n' "$*" >>"$APT_TEST_ROOT/updates"
+  ${updateBody}
+elif [ "$1" = "apt-get" ] && [ "$2" = "install" ]; then
+  touch "$APT_TEST_ROOT/installed"
+fi`,
+    );
+    await writeCommand("sleep", `printf '%s\\n' "$1" >>"$APT_TEST_ROOT/sleeps"`);
     await writeCommand("dpkg-query", `printf '${installedVersion}\\n'`);
     await writeCommand("apt-cache", aptCacheBody);
     const child = Bun.spawn(["bash", "-c", await renderPrerequisiteScript()], {
       cwd: repoRoot,
-      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+      env: { ...process.env, APT_TEST_ROOT: fakeBin, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
       stdout: "pipe",
       stderr: "pipe",
     });
 
-    return await child.exited;
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    return {
+      exitCode,
+      output: stdout + stderr,
+      config: await Bun.file(resolve(fakeBin, "config")).text(),
+      updates: await Bun.file(resolve(fakeBin, "updates")).text(),
+      sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
+      installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
+    };
   } finally {
     await rm(fakeBin, { force: true, recursive: true });
   }
@@ -70,7 +100,7 @@ describe("runtime-bundle workflow supply chain", () => {
 
   test("installs Ubuntu build prerequisites from one fixed snapshot", async () => {
     const workflow = await renderWorkflow();
-    const snapshotConfig = workflow.indexOf("UBUNTU_SNAPSHOT=20260922T000000Z");
+    const snapshotConfig = workflow.indexOf("UBUNTU_SNAPSHOT=20261019T000000Z");
     const aptConfig = workflow.indexOf("APT::Snapshot", snapshotConfig);
     const packageIndex = workflow.indexOf("sudo apt-get update", aptConfig);
     const packageInstall = workflow.indexOf("sudo apt-get install", packageIndex);
@@ -85,6 +115,8 @@ describe("runtime-bundle workflow supply chain", () => {
     expect(packageInstall).toBeGreaterThan(packageIndex);
     expect(packageVerification).toBeGreaterThan(packageInstall);
     expect(workflow).toContain("--allow-downgrades --reinstall");
+    expect(workflow).toContain('Acquire::Retries "3";');
+    expect(workflow).toContain("sudo apt-get update --error-on=any");
     expect(workflow).toContain("https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT");
     expect(workflow).toMatch(/PACKAGES=.*\bpatch\b/u);
     for (const obsoletePackage of ["libassuan-dev", "libgpg-error-dev", "libgpgme-dev"]) {
@@ -97,11 +129,11 @@ describe("runtime-bundle workflow supply chain", () => {
   Candidate: 1.0
   Version table:
  *** 1.0 500
-        500 https://snapshot.ubuntu.com/ubuntu/20260922T000000Z noble/main amd64 Packages
+        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages
 POLICY
 seq 1 100000`;
 
-    expect(await runPrerequisiteScript(aptCacheBody, "1.0")).toBe(0);
+    expect((await runPrerequisiteScript(aptCacheBody, "1.0")).exitCode).toBe(0);
   });
 
   test("rejects a live candidate when only another version comes from the snapshot", async () => {
@@ -111,10 +143,34 @@ seq 1 100000`;
  *** 2.0 500
         500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
      1.0 100
-        100 https://snapshot.ubuntu.com/ubuntu/20260922T000000Z noble/main amd64 Packages
+        100 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages
 POLICY`;
 
-    expect(await runPrerequisiteScript(aptCacheBody, "2.0")).not.toBe(0);
+    expect((await runPrerequisiteScript(aptCacheBody, "2.0")).exitCode).not.toBe(0);
+  });
+
+  test("retries failed index updates with backoff before installing", async () => {
+    const result = await runPrerequisiteScript(
+      `printf '  Candidate: 1.0\\n  Version table:\\n *** 1.0 500\\n        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages\\n'`,
+      "1.0",
+      'test "$(wc -l < "$APT_TEST_ROOT/updates")" -ge 3',
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.updates).toBe("--error-on=any\n".repeat(3));
+    expect(result.sleeps).toBe("5\n15\n");
+    expect(result.installed).toBe(true);
+    expect(result.config).toBe('APT::Snapshot "20261019T000000Z";\nAcquire::Retries "3";\n');
+  });
+
+  test("fails closed with an annotation after four failed index updates", async () => {
+    const result = await runPrerequisiteScript("exit 1", "1.0", "exit 100");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.updates).toBe("--error-on=any\n".repeat(4));
+    expect(result.sleeps).toBe("5\n15\n45\n");
+    expect(result.installed).toBe(false);
+    expect(result.output).toContain("::error title=runtime-bundle-apt-snapshot::");
   });
 
   test("keeps the generated runtime workflow drift-free", async () => {

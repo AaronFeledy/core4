@@ -47,7 +47,7 @@ import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts"
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
-import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
@@ -250,11 +250,17 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
-          yield* requireNoPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+          const pending = yield* readPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+          if (pending !== null)
+            yield* startApp(
+              options.signal === undefined ? {} : { signal: options.signal },
+              mysqlResolvedTarget,
+              managed,
+            );
           const stopPreflight = yield* preflightStopApp(mysqlResolvedTarget);
           yield* preflightStartAppDrain(mysqlResolvedTarget, stopPreflight);
           yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
-          yield* runAppInitEvents(plan);
+          if (pending === null) yield* runAppInitEvents(plan);
           if (scoped) {
             return {
               app: plan.name,
