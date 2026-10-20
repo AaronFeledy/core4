@@ -34,7 +34,7 @@ An unsupervised exited service fails with `ServiceNotReadyError`; applied user-a
 
 Provider inspection failures use `inspect-failed` and prescribe `lando doctor`, never a successful restart warning. Service diagnosis uses `lando logs -s <service>` and `lando start` for user apps, or `lando global:logs -s <service>` and `lando global:start` for global services. Scratch acquisition runs the same checks, but failure or interruption follows scratch cleanup and `--keep-on-failure`, not user-app retention.
 
-Non-instant readiness waits publish task-tree progress. Interruption during the barrier retains the applied app, routes, volumes, sessions, journal, and managed scopes while interruption propagates. Earlier startup phases keep their existing interrupt cleanup.
+Non-instant readiness waits publish task-tree progress. Interruption at any phase, the barrier included, cancels in-flight probes and keeps the applied app, routes, volumes, sessions, journal, and managed scopes while the interruption propagates; the next `lando start` converges on them.
 
 This is not a user how-to. For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
