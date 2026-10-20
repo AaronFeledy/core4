@@ -93,7 +93,7 @@ describe("host dump compression safety", () => {
       plan: harness.deps.plan,
       service: "database",
       family: "mysql" as const,
-      creds: { user: "lando", database: "sql-app", password: "test-password" },
+      creds: { user: "lando", database: "sql-app", password: "test-password", port: 3306 },
       env: {},
       file: source,
       compression: "gzip" as const,

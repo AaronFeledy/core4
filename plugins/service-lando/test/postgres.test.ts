@@ -64,6 +64,7 @@ describe("postgres ServiceType", () => {
       POSTGRES_DB: "myapp",
       PGDATA: "/var/lib/postgresql/data",
       PGPORT: "5432",
+      LANDO_DB_PORT: "5432",
     });
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-postgresql-data");
@@ -89,6 +90,7 @@ describe("postgres ServiceType", () => {
       POSTGRES_PASSWORD: "secret",
       POSTGRES_DB: "appdb",
       PGPORT: "15432",
+      LANDO_DB_PORT: "15432",
     });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
     expect(plan.healthcheck?.command).toEqual([
@@ -121,12 +123,10 @@ describe("postgres ServiceType", () => {
     expect(plan.environment.PGDATA).toBe("/var/lib/postgresql/18/docker");
   });
 
-  test("uses an authored PGPORT as the endpoint and healthcheck port", async () => {
-    const plan = await planPostgres({ type: "postgres", environment: { PGPORT: "6543" } });
-
-    expect(plan.environment.PGPORT).toBe("6543");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 6543, protocol: "tcp", name: "db" }]);
-    expect(plan.healthcheck?.command).toContain("6543");
+  test("rejects PGPORT selecting a non-default port without port:", async () => {
+    await expect(planPostgres({ type: "postgres", environment: { PGPORT: "6543" } })).rejects.toThrow(
+      "Set port: 6543",
+    );
   });
 
   test("accepts a PGPORT that matches port", async () => {
@@ -138,12 +138,12 @@ describe("postgres ServiceType", () => {
   test("rejects a PGPORT that disagrees with port", async () => {
     await expect(
       planPostgres({ type: "postgres", port: 6000, environment: { PGPORT: "6543" } }),
-    ).rejects.toThrow("environment.PGPORT: 6543");
+    ).rejects.toThrow("Set port: 6543");
   });
 
   test("rejects a PGPORT that is not a port number", async () => {
     await expect(planPostgres({ type: "postgres", environment: { PGPORT: "pg" } })).rejects.toThrow(
-      "must be a TCP port number",
+      "which is not a TCP port number",
     );
   });
 
@@ -174,13 +174,17 @@ describe("postgres ServiceType", () => {
   });
 
   test("resolves psql tooling with the service creds", async () => {
-    const resolution = await resolvePostgres({ type: "postgres" });
+    const resolution = await resolvePostgres({
+      type: "postgres",
+      port: 6543,
+      environment: { PGPORT: "6543" },
+    });
 
     expect(resolution.tooling?.psql).toEqual({
       description: "Open the PostgreSQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["psql", "-U", "lando", "-d", "myapp"],
+      cmd: ["psql", "-p", "6543", "-U", "lando", "-d", "myapp"],
       env: { PGPASSWORD: DEFAULT_PASSWORD },
     });
     expect(resolution.normalizedConfig.creds).toEqual({
@@ -236,7 +240,13 @@ describe("postgres ServiceType", () => {
       readOnly: true,
       realization: "passthrough",
     });
-    expect(plan.command).toEqual(["postgres", "-c", "config_file=/etc/lando/postgresql.conf"]);
+    expect(plan.command).toEqual([
+      "postgres",
+      "-c",
+      "config_file=/etc/lando/postgresql.conf",
+      "-c",
+      "port=5432",
+    ]);
   });
 
   test("keeps an authored port ahead of config.server", async () => {

@@ -21,6 +21,7 @@ import {
   AbsoluteContainerPath,
   CommandSpec,
   ContainerUser,
+  PortNumber,
   PortablePath,
   ProviderExtensionConfig,
   ProviderId,
@@ -706,8 +707,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Mailpit PHP senders: omitted selects every resolved PHP service, false selects none, and a list selects named PHP services in authored order with duplicates removed.",
     }),
     cores: Schema.optionalKey(Schema.Array(Schema.String)),
-    port: Schema.optionalKey(Schema.Number).annotate({
-      description: "Primary container port exposed by the service.",
+    port: Schema.optionalKey(PortNumber).annotate({
+      description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
