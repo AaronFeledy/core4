@@ -21,6 +21,8 @@ import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
 import { acquireLandofileRootLayers } from "./root-compile.ts";
 import { prepareLandofileValue } from "./source.ts";
 
+export { routeViolations } from "./lint-violations.ts";
+
 export interface LintLandofileOptions {
   readonly cwd?: string;
   readonly templates?: TemplateEngineInputs;
@@ -128,7 +130,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     const resolved = effective.success;
     const origins = getOrigins(merged);
     violations.push(
-      ...routeViolations(resolved).map((issue) =>
+      ...routeViolations(resolved, { deferExpressions: true }).map((issue) =>
         attributeLintIssue(
           {
             ...issue,

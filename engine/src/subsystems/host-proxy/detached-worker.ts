@@ -1,5 +1,6 @@
 import { DateTime, Effect, Ref, Schema } from "effect";
 
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
@@ -8,13 +9,15 @@ import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { hostProxyWorkerEntry } from "../../composition.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
-import type { HostProxyTransportKind } from "./transport.ts";
+import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
 import {
   HostProxyWorkerExitedBeforeReadyError,
   type HostProxyWorkerSpawner,
   defaultSpawnWorker,
   hostProxyWorkerArgv,
 } from "./worker-process.ts";
+import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
+import { registerHostProxyCredentials, reuseHostProxyWorker } from "./worker-reuse.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
 import {
   removeOwnedHostProxyWorkerState,
@@ -34,13 +37,38 @@ export interface DetachedHostProxyWorkerOptions {
   readonly spawnWorker?: HostProxyWorkerSpawner;
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
   readonly privateFileAccess: PrivateFileAccess;
+  readonly reusePolicy?: "exact" | "adopt";
 }
 
-export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOptions) =>
+export const startDetachedHostProxyWorker = (
+  options: DetachedHostProxyWorkerOptions,
+): Effect.Effect<
+  HostProxyRunLandoSession & { readonly reused?: boolean },
+  HostProxyTransportUnavailableError
+> =>
   withWorkerRecordLock(
     options.app,
     options.paths,
     Effect.gen(function* () {
+      const landoPaths = makeLandoPaths(options.paths);
+      const input = {
+        app: { kind: options.app.kind, id: options.app.id, root: options.app.root },
+        plan: Schema.encodeUnknownSync(AppPlan)(options.plan),
+        paths: { ...landoPaths.roots, platform: landoPaths.platform },
+        shimArtifactPath: options.shimArtifactPath,
+        ...(options.shimTarget === undefined ? {} : { shimTarget: options.shimTarget }),
+        ...(options.hostGatewayName === undefined ? {} : { hostGatewayName: options.hostGatewayName }),
+      };
+      const { plan: _plan, ...configuration } = input;
+      const configDigest = sha256Hex(
+        canonicalJson({
+          ...configuration,
+          providerId: options.plan.provider,
+          workerEntry: hostProxyWorkerEntry(),
+        }),
+      );
+      const reused = yield* reuseHostProxyWorker(options, configDigest);
+      if (reused !== undefined) return reused;
       const keepWorker = yield* Ref.make(false);
       return yield* Effect.acquireUseRelease(
         Effect.gen(function* () {
@@ -58,27 +86,14 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
         (worker) =>
           Effect.tryPromise({
             try: async () => {
-              const encodedPlan = Schema.encodeUnknownSync(AppPlan)(options.plan);
-              const landoPaths = makeLandoPaths(options.paths);
-              const paths = { ...landoPaths.roots, platform: landoPaths.platform };
-              await worker.writeStdin(
-                `${JSON.stringify({
-                  app: options.app,
-                  plan: encodedPlan,
-                  paths,
-                  shimArtifactPath: options.shimArtifactPath,
-                  ...(options.shimTarget === undefined ? {} : { shimTarget: options.shimTarget }),
-                  ...(options.hostGatewayName === undefined
-                    ? {}
-                    : { hostGatewayName: options.hostGatewayName }),
-                })}\n`,
-              );
+              await worker.writeStdin(`${JSON.stringify({ ...input, configDigest })}\n`);
               return await worker.readReady();
             },
             catch: (cause) => cause,
           }).pipe(
             Effect.flatMap(
               Effect.fnUntraced(function* (ready) {
+                yield* registerHostProxyCredentials(ready);
                 const transport: HostProxyTransportKind =
                   ready.transport ??
                   (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
@@ -104,7 +119,10 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
                     ...(probeServices.length === 0 ? {} : { probeServices }),
                     shimPath: ready.shimPath,
                     transport,
-                    protocolVersion: 1,
+                    protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+                    configDigest,
+                    sessionId: ready.sessionId,
+                    token: ready.token,
                     startedAt: DateTime.formatIso(yield* DateTime.now),
                     controlToken: ready.controlToken,
                   },
@@ -121,6 +139,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
                     ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
                     shimPath: ready.shimPath,
                     transport,
+                    reused: false as const,
                     close: () => {
                       terminatePromise ??= worker.terminate().finally(resolveClosed);
                       return terminatePromise;

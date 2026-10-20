@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { DomainName } from "./hostname.ts";
 import { RoutePlan } from "./networking.ts";
 import { AppId, PortNumber } from "./primitives.ts";
 
@@ -76,8 +77,9 @@ export const RouterConfig = Schema.Struct({
 export type RouterConfig = typeof RouterConfig.Type;
 
 export const ProxyConfig = Schema.Struct({
-  defaultDomain: Schema.String.annotateKey({
-    description: "Default local domain used when routes omit a custom domain.",
+  defaultDomain: DomainName.annotateKey({
+    description:
+      "Plain DNS domain used when routes omit a custom domain, without a scheme, port, path, or wildcard.",
   }),
   router: Schema.optionalKey(RouterConfig).annotate({
     description: "Shared host-router bind address and port policy.",

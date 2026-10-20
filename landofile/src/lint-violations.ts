@@ -13,7 +13,7 @@ import {
 import type { SchemaIssue } from "effect";
 import { Predicate, Result, Schema } from "effect";
 import type { ComposeRejectionMatch } from "./compose/rejections.ts";
-import { normalizeRoutes } from "./route-normalize.ts";
+import { routeInputErrors } from "./route-normalize.ts";
 import { type SchemaIssueLeaf, plannerScopeSuggestion, schemaIssueLeaves } from "./validation.ts";
 
 const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
@@ -88,33 +88,39 @@ export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViol
 const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
   path === rejectedPath || path.startsWith(`${rejectedPath}.`) || path.startsWith(`${rejectedPath}[`);
 
+export const routeViolations = (
+  landofile: LandofileShape,
+  options: { readonly deferExpressions: boolean },
+): ReadonlyArray<ConfigLintViolation> =>
+  [
+    ...Object.entries(landofile.services ?? {}).map(([name, service]) => ({
+      keyPath: `services.${name}.routes`,
+      routes: service.routes ?? [],
+    })),
+    ...Object.entries(landofile.proxy ?? {}).map(([name, routes]) => ({ keyPath: `proxy.${name}`, routes })),
+  ].flatMap(({ keyPath, routes }) =>
+    routes.flatMap((route, index) => {
+      const texts = typeof route === "string" ? [route] : [route.hostname, route.pathPrefix ?? ""];
+      if (options.deferExpressions && texts.some((text) => text.includes("{{") || text.includes("${")))
+        return [];
+      return routeInputErrors(route, { keyPath: `${keyPath}[${index}]` }).map((error) => ({
+        path: pathFromText(error.key),
+        message: error.message,
+        suggestion: error.remediation,
+      }));
+    }),
+  );
+
 export const violationsFor = (
   parsed: unknown,
   rejections: ReadonlyArray<ComposeRejectionMatch> = [],
 ): ReadonlyArray<ConfigLintViolation> => {
   const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
   if (Result.isSuccess(decoded)) {
-    return routeViolations(decoded.success);
+    return routeViolations(decoded.success, { deferExpressions: true });
   }
   return violationsFromSchema(decoded.failure.issue, parsed, rejections);
 };
-
-export const routeViolations = (landofile: LandofileShape): readonly ConfigLintViolation[] =>
-  [
-    ...Object.entries(landofile.services ?? {}).map(([name, service]) =>
-      normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
-    ),
-    ...Object.entries(landofile.proxy ?? {}).map(([name, routes]) =>
-      normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
-    ),
-  ].flatMap((result) =>
-    Result.match(result, {
-      onFailure: (error) => [
-        { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
-      ],
-      onSuccess: () => [],
-    }),
-  );
 
 export const violationsFromSchema = (
   issue: SchemaIssue.Issue,

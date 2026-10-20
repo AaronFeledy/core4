@@ -120,6 +120,7 @@ Ordinary `start` and explicit `global:start` plan and build with the default cac
 | Missing opaque `dev.lando.create-config` label | One-time recreate. |
 | Unchanged `${secret:...}` reference whose store value changed | Not a config-identity change. MUST NOT recreate for that reason alone. |
 | Per-session credentials, allocations, and timestamps | Excluded from identity. |
+| Host-proxy session (`dev.lando.host-proxy-session`) | Excluded from identity. A changed session recreates eligible services through the host-proxy session rule (§10.10.1), never as config drift, so selected restart is unaffected. |
 
 The label value is `v1:` plus one SHA-256 digest of the desired create configuration. It stores no raw values and no per-value hashes. A `${secret:...}` input contributes the reference text, not the resolved SecretStore value. Literal env-file and YAML config, including a literal password, is desired configuration and is inside that single outer digest. The digest does not prevent dictionary inference and MUST NOT be described as proof that no secret was hashed.
 

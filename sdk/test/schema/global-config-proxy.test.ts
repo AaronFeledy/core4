@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Result, Schema } from "effect";
 
-import { GlobalConfig } from "@lando/sdk/schema";
+import { GlobalConfig, ProxyConfig } from "@lando/sdk/schema";
 
 const decodeDefault = Schema.decodeUnknownSync(GlobalConfig);
 const decodeStrict = Schema.decodeUnknownSync(GlobalConfig, { onExcessProperty: "error" });
 
 describe("GlobalConfig.proxy.defaultDomain", () => {
+  test.each(["x.test:80/a", "https://lndo.site", "*.lndo.site", "lndo.site/path", "a".repeat(64)])(
+    "rejects invalid defaultDomain %j",
+    (defaultDomain) => {
+      // Given / When
+      const global = Schema.decodeUnknownResult(GlobalConfig)({ proxy: { defaultDomain } });
+      const proxy = Schema.decodeUnknownResult(ProxyConfig)({ defaultDomain });
+      // Then
+      expect(Result.isFailure(global)).toBe(true);
+      expect(Result.isFailure(proxy)).toBe(true);
+    },
+  );
   test("decodes an explicit defaultDomain", () => {
     // Given / When
     const decoded = decodeDefault({ proxy: { defaultDomain: "example.test" } });

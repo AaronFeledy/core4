@@ -1,0 +1,95 @@
+import { expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect } from "effect";
+import { appConfigLint } from "../../src/operations/app-config-lint.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+
+test.each([
+  { route: 'hostname: "{{ app.name }}.lndo.site:8080"', valid: false, field: "hostname" },
+  { route: '"{{ app.name }}.lndo.site/x"', valid: true },
+  { route: 'hostname: "{{ app.name }}.lndo.site"', valid: true },
+  { route: 'hostname: app.site\n        pathPrefix: "{{ app.name }}"', valid: false, field: "pathPrefix" },
+])("lints resolved route $route with valid=$valid", async ({ route, valid, field }) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-resolved-route-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: My App\nservices:\n  web:\n    type: nginx\n    routes:\n      - ${route}\n`,
+    );
+    // When
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(result.valid).toBe(valid);
+    expect(result.violations.map(({ path }) => path)).toEqual(
+      field === undefined ? [] : [["services", "web", "routes", 0, field]],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("retains fragment findings when evaluated routes add effective findings", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-route-lint-fragment-"));
+  try {
+    await writeFile(join(root, ".lando.base.yml"), "runtime: wrong\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: routes\nruntime: 4\nservices:\n  web:\n    type: nginx\n    routes:\n      - hostname: "{{ app.name }}.lndo.site:8080"\n',
+    );
+    // When
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(result.valid).toBe(false);
+    expect(result.violations).toHaveLength(2);
+    expect(result.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["runtime"],
+          scope: "fragment",
+          source: expect.objectContaining({ file: join(root, ".lando.base.yml"), layer: "base" }),
+        }),
+        expect.objectContaining({
+          path: ["services", "web", "routes", 0, "hostname"],
+          scope: "effective",
+          source: expect.objectContaining({
+            file: join(root, ".lando.yml"),
+            layer: "canonical",
+            path: ["services", "web", "routes", 0, "hostname"],
+          }),
+        }),
+      ]),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reports static route findings once when evaluated routes are also invalid", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-route-lint-dedup-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: routes\nservices:\n  web:\n    type: nginx\n    routes:\n      - hostname: static.lndo.site:8080\n      - hostname: "{{ app.name }}.lndo.site:8080"\n',
+    );
+    // When
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(result.violations.map(({ path }) => path)).toEqual([
+      ["services", "web", "routes", 0, "hostname"],
+      ["services", "web", "routes", 1, "hostname"],
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

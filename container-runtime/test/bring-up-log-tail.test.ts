@@ -99,6 +99,15 @@ const dependentPlan = (): AppPlan => {
 
 const rawConsole = (line: string): Uint8Array => textEncoder.encode(`2026-10-10T00:00:00Z ${line}\n`);
 
+const consoleFrame = (stream: 1 | 2, text: string): Uint8Array => {
+  const payload = textEncoder.encode(text);
+  const frame = new Uint8Array(8 + payload.length);
+  frame[0] = stream;
+  new DataView(frame.buffer).setUint32(4, payload.length);
+  frame.set(payload, 8);
+  return frame;
+};
+
 const logsQuery = (path: string): URLSearchParams => new URLSearchParams(path.split("?")[1] ?? "");
 
 const makeApi = (options: {
@@ -201,6 +210,29 @@ const expectServiceStartError = (error: unknown): ServiceStartError => {
 };
 
 describe("bringUp start-failure log tail", () => {
+  test("captures whole lines from split multiplexed writes on a failed service", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const { api } = makeApi({
+      failedStarts: [web],
+      logsFor: {
+        [web]: [
+          consoleFrame(1, "2026-10-10T00:00:00Z DATABASE_PASS"),
+          consoleFrame(2, "2026-10-10T00:00:01Z err-"),
+          consoleFrame(1, "2026-10-10T00:00:02Z WORD=hunter2 failed\n"),
+          consoleFrame(2, "2026-10-10T00:00:03Z partial\n"),
+          consoleFrame(1, "2026-10-10T00:00:04Z final partial"),
+        ],
+      },
+    });
+    const error = await flipBringUp(plan, api);
+    expect(expectServiceStartError(error).logTail?.lines).toEqual([
+      "DATABASE_PASSWORD=[redacted] failed",
+      "err-partial",
+      "final partial",
+    ]);
+  });
+
   test("attaches a redacted tail and still rolls back when container start returns HTTP 500", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");

@@ -141,7 +141,11 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
           });
         }
         case "legacy": {
-          const ownedRunDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(state.record.appId));
+          if (state.appRoot === null) return undefined;
+          const ownedRunDir =
+            state.appRoot === undefined
+              ? resolve(paths.hostProxyRunRoot, sanitizeAppName(state.record.appId))
+              : resolve(paths.hostProxyRunDir(state.record.appId, state.appRoot));
           if (ownedRunDir !== runDir) return undefined;
           return yield* diagnoseHostProxyWorker({
             doctor: options,
