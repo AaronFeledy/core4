@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { AppId, AppPlan } from "@lando/sdk/schema";
+import { type AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Schema, Stream } from "effect";
 
 import { serviceContainerName } from "@lando/container-runtime/plan";
 
@@ -219,6 +219,93 @@ describe("live-app-scope: clearing a previous run", () => {
 });
 
 describe("live-app-scope: daemon polling", () => {
+  test("appends container diagnostics before releasing a failed app", async () => {
+    const calls = noCalls();
+    const lifecycle: LiveAppLifecycle = {
+      ...fakeLifecycle(calls),
+      exec: () => Effect.fail(new Error("container not running")),
+      diagnose: () =>
+        Effect.sync(() => {
+          calls.order.push("diagnose");
+          return "state=exited exitCode=1\nboom";
+        }),
+    };
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const app = yield* acquireLiveApp({ plan, socketPath: "/tmp/fake.sock", lifecycle });
+          return yield* execUntil({
+            app,
+            service: "db",
+            command: ["true"],
+            accept: () => false,
+            timeoutMs: 50,
+            intervalMs: 10,
+          });
+        }),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    const message = Exit.isFailure(exit) ? String(exit.cause) : "";
+    expect(message).toContain("Last observation:");
+    expect(message).toContain("container not running");
+    expect(message).toContain("state=exited exitCode=1");
+    expect(message).toContain("boom");
+    expect(calls.order).toEqual(["clear", "up", "diagnose", "down"]);
+  });
+
+  test("default diagnostics inspect container state and tail the last 50 log lines", async () => {
+    const requests: string[] = [];
+    const api: LiveProviderApi = {
+      info: Effect.succeed({}),
+      ping: Effect.void,
+      request: (input) => {
+        requests.push(input.path);
+        return Effect.succeed({
+          status: 200,
+          body: JSON.stringify({
+            State: { Status: "exited", ExitCode: 137, OOMKilled: true, Error: "killed" },
+          }),
+        });
+      },
+      stream: (input) => {
+        requests.push(input.path);
+        return Stream.make(new TextEncoder().encode("boom\nlast line\n"));
+      },
+    };
+    const withService = Schema.decodeUnknownSync(AppPlan)({
+      ...plan,
+      services: {
+        db: {
+          name: "db",
+          type: "mongodb",
+          provider: "lando",
+          primary: false,
+          artifact: { kind: "ref", ref: "mongo:7" },
+          environment: {},
+          endpoints: [],
+          mounts: [],
+          storage: [],
+          routes: [],
+          dependsOn: [],
+          hostAliases: [],
+          metadata: plan.metadata,
+          extensions: {},
+        },
+      },
+    });
+    const diagnose = defaultLiveAppLifecycle.diagnose;
+    if (diagnose === undefined) throw new Error("default diagnostics missing");
+    const text = await Effect.runPromise(diagnose(withService, api, ServiceName.make("db")));
+    expect(text).toContain('state=exited exitCode=137 OOMKilled=true error="killed"');
+    expect(text).toContain("boom\nlast line");
+    const container = serviceContainerName(withService, "db");
+    expect(requests).toEqual([
+      `/containers/${container}/json`,
+      `/containers/${container}/logs?stdout=true&stderr=true&follow=false&timestamps=true&tail=50`,
+    ]);
+  });
+
   test("returns the first accepted result", async () => {
     const calls = noCalls();
     const lifecycle = fakeLifecycle(calls, {
