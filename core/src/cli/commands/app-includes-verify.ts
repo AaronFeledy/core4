@@ -95,8 +95,8 @@ export type AppIncludesVerifyError =
   | LandofileLoadExpressionError;
 
 /**
- * Read-only check that the current app's `.lando.lock.yml` matches its resolved
- * `includes:` tree. Discovers + parses the Landofile directly (no
+ * Read-only check that the current app's `.lando.lock.yml` pins every remote
+ * include and that the pinned content matches. Discovers + parses the Landofile directly (no
  * `LandofileService`) so the command runs at the `minimal` bootstrap level, then
  * delegates to {@link verifyLandofileIncludes}, which never mutates the lockfile.
  */
