@@ -241,27 +241,33 @@ const fakeGnuPg = (exportExit: number): ProcessRunner["Service"] => ({
       { exitCode: exportExit },
     ),
 });
-const fakeWorker = (stateDir: string, terminated: { count: number }) => (spec: DetachedWorkerSpawnSpec) => ({
-  pid: 4242,
-  argv: spec.argv,
-  writeStdin: async () => undefined,
-  readReady: async (): Promise<AgentRelayWorkerReady> => ({
-    _tag: "ready",
-    appId: plan.id,
-    appRoot: plan.root,
-    sessionId: "gpg-session",
-    kind: "gpg",
-    protocolVersion: 1,
+const fakeWorker = (stateDir: string, terminated: { count: number }) => (spec: DetachedWorkerSpawnSpec) => {
+  let configDigest = "";
+  return {
     pid: 4242,
-    controlToken: "token",
-    controlPort: 1,
-    socketName: "S.gpg-agent",
-    mount: { _tag: "bind-directory", directory: AbsolutePath.make(join(stateDir, "socket")) },
-  }),
-  terminate: async () => {
-    terminated.count += 1;
-  },
-});
+    argv: spec.argv,
+    writeStdin: async (text: string) => {
+      configDigest = JSON.parse(text).configDigest;
+    },
+    readReady: async (): Promise<AgentRelayWorkerReady> => ({
+      _tag: "ready",
+      appId: plan.id,
+      appRoot: plan.root,
+      sessionId: "gpg-session",
+      kind: "gpg",
+      protocolVersion: 2,
+      configDigest,
+      pid: 4242,
+      controlToken: "token",
+      controlPort: 1,
+      socketName: "S.gpg-agent",
+      mount: { _tag: "bind-directory", directory: AbsolutePath.make(join(stateDir, "socket")) },
+    }),
+    terminate: async () => {
+      terminated.count += 1;
+    },
+  };
+};
 const sessionOptions = (stateDir: string, terminated: { count: number }) => ({
   spawnWorker: fakeWorker(stateDir, terminated),
   discovery: {

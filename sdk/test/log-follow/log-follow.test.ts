@@ -61,6 +61,20 @@ const runFinite = (
   );
 
 describe("makeLineFramer (framing + bounds)", () => {
+  test.each(["é", "€", "😀"])("trims a truncated UTF-8 codepoint: %s", (codepoint) => {
+    const bytes = new TextEncoder().encode(`ok${codepoint}end\n`);
+    for (let kept = 1; kept < new TextEncoder().encode(codepoint).length; kept += 1) {
+      const framer = makeLineFramer(2 + kept);
+      expect(framer.feed(bytes)).toEqual([{ text: "ok …[truncated]", truncated: true }]);
+    }
+  });
+
+  test("keeps a complete codepoint at the truncation boundary on flush", () => {
+    const framer = makeLineFramer(4);
+    framer.feed(new TextEncoder().encode("okérest"));
+    expect(framer.flush()).toEqual([{ text: "oké …[truncated]", truncated: true }]);
+  });
+
   test("S6 splits multi-byte UTF-8 across reads without corruption", () => {
     const framer = makeLineFramer();
     // "héllo\n" — é is 0xC3 0xA9; split it across two feeds.
@@ -69,6 +83,16 @@ describe("makeLineFramer (framing + bounds)", () => {
     const rest = framer.feed(bytes.slice(2));
     expect(first).toHaveLength(0);
     expect(rest.map((line) => line.text)).toEqual(["héllo"]);
+  });
+
+  test("drops carriage returns at both ends of a line, including LF-CR terminators", () => {
+    const framer = makeLineFramer();
+    expect(
+      framer.feed(new TextEncoder().encode("one\n\rtwo\r\r\n\r\rthree\n")).map(({ text }) => text),
+    ).toEqual(["one", "two", "three"]);
+    expect(framer.feed(new TextEncoder().encode("mid\rline\n")).map(({ text }) => text)).toEqual([
+      "mid\rline",
+    ]);
   });
 
   test("S6 handles CRLF and flushes a final partial line at EOF", () => {
