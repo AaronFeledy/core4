@@ -144,7 +144,7 @@ the Beta guides above.
 | - | - | node service type | `docs/guides/services/node.mdx` | Shipped |
 | - | - | TypeScript toolchain on a Node service | `docs/guides/services/node-typescript.mdx` | Shipped |
 | - | - | compile PHP CMS theme assets with a Node sidecar | `docs/guides/services/node-theme-assets.mdx` | Shipped |
-| - | - | Run Playwright end-to-end tests from an e2e service | `docs/guides/services/node-playwright.mdx` | Shipped |
+| - | - | run Playwright end-to-end tests from an e2e service | `docs/guides/services/node-playwright.mdx` | Shipped |
 | - | - | python service type | `docs/guides/services/python.mdx` | Shipped |
 | - | - | ruby service type | `docs/guides/services/ruby.mdx` | Shipped |
 | - | - | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |
