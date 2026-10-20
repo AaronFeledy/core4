@@ -46,7 +46,7 @@ import { shellArg } from "../services/shell-quote.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
-import { readDiscardableStart, retainedStartDisposal } from "./accelerated-start-discard.ts";
+import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -121,7 +121,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> {
-  const retained = yield* retainedStartDisposal(target.app, target.plan);
+  const retained = yield* pendingStartDisposal(target.app, target.plan);
   const resolvedOptions = options ?? {};
   const registry = yield* RuntimeProviderRegistry;
   const events = yield* EventService;
@@ -211,9 +211,10 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
           ? sessions.every(({ spec }) =>
               appliedFileSync.sessions.some((planned) => sameFileSyncSessionSpec(planned, spec)),
             ) &&
-            (retainedPreparedVolumeNames ?? []).every((name) =>
-              sessions.some(({ spec }) => spec.target._tag === "volume" && spec.target.name === name),
-            )
+            (retained?.record.phase !== "apply-intent" ||
+              (retainedPreparedVolumeNames ?? []).every((name) =>
+                sessions.some(({ spec }) => spec.target._tag === "volume" && spec.target.name === name),
+              ))
           : hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))))
   ) {
     return yield* Effect.fail(
@@ -257,15 +258,6 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     );
   }
 
-  if (retained !== undefined && lifecycle === undefined)
-    return yield* Effect.fail(
-      new FileSyncStopError({
-        engineId: plan.fileSync[0]?.engineId ?? "unavailable",
-        sessionRef: String(plan.id),
-        message: "Retained accelerated sessions have no durable drain lifecycle.",
-        remediation: "Restore the recorded file-sync engine before retrying destroy.",
-      }),
-    );
   if (!retainedUnapplied && durablePhase !== "disposing" && durablePhase !== "completed") {
     yield* runAppInitEvents(plan);
     const preDestroy = PreDestroyEvent.make({
@@ -314,9 +306,15 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
           yield* provider.disposeFileSyncTargets(plan);
           if (durablePhase !== "absent") yield* lifecycle.completeDisposal(ref);
         }
-      } else if (sessions.length > 0 && quiesceForFileSync !== undefined) {
-        yield* quiesceForFileSync({ app: plan.id, plan });
+      } else if (
+        appliedFileSync.status === "accelerated" &&
+        (retainedUnapplied || quiesceForFileSync !== undefined)
+      ) {
+        if (!retainedUnapplied && quiesceForFileSync !== undefined)
+          yield* quiesceForFileSync({ app: plan.id, plan });
         yield* terminateFileSyncSessions(ref, sessions);
+        if (retained !== undefined && provider.disposeFileSyncTargets !== undefined)
+          yield* provider.disposeFileSyncTargets(plan);
       }
       if (fileSyncApplicable) yield* tree.completeTask("file-sync");
 
@@ -416,7 +414,12 @@ const destroyAppWithResolvedTarget = (
         volumes: options?.volumes === true,
         purgeCaches: options?.purgeCaches === true,
       });
-      if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
+      const { pending } = yield* readDiscardableStart(validatedTarget.app);
+      if (
+        (pending === null || pending.phase === "completed") &&
+        requireAppliedEvidence &&
+        registry.resolveAppliedPlan !== undefined
+      ) {
         const evidence =
           registry.resolveTeardownEvidence === undefined
             ? yield* registry
@@ -439,24 +442,19 @@ const destroyAppWithResolvedTarget = (
             });
           case "owned":
           case "absent": {
-            const { pending } = yield* readDiscardableStart(validatedTarget.app);
-            if (pending === null || pending.phase === "completed") {
-              const removed = yield* cleanup;
-              const snapshots = yield* snapshotOnlyDestroy(
-                validatedTarget.plan.name,
-                validatedTarget.plan.identity?.appRoot ?? validatedTarget.plan.root,
-                options,
-              );
-              return {
-                ...snapshots,
-                outcome:
-                  ownedCleanupChanged(removed) || snapshots.outcome !== "unchanged"
-                    ? "destroyed"
-                    : "unchanged",
-                servicesDestroyed: removed.servicesRemoved,
-                volumesRemoved: removed.volumesRemoved > 0,
-              };
-            }
+            const removed = yield* cleanup;
+            const snapshots = yield* snapshotOnlyDestroy(
+              validatedTarget.plan.name,
+              validatedTarget.plan.identity?.appRoot ?? validatedTarget.plan.root,
+              options,
+            );
+            return {
+              ...snapshots,
+              outcome:
+                ownedCleanupChanged(removed) || snapshots.outcome !== "unchanged" ? "destroyed" : "unchanged",
+              servicesDestroyed: removed.servicesRemoved,
+              volumesRemoved: removed.volumesRemoved > 0,
+            };
           }
         }
       }
@@ -538,8 +536,28 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
   return yield* target !== undefined
     ? destroyAppForTarget(options, target)
     : withTeardownResolution({
-        owned: (resolution) =>
-          tearDownOwnedResources(resolution.root, {
+        owned: Effect.fnUntraced(function* (resolution) {
+          const { pending } = yield* readDiscardableStart({
+            kind: "user",
+            id: resolution.ownership[0]?.appIds[0] ?? "unknown",
+            root: resolution.root,
+          });
+          if (pending !== null && pending.phase !== "completed") {
+            const desired = yield* resolveDesiredAppTarget;
+            if (desired.root !== resolution.root)
+              return yield* Effect.fail(
+                new FileSyncStopError({
+                  engineId: pending.engineId,
+                  sessionRef: pending.appId,
+                  message: "The desired app root differs from the pending destroy target.",
+                  remediation:
+                    "Restore the matching Landofile and run `lando destroy` in the recorded app root.",
+                }),
+              );
+            yield* pendingStartDisposal(desired.app, desired.plan);
+            return yield* destroyAppWithResolvedTarget(options, desired, true, false);
+          }
+          return yield* tearDownOwnedResources(resolution.root, {
             volumes: options.volumes === true,
             purgeCaches: options.purgeCaches === true,
           }).pipe(
@@ -551,7 +569,8 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
                 volumesRemoved: removed.volumesRemoved > 0,
               }),
             ),
-          ),
+          );
+        }),
         applied: Effect.fn("AppOperation.destroy.applied")(function* (resolved) {
           const { pending } = yield* readDiscardableStart(resolved.app);
           if (pending === null || pending.phase === "completed")
@@ -568,7 +587,7 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
                 remediation: "Restore the matching app plan before destroying retained sync state.",
               }),
             );
-          yield* retainedStartDisposal(desired.app, desired.plan);
+          yield* pendingStartDisposal(desired.app, desired.plan);
           return yield* destroyAppWithResolvedTarget(options, desired, true, false);
         }),
         orphans: Effect.fn("AppOperation.destroy.orphans")(function* (resolution) {
@@ -601,7 +620,7 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
                 remediation: "Restore the matching app plan before destroying retained sync state.",
               }),
             );
-          yield* retainedStartDisposal(desired.app, desired.plan);
+          yield* pendingStartDisposal(desired.app, desired.plan);
           return yield* destroyAppWithResolvedTarget(options, desired, true, false);
         }),
         absent: (resolution) => destroyDesiredOrUnchanged(options, resolution),
