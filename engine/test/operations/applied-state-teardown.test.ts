@@ -4,15 +4,10 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import {
-  AppResolveError,
-  FileSyncStartError,
-  LandofileValidationError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -37,7 +32,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import { beginAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
+import { beginOrResumeAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import {
   teardownDesiredOrUnchanged,
   withTeardownResolution,
@@ -975,19 +970,8 @@ describe("applied-state teardown", () => {
         orphans: [orphanGroup({ root, services: ["web"] })],
       });
       await Effect.runPromise(
-        beginAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) =>
-            pending
-              .retainTargets(
-                Cause.fail(
-                  new FileSyncStartError({
-                    engineId: "mutagen",
-                    message: "interrupted after helper preparation",
-                  }),
-                ),
-              )
-              .pipe(Effect.asVoid),
-          ),
+        beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
           Effect.provide(harness.layer),
         ),
       );
@@ -1007,19 +991,12 @@ describe("applied-state teardown", () => {
       const retainedPlan = retainedPlanAt(root);
       const harness = makeLayer({ appliedPlan: oldPlan, desiredPlan: retainedPlan });
       await Effect.runPromise(
-        beginAcceleratedStart(retainedPlan, { kind: "user", id: oldPlan.id, root: oldPlan.root }).pipe(
-          Effect.flatMap((pending) =>
-            pending
-              .retainTargets(
-                Cause.fail(
-                  new FileSyncStartError({
-                    engineId: "mutagen",
-                    message: "migration failed after sync preparation",
-                  }),
-                ),
-              )
-              .pipe(Effect.asVoid),
-          ),
+        beginOrResumeAcceleratedStart(retainedPlan, {
+          kind: "user",
+          id: oldPlan.id,
+          root: oldPlan.root,
+        }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
           Effect.provide(harness.layer),
         ),
       );

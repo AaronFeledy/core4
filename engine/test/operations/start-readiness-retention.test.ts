@@ -30,9 +30,6 @@ test("post-apply readiness failure retains the accelerated lease, journal, and m
     onRemoveRoutes: () => {
       cleanup++;
     },
-    onFileSyncRollback: () => {
-      cleanup++;
-    },
     inspect: (target) =>
       Effect.succeed({
         app: plan.id,
@@ -118,9 +115,6 @@ test("interrupted readiness retains the accelerated lease and completed journal 
       cleanup++;
     },
     onRemoveRoutes: () => {
-      cleanup++;
-    },
-    onFileSyncRollback: () => {
       cleanup++;
     },
     exec: () => Deferred.succeed(probing, undefined).pipe(Effect.andThen(Effect.never)),
