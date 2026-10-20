@@ -821,7 +821,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     stream: "stderr",
     strategy: "follow",
   },
-  LogSourceInput: { path: "/var/log/app.log" },
+  LogSourceInput: { path: "/var/log/app.log", timestamps: true },
   BindAddress: "127.0.0.1",
   PortNumber: 8080,
   InternalEndpoint: { _tag: "internal", protocol: "http", port: 8080 },
