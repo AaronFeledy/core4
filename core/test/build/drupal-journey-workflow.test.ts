@@ -315,18 +315,16 @@ describe("drupal-journey workflow", () => {
     expect(compile).toBeGreaterThan(manifest);
   });
 
-  test("copies host-proxy shim and log-file helper into dist before the compiled binary", async () => {
+  test("embeds the in-container helper via build-compiled-binary without sidecar builds", async () => {
     // Given / When
     const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
-    const shim = linuxX64.indexOf("build:host-proxy-shim");
-    const logHelper = linuxX64.indexOf("build:log-file-helper");
     const compile = linuxX64.indexOf("build-compiled-binary.ts");
 
     // Then
-    expect(shim).toBeGreaterThan(-1);
-    expect(logHelper).toBeGreaterThan(shim);
-    expect(compile).toBeGreaterThan(logHelper);
-    expect(linuxX64).toContain("dist/host-proxy");
-    expect(linuxX64).toContain("dist/log-file-access");
+    expect(compile).toBeGreaterThan(-1);
+    expect(linuxX64).not.toContain("build:host-proxy-shim");
+    expect(linuxX64).not.toContain("build:log-file-helper");
+    expect(linuxX64).not.toContain("dist/host-proxy");
+    expect(linuxX64).not.toContain("dist/log-file-access");
   });
 });

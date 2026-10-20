@@ -1,6 +1,11 @@
 import { resolve } from "node:path";
 
 import {
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
+import {
   CI_PLATFORMS,
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
@@ -51,7 +56,7 @@ const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string, label: str
           echo "${label} matrix passed on ${linuxX64RunnerList}"
 `;
 
-const buildNeeds = "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]";
+const buildNeeds = `[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, ${CONTAINER_HELPER_JOB_ID}]`;
 
 const timingStartStep = `      - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"`;
@@ -198,31 +203,10 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} --help
           ./dist/${platform.binaryName} shellenv`;
 
-const renderBuildNeeds = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]"
-    : buildNeeds;
-
-const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"`
-    : `          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"`;
-
-const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? `
-
-      - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: lando-linux-x64
-          path: linux-sidecars`
-    : "";
+const renderBuildNeeds = (): string => buildNeeds;
 
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
-    needs: ${renderBuildNeeds(platform)}
+    needs: ${renderBuildNeeds()}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
@@ -230,9 +214,11 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
 
 ${timingStartStep}
 
-${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
+${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -240,7 +226,6 @@ ${codegenStep}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-${renderHostProxyShimBuildCommands(platform)}
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
@@ -260,10 +245,7 @@ ${renderSmokeCommands(platform)}
         uses: actions/upload-artifact@v6
         with:
           name: lando-${platform.id}
-          path: |
-            dist/${platform.binaryName}
-            dist/host-proxy/**
-            dist/log-file-access/**
+          path: dist/${platform.binaryName}
           if-no-files-found: ignore
           retention-days: 14
 
@@ -667,7 +649,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
     : `provider-integration-${platform.id}`;
 
   const runnerJob = `  ${jobId}:
-    needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : platform.id === "linux-x64" ? "[build-linux-x64, runtime-bundle-linux-x64]" : `[build-${platform.id}]`}
+    needs: ${platform.id === "windows-x64" ? `[build-windows-x64, runtime-bundle-win32-x64, ${CONTAINER_HELPER_JOB_ID}]` : platform.id === "linux-x64" ? `[build-linux-x64, runtime-bundle-linux-x64, ${CONTAINER_HELPER_JOB_ID}]` : `[build-${platform.id}, ${CONTAINER_HELPER_JOB_ID}]`}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
@@ -678,6 +660,8 @@ ${timingStartStep}
 ${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Download ${platform.id} binary artifact
         uses: actions/download-artifact@v7
@@ -891,6 +875,7 @@ ${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}
+${renderContainerHelperJob()}
   schema-snapshot:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
