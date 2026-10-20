@@ -9,11 +9,13 @@ import {
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
-const expected = evolveHistoricalShorthand(
-  normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+const expected = evolveHistoricalTimestamps(
+  evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services)))),
+  "authoring",
 );
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {
@@ -42,6 +44,13 @@ test("pins the separate immutable typed-grammar checkpoint to its verified produ
 
 const mutations: readonly [string, (schema: JsonSchema) => JsonSchema | undefined][] = [
   [
+    "log-source timestamps value type",
+    (schema) =>
+      isJsonObject(schema.properties) && isJsonObject(schema.properties.timestamps)
+        ? { ...schema, properties: { ...schema.properties, timestamps: { type: "number" } } }
+        : undefined,
+  ],
+  [
     "whole-template expression grammar",
     (schema) => (schema.pattern === TYPED_EXPRESSION_PATTERN ? { ...schema, pattern: "^.*$" } : undefined),
   ],
@@ -62,6 +71,25 @@ const mutations: readonly [string, (schema: JsonSchema) => JsonSchema | undefine
         : undefined,
   ],
 ];
+
+test("does not evolve a log-source object with an extra property", () => {
+  // Given a closed object outside the exact reviewed historical key set.
+  const historical = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      id: { type: "string" },
+      label: { type: "string" },
+      path: { type: "string" },
+      stream: { type: "string" },
+      extra: { type: "string" },
+    },
+  };
+  // When the optional-field delta is replayed.
+  const evolved = evolveHistoricalTimestamps(historical, "authoring");
+  // Then the unrelated object stays unchanged, rather than gaining timestamps.
+  expect(jsonEquals(evolved, normalizeJsonSchema(historical))).toBe(true);
+});
 
 test.each(mutations)(
   "rejects a current %s mutation after proving positive whole-subtree equality",
