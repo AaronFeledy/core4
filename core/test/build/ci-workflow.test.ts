@@ -114,6 +114,9 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      fail-fast: false");
     expect(providerContracts).toContain("            engine: Docker Desktop");
     expect(providerContracts).toContain("            engine: Docker Engine");
+    expect(providerContracts).toContain("            engine: Docker Engine latest");
+    expect(providerContracts).toContain("          - cell: docker-engine-linux-latest");
+    expect(providerContracts).toContain("            runs-on: ubuntu-26.04");
     expect(providerContracts).toContain("            engine: Podman Desktop");
     expect(providerContracts).toContain("            engine: Lando managed Podman 6");
     expect(providerContracts).toContain("            engine: Podman 6");
@@ -159,7 +162,12 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Assert Podman 6 host contract");
     expect(providerContracts).toContain("      - name: Start Podman socket");
     expect(providerContracts).toContain("        if: ${{ matrix.cell == 'podman-podman6-linux' }}");
+    expect(providerContracts).toContain("      - name: Install unpinned Docker CE from Docker apt repo");
+    expect(providerContracts).toContain("        if: ${{ matrix.cell == 'docker-engine-linux-latest' }}");
     expect(providerContracts).toContain("      - name: Configure Docker socket");
+    expect(providerContracts).toContain(
+      "        if: ${{ matrix.cell == 'docker-engine-linux' || matrix.cell == 'docker-engine-linux-latest' }}",
+    );
     expect(providerContracts).toContain("      - name: Pull live acceptance fixture images");
     expect(providerContracts).toContain(
       '                CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/lando-data/runtime/config/registries.conf" "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',

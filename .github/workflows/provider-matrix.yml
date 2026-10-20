@@ -37,6 +37,15 @@ jobs:
             setup: docker-engine
             advisory-skip: false
             notice: "GitHub-hosted CI runtime is available."
+          - cell: docker-engine-linux-latest
+            engine: Docker Engine latest
+            runs-on: ubuntu-26.04
+            provider: docker
+            release-blocking: false
+            install-podman6: false
+            setup: docker-engine-latest
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
           - cell: podman-desktop-macos
             engine: Podman Desktop
             runs-on: macos-15
@@ -328,15 +337,31 @@ jobs:
           fi
           echo "LANDO_CONFIG__default_provider_id=${{ matrix.provider }}" >> "$GITHUB_ENV"
 
+      - name: Install unpinned Docker CE from Docker apt repo
+        if: ${{ matrix.cell == 'docker-engine-linux-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          . /etc/os-release
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          sudo systemctl enable --now docker
+          sudo docker version
+          test -S /var/run/docker.sock
+
       - name: Configure Docker socket
-        if: ${{ matrix.cell == 'docker-engine-linux' }}
+        if: ${{ matrix.cell == 'docker-engine-linux' || matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           test -S /var/run/docker.sock
           echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=${{ matrix.provider }}" >> "$GITHUB_ENV"
 
       - name: Pull live acceptance fixture images
-        if: ${{ matrix['release-blocking'] == true }}
+        if: ${{ matrix['release-blocking'] == true || matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           for image in node:22-alpine postgres:16-alpine alpine:3.20; do
             case "${{ matrix.cell }}" in
@@ -346,7 +371,7 @@ jobs:
               podman-podman6-linux)
                 podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
                 ;;
-              docker-engine-linux)
+              docker-engine-linux|docker-engine-linux-latest)
                 docker pull "$image"
                 ;;
             esac

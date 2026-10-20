@@ -6,6 +6,7 @@ import {
 export type ProviderAcceptanceCellId =
   | "docker-desktop-macos"
   | "docker-engine-linux"
+  | "docker-engine-linux-latest"
   | "lando-machine-macos"
   | "lando-machine-windows"
   | "podman-desktop-macos"
@@ -31,7 +32,13 @@ export interface ProviderAcceptanceCellPlan {
   readonly provider: ProviderId;
   readonly releaseBlocking: boolean;
   readonly installPodman6: boolean;
-  readonly setup: "advisory" | "docker-engine" | "managed-lando" | "homebrew-podman" | "machine-lifecycle";
+  readonly setup:
+    | "advisory"
+    | "docker-engine"
+    | "docker-engine-latest"
+    | "managed-lando"
+    | "homebrew-podman"
+    | "machine-lifecycle";
   readonly requiredEnv?: string;
   readonly requiredEnvValue?: string;
   readonly requiredCommand?: {
@@ -151,6 +158,17 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
     releaseBlocking: true,
     installPodman6: false,
     setup: "docker-engine",
+    requiredEnv: "LANDO_TEST_DOCKER_SOCKET",
+    checks: dockerChecks,
+  },
+  {
+    id: "docker-engine-linux-latest",
+    engine: "Docker Engine latest",
+    runsOn: "ubuntu-26.04",
+    provider: "docker",
+    releaseBlocking: false,
+    installPodman6: false,
+    setup: "docker-engine-latest",
     requiredEnv: "LANDO_TEST_DOCKER_SOCKET",
     checks: dockerChecks,
   },

@@ -215,6 +215,8 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("contents: read");
       expect(firstWorkflow).toContain("engine: Docker Desktop");
       expect(firstWorkflow).toContain("engine: Docker Engine");
+      expect(firstWorkflow).toContain("engine: Docker Engine latest");
+      expect(firstWorkflow).toContain("Install unpinned Docker CE from Docker apt repo");
       expect(firstWorkflow).toContain("engine: Podman Desktop");
       expect(firstWorkflow).toContain("engine: Lando managed Podman 6");
       expect(firstWorkflow).toContain("engine: Podman 6");

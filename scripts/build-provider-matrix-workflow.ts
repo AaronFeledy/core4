@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
+import { renderInstallDockerCeLatestStep } from "./ci-docker-install.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
 
@@ -159,15 +160,17 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
           fi
           echo "LANDO_CONFIG__default_provider_id=\${{ matrix.provider }}" >> "$GITHUB_ENV"
 
+${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-linux-latest'" })}
+
       - name: Configure Docker socket
-        if: \${{ matrix.cell == 'docker-engine-linux' }}
+        if: \${{ matrix.cell == 'docker-engine-linux' || matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           test -S /var/run/docker.sock
           echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=\${{ matrix.provider }}" >> "$GITHUB_ENV"
 
       - name: Pull live acceptance fixture images
-        if: \${{ matrix['release-blocking'] == true }}
+        if: \${{ matrix['release-blocking'] == true || matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           for image in node:22-alpine postgres:16-alpine alpine:3.20; do
             case "\${{ matrix.cell }}" in
@@ -177,7 +180,7 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
               podman-podman6-linux)
                 podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
                 ;;
-              docker-engine-linux)
+              docker-engine-linux|docker-engine-linux-latest)
                 docker pull "$image"
                 ;;
             esac
