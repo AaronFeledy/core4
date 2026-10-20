@@ -29,6 +29,9 @@ export interface HostProxyRunLandoSessionOptions {
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
   readonly controlToken?: string;
+  readonly configDigest?: string;
+  readonly providerId?: string;
+  readonly configure?: (body: unknown) => Promise<void>;
 }
 
 export interface HostProxyRunLandoSession {

@@ -7,6 +7,7 @@ import {
 } from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../create-fingerprint.ts";
+import { HOST_PROXY_SESSION_LABEL } from "../labels.ts";
 import { commonContainerLabels, fingerprintPlannedPublishPorts } from "../plan.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
@@ -166,6 +167,17 @@ export const bringUpRecreateReasons = (
   }
   if (!skipAbsent || inspected.bindSources !== undefined) {
     if (bindSourceChanged(service, inspected)) reasons.push("bind-source");
+  }
+  if (
+    service.environment.LANDO_HOST_PROXY_SESSION !== undefined &&
+    (!skipAbsent || inspected.labels !== undefined)
+  ) {
+    if (
+      inspected.labels?.[HOST_PROXY_SESSION_LABEL] !==
+        commonContainerLabels(plan, service)[HOST_PROXY_SESSION_LABEL] &&
+      !reasons.includes("bind-source")
+    )
+      reasons.push("bind-source");
   }
   if (!skipAbsent || inspected.networkNames !== undefined) {
     if (plannedNetworkMissing(plan, inspected)) reasons.push("network");

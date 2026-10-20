@@ -100,7 +100,7 @@ If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTra
 
 The relay socket on the host is mode `0666` inside a per-user `0700` run directory. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token, so another local account on that host could reach it while the app runs. Private keys still never leave `gpg-agent`; the restricted socket only signs.
 
-`lando stop` and `lando destroy` tear the relay down.
+`lando stop` and `lando destroy` tear the relay down. Another `lando start` on a running app reuses a relay that is still healthy and unchanged, the same way as SSH agent forwarding, and it refreshes the public keyring and `GNUPGHOME` either way.
 
 ## Check it with lando doctor
 
