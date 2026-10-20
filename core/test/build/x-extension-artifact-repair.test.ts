@@ -28,10 +28,12 @@ import {
   parseCapturedExtension,
   repairClosedExtension,
   schemaAt,
+  withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
+const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
 
 const requireObject = (value: unknown, label: string): JsonSchema => {
   if (!isJsonObject(value)) throw new Error(`${label} must be a JSON object`);
@@ -39,7 +41,7 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 };
 
 const repairedLandofile = (): JsonSchema =>
-  normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
+  normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 describe("closed x-* extension artifact repair", () => {
   test("records the captured base artifact provenance", () => {
@@ -143,7 +145,7 @@ describe("closed x-* extension artifact repair", () => {
   test("still flags the old artifact unless the exception path and surface match", async () => {
     const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
     const findings = classifySchemaChange(
-      { type: "object", properties: { landofile: captured.landofile } },
+      { type: "object", properties: { landofile: capturedLandofile } },
       { type: "object", properties: { landofile: current } },
       "output",
     );
