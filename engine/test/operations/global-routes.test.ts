@@ -95,31 +95,54 @@ describe("global route publication", () => {
     expect(urls.size).toBe(0);
   });
 
-  test("failed routes are withdrawn while active owned sibling routes stay", async () => {
-    // Given a failed service still observed active alongside an untouched active sibling.
-    const router = makeRouter();
-    const provider = { list: () => Effect.succeed([observation, { ...observation, service: mail }]) };
-    // When failure reconciliation observes the untouched sibling.
-    await Effect.runPromise(
-      publishGlobalRoutes(router, provider, siblingPlan, { started: new Set(), failed: new Set([mail]) }),
-    );
-    // Then an active observation cannot resurrect a failed route.
-    expect(router.routesByApp.get(plan.id)?.map((route) => route.service)).toEqual([sibling]);
-  });
+  for (const current of [siblingPlan, { ...plan, routes: [] }, { ...plan, router: { enabled: false } }]) {
+    for (const failed of [[mail], [mail, sibling]]) {
+      test(`failure preserves published routes (${current.routes.length} routes, router ${current.router?.enabled ?? true}, ${failed.length} failures)`, async () => {
+        // Given published routes different from the current plan, with partial or total group failure.
+        const router = makeRouter();
+        await Effect.runPromise(router.applyRoutes(plan.routes, plan.id));
+        // When publication follows the failed startup, no router mutation or observation is allowed.
+        const urls = await Effect.runPromise(
+          publishGlobalRoutes(
+            {
+              ...router,
+              applyRoutes: () => Effect.die("Must not overwrite"),
+              removeRoutes: () => Effect.die("Must not withdraw"),
+            },
+            { list: () => Effect.die("Must not list") },
+            current,
+            { started: new Set([sibling].filter((name) => !failed.includes(name))), failed: new Set(failed) },
+          ),
+        );
+        // Then the actual published definition survives unchanged, without advertising success URLs.
+        expect(router.routesByApp.get(plan.id)).toEqual(plan.routes);
+        expect(urls.size).toBe(0);
+      });
+    }
+  }
 
-  test("failed services alone do not trigger provider listing", async () => {
-    // Given every routed service either started or failed.
+  test("successful retry replaces the definition retained after group failure", async () => {
+    // Given a published definition and a failed attempt to replace it.
     const router = makeRouter();
-    const provider = { list: () => Effect.die("Failed services must not trigger listing") };
-    // When publication reconciles the failed sibling.
+    const provider = { list: () => Effect.die("All groups selected; must not list") };
+    await Effect.runPromise(router.applyRoutes(plan.routes, plan.id));
     await Effect.runPromise(
       publishGlobalRoutes(router, provider, siblingPlan, {
-        started: new Set([mail]),
-        failed: new Set([sibling]),
+        started: new Set([sibling]),
+        failed: new Set([mail]),
       }),
     );
-    // Then the failed route is withdrawn without observing the provider.
     expect(router.routesByApp.get(plan.id)).toEqual(plan.routes);
+    // When every group succeeds on retry.
+    const urls = await Effect.runPromise(
+      publishGlobalRoutes(router, provider, siblingPlan, {
+        started: new Set([mail, sibling]),
+        failed: new Set(),
+      }),
+    );
+    // Then the current routes replace the retained definition and URLs are advertised again.
+    expect(router.routesByApp.get(plan.id)).toEqual(siblingPlan.routes);
+    expect(urls.get(sibling)).toEqual(["https://sibling.lndo.site:38443"]);
   });
 
   test("bare start publishes all routes without listing services or setting up the router", async () => {
