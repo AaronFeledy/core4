@@ -53,8 +53,7 @@
     "typecheck": "bun run scripts/typecheck.ts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "lint": "biome check . && bun run check:deprecations",
-    "//": "Drop launch-editor GHSAs once the docs deps (astro/vite) bump.",
-    "audit": "bun audit --ignore=GHSA-ch52-4w7c-c8xp --ignore=GHSA-698v-4r3x-3vcv --ignore=GHSA-r825-w8mm-5pxw --ignore=GHSA-587h-7wmj-h5pm",
+    "audit": "bun audit --ignore=GHSA-ch52-4w7c-c8xp",
     "audit:fix": "bun audit fix",
     "dedupe": "bun dedupe",
     "prune": "bun prune",
@@ -116,6 +115,8 @@
     "unified": "^11.0.5"
   },
   "overrides": {
+    "launch-editor": "^2.14.2",
+    "vite": "~8.2.4",
     "devalue": "^5.9.3",
     "fast-uri": "^3.1.7",
     "postcss-selector-parser": "^7.1.6",
