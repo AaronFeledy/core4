@@ -58,6 +58,32 @@ const directiveCaptured = {
   services: wireObject(directivePayload.services),
 };
 
+// Graph normalization is synchronous and slow; cached inputs leave no IO yield before it.
+const WIRE_TEST_TIMEOUT_MS = 120_000;
+// Each evolved baseline depends only on its source subtree, and each surface artifact
+// normalizes identically for every test, so compute both once per file.
+const evolvedTypedCache = new Map<
+  keyof typeof typedCaptured,
+  ReturnType<typeof evolveHistoricalIncludeChecksum>
+>();
+const evolvedTyped = (source: keyof typeof typedCaptured) => {
+  const cached = evolvedTypedCache.get(source);
+  if (cached !== undefined) return cached;
+  const evolved = evolveHistoricalIncludeChecksum(
+    evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source])))),
+  );
+  evolvedTypedCache.set(source, evolved);
+  return evolved;
+};
+const artifactCache = new Map<string, ReturnType<typeof loadNormalizedArtifact>>();
+const currentArtifact = (surface: string) => {
+  const cached = artifactCache.get(surface);
+  if (cached !== undefined) return cached;
+  const loaded = loadNormalizedArtifact(surface);
+  artifactCache.set(surface, loaded);
+  return loaded;
+};
+
 describe("embedded wire closed x-* artifact repair", () => {
   test("pins the complete unmodified historical capture", () => {
     expect(capture.provenanceCommit).toBe("15133ee26729942dde7b9d4f0e033b4ced46406d");
@@ -107,69 +133,74 @@ describe("embedded wire closed x-* artifact repair", () => {
 
   for (const [id, path, source] of WIRE_TARGETS) {
     const surface = `schema:${id}`;
-    test(`proves the complete directive-capable ${id} ${path} subtree`, async () => {
-      // Given the independently pinned typed grammar, with every union alternative intact.
-      const expected = typedCaptured[source];
-      const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      // When the separately pinned shorthand and include-checksum deltas follow closed-x repair.
-      const repaired = evolveHistoricalIncludeChecksum(
-        evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(expected)))),
-      );
-      // Then the entire normalized subtree matches, not just the reported keyword.
-      expect(jsonEquals(repaired, current)).toBe(true);
-      expect(classifySchemaChange(repaired, current, "strict")).toEqual([]);
-    });
+    test(
+      `proves the complete directive-capable ${id} ${path} subtree`,
+      async () => {
+        // Given the independently pinned typed grammar, with every union alternative intact.
+        const current = schemaAt(await currentArtifact(surface), path);
+        // When the separately pinned shorthand and include-checksum deltas follow closed-x repair.
+        const repaired = evolvedTyped(source);
+        // Then the entire normalized subtree matches, not just the reported keyword.
+        expect(jsonEquals(repaired, current)).toBe(true);
+        expect(classifySchemaChange(repaired, current, "strict")).toEqual([]);
+      },
+      WIRE_TEST_TIMEOUT_MS,
+    );
 
-    test(`requires exact acceptance for raw ${id} ${path}`, async () => {
-      // Given the unrepaired capture at the actual reported surface path.
-      const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      const before = atWirePath(captured[source], path);
-      // When classified without altering the baseline or suppressing unions.
-      const findings = classifySchemaChange(before, atWirePath(current, path), "strict");
-      // Then raw findings stay unknown and only the exact surface/path can accept them.
-      expect(findings).toMatchObject([
-        {
-          verdict: "unknown",
-          changeKind: "unsupported-construct",
-          path: `${path}.anyOf`,
-          accepted: false,
-        },
-      ]);
-      expect(findings).toHaveLength(1);
-      const exact = expectedWireExceptions().filter(
-        (entry) => entry.surface === surface && entry.path === `${path}.anyOf`,
-      );
-      expect(acceptCompatibilityExceptions(surface, findings, exact)[0]?.accepted).toBe(true);
-      expect(acceptCompatibilityExceptions(`${surface}:wrong`, findings, exact)[0]?.accepted).toBe(false);
-      expect(
-        acceptCompatibilityExceptions(
-          surface,
-          findings,
-          exact.map((entry) => ({ ...entry, path: `${entry.path}.wrong` })),
-        )[0]?.accepted,
-      ).toBe(false);
-    });
+    test(
+      `requires exact acceptance for raw ${id} ${path}`,
+      async () => {
+        // Given the unrepaired capture at the actual reported surface path.
+        const current = schemaAt(await currentArtifact(surface), path);
+        const before = atWirePath(captured[source], path);
+        // When classified without altering the baseline or suppressing unions.
+        const findings = classifySchemaChange(before, atWirePath(current, path), "strict");
+        // Then raw findings stay unknown and only the exact surface/path can accept them.
+        expect(findings).toMatchObject([
+          {
+            verdict: "unknown",
+            changeKind: "unsupported-construct",
+            path: `${path}.anyOf`,
+            accepted: false,
+          },
+        ]);
+        expect(findings).toHaveLength(1);
+        const exact = expectedWireExceptions().filter(
+          (entry) => entry.surface === surface && entry.path === `${path}.anyOf`,
+        );
+        expect(acceptCompatibilityExceptions(surface, findings, exact)[0]?.accepted).toBe(true);
+        expect(acceptCompatibilityExceptions(`${surface}:wrong`, findings, exact)[0]?.accepted).toBe(false);
+        expect(
+          acceptCompatibilityExceptions(
+            surface,
+            findings,
+            exact.map((entry) => ({ ...entry, path: `${entry.path}.wrong` })),
+          )[0]?.accepted,
+        ).toBe(false);
+      },
+      WIRE_TEST_TIMEOUT_MS,
+    );
 
-    test(`rejects an unrelated value constraint hidden by ${id} ${path}.anyOf`, async () => {
-      // Given a current subtree whose first string constraint is independently tightened.
-      const current = schemaAt(await loadNormalizedArtifact(surface), path);
-      const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
-      const repaired = evolveHistoricalIncludeChecksum(
-        evolveHistoricalShorthand(
-          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
-        ),
-      );
-      expect(jsonEquals(repaired, current)).toBe(true);
-      // When the conservative classifier still reports the same coarse union delta.
-      const findings = classifySchemaChange(
-        atWirePath(captured[source], path),
-        atWirePath(mutated, path),
-        "strict",
-      );
-      expect(findings.map((entry) => entry.path)).toEqual([`${path}.anyOf`]);
-      // Then whole-subtree equality detects the change despite the coarse exception.
-      expect(jsonEquals(repaired, mutated)).toBe(false);
-      expect(jsonEquals(current, mutated)).toBe(false);
-    });
+    test(
+      `rejects an unrelated value constraint hidden by ${id} ${path}.anyOf`,
+      async () => {
+        // Given a current subtree whose first string constraint is independently tightened.
+        const current = schemaAt(await currentArtifact(surface), path);
+        const mutated = normalizeJsonSchema(wireObject(tightenWireString(current)));
+        const repaired = evolvedTyped(source);
+        expect(jsonEquals(repaired, current)).toBe(true);
+        // When the conservative classifier still reports the same coarse union delta.
+        const findings = classifySchemaChange(
+          atWirePath(captured[source], path),
+          atWirePath(mutated, path),
+          "strict",
+        );
+        expect(findings.map((entry) => entry.path)).toEqual([`${path}.anyOf`]);
+        // Then whole-subtree equality detects the change despite the coarse exception.
+        expect(jsonEquals(repaired, mutated)).toBe(false);
+        expect(jsonEquals(current, mutated)).toBe(false);
+      },
+      WIRE_TEST_TIMEOUT_MS,
+    );
   }
 });
