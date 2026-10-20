@@ -4,24 +4,13 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
-import * as sdkCommandResult from "@lando/sdk/command-result";
-import * as sdkSchema from "@lando/sdk/schema";
 import * as sdkServices from "@lando/sdk/services";
 
-type FrozenSdkSurface = {
-  readonly commandResultExports: ReadonlyArray<string>;
-  readonly schemaNames: ReadonlyArray<string>;
-  readonly serviceTags: Readonly<Record<string, ReadonlyArray<string>>>;
-  readonly provisionalServiceTagMethods?: Readonly<Record<string, ReadonlyArray<string>>>;
-};
+import sdkPackage from "../../package.json";
+import publicSurface from "../fixtures/sdk-public-surface.json";
 
 const repoRoot = new URL("../../..", import.meta.url).pathname;
-const fixturePath = join(repoRoot, "sdk/test/fixtures/sdk-mvp-surface.json");
-const compatibilityDocPath = join(repoRoot, "sdk/API_COMPATIBILITY.md");
 const servicesSourceDir = join(repoRoot, "sdk/src/services");
-
-const frozenSurface = JSON.parse(readFileSync(fixturePath, "utf8")) as FrozenSdkSurface;
-const compatibilityDoc = readFileSync(compatibilityDocPath, "utf8");
 
 const normalizeSignature = (value: string): string =>
   value
@@ -102,27 +91,19 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
   return tags;
 };
 
-const documentedNames = (heading: string): ReadonlyArray<string> => {
-  const [, section = ""] = compatibilityDoc.split(`## ${heading}`);
-  const [body = ""] = section.split("\n## ");
-  return [...body.matchAll(/`([^`]+)`/g)]
-    .map((match) => match[1] ?? "")
-    .filter(Boolean)
-    .sort();
-};
-
-describe("SDK backward-compatibility surface", () => {
-  test("keeps frozen command-result exports available", () => {
-    for (const name of frozenSurface.commandResultExports)
-      expect(Object.keys(sdkCommandResult)).toContain(name);
+// Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
+describe("SDK public-surface snapshot", () => {
+  test("matches every package export subpath", () => {
+    expect(Object.keys(publicSurface.subpathExports).sort()).toEqual(Object.keys(sdkPackage.exports).sort());
   });
-  test("keeps frozen schema exports available while allowing documented additions", () => {
-    const exportedSchemaNames = Object.keys(sdkSchema).sort();
 
-    for (const schemaName of frozenSurface.schemaNames) {
-      expect(exportedSchemaNames).toContain(schemaName);
-    }
-  });
+  for (const [subpath, expectedNames] of Object.entries(publicSurface.subpathExports)) {
+    test(`matches runtime exports for ${subpath}`, async () => {
+      const specifier = subpath === "." ? "@lando/sdk" : `@lando/sdk/${subpath.slice(2)}`;
+      const exports = await import(specifier);
+      expect(Object.keys(exports).sort()).toEqual(expectedNames);
+    });
+  }
 
   test("re-exports every declared service tag through the public services barrel", () => {
     const exportedServiceNames = Object.keys(sdkServices);
@@ -131,30 +112,13 @@ describe("SDK backward-compatibility surface", () => {
     }
   });
 
-  test("keeps frozen service tag method signatures stable", () => {
-    const serviceTags = currentServiceTagSignatures();
-
-    for (const [tagName, expectedSignatures] of Object.entries(frozenSurface.serviceTags)) {
-      const provisional = new Set(frozenSurface.provisionalServiceTagMethods?.[tagName] ?? []);
-      const comparable = (serviceTags[tagName] ?? []).filter(
-        (signature) => !provisional.has(signature.split(":")[0] ?? ""),
-      );
-      expect(comparable).toEqual(expectedSignatures.map(normalizeSignature).sort());
-    }
-  });
-
-  test("documents every additive schema export and service tag", () => {
-    const frozenSchemaNames = new Set(frozenSurface.schemaNames);
-    const additiveSchemaNames = Object.keys(sdkSchema)
-      .filter((schemaName) => !frozenSchemaNames.has(schemaName))
-      .sort();
-
-    const frozenServiceTagNames = new Set(Object.keys(frozenSurface.serviceTags));
-    const additiveServiceTagNames = Object.keys(currentServiceTagSignatures())
-      .filter((tagName) => !frozenServiceTagNames.has(tagName))
-      .sort();
-
-    expect(additiveSchemaNames).toEqual([...documentedNames("Additive schema exports")]);
-    expect(additiveServiceTagNames).toEqual([...documentedNames("Additive service tags")]);
+  test("matches all service tags and their normalized member signatures", () => {
+    const expectedTags = Object.fromEntries(
+      Object.entries(publicSurface.serviceTags).map(([tag, signatures]) => [
+        tag,
+        signatures.map(normalizeSignature).sort(),
+      ]),
+    );
+    expect(currentServiceTagSignatures()).toEqual(expectedTags);
   });
 });
