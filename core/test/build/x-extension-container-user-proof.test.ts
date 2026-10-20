@@ -16,6 +16,7 @@ import {
   schemaAt,
 } from "./x-extension-closed-record.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 
@@ -136,9 +137,11 @@ test.each([
   const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
   const repaired = repairClosedExtension(captured.landofile);
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
-  const expected = evolveHistoricalTimestamps(
-    evolveHistoricalContainerUser(evolveHistoricalShorthand(normalizeJsonSchema(repaired))),
-    "bare",
+  const expected = evolveHistoricalServicePort(
+    evolveHistoricalTimestamps(
+      evolveHistoricalContainerUser(evolveHistoricalShorthand(normalizeJsonSchema(repaired))),
+      "bare",
+    ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(jsonEquals(expected, current)).toBe(true);

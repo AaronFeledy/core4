@@ -31,6 +31,7 @@ import {
 } from "./x-extension-closed-record.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
@@ -46,9 +47,11 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalTimestamps(
-    evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
-    "bare",
+  evolveHistoricalServicePort(
+    evolveHistoricalTimestamps(
+      evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
+      "bare",
+    ),
   );
 
 describe("closed x-* extension artifact repair", () => {
@@ -66,7 +69,7 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("repairs the captured landofile onto every current production embedding", async () => {
-    // Given the normalized base landofile captured from commit 15133ee26.
+    // Given the normalized base landofile captured from commit 15133ee26, plus reviewed shorthand and port narrowing.
     const repaired = expectedLandofile();
     const surfaces = [
       ...CONFIG_COMMANDS.map((command) => `command:${command}`),
@@ -203,6 +206,22 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-construct $.networks.anyOf",
     ]);
     expect(networkFindings.every((finding) => finding.accepted === false)).toBe(true);
+  });
+
+  test("replays the port narrowing onto the service config only", () => {
+    const repaired = repairedLandofile();
+    const evolved = evolveHistoricalServicePort(repaired);
+    const service = (graph: JsonSchema) =>
+      requireObject(schemaAt(graph, "$.services.additionalProperties").properties, "service properties");
+    expect(service(evolved).port).toEqual(CURRENT_SERVICE_PORT);
+    expect(service(evolved).healthcheck).toEqual(service(repaired).healthcheck);
+    expect(jsonEquals({ ...service(evolved), port: null }, { ...service(repaired), port: null })).toBe(true);
+    expect(
+      jsonEquals(
+        { ...evolved, properties: { ...requireObject(evolved.properties, "p"), services: null } },
+        { ...repaired, properties: { ...requireObject(repaired.properties, "p"), services: null } },
+      ),
+    ).toBe(true);
   });
 
   test("fails when an unrelated field in the repaired subtree changes", async () => {

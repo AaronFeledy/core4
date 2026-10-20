@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:f
 import { join } from "node:path";
 import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import {
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
@@ -105,10 +106,18 @@ describe("executeDbCommand", () => {
         throw new Error("expected command transfer");
       expect([transfer.from.app, transfer.to.app]).toEqual([AppId.make("shop"), AppId.make("sql-app")]);
       expect(transfer.from.command).toEqual(
-        dumpCommand(family, { user: "source-user", database: "source-db" }),
+        dumpCommand(family, {
+          user: "source-user",
+          database: "source-db",
+          port: DATABASE_FAMILY_DEFAULT_PORTS[family],
+        }),
       );
       expect(transfer.to.command).toEqual(
-        loadCommand(family, { user: "lando", database: "sql-app" }, "source-db"),
+        loadCommand(
+          family,
+          { user: "lando", database: "sql-app", port: DATABASE_FAMILY_DEFAULT_PORTS[family] },
+          "source-db",
+        ),
       );
       expect(Object.values(transfer.from.env ?? {}).join(" ")).toContain("source-secret");
       expect(Object.values(transfer.to.env ?? {}).join(" ")).toContain(SECRET);
@@ -518,7 +527,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("serviceCmd");
     expect(transfer?.to._tag).toBe("hostPath");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(dumpCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.from.command).toEqual(
+        dumpCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
       expect(transfer.from.env?.MYSQL_PWD).toBe(SECRET);
       expect(JSON.stringify(transfer.from.command)).not.toContain(SECRET);
     }
@@ -540,7 +551,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("serviceCmd");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(dumpCommand("postgres", { user: "lando", database: "sql-app" }));
+      expect(transfer.from.command).toEqual(
+        dumpCommand("postgres", { user: "lando", database: "sql-app", port: 5432 }),
+      );
       expect(transfer.from.env?.PGPASSWORD).toBe(SECRET);
     }
   });
@@ -655,7 +668,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command).toEqual(
+        loadCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
     }
     if (transfer?.from._tag === "hostPath") expect(transfer.from.path).not.toBe(file);
   });
@@ -851,7 +866,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command).toEqual(
+        loadCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
       const command = transfer.to.command;
       expect(typeof command === "string" ? command : command.join(" ")).not.toContain("gunzip");
       expect(typeof command === "string" ? command : command.join(" ")).not.toContain("zstd");
@@ -884,7 +901,7 @@ describe("executeDbCommand", () => {
     expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
     const exec = harness.execs().find((entry) => entry.command.join(" ").includes("DROP DATABASE"));
     expect(exec?.command[0]).toBe("mysql");
-    expect(exec?.command.slice(0, 5)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "root"]);
+    expect(exec?.command.slice(0, 7)).toEqual(["mysql", "-h", "127.0.0.1", "-P", "3306", "-u", "root"]);
     expect(exec?.env?.MYSQL_PWD).toBe(rootPassword);
     expect(exec?.command.join(" ")).not.toContain(SECRET);
     expect(exec?.command.join(" ")).not.toContain(rootPassword);
