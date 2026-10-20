@@ -34,6 +34,15 @@ interface ReleaseManifest {
 
 const repoPackageJson = new URL("../package.json", import.meta.url);
 const corePackageJson = new URL("../core/package.json", import.meta.url);
+const containerHelperLandofile = new URL("../core/container-helper/.lando.yml", import.meta.url);
+
+/** Go toolchain that builds the embedded in-container helper, from its pinned builder image. */
+const containerHelperGoVersion = async (): Promise<string> => {
+  const match = /golang:(\d+\.\d+\.\d+)/u.exec(await readFile(containerHelperLandofile, "utf8"));
+  if (match?.[1] === undefined)
+    throw new Error("core/container-helper/.lando.yml does not pin a golang image version.");
+  return match[1];
+};
 const sdkPackageJson = new URL("../sdk/package.json", import.meta.url);
 const artifactFormatError = "--artifact must be formatted as <binary|library>:<path>";
 
@@ -141,14 +150,22 @@ const assertGeneratedManifestSboms = async (manifest: ReleaseManifest): Promise<
 const readPackageComponents = async (
   releaseVersion: string,
 ): Promise<ReadonlyArray<Record<string, unknown>>> => {
-  const [coreVersion, sdkVersion] = await Promise.all([
+  const [coreVersion, sdkVersion, goVersion] = await Promise.all([
     packageVersion(corePackageJson, releaseVersion),
     packageVersion(sdkPackageJson, releaseVersion),
+    containerHelperGoVersion(),
   ]);
   return [
     { type: "library", name: "@lando/core", version: coreVersion },
     { type: "library", name: "@lando/sdk", version: sdkVersion },
     { type: "platform", name: "bun", version: Bun.version },
+    {
+      type: "library",
+      name: "go-stdlib",
+      version: goVersion,
+      description: "Go standard library and runtime statically linked into the in-container helper",
+      licenses: [{ license: { id: "BSD-3-Clause" } }],
+    },
   ];
 };
 

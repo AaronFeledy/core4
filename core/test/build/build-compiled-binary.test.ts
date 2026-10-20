@@ -15,8 +15,8 @@ import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/
 
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
-  "/fixture/lando-host-proxy-linux-x64.bin.gz",
-  "/fixture/lando-host-proxy-linux-arm64.bin.gz",
+  "/fixture/lando-container-helper-linux-x64.tar.gz",
+  "/fixture/lando-container-helper-linux-arm64.tar.gz",
 ];
 
 describe("compiled binary OpenTUI native pruning", () => {
