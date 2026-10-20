@@ -55,6 +55,23 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
 };
 
 describe("LandofileShape — schema gate", () => {
+  test("include checksum is rejected with the usual unknown-key issue", () => {
+    // Given
+    const input = { includes: [{ source: "github:acme/shared", path: "web.yml", checksum: "ignored" }] };
+    // When
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          path: ["includes", 0, "checksum"],
+          message: "Expected no excess property",
+        }),
+      );
+    }
+  });
   test("LandofileShape strictly decodes and round-trips per-app command aliases", () => {
     // Given
     const input = {

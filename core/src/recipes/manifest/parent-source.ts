@@ -1,3 +1,4 @@
+import { gitCloneUrl, splitSourceRef } from "@lando/landofile/git-ref";
 import { Effect } from "effect";
 
 import {
@@ -14,6 +15,7 @@ import { resolveRegistryRecipeSource } from "../registry-source";
 import { parseRecipeYaml } from "./parser";
 
 export interface RemoteParentContext {
+  readonly onWarn?: (message: string) => void | Promise<void>;
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
 }
@@ -50,22 +52,24 @@ const detectRemoteScheme = (ref: string): RemoteScheme | undefined => {
   return undefined;
 };
 
-const parseGithubRef = (ref: string): { readonly url: string; readonly path?: string } => {
-  const body = ref.slice("github:".length);
-  const at = body.lastIndexOf("@");
-  const withoutRef = at === -1 ? body : body.slice(0, at);
-  const parts = withoutRef.split("/").filter((part) => part !== "");
+const parseGithubRef = (
+  ref: string,
+): { readonly url: string; readonly path?: string; readonly ref?: string } => {
+  const split = splitSourceRef(ref);
+  const parts = split.value
+    .slice("github:".length)
+    .split("/")
+    .filter((part) => part !== "");
   const owner = parts[0];
   const repo = parts[1];
   if (owner === undefined || repo === undefined) throw notFound(ref);
   const path = parts.length > 2 ? parts.slice(2).join("/") : undefined;
   return {
     url: `https://github.com/${owner}/${repo}.git`,
+    ...(split.ref === undefined ? {} : { ref: split.ref }),
     ...(path === undefined ? {} : { path }),
   };
 };
-
-const parseGitUrl = (ref: string): string => (ref.startsWith("git+") ? ref.slice("git+".length) : ref);
 
 const parseNpmRef = (ref: string): { readonly package: string; readonly path?: string } => {
   const spec = ref.slice("npm:".length).trim();
@@ -108,6 +112,7 @@ const gitOptions = (url: string, path: string | undefined, ctx: RemoteParentCont
   ...(path === undefined ? {} : { path }),
   ...(ctx.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
   ...(ctx.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: ctx.gitRecipeCloner }),
+  ...(ctx.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
 });
 
 const resolveRemote = async (
@@ -119,10 +124,18 @@ const resolveRemote = async (
   switch (scheme) {
     case "github": {
       const parsed = parseGithubRef(ref);
-      return resolveGitRecipeSource(gitOptions(parsed.url, parsed.path, ctx));
+      return resolveGitRecipeSource({
+        ...gitOptions(parsed.url, parsed.path, ctx),
+        ...(parsed.ref === undefined ? {} : { ref: parsed.ref }),
+      });
     }
-    case "git":
-      return resolveGitRecipeSource(gitOptions(parseGitUrl(ref), undefined, ctx));
+    case "git": {
+      const parsed = splitSourceRef(ref);
+      return resolveGitRecipeSource({
+        ...gitOptions(gitCloneUrl(parsed.value), undefined, ctx),
+        ...(parsed.ref === undefined ? {} : { ref: parsed.ref }),
+      });
+    }
     case "npm": {
       const parsed = parseNpmRef(ref);
       return resolveNpmRecipeSource({

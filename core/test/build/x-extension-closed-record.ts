@@ -118,6 +118,30 @@ const isBuggyClosedExtension = (schema: JsonSchema): boolean => {
   return keys.length === 1 && only === "" && isEmptyExtension(patterns[only]);
 };
 
+/**
+ * Replays intentional Landofile schema changes made after the capture commit, so
+ * the repair proof keeps comparing only the closed x-* fix. Each step names the
+ * exact captured node it removes and fails if that node is gone.
+ */
+export const withIntentionalChangesSinceCapture = (landofile: JsonSchema): JsonSchema => {
+  // IncludeEntry.checksum was removed before release; lockfile pins carry include integrity.
+  const includes = requireObject(requireObject(landofile.properties, "properties").includes, "includes");
+  const items = requireObject(includes.items, "includes.items");
+  if (!Array.isArray(items.anyOf)) throw new Error("includes.items.anyOf must be an array");
+  const entry = requireObject(items.anyOf[0], "includes.items.anyOf[0]");
+  const properties = requireObject(entry.properties, "includes entry properties");
+  if (!("checksum" in properties)) throw new Error("captured include entry no longer has checksum");
+  const { checksum: _checksum, ...kept } = properties;
+  const anyOf = [{ ...entry, properties: kept }, ...items.anyOf.slice(1)];
+  return {
+    ...landofile,
+    properties: {
+      ...requireObject(landofile.properties, "properties"),
+      includes: { ...includes, items: { ...items, anyOf } },
+    },
+  };
+};
+
 export const repairClosedExtension = (value: JsonValue): JsonValue => {
   if (Array.isArray(value)) return value.map(repairClosedExtension);
   if (!isJsonObject(value)) return value;

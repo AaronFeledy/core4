@@ -28,15 +28,18 @@ import {
   parseCapturedExtension,
   repairClosedExtension,
   schemaAt,
+  withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
+const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
 
 const requireObject = (value: unknown, label: string): JsonSchema => {
   if (!isJsonObject(value)) throw new Error(`${label} must be a JSON object`);
@@ -44,7 +47,7 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 };
 
 const repairedLandofile = (): JsonSchema =>
-  normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
+  normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
   evolveHistoricalServicePort(
@@ -61,11 +64,15 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("pins historical repair independently of later shorthand evolution", () => {
-    expect(createHash("sha256").update(JSON.stringify(repairedLandofile())).digest("hex")).toBe(
+    const repairedCapture = normalizeJsonSchema(
+      requireObject(repairClosedExtension(captured.landofile), "repaired capture"),
+    );
+    expect(createHash("sha256").update(JSON.stringify(repairedCapture)).digest("hex")).toBe(
       "3e1bf2dce0e33bc8d22bc9664928c429355c5866dda24640dd9e6372be4e7ba2",
     );
     expect(shorthandDelta.provenanceCommit).toBe("4b13bf3bf278475b194cf0d82a3bc01de83325b2");
     expect(timestampsDelta.provenanceCommit).toBe("08d1490c6ae5773be71abfd3283faf8ebe4f9189");
+    expect(includeChecksumDelta.provenanceCommit).toBe("e397cae8cb39233d4ec3a693dc533549f7cbb7f3");
   });
 
   test("repairs the captured landofile onto every current production embedding", async () => {
@@ -164,7 +171,7 @@ describe("closed x-* extension artifact repair", () => {
   test("still flags the old artifact unless the exception path and surface match", async () => {
     const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     const findings = classifySchemaChange(
-      { type: "object", properties: { landofile: captured.landofile } },
+      { type: "object", properties: { landofile: capturedLandofile } },
       { type: "object", properties: { landofile: current } },
       "output",
     );
