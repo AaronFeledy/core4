@@ -216,6 +216,204 @@
     "justification": "Shared HealthcheckInput adds shell strings and literal argv arrays. Every disabled spelling canonicalizes to false, dropping all fields. A disabled layer replaces lower layers wholesale; a higher object layer replaces it and starts fresh against type defaults. The checker cannot classify the widened union."
   },
   {
+    "surface": "command:meta:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.config.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:GlobalConfigView",
+    "changeKind": "unsupported-keyword",
+    "path": "$.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.appliedRoutes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.appliedRoutes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ProxyConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.global.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
     "surface": "schema:LandofileAuthoringShape",
     "changeKind": "unsupported-construct",
     "path": "$.agentEnv.anyOf",
@@ -1833,13 +2031,13 @@
     "surface": "schema:LandoEvent",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Optional RoutePlan.backend.host is additive; LandoEvent anyOf members that embed RoutePlan still accept every previously accepted form."
+    "justification": "LandoEvent anyOf members embed RoutePlan. Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
   },
   {
     "surface": "schema:RendererPanelContext",
     "changeKind": "unsupported-construct",
     "path": "$.event.anyOf",
-    "justification": "Optional RoutePlan.backend.host is additive; RendererPanelContext event anyOf members that embed RoutePlan still accept every previously accepted form."
+    "justification": "RendererPanelContext event anyOf members embed RoutePlan. Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
   },
   {
     "surface": "schema:GlobalConfig",

@@ -50,6 +50,7 @@ export interface DetachedWorkerOptions<Ready, Encoded> {
 
 const READY_TIMEOUT_MS = 15_000;
 const TERMINATE_GRACE_MS = 5_000;
+const WRITE_FAILURE_EXIT_WAIT_MS = 1_000;
 const WORKER_PAYLOAD_CHUNK_BYTES = 64 * 1024;
 const WORKER_PAYLOAD_MAX_BYTES = 16 * 1024 * 1024;
 const WORKER_PAYLOAD_TIMEOUT_MS = 15_000;
@@ -154,10 +155,19 @@ export const spawnDetachedWorker = <Ready, Encoded>(
     }
   })();
   proc.unref?.();
+  const exitedBeforeReady = async (): Promise<Error> => {
+    await proc.exited;
+    const details = { exitCode: proc.exitCode, stderrTail: await stderrTailFromLog(logPath), logPath };
+    return (
+      options.exitedBeforeReady?.(details) ??
+      new DetachedWorkerExitedBeforeReadyError(details, options.logLabel)
+    );
+  };
   return {
     pid: proc.pid,
     argv: spec.argv,
     writeStdin: async (value) => {
+      if (proc.exitCode !== null) throw await exitedBeforeReady();
       const payload = new TextEncoder().encode(value);
       if (payload.byteLength > WORKER_PAYLOAD_MAX_BYTES)
         throw new Error(
@@ -165,31 +175,38 @@ export const spawnDetachedWorker = <Ready, Encoded>(
         );
       const payloadTimeoutMs = options.payloadTimeoutMs ?? WORKER_PAYLOAD_TIMEOUT_MS;
       const deadline = performance.now() + payloadTimeoutMs;
-      for (let offset = 0; offset < payload.byteLength; ) {
-        const end = Math.min(offset + WORKER_PAYLOAD_CHUNK_BYTES, payload.byteLength);
-        await awaitWorkerInput(
-          proc.stdin.write(payload.subarray(offset, end)),
-          deadline,
-          options.payloadLabel ?? options.logLabel,
-        );
-        offset = end;
-        await awaitWorkerInput(proc.stdin.flush(), deadline, options.payloadLabel ?? options.logLabel);
+      try {
+        for (let offset = 0; offset < payload.byteLength; ) {
+          const end = Math.min(offset + WORKER_PAYLOAD_CHUNK_BYTES, payload.byteLength);
+          await awaitWorkerInput(
+            proc.stdin.write(payload.subarray(offset, end)),
+            deadline,
+            options.payloadLabel ?? options.logLabel,
+          );
+          offset = end;
+          await awaitWorkerInput(proc.stdin.flush(), deadline, options.payloadLabel ?? options.logLabel);
+        }
+        await awaitWorkerInput(proc.stdin.end(), deadline, options.payloadLabel ?? options.logLabel);
+      } catch (cause) {
+        // A crashed worker closes its stdin before the exit is observable; wait briefly for it.
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        const exited = await Promise.race([
+          proc.exited.then(() => true),
+          new Promise<false>((resolve) => {
+            timeout = setTimeout(() => resolve(false), WRITE_FAILURE_EXIT_WAIT_MS);
+          }),
+        ]).finally(() => {
+          if (timeout !== undefined) clearTimeout(timeout);
+        });
+        if (exited) throw await exitedBeforeReady();
+        throw cause;
       }
-      await awaitWorkerInput(proc.stdin.end(), deadline, options.payloadLabel ?? options.logLabel);
+      if (proc.exitCode !== null) throw await exitedBeforeReady();
     },
     readReady: async () => {
       const line = await textFromStreamUntilLine(proc.stdout, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
       if (line.length > 0) return Schema.decodeUnknownSync(options.readySchema)(JSON.parse(line));
-      await proc.exited;
-      const details = {
-        exitCode: proc.exitCode,
-        stderrTail: await stderrTailFromLog(logPath),
-        logPath,
-      };
-      throw (
-        options.exitedBeforeReady?.(details) ??
-        new DetachedWorkerExitedBeforeReadyError(details, options.logLabel)
-      );
+      throw await exitedBeforeReady();
     },
     terminate: async () => {
       proc.kill("SIGTERM");

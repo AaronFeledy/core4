@@ -220,6 +220,31 @@ process.exit(7);
 };
 
 describe("detached host-proxy worker readiness diagnostics", () => {
+  test("a startup write after observed worker exit reports crash details instead of succeeding or EPIPE", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-dead-write-"));
+    const worker = defaultSpawnWorker({
+      argv: [process.execPath, await makeCrashWorker(root)],
+      logsDir: root,
+    });
+    try {
+      const crash = await worker.readReady().then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(crash).toHaveProperty("exitCode", 7);
+      const failedWrite = await worker.writeStdin("x".repeat(2 * MEBIBYTE)).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(failedWrite).toMatchObject({
+        name: "HostProxyWorkerExitedBeforeReadyError",
+        exitCode: 7,
+      });
+    } finally {
+      await worker.terminate();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("does not ignore worker stderr for the worker lifetime", async () => {
     const source = await Bun.file(
       new URL("../../../../engine/src/subsystems/detached-worker/process.ts", import.meta.url),
@@ -255,21 +280,33 @@ describe("detached host-proxy worker readiness diagnostics", () => {
     }
   });
 
-  test("maps an early worker exit onto a tagged error that names the log file", async () => {
+  test("maps a worker crash before reading stdin onto a tagged error that names the log file", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-crash-map-"));
     const logsDir = join(root, "logs");
     const scriptPath = await makeCrashWorker(root);
     const exit = await Effect.runPromiseExit(
       startDetachedHostProxyWorker({
         app,
-        plan,
+        plan: { ...plan, name: "x".repeat(2 * MEBIBYTE) },
         paths: { userCacheRoot: root, userDataRoot: root },
         shimArtifactPath: join(root, "lando"),
-        spawnWorker: () =>
-          defaultSpawnWorker({
+        spawnWorker: () => {
+          const worker = defaultSpawnWorker({
             argv: [process.execPath, scriptPath, "--app-id", "demo"],
             logsDir,
-          }),
+          });
+          return {
+            ...worker,
+            writeStdin: async (value) => {
+              // Observe the crash before writing, without sleeps or a scheduler race.
+              await worker.readReady().catch((cause: unknown) => {
+                if (!(cause instanceof Error) || cause.name !== "HostProxyWorkerExitedBeforeReadyError")
+                  throw cause;
+              });
+              await worker.writeStdin(value);
+            },
+          };
+        },
       }),
     );
     try {

@@ -95,7 +95,7 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
-  options: RootOverrides = {},
+  options: RootOverrides & { readonly workerPlan?: AppPlan; readonly reusePolicy?: "exact" | "adopt" } = {},
 ) {
   yield* Effect.context<ShellRunner | EventService | RedactionService>();
   const eligibleServices = hostProxyEligibleServices(plan);
@@ -121,7 +121,8 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
         const shimArtifactPath = yield* prepareHostProxyShimArtifact(shimTarget);
         const session = yield* startDetachedHostProxyWorker({
           app,
-          plan,
+          plan: options.workerPlan ?? plan,
+          reusePolicy: options.reusePolicy ?? "exact",
           paths: { ...landoPaths.roots, platform },
           shimArtifactPath,
           shimTarget,
@@ -129,7 +130,10 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
           ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
         });
         yield* Ref.set(acquired, session);
-        yield* tree.completeTask("session", "Host-proxy session ready");
+        yield* tree.completeTask(
+          "session",
+          session.reused ? "Host-proxy session reused" : "Host-proxy session ready",
+        );
         return session;
       }),
     {
@@ -155,6 +159,8 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
   options: {
     readonly platform?: HostPlatform;
     readonly managed?: { readonly scope: Scope.Scope };
+    readonly workerPlan?: AppPlan;
+    readonly reusePolicy?: "exact" | "adopt";
     readonly use: (plan: AppPlan) => Effect.Effect<A, E, R>;
   },
 ): Effect.fn.Return<
@@ -167,6 +173,8 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
     startHostProxyRunLandoSession(plan, app, capabilities, {
       ...paths.roots,
       platform: options.platform ?? paths.platform,
+      workerPlan: options.workerPlan ?? plan,
+      reusePolicy: options.reusePolicy ?? "exact",
     }),
     (session) => options.use(session === undefined ? plan : withHostProxyRunLando(plan, session)),
     {

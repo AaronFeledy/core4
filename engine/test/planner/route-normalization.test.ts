@@ -194,3 +194,48 @@ test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
   expect(result.failure).toBeInstanceOf(RouteInputError);
   expect(result.failure).toMatchObject({ key: "proxy.web[1]" });
 });
+
+test.each([
+  "{{ app.name }}.{{ proxy.defaultDomain }}",
+  { hostname: "{{ app.name }}.{{ proxy.defaultDomain }}" },
+])("plans slug-based hostname expressions once: %j", async (route) => {
+  // Given
+  const input = { name: "Routes Demo", services: { web: { type: "nginx", routes: [route] } } };
+  // When
+  const result = await Effect.runPromise(plan(input));
+  // Then
+  expect(result.routes.map(({ hostname }) => hostname)).toEqual(["routes-demo.lndo.site"]);
+});
+
+test("rejects a combined object hostname before provider action", async () => {
+  // Given
+  const input = {
+    name: "routes-app",
+    services: { web: { type: "nginx", routes: [{ hostname: "myapp.lndo.site:8080/api" }] } },
+  };
+  // When
+  const result = await Effect.runPromise(Effect.result(plan(input)));
+  // Then
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(RouteInputError);
+    expect(result.failure).toMatchObject({ key: "services.web.routes[0].hostname" });
+  }
+});
+
+test("rejects expression-produced template text instead of evaluating it again", async () => {
+  // Given
+  const input = {
+    name: "Routes Demo",
+    services: { web: { type: "nginx", routes: [{ hostname: "{{ join(['{{', ' app.name }}'], '') }}" }] } },
+  };
+  // When
+  const result = await Effect.runPromise(Effect.result(plan(input)));
+  // Then
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(RouteInputError);
+    expect(result.failure).toMatchObject({ key: "services.web.routes[0].hostname" });
+    expect(result.failure.message).toContain("{{ app.name }}");
+  }
+});
