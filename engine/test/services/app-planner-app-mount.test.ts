@@ -62,7 +62,7 @@ test.each([
     expectedCommand: [
       "sh",
       "-c",
-      'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+      'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
     ],
     intervalSeconds: 10,
   },
@@ -72,7 +72,7 @@ test.each([
     expectedCommand: [
       "sh",
       "-c",
-      'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+      'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
     ],
     intervalSeconds: 5,
   },
