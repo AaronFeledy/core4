@@ -14,6 +14,7 @@ import type {
   CommandRegistry,
   ConfigService,
   ConfigTranslatorRegistry,
+  ContainerHelperAssets,
   DataMover,
   Downloader,
   EventService,
@@ -22,7 +23,6 @@ import type {
   GlobalAppService,
   InteractionService,
   LandofileService,
-  LogFileHelperAssets,
   Logger,
   ManagedFileService,
   ManagedFileTransactionGuard,
@@ -139,7 +139,7 @@ type ProviderRuntimeServices =
   | CertificateAuthorityResolver
   | DataMover
   | AppPlanSanitizer
-  | LogFileHelperAssets
+  | ContainerHelperAssets
   | GlobalAppService;
 type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchestrator | RouterService;
 type ScratchRuntimeServices =

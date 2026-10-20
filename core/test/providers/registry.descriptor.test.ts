@@ -18,8 +18,8 @@ import {
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   PluginRegistry,
@@ -79,7 +79,10 @@ const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
     Layer.succeed(ConfigService, configService),
     Layer.succeed(Downloader, Downloader.of(downloader.service)),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+    ),
     Layer.succeed(ManagedFileService, managedFiles.service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/descriptor-registry-test" })),
     Layer.succeed(PluginRegistry, pluginRegistry),

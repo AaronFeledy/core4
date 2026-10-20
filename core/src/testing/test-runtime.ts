@@ -16,6 +16,7 @@ import {
   Schema,
   Stream,
 } from "effect";
+import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
 import {
   CacheError,
@@ -169,6 +170,7 @@ type MinimalTestRuntimeServices =
   | ProcessRunner
   | PrivateFileAccessService;
 type ProviderTestRuntimeServices =
+  | import("@lando/sdk/services").ContainerHelperAssets
   | MinimalTestRuntimeServices
   | PluginRegistry
   | RuntimeProviderRegistry
@@ -1006,6 +1008,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   );
 
   const providerLayer: Layer.Layer<ProviderTestRuntimeServices> = Layer.mergeAll(
+    ContainerHelperAssetsLayer.layer,
     minimalLayer,
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),

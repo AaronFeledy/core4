@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { Effect, Stream } from "effect";
 
+import { CONTAINER_HELPER_FILE, logFileHelperCleanupArgv } from "./container-helper.ts";
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "./data-plane.ts";
 import { ensure2xx, parseExecId, unavailable } from "./log-file-errors.ts";
 
@@ -25,7 +26,7 @@ export const makeLogFileHelperPaths = (): LogFileHelperPaths => {
   return {
     directoryName,
     directoryPath: `/tmp/${directoryName}`,
-    helperPath: `/tmp/${directoryName}/lando-log-file-helper`,
+    helperPath: `/tmp/${directoryName}/${CONTAINER_HELPER_FILE}`,
   };
 };
 
@@ -42,7 +43,7 @@ export const cleanupLogFileHelper = (options: LogFileHelperCleanupOptions, paths
     method: "POST",
     path: `/containers/${encodeURIComponent(options.container)}/exec`,
     body: {
-      Cmd: [paths.helperPath, "cleanup", paths.directoryPath],
+      Cmd: logFileHelperCleanupArgv(paths.helperPath, paths.directoryPath),
       AttachStdin: false,
       // Podman refuses to start a non-detached exec with no attached stream.
       AttachStdout: true,

@@ -7,7 +7,6 @@ import type { HostProxyTransportKind } from "./transport-session.ts";
 export { HOST_PROXY_RUN_LANDO_ENV_NAMES, isHostProxyRunLandoEnvName } from "./session-env.ts";
 
 export const HOST_PROXY_CONTAINER_SOCKET = "/run/lando/host-proxy.sock";
-export const HOST_PROXY_CONTAINER_SHIM = "/usr/local/lib/lando/host-proxy-client";
 export const HOST_PROXY_CONTAINER_LANDO = "/usr/local/bin/lando";
 export const HOST_PROXY_TRANSPORT_EXTENSION_KEY = "@lando/core/host-proxy-transport";
 
@@ -53,13 +52,6 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
     service.addMount({
       type: "bind",
       source: session.shimPath,
-      target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
-      readOnly: true,
-      realization: "passthrough",
-    });
-    service.addMount({
-      type: "bind",
-      source: session.shimPath,
       target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
       readOnly: true,
       realization: "passthrough",
@@ -69,7 +61,6 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
 
 const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_LANDO,
 ]);
 

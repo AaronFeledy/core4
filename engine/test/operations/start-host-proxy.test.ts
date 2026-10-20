@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
 
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -34,7 +34,6 @@ import { withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transport-shim.ts";
 
-const PREPARE_SPY_SOCKET = "prepare-spy";
 const X64_TARGET = { os: "linux", arch: "x64" } as const satisfies HostProxyShimTarget;
 const ARM64_TARGET = { os: "linux", arch: "arm64" } as const satisfies HostProxyShimTarget;
 const unusedPort = async () => {
@@ -148,15 +147,10 @@ beforeEach(() => {
       entryPath: undefined,
       bunSourceEntryPath: "/tmp/lando-start-host-proxy-missing-entry.ts",
     }),
-    bunDevDistRoot: () => "/tmp/lando-start-host-proxy-empty-dist",
-    prepareHostProxyShimArtifact: (target: HostProxyShimTarget) => {
+    resolveContainerHelper: (target: HostProxyShimTarget) => {
       prepareCalls.push(target);
       return Effect.fail(
-        new HostProxyTransportUnavailableError({
-          message: "prepare-spy",
-          socketPath: PREPARE_SPY_SOCKET,
-          remediation: "prepare-spy",
-        }),
+        new ContainerHelperUnavailableError({ target, message: "prepare-spy", remediation: "prepare-spy" }),
       );
     },
   };
@@ -197,7 +191,7 @@ const expectPrepareSpy = (exit: Exit.Exit<unknown, unknown>, target: HostProxySh
   expect(error.value).toBeInstanceOf(HostProxyTransportUnavailableError);
   if (!(error.value instanceof HostProxyTransportUnavailableError)) return;
   expect(error.value._tag).toBe("HostProxyTransportUnavailableError");
-  expect(error.value.socketPath).toBe(PREPARE_SPY_SOCKET);
+  expect(error.value.socketPath).toBe(`container-helper:${target.os}-${target.arch}`);
 };
 
 describe("startHostProxyRunLandoSession prepare port", () => {

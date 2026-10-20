@@ -17,10 +17,9 @@ import {
   pullImage as runtimePullImage,
 } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import {
@@ -535,7 +534,7 @@ export interface ProviderLayerOptions {
   readonly smokeRetryPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
@@ -746,10 +745,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         const logSourceBinding = makeProviderLogSourceBinding({
           providerId: LANDO_CTX.providerId,
           logFileAccess: options.logFileAccess,
-          helperPayload: logFileHelperPayloadForTargets(
-            options.logFileHelperPayloads,
-            resolved.hostProxy?.containerTargets,
-          ),
+          helperTarget: resolved.hostProxy?.containerTargets[0],
+          resolveHelper: options.resolveContainerHelper,
         });
         return {
           capabilities: {
@@ -1815,7 +1812,7 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan, eventService } =
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;
           const downloader = yield* Downloader;
           const runtimeState = yield* makePluginRuntimeState(ctx);
@@ -1833,7 +1830,7 @@ export const plugin = definePlugin({
             artifactDownload: makePluginArtifactDownload(downloader),
             ...(eventService === undefined ? {} : { eventService }),
             nftCacheDir: paths.toolDownloadsDir("nft"),
-            logFileHelperPayloads,
+            resolveContainerHelper,
             sanitizeAppliedPlan,
             ...runtimeState,
           });

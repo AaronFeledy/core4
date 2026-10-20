@@ -1350,8 +1350,8 @@ describe("lando start", () => {
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
       );
-      expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/usr/local/lib/lando/host-proxy-client", readOnly: true }),
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/usr/local/lib/lando/host-proxy-client" }),
       );
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),

@@ -1,13 +1,22 @@
-import { Effect, Option, Stream } from "effect";
+import { readFile } from "node:fs/promises";
 
-import type { ProviderInternalError } from "@lando/sdk/errors";
+import { Effect, Option, type Scope, Stream } from "effect";
+
+import { type ContainerHelperUnavailableError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess, LogFileHandle, LogFileRead, LogFileStat } from "@lando/sdk/log-follow";
+import type { ContainerHelperArtifact } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 
+import { logFileHelperExecArgv } from "./container-helper.ts";
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "./data-plane.ts";
+import { tryParseJson } from "./engine-json.ts";
 import { archiveLogFileHelper } from "./log-file-archive.ts";
 import { ensure2xx, internal, parseExecId, unavailable } from "./log-file-errors.ts";
-import { cleanupLogFileHelper, makeLogFileHelperPaths } from "./log-file-helper-cleanup.ts";
+import {
+  type LogFileHelperPaths,
+  cleanupLogFileHelper,
+  makeLogFileHelperPaths,
+} from "./log-file-helper-cleanup.ts";
 import { HelperSession } from "./log-file-session.ts";
 
 const maxReadBytes = 65_536;
@@ -17,15 +26,11 @@ export interface DockerLogFileAccessOptions {
   readonly providerId: string;
   readonly api: DataPlaneApiClient;
   readonly container: string;
-  readonly helperPayload: Uint8Array;
+  /** Resolves the static helper for the container's architecture; runs once per acquisition. */
+  readonly resolveHelper: Effect.Effect<ContainerHelperArtifact, ContainerHelperUnavailableError>;
 }
 
 type HelperObject = object & Record<"ok", unknown>;
-
-interface HelperLease {
-  readonly session: HelperSession;
-  readonly close: Effect.Effect<void>;
-}
 
 const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> => ({
   async *[Symbol.asyncIterator]() {
@@ -37,12 +42,12 @@ const parseUnsignedDecimalBigInt = (
   value: string,
   providerId: string,
   field: string,
-): Effect.Effect<bigint, ProviderInternalError> =>
+): Effect.Effect<bigint, ProviderError> =>
   unsignedDecimalPattern.test(value)
     ? Effect.succeed(BigInt(value))
     : Effect.fail(internal(providerId, `Invalid unsigned decimal helper ${field}.`, value));
 
-const statFrom = (value: unknown, providerId: string): Effect.Effect<LogFileStat, ProviderInternalError> => {
+const statFrom = (value: unknown, providerId: string): Effect.Effect<LogFileStat, ProviderError> => {
   if (typeof value !== "object" || value === null)
     return Effect.fail(internal(providerId, "Invalid helper stat frame.", value));
   if (!("dev" in value) || !("ino" in value) || !("size" in value)) {
@@ -69,142 +74,161 @@ const parseResponse = (value: unknown, providerId: string): Effect.Effect<Helper
   return Effect.succeed(value);
 };
 
-export const makeDockerLogFileAccess = (
+const responseStat = (providerId: string, label: string) => (response: HelperObject) =>
+  "stat" in response
+    ? statFrom(response.stat, providerId)
+    : Effect.fail(internal(providerId, `${label} response omitted stat.`, response));
+
+/**
+ * Installs the static helper into `/tmp/lando-log-file-helper-<hex>/` once and
+ * starts one long-lived helper exec session that serves every stat, open, and
+ * read for the scope's lifetime. Closing the scope ends the session and removes
+ * the install, including when acquisition is interrupted after the upload.
+ */
+export const scopedDockerLogFileAccess = (
   options: DockerLogFileAccessOptions,
-): LogFileAccess<ProviderError> => {
+): Effect.Effect<LogFileAccess<ProviderError>, ProviderError, Scope.Scope> => {
+  const providerId = options.providerId;
+  const container = encodeURIComponent(options.container);
   const request = (input: DataPlaneHttpRequest) =>
     options.api.request === undefined
-      ? Effect.fail(unavailable(options.providerId, "Provider API request client is missing."))
+      ? Effect.fail(unavailable(providerId, "Provider API request client is missing."))
       : options.api.request(input);
   const stream = (input: DataPlaneHttpRequest) =>
     options.api.stream === undefined
-      ? Stream.fail(unavailable(options.providerId, "Provider API stream client is missing."))
+      ? Stream.fail(unavailable(providerId, "Provider API stream client is missing."))
       : options.api.stream(input);
-  const install = (directoryName: string) =>
-    request({
-      method: "PUT",
-      path: `/containers/${encodeURIComponent(options.container)}/archive?path=/tmp`,
-      headers: { "Content-Type": "application/x-tar" },
-      stdin: oneChunk(archiveLogFileHelper(options.helperPayload, directoryName)),
-    }).pipe(
-      Effect.tap((response) => ensure2xx(response, options.providerId, "install helper")),
-      Effect.asVoid,
-    );
-  const cleanup = (paths: ReturnType<typeof makeLogFileHelperPaths>) => cleanupLogFileHelper(options, paths);
-  const startSession = () =>
-    Effect.sync(makeLogFileHelperPaths).pipe(
-      Effect.flatMap((paths) =>
-        install(paths.directoryName).pipe(
-          Effect.andThen(
-            request({
-              method: "POST",
-              path: `/containers/${encodeURIComponent(options.container)}/exec`,
-              body: {
-                Cmd: [paths.helperPath],
-                AttachStdin: true,
-                AttachStdout: true,
-                AttachStderr: false,
-                OpenStdin: true,
-                Tty: false,
-              },
-            }),
-          ),
-          Effect.tap((response) => ensure2xx(response, options.providerId, "create helper exec")),
-          Effect.flatMap((response) => parseExecId(response.body, options.providerId)),
-          Effect.map((id): HelperLease => {
-            const session = new HelperSession(options.providerId, (stdin, signal) =>
-              stream({
-                method: "POST",
-                path: `/exec/${encodeURIComponent(id)}/start`,
-                headers: { Connection: "Upgrade", Upgrade: "tcp" },
-                body: { Detach: false, Tty: false },
-                stdin,
-                signal,
-              }),
-            );
-            let closed = false;
-            const close = Effect.suspend(() => {
-              if (closed) return Effect.void;
-              closed = true;
-              return session.close().pipe(Effect.andThen(cleanup(paths)));
-            });
-            return { session, close };
-          }),
-          Effect.catch((cause) => cleanup(paths).pipe(Effect.andThen(Effect.fail(cause)))),
-        ),
+
+  const helperBytes = options.resolveHelper.pipe(
+    Effect.mapError(
+      (error) =>
+        new ProviderUnavailableError({
+          providerId,
+          operation: "logFileAccess",
+          message: error.message,
+          remediation: error.remediation,
+          cause: error,
+        }),
+    ),
+    Effect.flatMap((helper) =>
+      Effect.tryPromise({
+        try: () => readFile(helper.path),
+        catch: (cause) => unavailable(providerId, "Could not read the container helper.", helper.path, cause),
+      }),
+    ),
+  );
+
+  const install = Effect.acquireRelease(
+    Effect.gen(function* () {
+      const bytes = yield* helperBytes;
+      const paths = makeLogFileHelperPaths();
+      yield* request({
+        method: "PUT",
+        path: `/containers/${container}/archive?path=/tmp`,
+        headers: { "Content-Type": "application/x-tar" },
+        stdin: oneChunk(archiveLogFileHelper(new Uint8Array(bytes), paths.directoryName)),
+      }).pipe(Effect.flatMap((response) => ensure2xx(response, providerId, "install helper")));
+      return paths;
+    }),
+    (paths) => cleanupLogFileHelper(options, paths),
+  );
+
+  const exitCodeOf = (execId: string) =>
+    request({ method: "GET", path: `/exec/${encodeURIComponent(execId)}/json` }).pipe(
+      Effect.flatMap((response) => tryParseJson(response.body, (cause) => cause)),
+      Effect.map((decoded) =>
+        typeof decoded === "object" && decoded !== null && "ExitCode" in decoded
+          ? decoded.ExitCode
+          : undefined,
       ),
+      Effect.orElseSucceed(() => undefined),
     );
-  const stat = (lease: HelperLease, path: string) =>
-    lease.session.send({ op: "stat", path }).pipe(
-      Effect.flatMap((response) => parseResponse(response, options.providerId)),
-      Effect.flatMap((response) =>
-        "missing" in response && response.missing === true
-          ? Effect.succeed(Option.none<LogFileStat>())
-          : "stat" in response
-            ? statFrom(response.stat, options.providerId).pipe(Effect.map(Option.some))
-            : Effect.fail(internal(options.providerId, "Stat response omitted stat.", response)),
-      ),
-      Effect.ensuring(lease.close),
-    );
-  return {
-    stat: (path) => startSession().pipe(Effect.flatMap((lease) => stat(lease, path))),
-    open: (path) =>
-      startSession().pipe(
-        Effect.flatMap((lease) =>
-          lease.session.send({ op: "open", path }).pipe(
-            Effect.flatMap((response) => parseResponse(response, options.providerId)),
-            Effect.flatMap((response) =>
-              "stat" in response
-                ? statFrom(response.stat, options.providerId)
-                : Effect.fail(internal(options.providerId, "Open response omitted stat.", response)),
-            ),
-            Effect.map(
-              (): LogFileHandle<ProviderError> => ({
-                stat: lease.session.send({ op: "fstat" }).pipe(
-                  Effect.flatMap((response) => parseResponse(response, options.providerId)),
-                  Effect.flatMap((response) =>
-                    "stat" in response
-                      ? statFrom(response.stat, options.providerId)
-                      : Effect.fail(internal(options.providerId, "Fstat response omitted stat.", response)),
-                  ),
-                ),
-                read: (offset, maxBytes): Effect.Effect<LogFileRead, ProviderError> =>
-                  lease.session
-                    .send({ op: "read", offset: String(offset), maxBytes: Math.min(maxBytes, maxReadBytes) })
-                    .pipe(
-                      Effect.flatMap((response) => parseResponse(response, options.providerId)),
-                      Effect.flatMap((response) => {
-                        if (!("bytes" in response) || !("nextOffset" in response) || !("eof" in response))
-                          return Effect.fail(
-                            internal(options.providerId, "Read response omitted fields.", response),
-                          );
-                        if (
-                          typeof response.bytes !== "string" ||
-                          typeof response.nextOffset !== "string" ||
-                          typeof response.eof !== "boolean"
-                        )
-                          return Effect.fail(
-                            internal(
-                              options.providerId,
-                              "Read response fields have invalid types.",
-                              response,
-                            ),
-                          );
-                        const eof = response.eof;
-                        const bytes = decodeBase64(response.bytes).slice(0, maxBytes);
-                        return parseUnsignedDecimalBigInt(
-                          response.nextOffset,
-                          options.providerId,
-                          "read nextOffset",
-                        ).pipe(Effect.map((nextOffset) => ({ bytes, nextOffset, eof })));
-                      }),
+
+  const startSession = (paths: LogFileHelperPaths) =>
+    Effect.acquireRelease(
+      request({
+        method: "POST",
+        path: `/containers/${container}/exec`,
+        body: {
+          Cmd: logFileHelperExecArgv(paths.helperPath),
+          AttachStdin: true,
+          AttachStdout: true,
+          AttachStderr: false,
+          OpenStdin: true,
+          Tty: false,
+        },
+      }).pipe(
+        Effect.tap((response) => ensure2xx(response, providerId, "create helper exec")),
+        Effect.flatMap((response) => parseExecId(response.body, providerId)),
+        Effect.map(
+          (id) =>
+            new HelperSession(
+              providerId,
+              (stdin, signal) =>
+                stream({
+                  method: "POST",
+                  path: `/exec/${encodeURIComponent(id)}/start`,
+                  headers: { Connection: "Upgrade", Upgrade: "tcp" },
+                  body: { Detach: false, Tty: false },
+                  stdin,
+                  signal,
+                }),
+              {
+                onEndedBeforeResponse: () =>
+                  exitCodeOf(id).pipe(
+                    Effect.map((exitCode) =>
+                      unavailable(
+                        providerId,
+                        `Log helper ${paths.helperPath} in container ${options.container} exited before responding${exitCode === undefined ? "" : ` (exit code ${String(exitCode)})`}.`,
+                        { container: options.container, helper: paths.helperPath, exitCode },
+                      ),
                     ),
-                close: lease.close,
-              }),
+                  ),
+              },
             ),
-            Effect.catch((cause) => lease.close.pipe(Effect.andThen(Effect.fail(cause)))),
-          ),
         ),
       ),
-  };
+      (session) => session.close(),
+    );
+
+  return Effect.gen(function* () {
+    const paths = yield* install;
+    const session = yield* startSession(paths);
+    const send = (command: Readonly<Record<string, string | number>>) =>
+      session.send(command).pipe(Effect.flatMap((response) => parseResponse(response, providerId)));
+    const handle: LogFileHandle<ProviderError> = {
+      stat: send({ op: "fstat" }).pipe(Effect.flatMap(responseStat(providerId, "Fstat"))),
+      read: (offset, maxBytes): Effect.Effect<LogFileRead, ProviderError> =>
+        send({ op: "read", offset: String(offset), maxBytes: Math.min(maxBytes, maxReadBytes) }).pipe(
+          Effect.flatMap((response) => {
+            if (!("bytes" in response) || !("nextOffset" in response) || !("eof" in response))
+              return Effect.fail(internal(providerId, "Read response omitted fields.", response));
+            if (
+              typeof response.bytes !== "string" ||
+              typeof response.nextOffset !== "string" ||
+              typeof response.eof !== "boolean"
+            )
+              return Effect.fail(internal(providerId, "Read response fields have invalid types.", response));
+            const eof = response.eof;
+            const bytes = decodeBase64(response.bytes).slice(0, maxBytes);
+            return parseUnsignedDecimalBigInt(response.nextOffset, providerId, "read nextOffset").pipe(
+              Effect.map((nextOffset) => ({ bytes, nextOffset, eof })),
+            );
+          }),
+        ),
+      close: send({ op: "close" }).pipe(Effect.ignore),
+    };
+    return {
+      stat: (path) =>
+        send({ op: "stat", path }).pipe(
+          Effect.flatMap((response) =>
+            "missing" in response && response.missing === true
+              ? Effect.succeed(Option.none<LogFileStat>())
+              : responseStat(providerId, "Stat")(response).pipe(Effect.map(Option.some)),
+          ),
+        ),
+      open: (path) =>
+        send({ op: "open", path }).pipe(Effect.flatMap(responseStat(providerId, "Open")), Effect.as(handle)),
+    };
+  });
 };

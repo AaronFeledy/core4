@@ -121,7 +121,6 @@
     "./plugins/registry": "./src/plugins/registry.ts",
     "./plugins/setup-flags": "./src/plugins/setup-flags.ts",
     "./plugins/trust-store": "./src/plugins/trust-store.ts",
-    "./providers/log-file-helper-payloads": "./src/providers/log-file-helper-payloads.ts",
     "./providers/managed": "./src/providers/managed.ts",
     "./providers/precedence": "./src/providers/precedence.ts",
     "./providers/registry": "./src/providers/registry.ts",
@@ -215,6 +214,7 @@
     "./testing/downloader": "./src/testing/downloader.ts",
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
+    "./testing/container-helper": "./src/testing/container-helper.ts",
     "./version": "./src/version.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

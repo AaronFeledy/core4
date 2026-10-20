@@ -7,7 +7,7 @@ import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
-import { type HostProxyShimTarget, defaultHostProxyShimArtifactPath } from "./transport-shim.ts";
+import type { HostProxyShimTarget } from "./transport-shim.ts";
 
 export const DEFAULT_CONCURRENCY = 16;
 export const DEFAULT_MAX_DEPTH = 3;
@@ -80,7 +80,4 @@ export const sessionPaths = (options: HostProxyRunLandoSessionOptions): HostProx
 };
 
 export const resolveHostProxyShimArtifact = (options: HostProxyRunLandoSessionOptions): string | undefined =>
-  options.shimArtifactPath ??
-  (options.shimTarget === undefined
-    ? undefined
-    : defaultHostProxyShimArtifactPath({ target: options.shimTarget }));
+  options.shimArtifactPath;

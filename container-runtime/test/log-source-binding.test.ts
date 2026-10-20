@@ -4,6 +4,10 @@ import { Effect, Option } from "effect";
 import type { DataPlaneApiClient } from "@lando/container-runtime/data-plane";
 import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
+import { AbsolutePath } from "@lando/sdk/schema";
+const target = { os: "linux", arch: "x64" } as const;
+const resolveHelper = () =>
+  Effect.succeed({ target, path: AbsolutePath.make(import.meta.filename), digest: "1".repeat(64) });
 
 describe("provider log source binding", () => {
   test("uses injected access when a different helper-backed fallback is available", async () => {
@@ -20,24 +24,26 @@ describe("provider log source binding", () => {
     const binding = makeProviderLogSourceBinding({
       providerId: "docker",
       logFileAccess: memory.access,
-      helperPayload: new Uint8Array([1]),
+      helperTarget: target,
+      resolveHelper,
     });
     // When: the bound source reads the injected file.
     const access = binding.bind(api, "fallback-container").logFileAccess;
-    if (access === undefined) throw new Error("Expected bound access");
+    if (access === undefined || Effect.isEffect(access)) throw new Error("Expected injected access");
     const stat = await Effect.runPromise(access.stat("/app.log"));
     // Then: the override, not the helper, supplies the content.
     expect(Option.getOrThrow(stat).size).toBe(9n);
     expect(calls).toEqual([]);
   });
 
-  for (const unavailable of ["payload", "api", "container"] as const) {
+  for (const unavailable of ["resolver", "api", "container"] as const) {
     test(`omits helper access when ${unavailable} is unavailable`, () => {
       // Given: one missing helper prerequisite.
       const binding = makeProviderLogSourceBinding({
         providerId: "lando",
         logFileAccess: undefined,
-        helperPayload: unavailable === "payload" ? undefined : new Uint8Array([1]),
+        helperTarget: target,
+        resolveHelper: unavailable === "resolver" ? undefined : resolveHelper,
       });
       // When: access is bound.
       const source = binding.bind(
@@ -46,7 +52,7 @@ describe("provider log source binding", () => {
       );
       // Then: no unusable helper is constructed; support remains a provider policy input.
       expect(source).toEqual({});
-      expect(binding.supported).toBe(unavailable !== "payload");
+      expect(binding.supported).toBe(unavailable !== "resolver");
     });
   }
 
@@ -56,7 +62,8 @@ describe("provider log source binding", () => {
     const binding = makeProviderLogSourceBinding({
       providerId: "lando",
       logFileAccess: memory.access,
-      helperPayload: undefined,
+      helperTarget: undefined,
+      resolveHelper: undefined,
     });
     // When: neither API nor container is available.
     const source = binding.bind(undefined, undefined);
@@ -71,7 +78,8 @@ describe("provider log source binding", () => {
     const binding = makeProviderLogSourceBinding({
       providerId: "podman",
       logFileAccess: undefined,
-      helperPayload: new Uint8Array([1]),
+      helperTarget: target,
+      resolveHelper,
     });
     const source = binding.bind(
       {
@@ -82,11 +90,12 @@ describe("provider log source binding", () => {
       },
       "service/name",
     );
-    if (source.logFileAccess === undefined) throw new Error("Expected helper access");
+    const access = source.logFileAccess;
+    if (!Effect.isEffect(access)) throw new Error("Expected scoped helper access");
     // When: the helper attempts to stat a file.
-    const result = await Effect.runPromise(Effect.result(source.logFileAccess.stat("/app.log")));
+    const result = await Effect.runPromise(Effect.result(Effect.scoped(access)));
     // Then: upload targets the bound container and failure retains provider identity.
-    expect(calls[0]).toBe("/containers/service%2Fname/archive?path=/tmp");
+    expect(calls).toContain("/containers/service%2Fname/archive?path=/tmp");
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: { providerId: "podman", operation: "logFileAccess" },

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
+import * as ContainerHelperAssetsLayer from "../../src/container-helper/assets.ts";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import {
@@ -182,6 +183,7 @@ test.each([
       ),
     );
     const layer = Layer.mergeAll(
+      ContainerHelperAssetsLayer.layer,
       dependencies,
       AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
       BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
