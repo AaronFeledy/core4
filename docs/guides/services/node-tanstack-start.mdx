@@ -39,7 +39,7 @@ tooling:
 ```
 
 - `port: 3000` matches the port the TanStack scaffold's `dev` script hands to Vite. Lando also sets `PORT` from it.
-- `DATABASE_URL` is filled from the `database` service's credentials when Lando plans the app. The user is `lando`, the database is the app name, and the password is generated, so it never lands in a committed file. Inside the app, the host is the service key `database`, not `localhost`.
+- `DATABASE_URL` is filled from the `database` service's credentials when Lando plans the app. The user is `lando`, the database is the app name, and the password is derived from the app name, so you never hardcode it in a committed file. Inside the app, the host is the service key `database`, not `localhost`.
 - `condition: service_healthy` holds `web` until Postgres passes its `pg_isready` healthcheck.
 - The Node service type doesn't add `npm` or `npx` tooling, so the Landofile declares them.
 
