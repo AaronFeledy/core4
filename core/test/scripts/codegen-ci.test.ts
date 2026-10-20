@@ -253,7 +253,10 @@ describe("ci workflow codegen", () => {
       );
       expect(firstWorkflow).toContain("if: ${{ matrix.cell == 'podman-podman6-linux' }}");
       expect(firstWorkflow).toContain("Teardown managed Lando runtime");
+      expect(firstWorkflow).toContain("Regenerate derived sources");
+      expect(firstWorkflow).toContain("run: bun run codegen");
       expect(firstWorkflow).toContain("Run structured provider acceptance cell");
+      expect(firstWorkflow).toContain("Assert Docker latest exec creates 0644 files");
       expect(firstWorkflow).toContain(
         "bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
       );

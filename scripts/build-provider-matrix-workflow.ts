@@ -19,7 +19,10 @@ const setupBunSteps = `      - name: Setup Bun
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile`;
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen`;
 
 const renderMatrixInclude = (includeCells: readonly ProviderAcceptanceCellPlan[]): string =>
   includeCells
@@ -192,6 +195,17 @@ ${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-li
         if: always()
         run: |
           bun run scripts/provider-matrix-acceptance.ts --cell '\${{ matrix.cell }}' --report-dir provider-matrix-reports
+
+      - name: Assert Docker latest exec creates 0644 files
+        if: \${{ matrix.cell == 'docker-engine-linux-latest' }}
+        run: |
+          bun -e '
+            const report = await Bun.file("provider-matrix-reports/docker-engine-linux-latest.json").json();
+            const check = report.checks.find((entry) => entry.id === "exec-umask-mode");
+            if (check?.outcome !== "passed") {
+              throw new Error("exec-umask-mode " + (check?.outcome ?? "missing"));
+            }
+          '
 
       - name: Upload provider matrix cell report
         if: always()

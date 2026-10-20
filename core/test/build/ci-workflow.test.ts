@@ -142,6 +142,8 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Setup Bun");
     expect(providerContracts).toContain("          bun-version-file: .bun-version");
     expect(providerContracts).toContain("        run: bun install --frozen-lockfile");
+    expect(providerContracts).toContain("      - name: Regenerate derived sources");
+    expect(providerContracts).toContain("        run: bun run codegen");
     expect(providerContracts).toContain("      - name: Build Linux x64 binary for managed Lando provider");
     expect(providerContracts).toContain("          bun run --filter='@lando/core' build:manifest");
     expect(providerContracts).toContain("          bun run --filter='@lando/core' build:log-file-helper");
@@ -191,6 +193,8 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain('              docker pull "$image"');
     expect(providerContracts).toContain("      - name: Run structured provider acceptance cell");
     expect(providerContracts).toContain("        if: always()");
+    expect(providerContracts).toContain("      - name: Assert Docker latest exec creates 0644 files");
+    expect(providerContracts).toContain("        if: ${{ matrix.cell == 'docker-engine-linux-latest' }}");
     expect(providerContracts).toContain(
       "          bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
     );
