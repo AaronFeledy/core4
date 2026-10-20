@@ -495,7 +495,7 @@ describe("create-body service publish ports", () => {
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(1);
   });
 
-  test("a second start failure retains both responses and rolls back the recreation", async () => {
+  test("a second start failure retains both responses and keeps the recreated container", async () => {
     const fake = makeFakeApi({
       exists: true,
       running: false,
@@ -525,9 +525,10 @@ describe("create-body service publish ports", () => {
       },
     });
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
+    // Host-port recovery removes only the prior container once; the failed recreation is retained.
     expect(
       fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   test("daemon-assigned ports do not trigger start recovery", async () => {

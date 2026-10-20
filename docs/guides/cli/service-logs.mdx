@@ -70,9 +70,9 @@ Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Foll
 
 ## Read a start-failure log tail
 
-When the provider cannot apply a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.
+When the provider cannot apply a service, Lando tries to capture its console logs for the failure report, including in non-interactive runs. Containers stay in place so you can inspect any available logs afterward with `lando logs -s <service>`. A container that was created but never started may have no logs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.
 
-After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their enabled healthchecks. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. Lando retains the applied app, routes, and volumes so you can inspect the failure:
+After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their enabled healthchecks. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. A failed start at any phase leaves the app, routes, and volumes in place so you can inspect the failure; the next `lando start` picks up where it stopped:
 
 ```sh
 lando logs -s appserver --tail 50
