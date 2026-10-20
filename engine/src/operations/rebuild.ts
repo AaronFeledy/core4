@@ -38,7 +38,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
-import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
@@ -184,11 +184,17 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
       provider,
       stateStore,
       body: Effect.fnUntraced(function* () {
-        yield* requireNoPendingAcceleratedStart(resolvedTarget.app, plan);
+        const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
+        if (pending !== null)
+          yield* startApp(
+            options.signal === undefined ? {} : { signal: options.signal },
+            resolvedTarget,
+            managed,
+          );
         const stopPreflight = yield* preflightStopApp(resolvedTarget);
         yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
         yield* ensureStartTransactionConsistent(resolvedTarget);
-        yield* runAppInitEvents(plan);
+        if (pending === null) yield* runAppInitEvents(plan);
         const proxy = yield* RouterService;
         const ref: AppRef = resolvedTarget.app;
         const timestamp = () => DateTime.nowUnsafe();
