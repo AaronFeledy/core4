@@ -96,6 +96,8 @@ export const makeDockerLogFileAccess = (
       Effect.flatMap((paths) =>
         install(paths.directoryName).pipe(
           Effect.andThen(
+            // Read-only helper session: POSTs /exec directly and bypasses the shared
+            // exec path, so it does not receive umask compensation.
             request({
               method: "POST",
               path: `/containers/${encodeURIComponent(options.container)}/exec`,

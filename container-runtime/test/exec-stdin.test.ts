@@ -14,6 +14,7 @@ import {
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { seedNonCompensatingExecUmask } from "../src/podman/exec-umask.ts";
 import { exec, execStream } from "../src/podman/exec.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
@@ -85,6 +86,7 @@ const makeFakeApi = () => {
       return Stream.empty;
     },
   };
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -563,6 +565,7 @@ describe("podman exec terminal size", () => {
           return Stream.fromEffect(Effect.sleep(Duration.millis(20)).pipe(Effect.as(new Uint8Array([0x6f]))));
         }),
     };
+    seedNonCompensatingExecUmask(api);
     return { api, calls };
   };
 

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
+import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -346,6 +347,7 @@ const makeFakeApi = () => {
     },
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -606,6 +608,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     },
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -704,6 +707,7 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
     },
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls, running, existing };
 };
 

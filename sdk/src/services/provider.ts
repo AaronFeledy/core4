@@ -198,6 +198,8 @@ export interface CommandSpec {
   readonly signal?: AbortSignal;
   readonly terminalSize?: { readonly columns: number; readonly rows: number };
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
+  /** Skip exec umask compensation. Internal probes and doctor set this; argv matching must not. */
+  readonly raw?: boolean;
 }
 
 export interface ExecResult {

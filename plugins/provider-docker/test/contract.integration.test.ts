@@ -5,6 +5,7 @@ import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
 
@@ -505,6 +506,7 @@ const makeFakeApi = () => {
     },
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -773,6 +775,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     },
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -937,6 +940,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
     },
   };
 
+  seedNonCompensatingExecUmask(api);
   return { api, calls, running, existing, volumes, volumeLabels };
 };
 

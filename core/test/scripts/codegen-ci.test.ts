@@ -212,9 +212,20 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("name: provider-matrix");
       expect(firstWorkflow).toContain("- cron: '0 8 * * 1'");
       expect(firstWorkflow).toContain("workflow_dispatch:");
+      expect(firstWorkflow).toContain("pull_request:");
+      expect(firstWorkflow).toContain("- container-runtime/**");
+      expect(firstWorkflow).toContain("- plugins/provider-docker/**");
+      expect(firstWorkflow).toContain("- scripts/provider-matrix*");
+      expect(firstWorkflow).toContain("- scripts/build-provider-matrix-workflow.ts");
+      expect(firstWorkflow).toContain("- .github/workflows/provider-matrix.yml");
+      expect(firstWorkflow).toContain("if: ${{ github.event_name != 'pull_request' }}");
+      expect(firstWorkflow).toContain("if: ${{ github.event_name == 'pull_request' }}");
+      expect(firstWorkflow).toContain("provider-contracts-docker-latest:");
       expect(firstWorkflow).toContain("contents: read");
       expect(firstWorkflow).toContain("engine: Docker Desktop");
       expect(firstWorkflow).toContain("engine: Docker Engine");
+      expect(firstWorkflow).toContain("engine: Docker Engine latest");
+      expect(firstWorkflow).toContain("Install unpinned Docker CE from Docker apt repo");
       expect(firstWorkflow).toContain("engine: Podman Desktop");
       expect(firstWorkflow).toContain("engine: Lando managed Podman 6");
       expect(firstWorkflow).toContain("engine: Podman 6");
@@ -242,7 +253,10 @@ describe("ci workflow codegen", () => {
       );
       expect(firstWorkflow).toContain("if: ${{ matrix.cell == 'podman-podman6-linux' }}");
       expect(firstWorkflow).toContain("Teardown managed Lando runtime");
+      expect(firstWorkflow).toContain("Regenerate derived sources");
+      expect(firstWorkflow).toContain("run: bun run codegen");
       expect(firstWorkflow).toContain("Run structured provider acceptance cell");
+      expect(firstWorkflow).toContain("Assert Docker latest exec creates 0644 files");
       expect(firstWorkflow).toContain(
         "bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
       );
@@ -312,7 +326,7 @@ describe("ci workflow codegen", () => {
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
-      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
+      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
       expect(runtimeBundleWorkflow).not.toContain("bun-version: ");

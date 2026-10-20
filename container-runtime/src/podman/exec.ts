@@ -1,4 +1,4 @@
-import { Clock, Duration, Effect, Ref, type Scope, Stream } from "effect";
+import { Clock, DateTime, Duration, Effect, Option, Ref, type Scope, Stream } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
 import {
@@ -7,9 +7,17 @@ import {
   ServiceExecError,
   type ServiceNotFoundError,
 } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { CommandSpec, ExecChunk, ExecResult, ExecTarget, ProviderError } from "@lando/sdk/services";
+import {
+  type CommandSpec,
+  EventService,
+  type ExecChunk,
+  type ExecResult,
+  type ExecTarget,
+  type ProviderError,
+} from "@lando/sdk/services";
 
 import type {
   EngineHttpApi,
@@ -21,6 +29,25 @@ import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts
 import { httpResponseDetails, redactDetails } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 import { ContainerTransportError } from "../transport.ts";
+import {
+  EXEC_UMASK_PROBE_COMMAND,
+  EXEC_UMASK_SHELL_PROBE_COMMAND,
+  type ExecUmaskProbeResult,
+  type ShellProbeOutcome,
+  claimMissingShellWarning,
+  isWorldWritableUmask,
+  isWrappedExecCommand,
+  missingShellWarning,
+  parseProcSelfStatusUmask,
+  peekContainerHasShell,
+  peekExecUmask,
+  peekUnavailableExecUmask,
+  rememberContainerHasShell,
+  rememberExecUmask,
+  rememberUnavailableExecUmask,
+  shellProbeOutcome,
+  wrapExecCommand,
+} from "./exec-umask.ts";
 
 const textDecoder = new TextDecoder();
 
@@ -42,6 +69,9 @@ interface ExecInspectResponse {
 export interface ExecOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  /** Skip umask probe and wrap. Internal probes set this; argv matching must not. */
+  readonly raw?: boolean;
+  readonly onWarn?: (message: string) => void;
 }
 
 interface ExecSession {
@@ -316,6 +346,128 @@ const interruptOnSignal = (signal: AbortSignal | undefined): Effect.Effect<void>
         return Effect.sync(() => signal.removeEventListener("abort", abort));
       });
 
+const rawExecCommand = (command: ReadonlyArray<string>): CommandSpec => ({
+  command: [...command],
+  raw: true,
+});
+
+const inspectContainerId = (session: ExecSession, plan: AppPlan): Effect.Effect<string | undefined, never> =>
+  request(session, {
+    method: "GET",
+    path: `/containers/${encodeURIComponent(containerName(plan, session.service))}/json`,
+  }).pipe(
+    Effect.map((response): string | undefined => {
+      if (response.status < 200 || response.status >= 300) return undefined;
+      try {
+        const decoded = JSON.parse(response.body) as { readonly Id?: unknown };
+        return typeof decoded.Id === "string" && decoded.Id.length > 0 ? decoded.Id : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+
+const probeUmask = (
+  plan: AppPlan,
+  target: ExecTarget,
+  options: ExecOptions,
+): Effect.Effect<ExecUmaskProbeResult, never, Scope.Scope> =>
+  exec(plan, target, rawExecCommand(EXEC_UMASK_PROBE_COMMAND), { ...options, raw: true }).pipe(
+    Effect.map((result): ExecUmaskProbeResult => {
+      if (result.exitCode !== 0) return { status: "unavailable" };
+      const umask = parseProcSelfStatusUmask(`${result.stdout}${result.stderr}`);
+      return umask === undefined ? { status: "unavailable" } : { status: "ok", umask };
+    }),
+    Effect.catch(() => Effect.succeed({ status: "unavailable" as const })),
+  );
+
+const probeContainerHasShell = (
+  plan: AppPlan,
+  target: ExecTarget,
+  options: ExecOptions,
+): Effect.Effect<ShellProbeOutcome, never, Scope.Scope> =>
+  exec(plan, target, rawExecCommand(EXEC_UMASK_SHELL_PROBE_COMMAND), { ...options, raw: true }).pipe(
+    Effect.map((result) => shellProbeOutcome(result.exitCode)),
+    Effect.catch(() => Effect.succeed("unknown" as const)),
+  );
+
+const warnMissingShell = Effect.fnUntraced(function* (
+  session: ExecSession,
+  options: ExecOptions,
+  containerId: string | undefined,
+): Effect.fn.Return<void> {
+  if (containerId !== undefined && !claimMissingShellWarning(session.api, containerId)) return;
+  const message = missingShellWarning(String(session.service.name));
+  options.onWarn?.(message);
+  const events = yield* Effect.serviceOption(EventService);
+  if (Option.isNone(events)) return;
+  yield* events.value
+    .publish(MessageWarnEvent.make({ body: message, timestamp: yield* DateTime.now }))
+    .pipe(Effect.catch(() => Effect.void));
+});
+
+const resolveExecUmask = Effect.fnUntraced(function* (
+  session: ExecSession,
+  plan: AppPlan,
+  target: ExecTarget,
+  options: ExecOptions,
+  containerId: string | undefined,
+): Effect.fn.Return<ExecUmaskProbeResult, never, Scope.Scope> {
+  const cachedOk = peekExecUmask(session.api);
+  if (cachedOk !== undefined) return cachedOk;
+  if (containerId !== undefined && peekUnavailableExecUmask(session.api, containerId)) {
+    return { status: "unavailable" };
+  }
+  const probed = yield* probeUmask(plan, target, options);
+  if (probed.status === "ok") {
+    rememberExecUmask(session.api, probed);
+    return probed;
+  }
+  if (containerId !== undefined) rememberUnavailableExecUmask(session.api, containerId);
+  return probed;
+});
+
+const resolveExecCommand = Effect.fnUntraced(function* (
+  session: ExecSession,
+  plan: AppPlan,
+  target: ExecTarget,
+  command: CommandSpec,
+  options: ExecOptions,
+): Effect.fn.Return<CommandSpec, never, Scope.Scope> {
+  if (options.raw === true || command.raw === true || isWrappedExecCommand(command.command)) {
+    return command;
+  }
+
+  const containerId = yield* inspectContainerId(session, plan);
+  const umaskResult = yield* resolveExecUmask(session, plan, target, options, containerId);
+  if (umaskResult.status !== "ok" || !isWorldWritableUmask(umaskResult.umask)) {
+    return command;
+  }
+
+  const cachedShell = containerId === undefined ? undefined : peekContainerHasShell(session.api, containerId);
+  const shell =
+    cachedShell === true
+      ? "present"
+      : cachedShell === false
+        ? "missing"
+        : yield* probeContainerHasShell(plan, target, options).pipe(
+            Effect.tap((outcome) =>
+              Effect.sync(() => {
+                if (containerId === undefined) return;
+                if (outcome === "present") rememberContainerHasShell(session.api, containerId, true);
+                if (outcome === "missing") rememberContainerHasShell(session.api, containerId, false);
+              }),
+            ),
+          );
+  if (shell !== "present") {
+    if (shell === "missing") yield* warnMissingShell(session, options, containerId);
+    return command;
+  }
+
+  return { ...command, command: wrapExecCommand(command.command) };
+});
+
 export const execStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -339,7 +491,11 @@ export const execStream = (
       ...(target.user === undefined ? {} : { user: target.user }),
     };
 
-    return Stream.fromEffect(createExec(session, plan, target, command)).pipe(
+    return Stream.fromEffect(
+      resolveExecCommand(session, plan, target, command, options).pipe(
+        Effect.flatMap((resolved) => createExec(session, plan, target, resolved)),
+      ),
+    ).pipe(
       Stream.flatMap((execId) => {
         const decodeChunk = makeRuntimeAttachDecoder();
         const completionAbort = new AbortController();
