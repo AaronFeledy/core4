@@ -31,7 +31,8 @@ test("writes the worker record from the ready frame", async () => {
     appRoot: app.root,
     sessionId: "session",
     kind: "ssh",
-    protocolVersion: 1,
+    protocolVersion: 2,
+    configDigest: "pending",
     pid: 876543,
     controlToken: "control",
     controlPort: 12345,
@@ -54,7 +55,10 @@ test("writes the worker record from the ready frame", async () => {
             writeStdin: async (value) => {
               payload = value;
             },
-            readReady: async () => ready,
+            readReady: async () => ({
+              ...ready,
+              configDigest: Schema.decodeUnknownSync(AgentRelayWorkerInput)(JSON.parse(payload)).configDigest,
+            }),
             terminate: async () => {
               terminated++;
             },
@@ -119,7 +123,8 @@ test.each(["readiness", "identity"] as const)("terminates a worker when %s fails
                 appRoot: app.root,
                 sessionId: "session",
                 kind: "ssh",
-                protocolVersion: 1,
+                protocolVersion: 2,
+                configDigest: "mismatched",
                 pid: 876543,
                 controlToken: "control",
                 controlPort: 12345,

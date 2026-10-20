@@ -55,6 +55,8 @@ describe("@lando/sdk package exports", () => {
     expect(typeof landofile.resolveLayerMergeRule).toBe("function");
     expect(typeof landofile.routeMatchKey).toBe("function");
     expect(typeof landofile.parseRouteShorthand).toBe("function");
+    expect(typeof landofile.parseRouteHostname).toBe("function");
+    expect(typeof landofile.parseRoutePathPrefix).toBe("function");
     expect(typeof landofile.landofileLayerRank).toBe("function");
     expect(landofile.composeServiceDispositions).toBeDefined();
     expect(typeof landofile.compareKeyPaths).toBe("function");

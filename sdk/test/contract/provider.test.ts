@@ -43,6 +43,30 @@ const expectContractFailure = async (
 };
 
 describe("RuntimeProvider contract", () => {
+  test.each([
+    [["lando-contract-split-", "line", "L".repeat(20_000)], "logs reassemble a line written in pieces"],
+    [
+      ["lando-contract-split-line", "L".repeat(16_384), "L".repeat(3_616)],
+      "logs reassemble a line longer than the engine split size",
+    ],
+    [
+      ["lando-contract-split-line", "lando-contract-split-line", "L".repeat(20_000)],
+      "logs reassemble a line written in pieces",
+    ],
+    [
+      ["L".repeat(20_000), "L".repeat(20_000), "lando-contract-split-line"],
+      "logs reassemble a line longer than the engine split size",
+    ],
+  ] as const)("rejects incomplete or duplicate console lines (case %#)", async (lines, assertion) => {
+    const provider = {
+      ...TestRuntimeProvider,
+      logs: (target) =>
+        Stream.fromIterable(lines.map((line) => ({ service: target.service, stream: "stdout", line }))),
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, assertion);
+  });
+
   test("exports a runnable Effect contract helper", async () => {
     const contract = runProviderContract(TestRuntimeProvider);
 
