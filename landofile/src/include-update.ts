@@ -19,6 +19,7 @@ import type { LandofileRuntimePorts } from "./ports.ts";
 export type IncludeUpdateStatus = "added" | "updated" | "unchanged";
 export interface IncludeUpdateEntry {
   readonly source: string;
+  readonly version?: string;
   readonly resolved: string;
   readonly checksum: string;
   readonly status: IncludeUpdateStatus;
@@ -93,6 +94,7 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
     lockEntries: existing,
     loadScope: options.loadScope,
     stagedLocks: new Map(),
+    walk: { selectors: new Map(), issues: new Map(), complete: true },
     noNetwork,
     loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
     ...(options.ports === undefined ? {} : { ports: options.ports }),
@@ -115,10 +117,12 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
       const status: IncludeUpdateStatus =
         prev === undefined
           ? "added"
-          : prev.resolved !== entry.resolved || prev.checksum !== entry.checksum
+          : prev.version !== entry.version ||
+              prev.resolved !== entry.resolved ||
+              prev.checksum !== entry.checksum
             ? "updated"
             : "unchanged";
-      return { source: entry.source, resolved: entry.resolved, checksum: entry.checksum, status };
+      return { ...entry, status };
     });
   const removed = scoped
     ? []
@@ -126,10 +130,12 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
   const drift = entries.some((entry) => entry.status !== "unchanged") || removed.length > 0;
   let wrote = false;
   if (!checkMode && drift) {
-    const finalEntries = scoped
-      ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
-      : [...ctx.stagedLocks.values()];
-    yield* writeLockEntries(options.stateStore, options.appRoot, lockfilePath, finalEntries);
+    yield* writeLockEntries(options.stateStore, {
+      appRoot: options.appRoot,
+      lockfilePath,
+      entries: [...ctx.stagedLocks.values()],
+      merge: scoped,
+    });
     wrote = true;
   }
   return { lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources };

@@ -1,5 +1,5 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import { LandofileIncludeError, causeMessage } from "@lando/sdk/errors";
+import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
 import { isMergeDirective, override } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
@@ -20,6 +20,7 @@ import {
   rememberLandofileIncludeSources,
   rememberLocalIncludePaths,
 } from "./include-provenance.ts";
+import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
 import { authoredIncludeEntries, classify, normalizeInclude } from "./include-source.ts";
 import {
@@ -102,7 +103,7 @@ export const resolveTree = Effect.fnUntraced(function* (
           });
         switch (kind) {
           case "local":
-            return fetchLocal(entry, ctx);
+            return ctx.remoteOrigin === undefined ? fetchLocal(entry, ctx) : fetchRemoteRelative(entry, ctx);
           case "user":
             return fetchUser(entry, ctx);
           case "git":
@@ -112,10 +113,12 @@ export const resolveTree = Effect.fnUntraced(function* (
         }
       },
       catch: (cause) =>
-        cause instanceof LandofileIncludeError
+        cause instanceof LandofileIncludeError || cause instanceof LandofileLockMismatchError
           ? cause
           : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
     });
+    if (fragment === undefined) continue;
+    yield* stageFragmentLock(fragment, ctx);
     if (hasIncludeCycle(stack, fragment.sourceId))
       return yield* Effect.fail(
         includeError({
@@ -127,7 +130,13 @@ export const resolveTree = Effect.fnUntraced(function* (
     const parsed = yield* parseFragment(fragment, ctx, layer);
     const nested = yield* resolveTree(
       parsed,
-      { ...ctx, sourceRoot: fragment.root, userOwned: fragment.userOwned },
+      {
+        ...ctx,
+        ancestors: [...stack, fragment.sourceId],
+        sourceRoot: fragment.root,
+        userOwned: fragment.userOwned,
+        remoteOrigin: fragment.remoteOrigin,
+      },
       depth + 1,
       [...stack, fragment.sourceId],
       fragment.sourceId,
@@ -142,7 +151,6 @@ export const resolveTree = Effect.fnUntraced(function* (
       sha256: sha256Hex(fragment.content),
     });
     if (!fragment.locked) localIncludePaths.push(fragment.filePath);
-    yield* stageFragmentLock(fragment, ctx);
   }
   const toolingSources = [...fragmentRecords, sourced];
   const toolingIncludes = composeToolingIncludeEntries(toolingSources);

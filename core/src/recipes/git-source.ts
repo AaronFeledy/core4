@@ -1,5 +1,6 @@
 import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isLiteralGitRef } from "@lando/landofile/git-ref";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { RecipeSourceError, causeMessage, isErrnoCode } from "@lando/sdk/errors";
@@ -14,6 +15,7 @@ import {
 
 export interface GitRecipeCloneInput {
   readonly url: string;
+  readonly ref?: string;
   readonly stagingDir: string;
   readonly dest: string;
 }
@@ -28,6 +30,8 @@ export interface GitRecipeCloner {
 
 export interface ResolveGitRecipeSourceOptions {
   readonly url: string;
+  readonly ref?: string;
+  readonly onWarn?: (message: string) => void | Promise<void>;
   readonly path?: string;
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
@@ -68,9 +72,22 @@ const runGit = async (args: ReadonlyArray<string>, cwd?: string): Promise<string
 };
 
 export const defaultGitRecipeCloner: GitRecipeCloner = {
-  clone: async ({ url, stagingDir }) => {
-    await runGit(["clone", "--depth", "1", "--", url, stagingDir]);
-    return { commitSha: await runGit(["rev-parse", "HEAD"], stagingDir) };
+  clone: async ({ url, dest, ref }) => {
+    await runGit(["init", "-q", dest]);
+    await runGit(["-C", dest, "fetch", "-q", "--depth", "1", "--no-tags", "--", url, ref ?? "HEAD"]);
+    await runGit([
+      "-C",
+      dest,
+      "-c",
+      "core.autocrlf=false",
+      "-c",
+      "core.eol=lf",
+      "checkout",
+      "-q",
+      "--detach",
+      "FETCH_HEAD",
+    ]);
+    return { commitSha: await runGit(["-C", dest, "rev-parse", "HEAD"]) };
   },
 };
 
@@ -127,6 +144,14 @@ export const publish = async (
 export const resolveGitRecipeSource = async (
   options: ResolveGitRecipeSourceOptions,
 ): Promise<ResolvedGitRecipe> => {
+  if (options.ref !== undefined && !isLiteralGitRef(options.ref)) {
+    throw sourceError({
+      message: `Invalid git recipe ref: ${options.ref}`,
+      source: options.url,
+      kind: "clone-failed",
+      remediation: "Choose a literal tag, branch, or full commit SHA.",
+    });
+  }
   const safeSubpath = normalizeRecipeSubpath(
     options.path,
     { label: "Git", container: "cloned repository", noun: "repository" },
@@ -152,29 +177,53 @@ export const resolveGitRecipeSource = async (
     });
   });
 
-  const pointer = join(cacheRoot, ".url", sha256Hex(options.url));
+  const pointer = join(cacheRoot, ".url", sha256Hex(`${options.url}#${options.ref ?? "HEAD"}`));
   const cachedSha = (await recipeFileExists(pointer)) ? (await Bun.file(pointer).text()).trim() : "";
+  const cachedCommit =
+    /^[0-9a-f]{40}$/u.test(cachedSha) && (await recipeFileExists(join(cacheRoot, cachedSha)))
+      ? cachedSha
+      : undefined;
+  const pinnedSha = /^[0-9a-f]{40}$/iu.test(options.ref ?? "") ? options.ref?.toLowerCase() : undefined;
   let commitSha =
-    cachedSha !== "" && (await recipeFileExists(join(cacheRoot, cachedSha))) ? cachedSha : undefined;
+    pinnedSha !== undefined && (await recipeFileExists(join(cacheRoot, pinnedSha))) ? pinnedSha : undefined;
   if (commitSha === undefined) {
     const stagingDir = await mkdtemp(join(cacheRoot, ".staging-"));
     try {
       commitSha = (
         await (options.cloner ?? options.gitRecipeCloner ?? defaultGitRecipeCloner).clone({
           url: options.url,
+          ...(options.ref === undefined ? {} : { ref: options.ref }),
           dest: stagingDir,
           stagingDir,
         })
-      ).commitSha.trim();
+      ).commitSha;
     } catch (cause) {
       await rm(stagingDir, { recursive: true, force: true });
+      const isAuth = authFailure(cause) || (cause instanceof RecipeSourceError && cause.kind === "auth");
+      if (!isAuth && cachedCommit !== undefined && options.onWarn !== undefined) {
+        commitSha = cachedCommit;
+        await options.onWarn(
+          `Could not refresh git recipe ${options.url}@${options.ref ?? "HEAD"}; using cached commit ${cachedCommit}.`,
+        );
+      } else {
+        throw sourceError({
+          message: `Could not clone git recipe source ${options.url}: ${causeMessage(cause)}`,
+          source: options.url,
+          kind: isAuth ? "auth" : "clone-failed",
+          remediation: isAuth
+            ? "Check git credentials or use a public URL; Lando disables interactive git credential prompts during init."
+            : "Check that the git URL is reachable and retry lando init.",
+        });
+      }
+    }
+
+    if (!/^[0-9a-f]{40}$/u.test(commitSha) || (pinnedSha !== undefined && commitSha !== pinnedSha)) {
+      await rm(stagingDir, { recursive: true, force: true });
       throw sourceError({
-        message: `Could not clone git recipe source ${options.url}: ${causeMessage(cause)}`,
+        message: `Git recipe acquisition returned commit ${commitSha}, not a full SHA${pinnedSha === undefined ? "" : ` matching ${pinnedSha}`}.`,
         source: options.url,
-        kind: authFailure(cause) ? "auth" : "clone-failed",
-        remediation: authFailure(cause)
-          ? "Check git credentials or use a public URL; Lando disables interactive git credential prompts during init."
-          : "Check that the git URL is reachable and retry lando init.",
+        kind: "clone-failed",
+        remediation: "Use a git cloner that returns a full 40-character lowercase commit SHA.",
       });
     }
 

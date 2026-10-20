@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Result, Schema } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
+import { IncludeEntry, type LandofileShape } from "@lando/sdk/schema";
 
 import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -138,7 +138,6 @@ describe("tooling fragment validation", () => {
   test.each([
     ["path", { path: "tasks.yml" }],
     ["version", { version: "main" }],
-    ["checksum", { checksum: "sha256:ignored" }],
   ] as const)("a canonical tooling include rejects the %s transport field", async (_field, transport) => {
     // Given a local tooling include carrying a transport-only field
     const landofile: LandofileShape = {
@@ -158,6 +157,15 @@ describe("tooling fragment validation", () => {
     // Then the ignored field fails closed before the source is loaded
     expect(error._tag).toBe("LandofileIncludeError");
     if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
+  });
+
+  test("a canonical tooling include rejects checksum at schema validation", () => {
+    // Given
+    const entry = { source: "./tasks.yml", kind: "tooling", namespace: "docs", checksum: "sha256:ignored" };
+    // When
+    const result = Schema.decodeUnknownResult(IncludeEntry)(entry, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("a canonical tooling include rejects a remote source", async () => {
