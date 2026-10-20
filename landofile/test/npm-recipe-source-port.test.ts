@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,7 @@ describe("npm include recipe-source port", () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-npm-port-cache-"));
     roots.push(appRoot, cacheRoot);
     const packageSpecs: string[] = [];
+    const bytes = new Uint8Array([1, 2, 3]);
 
     // When
     const result = await Effect.runPromise(
@@ -40,13 +42,16 @@ describe("npm include recipe-source port", () => {
               return {
                 packageName: "@acme/fragments",
                 version: "1.2.3",
-                dist: { tarball: "https://registry.example/fragments.tgz" },
+                dist: {
+                  tarball: "https://registry.example/fragments.tgz",
+                  shasum: createHash("sha1").update(bytes).digest("hex"),
+                },
               };
             },
           },
           git: { clone: async () => ({ commitSha: "unused" }) },
           tarball: {
-            fetch: async () => new Uint8Array([1, 2, 3]),
+            fetch: async () => bytes,
             extract: async (_archive, destDir) => {
               const fragmentDir = join(destDir, "package", "fragments");
               await mkdir(fragmentDir, { recursive: true });
