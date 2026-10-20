@@ -370,11 +370,11 @@ const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
   plan: AppPlan,
-): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
+): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
-        return Effect.succeed(false);
+        return Effect.void;
       }
       return request(deps, {
         method: "POST",
@@ -390,11 +390,8 @@ const ensureNetwork = (
         },
       }).pipe(
         Effect.flatMap((response) => {
-          if (response.status === 201 || response.status === 200) {
-            return Effect.succeed(true);
-          }
-          if (response.status === 409) {
-            return Effect.succeed(false);
+          if (response.status === 201 || response.status === 200 || response.status === 409) {
+            return Effect.void;
           }
           const details = { status: response.status, body: response.body };
           const message = withApiReason(
@@ -1011,10 +1008,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      const started = yield* startService(deps, plan, service).pipe(
+      return yield* startService(deps, plan, service).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
-      return { changed: started.changed };
     }),
     execHealthcheck: (service, command) =>
       exec(

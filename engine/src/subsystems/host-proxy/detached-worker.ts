@@ -110,50 +110,50 @@ export const startDetachedHostProxyWorker = (
                 const closed = new Promise<void>((resolveClosedPromise) => {
                   resolveClosed = resolveClosedPromise;
                 });
-                return yield* writeWorkerRecord(
-                  options.app,
-                  options.paths,
-                  {
-                    appId: options.app.id,
-                    appRoot: options.app.root,
-                    providerId: String(options.plan.provider),
-                    pid: worker.pid,
-                    ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-                    ...(ready.url === undefined ? {} : { url: ready.url }),
-                    ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-                    ...(probeServices.length === 0 ? {} : { probeServices }),
-                    shimPath: ready.shimPath,
-                    transport,
-                    protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
-                    configDigest,
-                    sessionId: ready.sessionId,
-                    token: ready.token,
-                    startedAt: DateTime.formatIso(yield* DateTime.now),
-                    controlToken: ready.controlToken,
+                const session: HostProxyRunLandoSession & { readonly reused: false } = {
+                  appId: ready.appId,
+                  sessionId: ready.sessionId,
+                  token: ready.token,
+                  controlToken: ready.controlToken,
+                  ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                  ...(ready.url === undefined ? {} : { url: ready.url }),
+                  ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                  shimPath: ready.shimPath,
+                  transport,
+                  reused: false,
+                  close: () => {
+                    terminatePromise ??= worker.terminate().finally(resolveClosed);
+                    return terminatePromise;
                   },
-                  options.privateFileAccess,
-                ).pipe(
-                  Effect.as({
-                    appId: ready.appId,
-                    sessionId: ready.sessionId,
-                    token: ready.token,
-                    controlToken: ready.controlToken,
-                    ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-                    ...(ready.url === undefined ? {} : { url: ready.url }),
-                    ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-                    shimPath: ready.shimPath,
-                    transport,
-                    reused: false as const,
-                    close: () => {
-                      terminatePromise ??= worker.terminate().finally(resolveClosed);
-                      return terminatePromise;
+                  closed,
+                };
+                return yield* Effect.uninterruptible(
+                  writeWorkerRecord(
+                    options.app,
+                    options.paths,
+                    {
+                      appId: options.app.id,
+                      appRoot: options.app.root,
+                      providerId: String(options.plan.provider),
+                      pid: worker.pid,
+                      ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                      ...(ready.url === undefined ? {} : { url: ready.url }),
+                      ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                      ...(probeServices.length === 0 ? {} : { probeServices }),
+                      shimPath: ready.shimPath,
+                      transport,
+                      protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+                      configDigest,
+                      sessionId: ready.sessionId,
+                      token: ready.token,
+                      startedAt: DateTime.formatIso(yield* DateTime.now),
+                      controlToken: ready.controlToken,
                     },
-                    closed,
-                  }),
-                  Effect.flatMap((session) =>
-                    Effect.uninterruptible(
-                      Ref.set(keepWorker, true).pipe(Effect.andThen(publish(session)), Effect.as(session)),
-                    ),
+                    options.privateFileAccess,
+                  ).pipe(
+                    Effect.andThen(Ref.set(keepWorker, true)),
+                    Effect.andThen(publish(session)),
+                    Effect.as(session),
                   ),
                 );
               }),

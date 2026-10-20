@@ -220,3 +220,85 @@ test("keeps a published worker owned when cancellation lands at publication", as
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["interruption", "failure"] as const)(
+  "ownership record write %s preserves worker ownership semantics",
+  async (outcome) => {
+    const root = await mkdtemp(join(tmpdir(), "agent-detached-record-"));
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(root) };
+    const published: string[] = [];
+    let payload = "";
+    let terminated = 0;
+    try {
+      const fiber = Effect.runFork(
+        startDetachedAgentRelayWorker({
+          app,
+          plan: { id: AppId.make(app.id), provider: ProviderId.make("lando") },
+          paths: { userDataRoot: root },
+          kind: "ssh",
+          socketName: "agent.sock",
+          delivery: "bind-directory",
+          upstream: { _tag: "unix", path: "/agent" },
+          privateFileAccess: {
+            enforce: async (path) => {
+              await chmod(path, 0o600);
+              if (path.includes("worker.json.tmp-")) {
+                if (outcome === "failure") throw new Error("record write denied");
+                fiber.interruptUnsafe();
+              }
+            },
+            verify: async () => undefined,
+          },
+          publish: (session) =>
+            Effect.sync(() => {
+              published.push(session.sessionId);
+            }),
+          spawnWorker: (spec) => ({
+            pid: 876543,
+            argv: spec.argv,
+            writeStdin: async (value) => {
+              payload = value;
+            },
+            readReady: async () => ({
+              _tag: "ready",
+              appId: app.id,
+              appRoot: app.root,
+              sessionId: "session",
+              kind: "ssh",
+              protocolVersion: 2,
+              configDigest: Schema.decodeUnknownSync(AgentRelayWorkerInput)(JSON.parse(payload)).configDigest,
+              pid: 876543,
+              controlToken: "control",
+              controlPort: 12345,
+              socketName: "agent.sock",
+              mount: { _tag: "bind-directory", directory: AbsolutePath.make(join(root, "socket")) },
+            }),
+            terminate: async () => {
+              terminated++;
+            },
+          }),
+        }),
+      );
+      const exit = await Effect.runPromise(Fiber.await(fiber));
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(Exit.hasInterrupts(exit)).toBe(outcome === "interruption");
+      expect(terminated).toBe(outcome === "interruption" ? 0 : 1);
+      expect(published).toEqual(outcome === "interruption" ? ["session"] : []);
+      expect(
+        await Effect.runPromise(
+          readAgentRelayWorkerRecord(app, {
+            paths: { userDataRoot: root },
+            kind: "ssh",
+            privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+          }),
+        ),
+      ).toEqual(
+        outcome === "interruption"
+          ? expect.objectContaining({ sessionId: "session", pid: 876543 })
+          : undefined,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

@@ -84,7 +84,6 @@ import {
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
-export type { StartManagedScope } from "./start-file-sync.ts";
 export const StartedServiceResultSchema = Schema.Struct({
   name: Schema.String,
   state: Schema.String,
@@ -177,15 +176,6 @@ export const preflightStartAppDrain = Effect.fnUntraced(function* (
   }
   yield* lifecycle.invalidateDrain(target.app);
 });
-
-/** Stop has just drained durable sessions; clear that drain before startup resumes them. */
-export const invalidateAppDrainAfterStop = (target: ResolvedAppTarget, stopPreflight: StopAppPreflight) => {
-  if (stopPreflight.appliedFileSync.status !== "accelerated") return Effect.void;
-  const engine = stopPreflight.maybeFileSync;
-  return Option.isSome(engine) && engine.value.appLifecycle !== undefined
-    ? engine.value.appLifecycle.invalidateDrain(target.app)
-    : Effect.void;
-};
 
 export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   options: StartAppOptions | undefined,

@@ -174,7 +174,11 @@ const die = (operation: string) =>
 const makeRecordingLayer = (
   appliedPlans: AppPlan[],
   destroyCalls: DestroyCall[],
-  options: { readonly failApply?: boolean; readonly inspect?: RuntimeProviderShape["inspect"] } = {},
+  options: {
+    readonly failApply?: boolean;
+    readonly apply?: RuntimeProviderShape["apply"];
+    readonly inspect?: RuntimeProviderShape["inspect"];
+  } = {},
 ) => {
   const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
@@ -190,20 +194,22 @@ const makeRecordingLayer = (
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),
     removeArtifact: () => Effect.void,
-    apply: (plan) =>
-      Effect.sync(() => appliedPlans.push(plan)).pipe(
-        Effect.andThen(
-          options.failApply === true
-            ? Effect.fail(
-                new ProviderUnavailableError({
-                  providerId: String(providerId),
-                  operation: "apply",
-                  message: "injected apply failure",
-                }),
-              )
-            : Effect.succeed({ changed: true }),
-        ),
-      ),
+    apply:
+      options.apply ??
+      ((plan) =>
+        Effect.sync(() => appliedPlans.push(plan)).pipe(
+          Effect.andThen(
+            options.failApply === true
+              ? Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: String(providerId),
+                    operation: "apply",
+                    message: "injected apply failure",
+                  }),
+                )
+              : Effect.succeed({ changed: true }),
+          ),
+        )),
     start: () => die("start"),
     stop: () => die("stop"),
     restart: () => die("restart"),
@@ -289,6 +295,42 @@ const waitUntil = Effect.fnUntraced(function* (predicate: () => boolean) {
 });
 
 describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
+  test.each([false, true])("apply interrupt obeys scratch keep-on-failure=%s", async (keepOnFailure) => {
+    await withTempProject(async () => {
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const created = Deferred.makeUnsafe<void>();
+      const exit = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const fiber = yield* Effect.forkChild(
+            Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: false, keepOnFailure })),
+          );
+          yield* Deferred.await(created);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
+        }).pipe(
+          Effect.provide(
+            makeRecordingLayer(appliedPlans, destroyCalls, {
+              apply: (plan) =>
+                Effect.sync(() => {
+                  appliedPlans.push(plan);
+                }).pipe(Effect.andThen(Deferred.succeed(created, undefined)), Effect.andThen(Effect.never)),
+            }),
+          ),
+        ),
+      );
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(appliedPlans).toHaveLength(1);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 1);
+      expect(
+        await directoryExists(
+          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+        ),
+      ).toBe(keepOnFailure);
+    });
+  });
+
   test.each([false, true])("readiness failure obeys keep-on-failure=%s", async (keepOnFailure) => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];

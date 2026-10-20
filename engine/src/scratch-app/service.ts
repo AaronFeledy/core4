@@ -792,7 +792,7 @@ const makeScratchAppService = (
     ).pipe(
       // A failed start can leave a materialized dir and partial provider state; the scope
       // finalizer only covers a successful start, so reclaim on the failure path too.
-      Effect.tapError(() => (keepOnFailure ? Effect.void : destroyScratchResources)),
+      Effect.onError(() => (keepOnFailure ? Effect.void : destroyScratchResources)),
       Effect.mapError((cause) =>
         scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
       ),

@@ -82,7 +82,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 Selected global stop (§20.7) is the one teardown exception to rule 3: an otherwise valid selected orphan request (orphaned runtime resources or cleanup-only ownership hints, no applied plan) fails with `AppResolveError` before any mutation, because route ownership cannot be reconstructed without applied route definitions. Whole-global stop follows rule 3.
 
-The orphan-teardown relaxation is scoped to teardown callers. `start` MUST reconcile resources retained from a failed attempt when their recorded ownership and observed identity validate against the desired plan (§6.7). Unknown or foreign orphaned runtime resources still fail closed with `AppResolveError`; convergence MUST NOT widen the shared evidence resolver's default or adopt resources without ownership proof.
+The orphan-teardown relaxation is scoped to teardown callers. `start` MUST reconcile resources retained from a failed attempt when their recorded ownership and observed identity validate against the desired plan (§6.7). Unknown or foreign resources MUST remain untouched and fail closed through the applicable app-resolution or provider-ownership error; convergence MUST NOT widen the shared evidence resolver's default or adopt resources without ownership proof.
 
 The §10.11 `DataMover` uses native data-plane methods only when declared. Otherwise it MAY use the mount-aware ephemeral-run fallback; if `ephemeralMounts` is false and no native capability exists, planning or transfer fails with `CapabilityError`.
 

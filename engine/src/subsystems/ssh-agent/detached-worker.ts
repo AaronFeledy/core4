@@ -124,7 +124,6 @@ export const startDetachedAgentRelayWorker = (
                 workerError("Worker readiness does not match the requested app session."),
               );
             }
-            yield* writeAgentRelayWorkerRecord(options.app, options, ready);
             let closePromise: Promise<void> | undefined;
             let resolveClosed: () => void = () => undefined;
             const closed = new Promise<void>((resolve) => {
@@ -160,7 +159,12 @@ export const startDetachedAgentRelayWorker = (
                 return closePromise;
               },
             };
-            yield* Effect.uninterruptible(Ref.set(keep, true).pipe(Effect.andThen(publish(session))));
+            yield* Effect.uninterruptible(
+              writeAgentRelayWorkerRecord(options.app, options, ready).pipe(
+                Effect.andThen(Ref.set(keep, true)),
+                Effect.andThen(publish(session)),
+              ),
+            );
             return session;
           }),
         (worker) =>

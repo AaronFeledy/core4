@@ -456,7 +456,7 @@ Failure and interruption keep established resources at every phase (§6.7); no p
 
 Only acquisition-local cleanup runs after failure: an acquisition that was never published and cannot safely be reused (for example a worker without a validated handshake or ownership record, or an incomplete temporary artifact) is finalized. Completed build artifacts stay; temporary files and build children finalize. Containers, including created-but-not-started containers, networks, volumes with creation receipts, valid file-sync sessions, and recorded host-proxy, SSH, and GPG workers stay in place for every error tag. Creation alone MUST NOT count as readiness. Published route configuration stays, including the previous routes when a replacement fails. Shared networks MUST NOT be deleted as compensation. Established SSH/GPG forwarding remains enabled until stop/destroy.
 
-**Failure reporting.** The primary error tag, remediation, and role-annotated additional failures are unchanged, and the machine envelope gains no fields. Human output adds exactly one warning after the primary error:
+**Failure reporting.** The primary error tag, remediation, and role-annotated additional failures are unchanged, and the machine envelope gains no fields. Human output of `lando start`, `lando restart`, and `lando rebuild` adds exactly one warning after the primary error:
 
 > Start did not complete. Resources were left in place. Running: …; created/stopped: …; unverified: …. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; volumes require `--volumes`.
 

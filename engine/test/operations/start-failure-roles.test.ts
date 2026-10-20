@@ -7,6 +7,7 @@ import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/comman
 import { mergeFailure } from "../../src/lifecycle/failure-compensation.ts";
 import { withIncompleteStartNotice } from "../../src/operations/start-incomplete-notice.ts";
 import { startAppForTarget } from "../../src/operations/start.ts";
+import { recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 test("a failed user start preserves the primary tag without rollback-role errors", async () => {
@@ -86,6 +87,48 @@ const noticeTarget = {
   root: plan.root,
   app: { kind: "user" as const, id: plan.id, root: plan.root },
 };
+
+test("a pending resume preparation failure records the mutated-case notice", async () => {
+  const warnings = makeCommandWarnings(false);
+  const preparedTargets: string[] = [];
+  const harness = await Effect.runPromise(
+    recoveryHarness({
+      phase: "preparing",
+      harnessOptions: {
+        providerCanPrepareFileSync: false,
+        appliedFileSyncState: "missing",
+        providerOverrides: {
+          prepareFileSyncTargets: () =>
+            Effect.sync(() => {
+              preparedTargets.push("first-target");
+            }).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: "lando",
+                    operation: "prepareFileSyncTargets",
+                    message: "second target preparation failed",
+                  }),
+                ),
+              ),
+            ),
+        },
+      },
+    }),
+  );
+  const exit = await Effect.runPromiseExit(
+    withIncompleteStartNotice(startAppForTarget({}, target)).pipe(
+      Effect.provideService(CommandWarnings, warnings),
+      Effect.provide(harness.layer),
+    ),
+  );
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(preparedTargets).toEqual(["first-target"]);
+  const notices = await Effect.runPromise(warnings.failureNotices);
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toContain("Resources were left in place.");
+  expect(notices[0]).not.toContain("No app resources changed");
+});
 
 test("a provider apply failure records the left-in-place inventory notice", async () => {
   // Given: a start whose provider apply fails after the attempt began changing the app.

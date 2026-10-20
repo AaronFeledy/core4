@@ -105,7 +105,7 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 
 - `makeLandoRuntime` returns a scoped Layer and MUST run under a scope-bearing context.
 - Provider connections, watchers, streams, listeners, and plugin handles belong to that scope and finalize in LIFO order.
-- Interruption MUST propagate through provider operations and finalize the runtime.
+- Interruption MUST propagate through provider operations and finalize acquisition-local work. Interrupting an individual `App` operation MUST NOT close its owning runtime or current managed scope; closing the outer runtime scope finalizes the resources it owns.
 - An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
 - Configured scratch apps are materialized in runtime scope and destroyed when it closes (§21). Imperatively acquired scratches retain their returned scope contract.
 

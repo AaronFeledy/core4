@@ -25,8 +25,8 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     yield* router.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
     return new Map<ServiceName, ReadonlyArray<string>>();
   }
-  const { started, failed } = outcome;
-  const observed = plan.routes.some((route) => !started.has(route.service) && !failed.has(route.service))
+  const { started } = outcome;
+  const observed = plan.routes.some((route) => !started.has(route.service))
     ? yield* provider.list({ app: plan.id })
     : [];
   const active = new Set(
@@ -40,8 +40,6 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       )
       .map((service) => service.service),
   );
-  const routes = plan.routes.filter(
-    (route) => !failed.has(route.service) && (started.has(route.service) || active.has(route.service)),
-  );
+  const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));
   return appliedProxyUrlsByService(yield* router.applyRoutes(routes, plan.id));
 });

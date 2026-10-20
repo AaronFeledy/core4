@@ -2,7 +2,6 @@ import { Effect } from "effect";
 
 import type {
   ProxyApplyError,
-  ProxyError,
   ProxySetupError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
@@ -13,7 +12,6 @@ import type { RouterServiceShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
-import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
 export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
@@ -35,12 +33,6 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
     Effect.andThen(proxy.applyRoutes(plan.routes, plan.id)),
   );
 });
-
-export const destroyAppAndRemoveRoutes = <E, R>(
-  providerDestroy: Effect.Effect<void, E, R>,
-  proxy: RouterServiceShape,
-  plan: AppPlan,
-) => runAllAndMergeFailures<E | ProxyError, R>([providerDestroy, proxy.removeRoutes(plan.id)]);
 
 export const routeUrlsForPlan = (proxy: RouterServiceShape, plan: AppPlan) =>
   routerEnabled(plan)
