@@ -13,6 +13,7 @@ import {
   mssqlBackupServicePath,
   mssqlPrepareBackupCommand,
   resetCommand,
+  versionCommand,
 } from "../src/families.ts";
 
 const SECRET = "s3cret-pass";
@@ -20,6 +21,7 @@ const creds: SqlCreds = {
   user: "alice",
   password: SECRET,
   database: "appdb",
+  port: 43210,
   rootPassword: "root-s3cret",
 };
 
@@ -53,6 +55,15 @@ describe("isSqlServiceType", () => {
 });
 
 describe("family command builders", () => {
+  test.each(["mysql", "mariadb", "postgres", "mssql"] as const)(
+    "uses the planned port for every %s client operation",
+    (family) => {
+      const expected = family === "mssql" ? "localhost,43210" : "43210";
+      for (const build of [loadCommand, countCommand, resetCommand, versionCommand]) {
+        expect(build(family, creds)).toContain(expected);
+      }
+    },
+  );
   const families = [
     "mysql",
     "mariadb",
@@ -101,6 +112,8 @@ describe("family command builders", () => {
       "mysqldump",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "--single-transaction",
@@ -116,6 +129,8 @@ describe("family command builders", () => {
       "mariadb-dump",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "--single-transaction",
@@ -126,7 +141,7 @@ describe("family command builders", () => {
   });
 
   test("postgres dump uses pg_dump -U and -d", () => {
-    expect(dumpCommand("postgres", creds)).toEqual(["pg_dump", "-U", "alice", "-d", "appdb"]);
+    expect(dumpCommand("postgres", creds)).toEqual(["pg_dump", "-p", "43210", "-U", "alice", "-d", "appdb"]);
   });
 
   test("mongodb dump uses MONGO_URI from the environment", () => {
@@ -139,11 +154,20 @@ describe("family command builders", () => {
   });
 
   test("mysql load uses mysql -u without -p", () => {
-    expect(loadCommand("mysql", creds)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "alice", "appdb"]);
+    expect(loadCommand("mysql", creds)).toEqual([
+      "mysql",
+      "-h",
+      "127.0.0.1",
+      "-P",
+      "43210",
+      "-u",
+      "alice",
+      "appdb",
+    ]);
   });
 
   test("postgres load uses psql -U and -d", () => {
-    expect(loadCommand("postgres", creds)).toEqual(["psql", "-U", "alice", "-d", "appdb"]);
+    expect(loadCommand("postgres", creds)).toEqual(["psql", "-p", "43210", "-U", "alice", "-d", "appdb"]);
   });
 
   test("mongodb load uses MONGO_URI from the environment", () => {
@@ -156,13 +180,21 @@ describe("family command builders", () => {
 
   test("mssql load is sqlcmd without -P", () => {
     const argv = loadCommand("mssql", creds);
-    expect(argv.slice(0, 6)).toEqual(["/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-C"]);
+    expect(argv.slice(0, 6)).toEqual([
+      "/opt/mssql-tools18/bin/sqlcmd",
+      "-S",
+      "localhost,43210",
+      "-U",
+      "sa",
+      "-C",
+    ]);
     expect(argv).not.toContain("-P");
     expect(argv.some((part) => part.includes("WITH REPLACE"))).toBe(true);
   });
 
   test("mssql backup overwrites an existing bak file", () => {
-    const argv = mssqlBackupCommand("appdb");
+    const argv = mssqlBackupCommand("appdb", 43210);
+    expect(argv).toContain("localhost,43210");
     expect(argv[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(argv.some((part) => part.includes("WITH INIT"))).toBe(true);
   });
@@ -176,6 +208,8 @@ describe("family command builders", () => {
       "mysql",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "-D",
@@ -186,6 +220,8 @@ describe("family command builders", () => {
     ]);
     expect(countCommand("postgres", creds)).toEqual([
       "psql",
+      "-p",
+      "43210",
       "-U",
       "alice",
       "-d",
@@ -201,7 +237,7 @@ describe("family command builders", () => {
     expect(countCommand("mssql", creds)).toEqual([
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
-      "localhost",
+      "localhost,43210",
       "-U",
       "sa",
       "-C",
@@ -219,6 +255,8 @@ describe("family command builders", () => {
       "mysql",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "-e",
@@ -226,6 +264,8 @@ describe("family command builders", () => {
     ]);
     expect(resetCommand("postgres", creds)).toEqual([
       "psql",
+      "-p",
+      "43210",
       "-U",
       "alice",
       "-d",
