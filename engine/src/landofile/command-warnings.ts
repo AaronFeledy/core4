@@ -6,6 +6,9 @@ export interface CommandWarningsShape {
   readonly machineOutput: boolean;
   readonly add: (warning: CommandWarning) => Effect.Effect<void>;
   readonly list: Effect.Effect<ReadonlyArray<CommandWarning>>;
+  /** Human-only notices the CLI prints after a failed command's error report. */
+  readonly addFailureNotice: (body: string) => Effect.Effect<void>;
+  readonly failureNotices: Effect.Effect<ReadonlyArray<string>>;
 }
 
 export class CommandWarnings extends Context.Service<CommandWarnings, CommandWarningsShape>()(
@@ -14,6 +17,7 @@ export class CommandWarnings extends Context.Service<CommandWarnings, CommandWar
 
 export const makeCommandWarnings = (machineOutput: boolean): CommandWarningsShape => {
   const warnings: CommandWarning[] = [];
+  const failureNotices: string[] = [];
   return {
     machineOutput,
     add: (warning) =>
@@ -21,6 +25,11 @@ export const makeCommandWarnings = (machineOutput: boolean): CommandWarningsShap
         warnings.push(warning);
       }),
     list: Effect.sync(() => [...warnings]),
+    addFailureNotice: (body) =>
+      Effect.sync(() => {
+        failureNotices.push(body);
+      }),
+    failureNotices: Effect.sync(() => [...failureNotices]),
   };
 };
 

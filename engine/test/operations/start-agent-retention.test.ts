@@ -31,7 +31,7 @@ const selected = {
 
 for (const kind of ["ssh", "gpg"] as const) {
   for (const outcome of ["defect", "interrupted"] as const) {
-    test(`${kind} closes exactly once on ${outcome} without transferring to the managed scope`, async () => {
+    test(`${kind} retains on ${outcome} until the managed scope closes`, async () => {
       // Given
       const scope = await Effect.runPromise(Scope.make());
       const entered = Deferred.makeUnsafe<void>();
@@ -100,9 +100,11 @@ for (const kind of ["ssh", "gpg"] as const) {
         await Effect.runPromise(Fiber.interrupt(fiber));
       }
       const exit = await Effect.runPromise(Fiber.await(fiber));
+      const closedBeforeScope = closed;
       await Effect.runPromise(Scope.close(scope, Exit.void));
       // Then
       expect(closed).toBe(1);
+      expect(closedBeforeScope).toBe(0);
       switch (outcome) {
         case "defect":
           expect(exit).toEqual(Exit.die(defect));

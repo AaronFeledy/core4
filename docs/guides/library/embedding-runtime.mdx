@@ -48,7 +48,11 @@ const info = await Effect.runPromise(Effect.scoped(program));
 
 `app.start()` keeps start-state resources (such as file-sync sessions) alive on a
 managed scope between calls; `app.stop()`, `app.restart()`, `app.destroy()`, and
-runtime-scope close each tear that scope down exactly once. Use
+runtime-scope close each tear that scope down exactly once. A failed or
+interrupted `app.start()` keeps the current managed scope while the runtime
+scope remains open. It also leaves containers and published routes in place.
+Call `app.start()` again to converge, or `app.stop()` / `app.destroy()` to
+shut down or remove the app. Use
 `app.start({ detached: true })` when you want the started resources to outlive the
 runtime scope, matching the CLI's detached semantics.
 
@@ -104,7 +108,7 @@ For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
 entry point, while the lower-level Effect operations behind built-in commands remain
 available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
 `stopApp`). These are building blocks for hosts that want command parity without
-OCLIF — they return typed results rather than rendered text — but they are not the
+OCLIF. They return typed results rather than rendered text, but they are not the
 preferred app lifecycle API. Prefer the `App` handle for lifecycle work and reach
 for the raw operations only when you need command-level dispatch.
 

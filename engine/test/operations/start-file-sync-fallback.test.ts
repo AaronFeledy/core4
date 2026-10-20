@@ -564,7 +564,7 @@ describe("file-sync session reconciliation", () => {
     expect(calls).toEqual(["resume", "flush"]);
   });
 
-  test("pauses a resumed session when blocking flush fails", async () => {
+  test("retains a resumed session when blocking flush fails", async () => {
     const calls: string[] = [];
     const failure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
     const engine = {
@@ -582,7 +582,7 @@ describe("file-sync session reconciliation", () => {
     );
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
-    expect(calls).toEqual(["resume", "pause"]);
+    expect(calls).toEqual(["resume"]);
   });
 
   test("leaves an errored existing session untouched", async () => {
@@ -631,7 +631,7 @@ describe("file-sync session reconciliation", () => {
     }
     expect(calls).toEqual([]);
   });
-  test("terminates a newly created session when blocking flush fails", async () => {
+  test("retains a newly created session when blocking flush fails", async () => {
     const calls: string[] = [];
     const failure = new FileSyncStartError({ engineId: "mutagen", message: "initial flush failed" });
     const engine = {
@@ -653,9 +653,9 @@ describe("file-sync session reconciliation", () => {
     );
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
-    expect(calls).toEqual(["create", "flush", "terminate"]);
+    expect(calls).toEqual(["create", "flush"]);
   });
-  test("reports unmanaged flush and terminate failures together", async () => {
+  test("reports only the unmanaged flush failure without attempting termination", async () => {
     const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
@@ -679,12 +679,12 @@ describe("file-sync session reconciliation", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
-        [startupFailure, cleanupFailure],
+        [startupFailure],
       );
     }
   });
 
-  test("reports unmanaged resumed-session flush and pause failures together", async () => {
+  test("reports only the resumed-session flush failure without attempting pause", async () => {
     const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
@@ -707,7 +707,7 @@ describe("file-sync session reconciliation", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
-        [startupFailure, cleanupFailure],
+        [startupFailure],
       );
     }
   });
@@ -784,10 +784,10 @@ describe("file-sync session reconciliation", () => {
     );
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
-    expect(calls).toEqual(["flush reused", "terminate created"]);
+    expect(calls).toEqual(["flush reused"]);
   });
 
-  test("preserves tagged startup and persistent cleanup failures", async () => {
+  test("preserves the tagged startup failure without persistent cleanup errors", async () => {
     const scope = await Effect.runPromise(Scope.make());
     const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
     const cleanupFailure = new FileSyncStopError({
@@ -814,12 +814,12 @@ describe("file-sync session reconciliation", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
-        [startupFailure, cleanupFailure],
+        [startupFailure],
       );
     }
   });
 
-  test("terminates a new persistent session if startup is interrupted during flush", async () => {
+  test("retains a new persistent session if startup is interrupted during flush", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
     let reachedFlush: () => void = () => undefined;
@@ -851,7 +851,7 @@ describe("file-sync session reconciliation", () => {
     await flushing;
     const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls).toEqual(["create", "flush", "terminate"]);
+    expect(calls).toEqual(["create", "flush"]);
   });
 
   test("tracks a new persistent session before honoring an acquisition-time interrupt", async () => {
@@ -886,10 +886,10 @@ describe("file-sync session reconciliation", () => {
     finishCreate();
     const exit = await interrupting;
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls).toEqual(["create", "terminate"]);
+    expect(calls).toEqual(["create"]);
   });
 
-  test("terminates a reused ephemeral session if its flush is interrupted", async () => {
+  test("retains a reused ephemeral session until its owner closes after interrupted flush", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
     let reachedFlush: () => void = () => undefined;
@@ -916,6 +916,8 @@ describe("file-sync session reconciliation", () => {
     await flushing;
     const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
     expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual(["flush"]);
+    await Effect.runPromise(Scope.close(scope, Exit.void));
     expect(calls).toEqual(["flush", "terminate"]);
   });
 
@@ -1014,7 +1016,7 @@ describe("file-sync session reconciliation", () => {
     expect(calls).toEqual(["resume", "flush"]);
   });
 
-  test("re-pauses a reused persistent session when a later startup step fails", async () => {
+  test("retains a reused persistent session when a later startup step fails", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
     const failure = new FileSyncStartError({ engineId: "mutagen", message: "create failed" });
@@ -1041,7 +1043,7 @@ describe("file-sync session reconciliation", () => {
     );
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
-    expect(calls).toEqual(["resume", "flush", "pause"]);
+    expect(calls).toEqual(["resume", "flush"]);
   });
 
   test("uses distinct progress IDs for the same mount key in two services", async () => {
@@ -1955,7 +1957,7 @@ describe("pre-apply accelerated mount preparation", () => {
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
     expect(order).toEqual(["prepare", "flush:sync-app-mount", "flush:sync-mount-0", "apply"]);
   });
-  test("provider apply failure stops writers before reversing new persistent sessions and targets", async () => {
+  test("provider apply failure retains writers, persistent sessions, and targets", async () => {
     const order: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -1988,9 +1990,6 @@ describe("pre-apply accelerated mount preparation", () => {
       "create:mount-0",
       "flush:sync-mount-0",
       "apply",
-      "destroy",
-      "pause:sync-mount-0",
-      "pause:sync-app-mount",
     ]);
   });
 
@@ -2029,14 +2028,14 @@ describe("pre-apply accelerated mount preparation", () => {
       expect(failures).toContain(applyFailure);
       await expectRetainedStart(harness, exit.cause);
     }
-    expect(order).toEqual(["apply", "destroy", "pause:sync-mount-0", "pause:sync-app-mount"]);
+    expect(order).toEqual(["apply"]);
     const pending = await Effect.runPromiseExit(
       readPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
     expect(pending).toMatchObject({ _tag: "Success", value: { phase: "apply-intent" } });
   });
 
-  test("session cleanup failure after apply still retains the journal without target rollback", async () => {
+  test("apply failure retains the journal without attempting fallible session cleanup", async () => {
     const applyFailure = new ProviderUnavailableError({
       providerId: "lando",
       operation: "apply",
@@ -2067,14 +2066,14 @@ describe("pre-apply accelerated mount preparation", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(
-        Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)),
-      ).toContain(applyFailure);
+      expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
+        [applyFailure],
+      );
       await expectRetainedStart(harness, exit.cause);
     }
   });
 
-  test("a post-apply start event failure reverses persistent sessions after writer teardown", async () => {
+  test("a post-apply start event failure retains writers and persistent sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2094,10 +2093,10 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow("post-app-start failed");
-    expect(order).toEqual(["destroy", "pause:sync-mount-0", "pause:sync-app-mount"]);
+    expect(order).toEqual([]);
   });
 
-  test("a later post-start publish failure removes routes before persistent session rollback", async () => {
+  test("a later post-start publish failure retains routes and persistent sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2118,10 +2117,10 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow("post-start failed");
-    expect(order).toEqual(["remove-routes", "destroy", "pause:sync-mount-0", "pause:sync-app-mount"]);
+    expect(order).toEqual([]);
   });
 
-  test("interruption after routes preserves writer-stop-before-session cleanup order", async () => {
+  test("interruption after routes retains writers and sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2139,19 +2138,10 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    const routeIndex = order.indexOf("remove-routes");
-    const destroyIndex = order.indexOf("destroy");
-    const pauseIndex = order.indexOf("pause:sync-mount-0");
-    expect(routeIndex).toBeGreaterThanOrEqual(0);
-    expect(destroyIndex).toBeGreaterThan(routeIndex);
-    expect(pauseIndex).toBeGreaterThan(destroyIndex);
-    expect(order.filter((step) => step === "remove-routes")).toHaveLength(1);
-    expect(order.filter((step) => step === "destroy")).toHaveLength(1);
-    expect(order.filter((step) => step.startsWith("pause:"))).toHaveLength(2);
-    expect(order).not.toContain("rollback-targets");
+    expect(order).toEqual([]);
   });
 
-  test("fiber interruption after partial route publication removes routes before session rollback", async () => {
+  test("fiber interruption retains partially published routes and sessions", async () => {
     const order: string[] = [];
     let routeEntered = (): void => undefined;
     const entered = new Promise<void>((resolve) => {
@@ -2188,16 +2178,10 @@ describe("pre-apply accelerated mount preparation", () => {
     await entered;
     const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(order).toEqual([
-      "route-applied",
-      "remove-routes",
-      "destroy",
-      "pause:sync-mount-0",
-      "pause:sync-app-mount",
-    ]);
+    expect(order).toEqual(["route-applied"]);
   });
 
-  test("provider teardown failure preserves persistent sessions and prepared targets", async () => {
+  test("provider apply failure never attempts teardown of sessions or targets", async () => {
     const order: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2223,10 +2207,10 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(order).toEqual(["destroy", "destroy"]);
+    expect(order).toEqual([]);
   });
 
-  test("provider apply failure re-pauses prior persistent sessions without removing their target", async () => {
+  test("provider apply failure retains resumed persistent sessions and their target", async () => {
     const order: string[] = [];
     const existing: ReadonlyArray<FileSyncSessionInfo> = acceleratedPlan.fileSync.map((entry) => ({
       ref: FileSyncSessionRef.make(`prior-${entry.session.mountKey}`),
@@ -2259,13 +2243,7 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(order).toEqual([
-      "resume:prior-app-mount",
-      "resume:prior-mount-0",
-      "destroy",
-      "pause:prior-mount-0",
-      "pause:prior-app-mount",
-    ]);
+    expect(order).toEqual(["resume:prior-app-mount", "resume:prior-mount-0"]);
   });
 
   test("failed initial flush preserves preparation before any provider apply", async () => {
@@ -2291,7 +2269,7 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(order).toEqual(["prepare", "flush", "terminate"]);
+    expect(order).toEqual(["prepare", "flush"]);
   });
 
   test("failed initial flush retains prepared targets and journal without provider rollback", async () => {
@@ -2326,7 +2304,7 @@ describe("pre-apply accelerated mount preparation", () => {
       expect(failures).toContain(flushFailure);
       await expectRetainedStart(harness, exit.cause);
     }
-    expect(order).toEqual(["prepare", "flush", "terminate"]);
+    expect(order).toEqual(["prepare", "flush"]);
     const pending = await Effect.runPromiseExit(
       readPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
@@ -2423,7 +2401,7 @@ describe("pre-apply accelerated mount preparation", () => {
       await expectRetainedStart(harness, exit.cause);
     }
   });
-  test("a later unvisited existing session prevents target rollback after an earlier flush fails", async () => {
+  test("an earlier flush failure leaves new and unvisited existing sessions untouched", async () => {
     const order: string[] = [];
     const later = acceleratedPlan.fileSync[1];
     if (later === undefined) throw new Error("Missing later mount");
@@ -2451,10 +2429,10 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(order).toEqual(["terminate"]);
+    expect(order).toEqual([]);
   });
 
-  test("failed session termination preserves targets and both failures", async () => {
+  test("flush failure preserves targets without attempting fallible termination", async () => {
     const order: string[] = [];
     const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
     const terminateFailure = new FileSyncStopError({
@@ -2489,9 +2467,9 @@ describe("pre-apply accelerated mount preparation", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
-        [flushFailure, terminateFailure],
+        [flushFailure],
       );
     }
-    expect(order).toEqual(["terminate"]);
+    expect(order).toEqual([]);
   });
 });
