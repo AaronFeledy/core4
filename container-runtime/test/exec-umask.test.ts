@@ -21,6 +21,7 @@ import {
   EXEC_UMASK_WRAPPER_SCRIPT,
   EXEC_UMASK_WRAPPER_SHELL,
   WORLD_WRITABLE_UMASK,
+  isMissingShellExit,
   isShellProbeCommand,
   isUmaskProbeCommand,
   isWorldWritableUmask,
@@ -31,6 +32,7 @@ import {
   peekUnavailableExecUmask,
   rememberContainerHasShell,
   rememberExecUmask,
+  shellProbeOutcome,
   wrapExecCommand,
 } from "../src/podman/exec-umask.ts";
 import { exec } from "../src/podman/exec.ts";
@@ -460,6 +462,32 @@ describe("exec umask compensation", () => {
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND], ["id"]]);
     expect(peekExecUmask(fake.api)).toBeUndefined();
     expect(peekUnavailableExecUmask(fake.api, `cid-${containerName}`)).toBe(true);
+  });
+
+  test("does not cache a shell-probe exit 1 as missing /bin/sh", async () => {
+    let shellProbes = 0;
+    const fake = makeScriptedApi((cmd) => {
+      if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000"), exitCode: 0 };
+      if (isShellProbeCommand(cmd)) {
+        shellProbes += 1;
+        return { exitCode: shellProbes === 1 ? 1 : 0 };
+      }
+      return { stdout: "ok\n", exitCode: 0 };
+    });
+
+    await runExec(fake.api, { command: ["id"] });
+    await runExec(fake.api, { command: ["id"] });
+
+    expect(isMissingShellExit(1)).toBe(false);
+    expect(shellProbeOutcome(1)).toBe("unknown");
+    expect(shellProbeOutcome(126)).toBe("missing");
+    expect(shellProbeOutcome(127)).toBe("missing");
+    expect(shellProbes).toBe(2);
+    expect(peekContainerHasShell(fake.api, `cid-${containerName}`)).toBe(true);
+    expect(createBodies(fake.calls).filter((cmd) => cmd[0] === "id")).toEqual([["id"]]);
+    expect(createBodies(fake.calls).filter((cmd) => isWrappedExecCommand(cmd))).toEqual([
+      wrapExecCommand(["id"]),
+    ]);
   });
 
   test("does not cache a shell-probe transport error as missing /bin/sh", async () => {
