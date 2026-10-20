@@ -145,7 +145,7 @@ Command-wide rules:
 
 - `app:cache:refresh` performs full app bootstrap and refreshes the plan, tooling graph, and app command index. It MUST NOT contact the provider unless materialization requires a missing managed dependency.
 - `app:info` and `app:rebuild` deduplicate services on first occurrence and validate all names before provider action. `app:info` selects no dependencies. `app:rebuild` selects transitive prerequisites in stable plan order and MUST leave unrelated services and dependents untouched.
-- `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
+- `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/` and MUST NOT resolve floating refs or update the lockfile. Missing pins, selector mismatches, content mismatches, and stale entries report `LandofileLockMismatchError` entries with update remediation. An undecodable lockfile fails with `LandofileParseError`; acquisition and fragment-validation failures keep their tagged errors.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
 - For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and EOF MUST close the command's stdin in every format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML disable PTYs and keyboard attachment; `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, `app:ssh` with terminal stdin, and `apps:scratch:run` and tooling with terminal stdin and stdout. Host `.bun.sh` scripts inherit Lando's stdin descriptor for piped and keyboard input, but stdout and stderr MUST still pass through the sink; keyboard mode MUST NOT bypass redaction by inheriting output descriptors. The CLI retires event rendering before keyboard-attached tooling or scripts, and retires scratch acquisition progress before exec (§8.9.2). Human host and container payloads MUST stream incrementally through one sink with byte-exact, value-only redaction (§3.7), including final partial lines, identically for terminal and redirected destinations. Tool body bytes MUST NOT become per-line `task.detail` events. Tool stdout alone goes to stdout; task trees and acquisition narration go to stderr (§8.9.1). Machine formats follow §8.11. Interruption MUST stop the tool or script; interrupted scripts report exit 130. Event, MCP, and library invocations MUST NOT consume process stdin.
@@ -510,11 +510,11 @@ Migration snapshot helper names remain the closed pure §7.3.1 set, including sc
 |---|---|
 | bare id | Built-in `recipes/<id>/` |
 | relative or absolute path | Local directory |
-| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/` |
+| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/`; an `@ref` suffix selects a tag, branch, or full commit SHA |
 | `npm:` | `<userCacheRoot>/recipes/npm/` |
 | `registry:` | Reserved for `recipes.lando.dev`; implementation sequenced in the ROADMAP |
 
-Resolution is content-addressed and cached for offline reuse.
+Resolution is content-addressed and cached for offline reuse. A cached full commit SHA is reused without network access; a branch, tag, or default-branch request is fetched again on each resolution and falls back to the cached commit for the same source and ref only where a warning can be shown (`lando init --source=git`) and only when the fetch fails for a reason other than authentication; otherwise the failure stands.
 
 #### 8.8.5 Prompt types
 

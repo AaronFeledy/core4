@@ -45,8 +45,9 @@ maps first, resolves recipe/env expressions, assembles tooling, and validates
 the effective Landofile once. Shorthand forms and defaults apply after that
 composition, not separately inside each fragment.
 
-Remote git and npm includes are locked by resolved revision and SHA-256
-content hash, in `.lando.lock.yml`; local includes are not locked.
+Remote git and npm includes are pinned in `.lando.lock.yml` by resolved
+revision and SHA-256 content hash; local includes are not locked. See
+[Pin a remote include](#pin-a-remote-include).
 
 <Guide>
   <Scenario id="local-include-merge" render>
@@ -144,16 +145,71 @@ try {
   </Scenario>
 </Guide>
 
-## Locking and remediation
+## Pin a remote include
 
-`git` includes record the resolved commit SHA and fragment content hash;
-`npm` includes record the resolved package version and fragment content
-hash. Lock drift fails closed with `LandofileLockMismatchError` and points
-at the update command.
+Set `version:` to the tag, branch, or full 40-character commit SHA you want:
+
+```yaml
+includes:
+  - source: github:acme/lando-shared
+    path: fragments/php.yml
+    version: v1.2.0
+```
+
+`github:acme/lando-shared/fragments/php.yml@v1.2.0` is the same include as
+one string. Git sources can also be `https://`, `git+https://`, `ssh://`,
+`git+ssh://`, or `git@host:owner/repo.git` URLs with the fragment in `path:`;
+put `@ref` after the URL. For an npm include, `version:` is a version or
+range, such as `version: ^1.2.0` on `source: npm:@acme/lando-fragments`.
+Leave `version:` off and the include pins whatever the default branch or
+latest release is when Lando first resolves it; `lando app:includes:update`
+moves it forward.
+
+The first load resolves the include and adds an entry to `.lando.lock.yml`:
+the `source` (repository or package plus fragment path), the `version` you
+asked for (omitted when you didn't pin one), the `resolved` commit SHA or
+package version, and the fragment's SHA-256 `checksum`. Lando checks an npm
+package against the registry's integrity hash or shasum before unpacking it,
+and refuses a package the registry publishes neither for. Commit the
+lockfile.
+
+After that, loads use the lockfile instead of the network. Lando reads the
+pinned revision from the include cache under your user cache root and checks
+its checksum before parsing it, so `lando start`, `lando app:config`, and
+tooling keep working offline. On a machine without the cache, Lando fetches
+exactly the pinned commit or package version. A branch that moves upstream
+doesn't change your app until you run `lando app:includes:update`.
+
+Change `version:` and the next load fetches the new version and replaces that
+include's lockfile entry. Review and commit the lockfile change with the
+Landofile change. In CI, run `lando app:includes:verify`; it fails when the
+committed lockfile doesn't pin what the Landofile asks for.
+
+A cached fragment whose bytes no longer match its checksum fails closed with
+`LandofileLockMismatchError`. If `.lando.lock.yml` can't be decoded, for
+example after a merge conflict, Lando fails with `LandofileParseError`
+instead of dropping your pins. Restore the file from version control or
+remove it, then run `lando app:includes:update`.
+
+A remote fragment can include files beside it with relative paths:
+
+```yaml
+# fragments/php.yml in acme/lando-shared
+includes:
+  - ./php-extensions.yml
+```
+
+`./php-extensions.yml` comes from the same commit or package version as
+`php.yml` and gets its own lockfile entry, so it's pinned and checked the
+same way. A relative path that climbs out of the repository or package fails
+with `LandofileIncludeError`.
+
+## Refresh and check the lockfile
 
 ```sh
-# Re-resolve every remote include, recompute SHA-256 checksums, rewrite
-# .lando.lock.yml only when drift exists, and prune stale lock entries
+# Re-resolve every remote include from its source, recompute SHA-256
+# checksums, rewrite .lando.lock.yml only when something changed, and prune
+# stale lock entries
 lando app:includes:update
 
 # Refresh only named sources, merging them into the existing lockfile
@@ -161,32 +217,33 @@ lando app:includes:update
 # known sources
 lando app:includes:update SOURCE...
 
-# Resolve git and npm includes from lockfile and content-addressed cache
-# state only; a missing lock entry or cached artifact fails closed and
-# tells you to rerun app:includes:update with network access
+# Rebuild entries from the lockfile and the include cache only; a missing
+# lock entry or cached copy fails closed and tells you to rerun
+# app:includes:update with network access
 lando app:includes:update --no-network
 
-# Run the same refresh comparison without writing; sets exit code 1 on
-# drift and tells you to run app:includes:update
+# Report whether a refresh would change the lockfile, such as a branch
+# that moved upstream, without writing; sets exit code 1 when it would
 lando app:includes:update --check
 
-# Run the refresh comparison without writing, so a script can fail when
-# .lando.lock.yml is missing, stale, or mismatched
+# Check that the lockfile pins every remote include at its requested
+# version and that the pinned content matches; reads the include cache, so
+# it runs offline once includes are cached
 lando app:includes:verify
 ```
 
-If `.lando.lock.yml` can't be decoded as Lando's lockfile shape, the
-reader treats it as an empty lock, so verify/update
-report missing remote entries instead of preserving corrupt bytes.
-
 `app:includes:verify` reports `{ ok, entries, mismatches }` in text and JSON
-output, covering `ok`, `mismatch`, `missing`, and `stale` statuses;
-non-`ok` results set exit code 1. `app:includes:update` reports
-`{ added, updated, unchanged, removed, drift, wrote, checkMode, noNetwork, requestedSources }`
-in text and JSON output: per-include added, updated, and unchanged statuses,
-removed stale sources, whether drift exists, whether the lockfile was
-written, whether `--check` or `--no-network` was used, and which sources
-were requested.
+output. An entry is `ok` when the lockfile pins it at the requested version
+and the content matches, `mismatch` when the version or content differs,
+`missing` when the lockfile has no entry for it, and `stale` when a lockfile
+entry matches no include. Non-`ok` results set exit code 1.
+`app:includes:update` reports
+`{ lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources }`
+in text and JSON output. Each of `entries` carries the `source`, pinned
+`version`, `resolved` revision, `checksum`, and an `added`, `updated`, or
+`unchanged` status. The rest lists removed stale sources and says whether
+drift exists, whether the lockfile was written, whether `--check` or
+`--no-network` was used, and which sources were requested.
 
 ## Parser limits
 

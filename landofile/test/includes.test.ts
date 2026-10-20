@@ -419,7 +419,7 @@ describe("resolveLandofileIncludes", () => {
           "services:\n  database:\n    type: postgres\n",
           "utf8",
         );
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
 
@@ -439,7 +439,8 @@ describe("resolveLandofileIncludes", () => {
     const written = await readFile(join(appRoot, ".lando.lock.yml"), "utf8");
     expect(serviceType(result, "database")).toBe("postgres");
     expect(written).toContain("source: github:acme/fragments");
-    expect(written).toContain("resolved: abc123");
+    expect(written).toContain(`resolved: ${"a".repeat(40)}`);
+    expect(written).toContain("version: main");
     expect(written).toMatch(/checksum: [0-9a-f]{64}/);
   });
 
@@ -447,13 +448,13 @@ describe("resolveLandofileIncludes", () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const checksum = new Bun.CryptoHasher("sha256").update(fragment).digest("hex");
     const path = join(appRoot, ".lando.lock.yml");
-    const locked = lockfile("github:acme/fragments/postgres.yml", "abc123", checksum);
+    const locked = lockfile("github:acme/fragments/postgres.yml", "a".repeat(40), checksum);
     await writeFile(path, locked, "utf8");
     const cloner: GitIncludeCloner = {
       clone: async ({ stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
 
@@ -474,7 +475,7 @@ describe("resolveLandofileIncludes", () => {
   test("fails closed with LandofileLockMismatchError when a git lock checksum drifts", async () => {
     await writeFile(
       join(appRoot, ".lando.lock.yml"),
-      lockfile("github:acme/fragments/postgres.yml", "abc123", "0".repeat(64)),
+      lockfile("github:acme/fragments/postgres.yml", "a".repeat(40), "0".repeat(64)),
       "utf8",
     );
     const cloner: GitIncludeCloner = {
@@ -485,7 +486,7 @@ describe("resolveLandofileIncludes", () => {
           "services:\n  database:\n    type: postgres\n",
           "utf8",
         );
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
 
@@ -511,7 +512,7 @@ describe("resolveLandofileIncludes", () => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "db.yml"), "services:\n  db:\n    type: postgres\n", "utf8");
         await writeFile(join(stagingDir, "cache.yml"), "services:\n  cache:\n    type: redis\n", "utf8");
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
     const landofile: LandofileShape = {
@@ -551,14 +552,18 @@ describe("resolveLandofileIncludes", () => {
   });
 
   test("creates an npm include lock entry with resolved version and checksum", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
     const npmRecipeSource: NpmIncludeRecipeSource = {
       resolve: async () => ({
         packageName: "@acme/fragments",
         version: "1.2.3",
-        dist: { tarball: "https://registry.example/pkg.tgz" },
+        dist: {
+          tarball: "https://registry.example/pkg.tgz",
+          shasum: createHash("sha1").update(bytes).digest("hex"),
+        },
       }),
     };
-    const fetcher: NpmIncludeFetcher = { fetch: async () => new Uint8Array([1, 2, 3]) };
+    const fetcher: NpmIncludeFetcher = { fetch: async () => bytes };
     const extractor: NpmIncludeExtractor = {
       extract: async (_bytes, destDir) => {
         await mkdir(join(destDir, "package", "fragments"), { recursive: true });
@@ -657,7 +662,7 @@ describe("resolveLandofileIncludes", () => {
       clone: async ({ stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await symlink(join(secretDir, "secret.yml"), join(stagingDir, "postgres.yml"));
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
 

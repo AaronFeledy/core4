@@ -97,8 +97,8 @@ test("verifies locked sources from both base and canonical include trees", async
     const fragment = "services: {}\n";
     const checksum = new Bun.CryptoHasher("sha256").update(fragment).digest("hex");
     const sources = [
-      { layer: ".lando.base.yml", repo: "base", commit: "base123" },
-      { layer: ".lando.yml", repo: "canonical", commit: "canonical456" },
+      { layer: ".lando.base.yml", repo: "base", commit: "a".repeat(40) },
+      { layer: ".lando.yml", repo: "canonical", commit: "b".repeat(40) },
     ];
     for (const source of sources) {
       await writeFile(
@@ -119,10 +119,8 @@ test("verifies locked sources from both base and canonical include trees", async
         .join("")}`,
     );
     const gitCloner: GitIncludeCloner = {
-      clone: async ({ url, stagingDir }) => {
-        await mkdir(stagingDir, { recursive: true });
-        await writeFile(join(stagingDir, "fragment.yml"), fragment);
-        return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
+      clone: async () => {
+        throw new Error("warm verify must stay offline");
       },
     };
     await withEnvVar("LANDO_USER_CACHE_ROOT", cacheRoot, async () => {
@@ -257,6 +255,22 @@ describe("renderIncludesVerifyResult", () => {
 });
 
 describe("lando app:includes:verify (source dispatch)", () => {
+  test("corrupt lock renders only include-lock recovery advice", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(join(dir, ".lando.yml"), "name: demo\nincludes:\n  - github:acme/shared/web.yml\n");
+      await writeFile(join(dir, ".lando.lock.yml"), "::: corrupt :::\n");
+      // When
+      const result = await runCli(["app:includes:verify", "--renderer=plain"], dir);
+      // Then
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
+      );
+      expect(result.stderr).not.toContain("The durable state file is corrupt");
+      expect(result.stderr).not.toContain("StateStoreError");
+    });
+  });
   test("a Landofile with no includes verifies ok and exits 0", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: demo\nrecipe: lamp\n");
