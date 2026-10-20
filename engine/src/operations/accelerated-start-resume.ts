@@ -9,6 +9,7 @@ import { type PendingStart, matchesRecordedTargets } from "./accelerated-start-r
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
+import { markStartMutation } from "./start-incomplete-notice.ts";
 
 const resumeError = (record: PendingStart, message: string, cause?: unknown) =>
   new FileSyncStartError({
@@ -95,6 +96,7 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef
     return yield* Effect.fail(
       resumeError(record, "Applied accelerated state has missing or changed durable sessions."),
     );
+  yield* markStartMutation(plan);
   const prepared = yield* provider.prepareFileSyncTargets(plan);
   yield* verifyPreparedFileSyncTargets(plan, prepared.targets);
   if (!matchesRecordedTargets(record, prepared.targets))

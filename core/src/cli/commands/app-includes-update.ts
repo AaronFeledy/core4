@@ -40,6 +40,7 @@ export type AppIncludesUpdateFormat = "text" | "json";
 
 const IncludeUpdateEntrySchema = Schema.Struct({
   source: Schema.String,
+  version: Schema.optionalKey(Schema.String),
   resolved: Schema.String,
   checksum: Schema.String,
   status: Schema.Union([Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")]),

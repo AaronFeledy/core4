@@ -7,6 +7,18 @@ import { toSqlLandofile } from "../src/views.ts";
 const SECRET = "env-s3cret";
 
 describe("resolveSqlCreds", () => {
+  test.each(["mysql", "mariadb", "postgres", "mongodb", "mssql"] as const)(
+    "carries %s's planned port into command credentials",
+    (family) => {
+      const creds = resolveSqlCreds({
+        family,
+        serviceName: "db",
+        appName: "app",
+        planEnvironment: { LANDO_DB_PORT: "43210" },
+      });
+      expect(creds.port).toBe(43210);
+    },
+  );
   test("prefers landofile ServiceCreds over plan environment", () => {
     const creds = resolveSqlCreds({
       family: "mysql",
@@ -33,6 +45,7 @@ describe("resolveSqlCreds", () => {
       password: "authored-pass",
       database: "authoredb",
       rootPassword: "authored-root",
+      port: 3306,
     });
   });
 
@@ -54,6 +67,7 @@ describe("resolveSqlCreds", () => {
       password: SECRET,
       database: "envdb",
       rootPassword: "env-root",
+      port: 3306,
     });
   });
 
@@ -75,6 +89,7 @@ describe("resolveSqlCreds", () => {
       password: SECRET,
       database: "mariadb",
       rootPassword: "maria-root",
+      port: 3306,
     });
   });
 
@@ -94,6 +109,7 @@ describe("resolveSqlCreds", () => {
       user: "pguser",
       password: SECRET,
       database: "pgdb",
+      port: 5432,
     });
   });
 
@@ -113,6 +129,7 @@ describe("resolveSqlCreds", () => {
       user: "mongo",
       password: SECRET,
       database: "mongodb",
+      port: 27017,
     });
   });
 
@@ -167,6 +184,7 @@ describe("resolveSqlCreds", () => {
       user: "alice",
       password: SECRET,
       database: "envdb",
+      port: 3306,
     });
   });
 
@@ -182,34 +200,41 @@ describe("resolveSqlCreds", () => {
       user: "lando",
       password: "lando",
       database: "myapp",
+      port: 3306,
     });
   });
 });
 
 describe("credsEnv", () => {
   test("puts the mysql password in MYSQL_PWD", () => {
-    const env = credsEnv("mysql", { user: "alice", password: SECRET, database: "appdb" });
+    const env = credsEnv("mysql", { user: "alice", password: SECRET, database: "appdb", port: 3306 });
     expect(env.MYSQL_PWD).toBe(SECRET);
   });
 
   test("puts the postgres password in PGPASSWORD", () => {
-    const env = credsEnv("postgres", { user: "alice", password: SECRET, database: "appdb" });
+    const env = credsEnv("postgres", { user: "alice", password: SECRET, database: "appdb", port: 5432 });
     expect(env.PGPASSWORD).toBe(SECRET);
   });
 
   test("puts the mongodb secret in MONGO_URI not in dump/load argv", () => {
-    const creds = { user: "alice", password: SECRET, database: "appdb" };
+    const creds = { user: "alice", password: SECRET, database: "appdb", port: 47017 };
     const env = credsEnv("mongodb", creds);
     expect(env.MONGO_URI).toContain(SECRET);
     expect(env.MONGO_URI).toContain("authSource=admin");
-    expect(env.MONGO_URI).toContain("127.0.0.1:27017");
+    expect(env.MONGO_URI).toContain("127.0.0.1:47017");
     expect(dumpCommand("mongodb", creds).some((part) => part.includes(SECRET))).toBe(false);
     expect(loadCommand("mongodb", creds).some((part) => part.includes(SECRET))).toBe(false);
     expect(dumpCommand("mongodb", creds)[2]).toContain('--uri="$MONGO_URI"');
   });
 
   test("puts the mssql secret in SQLCMDPASSWORD and SA_PASSWORD", () => {
-    const env = credsEnv("mssql", { user: "sa", password: SECRET, database: "appdb", rootPassword: SECRET });
+    const env = credsEnv("mssql", {
+      user: "sa",
+      password: SECRET,
+      database: "appdb",
+      rootPassword: SECRET,
+      port: 1433,
+    });
     expect(env.SQLCMDPASSWORD).toBe(SECRET);
     expect(env.SA_PASSWORD).toBe(SECRET);
     expect(env.MSSQL_SA_PASSWORD).toBe(SECRET);

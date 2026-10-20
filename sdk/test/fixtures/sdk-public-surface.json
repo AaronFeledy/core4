@@ -433,7 +433,14 @@
       "primaryFailureReason",
       "projectEncodedResult"
     ],
-    "./database-creds": ["DATABASE_FAMILY_ENV_KEYS", "databaseEnvCreds", "firstEnv"],
+    "./database-creds": [
+      "DATABASE_FAMILY_DEFAULT_PORTS",
+      "DATABASE_FAMILY_ENV_KEYS",
+      "DATABASE_PORT_ENV_KEY",
+      "databaseEnvCreds",
+      "databaseEnvPort",
+      "firstEnv"
+    ],
     "./digest": ["canonicalJson", "sha256Hex"],
     "./docs/components": [
       "AxisToken",
@@ -1839,6 +1846,7 @@
       "runProviderContract",
       "runProviderContractMatrix",
       "runProviderDataPlaneContract",
+      "runProviderStartRetentionContract",
       "runProviderVolumeCreationContract",
       "runRecipeDecomposerContractSuite",
       "runRedactionContract",

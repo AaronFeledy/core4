@@ -72,7 +72,7 @@ test("gpg capability-missing fails before apply", async () => {
   expect(applied).toBe(false);
 });
 
-test("gpg overlays eligible services and closes the session on use failure", async () => {
+test("gpg overlays eligible services and retains the detached session on use failure", async () => {
   // Given
   let closed = false;
   const session: AgentRelaySession = {
@@ -109,7 +109,7 @@ test("gpg overlays eligible services and closes the session on use failure", asy
     ),
   );
   // Then
-  expect(closed).toBe(true);
+  expect(closed).toBe(false);
 });
 
 test("gpg home preparation runs only when the caller invokes it after apply", async () => {
@@ -227,7 +227,7 @@ for (const exitCode of [0, 1]) {
         });
         expect(JSON.stringify(result)).not.toContain("private diagnostic");
       }
-      expect(closed).toBe(2);
+      expect(closed).toBe(0);
     }
   });
 }
@@ -312,7 +312,7 @@ test("startGpgAgentSession leaves the exported keyring on disk once the worker o
   }
 });
 
-test("startGpgAgentSession terminates the worker when the keyring export fails", async () => {
+test("startGpgAgentSession retains the recorded worker when the keyring export fails", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "gpg-session-"));
   const paths = makeLandoPaths({ userDataRoot: root, platform: "linux" });
@@ -339,7 +339,7 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
       _tag: "Failure",
       failure: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
     });
-    expect(terminated.count).toBe(1);
+    expect(terminated.count).toBe(0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -429,8 +429,8 @@ for (const prepareExit of [0, 1]) {
           _tag: "Failure",
           failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
-        expect(calls).toEqual(["apply", "gpg-prepare", "destroy"]);
-        expect(closed).toBe(1);
+        expect(calls).toEqual(["apply", "gpg-prepare"]);
+        expect(closed).toBe(0);
       }
     } finally {
       gpgSession.mockRestore();

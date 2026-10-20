@@ -104,7 +104,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
       const path = AbsolutePath.make(workingPath);
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
-        const backup = mssqlBackupCommand(input.creds.database);
+        const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
         return Effect.gen(function* () {
           const prepare = mssqlPrepareBackupCommand();
           yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
@@ -179,7 +179,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
             overwrite: true,
             ...(digest === undefined ? {} : { expectedDigest: digest }),
           });
-          const restore = mssqlRestoreCommand(input.creds.database);
+          const restore = mssqlRestoreCommand(input.creds.database, input.creds.port);
           yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
           return transfer;
         });
@@ -208,7 +208,7 @@ export const runReset = Effect.fn("Sql.reset")(function* (
   env: Readonly<Record<string, string>>,
 ) {
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
-  const command = resetCommand(family, usesMysqlRoot ? { user: "root", database: creds.database } : creds);
+  const command = resetCommand(family, usesMysqlRoot ? { ...creds, user: "root" } : creds);
   const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
   return yield* exec(service, command, resetEnv).pipe(
     Effect.flatMap((result) => requireExecOk(result, service, command)),

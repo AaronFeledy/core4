@@ -28,10 +28,13 @@ import {
   parseCapturedExtension,
   repairClosedExtension,
   schemaAt,
+  withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
+const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
 
 const requireObject = (value: unknown, label: string): JsonSchema => {
   if (!isJsonObject(value)) throw new Error(`${label} must be a JSON object`);
@@ -39,7 +42,9 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 };
 
 const repairedLandofile = (): JsonSchema =>
-  normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
+  normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
+
+const expectedLandofile = (): JsonSchema => evolveHistoricalServicePort(repairedLandofile());
 
 describe("closed x-* extension artifact repair", () => {
   test("records the captured base artifact provenance", () => {
@@ -48,8 +53,8 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("repairs the captured landofile onto every current production embedding", async () => {
-    // Given the normalized base landofile captured from commit 15133ee26.
-    const repaired = repairedLandofile();
+    // Given the normalized base landofile captured from commit 15133ee26, plus the reviewed port narrowing.
+    const repaired = expectedLandofile();
     const surfaces = [
       ...CONFIG_COMMANDS.map((command) => `command:${command}`),
       "schema:TemplateRenderContext",
@@ -143,7 +148,7 @@ describe("closed x-* extension artifact repair", () => {
   test("still flags the old artifact unless the exception path and surface match", async () => {
     const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
     const findings = classifySchemaChange(
-      { type: "object", properties: { landofile: captured.landofile } },
+      { type: "object", properties: { landofile: capturedLandofile } },
       { type: "object", properties: { landofile: current } },
       "output",
     );
@@ -187,8 +192,24 @@ describe("closed x-* extension artifact repair", () => {
     expect(networkFindings.every((finding) => finding.accepted === false)).toBe(true);
   });
 
-  test("fails when an unrelated field in the repaired subtree changes", async () => {
+  test("replays the port narrowing onto the service config only", () => {
     const repaired = repairedLandofile();
+    const evolved = expectedLandofile();
+    const service = (graph: JsonSchema) =>
+      requireObject(schemaAt(graph, "$.services.additionalProperties").properties, "service properties");
+    expect(service(evolved).port).toEqual(CURRENT_SERVICE_PORT);
+    expect(service(evolved).healthcheck).toEqual(service(repaired).healthcheck);
+    expect(jsonEquals({ ...service(evolved), port: null }, { ...service(repaired), port: null })).toBe(true);
+    expect(
+      jsonEquals(
+        { ...evolved, properties: { ...requireObject(evolved.properties, "p"), services: null } },
+        { ...repaired, properties: { ...requireObject(repaired.properties, "p"), services: null } },
+      ),
+    ).toBe(true);
+  });
+
+  test("fails when an unrelated field in the repaired subtree changes", async () => {
+    const repaired = expectedLandofile();
     const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
     expect(jsonEquals(repaired, current)).toBe(true);
     const properties = requireObject(current.properties, "properties");
