@@ -397,7 +397,7 @@ describe("@lando/core App-handle library contract", () => {
         ...TestRuntimeProvider,
         inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
         prepareFileSyncTargets: (syncPlan: AppPlan) =>
-          Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
+          Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       });
       const activeSessions = await Effect.runPromise(
         Effect.scoped(

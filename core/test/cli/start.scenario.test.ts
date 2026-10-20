@@ -58,6 +58,7 @@ import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import { readJournal } from "@lando/engine/operations/accelerated-start-journal";
 import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoConfigService from "@lando/engine/services/config";
@@ -2094,7 +2095,7 @@ describe("lando start", () => {
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.sync(() => {
           order.push("prepare");
-          return { targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void };
+          return { targets: preparedFileSyncTargets(syncPlan) };
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
@@ -2247,7 +2248,7 @@ describe("lando start", () => {
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
-        Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
+        Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2385,7 +2386,7 @@ describe("lando start", () => {
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
-        Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
+        Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2491,7 +2492,6 @@ describe("lando start", () => {
     };
     const createCalls: Array<string> = [];
     const destroyCalls: Array<string> = [];
-    const rollbackCalls: Array<string> = [];
     let availabilityChecks = 0;
     const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
@@ -2528,9 +2528,6 @@ describe("lando start", () => {
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
           targets: preparedFileSyncTargets(syncPlan),
-          rollback: Effect.sync(() => {
-            rollbackCalls.push("rollback");
-          }),
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
@@ -2609,10 +2606,16 @@ describe("lando start", () => {
 
     expect(createCalls).toEqual([]);
     expect(destroyCalls).toEqual([]);
-    expect(rollbackCalls).toEqual(["rollback"]);
+    expect(
+      (
+        await Effect.runPromise(
+          readJournal({ kind: "user", id: plan.id, root: plan.root }).pipe(Effect.provide(layer)),
+        )
+      ).pending?.phase,
+    ).toBe("preparing");
   });
 
-  test("rolls back prepared targets when deferred file-sync setup fails before apply", async () => {
+  test("preserves prepared targets when deferred file-sync setup fails before apply", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
       services: { ...plan.services, [web.name]: fileSyncWeb },
@@ -2637,7 +2640,6 @@ describe("lando start", () => {
     };
     const createCalls: Array<string> = [];
     const destroyCalls: Array<string> = [];
-    const rollbackCalls: Array<string> = [];
     let availabilityChecks = 0;
     const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
@@ -2682,9 +2684,6 @@ describe("lando start", () => {
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
           targets: preparedFileSyncTargets(syncPlan),
-          rollback: Effect.sync(() => {
-            rollbackCalls.push("rollback");
-          }),
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
@@ -2767,7 +2766,13 @@ describe("lando start", () => {
 
     expect(createCalls).toEqual([]);
     expect(destroyCalls).toEqual([]);
-    expect(rollbackCalls).toEqual(["rollback"]);
+    expect(
+      (
+        await Effect.runPromise(
+          readJournal({ kind: "user", id: plan.id, root: plan.root }).pipe(Effect.provide(layer)),
+        )
+      ).pending?.phase,
+    ).toBe("preparing");
     expect(events.find((event) => event._tag === "task.detail" && event.stream === "stderr")).toMatchObject({
       taskId: "start-file-sync-test-start:setup",
       stream: "stderr",
@@ -2866,9 +2871,6 @@ describe("lando start", () => {
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
           targets: preparedFileSyncTargets(syncPlan),
-          rollback: Effect.sync(() => {
-            callLog.push("rollback");
-          }),
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
@@ -3041,9 +3043,6 @@ describe("lando start", () => {
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
           targets: preparedFileSyncTargets(syncPlan),
-          rollback: Effect.sync(() => {
-            callLog.push("rollback");
-          }),
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
