@@ -22,7 +22,8 @@ export const appIncludesVerifySpec: LandoCommandSpec<
 > = {
   resultSchema: AppIncludesVerifyResultSchema,
   id: "app:includes:verify",
-  summary: "Verify the includes lockfile matches the resolved tree without updating it.",
+  summary:
+    "Verify the includes lockfile pins every remote include and the pinned content matches, without updating it.",
   namespace: "app",
   bootstrap: "minimal",
   flags: {

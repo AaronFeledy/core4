@@ -22,14 +22,14 @@ describe("offline include diagnostics", () => {
     {
       source: "github:acme/fragments",
       sourceId: "github:acme/fragments/postgres.yml",
-      resolved: "abc123",
-      cachePath: ["git", "abc123", "postgres.yml"],
+      resolved: "a".repeat(40),
+      cachePath: ["git", "a".repeat(40), "postgres.yml"],
     },
     {
       source: "npm:@acme/fragments",
-      sourceId: "npm:@acme/fragments",
+      sourceId: "npm:@acme/fragments/postgres.yml",
       resolved: "1.2.3",
-      cachePath: ["npm", "-acme-fragments-1.2.3", "package", "postgres.yml"],
+      cachePath: ["npm", "@acme+fragments@1.2.3", "package", "postgres.yml"],
     },
   ]) {
     test(`${fixture.source} reads a warm cache without acquisition ports`, async () => {
@@ -82,7 +82,7 @@ describe("offline include diagnostics", () => {
         _tag: "LandofileIncludeError",
         kind: "source-unresolved",
         source: fixture.source,
-        message: `--no-network: no lockfile entry for ${fixture.source} to resolve from cache.`,
+        message: `--no-network: no matching pinned cache for ${fixture.source} at requested selector <default>.`,
         remediation,
       });
     });
@@ -112,7 +112,7 @@ describe("offline include diagnostics", () => {
         _tag: "LandofileIncludeError",
         kind: "fetch-failed",
         source: fixture.source,
-        message: `--no-network: cached fragment for ${fixture.source} is missing at ${filePath}.`,
+        message: `--no-network: cached fragment for ${fixture.source} at requested selector <default> is missing at ${filePath}.`,
         remediation,
       });
     });
