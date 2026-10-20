@@ -33,7 +33,7 @@ lando doctor --all
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | filesystem-watch | Read the stage and errno. Windows can also report a missing file event after the watcher opens. On Linux or WSL, close unnecessary watchers first when allocation fails. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |
-| accelerated-start | In the reported app root, run `lando start` to recover a retained attempt or interrupted recovery, or `lando destroy` to discard it. |
+| accelerated-start | An accelerated file-sync start didn't finish. In the reported app root, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
 | missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 | orphaned-volume-snapshots | Inspect leftover snapshot images with `lando snapshots:gc`, then remove them with `lando snapshots:gc --prune`. Stopped runtimes are skipped. |
@@ -42,41 +42,34 @@ Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and
 
 `lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
 
-## Recover a retained or interrupted accelerated start
+## Finish an interrupted accelerated start
 
 ```sh
 lando doctor --format=json
 ```
 
-An `accelerated-start` check lists the app ID, app root, phase, attempt ID,
-recorded sessions and volumes, and journal path. It scans saved attempts across
-apps, even without `--app`. `doctor --fix` reports these records but does not
-start or destroy apps for you. An interrupted recovery also shows
-`recoveryState: interrupted recovery` and `recoveredFrom`, the original attempt
-ID. You can retry it even if its phase is `preparing`, `sessions-ready`, or
-`apply-intent`: Lando preserves that recovery marker across retries.
+An `accelerated-start` warning means provider apply did not finish successfully; some app containers may already have run and written to the sync targets. The check lists the app ID, app root, phase, attempt ID, provider, file-sync engine, recorded sessions and volumes, and the journal path. It scans every app, even without `--app`. `doctor --fix` reports these records; it doesn't start or destroy apps for you.
 
-For a `retained` attempt or an interrupted recovery, change to the reported app root and run:
+Change to the reported app root and run:
 
 ```sh
 lando start
 lando info
 ```
 
-Recovery requires the same mount plan, provider, and file-sync engine. Lando
-terminates the recorded sessions without flushing their stale contents back to
-your host. It then reseeds the targets from your host with `one-way-replica`
-before creating normal sessions. Unknown sessions or an engine without that mode
-block recovery. Stop, restart, and rebuild remain blocked until you recover or
-discard the attempt.
+That finishes the attempt with its existing sync sessions and history. `lando restart` and `lando rebuild` finish it first too, then do their own work.
 
-To discard a retained attempt or interrupted recovery instead, use `lando destroy`. This terminates its
-recorded sessions without copying target data to your host. Volumes stay unless
-you explicitly request their removal. **`--volumes` deletes app volume data**;
-use it only when you intend to discard that data too. Pending first attempts
-without a recovery marker are not automatically recovered or discarded.
-Keep the journal and inspect its resources rather
-than deleting the file by hand.
+`lando stop` and `lando destroy` work from any phase, as long as the attempt's sessions and sync targets still check out as this app's and nothing you wrote could be lost. Stop pauses the sessions and keeps the attempt for the next start. Destroy syncs each session's pending changes back to the project, then discards the attempt's sync sessions and sync targets. **`--volumes` still means your app's data volumes**; leave it off to keep that data.
+
+Start refuses to finish an attempt in three cases:
+
+| Refusal | What to restore |
+| --- | --- |
+| The provider, file-sync engine, or mount settings changed since the attempt | Put the recorded provider, engine, and mount settings back, then run `lando start`. |
+| A sync session is missing after the app may have written to its target | Restore that session's synchronization history in the file-sync engine, then run `lando start`. `lando stop` still stops the app's writers. `lando destroy` refuses until the history is back, because the target may hold the only copy of what the app wrote. Lando leaves the target alone. |
+| The engine lists a session Lando didn't record for this app | Lando leaves that session untouched. Inspect it, and clear it only once you know what owns it. |
+
+Keep the journal file. It's what tells the next command which sessions and volumes belong to the attempt.
 
 ## Clean up an app whose folder is gone
 

@@ -744,9 +744,8 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           ),
         );
 
-  // A create can fail before Mutagen has created anything. A later process may
-  // clear that preparing receipt only after the isolated daemon proves that
-  // every observed session belongs to another committed receipt.
+  // Recover only this isolated daemon's exact interrupted creates; validate the
+  // entire resulting inventory before persisting any adoption or removal.
   const reconcilePreparing = Effect.fnUntraced(function* (
     bucket: StateBucket<SessionLedger>,
     current: SessionLedger,
@@ -764,9 +763,49 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       );
     }
     const observed = yield* inspectAll;
-    const committed = current.sessions.filter((entry) => entry.phase !== "preparing");
-    yield* validateInventory({ ...current, sessions: committed }, observed);
-    const reconciled: SessionLedger = { ...current, sessions: committed };
+    // App mounts of one app share a source, so committed siblings are not traces of an interrupted create.
+    const committedIds = new Set(
+      current.sessions.flatMap((entry) =>
+        entry.phase !== "preparing" && entry.identifier !== undefined ? [entry.identifier] : [],
+      ),
+    );
+    const unowned = observed.filter((entry) => !committedIds.has(entry.identifier));
+    const sessions: Array<SessionReceipt> = [];
+    for (const receipt of current.sessions) {
+      if (receipt.phase !== "preparing") {
+        sessions.push(receipt);
+        continue;
+      }
+      const matching = observed.filter((entry) => entry.name === receipt.name);
+      const session = matching[0];
+      if (
+        matching.length === 1 &&
+        session !== undefined &&
+        exactSession(
+          { ...receipt, identifier: session.identifier },
+          session,
+          options.dockerHost,
+          options.dockerConfigDir,
+        )
+      ) {
+        sessions.push({ ...receipt, phase: "committed", identifier: session.identifier });
+      } else if (
+        matching.length !== 0 ||
+        unowned.some(
+          (entry) =>
+            (entry.alpha.protocol === "local" && sameRealpath(receipt.spec.source, entry.alpha.path)) ||
+            (entry.beta.protocol === "docker" &&
+              entry.beta.host === receipt.target.containerId &&
+              entry.beta.path === receipt.target.path),
+        )
+      ) {
+        return yield* Effect.fail(
+          startError("Mutagen daemon sessions differ from durable ownership receipts.", receipt.spec),
+        );
+      }
+    }
+    const reconciled: SessionLedger = { ...current, sessions };
+    yield* validateInventory(reconciled, observed);
     yield* bucket.set(reconciled);
     return reconciled;
   });
@@ -919,7 +958,8 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       app,
       withLedger((bucket) =>
         Effect.gen(function* () {
-          const current = yield* readKnownLedger(bucket);
+          const loaded = yield* readKnownLedger(bucket);
+          const current = yield* reconcilePreparing(bucket, loaded);
           const receipts = appReceipts(current, app);
           if (receipts.some((entry) => entry.phase !== "committed")) {
             return yield* Effect.fail(startError("App has incomplete Mutagen session ownership."));
@@ -965,7 +1005,8 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       Effect.gen(function* () {
         const { owned, identifiers, preparing } = yield* withLedger((bucket) =>
           Effect.gen(function* () {
-            const current = yield* readKnownLedger(bucket);
+            const loaded = yield* readKnownLedger(bucket);
+            const current = yield* reconcilePreparing(bucket, loaded);
             const owned = yield* validateAppSet(current, app);
             if (owned.length === 0) {
               return yield* Effect.fail(startError("App has no Mutagen sessions to drain."));
@@ -1054,7 +1095,8 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       app,
       withLedger((bucket) =>
         Effect.gen(function* () {
-          let current = yield* readKnownLedger(bucket);
+          const loaded = yield* readKnownLedger(bucket);
+          let current = yield* reconcilePreparing(bucket, loaded);
           const receipts = appReceipts(current, app);
           if (receipts.some((entry) => entry.phase === "preparing")) {
             return yield* Effect.fail(startError("App has incomplete Mutagen session ownership."));
@@ -1199,36 +1241,40 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
     ).pipe(Effect.mapError((error) => stopError(error.message, String(app.id))));
 
   const disposalPhase = (app: FileSyncSessionSpec["app"]) =>
-    withLedger((bucket) =>
-      readKnownLedger(bucket).pipe(
-        Effect.flatMap((current) => {
-          const receipts = appReceipts(current, app);
-          const drains = (current.appDrains ?? []).filter((entry) => sameAppRef(entry.app, app));
-          if (drains.length > 1 || receipts.some((entry) => entry.phase === "preparing"))
-            return Effect.fail(startError("App has ambiguous Mutagen disposal ownership."));
-          const drain = drains[0];
-          if (receipts.length === 0 && drain === undefined) return Effect.succeed("absent" as const);
-          if (receipts.length === 0 && drain?.phase === "completed")
-            return Effect.succeed("completed" as const);
-          if (
-            receipts.length === 0 ||
-            (drain !== undefined &&
-              drain.phase !== "invalidated" &&
-              drain.identifiers.length !== receipts.length)
-          )
-            return Effect.fail(startError("App Mutagen session and drain receipts disagree."));
-          if (drain === undefined) return Effect.succeed("active" as const);
-          if (drain.phase === "disposing")
-            return receipts.every(
-              (entry) =>
-                entry.phase === "committed" || entry.phase === "disposing" || entry.phase === "disposed",
+    withAppLock(
+      app,
+      withLedger((bucket) =>
+        readKnownLedger(bucket).pipe(
+          Effect.flatMap((loaded) => reconcilePreparing(bucket, loaded)),
+          Effect.flatMap((current) => {
+            const receipts = appReceipts(current, app);
+            const drains = (current.appDrains ?? []).filter((entry) => sameAppRef(entry.app, app));
+            if (drains.length > 1 || receipts.some((entry) => entry.phase === "preparing"))
+              return Effect.fail(startError("App has ambiguous Mutagen disposal ownership."));
+            const drain = drains[0];
+            if (receipts.length === 0 && drain === undefined) return Effect.succeed("absent" as const);
+            if (receipts.length === 0 && drain?.phase === "completed")
+              return Effect.succeed("completed" as const);
+            if (
+              receipts.length === 0 ||
+              (drain !== undefined &&
+                drain.phase !== "invalidated" &&
+                drain.identifiers.length !== receipts.length)
             )
-              ? Effect.succeed("disposing" as const)
-              : Effect.fail(startError("App Mutagen disposal receipts disagree."));
-          if (receipts.some((entry) => entry.phase !== "committed"))
-            return Effect.fail(startError("App Mutagen session ownership is incomplete."));
-          return Effect.succeed(drain.phase === "drained" ? ("drained" as const) : ("active" as const));
-        }),
+              return Effect.fail(startError("App Mutagen session and drain receipts disagree."));
+            if (drain === undefined) return Effect.succeed("active" as const);
+            if (drain.phase === "disposing")
+              return receipts.every(
+                (entry) =>
+                  entry.phase === "committed" || entry.phase === "disposing" || entry.phase === "disposed",
+              )
+                ? Effect.succeed("disposing" as const)
+                : Effect.fail(startError("App Mutagen disposal receipts disagree."));
+            if (receipts.some((entry) => entry.phase !== "committed"))
+              return Effect.fail(startError("App Mutagen session ownership is incomplete."));
+            return Effect.succeed(drain.phase === "drained" ? ("drained" as const) : ("active" as const));
+          }),
+        ),
       ),
     ).pipe(Effect.mapError((error) => stopError(error.message, String(app.id))));
 

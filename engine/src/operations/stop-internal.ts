@@ -32,9 +32,12 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
+import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
-import { requireNoPendingAcceleratedStop } from "./accelerated-start-journal.ts";
+import { acceleratedStartStopError } from "./accelerated-start-disposal.ts";
+import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { recordedSessionInventory } from "./accelerated-start-resume.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent, runAppInitEvents } from "./events.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 
@@ -70,10 +73,28 @@ export interface StopAppPreflight {
 export const preflightStopApp = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
 ): Effect.fn.Return<StopAppPreflight, SdkStopAppError, RuntimeProviderRegistry | StateStore> {
-  yield* requireNoPendingAcceleratedStop(target.app, target.plan);
+  const pending = yield* readPendingAcceleratedStart(target.app, target.plan).pipe(
+    mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+  );
   const registry = yield* RuntimeProviderRegistry;
   const plan = target.plan;
   const provider = yield* registry.select(plan);
+  if (pending !== null) {
+    const { engine, sessions } = yield* recordedSessionInventory(target.app, pending, plan).pipe(
+      mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+    );
+    return {
+      provider,
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: pending.engineId,
+        sessions: plan.fileSync.map(({ session }) => session),
+      },
+      maybeFileSync: Option.some(engine),
+      fileSyncAvailable: true,
+      sessions,
+    };
+  }
   const ref = target.app;
   const appliedFileSync =
     provider.inspectAppliedFileSync === undefined
@@ -171,7 +192,8 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     Option.isSome(maybeFileSync) &&
     maybeFileSync.value.appLifecycle !== undefined
   ) {
-    yield* maybeFileSync.value.appLifecycle.drain(ref);
+    // An unfinished attempt may not have created any session yet; there is nothing to drain.
+    if (sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
   } else if (appliedFileSync.status === "accelerated") {
     yield* terminateFileSyncSessions(ref, fileSyncAvailable ? sessions : undefined);
   }
