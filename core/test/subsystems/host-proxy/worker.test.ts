@@ -10,7 +10,7 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { encodeCommandResult } from "@lando/sdk/command-result";
-import { DateTime, Effect, Fiber, Schema } from "effect";
+import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -203,6 +203,69 @@ const waitForPidExit = async (pid: number): Promise<void> => {
 };
 
 afterEach(killLeakedWorkers);
+
+test.each(["interruption", "failure"] as const)(
+  "ownership record write %s preserves worker ownership semantics",
+  async (outcome) => {
+    const root = await tempRoot();
+    const published: string[] = [];
+    let terminated = 0;
+    try {
+      const fiber = Effect.runFork(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: join(root, "shim"),
+          privateFileAccess: {
+            enforce: async (path) => {
+              await chmod(path, 0o600);
+              if (path.includes("worker.json.tmp-")) {
+                if (outcome === "failure") throw new Error("record write denied");
+                fiber.interruptUnsafe();
+              }
+            },
+            verify: async () => undefined,
+          },
+          publish: (session) =>
+            Effect.sync(() => {
+              published.push(session.sessionId);
+            }),
+          spawnWorker: (spec) => ({
+            pid: 876543,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready",
+              appId: app.id,
+              sessionId: "session",
+              token: "token",
+              controlToken: "control",
+              socketPath: join(root, "host-proxy.sock"),
+              shimPath: join(root, "lando"),
+              transport: "unix-socket",
+            }),
+            terminate: async () => {
+              terminated++;
+            },
+          }),
+        }),
+      );
+      const exit = await Effect.runPromise(Fiber.await(fiber));
+      expect(exit._tag).toBe("Failure");
+      expect(Exit.hasInterrupts(exit)).toBe(outcome === "interruption");
+      expect(terminated).toBe(outcome === "interruption" ? 0 : 1);
+      expect(published).toEqual(outcome === "interruption" ? ["session"] : []);
+      expect(await Effect.runPromise(readWorkerRecord(app, { userDataRoot: root }))).toEqual(
+        outcome === "interruption"
+          ? expect.objectContaining({ sessionId: "session", pid: 876543 })
+          : undefined,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 const workerRecord = (
   root: string,
