@@ -442,6 +442,8 @@
 
 - `@lando/sdk/landofile` additively exports `splitComposeCommand` and the type-only `SplitCommand` result. The pure splitter matches Compose/go-shellwords tokenization with environment and command substitution disabled, reports unquoted-operator truncation, accepts empty argv, and returns `undefined` for malformed input. Both native Compose services and Lando 3 translation share this implementation; no error channel or JSON Schema changes.
 
+- `@lando/sdk/landofile` additively exports `parseRouteHostname` and `parseRoutePathPrefix`. These pure helpers validate concrete, already-evaluated route fields and return `Result.Result<string, string>`, preserving successful input unchanged. Hostnames contain only the host pattern; ports and paths belong in `endpoint` and `pathPrefix`. Path prefixes begin with `/` and contain no whitespace, query string, or fragment. No new subpath, schema export, or error channel is introduced.
+
 `@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
 `yamlMappingKeyText`, `emitYamlDocument`, and `YamlEmitError`. This dependency-free
 subpath shares fail-closed scalar and mapping-key quoting without Effect, Bun, or

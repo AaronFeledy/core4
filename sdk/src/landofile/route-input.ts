@@ -1,6 +1,39 @@
 import { Result } from "effect";
 import { isPlainRecord } from "./record.ts";
 
+const HOSTNAME =
+  /^[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?(?:\.[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?)*$/;
+
+/** Validate a concrete host pattern, without a scheme, port, or path. */
+export const parseRouteHostname = (text: string): Result.Result<string, string> => {
+  const value = JSON.stringify(text);
+  if (text.length === 0 || /\s/.test(text))
+    return Result.fail(`Route hostname ${value} must be non-empty and contain no whitespace.`);
+  if (text.includes("://"))
+    return Result.fail(
+      `Route hostname ${value} must omit the scheme prefix; set scheme on the object route.`,
+    );
+  if (/[:/]/.test(text))
+    return Result.fail(
+      `Route hostname ${value} holds only the host pattern; put the port in endpoint and the path in pathPrefix, or use the hostname[:port][/pathPrefix] string shorthand.`,
+    );
+  if (!HOSTNAME.test(text))
+    return Result.fail(
+      `Route hostname ${value} must use dot-separated labels of letters, digits, hyphens, or * wildcards, without empty labels or leading or trailing hyphens.`,
+    );
+  return Result.succeed(text);
+};
+
+/** Validate a concrete path prefix using the shorthand path constraints. */
+export const parseRoutePathPrefix = (text: string): Result.Result<string, string> => {
+  const value = JSON.stringify(text);
+  if (!text.startsWith("/")) return Result.fail(`Route pathPrefix ${value} must begin with /.`);
+  if (/\s/.test(text)) return Result.fail(`Route pathPrefix ${value} must contain no whitespace.`);
+  if (/[?#]/.test(text))
+    return Result.fail(`Route pathPrefix ${value} must contain no query string or fragment.`);
+  return Result.succeed(text);
+};
+
 const maskTemplateSpans = (text: string): string =>
   text.replace(/\{\{[\s\S]*?\}\}|\$\{[^}]*\}/g, (span) => "a".repeat(span.length));
 
@@ -30,11 +63,7 @@ export const parseRouteShorthand = (text: string) => {
   const pathPrefix = slash < 0 ? undefined : text.slice(slash);
   const colon = authority.indexOf(":");
   const hostname = colon < 0 ? authority : authority.slice(0, colon);
-  if (
-    !/^[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?(?:\.[A-Za-z0-9*](?:[A-Za-z0-9*-]*[A-Za-z0-9*])?)*$/.test(
-      hostname,
-    )
-  ) {
+  if (!HOSTNAME.test(hostname)) {
     return Result.fail(
       "Use dot-separated hostname labels without leading or trailing hyphens, and begin any path with /.",
     );
