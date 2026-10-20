@@ -10,6 +10,7 @@
  * a longer one cannot leave the remainder of the longer value exposed.
  */
 
+import { LOG_LINE_TRUNCATED_MARKER } from "../log-follow/marker.ts";
 import { replaceLiteralBounded, retainWithinBytes } from "./bounded-redaction.ts";
 import { redactedInspection } from "./inspection.ts";
 
@@ -74,6 +75,23 @@ export const createSecretRedactor = (
         if (result.includes(value)) {
           result = result.split(value).join(REDACTED);
         }
+      }
+      let marker = result.indexOf(LOG_LINE_TRUNCATED_MARKER);
+      while (marker !== -1) {
+        let longest = 0;
+        for (const value of unique) {
+          for (let length = Math.min(value.length - 1, marker); length > longest; length -= 1) {
+            if (result.endsWith(value.slice(0, length), marker)) {
+              longest = length;
+              break;
+            }
+          }
+        }
+        if (longest > 0) {
+          result = result.slice(0, marker - longest) + REDACTED + result.slice(marker);
+          marker += REDACTED.length - longest;
+        }
+        marker = result.indexOf(LOG_LINE_TRUNCATED_MARKER, marker + LOG_LINE_TRUNCATED_MARKER.length);
       }
       return result;
     },

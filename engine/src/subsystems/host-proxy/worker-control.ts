@@ -4,13 +4,20 @@ import type { IncomingMessage } from "node:http";
 import { Duration, Effect, Schema } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
+import { AppPlan } from "@lando/sdk/schema";
 
 import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
-import { type HostProxyControlRecord, HostProxyWorkerIdentity } from "./worker-records.ts";
+import {
+  type HostProxyControlRecord,
+  HostProxyWorkerIdentity,
+  type HostProxyWorkerRecord,
+} from "./worker-records.ts";
 
 const CONTROL_HEADER = "x-lando-host-proxy-control";
 const CONTROL_TIMEOUT_MS = 2_000;
 const SHUTDOWN_WAIT_MS = 5_000;
+type ControlRecord = HostProxyControlRecord &
+  Partial<Pick<HostProxyWorkerRecord, "token" | "sessionId" | "configDigest" | "appRoot" | "providerId">>;
 
 export type ProbeWorkerResult = "live" | "dead";
 
@@ -36,11 +43,28 @@ const readBody = (response: IncomingMessage, timeoutMs: number): Promise<string>
   });
 
 const controlRequest = (
-  record: HostProxyControlRecord,
-  input: { readonly method: "GET" | "POST"; readonly path: string; readonly timeoutMs: number },
+  record: ControlRecord,
+  input: {
+    readonly method: "GET" | "POST";
+    readonly path: string;
+    readonly timeoutMs: number;
+    readonly body?: string;
+  },
 ): Promise<{ readonly statusCode: number; readonly body: string }> =>
   new Promise((resolveResponse, reject) => {
-    const options = { method: input.method, headers: { [CONTROL_HEADER]: record.controlToken } };
+    const options = {
+      method: input.method,
+      headers: {
+        [CONTROL_HEADER]: record.controlToken,
+        ...(record.token === undefined || record.sessionId === undefined
+          ? {}
+          : {
+              authorization: `Bearer ${record.token}`,
+              "x-lando-host-proxy-session": record.sessionId,
+              "x-lando-host-proxy-app": record.appId,
+            }),
+      },
+    };
     const onResponse = (response: IncomingMessage): void => {
       void readBody(response, input.timeoutMs).then(
         (body) => resolveResponse({ statusCode: response.statusCode ?? 0, body }),
@@ -57,10 +81,10 @@ const controlRequest = (
     }, input.timeoutMs);
     req.once("error", reject);
     req.once("close", () => clearTimeout(timeout));
-    req.end();
+    req.end(input.body);
   });
 
-const identifyWorker = (record: HostProxyControlRecord) =>
+const identifyWorker = (record: ControlRecord) =>
   Effect.tryPromise({
     try: async () => {
       const response = await controlRequest(record, {
@@ -74,7 +98,10 @@ const identifyWorker = (record: HostProxyControlRecord) =>
     catch: (cause) => cause,
   });
 
-export const probeWorker = (record: HostProxyControlRecord): Effect.Effect<ProbeWorkerResult> =>
+export const probeWorker = (
+  record: ControlRecord,
+  options: { readonly requireSessionIdentity?: boolean } = {},
+): Effect.Effect<ProbeWorkerResult> =>
   runProbe(
     {
       id: `host-proxy-worker:${record.appId}`,
@@ -85,6 +112,13 @@ export const probeWorker = (record: HostProxyControlRecord): Effect.Effect<Probe
           return identity.appId === record.appId &&
             identity.protocolVersion === record.protocolVersion &&
             identity.pid === record.pid &&
+            (options.requireSessionIdentity !== true ||
+              (identity.sessionId === record.sessionId &&
+                identity.configDigest === record.configDigest &&
+                identity.appRoot === record.appRoot &&
+                identity.providerId === record.providerId &&
+                identity.appRoot !== undefined &&
+                identity.providerId !== undefined)) &&
             identity.transport === (record.url === undefined ? record.transport : "tcp-host-gateway")
             ? "green"
             : "red";
@@ -98,17 +132,29 @@ export const probeWorker = (record: HostProxyControlRecord): Effect.Effect<Probe
     Effect.catch(() => Effect.succeed("dead" as const)),
   );
 
-const shutdownWorker = (record: HostProxyControlRecord) =>
+export const configureWorker = (record: HostProxyWorkerRecord, plan: AppPlan): Effect.Effect<boolean> =>
+  Effect.tryPromise(async () => {
+    const response = await controlRequest(record, {
+      method: "POST",
+      path: "/_lando/host-proxy/configure",
+      timeoutMs: CONTROL_TIMEOUT_MS,
+      body: JSON.stringify(Schema.encodeUnknownSync(AppPlan)(plan)),
+    });
+    return response.statusCode === 200;
+  }).pipe(Effect.catch(() => Effect.succeed(false)));
+
+const shutdownWorker = (record: ControlRecord) =>
   Effect.tryPromise({
     try: async () => {
-      await controlRequest(record, {
+      const response = await controlRequest(record, {
         method: "POST",
         path: "/_lando/host-proxy/shutdown",
         timeoutMs: CONTROL_TIMEOUT_MS,
       });
+      return response.statusCode === 202;
     },
     catch: () => undefined,
-  }).pipe(Effect.catch(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.succeed(false)));
 
 const defaultTerminateProcess = async (pid: number, signal: NodeJS.Signals): Promise<void> => {
   try {
@@ -155,7 +201,7 @@ const awaitWorkerProcessExit = (record: HostProxyControlRecord): Effect.Effect<b
   );
 
 const terminateWorkerProcess = Effect.fnUntraced(function* (
-  record: HostProxyControlRecord,
+  record: ControlRecord,
   options: WorkerControlTerminationOptions,
 ): Effect.fn.Return<void> {
   const terminate = options.terminateProcess ?? defaultTerminateProcess;
@@ -171,16 +217,30 @@ export const terminateControlRecord = (
   record: HostProxyControlRecord,
   options: WorkerControlTerminationOptions,
   removeDir: Effect.Effect<void>,
-): Effect.Effect<void> =>
-  probeWorker(record).pipe(
+): Effect.Effect<void> => {
+  const control: HostProxyControlRecord = {
+    appId: record.appId,
+    pid: record.pid,
+    transport: record.transport,
+    protocolVersion: record.protocolVersion,
+    controlToken: record.controlToken,
+    ...(record.socketPath === undefined ? {} : { socketPath: record.socketPath }),
+    ...(record.url === undefined ? {} : { url: record.url }),
+  };
+  return probeWorker(record).pipe(
+    Effect.flatMap((status) => (status === "live" ? Effect.succeed(status) : probeWorker(control))),
     Effect.flatMap((status) =>
       status === "dead"
         ? removeDir
         : shutdownWorker(record).pipe(
-            Effect.andThen(awaitWorkerDisconnect(record)),
+            Effect.flatMap((accepted) =>
+              accepted ? Effect.void : shutdownWorker(control).pipe(Effect.asVoid),
+            ),
+            Effect.andThen(awaitWorkerDisconnect(control)),
             Effect.andThen(awaitWorkerProcessExit(record)),
             Effect.flatMap((stopped) => (stopped ? Effect.void : terminateWorkerProcess(record, options))),
             Effect.andThen(removeDir),
           ),
     ),
   );
+};

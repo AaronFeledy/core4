@@ -15,8 +15,12 @@
 
 - `@lando/sdk/landofile` adds `mergeValuesWithOrigins`, `withValueOrigins`, `valueOriginAt`, and the erased generic `ValueOrigins` / `ValueWithOrigins` types. The origin map is a path trie: mapping merges retain child locations, keyed collections relocate them, replacements discard inherited locations, and resets retain deletion tombstones. Source payloads remain caller-owned so original authored paths survive projection. `mergeValues(root, left, right, path?)` keeps its signature and uses the same merge traversal without recording origins.
 
+- `@lando/sdk/log-follow` additively exports `LOG_LINE_TRUNCATED_MARKER`, shared by line framing and exact-value redaction. Before that marker, string redaction also masks the longest suffix matching a proper prefix of a known exact secret, including markers inside joined log tails. Provider log lines remain raw. No schema artifacts or service signatures change.
+
 - `FileSyncEngineShape.recoverSession` optionally restores a missing session from retained synchronization history, returning `Option.none()` if none survives. It follows the SDK's existing `DeprecationService` Option-return convention and must never create a session without history. Resuming a process-persistent attempt after apply intent requires this proof for any missing session.
 - `RuntimeProviderShape.prepareFileSyncTargets` no longer returns `rollback`. Prepared targets outlive failed starts; the next `lando start`, restart, or rebuild resumes the same attempt. Stop drains unfinished attempts and destroy disposes them.
+
+- Pre-ship narrowing: `RoutePlan.hostname` and `RoutePlan.pathPrefix` now use the shared concrete route grammar with DNS length limits. `GlobalConfig.proxy.defaultDomain` and `ProxyConfig.defaultDomain` accept only plain DNS domains without a scheme, port, path, or wildcard. Previously schema-accepted values outside these grammars are intentionally no longer supported.
 
 - `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is an optional, filesystem-only per-provider inventory query. Global teardown queries only the Lando-managed provider and never gathers cleanup hints from other providers.
 
@@ -460,6 +464,8 @@
 
 - `@lando/sdk/landofile` additively exports `splitComposeCommand` and the type-only `SplitCommand` result. The pure splitter matches Compose/go-shellwords tokenization with environment and command substitution disabled, reports unquoted-operator truncation, accepts empty argv, and returns `undefined` for malformed input. Both native Compose services and Lando 3 translation share this implementation; no error channel or JSON Schema changes.
 
+- `@lando/sdk/landofile` additively exports `parseRouteHostname` and `parseRoutePathPrefix`. These pure helpers validate concrete, already-evaluated route fields and return `Result.Result<string, string>`, preserving successful input unchanged. Hostnames contain only the host pattern; ports and paths belong in `endpoint` and `pathPrefix`. Path prefixes begin with `/` and contain no whitespace, query string, or fragment. No new subpath, schema export, or error channel is introduced.
+
 `@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
 `yamlMappingKeyText`, `emitYamlDocument`, and `YamlEmitError`. This dependency-free
 subpath shares fail-closed scalar and mapping-key quoting without Effect, Bun, or
@@ -696,6 +702,9 @@ the source and result variant.
 - `EndpointInput`
 - `BindAddress`
 - `PortNumber`
+- `RouteHostname`
+- `RoutePathPrefix`
+- `DomainName`
 - `InternalEndpoint`
 - `InternalEndpointInput`
 - `PublishedEndpoint`

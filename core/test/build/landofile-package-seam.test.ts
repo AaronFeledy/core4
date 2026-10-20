@@ -196,6 +196,8 @@ describe("Landofile package seam", () => {
         "override",
         "parseLandofile",
         "parseLegacyLandofile",
+        "parseRouteHostname",
+        "parseRoutePathPrefix",
         "parseRouteShorthand",
         "reset",
         "resolveLayerMergeRule",

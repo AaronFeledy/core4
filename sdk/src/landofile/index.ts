@@ -50,6 +50,8 @@ export {
 export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
 export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
 export {
+  parseRouteHostname,
+  parseRoutePathPrefix,
   parseRouteShorthand,
   routeMatchKey,
   routeInputObject,
