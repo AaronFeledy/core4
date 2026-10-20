@@ -31,7 +31,7 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
       providerId: "test",
       engineId: "mutagen",
       mountPlanDigest: "digest",
-      phase: "retained",
+      phase: "apply-intent",
       sessions: [],
       targets: [],
     }),

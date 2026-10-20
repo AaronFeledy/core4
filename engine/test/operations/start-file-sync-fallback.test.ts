@@ -30,10 +30,7 @@ import { FileSyncEngine } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
-import {
-  readJournal,
-  requireNoPendingAcceleratedStart,
-} from "../../src/operations/accelerated-start-journal.ts";
+import { readJournal, readPendingAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import { resolveFileSyncMountPlan } from "../../src/operations/file-sync-plan.ts";
 import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -112,18 +109,13 @@ const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, caus
   const saved = Schema.decodeUnknownSync(
     Schema.fromJsonString(Schema.Struct({ data: Schema.Struct({ phase: Schema.String }) })),
   )(new TextDecoder().decode(bytes));
-  expect(saved.data.phase).toBe("retained");
-  const pending = await Effect.runPromiseExit(
-    requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+  expect(["preparing", "sessions-ready", "apply-intent"]).toContain(saved.data.phase);
+  const pending = await Effect.runPromise(
+    readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
       Effect.provide(harness.stateStore.layer),
     ),
   );
-  expect(Exit.isFailure(pending)).toBe(true);
-  if (Exit.isFailure(pending)) {
-    const failure = Option.getOrThrow(Cause.findErrorOption(pending.cause));
-    expect(failure.message).toContain("prepared targets could not be rolled back");
-    expect(failure.remediation).toContain(path);
-  }
+  expect(String(pending?.phase)).toBe(saved.data.phase);
 };
 
 describe("file-sync mount realization before provider apply", () => {
@@ -1197,7 +1189,7 @@ describe("pre-apply accelerated mount preparation", () => {
     expect(applied[0]?.services[web.name]?.appMount?.realization).toBe("passthrough");
     expect(applied[0]?.services[web.name]?.mounts[0]?.realization).toBe("passthrough");
     await Effect.runPromise(
-      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+      readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
         Effect.provide(harness.stateStore.layer),
       ),
     );
@@ -1206,7 +1198,7 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({ plannedApp: plan, providerCanPrepareFileSync: false });
     await runStart(harness, plan);
     await Effect.runPromise(
-      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+      readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
         Effect.provide(harness.stateStore.layer),
       ),
     );
@@ -1247,7 +1239,6 @@ describe("pre-apply accelerated mount preparation", () => {
       const harness = makeHarness({
         plannedApp: acceleratedPlan,
         preparedFileSyncTargets: () => item.targets,
-        onFileSyncRollback: () => actions.push("rollback"),
         onApply: () => actions.push("apply"),
         fileSync: {
           ...TestFileSyncEngine,
@@ -1262,9 +1253,9 @@ describe("pre-apply accelerated mount preparation", () => {
         },
       });
       await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-      expect(actions).toEqual(["rollback"]);
+      expect(actions).toEqual([]);
       await Effect.runPromise(
-        requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+        readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
           Effect.provide(harness.stateStore.layer),
         ),
       );
@@ -1276,7 +1267,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       preparedFileSyncTargets: () => [],
-      providerHasFileSyncRollback: false,
       onApply: () => actions.push("apply"),
       fileSync: { ...TestFileSyncEngine, id: "mutagen", isAvailable: Effect.succeed(true) },
     });
@@ -1297,9 +1287,9 @@ describe("pre-apply accelerated mount preparation", () => {
     }
     expect(actions).toEqual([]);
     const pending = await Effect.runPromiseExit(
-      requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+      readPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
-    expect(Exit.isFailure(pending)).toBe(true);
+    expect(pending).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
   });
 
   test("binds only the validated app target set before creating sessions", async () => {
@@ -1352,7 +1342,6 @@ describe("pre-apply accelerated mount preparation", () => {
       const requestedApp = { kind: "user", id: plan.id, root: plan.root } as const;
       const harness = makeHarness({
         plannedApp: acceleratedPlan,
-        onFileSyncRollback: () => actions.push("rollback"),
         onApply: () => actions.push("apply"),
         fileSync: {
           ...TestFileSyncEngine,
@@ -1399,22 +1388,22 @@ describe("pre-apply accelerated mount preparation", () => {
           Effect.provide(harness.layer),
         ),
       );
-      // Then only proven-empty targets roll back, without using the rejected engine.
+      // Then the rejected engine and prepared targets remain untouched.
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         expect(
           Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)),
         ).toContainEqual(expect.objectContaining({ _tag: "FileSyncStartError", engineId: "mutagen" }));
       }
-      expect(actions).toEqual(owned ? ["inventory"] : ["inventory", "rollback"]);
+      expect(actions).toEqual([]);
       const journal = await Effect.runPromiseExit(
-        requireNoPendingAcceleratedStart(requestedApp).pipe(Effect.provide(harness.stateStore.layer)),
+        readPendingAcceleratedStart(requestedApp).pipe(Effect.provide(harness.stateStore.layer)),
       );
-      expect(Exit.isSuccess(journal)).toBe(!owned);
+      expect(journal).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
     }
   });
 
-  test("interruption during binding rolls back targets and clears the pending journal", async () => {
+  test("interruption during binding preserves targets and the pending journal", async () => {
     const actions: string[] = [];
     let bindingStarted = (): void => undefined;
     const entered = new Promise<void>((resolve) => {
@@ -1423,7 +1412,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => actions.push("prepare"),
-      onFileSyncRollback: () => actions.push("rollback"),
       onApply: () => actions.push("apply"),
       fileSync: {
         ...TestFileSyncEngine,
@@ -1450,15 +1438,15 @@ describe("pre-apply accelerated mount preparation", () => {
     await entered;
     const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(actions).toEqual(["prepare", "bind", "rollback"]);
+    expect(actions).toEqual(["prepare", "bind"]);
     await Effect.runPromise(
-      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+      readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
         Effect.provide(harness.stateStore.layer),
       ),
     );
   });
 
-  test("interruption during bound-engine availability rolls back only verified empty targets", async () => {
+  test("interruption during bound-engine availability preserves targets regardless of inventory", async () => {
     for (const ledgerReadable of [true, false]) {
       const actions: string[] = [];
       let checkingAvailability = (): void => undefined;
@@ -1468,7 +1456,6 @@ describe("pre-apply accelerated mount preparation", () => {
       const harness = makeHarness({
         plannedApp: acceleratedPlan,
         onPrepareFileSync: () => actions.push("prepare"),
-        onFileSyncRollback: () => actions.push("rollback"),
         onApply: () => actions.push("apply"),
         fileSync: {
           ...TestFileSyncEngine,
@@ -1514,17 +1501,13 @@ describe("pre-apply accelerated mount preparation", () => {
       await entered;
       const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(actions).toEqual(
-        ledgerReadable
-          ? ["prepare", "bind", "availability", "rollback"]
-          : ["prepare", "bind", "availability"],
-      );
+      expect(actions).toEqual(["prepare", "bind", "availability"]);
       const journal = await Effect.runPromiseExit(
-        requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+        readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
           Effect.provide(harness.stateStore.layer),
         ),
       );
-      expect(Exit.isSuccess(journal)).toBe(ledgerReadable);
+      expect(journal).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
     }
   });
 
@@ -1537,7 +1520,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => actions.push("prepare"),
-      onFileSyncRollback: () => actions.push("rollback"),
       onApply: () => actions.push("apply"),
       fileSync: {
         ...TestFileSyncEngine,
@@ -1571,13 +1553,13 @@ describe("pre-apply accelerated mount preparation", () => {
     await entered;
     const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(actions).toEqual(["prepare", "availability", "inventory"]);
+    expect(actions).toEqual(["prepare", "availability"]);
     const journal = await Effect.runPromiseExit(
-      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+      readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
         Effect.provide(harness.stateStore.layer),
       ),
     );
-    expect(Exit.isFailure(journal)).toBe(true);
+    expect(journal).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
   }, 10_000);
 
   test("keeps simultaneous apps on separate bound engines", async () => {
@@ -1670,7 +1652,7 @@ describe("pre-apply accelerated mount preparation", () => {
     { inventory: "timeout", interrupted: true },
     { inventory: "empty", interrupted: true },
   ] as const)(
-    "checks $inventory ownership when app binding fails (interrupted=$interrupted)",
+    "preserves $inventory ownership when app binding fails (interrupted=$interrupted)",
     async ({ inventory, interrupted }) => {
       // Given prepared targets that may already have persistent session owners.
       const actions: string[] = [];
@@ -1697,7 +1679,6 @@ describe("pre-apply accelerated mount preparation", () => {
       const harness = makeHarness({
         plannedApp: acceleratedPlan,
         onPrepareFileSync: () => actions.push("prepare"),
-        onFileSyncRollback: () => actions.push("rollback"),
         onApply: () => actions.push("apply"),
         fileSync: {
           ...TestFileSyncEngine,
@@ -1729,12 +1710,8 @@ describe("pre-apply accelerated mount preparation", () => {
       const exit = await Effect.runPromiseExit(
         startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
       );
-      // Then rollback requires a fresh, definitively empty app inventory.
-      expect(actions).toEqual(
-        inventory === "empty"
-          ? ["prepare", "bind", "inventory", "rollback"]
-          : ["prepare", "bind", "inventory"],
-      );
+      // Then no inventory probe or target rollback runs after binding failure.
+      expect(actions).toEqual(["prepare", "bind"]);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         if (interrupted) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
@@ -1742,15 +1719,11 @@ describe("pre-apply accelerated mount preparation", () => {
           expect(
             Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)),
           ).toContain(bindingError);
-        if (inventory === "error")
-          expect(
-            Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)),
-          ).toContain(inventoryError);
       }
       const journal = await Effect.runPromiseExit(
-        requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+        readPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
       );
-      expect(Exit.isSuccess(journal)).toBe(inventory === "empty");
+      expect(journal).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
     },
   );
 
@@ -1793,7 +1766,6 @@ describe("pre-apply accelerated mount preparation", () => {
     };
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      providerHasFileSyncRollback: false,
       onPrepareFileSync: () => actions.push("prepare"),
       onApply: () => actions.push("apply"),
       fileSync: {
@@ -1809,13 +1781,13 @@ describe("pre-apply accelerated mount preparation", () => {
     const first = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
     expect(Exit.isFailure(first)).toBe(true);
     expect(actions.slice(0, 2)).toEqual(["prepare", "bind"]);
-    expect(actions.filter((action) => action === "inventory").length).toBeGreaterThanOrEqual(2);
+    expect(actions.filter((action) => action === "inventory")).toHaveLength(1);
     expect(actions).not.toContain("apply");
     expect(actions.some((action) => action.startsWith("create:"))).toBe(false);
     const failedJournal = await Effect.runPromise(
       readJournal(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
-    expect(failedJournal.pending?.phase).toBe("retained");
+    expect(failedJournal.pending?.phase).toBe("preparing");
 
     ledgerAvailable = true;
     await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
@@ -1828,31 +1800,22 @@ describe("pre-apply accelerated mount preparation", () => {
     expect(completedJournal.pending?.phase).toBe("completed");
   });
 
-  test("retains the accelerated-start journal if rejected-target rollback fails", async () => {
+  test("retains the preparing journal after rejected targets without a rollback path", async () => {
     const actions: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       preparedFileSyncTargets: () => [],
-      onFileSyncRollback: () => actions.push("rollback"),
-      fileSyncRollbackEffect: Effect.fail(
-        new ProviderUnavailableError({
-          providerId: "lando",
-          operation: "prepareFileSyncTargets.rollback",
-          message: "Owned helper removal failed.",
-          remediation: "Inspect retained targets before retrying.",
-        }),
-      ),
       fileSync: { ...TestFileSyncEngine, id: "mutagen", isAvailable: Effect.succeed(true) },
       onApply: () => actions.push("apply"),
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(actions).toEqual(["rollback"]);
+    expect(actions).toEqual([]);
     const pending = await Effect.runPromiseExit(
-      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+      readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
         Effect.provide(harness.stateStore.layer),
       ),
     );
-    expect(Exit.isFailure(pending)).toBe(true);
+    expect(pending).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
   });
 
   test("does not invalidate a drain for an ordinary first start", async () => {
@@ -1969,7 +1932,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => order.push("prepare"),
-      onFileSyncRollback: () => order.push("rollback"),
       onApply: () => order.push("apply"),
       applyEffect: Effect.fail(
         new ProviderUnavailableError({
@@ -1998,7 +1960,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => order.push("prepare"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       onApply: () => order.push("apply"),
       onDestroy: () => order.push("destroy"),
       applyEffect: Effect.fail(
@@ -2016,7 +1977,7 @@ describe("pre-apply accelerated mount preparation", () => {
             return FileSyncSessionRef.make(`sync-${spec.mountKey}`);
           }),
         flushSession: (ref) => Effect.sync(() => order.push(`flush:${ref}`)),
-        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+        pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
@@ -2028,9 +1989,8 @@ describe("pre-apply accelerated mount preparation", () => {
       "flush:sync-mount-0",
       "apply",
       "destroy",
-      "terminate:sync-mount-0",
-      "terminate:sync-app-mount",
-      "rollback-targets",
+      "pause:sync-mount-0",
+      "pause:sync-app-mount",
     ]);
   });
 
@@ -2043,7 +2003,6 @@ describe("pre-apply accelerated mount preparation", () => {
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      providerHasFileSyncRollback: false,
       onApply: () => order.push("apply"),
       onDestroy: () => order.push("destroy"),
       applyEffect: Effect.fail(applyFailure),
@@ -2054,7 +2013,7 @@ describe("pre-apply accelerated mount preparation", () => {
         isAvailable: Effect.succeed(true),
         listSessions: () => Effect.succeed([]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
-        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+        pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
     const app = { kind: "user" as const, id: plan.id, root: plan.root };
@@ -2070,11 +2029,11 @@ describe("pre-apply accelerated mount preparation", () => {
       expect(failures).toContain(applyFailure);
       await expectRetainedStart(harness, exit.cause);
     }
-    expect(order).toEqual(["apply", "destroy", "terminate:sync-mount-0", "terminate:sync-app-mount"]);
+    expect(order).toEqual(["apply", "destroy", "pause:sync-mount-0", "pause:sync-app-mount"]);
     const pending = await Effect.runPromiseExit(
-      requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+      readPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
-    expect(Exit.isFailure(pending)).toBe(true);
+    expect(pending).toMatchObject({ _tag: "Success", value: { phase: "apply-intent" } });
   });
 
   test("session cleanup failure after apply still retains the journal without target rollback", async () => {
@@ -2090,7 +2049,6 @@ describe("pre-apply accelerated mount preparation", () => {
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      providerHasFileSyncRollback: false,
       applyEffect: Effect.fail(applyFailure),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2099,7 +2057,7 @@ describe("pre-apply accelerated mount preparation", () => {
         isAvailable: Effect.succeed(true),
         listSessions: () => Effect.succeed([]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
-        terminateSession: () => Effect.fail(terminateFailure),
+        pauseSession: () => Effect.fail(terminateFailure),
       },
     });
     const app = { kind: "user" as const, id: plan.id, root: plan.root };
@@ -2121,7 +2079,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onDestroy: () => order.push("destroy"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       onPublish: (event) =>
         event._tag === "post-app-start"
           ? Effect.fail(new EventError({ message: "post-app-start failed", event: "post-app-start" }))
@@ -2133,16 +2090,11 @@ describe("pre-apply accelerated mount preparation", () => {
         isAvailable: Effect.succeed(true),
         listSessions: () => Effect.succeed([]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
-        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+        pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow("post-app-start failed");
-    expect(order).toEqual([
-      "destroy",
-      "terminate:sync-mount-0",
-      "terminate:sync-app-mount",
-      "rollback-targets",
-    ]);
+    expect(order).toEqual(["destroy", "pause:sync-mount-0", "pause:sync-app-mount"]);
   });
 
   test("a later post-start publish failure removes routes before persistent session rollback", async () => {
@@ -2151,7 +2103,6 @@ describe("pre-apply accelerated mount preparation", () => {
       plannedApp: acceleratedPlan,
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       onPublish: (event) =>
         event._tag === "post-start"
           ? Effect.fail(new EventError({ message: "post-start failed", event: "post-start" }))
@@ -2163,17 +2114,11 @@ describe("pre-apply accelerated mount preparation", () => {
         isAvailable: Effect.succeed(true),
         listSessions: () => Effect.succeed([]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
-        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+        pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow("post-start failed");
-    expect(order).toEqual([
-      "remove-routes",
-      "destroy",
-      "terminate:sync-mount-0",
-      "terminate:sync-app-mount",
-      "rollback-targets",
-    ]);
+    expect(order).toEqual(["remove-routes", "destroy", "pause:sync-mount-0", "pause:sync-app-mount"]);
   });
 
   test("interruption after routes preserves writer-stop-before-session cleanup order", async () => {
@@ -2182,7 +2127,6 @@ describe("pre-apply accelerated mount preparation", () => {
       plannedApp: acceleratedPlan,
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       onPublish: (event) => (event._tag === "post-start" ? Effect.interrupt : Effect.void),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2191,22 +2135,20 @@ describe("pre-apply accelerated mount preparation", () => {
         isAvailable: Effect.succeed(true),
         listSessions: () => Effect.succeed([]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
-        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+        pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
     const routeIndex = order.indexOf("remove-routes");
     const destroyIndex = order.indexOf("destroy");
-    const terminateIndex = order.indexOf("terminate:sync-mount-0");
-    const rollbackIndex = order.indexOf("rollback-targets");
+    const pauseIndex = order.indexOf("pause:sync-mount-0");
     expect(routeIndex).toBeGreaterThanOrEqual(0);
     expect(destroyIndex).toBeGreaterThan(routeIndex);
-    expect(terminateIndex).toBeGreaterThan(destroyIndex);
-    expect(rollbackIndex).toBeGreaterThan(terminateIndex);
+    expect(pauseIndex).toBeGreaterThan(destroyIndex);
     expect(order.filter((step) => step === "remove-routes")).toHaveLength(1);
     expect(order.filter((step) => step === "destroy")).toHaveLength(1);
-    expect(order.filter((step) => step.startsWith("terminate:"))).toHaveLength(2);
-    expect(order.filter((step) => step === "rollback-targets")).toHaveLength(1);
+    expect(order.filter((step) => step.startsWith("pause:"))).toHaveLength(2);
+    expect(order).not.toContain("rollback-targets");
   });
 
   test("fiber interruption after partial route publication removes routes before session rollback", async () => {
@@ -2223,7 +2165,6 @@ describe("pre-apply accelerated mount preparation", () => {
       }).pipe(Effect.andThen(Effect.never)),
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       fileSync: {
         ...TestFileSyncEngine,
         id: "mutagen",
@@ -2231,7 +2172,7 @@ describe("pre-apply accelerated mount preparation", () => {
         isAvailable: Effect.succeed(true),
         listSessions: () => Effect.succeed([]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
-        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+        pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
     const fiber = Effect.runFork(
@@ -2251,9 +2192,8 @@ describe("pre-apply accelerated mount preparation", () => {
       "route-applied",
       "remove-routes",
       "destroy",
-      "terminate:sync-mount-0",
-      "terminate:sync-app-mount",
-      "rollback-targets",
+      "pause:sync-mount-0",
+      "pause:sync-app-mount",
     ]);
   });
 
@@ -2262,7 +2202,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onDestroy: () => order.push("destroy"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       destroyEffect: Effect.fail(
         new ProviderUnavailableError({
           providerId: "lando",
@@ -2302,7 +2241,6 @@ describe("pre-apply accelerated mount preparation", () => {
       plannedApp: acceleratedPlan,
       appliedFileSyncState: "accelerated",
       onDestroy: () => order.push("destroy"),
-      onFileSyncRollback: () => order.push("rollback-targets"),
       applyEffect: Effect.fail(
         new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
       ),
@@ -2330,12 +2268,11 @@ describe("pre-apply accelerated mount preparation", () => {
     ]);
   });
 
-  test("failed initial flush rolls back preparation before any provider apply", async () => {
+  test("failed initial flush preserves preparation before any provider apply", async () => {
     const order: string[] = [];
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => order.push("prepare"),
-      onFileSyncRollback: () => order.push("rollback"),
       onApply: () => order.push("apply"),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2354,7 +2291,7 @@ describe("pre-apply accelerated mount preparation", () => {
       },
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(order).toEqual(["prepare", "flush", "terminate", "rollback"]);
+    expect(order).toEqual(["prepare", "flush", "terminate"]);
   });
 
   test("failed initial flush retains prepared targets and journal without provider rollback", async () => {
@@ -2362,7 +2299,6 @@ describe("pre-apply accelerated mount preparation", () => {
     const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "initial sync failed" });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      providerHasFileSyncRollback: false,
       onPrepareFileSync: () => order.push("prepare"),
       onApply: () => order.push("apply"),
       fileSync: {
@@ -2392,9 +2328,9 @@ describe("pre-apply accelerated mount preparation", () => {
     }
     expect(order).toEqual(["prepare", "flush", "terminate"]);
     const pending = await Effect.runPromiseExit(
-      requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+      readPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
-    expect(Exit.isFailure(pending)).toBe(true);
+    expect(pending).toMatchObject({ _tag: "Success", value: { phase: "preparing" } });
   });
 
   test("retained sync conflict preserves its tagged paths and remediation", async () => {
@@ -2407,7 +2343,6 @@ describe("pre-apply accelerated mount preparation", () => {
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      providerHasFileSyncRollback: false,
       fileSync: {
         ...TestFileSyncEngine,
         id: "mutagen",
@@ -2458,7 +2393,6 @@ describe("pre-apply accelerated mount preparation", () => {
     };
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      providerHasFileSyncRollback: false,
       fileSync: {
         ...TestFileSyncEngine,
         id: "mutagen",
@@ -2504,7 +2438,6 @@ describe("pre-apply accelerated mount preparation", () => {
     };
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      onFileSyncRollback: () => order.push("rollback"),
       fileSync: {
         ...TestFileSyncEngine,
         id: "mutagen",
@@ -2531,7 +2464,6 @@ describe("pre-apply accelerated mount preparation", () => {
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
-      onFileSyncRollback: () => order.push("rollback"),
       fileSync: {
         ...TestFileSyncEngine,
         id: "mutagen",
