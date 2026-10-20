@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type helperIO struct {
@@ -18,7 +19,7 @@ type helperIO struct {
 func main() {
 	env := make(map[string]string)
 	for _, entry := range os.Environ() {
-		name, value, ok := splitEnv(entry)
+		name, value, ok := strings.Cut(entry, "=")
 		if ok {
 			env[name] = value
 		}

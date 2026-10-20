@@ -203,10 +203,8 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} --help
           ./dist/${platform.binaryName} shellenv`;
 
-const renderBuildNeeds = (): string => buildNeeds;
-
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
-    needs: ${renderBuildNeeds()}
+    needs: ${buildNeeds}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:

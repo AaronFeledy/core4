@@ -48,5 +48,3 @@ func (p envPolicy) filter(env map[string]string) map[string]string {
 	}
 	return result
 }
-
-func splitEnv(entry string) (string, string, bool) { return strings.Cut(entry, "=") }

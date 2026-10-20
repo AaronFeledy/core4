@@ -59,7 +59,7 @@ const fromSourceBuild = async (target: ContainerHelperTarget): Promise<Container
 };
 
 const embeddedPattern = (target: ContainerHelperTarget): RegExp =>
-  new RegExp(`^lando-container-helper-linux-${target.arch}-([a-f0-9]{64})(?:-[a-z0-9]+)?\\.gz$`);
+  new RegExp(`^${CONTAINER_HELPER_FILE}-linux-${target.arch}-([a-f0-9]{64})(?:-[a-z0-9]+)?\\.gz$`);
 
 /** Extracts the embedded helper once per digest into the user cache and verifies it. */
 export const extractEmbeddedContainerHelper = async (input: {

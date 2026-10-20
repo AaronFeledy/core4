@@ -126,7 +126,7 @@ export const scopedDockerLogFileAccess = (
         method: "PUT",
         path: `/containers/${container}/archive?path=/tmp`,
         headers: { "Content-Type": "application/x-tar" },
-        stdin: oneChunk(archiveLogFileHelper(new Uint8Array(bytes), paths.directoryName)),
+        stdin: oneChunk(archiveLogFileHelper(bytes, paths.directoryName)),
       }).pipe(Effect.flatMap((response) => ensure2xx(response, providerId, "install helper")));
       return paths;
     }),
