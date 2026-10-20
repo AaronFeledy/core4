@@ -714,6 +714,10 @@
       "digest": "8424f84debb532205bd39c048222da1dd0ef23cdfb9e12bd0b659e29d5ff9416"
     },
     {
+      "fixture": "docs/guides/route-shorthand/fixtures/route-object-invalid",
+      "digest": "6070da4773316c8f391522e8d9218642cabdcc363a5780b66e077592bd43e542"
+    },
+    {
       "fixture": "docs/guides/route-shorthand/fixtures/route-shorthand-demo",
       "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
     },
