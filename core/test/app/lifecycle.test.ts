@@ -180,7 +180,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   return RuntimeProvider.of({
     ...provider,
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
-      Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
+      Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
     inspectAppliedFileSync: () =>
       Effect.succeed(
         appliedPlan === undefined
@@ -776,7 +776,7 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
-  test("failed reused file-sync start retains the pending journal and blocks an unsafe retry", async () => {
+  test("failed reused file-sync start resumes its pending journal on retry", async () => {
     await withTempApp(async (dir) => {
       const sessions = new Map<FileSyncSessionRef, FileSyncSessionSpec>();
       let createCalls = 0;
@@ -845,17 +845,17 @@ describe("App handle managed lifecycle scopes", () => {
       );
 
       expect(insideScope.failedReuse).toBe("Failure");
-      expect(insideScope.blockedRetry).toBe("Failure");
-      expect(insideScope.blockedMessage).toContain("cannot reseed safely");
-      expect(insideScope.createCalls).toBe(1);
-      expect(insideScope.flushCalls).toBe(2);
-      expect(insideScope.sessions).toBe(0);
-      expect(finalizerCalls).toBe(1);
+      expect(insideScope.blockedRetry).toBe("Success");
+      expect(insideScope.blockedMessage).toBe("");
+      expect(insideScope.createCalls).toBe(2);
+      expect(insideScope.flushCalls).toBe(3);
+      expect(insideScope.sessions).toBe(1);
+      expect(finalizerCalls).toBe(2);
       expect(sessions.size).toBe(0);
     });
   });
 
-  test("failed reused provider apply keeps the managed scope but blocks an unsafe retry", async () => {
+  test("failed reused provider apply keeps the managed scope and resumes on retry", async () => {
     await withTempApp(async (dir) => {
       const sessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
       let applyCalls = 0;
@@ -941,11 +941,11 @@ describe("App handle managed lifecycle scopes", () => {
       );
 
       expect(insideScope).toEqual({
-        applyCalls: 2,
+        applyCalls: 3,
         createCalls: 1,
         failedReuse: "Failure",
-        blockedRetry: "Failure",
-        blockedMessage: expect.stringContaining("automatic recovery is not available"),
+        blockedRetry: "Success",
+        blockedMessage: "",
         finalizerCalls: 0,
         sessions: 1,
       });

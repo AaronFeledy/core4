@@ -1,4 +1,4 @@
-import { type Context, Effect, Exit, Option, Ref, Scope } from "effect";
+import { type Context, Effect, Exit, Option, Scope } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -27,10 +27,6 @@ export interface StartManagedScope {
 /** Reverses only persistent session mutations made by one successful start attempt. */
 export interface PreparedFileSyncSessions {
   readonly rollback: Effect.Effect<void, FileSyncError>;
-  /** A target may be removed only when this attempt created every session using it. */
-  readonly rollbackTargets: boolean;
-  /** Writer teardown must be followed by a durable drain rather than termination. */
-  readonly preserveOnFailure?: boolean;
 }
 
 const managedFileSyncRefs = new WeakMap<Scope.Closeable, Set<FileSyncSessionRef>>();
@@ -114,8 +110,8 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
   plan: AppPlan,
   events: ProgressEmitter,
   managed?: StartManagedScope,
-  safeToRollbackTargets?: Ref.Ref<boolean>,
   boundEngine?: FileSyncEngineShape,
+  resumedAfterApply = false,
 ) {
   if (plan.fileSync.length === 0) return;
   const plannedEngineIds = [...new Set(plan.fileSync.map((entry) => entry.engineId))];
@@ -151,8 +147,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
   }));
   const createdRefs: Array<FileSyncSessionRef> = [];
   const resumedPausedRefs: Array<FileSyncSessionRef> = [];
-  let hadExistingSession = false;
-  let uncertainMutation = false;
   return yield* runWithTaskTree(
     makeTaskTree(events, {
       parentId: startFileSyncTreeId(String(plan.id)),
@@ -190,8 +184,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               }
               const existingSession = existingSessions[0];
               if (existingSession !== undefined) {
-                hadExistingSession = true;
-                if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
                 if (!sameFileSyncSessionSpec(entry.session, existingSession.spec)) {
                   return yield* Effect.fail(
                     new FileSyncDriftError({
@@ -233,11 +225,8 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                 if (existingSession.status === "paused") {
                   yield* Effect.uninterruptibleMask(() =>
                     Effect.gen(function* () {
-                      uncertainMutation = true;
-                      if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
                       yield* engine.resumeSession(existingSession.ref);
                       resumedPausedRefs.push(existingSession.ref);
-                      uncertainMutation = false;
                       if (managed !== undefined && engine.sessionsPersistAcrossProcesses !== true) {
                         yield* Effect.addFinalizer(() =>
                           engine.pauseSession(existingSession.ref).pipe(Effect.orDie),
@@ -268,17 +257,36 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               }
 
               const sessionScope = managed?.scope ?? (yield* Scope.make());
+              if (resumedAfterApply && engine.sessionsPersistAcrossProcesses === true) {
+                const recovered =
+                  engine.recoverSession === undefined
+                    ? Option.none()
+                    : yield* engine
+                        .recoverSession(entry.session)
+                        .pipe(Effect.provideService(Scope.Scope, sessionScope));
+                if (Option.isNone(recovered))
+                  return yield* Effect.fail(
+                    new FileSyncStartError({
+                      engineId: engine.id,
+                      sessionSpec: entry.session,
+                      message: `Session ${entry.session.service}/${entry.session.mountKey} is missing after app writers may have used its target and its synchronization history cannot be recovered.`,
+                      remediation:
+                        "Restore the session's synchronization history in the file-sync engine, then run `lando start`. Lando left the target untouched. `lando stop` still stops app writers; `lando destroy` refuses until the history is restored because the target may hold the only copy of app writes.",
+                    }),
+                  );
+                resumedPausedRefs.push(recovered.value);
+                yield* engine.flushSession(recovered.value);
+                yield* tree.completeTask(taskId, `${entry.session.service}/${entry.session.mountKey} ready`);
+                return;
+              }
               const ref = yield* Effect.uninterruptibleMask((restore) =>
                 Effect.gen(function* () {
-                  uncertainMutation = true;
-                  if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
                   const create = engine
                     .createSession(entry.session)
                     .pipe(Effect.provideService(Scope.Scope, sessionScope));
                   const created = yield* preservesDurableHistory ? restore(create) : create;
                   if (managed !== undefined) markManagedFileSyncRef(managed, created);
                   createdRefs.push(created);
-                  uncertainMutation = false;
                   return created;
                 }),
               );
@@ -305,16 +313,13 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                   }),
                 );
               return {
-                rollbackTargets: false,
-                preserveOnFailure: true,
                 rollback: Effect.uninterruptible(durableDrain(app)),
               } satisfies PreparedFileSyncSessions;
             }
             return {
-              rollbackTargets: createdRefs.length === plan.fileSync.length,
               rollback: Effect.uninterruptible(
                 runAllAndMergeFailures<FileSyncError, never>([
-                  ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
+                  ...[...createdRefs].reverse().map((ref) => engine.pauseSession(ref)),
                   ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
                 ]),
               ),
@@ -345,20 +350,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
           const cleanupExit = yield* Effect.exit(runAllAndMergeFailures(cleanupActions));
           if (Exit.isFailure(cleanupExit)) {
             return yield* Effect.failCause(mergeFailure(exit.cause, cleanupExit.cause, "cleanup"));
-          }
-          const app = plan.fileSync[0]?.session.app;
-          if (
-            safeToRollbackTargets !== undefined &&
-            !hadExistingSession &&
-            !uncertainMutation &&
-            !(preservesDurableHistory && createdRefs.length > 0) &&
-            app !== undefined
-          ) {
-            const remaining = yield* engine.listSessions({ app }).pipe(
-              Effect.map((sessions) => sessions.length),
-              Effect.catch(() => Effect.succeed(-1)),
-            );
-            if (remaining === 0) yield* Ref.set(safeToRollbackTargets, true);
           }
           return yield* Effect.failCause(exit.cause);
         }),

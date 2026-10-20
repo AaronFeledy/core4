@@ -48,16 +48,21 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         provider,
         stateStore,
         body: () =>
-          preflightStartAppDrain(resolvedTarget, undefined, true)
+          preflightStartAppDrain(resolvedTarget)
             .pipe(
-              Effect.andThen(
-                execution.transactionPreflightDone === true
-                  ? Effect.void
-                  : ensureStartTransactionConsistent(resolvedTarget),
+              Effect.flatMap((preparedTargets) =>
+                Effect.gen(function* () {
+                  yield* execution.transactionPreflightDone === true
+                    ? Effect.void
+                    : ensureStartTransactionConsistent(resolvedTarget);
+                  if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
+                  yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
+                  return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
+                    ...execution,
+                    ...(preparedTargets === undefined ? {} : { preparedTargets }),
+                  });
+                }),
               ),
-              Effect.andThen(execution.skipInitEvents === true ? Effect.void : runAppInitEvents(plan)),
-              Effect.andThen((execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible)),
-              Effect.andThen(startAppForTargetUnlocked(options, resolvedTarget, managed, execution)),
               Effect.onExit((exit) =>
                 Exit.isFailure(exit) && !shouldRetainReadinessResources(exit.cause)
                   ? (execution.onFailedStart ?? Effect.void).pipe(Effect.uninterruptible)
