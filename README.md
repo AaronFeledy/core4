@@ -156,7 +156,7 @@ bun test
 | `bun run lint:guides` | Lint executable-guide MDX |
 | `bun run check:boundaries` | Run every boundary rule in one shared scan |
 | `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
-| `bun run release` | 13-stage release orchestrator (compile, sign, SBOM, provenance, publish) |
+| `bun run release` | 14-stage release orchestrator (container helper, compile, sign, SBOM, provenance, publish) |
 
 ### Executable guides vs integration tests
 

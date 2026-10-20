@@ -23,7 +23,7 @@ import { resolveContainerHelper } from "../../src/container-helper/assets.ts";
 // link-time env policy and both wire protocols stay in sync with TypeScript.
 const hostTarget = { os: "linux", arch: process.arch === "arm64" ? "arm64" : "x64" } as const;
 const helperPath = async (): Promise<string> =>
-  (await Effect.runPromise(resolveContainerHelper(hostTarget, { standalone: false, env: {} }))).path;
+  (await Effect.runPromise(resolveContainerHelper(hostTarget, { standalone: false, env: process.env }))).path;
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -96,7 +96,7 @@ const captureRunLando = async (
   }
 };
 
-describe("host-proxy client role", () => {
+describe.skipIf(process.platform !== "linux")("host-proxy client role", () => {
   test("sends runLando with argv and cwd and exits with the host exit code", async () => {
     const { body, exitCode } = await captureRunLando({}, 3);
     expect(exitCode).toBe(3);
@@ -148,7 +148,7 @@ describe("host-proxy client role", () => {
   });
 });
 
-describe("log-file role", () => {
+describe.skipIf(process.platform !== "linux")("log-file role", () => {
   test("answers stat, open, and read over stdio", async () => {
     const file = join(await tempRoot(), "app.log");
     await writeFile(file, "line-1\nline-2\n");
@@ -213,7 +213,7 @@ const sessionLayers = Layer.mergeAll(
   ),
 );
 
-describe("host-proxy client against a real host session", () => {
+describe.skipIf(process.platform !== "linux")("host-proxy client against a real host session", () => {
   test("installs as the session client and forwards argv, remapped cwd, tty, and filtered env", async () => {
     const envelope: CommandResultEnvelope = {
       apiVersion: "v4",

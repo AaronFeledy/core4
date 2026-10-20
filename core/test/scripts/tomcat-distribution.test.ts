@@ -128,7 +128,7 @@ test.skipIf(process.platform === "win32")(
   "delivers complete Tomcat notices when the manual binary release is published",
   async () => {
     // Given: the manual release stage's binary manifest and companion artifacts.
-    const stage = RELEASE_STAGES.find(({ id }) => id === "13-publish");
+    const stage = RELEASE_STAGES.find(({ id }) => id === "14-publish");
     if (stage === undefined) throw new Error("Missing publish stage");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
@@ -163,7 +163,7 @@ test.skipIf(process.platform === "win32")(
         }),
       );
 
-      // When: stage 13 publishes through its real shell, without compiling or contacting GitHub.
+      // When: stage 14 publishes through its real shell, without compiling or contacting GitHub.
       await withCwd(root, () =>
         stage.run({
           target: "binary",

@@ -15,8 +15,8 @@ Each release produces the compiled binaries in §13.5 and the `@lando/core` libr
 
 | # | Stage | Binary | Library |
 |---|---|---|---|
-| 1 | Codegen through `scripts/codegen.ts` | Yes | Yes |
-| 2 | Deprecation gate from §18.7 | Yes | Yes |
+| 1 | Codegen through `scripts/codegen.ts`, followed by the deprecation gate from §18.7 | Yes | Yes |
+| 2 | Static container-helper checks and builds through `bun run scripts/build-container-helper.ts --test` | Yes | Yes |
 | 3 | Type-check | Yes | Yes |
 | 4 | Lint and format checks | Yes | Yes |
 | 5 | Test gates from §13 | Yes | Yes |
@@ -30,7 +30,7 @@ Each release produces the compiled binaries in §13.5 and the `@lando/core` libr
 | 13 | SBOM, provenance, and cosign signatures | Yes | Yes |
 | 14 | GitHub Release upload and npm publish | Yes | Yes |
 
-Stages MAY be skipped only where the artifact-family columns permit and MUST NOT be reordered. Any failure halts the pipeline and surfaces a tagged release error with stage, target, commit, workflow, and remediation.
+Stages MAY be skipped only where the artifact-family columns permit and MUST NOT be reordered. The container-helper stage MUST precede typecheck, tests, library bundling, and compilation. It runs Go vet, tests, and static Linux x64/arm64 builds inside a Lando builder container, with no host Go requirement. A non-empty `LANDO_CONTAINER_HELPER_DIR` MAY replace that build with prebuilt helpers from the same commit, such as the CI `container-helper` artifact; the stage MUST log the selected directory. Any failure halts the pipeline and surfaces a tagged release error with stage, target, commit, workflow, and remediation.
 
 The orchestrator MAY use `Bun.$` for shell-shaped work and `Bun.spawn` for argv-precise tools (§3.4). Every release-shaped main-binary compile MUST use `scripts/build-compiled-binary.ts`; helper binaries without OpenTUI MAY use plain programmatic `Bun.build({ compile })`.
 
