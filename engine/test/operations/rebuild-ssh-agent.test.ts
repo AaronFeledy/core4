@@ -8,6 +8,7 @@ import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/s
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
+import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -42,8 +43,8 @@ test.each(["sidecar", "host"] as const)(
     const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
     let closed = 0;
     const released = Promise.withResolvers<void>();
-    const startWorker = spyOn(worker, "startDetachedAgentRelayWorker").mockImplementation(() =>
-      Effect.succeed({
+    const startWorker = spyOn(worker, "startDetachedAgentRelayWorker").mockImplementation((options) => {
+      const session: AgentRelaySession = {
         appId: selected.id,
         sessionId: "rebuild-session",
         kind: "ssh",
@@ -54,8 +55,9 @@ test.each(["sidecar", "host"] as const)(
           closed += 1;
           released.resolve();
         },
-      }),
-    );
+      };
+      return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+    });
     try {
       // When
       await Effect.runPromise(

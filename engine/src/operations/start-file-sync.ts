@@ -1,4 +1,4 @@
-import { type Context, Effect, Exit, Option, Scope } from "effect";
+import { type Context, Effect, Option, Scope } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -12,7 +12,6 @@ import {
 } from "@lando/sdk/task-progress";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { mergeFailure, runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { startFileSyncTreeId } from "./start-progress.ts";
@@ -20,13 +19,7 @@ import { startFileSyncTreeId } from "./start-progress.ts";
 export interface StartManagedScope {
   readonly scope: Scope.Closeable;
   readonly onStopped?: Effect.Effect<void>;
-  readonly onFailedStart?: Effect.Effect<void>;
-  readonly onScopeClosedByStartApp?: Effect.Effect<void>;
-}
-
-/** Reverses only persistent session mutations made by one successful start attempt. */
-export interface PreparedFileSyncSessions {
-  readonly rollback: Effect.Effect<void, FileSyncError>;
+  readonly resume?: { readonly scope: Scope.Closeable; readonly beforeStart: Effect.Effect<void> };
 }
 
 const managedFileSyncRefs = new WeakMap<Scope.Closeable, Set<FileSyncSessionRef>>();
@@ -145,8 +138,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
     id: taskIdFor(entry.session.service, entry.session.mountKey),
     label: `Sync ${entry.session.service}/${entry.session.mountKey}`,
   }));
-  const createdRefs: Array<FileSyncSessionRef> = [];
-  const resumedPausedRefs: Array<FileSyncSessionRef> = [];
   return yield* runWithTaskTree(
     makeTaskTree(events, {
       parentId: startFileSyncTreeId(String(plan.id)),
@@ -156,8 +147,8 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
         : sessionChildren,
       prefixChildIds: true,
     }),
-    (tree) => {
-      const reconcile = Effect.gen(function* () {
+    (tree) =>
+      Effect.gen(function* () {
         if (needsSetup) yield* runFileSyncSetup(engine, tree);
 
         yield* Effect.forEach(
@@ -226,7 +217,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                   yield* Effect.uninterruptibleMask(() =>
                     Effect.gen(function* () {
                       yield* engine.resumeSession(existingSession.ref);
-                      resumedPausedRefs.push(existingSession.ref);
                       if (managed !== undefined && engine.sessionsPersistAcrossProcesses !== true) {
                         yield* Effect.addFinalizer(() =>
                           engine.pauseSession(existingSession.ref).pipe(Effect.orDie),
@@ -274,7 +264,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                         "Restore the session's synchronization history in the file-sync engine, then run `lando start`. Lando left the target untouched. `lando stop` still stops app writers; `lando destroy` refuses until the history is restored because the target may hold the only copy of app writes.",
                     }),
                   );
-                resumedPausedRefs.push(recovered.value);
                 yield* engine.flushSession(recovered.value);
                 yield* tree.completeTask(taskId, `${entry.session.service}/${entry.session.mountKey} ready`);
                 return;
@@ -286,7 +275,6 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                     .pipe(Effect.provideService(Scope.Scope, sessionScope));
                   const created = yield* preservesDurableHistory ? restore(create) : create;
                   if (managed !== undefined) markManagedFileSyncRef(managed, created);
-                  createdRefs.push(created);
                   return created;
                 }),
               );
@@ -295,66 +283,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
             }),
           { discard: true },
         );
-      });
-      return Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const exit = yield* Effect.exit(restore(reconcile));
-          if (Exit.isSuccess(exit)) {
-            if (engine.sessionsPersistAcrossProcesses !== true) return;
-            const durableDrain = engine.appLifecycle?.drain;
-            if (durableDrain !== undefined) {
-              const app = plan.fileSync[0]?.session.app;
-              if (app === undefined)
-                return yield* Effect.fail(
-                  new FileSyncStartError({
-                    engineId: engine.id,
-                    message: "Durable sync start lost its app identity.",
-                    remediation: "Retry after checking the saved app plan.",
-                  }),
-                );
-              return {
-                rollback: Effect.uninterruptible(durableDrain(app)),
-              } satisfies PreparedFileSyncSessions;
-            }
-            return {
-              rollback: Effect.uninterruptible(
-                runAllAndMergeFailures<FileSyncError, never>([
-                  ...[...createdRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                  ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                ]),
-              ),
-            } satisfies PreparedFileSyncSessions;
-          }
-          // A durable provider-bound session can contain writes even before all mounts
-          // are ready. Keep its ledger and receipts for the retained-start retry.
-          const cleanupActions: Array<Effect.Effect<void, FileSyncError>> =
-            managed === undefined
-              ? preservesDurableHistory
-                ? []
-                : [
-                    ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                    ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                  ]
-              : [
-                  Scope.close(managed.scope, Exit.void),
-                  ...(preservesDurableHistory
-                    ? []
-                    : engine.sessionsPersistAcrossProcesses === true
-                      ? [
-                          ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                          ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                        ]
-                      : []),
-                  managed.onScopeClosedByStartApp ?? Effect.void,
-                ];
-          const cleanupExit = yield* Effect.exit(runAllAndMergeFailures(cleanupActions));
-          if (Exit.isFailure(cleanupExit)) {
-            return yield* Effect.failCause(mergeFailure(exit.cause, cleanupExit.cause, "cleanup"));
-          }
-          return yield* Effect.failCause(exit.cause);
-        }),
-      );
-    },
+      }),
     {
       success: `${plan.name} file-sync ready`,
       failure: `${plan.name} file-sync failed`,

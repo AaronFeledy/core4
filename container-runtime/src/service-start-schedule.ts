@@ -40,10 +40,8 @@ export type ServiceStartResult =
     };
 
 export interface ServiceStartHandlers<E, R> {
-  /** Brings one service up. A failure here is a hard error that aborts the schedule. */
+  /** Brings one service up. Only optional-only start failures are tolerated. */
   readonly startService: (service: ServicePlan) => Effect.Effect<{ readonly changed: boolean }, E, R>;
-  /** Reverts only one optional-only service after its tolerated start failure. */
-  readonly cleanupOptionalStartFailure?: (service: ServicePlan) => Effect.Effect<void, never, R>;
   /** Runs one healthcheck attempt inside the service. */
   readonly execHealthcheck: (
     service: ServicePlan,
@@ -208,13 +206,7 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
           }),
         );
         return optionalOnlyServices.has(node.id)
-          ? start.pipe(
-              Effect.catch(() =>
-                (handlers.cleanupOptionalStartFailure?.(value.service) ?? Effect.void).pipe(
-                  Effect.as("failed" as const),
-                ),
-              ),
-            )
+          ? start.pipe(Effect.catch(() => Effect.succeed("failed" as const)))
           : start;
       }
       switch (value.condition) {

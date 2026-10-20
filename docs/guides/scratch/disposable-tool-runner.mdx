@@ -8,7 +8,7 @@ tags: [beta, docs, scratch, run]
 
 # Run a command in a disposable scratch
 
-`lando run` boots a throwaway scratch app, waits for startup readiness, runs the argv after `--`, then destroys the scratch. An exhausted healthcheck or unsupervised startup exit fails acquisition before the tool runs; interrupted acquisition also cleans up. User-app readiness retention does not apply here.
+`lando run` boots a throwaway scratch app, waits for startup readiness, runs the argv after `--`, then destroys the scratch. An exhausted healthcheck or unsupervised startup exit fails acquisition before the tool runs; interrupted acquisition also cleans up. Unlike a user-app start, a failed scratch acquisition cleans up at every phase.
 
 ```sh
 lando run -- composer --version
