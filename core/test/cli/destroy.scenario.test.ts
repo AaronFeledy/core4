@@ -808,7 +808,8 @@ describe("lando destroy", () => {
       const listed = await Effect.runPromise(
         DataMover.use((mover) => mover.listSnapshots({ app: plan.id })).pipe(Effect.provide(harness.layer)),
       );
-      expect(listed.map((info) => info.id)).toEqual([sibling.info.id, legacy.info.id]);
+      // Equal creation times list by id.
+      expect(listed.map((info) => info.id)).toEqual([legacy.info.id, sibling.info.id]);
       expect(renderDestroyAppResult(result)).toBe(
         "destroyed: test-destroy - database, web (volumes and 1 snapshot removed)",
       );
