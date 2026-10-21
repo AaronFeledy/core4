@@ -724,7 +724,9 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          bun run check:compiled-binary-notices");
     expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
-    expect(buildLinux).toContain("          path: dist/lando");
+    expect(buildLinux).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildLinux).toContain("          if-no-files-found: ignore");
     expect(buildLinux).toContain("          retention-days: 14");
 
@@ -757,7 +759,9 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("        uses: actions/upload-artifact@v6");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-arm64");
-    expect(buildDarwin).toContain("          path: dist/lando");
+    expect(buildDarwin).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildDarwin).not.toContain("dist/host-proxy");
     expect(buildDarwin).not.toContain("dist/log-file-access");
     expect(buildDarwin).toContain("          if-no-files-found: ignore");
@@ -804,7 +808,9 @@ describe("ci workflow", () => {
     expect(buildWindows).toContain("        uses: actions/upload-artifact@v6");
     expect(buildWindows).toContain("        if: always()");
     expect(buildWindows).toContain("          name: lando-windows-x64");
-    expect(buildWindows).toContain("          path: dist/lando-windows-x64.exe");
+    expect(buildWindows).toContain(
+      "          path: |\n            dist/lando-windows-x64.exe\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildWindows).toContain("          if-no-files-found: ignore");
     expect(buildWindows).toContain("          retention-days: 14");
 
@@ -837,7 +843,9 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("        uses: actions/upload-artifact@v6");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-x64");
-    expect(buildDarwin).toContain("          path: dist/lando");
+    expect(buildDarwin).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildDarwin).not.toContain("dist/host-proxy");
     expect(buildDarwin).not.toContain("dist/log-file-access");
     expect(buildDarwin).toContain("          if-no-files-found: ignore");
@@ -872,7 +880,9 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v6");
     expect(buildLinuxArm).toContain("        if: always()");
     expect(buildLinuxArm).toContain("          name: lando-linux-arm64");
-    expect(buildLinuxArm).toContain("          path: dist/lando");
+    expect(buildLinuxArm).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildLinuxArm).not.toContain("dist/host-proxy");
     expect(buildLinuxArm).not.toContain("dist/log-file-access");
     expect(buildLinuxArm).toContain("          if-no-files-found: ignore");
@@ -1441,7 +1451,9 @@ describe("ci workflow", () => {
       "          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-arm64.exe",
     );
     expect(buildWindows).toContain("          name: lando-windows-arm64");
-    expect(buildWindows).toContain("          path: dist/lando-windows-arm64.exe");
+    expect(buildWindows).toContain(
+      "          path: |\n            dist/lando-windows-arm64.exe\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildWindows).toContain("          retention-days: 14");
 
     expect(providerIntegration).toContain("    needs: [build-windows-arm64, container-helper]");
