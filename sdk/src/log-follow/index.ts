@@ -188,7 +188,23 @@ export const makeLineFramer = (maxLineBytes: number = DEFAULT_MAX_LINE_BYTES) =>
     return [emit()];
   };
 
-  return { feed, flush };
+  /** True when the pending bytes stop partway through a multi-byte UTF-8 character. */
+  const endsMidCharacter = (): boolean => {
+    let start = line.length - 1;
+    while (start >= 0 && line.length - start <= 4 && ((line[start] ?? 0) & 0xc0) === 0x80) start -= 1;
+    const lead = line[start] ?? 0;
+    const width = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+    return start >= 0 && line.length - start < width;
+  };
+
+  /**
+   * Flush a trailing partial line unless it ends mid-character. A follower that
+   * starts while the writer is mid-character keeps those bytes, and the next read
+   * completes the line instead of emitting a broken character.
+   */
+  const flushComplete = (): ReadonlyArray<FramedLine> => (!overflowed && endsMidCharacter() ? [] : flush());
+
+  return { feed, flush, flushComplete };
 };
 
 type LineFramer = ReturnType<typeof makeLineFramer>;
@@ -356,7 +372,7 @@ export const followLogSource = (
           const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
           return [lineEvents(tailed), Option.none<BodyState>()] as const;
         }
-        const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
+        const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flushComplete()], input.tail));
         return [backfillEvents, Option.some<BodyState>({ kind: "poll", state })] as const;
       }
 
