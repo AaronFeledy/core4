@@ -102,7 +102,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | `--fork` or `--from`; isolation, cwd mount, global-storage, detach controls |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop selected or foreground scratch and destroy it |
 | `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
-| `meta:config` | `config` | `minimal` | Edit `<userConfRoot>/config.yml` |
+| `meta:config` | `config` | `none` | Read, validate, or repair `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
 | `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks the index and removes them. Stopped providers are reported unavailable, never started (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
@@ -198,7 +198,7 @@ All remote commands MUST enforce central effective protection (§10.12.8), indep
 
 #### 8.2.2 The `meta:config` command
 
-`meta:config` mirrors ordinary app-config operations against `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. Writes MUST validate the global schema, including plugin and provider extensions, and persist atomically. `view --source raw` reads only `config.yml`; `resolved` includes overlays and environment overrides. It runs outside app context at `minimal` bootstrap. Resolved reads (`view`, `get`) fail with the structured §7.5 `ConfigError` when the merged config does not decode. `set`, `unset`, `edit`, and `validate` MUST keep operating on a `config.yml` that fails validation: `set` and `unset` validate the whole resulting tree so a write that fixes or removes the bad key repairs the file, and `validate` checks only the file tree, not environment overrides, reporting file problems as `LandofileWriteValidationError` with `issues`.
+`meta:config` is the repair surface for `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. It runs outside app context at bootstrap `none`, builds no `ConfigService`, and is exempt from `notify.commands` promotion, so it MUST work when the §7.5 stack does not decode. `--source raw` (`view`, `get`) returns the parsed `config.yml` alone, redacted, even when that file fails validation; unparseable YAML still fails with `ConfigError`. Resolved reads (`view`, `get`, default) decode the full stack and fail with the structured §7.5 `ConfigError`. `validate` decodes the full stack (file, drop-ins, env, host) and fails with that same `ConfigError`; it MUST NOT report config problems as `LandofileWriteValidationError`. `set`, `unset`, `edit`, and `telemetry off` strictly validate the candidate `config.yml` they would write, including plugin and provider extensions, and persist atomically; a candidate that fails is `LandofileWriteValidationError` with `issues` and the file is unchanged. Problems in other layers MUST NOT block the write and surface as envelope warnings with code `LANDO_CONFIG_OTHER_SOURCE_INVALID` carrying the §7.5 message and remediation.
 
 #### 8.2.3 The `app:shell` command
 

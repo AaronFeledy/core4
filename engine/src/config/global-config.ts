@@ -7,20 +7,11 @@ import {
   formatHostEventsIssueMessage,
   formatValidationIssuePath,
   hostEventsSemanticIssues,
-  suggestionForUnknownKey,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Result, Schema, type SchemaIssue } from "effect";
 import { findAgentEnvPatternNames } from "./agent-env.ts";
 import { attributeConfigIssue, globalConfigIssuesError } from "./global-config-errors.ts";
-
-const knownKeys = Object.keys(GlobalConfig.fields);
-export const typoWarningsFromFileConfig = (tree: Record<string, unknown>): readonly string[] =>
-  Object.keys(tree).flatMap((key) => {
-    if (knownKeys.includes(key)) return [];
-    const suggestion = suggestionForUnknownKey(key, knownKeys);
-    return suggestion === undefined ? [] : [`Unknown config.yml key "${key}". ${suggestion}`];
-  });
 
 const excessPaths = (issue: SchemaIssue.Issue, path: readonly PropertyKey[] = []): readonly string[] => {
   switch (issue._tag) {

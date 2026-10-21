@@ -381,6 +381,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 - Provider failures degrade to a non-pass `selected-provider` check with setup remediation.
 - Each plugin check is isolated, attributed, strictly decoded as `PluginDoctorReport`, and bounded. This is cooperative isolation, not a hostile-code sandbox.
 - `meta:doctor` declares base bootstrap `none`, constructs the provider runtime once inside its own scope, and degrades provider-bootstrap failure without suppressing independent sections. It still uses native dispatch, Effect, and `Renderer`; `notify.commands` MUST NOT promote it.
+- Before provider bootstrap, doctor builds the §7.5 `ConfigService` layer as its own `global-config` section. On failure the report carries `globalConfig: { status: "fail", error }` with the full `ConfigError`, lists the config-dependent sections (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`) under `skipped` with a reason instead of running them against stub services, adds the `doctor-self` entry, and exits non-zero. It MUST NOT emit stub subsystem warnings or `--fix` advice for a config failure. On success the report carries `globalConfig: { status: "pass" }`.
 
 ### 10.10 Host proxy
 

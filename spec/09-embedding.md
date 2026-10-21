@@ -52,7 +52,7 @@ The removed `@lando/core/oclif` adapter is not public. Anything not listed above
 
 Required behavior:
 
-- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage. A domain failure raised while building a layer, such as a global-config `ConfigError` (§7.5), keeps its own tag instead.
+- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage. A global-config `ConfigError` (§7.5) raised while the `ConfigService` layer builds keeps its own tag and is never wrapped in `LandoRuntimeBootstrapError`.
 - Each call MUST create an independent cache, plugin registry, and event bus.
 - Construction MUST NOT mutate environment variables, current working directory, or signal handlers unless `installSignalHandlers` is true.
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.
@@ -95,9 +95,9 @@ Library runtimes discover no plugins by default. Hosts explicitly contribute dir
 
 ### 16.5 Configuration in library mode
 
-Configuration precedence is built-in defaults, optional user configuration, optional environment overrides, host `config`, then the Landofile at app bootstrap. Host configuration is schema-validated and invalid values fail with `ConfigError`.
+Configuration precedence is the §7.5 stack: built-in defaults, optional user configuration (`config.yml`, `config.d/*.yml`), optional environment overrides, host `config`, then the Landofile at app bootstrap. Host `config` accepts any `GlobalConfig` field. The merged stack is decoded once per `makeLandoRuntime` build; an invalid value in any layer, including the host layer, fails the layer with `ConfigError` whose issues carry `source: { layer: "host", path }` for host-authored values. The resulting snapshot is fixed for the runtime's lifetime, `ConfigService.load`/`get` are infallible, and a host MUST build a new runtime to observe changed files or environment.
 
-Hosts MAY skip user configuration and environment input for hermetic operation. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
+Hosts MAY skip user configuration and environment input for hermetic operation through `configSources: { user?: boolean, env?: boolean }`; `user: false` reads no config files and `env: false` reads no `LANDO_*` overrides or root variables, while platform identity (`HOME`, XDG, `APPDATA`) still defines defaults. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
 
 ### 16.6 Lifecycle and scopes
 

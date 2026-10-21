@@ -44,15 +44,6 @@ export { sameRealpath } from "./realpath-equivalence.ts";
 export { normalizeHostPlatform } from "./paths-platform.ts";
 export { resolveHostHome } from "./paths-platform.ts";
 
-/** Soft string projection of the shared source stack, without Effect or schema imports. */
-export const makeConfigReader = (inputs: ConfigSourceInputs): ((key: string) => string | undefined) => {
-  const parsed = mergeGlobalConfigSources(readGlobalConfigSources(inputs)).tree;
-  return (key: string): string | undefined => {
-    const value = parsed[key];
-    return typeof value === "string" && value !== "" ? value : undefined;
-  };
-};
-
 // --- root resolution ---------------------------------------------------------
 
 const resolveLandoRootsForPlatform = (overrides: PathInputs, platform: HostPlatform): LandoRoots => {

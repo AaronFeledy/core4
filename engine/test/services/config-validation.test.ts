@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { layer, validateFileHostEvents } from "../../src/services/config";
+import { decodeGlobalConfigFile } from "../../src/config/global-config.ts";
+import { layer } from "../../src/services/config";
 
 let root = "";
 const previous = new Map<string, string>();
@@ -80,24 +81,23 @@ test.each([
   if (env) expect(result.failure.remediation).not.toContain("lando config set");
 });
 
-test("standalone host-event validation retains its tagged failure", () => {
+test("config file decoding attributes invalid host events to the owning file", () => {
   // Given an invalid host-only event and its owning config path.
   const file = join(root, "config.yml");
-  // When the exported precheck is used independently.
-  const result = Effect.runSync(
-    Effect.result(
-      Effect.try({
-        try: () => validateFileHostEvents({ hostEvents: { "pre-start": ["echo container"] } }, file),
-        catch: (error) => error,
-      }),
-    ),
-  );
-  // Then callers still receive the original config error contract.
+  // When the file candidate is decoded.
+  const result = decodeGlobalConfigFile({ hostEvents: { "pre-start": ["echo container"] } }, file);
+  // Then the tagged error retains its field path and file provenance.
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
   expect(result.failure).toBeInstanceOf(ConfigError);
   expect(result.failure).toMatchObject({
     path: file,
-    issues: [{ path: ["hostEvents", "pre-start", 0], message: expect.any(String) }],
+    issues: [
+      {
+        path: ["hostEvents", "pre-start", 0],
+        message: expect.any(String),
+        source: { layer: "config-file", file, path: ["hostEvents", "pre-start", 0] },
+      },
+    ],
   });
 });

@@ -94,7 +94,7 @@ export const readGlobalConfigSources = (inputs: ConfigSourceInputs): readonly Co
     }
     for (const name of names) layers.push(readLayer(join(userConfRoot, "config.d", name), "config-drop-in"));
   }
-  if (inputs.sources.env) layers.push({ layer: "env", ...environment, tree: environment.tree });
+  if (inputs.sources.env) layers.push({ layer: "env", ...environment });
   layers.push({ layer: "host", tree: host });
   return layers;
 };
