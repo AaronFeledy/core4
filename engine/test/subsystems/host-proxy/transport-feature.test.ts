@@ -150,6 +150,13 @@ describe("hostProxyRunLandoFeature", () => {
         readOnly: true,
         realization: "passthrough",
       },
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+        type: "bind" as const,
+        source: session.shimPath,
+        target,
+        readOnly: true,
+        realization: "passthrough" as const,
+      })),
     ]);
     await session.close();
   });
@@ -227,6 +234,13 @@ describe("hostProxyRunLandoFeature", () => {
         LANDO_HOST_PROXY_DEPTH: "0",
       },
       mounts: [
+        ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+          type: "bind" as const,
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(target),
+          readOnly: true,
+          realization: "passthrough" as const,
+        })),
         {
           type: "bind" as const,
           source: "/tmp/host-proxy.sock",

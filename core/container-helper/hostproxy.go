@@ -30,18 +30,37 @@ type proxyRequest struct {
 }
 
 func runHostProxy(ctx context.Context, args []string, streams helperIO) int {
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(streams.stderr, err)
+		return 127
+	}
+	argv := append([]string{}, args...)
+	return runProxyCall(ctx, proxyCall{"runLando", proxyRequest{"runLando", argv, cwd, isTerminal(streams.stdout), parsePolicy().filter(streams.env)}}, streams)
+}
+
+type proxyCall struct {
+	operation string
+	payload   proxyPayload
+}
+
+type proxyPayload interface{ proxyPayload() }
+
+func (proxyRequest) proxyPayload() {}
+
+func runProxyCall(ctx context.Context, call proxyCall, streams helperIO) int {
 	env := streams.env
 	if env["LANDO_HOST_PROXY_SOCKET"] == "" && env["LANDO_HOST_PROXY_URL"] == "" {
-		fmt.Fprintln(streams.stderr, "Missing LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL for host-proxy runLando.")
+		fmt.Fprintf(streams.stderr, "Missing LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL for host-proxy %s.\n", call.operation)
 		return 127
 	}
 	for _, name := range []string{"LANDO_HOST_PROXY_SESSION", "LANDO_HOST_PROXY_APP", "LANDO_HOST_PROXY_TOKEN"} {
 		if env[name] == "" {
-			fmt.Fprintf(streams.stderr, "Missing %s for host-proxy runLando.\n", name)
+			fmt.Fprintf(streams.stderr, "Missing %s for host-proxy %s.\n", name, call.operation)
 			return 127
 		}
 	}
-	code, err := proxyExchange(ctx, args, streams)
+	code, err := proxyExchange(ctx, call, streams)
 	if err != nil {
 		fmt.Fprintln(streams.stderr, err)
 		return 127
@@ -49,29 +68,24 @@ func runHostProxy(ctx context.Context, args []string, streams helperIO) int {
 	return code
 }
 
-func proxyExchange(ctx context.Context, args []string, streams helperIO) (int, error) {
+func proxyExchange(ctx context.Context, call proxyCall, streams helperIO) (int, error) {
 	env := streams.env
 	transport := &http.Transport{Proxy: nil}
 	defer transport.CloseIdleConnections()
-	target := "http://localhost/runLando"
+	target := "http://localhost/" + call.operation
 	if raw := env["LANDO_HOST_PROXY_URL"]; raw != "" {
 		base, err := url.Parse(raw)
 		if err != nil {
 			return 127, err
 		}
 		// The original node:http client uses the URL's host and port, not TLS.
-		target = (&url.URL{Scheme: "http", Host: base.Host, Path: "/runLando"}).String()
+		target = (&url.URL{Scheme: "http", Host: base.Host, Path: "/" + call.operation}).String()
 	} else {
 		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", env["LANDO_HOST_PROXY_SOCKET"])
 		}
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return 127, err
-	}
-	argv := append([]string{}, args...)
-	body, err := json.Marshal(proxyRequest{"runLando", argv, cwd, isTerminal(streams.stdout), parsePolicy().filter(env)})
+	body, err := json.Marshal(call.payload)
 	if err != nil {
 		return 127, err
 	}
@@ -95,6 +109,9 @@ func proxyExchange(ctx context.Context, args []string, streams helperIO) (int, e
 		return 127, err
 	}
 	defer res.Body.Close()
+	if call.operation != "runLando" {
+		return readOpenResponse(res.Body, streams)
+	}
 	return readProxyFrames(res.Body, streams)
 }
 
