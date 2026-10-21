@@ -2,7 +2,7 @@ import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogLevel, ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
-import { Renderer, type RootOverrides, RuntimeProvider } from "@lando/sdk/services";
+import { Renderer, RuntimeProvider } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -33,7 +33,7 @@ export interface BootstrapLayerInputs {
   readonly pluginManifests: ReadonlyArray<ResolvedPluginInput>;
   readonly externalImports: boolean;
   readonly cwd: string;
-  readonly rootOverrides: RootOverrides;
+  readonly configInputs: import("@lando/paths/config-sources").ConfigSourceInputs;
 }
 
 const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({

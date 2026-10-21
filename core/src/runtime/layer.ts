@@ -32,7 +32,6 @@ import type {
   PrivilegeService,
   ProcessRunner,
   Renderer,
-  RootOverrides,
   RouterService,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -191,10 +190,10 @@ const runtimeLayerFor = (
   rendererMode: LibraryRendererMode,
   telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
-  rootOverrides: RootOverrides,
   lifecycle: BootstrapLifecycleTracker,
   pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
   cwd: string,
+  configInputs: import("@lando/paths/config-sources").ConfigSourceInputs,
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
     runtimeLayerFactory: { make: makeLandoRuntime },
@@ -211,7 +210,7 @@ const runtimeLayerFor = (
     pluginManifests: pluginPolicy.manifests,
     externalImports: pluginPolicy.externalImports,
     cwd,
-    rootOverrides,
+    configInputs,
   }) as RuntimeLayer;
 
 const signalHandlersLayer = Layer.effectDiscard(
@@ -292,10 +291,18 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     normalizeLibraryRendererMode(decoded.success.renderer ?? decoded.success.config?.renderer),
     decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
     pluginPolicy,
-    rootOverridesFromConfig(decoded.success.config),
     lifecycle,
     hostLayersResult.success,
     capturedCwd,
+    {
+      env: { ...process.env },
+      host: decoded.success.config,
+      sources: {
+        user: decoded.success.configSources?.user ?? true,
+        env: decoded.success.configSources?.env ?? true,
+      },
+      rootOverrides: rootOverridesFromConfig(decoded.success.config),
+    },
   );
 
   // Library mode defaults prompts to non-interactive; the option overrides the

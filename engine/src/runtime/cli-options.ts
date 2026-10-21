@@ -1,11 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-
-import { deepMerge, envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
-import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { mergeGlobalConfigSources, readGlobalConfigSources } from "@lando/paths/config-sources";
+import { envOverlay } from "@lando/paths/overlay";
 import type { LogLevel } from "@lando/sdk/schema";
 
-import { resolveUserConfRoot } from "../config/roots.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
 import type { LandoRuntimeOptions, LibraryRendererMode } from "./runtime-options.ts";
 
@@ -60,11 +56,9 @@ export const effectiveBootstrapForCommand = (
 };
 
 const configuredNotifyCommands = (): ReadonlyArray<string> => {
-  const overlay = envOverlay();
-  const userConfRoot = resolveConfigFileRoot(resolveUserConfRoot(), overlay);
-  const path = join(userConfRoot, "config.yml");
-  const file = existsSync(path) ? parseMinimalYaml(readFileSync(path, "utf8")) : {};
-  const config = deepMerge(file, overlay);
+  const config = mergeGlobalConfigSources(
+    readGlobalConfigSources({ env: process.env, sources: { user: true, env: true } }),
+  ).tree;
   const notify = config.notify;
   if (typeof notify !== "object" || notify === null || Array.isArray(notify)) return [];
   if (("enabled" in notify && notify.enabled === false) || !("commands" in notify)) return [];
@@ -88,12 +82,11 @@ const telemetryEnabledFromEnvOverlay = (): boolean | undefined => {
 };
 
 const telemetryEnabledFromConfigFile = (): boolean | undefined => {
-  const overlay = envOverlay();
-  const userConfRoot = resolveConfigFileRoot(resolveUserConfRoot(), overlay);
-  const path = join(userConfRoot, "config.yml");
-  if (!existsSync(path)) return undefined;
-
-  const config = parseMinimalYaml(readFileSync(path, "utf8"));
+  const config = mergeGlobalConfigSources(
+    readGlobalConfigSources({ env: process.env, sources: { user: true, env: true } }).filter(
+      (layer) => layer.layer !== "env",
+    ),
+  ).tree;
   const telemetry = config.telemetry;
   if (typeof telemetry !== "object" || telemetry === null || Array.isArray(telemetry)) return undefined;
   const enabled = (telemetry as { readonly enabled?: unknown }).enabled;

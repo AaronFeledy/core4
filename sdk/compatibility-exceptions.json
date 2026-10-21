@@ -3232,5 +3232,17 @@
     "changeKind": "type-changed",
     "path": "$.port",
     "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.source.anyOf",
+    "justification": "Reviewed Phase 1 global-config provenance extension: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.source.anyOf",
+    "justification": "Reviewed Phase 1 global-config provenance extension for additional errors: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
   }
 ]

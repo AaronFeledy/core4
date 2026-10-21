@@ -1603,6 +1603,7 @@
       "VCS_SYNC_IGNORES",
       "ValidationIssue",
       "ValidationIssuePath",
+      "ValidationIssueSource",
       "VariableProps",
       "VarnishServiceConfig",
       "VerifyProps",

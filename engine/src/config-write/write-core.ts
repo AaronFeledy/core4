@@ -1,6 +1,6 @@
 import { Predicate, Result, Schema } from "effect";
 
-import { LandofileWriteValidationError } from "@lando/sdk/errors";
+import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 
 import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
@@ -52,6 +52,7 @@ export const parseConfigValue = (
 
 export const decodeIssues = (decoded: Result.Result<unknown, unknown>): readonly ValidationIssue[] => {
   if (Result.isSuccess(decoded)) return [];
+  if (decoded.failure instanceof ConfigError) return decoded.failure.issues ?? [];
   return validationIssuesFromCause(decoded.failure, { fallback: "Invalid config." });
 };
 

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
 import { Effect, Predicate, Result, Schema } from "effect";
 
@@ -11,23 +11,17 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import {
-  GlobalConfig,
-  GlobalConfigView,
-  hostEventsConfigIssues,
-  hostEventsSemanticIssues,
-} from "@lando/sdk/schema";
+import { GlobalConfigView } from "@lando/sdk/schema";
 import type { ConfigService } from "@lando/sdk/services";
 
-import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
+import { makeLandoPaths } from "@lando/paths";
 import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
-import { findAgentEnvPatternNames } from "../config/agent-env";
-import { resolveUserConfRoot } from "../config/roots";
+import { decodeGlobalConfigFile } from "../config/global-config.ts";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../runtime/cli-options";
 import { loadGlobalConfigView } from "../services/config.ts";
 
@@ -106,8 +100,7 @@ export const ConfigResultSchema = Schema.Struct({
 const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
 
-const telemetryConfigPath = (): string =>
-  join(resolveConfigFileRoot(resolveUserConfRoot(), envOverlay()), "config.yml");
+const telemetryConfigPath = (): string => makeLandoPaths().configFile;
 
 const configReadError = (path: string, cause: unknown): ConfigError =>
   cause instanceof ConfigError
@@ -209,23 +202,14 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
     catch: (cause) => configWriteError(path, cause),
   });
 
-const decodeGlobalConfig = (input: unknown) =>
-  Schema.decodeUnknownResult(GlobalConfig)(input, { onExcessProperty: "error", errors: "all" });
-
 const agentEnvPatternError = (
-  decoded: ReturnType<typeof decodeGlobalConfig>,
+  decoded: ReturnType<typeof decodeGlobalConfigFile>,
 ): AgentEnvPatternError | undefined => {
-  if (Result.isFailure(decoded)) return undefined;
-  const agentEnv = decoded.success.agentEnv;
-  if (agentEnv === undefined) return undefined;
-  const patterns = findAgentEnvPatternNames([...(agentEnv.allow ?? []), ...(agentEnv.deny ?? [])]);
-  if (patterns.length === 0) return undefined;
-  return new AgentEnvPatternError({
-    message: `agentEnv allow/deny entries must be exact env-var names, not patterns: ${patterns.join(", ")}.`,
-    patterns,
-    remediation:
-      "Replace wildcard or pattern entries with exact env-var names (e.g. CLAUDE_CODE, not CLAUDE_*).",
-  });
+  return Result.isFailure(decoded) &&
+    decoded.failure.issues?.every((issue) => issue.path[0] === "agentEnv") &&
+    decoded.failure.cause instanceof AgentEnvPatternError
+    ? decoded.failure.cause
+    : undefined;
 };
 
 const configValidationError = (
@@ -234,20 +218,6 @@ const configValidationError = (
   key?: string,
 ): LandofileWriteValidationError =>
   writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
-
-const hostEventsTreeIssues = (tree: Record<string, unknown>): readonly ValidationIssue[] =>
-  Object.hasOwn(tree, "hostEvents") ? hostEventsConfigIssues(tree.hostEvents) : [];
-
-const configWritePolicyError = (
-  decoded: ReturnType<typeof decodeGlobalConfig>,
-  path: string,
-  key: string,
-): LandofileWriteValidationError | AgentEnvPatternError | undefined => {
-  if (Result.isFailure(decoded)) return undefined;
-  const issues =
-    decoded.success.hostEvents === undefined ? [] : hostEventsSemanticIssues(decoded.success.hostEvents);
-  return issues.length > 0 ? configValidationError(path, issues, key) : agentEnvPatternError(decoded);
-};
 
 const HOST_EVENTS_HAND_EDIT =
   "hostEvents can only be changed by editing config.yml. Use `lando config edit` or edit the file itself.";
@@ -292,8 +262,11 @@ const metaConfigSet = Effect.fnUntraced(function* (
     type: options.type ?? "string",
     dryRun: options.dryRun === true,
     readTree: readConfigTree(path),
-    decode: decodeGlobalConfig,
-    afterDecode: (decoded) => configWritePolicyError(decoded, path, key),
+    decode: (input) => {
+      const decoded = decodeGlobalConfigFile(input, path);
+      const pattern = agentEnvPatternError(decoded);
+      return pattern === undefined ? Effect.succeed(decoded) : Effect.fail(pattern);
+    },
     writeText: writeConfigAtomic,
   });
   return {
@@ -330,8 +303,11 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     key,
     dryRun: options.dryRun === true,
     readTree: readConfigTree(path),
-    decode: decodeGlobalConfig,
-    afterDecode: (decoded) => configWritePolicyError(decoded, path, key),
+    decode: (input) => {
+      const decoded = decodeGlobalConfigFile(input, path);
+      const pattern = agentEnvPatternError(decoded);
+      return pattern === undefined ? Effect.succeed(decoded) : Effect.fail(pattern);
+    },
     writeText: writeConfigAtomic,
   });
   return {
@@ -349,8 +325,10 @@ const metaConfigValidate = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
   const path = resolveConfigWritePath(options);
   const tree = yield* readConfigTree(path);
-  const decoded = decodeGlobalConfig(tree);
-  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(tree)];
+  const decoded = decodeGlobalConfigFile(tree, path);
+  const patternError = agentEnvPatternError(decoded);
+  if (patternError !== undefined) return yield* Effect.fail(patternError);
+  const issues = decodeIssues(decoded);
   if (issues.length > 0) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
@@ -362,8 +340,6 @@ const metaConfigValidate = Effect.fnUntraced(function* (
       }),
     );
   }
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
   return {
     subcommand: "validate",
     valid: true,
@@ -405,11 +381,11 @@ const metaConfigEdit = Effect.fnUntraced(function* (
         remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
       }),
   });
-  const decoded = decodeGlobalConfig(parsed);
-  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(parsed)];
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+  const decoded = decodeGlobalConfigFile(parsed, path);
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);
+  const issues = decodeIssues(decoded);
+  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   yield* writeConfigAtomic(path, edited.content);
   return {
     subcommand: "edit",

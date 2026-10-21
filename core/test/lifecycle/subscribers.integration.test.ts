@@ -70,11 +70,15 @@ const runtime = async (
       pluginManifests: [],
       externalImports,
       cwd,
-      rootOverrides: {
-        userDataRoot: absolute("data"),
-        userConfRoot: absolute("config"),
-        userCacheRoot: absolute("cache"),
-        systemPluginRoot: absolute("system"),
+      configInputs: {
+        env: {},
+        sources: { user: true, env: false },
+        rootOverrides: {
+          userDataRoot: absolute("data"),
+          userConfRoot: absolute("config"),
+          userCacheRoot: absolute("cache"),
+          systemPluginRoot: absolute("system"),
+        },
       },
     });
   return {

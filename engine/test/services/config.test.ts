@@ -58,7 +58,15 @@ describe("LandoConfigService.layer", () => {
       expect(result._tag).toBe("Failure");
       if (result._tag !== "Failure") return;
       expect(result.failure.path).toBe(path);
-      expect(result.failure.issues).toEqual([{ path: ["router", "httpPort"], message: expect.any(String) }]);
+      expect(result.failure.issues).toEqual([
+        {
+          path: ["router", "httpPort"],
+          message: expect.any(String),
+          source: { layer: "config-file", file: path, path: ["router", "httpPort"] },
+          suggestion:
+            "Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`",
+        },
+      ]);
       expect(result.failure.message).toContain("router.httpPort:");
       for (const command of [
         "lando config validate",
