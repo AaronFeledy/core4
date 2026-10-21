@@ -6,9 +6,11 @@
 import { Effect, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
+import { AppPlacementError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type Downloader,
+  GlobalAppService,
   InteractionService,
   PrivilegeService,
   RuntimeProviderRegistry,
@@ -19,6 +21,7 @@ import {
   SetupProviderSwitchResultSchema,
   switchGlobalProviderForSetup,
 } from "@lando/engine/operations/setup-provider-switch";
+import { ensureAppPlacement } from "@lando/engine/providers/app-placement";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -109,6 +112,28 @@ export const setupSpec: LandoCommandSpec<
     });
 
     const selectedProvider = selection.providerId;
+    const persistsSelection =
+      !inputBooleanFlag(input, "skip-provider") &&
+      (selection.source === "flag" || selection.source === "prompt");
+    if (!persistsSelection) {
+      const globalApp = yield* Effect.serviceOption(GlobalAppService);
+      if (globalApp._tag === "Some") {
+        const { root } = yield* globalApp.value.paths;
+        yield* ensureAppPlacement({ kind: "global", id: "global", root }, selectedProvider).pipe(
+          Effect.mapError((error) =>
+            error instanceof AppPlacementError
+              ? new AppPlacementError({
+                  app: error.app,
+                  message: error.message,
+                  desiredProviderId: error.desiredProviderId,
+                  realizedProviderId: error.realizedProviderId,
+                  remediation: `Run \`lando setup --provider=${selectedProvider}\` to switch persistently, or unset \`LANDO_PROVIDER\` to keep the existing provider.`,
+                })
+              : error,
+          ),
+        );
+      }
+    }
     const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
     const networkProbe = inputNetworkProbe(input);

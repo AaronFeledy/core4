@@ -38,7 +38,7 @@ lando doctor
 
 After a successful `lando setup --provider=docker`, setup writes `defaultProviderId: docker` to your config. Later `lando doctor`, `lando start`, and bare `lando setup` stay on Docker. You do not need to repeat the flag. An interactive provider choice persists the same way. A failed config write fails setup.
 
-`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
+`LANDO_PROVIDER=docker lando setup` does not persist. If global services already run on another provider, setup refuses before changing anything. Run `lando setup --provider=docker` to switch persistently, or unset `LANDO_PROVIDER` to keep the existing provider. If no switch is needed and you only set the env, keep it for later commands.
 
 `lando setup` and `lando setup --yes` with no `--provider` keep the `defaultProviderId` already in your config. Setup prompts for a provider only when nothing chose one. `--yes` consents to confirmation and privileged host changes. It does not switch providers. To return to the default, run `lando setup --provider=lando`.
 
