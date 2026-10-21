@@ -10,7 +10,7 @@ import {
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { renderConfigLintViolation } from "./config-lint-rendering";
+import { renderConfigLintViolations } from "./config-lint-rendering";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import type { DoctorSelfReport } from "./doctor-self";
 export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson";
@@ -211,7 +211,7 @@ const appConfigSection = (
   return {
     title: "app config",
     rows: [{ label: "lint", tone: "error", fields: [{ label: "file", value: result.file }] }],
-    notes: result.violations.map(renderConfigLintViolation),
+    notes: renderConfigLintViolations(result.violations),
   };
 };
 
@@ -406,7 +406,7 @@ const renderSelfSection = (report: DoctorSelfReport): string => {
 
 const renderAppConfigSection = (result: ConfigLintResult): string => {
   const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
-  lines.push(...result.violations.map(renderConfigLintViolation));
+  lines.push(...renderConfigLintViolations(result.violations));
   return lines.join("\n");
 };
 
