@@ -3244,5 +3244,29 @@
     "changeKind": "unsupported-construct",
     "path": "$.error.additionalErrors.items.issues.items.source.anyOf",
     "justification": "Reviewed Phase 1 global-config provenance extension for additional errors: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.appConfig.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
   }
 ]

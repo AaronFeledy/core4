@@ -56,7 +56,10 @@ const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] 
 export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(function* (
   options: LintLandofileOptions = {},
   inputs?: LandofileRuntimeInputs,
-): Effect.fn.Return<LandofileLintSnapshot, ConfigError | LandofileNotFoundError | LandofileFormConflictError> {
+): Effect.fn.Return<
+  LandofileLintSnapshot,
+  ConfigError | LandofileNotFoundError | LandofileFormConflictError
+> {
   const cwd = options.cwd ?? process.cwd();
   const templates = options.templates ?? inputs?.templates;
   const discovered = yield* Effect.tryPromise({
@@ -183,7 +186,8 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   const app = Result.isSuccess(finalized)
     ? (finalized.success.name ?? "")
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
-  const primary = unique[0]?.source?.file ?? file;
+  const primarySource = unique[0]?.source;
+  const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;
   return {
     result: {
       app,
