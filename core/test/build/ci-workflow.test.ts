@@ -90,7 +90,6 @@ describe("ci workflow", () => {
       "compose-vendor-bump.yml",
       "drupal-journey.yml",
       "nightly.yml",
-      "php-base-images.yml",
       "platform-readiness.yml",
       "provider-matrix.yml",
       "rails-journey.yml",
