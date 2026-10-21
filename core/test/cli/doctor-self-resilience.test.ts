@@ -57,10 +57,13 @@ describe("doctor safe mode", () => {
     await writeFile(join(home, ".config", "lando", "config.yml"), "this: [is: not\n", "utf8");
     const priorHome = process.env.HOME;
     const priorXdgConfig = process.env.XDG_CONFIG_HOME;
+    // The test preload pins the conf root, which outranks HOME/XDG; point it at the broken config.
+    const priorConfRoot = process.env.LANDO_USER_CONF_ROOT;
 
     try {
       process.env.HOME = home;
       process.env.XDG_CONFIG_HOME = join(home, ".config");
+      process.env.LANDO_USER_CONF_ROOT = join(home, ".config", "lando");
 
       // When
       const report = await Effect.runPromise(
@@ -83,6 +86,7 @@ describe("doctor safe mode", () => {
     } finally {
       restoreEnv("HOME", priorHome);
       restoreEnv("XDG_CONFIG_HOME", priorXdgConfig);
+      restoreEnv("LANDO_USER_CONF_ROOT", priorConfRoot);
       await rm(home, { recursive: true, force: true });
     }
   });
