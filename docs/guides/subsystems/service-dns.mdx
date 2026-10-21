@@ -66,7 +66,7 @@ Global Mailpit is `mailpit.global.internal`. Non-global `type: lando` services g
 
 Issued leaf certs list the service name and `<service>.<app>.internal` as SANs.
 
-Routes need shared cross-app networking. The default `lando` provider advertises that on Linux, macOS, and Windows.
+Routes need shared cross-app networking and the same provider as the host router. The default `lando` provider advertises shared networking on Linux, macOS, and Windows. A routed app pinned to a different provider fails planning with `RouteProviderMismatchError`; Lando does not publish host ports for Traefik to bridge providers. Run `lando setup --provider=<app provider>`, remove `provider:` from the Landofile, or set `router.enabled: false` and use published host ports. See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Open `*.lndo.site` on this machine
 
@@ -114,7 +114,6 @@ Engine-native hostnames are not portable across every provider and platform. Kee
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 </Guide>
