@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";

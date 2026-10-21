@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { ValidationIssuePath } from "./validation-issue.ts";
+import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
 
 // Config-lint result shapes — the stable, editor/LSP-facing output of
 // `lando app:config:lint`. Validating a Landofile against the canonical
@@ -13,6 +13,10 @@ import { ValidationIssuePath } from "./validation-issue.ts";
  * diagnostics.
  */
 export const ConfigLintViolation = Schema.Struct({
+  rule: Schema.String.annotate({ description: "Stable diagnostic rule identifier." }),
+  severity: Schema.Literals(["error", "warning"]).annotate({
+    description: "Whether the finding prevents configuration validity.",
+  }),
   /** Object keys and array indexes. Empty for the document root. */
   path: ValidationIssuePath,
   /** Human-readable description of the violation. */
@@ -23,12 +27,18 @@ export const ConfigLintViolation = Schema.Struct({
   line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */
   column: Schema.optionalKey(Schema.Number),
+  scope: Schema.optionalKey(
+    Schema.Literals(["fragment", "effective"]).annotate({
+      description: "Whether the finding concerns an authored fragment or the effective configuration.",
+    }),
+  ),
+  source: ValidationIssue.fields.source,
 });
 export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 
 /**
  * The full result of linting one Landofile against the canonical schema.
- * `valid` is `true` iff `violations` is empty.
+ * `valid` is true when no error-severity violation exists.
  */
 export const ConfigLintResult = Schema.Struct({
   /** The linted app name (the Landofile `name:`, "" when unset). */
@@ -37,7 +47,7 @@ export const ConfigLintResult = Schema.Struct({
   file: Schema.String,
   /** Whether the Landofile passed canonical-schema validation. */
   valid: Schema.Boolean,
-  /** Ordered list of violations (empty when `valid`). */
+  /** Ordered findings, including warnings that do not invalidate configuration. */
   violations: Schema.Array(ConfigLintViolation),
 });
 export type ConfigLintResult = typeof ConfigLintResult.Type;

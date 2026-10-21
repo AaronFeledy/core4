@@ -3678,7 +3678,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("rejects healthcheck kind: tcp with a CapabilityError citing serviceHealth", async () => {
+  test("rejects authored tcp at the validation boundary", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
         name: "myapp",
@@ -3699,18 +3699,15 @@ describe("AppPlannerLayer.layer", () => {
       });
 
       const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(CapabilityError);
-      if (failure instanceof CapabilityError) {
-        expect(failure.service).toBe("web");
-        expect(failure.feature).toBe("healthcheck kind tcp");
-        expect(failure.capability).toBe("serviceHealth");
-        expect(failure.providerId).toBe("lando");
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
         expect(failure.remediation).toContain("kind: command");
       }
     });
   });
 
-  test("rejects healthcheck kind: http with a CapabilityError citing serviceHealth", async () => {
+  test("rejects authored http at the validation boundary", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
         name: "myapp",
@@ -3731,12 +3728,9 @@ describe("AppPlannerLayer.layer", () => {
       });
 
       const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(CapabilityError);
-      if (failure instanceof CapabilityError) {
-        expect(failure.service).toBe("web");
-        expect(failure.feature).toBe("healthcheck kind http");
-        expect(failure.capability).toBe("serviceHealth");
-        expect(failure.providerId).toBe("lando");
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
         expect(failure.remediation).toContain("kind: command");
       }
     });

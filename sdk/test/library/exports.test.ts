@@ -291,6 +291,7 @@ describe("@lando/sdk package exports", () => {
       "ServiceConfig",
       "RouteInput",
       "HealthcheckInput",
+      "AppMountInput",
       "ToolingTaskShape",
       "ExpressionTemplate",
       "ExpressionNode",

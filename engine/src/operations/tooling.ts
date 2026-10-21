@@ -124,7 +124,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const loadedLandofile =
     target === undefined
       ? yield* loadUserLandofile(landofileService)
-      : yield* loadUserLandofileAt(landofileService, target.root);
+      : (target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root)));
   const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
   const authoredTaskNames = new Set(Object.keys(loadedLandofile.tooling ?? {}));
@@ -152,7 +152,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     return yield* Effect.fail(planResult.failure);
   }
   const plan = planResult.success;
-  // The freshly loaded declarations stay authoritative over the plan, so they
+  // Captured or freshly loaded declarations stay authoritative over the plan, so they
   // need the same deferred-scope resolution the planner applied, or an authored
   // `{{ app.name }}` would reach the container as literal text. This runs only
   // once a plan exists so the script fallback above keeps its old inputs.

@@ -1,0 +1,54 @@
+---
+id: yaml-fence-good
+provider: test
+diataxis: tutorial
+---
+
+Valid full Landofile.
+
+```yaml
+name: demo
+services:
+  web:
+    type: lando
+    image: nginx:1.25
+```
+
+Valid fragment (no name).
+
+```yaml
+services:
+  db:
+    type: postgres:16
+```
+
+Bare service body.
+
+```yaml
+type: lando
+command: ["sleep", "infinity"]
+```
+
+Global config keys only.
+
+```yaml
+renderer: json
+logLevel: info
+```
+
+Unrelated YAML (neither Landofile nor GlobalConfig) is skipped.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example
+```
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

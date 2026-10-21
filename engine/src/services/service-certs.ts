@@ -57,6 +57,7 @@ interface ResolveCertsFeatureInput {
 const validationError = (input: ResolveCertsFeatureInput, message: string): LandofileValidationError =>
   new LandofileValidationError({
     message: `services.${input.serviceName}.certs ${message}`,
+    remediation: "Use valid certificate material under the app root, or set certs to false.",
     file: `${input.appRoot}/.lando.yml`,
     issues: [validationIssue(["services", input.serviceName, "certs"], message)],
   });
