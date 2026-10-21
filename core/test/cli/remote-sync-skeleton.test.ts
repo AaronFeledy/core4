@@ -18,7 +18,7 @@ import {
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
-import { type SyncResult, SyncResult as SyncResultSchema } from "@lando/sdk/schema";
+import { type SyncResult, SyncResult as SyncResultSchema, appIdentityKey } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
 import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
 
@@ -263,7 +263,7 @@ describe("remote sync command skeleton", () => {
         snapshot: (store) =>
           Effect.sync(() => {
             snapshots.push(store.store);
-            return { id: "cli-remote-snapshot", store };
+            return { id: "cli-remote-snapshot", store, ownerKey: appIdentityKey("owner", dir) };
           }),
         restore: () => Effect.void,
         listSnapshots: () => Effect.succeed([]),
@@ -845,7 +845,11 @@ describe("remote sync command skeleton", () => {
         snapshot: () =>
           Effect.sync(() => {
             snapshotCalls += 1;
-            return { id: "unexpected", store: { app: TestDataset.context.plan.id, store: "database" } };
+            return {
+              id: "unexpected",
+              store: { app: TestDataset.context.plan.id, store: "database" },
+              ownerKey: appIdentityKey("owner", dir),
+            };
           }),
         restore: () => Effect.void,
         listSnapshots: () => Effect.succeed([]),

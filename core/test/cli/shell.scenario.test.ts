@@ -142,6 +142,7 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
     inspect: () => Effect.die("not used"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => Effect.void,

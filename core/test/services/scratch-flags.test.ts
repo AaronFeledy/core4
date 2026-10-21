@@ -222,6 +222,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLayer.layer,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,

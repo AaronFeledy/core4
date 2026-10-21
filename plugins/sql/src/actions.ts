@@ -44,7 +44,7 @@ export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (
-    id: string,
+    handle: SnapshotHandle,
     store: VolumeRef,
     opts?: SnapshotRestoreOptions,
   ) => Effect.Effect<void, unknown>;

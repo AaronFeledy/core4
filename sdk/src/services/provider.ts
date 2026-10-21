@@ -463,7 +463,7 @@ export class RuntimeProvider extends Context.Service<
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
     /** Idempotently remove this provider's snapshot, dispatching on its stored format. */
-    readonly removeVolumeSnapshot?: (
+    readonly removeVolumeSnapshot: (
       snapshot: VolumeSnapshotRef,
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
     /** List native snapshot images without consulting a host snapshot index. */

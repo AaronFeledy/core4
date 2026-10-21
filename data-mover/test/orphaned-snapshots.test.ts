@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId, type SnapshotInfo, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type SnapshotInfo,
+  type VolumeSnapshotArtifact,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Clock, DateTime, Effect } from "effect";
@@ -32,6 +38,7 @@ test("finds only old unindexed snapshots owned by this store or unmarked legacy 
   const index: SnapshotInfo[] = [
     {
       id: "indexed",
+      owner: planAppIdentity({ root: AbsolutePath.make("/app") }),
       store: { app: AppId.make("app"), store: "data" },
       createdAt: indexed.createdAt,
       sizeBytes: 10,
@@ -72,6 +79,7 @@ test("rechecks the current index before removing a previously discovered orphan"
   const discovered = await Effect.runPromise(mover.findOrphanedSnapshots);
   index.push({
     id: "race",
+    owner: planAppIdentity({ root: AbsolutePath.make("/app") }),
     store: { app: AppId.make("app"), store: "data" },
     createdAt: image.createdAt,
     sizeBytes: 10,

@@ -254,6 +254,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     locateVolume: () => die("locateVolume"),
     listVolumes: () => Effect.succeed([]),
@@ -291,6 +292,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLayer.layer,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,

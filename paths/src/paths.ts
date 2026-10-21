@@ -200,7 +200,7 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
     globalAppRoot: j(userDataRoot, "global"),
     snapshotsDir: j(userDataRoot, "snapshots"),
-    appSnapshotsDir: (appId: string) => j(userDataRoot, "snapshots", appId),
+    ownerSnapshotsDir: (ownerKey: string) => j(userDataRoot, "snapshots", ownerKey),
     managedFileLedger: (appId: string) => j(userDataRoot, "managed-files", appId, "ledger.json"),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),

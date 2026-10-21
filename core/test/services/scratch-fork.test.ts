@@ -322,6 +322,7 @@ const makeScratchForkLayer = (
     );
   })();
   const dataMoverLive = BunDataMover.layer.pipe(
+    Layer.provide(registryLive),
     Layer.provide(
       Layer.mergeAll(
         stateStoreLayer,

@@ -30,10 +30,18 @@ import {
   AppId,
   AppPlan,
   PortablePath,
+  ProviderId,
   type VolumeSnapshotRef,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { DataMover, EventService, type LandoEvent, PathsService, RuntimeProvider } from "@lando/sdk/services";
+import {
+  DataMover,
+  EventService,
+  type LandoEvent,
+  PathsService,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -335,6 +343,11 @@ describe("live volume snapshot round trip", () => {
                       passthroughRedaction,
                       Layer.succeed(PathsService, PathsService.of(paths)),
                       Layer.succeed(RuntimeProvider, fx.provider),
+                      Layer.succeed(RuntimeProviderRegistry, {
+                        list: Effect.succeed([ProviderId.make(fx.provider.id)]),
+                        capabilities: Effect.succeed(fx.provider.capabilities),
+                        select: () => Effect.succeed(fx.provider),
+                      }),
                     ),
                   ),
                 ),
@@ -351,7 +364,7 @@ describe("live volume snapshot round trip", () => {
             const handle = yield* mover.snapshot(volume, { volumeSnapshot: "copy", format: "tar" });
             yield* Effect.addFinalizer(() =>
               mover
-                .removeSnapshot(handle.id, volume)
+                .removeSnapshot(handle)
                 .pipe(
                   Effect.catch((cause) =>
                     Effect.logWarning("live DataMover snapshot cleanup failed", { id: handle.id, cause }),

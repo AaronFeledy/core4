@@ -159,6 +159,7 @@ const makeLayer = (
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => die("removeVolume"),
@@ -198,6 +199,7 @@ const makeLayer = (
     scannerLive,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,

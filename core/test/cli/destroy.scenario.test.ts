@@ -1,8 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 
-import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
@@ -40,8 +39,8 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
-import { CommandResultEnvelope, SnapshotInfo } from "@lando/sdk/schema";
-import { DataMover, RuntimeProvider } from "@lando/sdk/services";
+import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
+import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -51,6 +50,7 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import * as DiskStateStore from "@lando/state-store/service";
 import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
@@ -61,7 +61,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
 
-const ownerKey = (root: string): string => createHash("sha256").update(`owner\0${root}`).digest("hex");
+const ownerKey = (root: string): string => appIdentityKey("owner", root);
 
 interface RunResult {
   readonly exitCode: number;
@@ -212,6 +212,7 @@ const makeDestroyLayer = (
     readonly removeSnapshotEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly absent?: boolean;
     readonly orphanEvidence?: boolean;
+    readonly ownedEvidence?: boolean;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -305,6 +306,8 @@ const makeDestroyLayer = (
         endpoints: [],
       }),
     list: () => Effect.succeed([]),
+    cleanupOwnedResources: () =>
+      Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
   };
 
   const proxyLayer = Layer.succeed(
@@ -347,6 +350,22 @@ const makeDestroyLayer = (
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
         ...(options.absent === true ? { resolveAppliedPlan: () => Effect.succeed(undefined) } : {}),
+        ...(options.ownedEvidence === true
+          ? {
+              resolveTeardownEvidence: () =>
+                Effect.succeed({
+                  kind: "owned" as const,
+                  ownership: [
+                    {
+                      providerId,
+                      ownerKey: ownerKey(plannedApp.root),
+                      appRoot: plannedApp.root,
+                      appIds: [plannedApp.id],
+                    },
+                  ],
+                }),
+            }
+          : {}),
         ...(options.orphanEvidence === true
           ? {
               resolveTeardownEvidence: () =>
@@ -417,6 +436,7 @@ const makeDestroyLayer = (
           }),
         ),
         Layer.succeed(RuntimeProvider, provider),
+        DiskStateStore.layer,
       ),
     ),
   );
@@ -458,11 +478,12 @@ const runDestroyCli = (
 };
 
 const seedSnapshot = async (
-  harness: ReturnType<typeof makeDestroyLayer>,
+  _harness: ReturnType<typeof makeDestroyLayer>,
   dataRoot: string,
   input: { readonly id: string; readonly sourceRoot?: string },
 ) => {
   const info = Schema.decodeUnknownSync(SnapshotInfo)({
+    owner: { appRoot: input.sourceRoot ?? "/unknown", ownerKey: ownerKey(input.sourceRoot ?? "/unknown") },
     id: input.id,
     store: { app: plan.id, store: "data" },
     digest: "sha256:snapshot",
@@ -473,7 +494,6 @@ const seedSnapshot = async (
       ? {}
       : {
           metadata: {
-            sourceRoot: input.sourceRoot,
             service: "database",
             volumeInstanceId: "volume-instance",
             family: "postgres",
@@ -483,26 +503,25 @@ const seedSnapshot = async (
           },
         }),
   });
-  const appDir = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).appSnapshotsDir(
-    plan.id,
+  const appDir = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).ownerSnapshotsDir(
+    info.owner.ownerKey,
   );
   await mkdir(join(appDir, "data"), { recursive: true });
   const sidecar = join(appDir, "data", `${info.id}.json`);
-  await writeFile(sidecar, JSON.stringify(Schema.encodeSync(SnapshotInfo)(info)));
   await Effect.runPromise(
     Effect.gen(function* () {
-      const bucket = yield* harness.stateStore.open({
-        root: { path: AbsolutePath.make(appDir) },
-        key: "index.bin",
-        schema: Schema.Array(SnapshotInfo),
+      const stateStore = yield* StateStore;
+      const bucket = yield* stateStore.open({
+        root: { path: AbsolutePath.make(join(appDir, "data")) },
+        key: `${info.id}.json`,
+        schema: SnapshotInfo,
         version: 1,
         codec: "json",
         lock: "advisory",
-        onCorrupt: "quarantine",
-        default: [],
+        onCorrupt: "fail",
       });
-      yield* bucket.update((current) => [...(current ?? []), info]);
-    }),
+      yield* bucket.set(info);
+    }).pipe(Effect.provide(DiskStateStore.layer)),
   );
   return { info, sidecar };
 };
@@ -823,6 +842,35 @@ describe("lando destroy", () => {
   });
 
   test.each([false, true])(
+    "purges snapshots with inventory-only evidence (missing root: %s)",
+    async (missingRoot) => {
+      // Given: inventory remains but every runtime resource is already absent.
+      await withTempCwd(async (dataRoot) => {
+        const root = missingRoot ? join(dataRoot, "gone") : testAppRoot;
+        const harness = makeDestroyLayer({
+          userDataRoot: dataRoot,
+          plannedApp: { ...plan, root: AbsolutePath.make(root) },
+          ownedEvidence: true,
+        });
+        const owned = await seedSnapshot(harness, dataRoot, { id: "inventory-snapshot", sourceRoot: root });
+        const io = createBufferedRendererIO();
+
+        // When: the real destroy command is invoked with purge.
+        await withCwd(missingRoot ? dataRoot : root, () =>
+          runDestroyCli(["--purge", "--yes", ...(missingRoot ? ["--root", root] : [])], harness, io, "json"),
+        );
+
+        // Then: snapshot deletion alone makes this a changed teardown.
+        expect(JSON.parse(io.stdout())).toMatchObject({
+          ok: true,
+          result: { outcome: "destroyed", snapshotsRemoved: 1, servicesDestroyed: [], volumesRemoved: false },
+        });
+        expect(harness.removedSnapshots).toEqual([owned.info.id]);
+      });
+    },
+  );
+
+  test.each([false, true])(
     "purges snapshots without runtime resources (missing root: %s)",
     async (missingRoot) => {
       await withTempCwd(async (dataRoot) => {
@@ -881,7 +929,7 @@ describe("lando destroy", () => {
       userDataRoot: dataRoot,
       env: {},
       platform: "linux",
-    }).appSnapshotsDir(String(plan.id));
+    }).ownerSnapshotsDir(ownerKey(plan.root));
     await mkdir(join(snapshotRoot, "data"), { recursive: true });
 
     try {
@@ -909,7 +957,7 @@ describe("lando destroy", () => {
   });
 
   test.each([{}, { volumes: true }, { purgeCaches: true }])(
-    "keeps indexed snapshots without purgeSnapshots (%j)",
+    "keeps catalogued snapshots without purgeSnapshots (%j)",
     async (options) => {
       await withTempCwd(async (dataRoot) => {
         const harness = makeDestroyLayer({ userDataRoot: dataRoot });
@@ -919,7 +967,7 @@ describe("lando destroy", () => {
         expect(harness.removedSnapshots).toEqual([]);
         expect(await Bun.file(owned.sidecar).exists()).toBe(true);
         const listed = await Effect.runPromise(
-          DataMover.use((mover) => mover.listSnapshots({ sourceRoot: plan.root })).pipe(
+          DataMover.use((mover) => mover.listSnapshots({ ownerKey: ownerKey(plan.root) })).pipe(
             Effect.provide(harness.layer),
           ),
         );

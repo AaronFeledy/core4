@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import {
@@ -432,10 +432,14 @@ describe("provider data plane", () => {
 
   test("treats native snapshot wait responses without StatusCode as successful", async () => {
     const paths: string[] = [];
+    const deletedImages: string[] = [];
     const commits: unknown[] = [];
     const api: DataPlaneApiClient = {
       request: (request) => {
         paths.push(request.path);
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          deletedImages.push(request.path);
+        }
         if (request.path.startsWith("/commit?")) {
           commits.push(request.body);
           return Effect.succeed({ status: 201, body: JSON.stringify({ Id: "sha256:native-snapshot" }) });
@@ -477,6 +481,7 @@ describe("provider data plane", () => {
     expect(snapshot.provider).toBe(ProviderId.make("test"));
     expect(snapshot.id).toBe("snap");
     expect(snapshot).toMatchObject({ digest: "sha256:native-snapshot", sizeBytes: 4096, format: "native" });
+    expect(deletedImages).toEqual([]);
     expect(paths.some((path) => path.includes("/commit?"))).toBe(true);
     expect(commits).toEqual([
       {
@@ -491,6 +496,143 @@ describe("provider data plane", () => {
         },
       },
     ]);
+  });
+
+  test.each([204, 404, 500, "transport failure"] as const)(
+    "rolls back a committed snapshot and preserves the inspect error when deletion returns %s",
+    async (deleteResult) => {
+      // Given: commit succeeds but the following image inspection fails.
+      const requests: string[] = [];
+      const inspectError = new VolumeOperationError({
+        providerId: "test",
+        operation: "inspect",
+        message: "Image inspection unavailable.",
+      });
+      const deleteError = new VolumeOperationError({
+        providerId: "test",
+        operation: "delete",
+        message: "Image deletion unavailable.",
+      });
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        capabilities: { volumeSnapshot: "native" },
+        redactDetails: (value) => value,
+        pullHelperImage: echoHelperPull(),
+        api: {
+          request: (request) =>
+            Effect.suspend(() => {
+              requests.push(`${request.method} ${request.path}`);
+              if (request.path.startsWith("/images/")) {
+                if (request.method === "GET") return Effect.fail(inspectError);
+                return deleteResult === "transport failure"
+                  ? Effect.fail(deleteError)
+                  : Effect.succeed({ status: deleteResult, body: "" });
+              }
+              return Effect.succeed({ status: 201, body: "{}" });
+            }),
+        },
+      });
+
+      // When: the snapshot fails before a reference can be returned.
+      const result = await Effect.runPromise(
+        Effect.scoped(
+          provider.snapshotVolume({ volume: { app: appId, store: "data" }, snapshotId: "SNAP/name" }),
+        ).pipe(Effect.result),
+      );
+
+      // Then: rollback targets the committed tag without replacing the original failure.
+      expect(requests.some((request) => request.startsWith("POST /commit?"))).toBe(true);
+      expect(requests.filter((request) => request.startsWith("DELETE /images/"))).toEqual([
+        "DELETE /images/localhost%2Flando-volume-snapshot%3Asnap-name",
+      ]);
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "VolumeOperationError", cause: { cause: inspectError } },
+      });
+    },
+  );
+
+  test("rolls back a snapshot when interrupted during the commit request", async () => {
+    // Given: the daemon receives the commit but never returns a response.
+    const commitStarted = Deferred.makeUnsafe<void>();
+    const deletedImages: string[] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
+      api: {
+        request: (request) =>
+          Effect.suspend(() => {
+            if (request.path.startsWith("/commit?")) {
+              return Deferred.succeed(commitStarted, undefined).pipe(Effect.andThen(Effect.never));
+            }
+            if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+              deletedImages.push(request.path);
+            }
+            return Effect.succeed({ status: 201, body: "{}" });
+          }),
+      },
+    });
+
+    // When: the snapshot fiber is interrupted only after the commit request starts.
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkScoped(
+            provider.snapshotVolume({ volume: { app: appId, store: "data" }, snapshotId: "snap" }),
+          );
+          yield* Deferred.await(commitStarted);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
+        }),
+      ),
+    );
+
+    // Then: cancellation stays cancellation, and the unreturned image is removed.
+    expect(Exit.hasInterrupts(exit)).toBe(true);
+    expect(deletedImages).toEqual(["/images/localhost%2Flando-volume-snapshot%3Asnap"]);
+  });
+
+  test.each([
+    { phase: "before commit", snapshotId: "snap" },
+    { phase: "inspect without caller id", snapshotId: undefined },
+  ])("leaves snapshot images alone on failure $phase", async ({ phase, snapshotId }) => {
+    // Given: either commit has not been reached or no caller-supplied id exists.
+    const deletedImages: string[] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
+      api: {
+        request: (request) =>
+          Effect.suspend(() => {
+            if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+              deletedImages.push(request.path);
+            }
+            const failingRequest =
+              phase === "before commit"
+                ? request.path.endsWith("/start")
+                : request.method === "GET" && request.path.startsWith("/images/");
+            return Effect.succeed({ status: failingRequest ? 500 : 201, body: "{}" });
+          }),
+      },
+    });
+
+    // When: snapshot creation fails at the selected boundary.
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        provider.snapshotVolume({
+          volume: { app: appId, store: "data" },
+          ...(snapshotId === undefined ? {} : { snapshotId }),
+        }),
+      ).pipe(Effect.result),
+    );
+
+    // Then: failure propagates without deleting an image outside rollback ownership.
+    expect(result._tag).toBe("Failure");
+    expect(deletedImages).toEqual([]);
   });
 
   test("forwards ephemeral stdin and lets the transport end it without aborting the attach", async () => {

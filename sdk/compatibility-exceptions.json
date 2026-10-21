@@ -1,5 +1,59 @@
 [
   {
+    "surface": "schema:DatasetApplyResult",
+    "changeKind": "property-added",
+    "path": "$.snapshot.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "schema:PrunePolicy",
+    "changeKind": "property-removed",
+    "path": "$.filter.sourceRoot",
+    "justification": "Pre-release snapshot selection uses ownerKey instead of sourceRoot."
+  },
+  {
+    "surface": "schema:SnapshotFilter",
+    "changeKind": "property-removed",
+    "path": "$.sourceRoot",
+    "justification": "Pre-release snapshot selection uses ownerKey instead of sourceRoot."
+  },
+  {
+    "surface": "schema:SnapshotHandle",
+    "changeKind": "property-added",
+    "path": "$.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.ownerKey",
+    "justification": "Pre-release snapshot ownership moves to the required owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.repoGroupKey",
+    "justification": "Pre-release repository grouping moves to the snapshot owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.sourceRoot",
+    "justification": "Pre-release snapshot ownership moves to the required owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.owner",
+    "justification": "Pre-release snapshots require canonical ownership independently of SQL metadata."
+  },
+  {
+    "surface": "schema:SyncResult",
+    "changeKind": "property-added",
+    "path": "$.snapshots.items.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-keyword",
     "path": "$.user.pattern",

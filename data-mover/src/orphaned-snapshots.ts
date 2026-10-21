@@ -1,15 +1,74 @@
+import { lstat, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { SNAPSHOT_STORE_LABEL, VOLUME_SNAPSHOT_LABEL } from "@lando/container-runtime/labels";
-import { DataTransferError } from "@lando/sdk/errors";
+import type { LandoPaths } from "@lando/paths";
+import { DataTransferError, errnoCode } from "@lando/sdk/errors";
 import type { SnapshotInfo, VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import type { DataMoverError, RuntimeProviderShape } from "@lando/sdk/services";
-import { Clock, DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect, Schema } from "effect";
+import { readSnapshotDirectory } from "./snapshot-catalog.ts";
+import { ownerDirectoryPattern } from "./snapshot-paths.ts";
 
 export const SNAPSHOT_ORPHAN_GRACE_MS = 60 * 60 * 1000;
+
+const legacyCatalog = Schema.Struct({
+  version: Schema.Literal(1),
+  data: Schema.Array(
+    Schema.Struct({
+      native: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+    }),
+  ),
+});
+
+// Remove this shield once no supported development build writes app-id catalogs. Never quarantine them:
+// unreadable ownership evidence must prevent GC rather than release its images for deletion.
+export const legacySnapshotReferences = Effect.fn("DataMover.legacySnapshotReferences")(function* (
+  paths: LandoPaths,
+) {
+  const refs: Array<{ readonly provider: string; readonly id: string }> = [];
+  for (const entry of yield* readSnapshotDirectory(paths.snapshotsDir)) {
+    if (ownerDirectoryPattern.test(entry.name) || (!entry.isDirectory() && !entry.isSymbolicLink())) continue;
+    const file = join(paths.snapshotsDir, entry.name, "index.bin");
+    const failure = (cause: unknown) =>
+      new DataTransferError({
+        operation: "legacy-snapshot-catalog",
+        message: `Cannot read legacy snapshot catalog ${file}.`,
+        cause,
+        remediation: `Recover ${file} before retrying GC. Deleting it releases protection of its native images.`,
+      });
+    const text = yield* Effect.tryPromise({
+      try: () => readFile(file, "utf8"),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch((cause) => {
+        if (errnoCode(cause) !== "ENOENT") return Effect.fail(failure(cause));
+        return Effect.tryPromise({
+          try: () => lstat(file),
+          catch: (error) => error,
+        }).pipe(
+          Effect.flatMap(() => Effect.fail(failure(cause))),
+          Effect.catch((error) =>
+            errnoCode(error) === "ENOENT" ? Effect.succeed(undefined) : Effect.fail(failure(error)),
+          ),
+        );
+      }),
+    );
+    if (text === undefined) continue;
+    const raw = yield* Effect.try({ try: (): unknown => JSON.parse(text), catch: failure });
+    const catalog = yield* Schema.decodeUnknownEffect(legacyCatalog)(raw).pipe(Effect.mapError(failure));
+    for (const info of catalog.data) if (info.native !== undefined) refs.push(info.native);
+  }
+  return refs;
+});
 
 export const orphanedSnapshotMethods = (options: {
   readonly provider: RuntimeProviderShape;
   readonly storeIdentity: Effect.Effect<string, DataMoverError>;
   readonly index: Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+  readonly legacyReferences?: Effect.Effect<
+    ReadonlyArray<{ readonly provider: string; readonly id: string }>,
+    DataMoverError
+  >;
 }) => {
   const failure = (cause: unknown) =>
     new DataTransferError({
@@ -20,7 +79,7 @@ export const orphanedSnapshotMethods = (options: {
     });
   const eligible = Effect.fn("DataMover.orphanedSnapshotEligible")(function* (
     artifact: VolumeSnapshotArtifact,
-    index: ReadonlyArray<SnapshotInfo>,
+    refs: ReadonlyArray<{ readonly provider: string; readonly id: string }>,
   ) {
     if (artifact.ref.provider !== options.provider.id) return false;
     const identity = yield* options.storeIdentity;
@@ -34,17 +93,20 @@ export const orphanedSnapshotMethods = (options: {
       (yield* Clock.currentTimeMillis) - SNAPSHOT_ORPHAN_GRACE_MS
     )
       return false;
-    return !index.some(
-      (info) => info.native?.provider === artifact.ref.provider && info.native.id === artifact.ref.id,
-    );
+    return !refs.some((ref) => ref.provider === artifact.ref.provider && ref.id === artifact.ref.id);
   });
   const listArtifacts = (options.provider.listVolumeSnapshots?.() ?? Effect.succeed([])).pipe(
     Effect.mapError(failure),
   );
+  const references = Effect.gen(function* () {
+    const infos = yield* options.index;
+    const legacy = yield* options.legacyReferences ?? Effect.succeed([]);
+    return [...infos.flatMap((info) => (info.native === undefined ? [] : [info.native])), ...legacy];
+  });
   return {
     findOrphanedSnapshots: Effect.gen(function* () {
       const artifacts = yield* listArtifacts;
-      const index = yield* options.index;
+      const index = yield* references;
       return yield* Effect.filter(artifacts, (artifact) => eligible(artifact, index));
     }),
     removeOrphanedSnapshot: Effect.fn("DataMover.removeOrphanedSnapshot")(function* (
@@ -55,7 +117,8 @@ export const orphanedSnapshotMethods = (options: {
       const current = (yield* listArtifacts).find(
         (observed) => observed.ref.id === artifact.ref.id && observed.ref.digest === artifact.ref.digest,
       );
-      if (current === undefined || !(yield* eligible(current, yield* options.index))) {
+      const refs = yield* references;
+      if (current === undefined || !(yield* eligible(current, refs))) {
         return yield* Effect.fail(
           new DataTransferError({
             operation: "removeOrphanedSnapshot",
@@ -65,9 +128,9 @@ export const orphanedSnapshotMethods = (options: {
           }),
         );
       }
-      const remove = options.provider.removeVolumeSnapshot;
-      if (remove === undefined) return yield* Effect.fail(failure("Provider cannot remove snapshot images."));
-      yield* Effect.scoped(remove(artifact.ref)).pipe(Effect.mapError(failure));
+      yield* Effect.scoped(options.provider.removeVolumeSnapshot(artifact.ref)).pipe(
+        Effect.mapError(failure),
+      );
     }),
   };
 };

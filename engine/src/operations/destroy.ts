@@ -57,7 +57,12 @@ import {
   withTeardownResolution,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { purgeAppSnapshots, snapshotOnlyDestroy } from "./destroy-snapshots.ts";
+import {
+  ownedSnapshots,
+  purgeAppSnapshots,
+  removeSnapshots,
+  snapshotOnlyDestroy,
+} from "./destroy-snapshots.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
@@ -557,6 +562,7 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
             yield* pendingStartDisposal(desired.app, desired.plan);
             return yield* destroyAppWithResolvedTarget(options, desired, true, false);
           }
+          const snapshotsRemoved = yield* purgeAppSnapshots(resolution.root, options);
           return yield* tearDownOwnedResources(resolution.root, {
             volumes: options.volumes === true,
             purgeCaches: options.purgeCaches === true,
@@ -564,7 +570,8 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
             Effect.map(
               (removed): DestroyAppResult => ({
                 ...unchangedResult(resolution.ownership[0]?.appIds[0] ?? resolution.root),
-                outcome: ownedCleanupChanged(removed) ? "destroyed" : "unchanged",
+                outcome: ownedCleanupChanged(removed) || snapshotsRemoved > 0 ? "destroyed" : "unchanged",
+                snapshotsRemoved,
                 servicesDestroyed: removed.servicesRemoved,
                 volumesRemoved: removed.volumesRemoved > 0,
               }),
@@ -688,13 +695,15 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
   }
   switch (resolution.kind) {
     case "owned": {
+      const snapshotsRemoved = yield* purgeAppSnapshots(recordedRoot, options);
       const removed = yield* tearDownOwnedResources(recordedRoot, {
         volumes: options.volumes === true,
         purgeCaches: options.purgeCaches === true,
       });
       return {
         ...unchangedResult(resolution.ownership[0]?.appIds[0] ?? basename(root)),
-        outcome: ownedCleanupChanged(removed) ? "destroyed" : "unchanged",
+        outcome: ownedCleanupChanged(removed) || snapshotsRemoved > 0 ? "destroyed" : "unchanged",
+        snapshotsRemoved,
         servicesDestroyed: removed.servicesRemoved,
         volumesRemoved: removed.volumesRemoved > 0,
       };
@@ -717,8 +726,8 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
     case "orphans":
       return yield* destroyOrphans(options, resolution);
     case "absent": {
-      const counts = yield* Effect.forEach(candidates, (candidate) => purgeAppSnapshots(candidate, options));
-      const snapshotsRemoved = counts.reduce((total, count) => total + count, 0);
+      const snapshotsRemoved =
+        options.purgeSnapshots === true ? yield* removeSnapshots(yield* ownedSnapshots(candidates)) : 0;
       return {
         ...unchangedResult(basename(root)),
         snapshotsRemoved,
