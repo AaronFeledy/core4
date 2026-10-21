@@ -1,8 +1,8 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
 import { isMergeDirective, override } from "@lando/sdk/landofile";
-import type { LandofileDecodedOverlay, LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { copyLandofileProvenance } from "./copy-provenance.ts";
 import type { ResolveContext, ResolveIncludesError } from "./include-context.ts";
 import { ownVersionConstraintEntries, parseFragment, withoutIncludeArrays } from "./include-fragment.ts";
 import { hasIncludeCycle } from "./include-graph.ts";
@@ -27,11 +27,13 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
+import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import {
   assertCompatibleIncludeFields,
   composeToolingIncludeEntries,
   resolveToolingIncludeSourceRoots,
 } from "./tooling-include-entries.ts";
+import { validationErrorFromCause } from "./validation.ts";
 import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
@@ -39,14 +41,14 @@ import {
 } from "./version-constraint.ts";
 
 export const resolveTree = Effect.fnUntraced(function* (
-  landofile: LandofileShape,
+  landofile: Record<string, unknown>,
   ctx: ResolveContext,
   depth: number,
   stack: ReadonlyArray<string>,
   source: string,
   layer: VersionConstraintEntry["layer"],
   order: VersionConstraintEntry["order"],
-): Effect.fn.Return<LandofileShape, ResolveIncludesError> {
+): Effect.fn.Return<Record<string, unknown>, ResolveIncludesError> {
   if (depth > ctx.maxDepth)
     return yield* Effect.fail(
       includeError({
@@ -55,11 +57,17 @@ export const resolveTree = Effect.fnUntraced(function* (
         kind: "max-depth",
       }),
     );
-  const sourced = rememberLandofileReferencedFiles(
-    resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
-    getLandofileReferencedFiles(landofile),
+  const sourced = copyLandofileProvenance(
+    landofile,
+    rememberLandofileReferencedFiles(
+      resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
+      getLandofileReferencedFiles(landofile),
+    ),
   );
-  const acquisition = includeAcquisitionView(sourced);
+  const acquisition = yield* Effect.try({
+    try: () => includeAcquisitionView(sourced),
+    catch: (cause) => validationErrorFromCause(source, sourced, cause),
+  });
   const incompatible = assertCompatibleIncludeFields(acquisition);
   if (incompatible !== undefined) return yield* Effect.fail(incompatible);
   const includes = authoredIncludeEntries(acquisition);
@@ -68,7 +76,7 @@ export const resolveTree = Effect.fnUntraced(function* (
       rememberLandofileIncludeSources(
         rememberLocalIncludePaths(
           rememberVersionConstraintEntries(
-            acquisition,
+            copyLandofileProvenance(acquisition, { ...sourced }),
             ownVersionConstraintEntries(acquisition, source, layer, order),
           ),
           getLocalIncludePaths(landofile),
@@ -77,7 +85,7 @@ export const resolveTree = Effect.fnUntraced(function* (
       ),
       [sourced],
     );
-  const fragments: LandofileShape[] = [];
+  const fragments: Record<string, unknown>[] = [];
   const fragmentRecords: Record<string, unknown>[] = [];
   const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
   const includeSources = [...getLandofileIncludeSources(landofile)];
@@ -121,7 +129,7 @@ export const resolveTree = Effect.fnUntraced(function* (
       );
     const parsed = yield* parseFragment(fragment, ctx, layer);
     const nested = yield* resolveTree(
-      parsed as LandofileShape,
+      parsed,
       {
         ...ctx,
         ancestors: [...stack, fragment.sourceId],
@@ -156,7 +164,10 @@ export const resolveTree = Effect.fnUntraced(function* (
         ? []
         : [{ includes: toolingIncludes }]),
   ];
-  const decoded = { ...acquisition, ...(toolingIncludes.length === 0 ? {} : { includes: toolingIncludes }) };
+  const decoded = rememberSourceDocuments(
+    { ...acquisition, ...(toolingIncludes.length === 0 ? {} : { includes: toolingIncludes }) },
+    [...fragments.flatMap(getSourceDocuments), ...getSourceDocuments(sourced)],
+  );
   return rememberIncludeOverlays(
     rememberLandofileReferencedFiles(
       rememberLandofileIncludeSources(
@@ -171,6 +182,6 @@ export const resolveTree = Effect.fnUntraced(function* (
       ),
       [...getLandofileReferencedFiles(sourced), ...fragments.flatMap(getLandofileReferencedFiles)],
     ),
-    overlays as LandofileDecodedOverlay[],
+    overlays,
   );
 });

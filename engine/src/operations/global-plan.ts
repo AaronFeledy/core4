@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 
 import { GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
-import { mergeLandofiles } from "@lando/sdk/landofile";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -16,8 +15,7 @@ import {
 
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
-import { type LandofileCompileError, compileLandofileContentLayers } from "@lando/landofile/root-compile";
-import { validateLandofile } from "@lando/landofile/validation";
+import { type LandofileCompileError, loadLandofileContentLayers } from "@lando/landofile/root-compile";
 
 import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 
@@ -50,7 +48,7 @@ export const decodeGlobalLandofile = (input: {
   readonly content: string;
   readonly cwd: string;
 }): Effect.Effect<LandofileShape, LandofileCompileError> =>
-  compileLandofileContentLayers(
+  loadLandofileContentLayers(
     [
       {
         filePath: input.file,
@@ -64,10 +62,7 @@ export const decodeGlobalLandofile = (input: {
       appRoot: input.cwd,
       policy: DEFAULT_LANDOFILE_LOAD_POLICY,
     },
-  ).pipe(
-    Effect.flatMap(({ compiled }) =>
-      validateLandofile(input.file, mergeLandofiles(compiled.map(({ landofile }) => landofile))),
-    ),
+    { file: input.file },
   );
 
 const withProcessCwd = <A, E, R>(
@@ -110,15 +105,14 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
     const content = yield* fileSystem.readText(file);
     rawLayers.push({ ...position, filePath: file, content });
   }
-  const { compiled } = yield* compileLandofileContentLayers(rawLayers, {
-    appRoot: paths.root,
-    policy: DEFAULT_LANDOFILE_LOAD_POLICY,
-  });
-  const landofile = yield* validateLandofile(paths.userLandofile, {
-    ...mergeLandofiles(compiled.map(({ landofile }) => landofile)),
-    name: "global",
-    provider: MANAGED_PROVIDER_ID,
-  });
+  const landofile = yield* loadLandofileContentLayers(
+    rawLayers,
+    {
+      appRoot: paths.root,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    },
+    { file: paths.userLandofile, forced: { name: "global", provider: MANAGED_PROVIDER_ID } },
+  );
   return { materialized: true, paths, landofile };
 });
 

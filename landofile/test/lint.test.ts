@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/landofile";
 import { lintLandofile } from "../src/lint.ts";
 import { loadLandofileFile } from "../src/service.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 describe("lintLandofile", () => {
   let dir: string;
@@ -27,7 +28,17 @@ describe("lintLandofile", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  const lint = (cwd: string) => Effect.runPromiseExit(lintLandofile({ cwd }));
+  const lint = (cwd: string) =>
+    Effect.runPromiseExit(
+      lintLandofile(
+        { cwd },
+        {
+          ports: makeTestLandofilePorts(cwd),
+          stateStore: makeTestLandofileStateStore(),
+          templates: { modules: [] },
+        },
+      ),
+    );
 
   const write = async (content: string) => writeFile(join(dir, ".lando.yml"), content, "utf8");
 
@@ -56,8 +67,28 @@ describe("lintLandofile", () => {
     // Then
     expect(result.valid).toBe(false);
     expect(result.violations).toEqual([
-      { path: ["services", "web", "routes", 0], message: expect.any(String), suggestion: expect.any(String) },
-      { path: ["proxy", "api", 1], message: expect.any(String), suggestion: expect.any(String) },
+      {
+        path: ["services", "web", "routes", 0],
+        rule: "landofile.route",
+        severity: "error",
+        message: expect.any(String),
+        suggestion: expect.any(String),
+        scope: "effective",
+        source: { file: join(dir, ".lando.yml"), layer: "canonical", path: ["services", "web", "routes", 0] },
+        line: 5,
+        column: 7,
+      },
+      {
+        path: ["proxy", "api", 1],
+        rule: "landofile.route",
+        severity: "error",
+        message: expect.any(String),
+        suggestion: expect.any(String),
+        scope: "effective",
+        source: { file: join(dir, ".lando.yml"), layer: "canonical", path: ["proxy", "api", 1] },
+        line: 9,
+        column: 5,
+      },
     ]);
   });
 
@@ -238,6 +269,7 @@ describe("lintLandofile", () => {
   });
 
   test("top-level Compose subset keys lint clean while version is accepted as deprecated", async () => {
+    await writeFile(join(dir, "compose.yml"), "services:\n  worker:\n    image: busybox\n");
     await write(
       [
         "name: myapp",
@@ -452,7 +484,7 @@ describe("lintLandofile", () => {
       const violation = exit.value.violations.find(
         (entry) => formatValidationIssuePath(entry.path) === "sshAgent.socket",
       );
-      expect(violation?.message).toContain("Expected string");
+      expect(violation?.message).toMatch(/Expected .*string/);
       expect(violation?.suggestion).toContain("sshAgent.socket");
       expect(violation?.suggestion).toContain("string");
     }

@@ -1,0 +1,54 @@
+{
+  "provenanceCommit": "4b13bf3bf278475b194cf0d82a3bc01de83325b2",
+  "review": "Approved encoded grammar after closed-x repair and directive transport. Do not regenerate this file from current artifacts. A bare healthcheck object gains false, a nonempty argv array, and a nonempty shell string. A union that already contains that object gains false and an argv array; its existing expression string stays untouched. An app-mount object gains forbidden source/type keys in the projection already used by its target field, and a destination string only when that union does not already have one. Identifier spelling is not part of this delta.",
+  "sources": ["sdk/src/schema/compose-healthcheck.ts", "sdk/src/schema/landofile.ts"],
+  "healthcheckKeys": [
+    "command",
+    "disable",
+    "interval",
+    "intervalSeconds",
+    "kind",
+    "port",
+    "retries",
+    "startInterval",
+    "startPeriodSeconds",
+    "start_interval",
+    "start_period",
+    "test",
+    "timeout",
+    "timeoutSeconds",
+    "url"
+  ],
+  "appMountKeys": ["excludes", "includes", "readOnly", "target"],
+  "bareHealthcheckAlternatives": [
+    { "enum": [false], "type": "boolean" },
+    { "items": { "type": "string" }, "minItems": 1, "type": "array" },
+    { "minLength": 1, "type": "string" }
+  ],
+  "unionHealthcheckAlternatives": [
+    { "enum": [false], "type": "boolean" },
+    { "items": { "type": "string" }, "type": "array" }
+  ],
+  "appMountString": { "type": "string" },
+  "bareForbiddenKey": { "not": {} },
+  "directiveForbiddenKey": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "_tag": { "enum": ["LandofileOverride"], "type": "string" },
+          "value": { "not": {} }
+        },
+        "required": ["_tag"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": { "_tag": { "enum": ["LandofileReset"], "type": "string" } },
+        "required": ["_tag"],
+        "type": "object"
+      },
+      { "not": {} }
+    ]
+  }
+}

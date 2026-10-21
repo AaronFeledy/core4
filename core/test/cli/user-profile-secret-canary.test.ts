@@ -22,8 +22,8 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -237,7 +237,7 @@ test.each([
       expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
       expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
       expect(result.cachedPlan).toEqual(result.plan);
-      expect(result.get.value).toBe(reference);
+      expect("value" in result.get ? result.get.value : undefined).toBe(reference);
       expect(appSteps(result.cachedPlan)).toEqual(result.buildIdentity);
       expect(result.buildIdentity).toHaveLength(1);
       expect(executions).toBe(1);

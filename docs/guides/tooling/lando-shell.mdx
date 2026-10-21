@@ -38,6 +38,10 @@ GROK_AGENT, AI_AGENT, AGENT, CI
 
 Forwarded markers are the lowest-precedence layer. Configured service env and explicit command env always win.
 
+Set app `agentEnv: false`, global `agentEnv.enabled: false`, or `LANDO_AGENT_ENV=0` to veto automatic forwarding. Global policy is read through `ConfigService.get` at invocation time under that service's existing semantics, not a promised disk reload. Vetoes do not scrub explicit service or command env or revoke a running command.
+
+Ordinary CLI commands discover current app configuration. An embedded App handle instead retains its captured Landofile for exec, deep info, and tooling. It does not observe a later app `agentEnv: false` edit. Re-resolve with `runtime.app(originalSelector)` or `resolveApp(originalSelector)` after edits; update an object selector too. The current process `LANDO_AGENT_ENV=0` remains an immediate veto for subsequent handle invocations.
+
 ## Drive an interactive service shell
 
 While a service shell is interactive: stdin is attached, stdout and stderr stream back, terminal resize (`SIGWINCH`) updates the running shell, and Ctrl-C cancels the exec stream.
