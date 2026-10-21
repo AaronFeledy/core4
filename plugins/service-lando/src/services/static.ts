@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
@@ -75,7 +76,11 @@ export const validateServer = (
   if ((SUPPORTED_STATIC_SERVERS as ReadonlyArray<string>).includes(server)) {
     return server as SupportedStaticServer;
   }
-  throw new Error(`Unsupported static server "${server}". ${REMEDIATION_SERVER(server)}`);
+  throw new ServiceConfigIssue(
+    ["type"],
+    `Unsupported static server "${server}".`,
+    REMEDIATION_SERVER(server),
+  );
 };
 
 const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.config as StaticFeatureConfig;

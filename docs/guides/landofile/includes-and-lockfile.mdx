@@ -204,6 +204,13 @@ includes:
 same way. A relative path that climbs out of the repository or package fails
 with `LandofileIncludeError`.
 
+Any include that can't be read, fetched, or that cycles back on itself fails
+the same way. `LandofileIncludeError` carries the `path` of the entry,
+`["includes", <index>]`, and the `file` that declares it, so a nested failure
+names `php.yml` rather than your root Landofile. `lando app:config:lint`
+reports the same thing as a `landofile.load` violation at that path with
+`source.file` set to the declaring file.
+
 ## Refresh and check the lockfile
 
 ```sh

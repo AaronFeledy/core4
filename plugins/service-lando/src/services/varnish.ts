@@ -112,7 +112,14 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
     if (backend.length === 0) {
       return Effect.fail(
         new ServiceTypeError({
-          message: `Service ${input.name} requires backend: <service> naming an app service to cache. Add backend: pointing at an existing service in this Landofile.`,
+          message: "A backend naming an app service to cache is required.",
+          issues: [
+            {
+              path: ["backend"],
+              message: "A backend naming an app service to cache is required.",
+              suggestion: "Add backend: pointing at an existing service in this Landofile.",
+            },
+          ],
           serviceType: id,
         }),
       );

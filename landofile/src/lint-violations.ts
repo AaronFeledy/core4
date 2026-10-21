@@ -3,7 +3,6 @@ import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintViolation,
-  LandofileShape,
   ServiceConfig,
   type ValidationIssuePath,
   formatValidationIssuePath,
@@ -11,12 +10,10 @@ import {
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import type { SchemaIssue } from "effect";
-import { Predicate, Result, Schema } from "effect";
+import { Predicate } from "effect";
 import type { ComposeRejectionMatch } from "./compose/rejections.ts";
-import { routeInputErrors } from "./route-normalize.ts";
 import { type SchemaIssueLeaf, plannerScopeSuggestion, schemaIssueLeaves } from "./validation.ts";
 
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
@@ -89,42 +86,6 @@ export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViol
 });
 const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
   path === rejectedPath || path.startsWith(`${rejectedPath}.`) || path.startsWith(`${rejectedPath}[`);
-
-export const routeViolations = (
-  landofile: LandofileShape,
-  options: { readonly deferExpressions: boolean },
-): ReadonlyArray<ConfigLintViolation> =>
-  [
-    ...Object.entries(landofile.services ?? {}).map(([name, service]) => ({
-      keyPath: `services.${name}.routes`,
-      routes: service.routes ?? [],
-    })),
-    ...Object.entries(landofile.proxy ?? {}).map(([name, routes]) => ({ keyPath: `proxy.${name}`, routes })),
-  ].flatMap(({ keyPath, routes }) =>
-    routes.flatMap((route, index) => {
-      const texts = typeof route === "string" ? [route] : [route.hostname, route.pathPrefix ?? ""];
-      if (options.deferExpressions && texts.some((text) => text.includes("{{") || text.includes("${")))
-        return [];
-      return routeInputErrors(route, { keyPath: `${keyPath}[${index}]` }).map((error) => ({
-        rule: "landofile.route",
-        severity: "error",
-        path: pathFromText(error.key),
-        message: error.message,
-        suggestion: error.remediation,
-      }));
-    }),
-  );
-
-export const violationsFor = (
-  parsed: unknown,
-  rejections: ReadonlyArray<ComposeRejectionMatch> = [],
-): ReadonlyArray<ConfigLintViolation> => {
-  const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
-  if (Result.isSuccess(decoded)) {
-    return routeViolations(decoded.success, { deferExpressions: true });
-  }
-  return violationsFromSchema(decoded.failure.issue, parsed, rejections);
-};
 
 export const violationsFromSchema = (
   issue: SchemaIssue.Issue,

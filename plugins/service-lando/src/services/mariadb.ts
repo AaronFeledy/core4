@@ -95,7 +95,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = mariadbCreds(ctx, ctx.serviceName, service);
-  assertListenerConfig(service, ctx.serviceName, MARIADB_LISTENER);
+  assertListenerConfig(service, MARIADB_LISTENER);
   const port = plannedPort(service, MARIADB_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -150,7 +150,7 @@ export const mariadbServiceType: ServiceType = {
   resolve: (input) => {
     const creds = mariadbCreds(input, input.name, input.service);
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, MARIADB_LISTENER);
+      assertListenerConfig(input.service, MARIADB_LISTENER);
       return {
         base: "lando",
         normalizedConfig: {

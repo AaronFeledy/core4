@@ -8,6 +8,7 @@ import {
   type PluginLoadError,
   type PluginManifestError,
   ServiceTypeCollisionError,
+  ServiceTypeError,
 } from "@lando/sdk/errors";
 import type { LogSource, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
 import type {
@@ -189,12 +190,15 @@ export const servicePlanError = (appRoot: string, serviceName: string, cause: un
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
     remediation: `Correct the configuration of service ${serviceName}.`,
     file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["services", serviceName],
-        cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-      ),
-    ],
+    issues:
+      cause instanceof ServiceTypeError && cause.issues !== undefined && cause.issues.length > 0
+        ? cause.issues.map((issue) => ({ ...issue, path: ["services", serviceName, ...issue.path] }))
+        : [
+            validationIssue(
+              ["services", serviceName],
+              cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
+            ),
+          ],
   });
 };
 

@@ -100,7 +100,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = mysqlCredsFor(appName, ctx.serviceName, service);
-  assertListenerConfig(service, ctx.serviceName, MYSQL_LISTENER);
+  assertListenerConfig(service, MYSQL_LISTENER);
   const port = plannedPort(service, MYSQL_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -150,15 +150,21 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
     if (id !== "mysql" && input.service.image !== undefined && input.service.image !== image) {
       return Effect.fail(
         new ServiceTypeError({
-          message:
-            "A versioned MySQL type cannot be combined with image. Remove image or use unversioned type: mysql for an unverified custom image.",
+          message: "A versioned MySQL type cannot be combined with image.",
+          issues: [
+            {
+              path: ["image"],
+              message: "A versioned MySQL type cannot be combined with image.",
+              suggestion: "Remove image or use unversioned type: mysql for an unverified custom image.",
+            },
+          ],
           serviceType: id,
         }),
       );
     }
     const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, MYSQL_LISTENER);
+      assertListenerConfig(input.service, MYSQL_LISTENER);
       return {
         base: "lando",
         normalizedConfig: {
