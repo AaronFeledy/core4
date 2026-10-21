@@ -28,7 +28,9 @@ Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `global
 
 The global app runs on the host provider: `LANDO_PROVIDER`, else `defaultProviderId` from your config, else `lando`. After `lando setup --provider=docker`, Traefik, Mailpit, and the ssh-agent sidecar run on Docker. A Landofile `provider:` moves only that app. An app on a different provider still gets its routes through host-published ports, but it cannot reach same-runtime features such as Mailpit SMTP over `mailpit.global.internal` or the ssh-agent runtime volume.
 
-Lando never moves a running global app. If it already runs on one provider and the host provider changes, creation fails with `AppPlacementError`, the same placement rule used by user apps. Stop dependent apps, run `lando global:destroy --yes` (it targets the existing provider), then retry. If multiple providers hold applied global plans, use `lando global:destroy --provider=<old> --yes` to retire one copy explicitly. Or switch back with `lando setup --provider=<old>`, after unsetting a conflicting `LANDO_PROVIDER`. Observation and teardown follow the existing provider.
+Only `lando setup --provider=<new>` switches an existing global app. It refuses while routed apps or apps requiring global services are running on the old provider. Run `lando poweroff --yes`, then retry setup. The switch removes old global containers and applied state, keeps volumes and router dynamic configuration, and reports user apps still applied on the old provider. It never copies data volumes.
+
+Other creation commands fail with `AppPlacementError` when desired and applied placement differ. If multiple providers hold applied global plans, use `lando global:destroy --provider=<old> --yes` to retire one copy explicitly. Observation and teardown follow the existing provider.
 
 ## Override a bundled service
 

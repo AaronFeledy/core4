@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import {
   CertificateAuthority,
@@ -13,6 +13,7 @@ import {
   Downloader,
   EventService,
   FileSyncEngine,
+  GlobalAppService,
   HostProxyService,
   InteractionService,
   type InteractionServiceShape,
@@ -42,10 +43,12 @@ import {
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
+  AppId,
   type AppPlan,
   GlobalConfig,
   ProviderId,
   type ProviderSetupPlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import {
   TestFileSyncEngine,
@@ -1125,6 +1128,105 @@ describe("meta:setup command", () => {
       };
       expect(readiness.status).toBe("failed");
       expect(readiness.steps.find((step) => step.id === "ca")?.status).toBe("failed");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("setup switches global placement before router setup and reports apps retained on the old provider", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-switch-command-"));
+    const root = AbsolutePath.make(join(userDataRoot, "global"));
+    const globalPlan: AppPlan = {
+      id: AppId.make("global"),
+      name: "global",
+      slug: "global",
+      root,
+      identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
+      provider: ProviderId.make("podman"),
+      services: {},
+      routes: [],
+      networks: [],
+      stores: [],
+      fileSync: [],
+      extensions: {},
+      metadata: { resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"), source: "test", runtime: 4 },
+    };
+    const userPlan: AppPlan = {
+      ...globalPlan,
+      id: AppId.make("left-behind"),
+      root: AbsolutePath.make(join(userDataRoot, "user")),
+      identity: { appRoot: AbsolutePath.make(join(userDataRoot, "user")), ownerKey: "user" },
+    };
+    const calls: string[] = [];
+    let globalApplied = true;
+    const oldProvider = {
+      ...TestRuntimeProvider,
+      id: "podman",
+      appliedPlans: Effect.succeed([globalPlan, userPlan]),
+      list: () => Effect.succeed([]),
+      destroy: () =>
+        Effect.sync(() => {
+          calls.push("retire");
+          globalApplied = false;
+          return { kind: "destroyed" as const };
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      appliedPlansFor: () => Effect.succeed(globalApplied ? [globalPlan] : []),
+      select: (target?: AppPlan | ProviderId) =>
+        Effect.succeed(
+          (typeof target === "string" ? target : target?.provider) === "podman"
+            ? oldProvider
+            : { ...TestRuntimeProvider, id: "lando" },
+        ),
+    };
+    const globalApp = GlobalAppService.of({
+      id: "global",
+      root: Effect.succeed(root),
+      paths: Effect.succeed({
+        root,
+        distLandofile: AbsolutePath.make(join(root, ".lando.dist.yml")),
+        userLandofile: AbsolutePath.make(join(root, ".lando.yml")),
+      }),
+      ensureRoot: Effect.void,
+      ensureRunning: () => Effect.succeed([]),
+      ensureUserLandofile: Effect.die("unused"),
+      regenerateDist: () => Effect.die("unused"),
+    });
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provideService(GlobalAppService, globalApp),
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: {
+                  ...makeTestRouterService(),
+                  setup: () =>
+                    Effect.sync(() => {
+                      calls.push("router");
+                    }),
+                },
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+      expect(calls).toEqual(["retire", "router"]);
+      expect(result).toMatchObject({
+        providerSwitch: {
+          fromProviderId: "podman",
+          toProviderId: "lando",
+          remainingApps: [{ id: "left-behind" }],
+        },
+      });
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }

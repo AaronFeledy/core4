@@ -80,21 +80,31 @@ Placement failures report `code: AppPlacementError` at the top level for start, 
 
 ## Switch providers while the global app is running
 
-Lando never moves the global app on its own. If the router already runs on one provider and you change the host provider (for example `lando setup --provider=docker` after it started on `lando`), `lando global:install`, `global:start`, `global:restart`, `global:rebuild`, and any `lando start` that publishes routes fail with `AppPlacementError`.
+Use setup for a deliberate switch. Start, restart, rebuild, and doctor never move global services to another provider.
 
-1. Stop the apps that use the router:
-
-```sh
-lando stop
-```
-
-2. Destroy the global app. The command targets the provider where the global app actually runs:
+1. Stop apps before switching:
 
 ```sh
-lando global:destroy --yes
+lando poweroff --yes
 ```
 
-3. Retry the command that failed. The global app comes up on the new provider.
+2. Run setup on the new provider:
+
+```sh
+lando setup --provider=docker --yes --no-interactive
+```
+
+Setup refuses with `AppPlacementError` and lists running apps that use routes or require global services on the old provider. Stop those apps and retry. Once none are running, setup retires the old global containers and applied state, keeps its volumes and router dynamic configuration, and starts global services on the selected provider.
+
+3. Read setup's list of user apps still applied on the old provider. From each app directory, retire the old realization and start on the new provider:
+
+```sh
+lando destroy --provider=lando --yes
+lando start --provider=docker
+lando info --format=json
+```
+
+Data volumes stay on the old provider. Setup does not copy their contents. Export data before switching if the new realization needs it.
 
 Or switch back to the provider that still holds it. If `LANDO_PROVIDER` picked the new provider, unset it first, or every later command picks it again:
 

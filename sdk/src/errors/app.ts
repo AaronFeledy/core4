@@ -6,6 +6,11 @@ export class AppPlacementError extends Schema.TaggedError<AppPlacementError>()("
   app: AppRef.annotate({ description: "App whose canonical root already has an applied realization." }),
   desiredProviderId: Schema.String.annotate({ description: "Provider selected for creation." }),
   realizedProviderId: Schema.String.annotate({ description: "Provider holding the applied plan." }),
+  runningApps: Schema.optional(
+    Schema.Array(AppRef).annotate({
+      description: "Running dependent apps that block an explicit setup provider switch.",
+    }),
+  ),
   message: Schema.String.annotate({ description: "Human-readable placement mismatch." }),
   remediation: Schema.String.annotate({
     description: "Commands to retire or retain the existing realization.",

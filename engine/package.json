@@ -96,6 +96,7 @@
     "./operations/service-readiness": "./src/operations/service-readiness.ts",
     "./operations/share": "./src/operations/share.ts",
     "./operations/snapshot-gc": "./src/operations/snapshot-gc.ts",
+    "./operations/setup-provider-switch": "./src/operations/setup-provider-switch.ts",
     "./operations/start": "./src/operations/start.ts",
     "./operations/start-incomplete-notice": "./src/operations/start-incomplete-notice.ts",
     "./operations/stop": "./src/operations/stop.ts",
