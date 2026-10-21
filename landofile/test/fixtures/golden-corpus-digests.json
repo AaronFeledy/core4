@@ -109,6 +109,10 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/marker-warning",
+      "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
+    },
+    {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
       "invalid": {
         "status": "invalid",
@@ -303,6 +307,14 @@
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/healthcheck-shorthand",
       "digest": "6e4f09c3c3bf8bfdfd3a0a7a657d15bf3a0ea35939631c0e86f63fb406d99fea"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-http",
+      "digest": "0b143156fc7568cac70514a8958228ffab1cf5da6d1530def5141ffa70890a79"
+    },
+    {
+      "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-tcp",
+      "digest": "7dd699823f33172d60df5fa568918c5f6d5a0e8737b72d2efe99b26f07d9c2cf"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",

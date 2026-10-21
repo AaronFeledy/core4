@@ -57,6 +57,7 @@ import {
 } from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
+import { validateAuthoredHealthchecks } from "./authored-healthcheck.ts";
 import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -125,6 +126,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     capabilities: providerCapabilities,
     ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
   });
+  yield* validateAuthoredHealthchecks(authoredLandofile, landofilePath);
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);

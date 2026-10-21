@@ -69,6 +69,8 @@ describe("lintLandofile", () => {
     expect(result.violations).toEqual([
       {
         path: ["services", "web", "routes", 0],
+        rule: "landofile.route",
+        severity: "error",
         message: expect.any(String),
         suggestion: expect.any(String),
         scope: "effective",
@@ -78,6 +80,8 @@ describe("lintLandofile", () => {
       },
       {
         path: ["proxy", "api", 1],
+        rule: "landofile.route",
+        severity: "error",
         message: expect.any(String),
         suggestion: expect.any(String),
         scope: "effective",

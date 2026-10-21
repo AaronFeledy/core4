@@ -56,6 +56,10 @@ the app's forwarding policy, and `forwarded` lists host-present names that
 pass the allowlist and value guards, never their values. Service and explicit
 command env still take precedence. See [the built-in markers](../tooling/lando-shell.mdx).
 
+CLI invocations load current app configuration. A retained library App handle keeps its captured plan and Landofile for exec, deep info, and tooling; even an omitted `agentEnv` uses that snapshot's default policy. A later app `agentEnv: false` edit is invisible to the old handle. Re-resolve with `runtime.app(originalSelector)` or `resolveApp(originalSelector)` to capture it, supplying an updated object for shape selectors. Provider status stays live and shallow info performs no Landofile load for a supplied target.
+
+Invocation-time global policy through `ConfigService.get("agentEnv")` and current `LANDO_AGENT_ENV=0` still veto automatic forwarding. Global-config disk reload is not promised. A veto does not scrub explicit service/command env or revoke a running command.
+
 ## How context reaches a container
 
 A host script or agent can ask the CLI for structured app state from outside

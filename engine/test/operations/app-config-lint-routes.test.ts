@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { ConfigLintResult } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 
@@ -25,9 +26,33 @@ test.each([
     );
     // Then
     expect(result.valid).toBe(valid);
+    expect(Schema.is(ConfigLintResult)(result)).toBe(true);
     expect(result.violations.map(({ path }) => path)).toEqual(
       field === undefined ? [] : [["services", "web", "routes", 0, field]],
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([true, false])("preserves healthcheck warnings with route validity %s", async (valid) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-route-lint-warning-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: routes\nservices:\n  web:\n    type: nginx\n    healthcheck: [CMD, echo]\n    routes:\n      - hostname: "{{ app.name }}.lndo.site${valid ? "" : ":8080"}"\n`,
+    );
+    // When
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(result.valid).toBe(valid);
+    expect(result.violations.map(({ rule, severity }) => ({ rule, severity }))).toEqual([
+      { rule: "healthcheck.bare-compose-marker", severity: "warning" },
+      ...(valid ? [] : [{ rule: "landofile.route", severity: "error" } as const]),
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

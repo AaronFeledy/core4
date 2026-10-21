@@ -227,7 +227,7 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
   if (target?.plan !== undefined) {
     plan = target.plan;
     if (options?.deep === true) {
-      landofile = yield* loadUserLandofileAt(landofileService, target.root);
+      landofile = target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root));
     }
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
