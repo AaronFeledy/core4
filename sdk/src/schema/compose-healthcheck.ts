@@ -223,8 +223,10 @@ const HealthcheckAccepted = Schema.Union([
   Schema.Array(Schema.String).check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
   ComposeHealthcheckAccepted,
 ]).annotate({
+  identifier: "HealthcheckInput",
   description: HEALTHCHECK_FIELD_DESCRIPTION,
   expected: "false, a command string, an argv array, or a healthcheck object",
+  message: "Expected false, a command string, an argv array, or a healthcheck object",
 });
 
 export const HealthcheckInput = HealthcheckAccepted.pipe(

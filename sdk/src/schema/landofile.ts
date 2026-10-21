@@ -85,7 +85,11 @@ export const RouteObjectInput = Schema.Struct({
 });
 export type RouteObjectInput = typeof RouteObjectInput.Type;
 
-export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]);
+export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]).annotate({
+  identifier: "RouteInput",
+  expected: "a non-empty route shorthand string or route object",
+  message: "Expected a non-empty route shorthand string or route object",
+});
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */
@@ -638,7 +642,12 @@ export const AppMountInput = Schema.Union([
     }),
   ),
 ])
-  .annotate({ description: APP_MOUNT_DESCRIPTION })
+  .annotate({
+    identifier: "AppMountInput",
+    description: APP_MOUNT_DESCRIPTION,
+    expected: "false, a destination string, or an app-mount object",
+    message: "Expected false, a destination string, or an app-mount object",
+  })
   .pipe(
     Schema.decodeTo(
       AppMountCanonical,

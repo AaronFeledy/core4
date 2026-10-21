@@ -98,6 +98,10 @@ const LogSourceInputFields = Schema.Struct({
     description:
       "Whether lines carry parseable leading timestamps so `--since` filtering can apply; defaults to false.",
   }),
+}).annotate({
+  identifier: "LogSourceInput",
+  expected: "a log source object with an absolute path",
+  message: "Expected a log source object with an absolute path",
 });
 
 /**
