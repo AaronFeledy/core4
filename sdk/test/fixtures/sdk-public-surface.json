@@ -16,10 +16,10 @@
   ],
   "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
   "serviceTags": {
-    "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "AppPlanner": [
       "plan:(landofile:LandofileShape,providerCapabilities:ProviderCapabilities) => Effect.Effect<AppPlan,AppPlannerError>"
     ],
+    "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "BuildOrchestrator": [
       "build:(plan:AppPlan,options?:BuildOptions) => Effect.Effect<AppPlan,BuildError>",
       "buildApp:(plan:AppPlan,options?:BuildAppOptions) => Effect.Effect<void,BuildAppError>"
@@ -51,6 +51,9 @@
     ],
     "ConfigTranslatorRegistry": [
       "list:Effect.Effect<ReadonlyArray<ConfigTranslatorShape>,ConfigTranslatorConflictError|PluginDescriptorMismatchError|PluginLoadError,never>"
+    ],
+    "ContainerHelperAssets": [
+      "resolve:(target:ContainerHelperTarget) => Effect.Effect<ContainerHelperArtifact,ContainerHelperUnavailableError>"
     ],
     "DataMover": [
       "findOrphanedSnapshots:Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,DataMoverError>",
@@ -159,7 +162,6 @@
       "select:<A extends PromptScalar>(spec:SelectSpec<A>) => Effect.Effect<A,InteractionError,Scope.Scope>"
     ],
     "LandofileService": ["discover:Effect.Effect<LandofileShape,LandofileServiceError>"],
-    "LogFileHelperAssets": ["payloads:Effect.Effect<Readonly<Record<string,Uint8Array>>,never>"],
     "Logger": [
       "debug:(message:string,data?:Readonly<Record<string,unknown>>) => Effect.Effect<void,EventError>",
       "error:(message:string,data?:Readonly<Record<string,unknown>>) => Effect.Effect<void,EventError>",
@@ -433,7 +435,14 @@
       "primaryFailureReason",
       "projectEncodedResult"
     ],
-    "./database-creds": ["DATABASE_FAMILY_ENV_KEYS", "databaseEnvCreds", "firstEnv"],
+    "./database-creds": [
+      "DATABASE_FAMILY_DEFAULT_PORTS",
+      "DATABASE_FAMILY_ENV_KEYS",
+      "DATABASE_PORT_ENV_KEY",
+      "databaseEnvCreds",
+      "databaseEnvPort",
+      "firstEnv"
+    ],
     "./digest": ["canonicalJson", "sha256Hex"],
     "./docs/components": [
       "AxisToken",
@@ -521,6 +530,7 @@
       "ConfigTranslateError",
       "ConfigTranslateNoTranslatorsError",
       "ConfigTranslatorConflictError",
+      "ContainerHelperUnavailableError",
       "DataChecksumMismatchError",
       "DataEndpointUnsupportedError",
       "DataSourceOutsideRootError",
@@ -894,6 +904,7 @@
     "./fuzzy": ["bestFuzzy", "rankFuzzy"],
     "./landofile": [
       "ComposeDispositionMatrixError",
+      "GENERIC_FLOW_MAPPING_REMEDIATION",
       "LANDOFILE_LAYER_ORDER",
       "LANDOFILE_LEADING_COMMENT_BLOCKS",
       "LANDOFILE_MERGE_DIRECTIVE",
@@ -910,9 +921,12 @@
       "decodeLandofileAuthoringLayer",
       "decodeLandofileLayer",
       "detectLandofileTags",
+      "directivePathProblem",
       "emitLandofileYaml",
       "emitLandofileYamlEither",
+      "encodeLandofileSourceValue",
       "expandRouteSchemes",
+      "flowMappingRemediation",
       "isLandofileOverride",
       "isLandofileReset",
       "isLegacyTagged",
@@ -922,6 +936,7 @@
       "listLayerMergeRules",
       "mergeLandofiles",
       "mergeValues",
+      "mergeValuesWithOrigins",
       "override",
       "parseLandofile",
       "parseLegacyLandofile",
@@ -937,8 +952,11 @@
       "routeMatchKey",
       "splitComposeCommand",
       "validateConfigTranslateInput",
-      "validateConfigTranslateResult"
+      "validateConfigTranslateResult",
+      "valueOriginAt",
+      "withValueOrigins"
     ],
+    "./landofile/flow-mapping-remediation": ["GENERIC_FLOW_MAPPING_REMEDIATION", "flowMappingRemediation"],
     "./log-follow": [
       "DEFAULT_MAX_LINE_BYTES",
       "DEFAULT_MAX_READ_BYTES",
@@ -1048,6 +1066,7 @@
       "AppIdentity",
       "AppLabelDefaults",
       "AppLifecycleEventName",
+      "AppMountInput",
       "AppMountPlan",
       "AppPlan",
       "AppRef",
@@ -1076,8 +1095,10 @@
       "COMPOSE_TOP_LEVEL_KEYS",
       "CONTAINER_USER_PATTERN",
       "CORE_SERVICE_ENV_KEYS",
+      "CaInput",
       "CertificateAuthorityContribution",
       "CertificatePlan",
+      "CertsInput",
       "CheckResult",
       "ChoicesFrom",
       "CleanupProps",
@@ -1157,6 +1178,10 @@
       "ConfigTranslateSourceId",
       "ConfigTranslateSpan",
       "ConfigTranslatorContribution",
+      "ContainerHelperArch",
+      "ContainerHelperArtifact",
+      "ContainerHelperDigest",
+      "ContainerHelperTarget",
       "ContainerUser",
       "ContentSource",
       "ContributionRef",
@@ -1295,6 +1320,9 @@
       "LandofileReset",
       "LandofileResetWire",
       "LandofileShape",
+      "LandofileSourceDocument",
+      "LandofileSourceProjection",
+      "LandofileSourceValue",
       "LayerMergeRule",
       "LifecycleCommandId",
       "LocalStackServiceConfig",
@@ -1708,6 +1736,7 @@
       "ConfigService",
       "ConfigTranslator",
       "ConfigTranslatorRegistry",
+      "ContainerHelperAssets",
       "DataMover",
       "Dataset",
       "DeprecationService",
@@ -1720,7 +1749,6 @@
       "HostProxyService",
       "InteractionService",
       "LandofileService",
-      "LogFileHelperAssets",
       "Logger",
       "ManagedFileService",
       "ManagedFileTransactionGuard",
@@ -1839,6 +1867,7 @@
       "runProviderContract",
       "runProviderContractMatrix",
       "runProviderDataPlaneContract",
+      "runProviderStartRetentionContract",
       "runProviderVolumeCreationContract",
       "runRecipeDecomposerContractSuite",
       "runRedactionContract",

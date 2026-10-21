@@ -204,12 +204,12 @@ export const materializeServiceScopeSites = <T extends object>(
  * read. A computed member (`services[app.name]`) cannot be ordered ahead of
  * time, so it fails at the first such site.
  */
-const referencedServices = (
-  name: string,
+export const referencedServices = (
+  pathPrefix: ValidationIssuePath,
   deferredSites: DeferredExpressionSites,
   landofilePath: string,
 ): Result.Result<ReadonlySet<string>, ConfigExpressionError> => {
-  const prefix = `${deferredSiteKey(["services", name])}.`;
+  const prefix = pathPrefix.length === 0 ? "" : `${deferredSiteKey(pathPrefix)}.`;
   const references = new Set<string>();
   for (const { path, expression } of deferredSites) {
     const key = deferredSiteKey(path);
@@ -250,13 +250,15 @@ export const orderServicesByCredsReferences = (input: {
   readonly landofile: LandofileShape;
   readonly deferredSites: DeferredExpressionSites;
   readonly landofilePath: string;
-}): Result.Result<ReadonlyArray<string>, ConfigExpressionError> => {
+}): Result.Result<
+  { readonly order: ReadonlyArray<string>; readonly references: ReadonlyMap<string, ReadonlySet<string>> },
+  ConfigExpressionError
+> => {
   const names = Object.keys(input.landofile.services ?? {});
-  if (input.deferredSites.length === 0) return Result.succeed(names);
   const declared = new Set(names);
   const pending = new Map<string, Set<string>>();
   for (const name of names) {
-    const references = referencedServices(name, input.deferredSites, input.landofilePath);
+    const references = referencedServices(["services", name], input.deferredSites, input.landofilePath);
     if (Result.isFailure(references)) return Result.fail(references.failure);
     pending.set(name, new Set([...references.success].filter((reference) => declared.has(reference))));
   }
@@ -287,7 +289,7 @@ export const orderServicesByCredsReferences = (input: {
     ordered.push(next);
     resolved.add(next);
   }
-  return Result.succeed(ordered);
+  return Result.succeed({ order: ordered, references: pending });
 };
 
 const serviceCredsScopeByPlan = new WeakMap<AppPlan, ServiceCredsScope>();

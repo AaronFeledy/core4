@@ -79,7 +79,8 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--source` | Inspect raw layers, authored composition, or resolved config. (one of `raw`, `merged`, `resolved`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:edit`
 
@@ -135,7 +136,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:translate`
 
@@ -231,7 +232,7 @@ Flags:
 
 ## `lando app:includes:verify`
 
-Verify the includes lockfile matches the resolved tree without updating it.
+Verify the includes lockfile pins every remote include and the pinned content matches, without updating it.
 
 ## `lando app:info`
 
@@ -569,7 +570,7 @@ Flags:
 | `--recipe` | Recipe to apply. |
 | `--registry-url` | Override the recipe registry base URL (for --source=registry). |
 | `--source` | Init source id (cwd, git, tarball, npm, registry, template). |
-| `--url` | Remote recipe source URL (for --source=git/tarball). |
+| `--url` | Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA). |
 | `--yes, -y` | Accept every prompt's default without asking. |
 
 ## `lando apps:list`
@@ -755,7 +756,7 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:doctor`
 
@@ -800,7 +801,7 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:edit`
 
@@ -832,7 +833,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:unset`
 

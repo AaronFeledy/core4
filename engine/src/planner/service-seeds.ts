@@ -1,8 +1,14 @@
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
-import type { LandofileShape, ProviderCapabilities, ServiceConfig, ServiceCreds } from "@lando/sdk/schema";
+import type {
+  LandofileShape,
+  LogSource,
+  ProviderCapabilities,
+  ServiceConfig,
+  ServiceCreds,
+} from "@lando/sdk/schema";
 import { ServiceName, validationIssue } from "@lando/sdk/schema";
 import type { FileSystem, PluginRegistry, ServiceTypeInput } from "@lando/sdk/services";
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Iterable, Result } from "effect";
 import { isComposeBuild } from "../services/compose-build-artifact.ts";
 import { type UserAppDefaults, withUserAppDefaults } from "./app-defaults.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
@@ -14,6 +20,8 @@ import {
   serviceScopeContext,
 } from "./landofile-scopes.ts";
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
+import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
+import { validateServiceSeed } from "./seed-validation.ts";
 import {
   loadServiceTypeWithVersion,
   resolvePinnedArtifactTag,
@@ -73,6 +81,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
+        remediation: "Remove image or replace build with a Lando build-script block.",
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -89,11 +98,14 @@ const resolveSeed = Effect.fnUntraced(function* (
     yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
   const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
   const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
-    Effect.mapError((error) =>
-      error instanceof ServiceTypeCollisionError
-        ? serviceTypeCollision(appRoot, name, error)
-        : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
-    ),
+    Effect.mapError((error) => {
+      if (error instanceof ServiceTypeCollisionError) return serviceTypeCollision(appRoot, name, error);
+      // A registered type that fails to load is a plugin problem, not an unknown type.
+      const baseId = serviceTypeId.split(":")[0];
+      return registeredServiceTypeIds.some((id) => id === serviceTypeId || id === baseId)
+        ? servicePlanError(appRoot, name, error)
+        : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds);
+    }),
   );
   const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
   const pinnedService: ServiceConfig =
@@ -144,11 +156,22 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
-  const topLevelEnvFiles = yield* loadTopLevelEnvFiles({
+  const issues: PlannerIssue[] = [];
+  const record = (error: LandofileValidationError) =>
+    issues.push(
+      ...error.issues.map((issue) =>
+        attributePlannerIssue(landofile, { ...issue, rule: "landofile.service" }),
+      ),
+    );
+  const loadedTopLevelEnvFiles = yield* loadTopLevelEnvFiles({
     appRoot,
     envFiles: landofile.env_file ?? [],
     fileSystem,
-  });
+  }).pipe(Effect.result);
+  if (Result.isFailure(loadedTopLevelEnvFiles)) record(loadedTopLevelEnvFiles.failure);
+  const topLevelEnvFiles: TopLevelEnvFiles = Result.isSuccess(loadedTopLevelEnvFiles)
+    ? loadedTopLevelEnvFiles.success
+    : { environment: {}, inputs: [] };
   // A service type publishes credentials while it resolves, and another
   // service may read them through services.<name>.creds.*, so services resolve
   // in reference order. Each one's deferred sites are evaluated against the
@@ -163,8 +186,16 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     }),
   );
   const serviceCredsScope: Record<string, { readonly creds?: ServiceCreds }> = {};
-  const resolvedByName = new Map<string, ResolvedServiceSeed>();
-  for (const name of order) {
+  const resolvedByName = new Map<
+    string,
+    ResolvedServiceSeed & { readonly logSources: ReadonlyArray<LogSource> }
+  >();
+  const unavailable = new Set<string>();
+  for (const name of order.order) {
+    if (Iterable.some(order.references.get(name) ?? [], (ref) => unavailable.has(ref))) {
+      unavailable.add(name);
+      continue;
+    }
     const authoredService = landofile.services?.[ServiceName.make(name)];
     if (authoredService === undefined) continue;
     const service = yield* materializeServiceScopeSites({
@@ -179,10 +210,21 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
         services: serviceCredsScope,
       }),
     });
-    const seed = yield* resolveSeed(input, topLevelEnvFiles, name, service);
+    const resolved = yield* resolveSeed(input, topLevelEnvFiles, name, service).pipe(
+      Effect.map(Result.succeed),
+      Effect.catchTag("LandofileValidationError", (error) => Effect.succeed(Result.fail(error))),
+    );
+    if (Result.isFailure(resolved)) {
+      unavailable.add(name);
+      record(resolved.failure);
+      continue;
+    }
+    const seed = resolved.success;
     const creds = seed.resolution.normalizedConfig.creds;
     serviceCredsScope[name] = creds === undefined ? {} : { creds };
-    resolvedByName.set(name, seed);
+    const checked = yield* validateServiceSeed(seed, appRoot, input.landofilePath);
+    for (const error of checked.errors) record(error);
+    resolvedByName.set(name, { ...seed, logSources: checked.logSources });
   }
   // Seeds keep declaration order; only resolution ran in reference order.
   const services = Object.keys(landofile.services ?? {}).flatMap((name) => {
@@ -190,5 +232,5 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     return seed === undefined ? [] : [seed];
   });
   const credsScope: ServiceCredsScope = serviceCredsScope;
-  return { services, topLevelEnvFiles, serviceCredsScope: credsScope };
+  return { services, topLevelEnvFiles, serviceCredsScope: credsScope, issues, unavailable };
 });

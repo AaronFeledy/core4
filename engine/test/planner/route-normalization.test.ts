@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Layer, Result, Schema } from "effect";
 
-import { RouteInputError } from "@lando/sdk/errors";
+import { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -122,7 +122,7 @@ test("rejects conflicting proxy and service declarations with authored source ke
   expect(result.failure).toBeInstanceOf(RouteInputError);
   expect(result.failure).toMatchObject({ key: "proxy.web[0]" });
   expect(result.failure.message).toContain("services.web.routes[0]");
-  expect(result.failure).not.toHaveProperty("file");
+  expect(result.failure).toHaveProperty("file");
 });
 
 test("dedupes equivalent proxy and service declarations without duplicate service refs", async () => {
@@ -164,7 +164,7 @@ test("carries filters onto RoutePlan unchanged and omits the key when empty", as
   expect(result.routes[1]).not.toHaveProperty("filters");
 });
 
-test("rejects invalid route shorthand with RouteInputError before any provider action", async () => {
+test("rejects invalid route shorthand with field issues before any provider action", async () => {
   // Given: only capabilities are supplied; no provider action service exists in the planner layer.
   const input = {
     name: "routes-app",
@@ -175,8 +175,8 @@ test("rejects invalid route shorthand with RouteInputError before any provider a
   // Then
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isSuccess(result)) throw new Error("expected route rejection");
-  expect(result.failure).toBeInstanceOf(RouteInputError);
-  expect(result.failure).toMatchObject({ key: "services.web.routes[0]" });
+  expect(result.failure).toBeInstanceOf(LandofileValidationError);
+  expect(result.failure).toMatchObject({ issues: [{ path: ["services", "web", "routes", 0] }] });
 });
 
 test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
@@ -191,8 +191,8 @@ test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
   // Then
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isSuccess(result)) throw new Error("expected route rejection");
-  expect(result.failure).toBeInstanceOf(RouteInputError);
-  expect(result.failure).toMatchObject({ key: "proxy.web[1]" });
+  expect(result.failure).toBeInstanceOf(LandofileValidationError);
+  expect(result.failure).toMatchObject({ issues: [{ path: ["proxy", "web", 1] }] });
 });
 
 test.each([
@@ -218,8 +218,10 @@ test("rejects a combined object hostname before provider action", async () => {
   // Then
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result)) {
-    expect(result.failure).toBeInstanceOf(RouteInputError);
-    expect(result.failure).toMatchObject({ key: "services.web.routes[0].hostname" });
+    expect(result.failure).toBeInstanceOf(LandofileValidationError);
+    expect(result.failure).toMatchObject({
+      issues: [{ path: ["services", "web", "routes", 0, "hostname"] }],
+    });
   }
 });
 
@@ -234,8 +236,10 @@ test("rejects expression-produced template text instead of evaluating it again",
   // Then
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result)) {
-    expect(result.failure).toBeInstanceOf(RouteInputError);
-    expect(result.failure).toMatchObject({ key: "services.web.routes[0].hostname" });
+    expect(result.failure).toBeInstanceOf(LandofileValidationError);
+    expect(result.failure).toMatchObject({
+      issues: [{ path: ["services", "web", "routes", 0, "hostname"] }],
+    });
     expect(result.failure.message).toContain("{{ app.name }}");
   }
 });

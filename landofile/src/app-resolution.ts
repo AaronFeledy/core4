@@ -12,10 +12,10 @@ import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
 
 export type { UserLandofileError };
 
-import { buildLandofileLoadScope } from "./compile.ts";
 import { compileLandofileFile } from "./file-compile.ts";
 import { hasResolvableIncludes, resolveLandofileIncludes } from "./includes.ts";
 import { landofileLayerPaths } from "./layers.ts";
+import { buildLandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { findDiscoveredLandofilePath, loadLandofileLayers } from "./service.ts";
 
@@ -178,18 +178,7 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
       )
         ? loadLandofileLayers(appRoot, filePath, options.inputs)
         : compileLandofileFile(filePath, undefined, options.inputs).pipe(
-            Effect.flatMap(({ landofile, scope: loadScope }) =>
-              resolveLandofileIncludes({
-                landofile,
-                loadScope,
-                appRoot,
-                sourcePath: filePath,
-                ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
-                ...(options.inputs?.stateStore === undefined
-                  ? {}
-                  : { stateStore: options.inputs.stateStore }),
-              }),
-            ),
+            Effect.map(({ landofile }) => landofile),
           )
     ).pipe(
       Effect.tap(assertUserAppIdNotReserved),

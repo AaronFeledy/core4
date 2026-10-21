@@ -15,8 +15,8 @@ Each release produces the compiled binaries in §13.5 and the `@lando/core` libr
 
 | # | Stage | Binary | Library |
 |---|---|---|---|
-| 1 | Codegen through `scripts/codegen.ts` | Yes | Yes |
-| 2 | Deprecation gate from §18.7 | Yes | Yes |
+| 1 | Codegen through `scripts/codegen.ts`, followed by the deprecation gate from §18.7 | Yes | Yes |
+| 2 | Static container-helper checks and builds through `bun run scripts/build-container-helper.ts --test` | Yes | Yes |
 | 3 | Type-check | Yes | Yes |
 | 4 | Lint and format checks | Yes | Yes |
 | 5 | Test gates from §13 | Yes | Yes |
@@ -30,7 +30,7 @@ Each release produces the compiled binaries in §13.5 and the `@lando/core` libr
 | 13 | SBOM, provenance, and cosign signatures | Yes | Yes |
 | 14 | GitHub Release upload and npm publish | Yes | Yes |
 
-Stages MAY be skipped only where the artifact-family columns permit and MUST NOT be reordered. Any failure halts the pipeline and surfaces a tagged release error with stage, target, commit, workflow, and remediation.
+Stages MAY be skipped only where the artifact-family columns permit and MUST NOT be reordered. The container-helper stage MUST precede typecheck, tests, library bundling, and compilation. It runs Go vet, tests, and static Linux x64/arm64 builds inside a Lando builder container, with no host Go requirement. A non-empty `LANDO_CONTAINER_HELPER_DIR` MAY replace that build with prebuilt helpers from the same commit, such as the CI `container-helper` artifact; the stage MUST log the selected directory. Any failure halts the pipeline and surfaces a tagged release error with stage, target, commit, workflow, and remediation.
 
 The orchestrator MAY use `Bun.$` for shell-shaped work and `Bun.spawn` for argv-precise tools (§3.4). Every release-shaped main-binary compile MUST use `scripts/build-compiled-binary.ts`; helper binaries without OpenTUI MAY use plain programmatic `Bun.build({ compile })`.
 
@@ -82,7 +82,7 @@ Pin manifests and generated workflows remain committed. Pure build products are 
 
 ### 17.3 Asset embedding
 
-Build-known assets MUST be embedded and runtime-installed plugins remain external validated modules (§9.7). Small JS-shaped data uses static JSON or generated TypeScript imports; binary data and file trees use `Bun.embeddedFiles`. `EmbeddedAssetService` presents the same JSON, byte, and virtual-filesystem contract in compiled and library modes, with library mode reading package assets from disk. Runtime code MUST NOT walk `node_modules` or rely on `import.meta.dir` for assets expected inside the compiled binary.
+Build-known assets MUST be embedded and runtime-installed plugins remain external validated modules (§9.7). The in-container helper is a build-known asset: one statically linked Go executable per Linux architecture (x64, arm64), built with Lando from a pinned builder image (§2.1) and embedded gzip-compressed and named by its SHA-256. A compile refuses helper binaries older than their sources; prebuilt helpers named by `LANDO_CONTAINER_HELPER_DIR` are trusted as given, so release builds take that path only for helpers built from the same sources. The binary extracts and verifies the matching executable under the user cache on first use; it never reads helper sidecars next to the executable. `ContainerHelperAssets` resolves the helper directly rather than through `EmbeddedAssetService`, because it needs an executable file on disk, not bytes. Small JS-shaped data uses static JSON or generated TypeScript imports; binary data and file trees use `Bun.embeddedFiles`. `EmbeddedAssetService` presents the same JSON, byte, and virtual-filesystem contract in compiled and library modes, with library mode reading package assets from disk. Runtime code MUST NOT walk `node_modules` or rely on `import.meta.dir` for assets expected inside the compiled binary.
 
 The main-binary build applies a target-specific OpenTUI rule: exactly one of the eight catalog native packages resolves normally for each of the six release targets (§13.5), while the other seven exact package-root imports resolve to generated throwing stubs. `@opentui/core/testing`, relative imports, and unknown imports MUST remain untouched. The relocated binary MUST embed only the matching shared library in `$bunfs`, with no native sidecar or adjacent `node_modules`; the native asset remains lazy behind the default TTY renderer path. Musl roots stay in the catalog but are not release targets.
 
@@ -100,7 +100,9 @@ Installers and self-update MUST verify checksums and signatures. Trust roots are
 
 ### 17.5 Supply-chain artifacts
 
-Every release publishes a CycloneDX SBOM, SLSA v1.0 provenance for each binary, and keyless cosign signatures and certificates for every binary. The SBOM covers dependencies, bundled plugins and recipes, Bun, and `@lando/sdk`; provenance identifies the source commit, workflow, build inputs, and generated artifacts. Releases target SLSA build level 3.
+Every release publishes a CycloneDX SBOM, SLSA v1.0 provenance for each binary, and keyless cosign signatures and certificates for every binary. The SBOM covers dependencies, bundled plugins and recipes, Bun, the Go standard library linked into the in-container helper, and `@lando/sdk`; provenance identifies the source commit, workflow, build inputs, and generated artifacts. Releases target SLSA build level 3.
+
+Binary and library distributions MUST carry the license notices of compiled-in third-party code, including the Go standard library in the container helper.
 
 The pipeline SHOULD produce reproducible binaries from identical source, Bun version, plugin set, and codegen outputs. Weekly independent rebuild drift triggers a release advisory but does not retroactively invalidate signed artifacts.
 
@@ -134,7 +136,7 @@ There are exactly two install surfaces: signed GitHub Release artifacts and sign
 
 The installed executable and npm bin name is `lando4` (`lando4.exe` on Windows) so it coexists with a Lando 3 `lando` on the same host; changing that name is a public-surface change under §18. Release asset names use the `lando-v4-<version>-<platform>` family. Installer, update, uninstall, and shellenv MUST operate only on the Lando install record, reject foreign-owned destinations, preserve unrelated PATH entries, and leave Lando 3 binaries and state byte-for-byte untouched.
 
-The compiled binary has no Bun, Node, or package-manager prerequisite. Runtime bundles and helper binaries such as Mutagen remain verified on-demand downloads under Lando-owned data paths, not embedded main-binary assets. The library package assumes a consuming Bun runtime.
+The compiled binary has no Bun, Node, or package-manager prerequisite. Runtime bundles and host helper binaries such as Mutagen remain verified on-demand downloads under Lando-owned data paths, not embedded main-binary assets. The in-container helper is the exception: it is embedded (§17.3). The library package assumes a consuming Bun runtime.
 
 Installers MUST resolve platform and channel, verify the signed manifest and artifact, install into the configured or Lando user-data bin directory, and offer matching `lando4 shellenv` output. Setup runs only on explicit `--setup` or `LANDO_AUTO_SETUP=1`; first launch otherwise invites `lando4 setup` and exits successfully. `lando4 uninstall` MUST be confirmed, idempotent, ownership-bounded, and MUST NOT remove provider-owned runtimes or resources.
 
@@ -161,7 +163,7 @@ The following augment §15.C and define binary-shipping acceptance. The ROADMAP 
 - `next` self-update succeeds on macOS, Linux, and Windows; launch failure rolls back; permission failure never silently elevates.
 - POSIX and PowerShell installers succeed on clean hosts, verify trust, install the Lando-owned name, and agree with `lando4 shellenv`.
 - Install, update, uninstall, and shellenv leave hostile or valid Lando 3 binaries and state unchanged.
-- A relocated binary reads bundled plugins, recipes, command metadata, schemas, and its one OpenTUI native asset without build-tree or sidecar files.
+- A relocated binary reads bundled plugins, recipes, command metadata, schemas, its in-container helper executables, and its one OpenTUI native asset without build-tree or sidecar files.
 - Each target's relocated PTY smoke loads exactly its matching OpenTUI native package; non-TTY, JSON, and level-`none` paths do not load it.
 - The binary contains Mutagen client code and its manifest but no Mutagen executable; setup downloads verified helpers only when provider capabilities require them.
 - The binary uses bytecode, generated bootstrap layers, the single native dispatcher, and meets the §2.1 performance budgets and §13.6 TTY renderer process-exit overhead gate.

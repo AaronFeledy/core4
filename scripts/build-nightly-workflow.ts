@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
+import {
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
 
 import {
   landoManagedPodmanTeardownCommands,
@@ -38,11 +43,14 @@ const contractTestStep = (platform: string): string => `
 
 const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 ${bunSetupStep}
+
+${containerHelperDownloadStep}
 
       - name: Regenerate derived sources
         run: bun run codegen
@@ -113,6 +121,7 @@ ${renderAssertPodman6Step()}
 
 const publishedManifestSetupJob = `
   published-manifest-setup-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     strategy:
       fail-fast: false
       matrix:
@@ -122,6 +131,8 @@ const publishedManifestSetupJob = `
     steps:
       - uses: actions/checkout@v5
 ${bunSetupStep}
+
+${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
@@ -200,11 +211,14 @@ const distributionLinuxSmokePath = distributionBundlePath(
 
 const distributionRehearsalJob = `
   distribution-rehearsal-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 ${bunSetupStep}
+
+${containerHelperDownloadStep}
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -212,8 +226,6 @@ ${bunSetupStep}
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
           bun install --frozen-lockfile --os="*" --cpu="*"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 ${distributionCompileLines}
@@ -299,15 +311,21 @@ const runtimeBundleManifestLiveJob = `
 ${bunSetupStep}
 
       - name: Verify committed runtime-bundle manifest resolves live
-        run: bun run check:runtime-bundle-manifest --live`;
+        run: bun run check:runtime-bundle-manifest --live
+
+      - name: Verify runtime bundle licenses and source links live
+        run: bun run check:runtime-bundle-licenses --live`;
 
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 ${bunSetupStep}
+
+${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
@@ -359,8 +377,6 @@ ${landoRootlessPrereqSteps}
         run: |
           mkdir -p dist
           bun run --filter='@lando/core' build:manifest
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${linuxArm64.bunTarget} --outfile ./dist/${linuxArm64.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${linuxArm64.binaryName}
@@ -469,6 +485,7 @@ ${landoRootlessPrereqSteps}
 
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
+    renderContainerHelperJob(),
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     publishedManifestSetupJob,

@@ -5,6 +5,7 @@ import * as composition from "../../src/composition.ts";
 import { withStartedHostProxy } from "../../src/operations/start-host-proxy.ts";
 import type { HostProxyRunLandoSession } from "../../src/subsystems/host-proxy/transport.ts";
 import * as worker from "../../src/subsystems/host-proxy/worker.ts";
+import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const selected = {
@@ -39,10 +40,12 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
         closed++;
       },
     };
-    const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-      Effect.succeed("/shim"),
+    const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+      Effect.succeed(stubContainerHelper("/shim")),
     );
-    const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockReturnValue(Effect.succeed(session));
+    const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) =>
+      (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session)),
+    );
     let socket: string | undefined;
     try {
       // When
@@ -75,7 +78,7 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
       await Effect.runPromise(Scope.close(scope, Exit.void));
       // Then
       expect(socket).toBe("/run/lando/host-proxy.sock");
-      expect(closedBeforeScope).toBe(lifetime === "failure" || lifetime === "interrupted" ? 1 : 0);
+      expect(closedBeforeScope).toBe(0);
       expect(closed).toBe(lifetime === "detached" ? 0 : 1);
       switch (lifetime) {
         case "failure":
@@ -100,52 +103,61 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
   });
 }
 
-for (const eventTag of ["task.complete", "task.tree.complete"] as const) {
-  test(`closes the unreturned host-proxy worker when ${eventTag} defects`, async () => {
-    // Given
-    const defect = new TypeError("progress completion defect");
-    const harness = makeHarness({
-      onPublish: (event) => (event._tag === eventTag ? Effect.die(defect) : Effect.void),
-    });
-    const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
-    let closed = 0;
-    let applied = false;
-    const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-      Effect.succeed("/shim"),
-    );
-    const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockReturnValue(
-      Effect.succeed({
-        appId: selected.id,
-        sessionId: "proxy-session",
-        token: "token",
-        controlToken: "control-token",
-        socketPath: "/relay/proxy.sock",
-        shimPath: "/relay/shim",
-        transport: "unix-socket",
-        closed: Promise.resolve(),
-        close: async () => {
-          closed++;
-        },
-      }),
-    );
-    try {
-      // When
-      const exit = await Effect.runPromiseExit(
-        withStartedHostProxy(selected, app, provider.capabilities, {
-          use: () =>
-            Effect.sync(() => {
-              applied = true;
-            }),
-        }).pipe(Effect.provide(harness.layer)),
+for (const reused of [false, true]) {
+  for (const eventTag of ["task.complete", "task.tree.complete"] as const) {
+    test(`retains the recorded host-proxy worker when ${eventTag} defects, reused=${reused}`, async () => {
+      // Given
+      const defect = new TypeError("progress completion defect");
+      const harness = makeHarness({
+        onPublish: (event) => (event._tag === eventTag ? Effect.die(defect) : Effect.void),
+      });
+      const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
+      const scope = await Effect.runPromise(Scope.make());
+      let closed = 0;
+      let applied = false;
+      const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+        Effect.succeed(stubContainerHelper("/shim")),
       );
-      // Then
-      expect(exit).toEqual(Exit.die(defect));
-      expect(applied).toBe(false);
-      expect(closed).toBe(1);
-    } finally {
-      prepare.mockRestore();
-      spawn.mockRestore();
-      await rm(harness.userDataRoot, { recursive: true, force: true });
-    }
-  });
+      const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) => {
+        const session: HostProxyRunLandoSession & { readonly reused?: boolean } = {
+          appId: selected.id,
+          sessionId: "proxy-session",
+          token: "token",
+          controlToken: "control-token",
+          socketPath: "/relay/proxy.sock",
+          shimPath: "/relay/shim",
+          transport: "unix-socket",
+          reused,
+          closed: Promise.resolve(),
+          close: async () => {
+            closed++;
+          },
+        };
+        return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+      });
+      try {
+        // When
+        const exit = await Effect.runPromiseExit(
+          withStartedHostProxy(selected, app, provider.capabilities, {
+            managed: { scope },
+            use: () =>
+              Effect.sync(() => {
+                applied = true;
+              }),
+          }).pipe(Effect.provide(harness.layer)),
+        );
+        // Then
+        expect(exit).toEqual(Exit.die(defect));
+        expect(applied).toBe(false);
+        expect(closed).toBe(0);
+        await Effect.runPromise(Scope.close(scope, Exit.void));
+        expect(closed).toBe(1);
+      } finally {
+        prepare.mockRestore();
+        spawn.mockRestore();
+        await Effect.runPromise(Scope.close(scope, Exit.void));
+        await rm(harness.userDataRoot, { recursive: true, force: true });
+      }
+    });
+  }
 }

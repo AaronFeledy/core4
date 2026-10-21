@@ -53,6 +53,8 @@ services:
 phpMyAdmin auto-discovers every `mysql` and `mariadb` service in the app
 and lists them in the UI. It does not wire PostgreSQL or SQL Server.
 
+Each database connects on its planned port: Lando sets `PMA_PORTS` alongside `PMA_HOSTS`, one entry per host, so a sibling with `port: 3307` just works.
+
 ## Override discovered hosts
 
 Set `hosts:` when auto-discovery is not what you want. A string or a list
@@ -70,7 +72,7 @@ services:
 The service listens on `80`, gets a default hostname route, and turns on
 `lando.certs`. Set `certs: false` if you do not want a leaf certificate.
 
-A `hosts:` entry that names a sibling `mysql` or `mariadb` service reuses that sibling's `creds:`. A host that is not a sibling needs explicit `creds:` on the phpMyAdmin service:
+A `hosts:` entry that names a sibling `mysql` or `mariadb` service reuses that sibling's `creds:` and planned port. A host that is not a sibling connects on `3306` and needs explicit `creds:` on the phpMyAdmin service:
 
 ```yaml
 services:
@@ -81,4 +83,23 @@ services:
     creds:
       user: lando
       password: lando
+```
+
+## Change the port
+
+Set `port:` to move phpMyAdmin's HTTP listener, healthcheck, endpoint, and route target together:
+
+```yaml
+services:
+  pma:
+    type: phpmyadmin
+    port: 8080
+```
+
+Lando sets `APACHE_PORT` from `port:`. An authored `APACHE_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.APACHE_PORT`. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor the planned port.
+
+This moves the UI listener only; database connections keep using each sibling's planned port. Apply the change with `lando rebuild`, then check the route:
+
+```sh
+lando info --format=json
 ```

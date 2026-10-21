@@ -1,493 +1,162 @@
-import { join } from "node:path";
-
-import { Effect, Schema } from "effect";
-
-import type {
-  AppIdReservedError,
-  ComposeKeyRejectedError,
-  Lando3LandofileDetected,
-  LandofileDialectMixError,
-  LandofileFormConflictError,
-  LandofileIncludeError,
-  LandofileLoadExpressionError,
-  LandofileLockMismatchError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  LandofileVersionConstraintError,
-  ManagedFileTransactionError,
-  RouteInputError,
-  ToolingIncludeCycleError,
-} from "@lando/sdk/errors";
-import {
-  ConfigError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileWriteValidationError,
-  NotImplementedError,
-} from "@lando/sdk/errors";
-import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { LandofileShape } from "@lando/sdk/schema";
-import { LandofileService, type StateStore } from "@lando/sdk/services";
-
-import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { getAtPath } from "@lando/engine/config-write/dot-path";
-import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
-import {
-  ConfigWriteResultFields,
-  type ValueType,
-  decodeIssues,
-  writeValidationErrorFromIssues,
-} from "@lando/engine/config-write/write-core";
+import { type AppConfigResult, AppConfigResultSchema } from "@lando/engine/operations/app-config-result";
+import { type AppConfigViewOptions, appConfigView } from "@lando/engine/operations/app-config-view";
+import * as Writes from "@lando/engine/operations/app-config-write";
 import { collectLandofileRedactionTokens } from "@lando/engine/services/app-plan-redaction";
-import {
-  findDiscoveredLandofilePath,
-  loadLandofileLayers,
-  renderLandofileTemplate,
-} from "@lando/engine/services/landofile-live";
-import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
-import { parseLandofile } from "@lando/landofile/parser";
-import { detectTemplateDirective } from "@lando/landofile/template-render";
-import { validationIssue } from "@lando/sdk/schema";
-import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
-import { loadUserLandofile } from "../app-resolution";
+import { LandofileWriteValidationError } from "@lando/sdk/errors";
+import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
+import { LandofileShape } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
+import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
+import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";
-import { HostEventAppStatus, hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
+import { hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
 
-export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
-
-export interface AppConfigOptions {
-  readonly subcommand?: AppConfigSubcommand;
-  readonly key?: string;
-  readonly value?: string;
-  readonly type?: ValueType;
+export { AppConfigResultSchema, type AppConfigResult };
+export type AppConfigSubcommand = NonNullable<AppConfigViewOptions["subcommand"]>;
+export interface AppConfigOptions extends AppConfigViewOptions, Writes.AppConfigWriteOptions {
   readonly format?: "json" | "yaml" | "table";
-  readonly path?: string;
-  readonly dryRun?: boolean;
   readonly editor?: string;
-  readonly cwd?: string;
-  readonly editorRunner?: EditorRunner;
 }
 
-export interface AppConfigResult {
-  readonly app?: string;
-  readonly source?: "resolved";
-  readonly landofile?: LandofileShape;
-  readonly sources?: ReadonlyArray<LandofileIncludeSource>;
-  readonly subcommand?: AppConfigSubcommand;
-  readonly key?: string;
-  readonly value?: unknown;
-  readonly path?: string;
-  readonly changed?: boolean;
-  readonly dryRun?: boolean;
-  readonly valid?: boolean;
-  readonly issues?: ReadonlyArray<string>;
-  readonly filePath?: string;
-  readonly redactionTokens?: ReadonlyArray<string>;
-  readonly hostEvents?: ReadonlyArray<HostEventAppStatus>;
-}
-
-export const appConfigRedactionTokens = (result: unknown): ReadonlyArray<string> => {
+export const appConfigRedactionTokens = (result: unknown): readonly string[] => {
   if (result === null || typeof result !== "object") return [];
-  if ("redactionTokens" in result && Array.isArray(result.redactionTokens)) {
+  if ("redactionTokens" in result && Array.isArray(result.redactionTokens))
     return result.redactionTokens.filter((token): token is string => typeof token === "string");
-  }
-  if (!("landofile" in result) || result.landofile === null || typeof result.landofile !== "object") {
-    return [];
-  }
-  return collectLandofileRedactionTokens(result.landofile);
+  if ("landofile" in result && Schema.is(LandofileShape)(result.landofile))
+    return collectLandofileRedactionTokens(result.landofile);
+  return configRedactionTokens(result);
 };
 
-export const AppConfigResultSchema = Schema.Struct({
-  app: Schema.optionalKey(Schema.String),
-  source: Schema.optionalKey(Schema.Literal("resolved")),
-  landofile: Schema.optionalKey(LandofileShape),
-  sources: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        id: Schema.String,
-        sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
-      }),
-    ),
-  ),
-  ...ConfigWriteResultFields,
-  hostEvents: Schema.optionalKey(Schema.Array(HostEventAppStatus)),
-});
-
-type AppConfigError =
-  | Lando3LandofileDetected
-  | LandofileDialectMixError
-  | ManagedFileTransactionError
-  | AppIdReservedError
-  | LandofileNotFoundError
-  | LandofileFormConflictError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileWriteValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | ConfigError
-  | NotImplementedError
-  | ComposeKeyRejectedError
-  | LandofileLoadExpressionError;
-
-type AppConfigServices = LandofileService | StateStore;
-
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, {
-  onExcessProperty: "error",
-  errors: "all",
-});
-
-const missingArgsError = (): LandofileWriteValidationError =>
-  new LandofileWriteValidationError({
-    message: "`app config set` requires a <key.path> and a <value>.",
-    file: "",
-    issues: [validationIssue([], "Missing key path or value.")],
-    remediation: "Usage: `lando app config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
-  });
-
-const missingGetKeyError = (): LandofileWriteValidationError =>
-  new LandofileWriteValidationError({
-    message: "`app config get` requires a <key.path>.",
-    file: "",
-    issues: [validationIssue([], "Missing key path.")],
-    remediation: "Usage: `lando app config get <key.path>`.",
-  });
-
-type WritableAppConfigSubcommand = Extract<AppConfigSubcommand, "set" | "unset" | "edit" | "validate">;
-
-const typeScriptWriteUnsupportedError = (
-  subcommand: WritableAppConfigSubcommand,
-  filePath: string,
-): NotImplementedError =>
-  new NotImplementedError({
-    message: `\`lando app config ${subcommand}\` does not support the TypeScript Landofile at ${filePath}.`,
-    commandId: "app:config",
-    remediation:
-      "Programmatic `.lando.ts` Landofiles are author-mode TypeScript modules; edit the file directly, or run `lando app config view --source resolved` to inspect resolved values.",
-  });
-
-const resolveLandofilePath = (
-  cwd: string,
-  subcommand: WritableAppConfigSubcommand,
-): Effect.Effect<
-  { readonly inputPath: string; readonly appRoot: string },
-  LandofileNotFoundError | LandofileParseError | NotImplementedError
-> =>
-  Effect.tryPromise({
-    try: async () => {
-      const { appRoot } = await findDiscoveredLandofilePath(cwd);
-      const inputPath = join(appRoot, ".lando.yml");
-      return {
-        inputPath,
-        appRoot,
-        canonicalTypeScriptExists: await Bun.file(join(appRoot, ".lando.ts")).exists(),
-      };
-    },
-    catch: (cause) => {
-      if (cause instanceof LandofileNotFoundError) return cause;
-      if (cause instanceof LandofileParseError) return cause;
-      return new LandofileParseError({
-        message: cause instanceof Error ? cause.message : `Failed to discover a Landofile from ${cwd}.`,
-        filePath: cwd,
-        line: undefined,
-        column: undefined,
-        cause,
-      });
-    },
-  }).pipe(
-    Effect.flatMap(({ inputPath, appRoot, canonicalTypeScriptExists }) =>
-      subcommand !== "validate" && canonicalTypeScriptExists
-        ? Effect.fail(typeScriptWriteUnsupportedError(subcommand, join(appRoot, ".lando.ts")))
-        : Effect.succeed({ inputPath, appRoot }),
-    ),
-  );
-
-const readLandofileText = (inputPath: string): Effect.Effect<string, ConfigError> =>
-  Effect.tryPromise({
-    try: async () => ((await Bun.file(inputPath).exists()) ? Bun.file(inputPath).text() : ""),
-    catch: (cause) => new ConfigError({ message: `Failed to read ${inputPath}`, path: inputPath, cause }),
-  });
-
-const templatedLandofileWriteUnsupportedError = (
-  subcommand: WritableAppConfigSubcommand,
-  filePath: string,
-  engineId: string,
-): NotImplementedError =>
-  new NotImplementedError({
-    message: `\`lando app config ${subcommand}\` does not support the templated Landofile at ${filePath} (\`template: ${engineId}\`).`,
-    commandId: "app:config",
-    remediation:
-      "Writing a mutated tree back through the canonical serializer would discard the `template:` directive and the authored templated source. Run `lando app config edit` to edit the template source directly instead.",
-  });
-
-// `set`/`unset` mutate the parsed (rendered) tree and re-emit it through the
-// canonical serializer, which would silently discard a `template:` directive and
-// the authored templated source. Reject before that happens, matching the
-// `.lando.ts` write rejection above; `app config edit` (raw source, no re-emit)
-// remains the supported way to change a templated Landofile.
-const readWritableLandofileText = (
-  inputPath: string,
-  subcommand: WritableAppConfigSubcommand,
-): Effect.Effect<string, ConfigError | NotImplementedError> =>
-  readLandofileText(inputPath).pipe(
-    Effect.flatMap((content) => {
-      const directive = detectTemplateDirective(content);
-      return directive === undefined
-        ? Effect.succeed(content)
-        : Effect.fail(templatedLandofileWriteUnsupportedError(subcommand, inputPath, directive.engineId));
-    }),
-  );
-
-const writeLandofileText = (inputPath: string, content: string): Effect.Effect<void, ConfigError> =>
-  Effect.tryPromise({
-    try: () => writeFileAtomicViaRename(inputPath, content),
-    catch: (cause) => new ConfigError({ message: `Failed to write ${inputPath}`, path: inputPath, cause }),
-  });
-
-const parseWriteValidationError = (
-  inputPath: string,
-  error: LandofileParseError,
-): LandofileWriteValidationError =>
-  new LandofileWriteValidationError({
-    message: error.message,
-    file: inputPath,
-    issues: [validationIssue([], error.message)],
-    remediation: "Fix the YAML syntax so the file parses, then retry. The file was left unchanged.",
-  });
-
-export const appConfigSet = Effect.fn("AppConfig.set")(function* (
-  options: AppConfigOptions,
-): Effect.fn.Return<AppConfigResult, AppConfigError, never> {
-  const key = options.key ?? options.path;
-  const raw = options.value;
-  if (key === undefined || raw === undefined) return yield* Effect.fail(missingArgsError());
-  const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "set");
-  const outcome = yield* runSetVerb({
-    file: inputPath,
-    key,
-    raw,
-    type: options.type ?? "string",
-    dryRun: options.dryRun === true,
-    readTree: readWritableLandofileText(inputPath, "set").pipe(
-      Effect.flatMap((content) => parseLandofile({ file: inputPath, content, cwd: appRoot })),
-      Effect.map((tree) => tree as Record<string, unknown>),
-    ),
-    decode: decodeLandofile,
-    writeText: writeLandofileText,
-  });
-  return {
-    subcommand: "set",
-    key,
-    value: outcome.value,
-    filePath: inputPath,
-    changed: true,
-    dryRun: outcome.dryRun,
-  };
-});
-
-export const appConfigUnset = Effect.fn("AppConfig.unset")(function* (
-  options: AppConfigOptions,
-): Effect.fn.Return<AppConfigResult, AppConfigError, never> {
-  const key = options.key ?? options.path;
-  if (key === undefined) {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "`app config unset` requires a <key.path>.",
-        file: "",
-        issues: [validationIssue([], "Missing key path.")],
-        remediation: "Usage: `lando app config unset <key.path>`.",
-      }),
-    );
-  }
-  const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "unset");
-  const outcome = yield* runUnsetVerb({
-    file: inputPath,
-    key,
-    dryRun: options.dryRun === true,
-    readTree: readWritableLandofileText(inputPath, "unset").pipe(
-      Effect.flatMap((content) => parseLandofile({ file: inputPath, content, cwd: appRoot })),
-      Effect.map((tree) => tree as Record<string, unknown>),
-    ),
-    decode: decodeLandofile,
-    writeText: writeLandofileText,
-  });
-  return { subcommand: "unset", key, filePath: inputPath, changed: outcome.changed, dryRun: outcome.dryRun };
-});
-
-export const appConfigValidate = Effect.fn("AppConfig.validate")(function* (
-  options: AppConfigOptions,
-): Effect.fn.Return<AppConfigResult, AppConfigError, StateStore> {
-  const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "validate");
-  yield* loadLandofileLayers(appRoot, inputPath).pipe(
-    Effect.catchTag("LandofileValidationError", (error) =>
-      Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues: error.issues })),
-    ),
-  );
-  return { subcommand: "validate", filePath: inputPath, valid: true, issues: [] };
-});
-
-export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (
-  options: AppConfigOptions,
-): Effect.fn.Return<AppConfigResult, AppConfigError, never> {
-  const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "edit");
-  const content = yield* readLandofileText(inputPath);
-  const runner =
-    options.editorRunner ??
-    createDefaultEditorRunner(
-      options.editor === undefined
-        ? {}
-        : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
-    );
-  const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: appRoot }));
-  if (edited.kind === "no-editor") {
-    return yield* Effect.fail(noEditorError(inputPath));
-  }
-  if (edited.kind === "failed") {
-    return yield* Effect.fail(
-      editorFailedError(
-        inputPath,
-        edited.reason,
-        "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
+export const appConfigSet = (options: AppConfigOptions) => Writes.appConfigSet(options);
+export const appConfigUnset = (options: AppConfigOptions) => Writes.appConfigUnset(options);
+export const appConfigValidate = (options: AppConfigOptions) => Writes.appConfigValidate(options);
+export const appConfigEdit = (options: AppConfigOptions) =>
+  Writes.appConfigEdit({
+    ...options,
+    editorRunner:
+      options.editorRunner ??
+      createDefaultEditorRunner(
+        options.editor === undefined
+          ? {}
+          : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
       ),
-    );
-  }
-  // Validate against the RENDERED tree (a `template:` directive is a synthetic
-  // key that must never reach the strict schema decode below), but persist the
-  // user's raw edited text so a template Landofile's directive and templated
-  // source survive the save.
-  const rendered = yield* renderLandofileTemplate({ filePath: inputPath, content: edited.content }).pipe(
-    Effect.catchTag("LandofileParseError", (error) =>
-      Effect.fail(parseWriteValidationError(inputPath, error)),
-    ),
-  );
-  const parsed = yield* parseLandofile({ file: inputPath, content: rendered, cwd: appRoot }).pipe(
-    Effect.catchTag("LandofileParseError", (error) =>
-      Effect.fail(parseWriteValidationError(inputPath, error)),
-    ),
-  );
-  const issues = decodeIssues(decodeLandofile(parsed));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues }));
-  }
-  yield* writeLandofileText(inputPath, edited.content);
-  return { subcommand: "edit", filePath: inputPath, changed: true, valid: true };
-});
+  });
 
-export const appConfigGet = Effect.fn("AppConfig.get")(function* (
-  options: AppConfigOptions,
-): Effect.fn.Return<AppConfigResult, AppConfigError, AppConfigServices> {
-  const key = options.key ?? options.path;
-  if (key === undefined) return yield* Effect.fail(missingGetKeyError());
-  const landofileService = yield* LandofileService;
-  const landofile = yield* loadUserLandofile(landofileService);
+export const appConfigGet = (options: AppConfigOptions) =>
+  appConfigView({ ...options, subcommand: "get" }).pipe(
+    Effect.flatMap((inspected) =>
+      Schema.decodeUnknownEffect(Schema.toType(AppConfigResultSchema))(inspected).pipe(
+        Effect.orDie,
+        Effect.map((result) => ({ ...result, redactionTokens: inspected.redactionTokens })),
+      ),
+    ),
+  );
+
+/**
+ * Read the table's metadata straight from the authored mapping. A merged
+ * view is source data, so it may still carry unresolved expressions in typed
+ * fields; decoding it as a finished Landofile would hide the authored
+ * name, services, and recipe. Anything that is not a mapping yields no metadata.
+ */
+const authoredMetadata = (landofile: unknown) => {
+  const mapping = isPlainRecord(landofile) ? landofile : {};
+  const recipe = isPlainRecord(mapping.recipe) ? mapping.recipe.id : mapping.recipe;
   return {
-    app: landofile.name ?? "",
-    source: "resolved",
-    subcommand: "get",
-    key,
-    value: getAtPath(landofile, key),
-    sources: getLandofileIncludeSources(landofile),
-    redactionTokens: collectLandofileRedactionTokens(landofile),
+    name: typeof mapping.name === "string" ? mapping.name : undefined,
+    services: Object.keys(isPlainRecord(mapping.services) ? mapping.services : {}),
+    recipe: typeof recipe === "string" ? recipe : undefined,
   };
-});
+};
 
 const tableRender = (result: AppConfigResult): string => {
-  const lines: string[] = [`app\t${result.app ?? ""}`];
-  const services = Object.keys(result.landofile?.services ?? {});
-  if (services.length === 0) lines.push("services\t(none)");
-  else lines.push(`services\t${services.join(", ")}`);
-  if (result.landofile?.recipe !== undefined) {
-    const recipe = result.landofile.recipe;
-    const recipeLabel = typeof recipe === "string" ? recipe : recipe.id;
-    lines.push(`recipe\t${recipeLabel}`);
-  }
-  lines.push(...renderHostEventStatuses(result.hostEvents ?? []));
+  if ("layers" in result)
+    return result.layers
+      .map(
+        (layer) =>
+          `${layer.layer}\t${layer.file}\t${layer.document === undefined ? "" : JSON.stringify(layer.document)}`,
+      )
+      .join("\n");
+  if ("value" in result)
+    return result.value === undefined
+      ? ""
+      : result.value !== null && typeof result.value === "object"
+        ? JSON.stringify(result.value)
+        : String(result.value);
+  const authored = authoredMetadata("landofile" in result ? result.landofile : undefined);
+  const app = ("app" in result ? result.app : undefined) ?? authored.name ?? "";
+  const { services } = authored;
+  const lines = [`app\t${app}`, `services\t${services.length === 0 ? "(none)" : services.join(", ")}`];
+  if (authored.recipe !== undefined) lines.push(`recipe\t${authored.recipe}`);
+  lines.push(...renderHostEventStatuses("hostEvents" in result ? (result.hostEvents ?? []) : []));
   return lines.join("\n");
 };
-
-const getRender = (result: AppConfigResult): string => {
-  if (result.value === undefined) return "";
-  if (result.value !== null && typeof result.value === "object") return JSON.stringify(result.value);
-  return String(result.value);
-};
-
-const writeRender = (result: AppConfigResult): string =>
-  renderConfigWriteResult({
-    file: result.filePath ?? "",
-    subcommand: result.subcommand,
-    key: result.key,
-    changed: result.changed,
-    dryRun: result.dryRun,
-    editSavedLabel: "Landofile",
-  }) ?? tableRender(result);
 
 export const renderAppConfigResult = (
   result: AppConfigResult,
   format: "json" | "yaml" | "table" = "table",
 ): string => {
-  if (result.subcommand === "get") return getRender(result);
-  if (result.subcommand !== undefined && result.subcommand !== "view") return writeRender(result);
-  if (format === "yaml" && result.landofile !== undefined) {
-    return emitLandofileYaml({ ...Schema.encodeSync(LandofileShape)(result.landofile) });
+  if ("subcommand" in result && result.subcommand !== undefined) {
+    if (result.subcommand === "get")
+      return result.value === undefined
+        ? ""
+        : result.value !== null && typeof result.value === "object"
+          ? JSON.stringify(result.value)
+          : String(result.value);
+    return (
+      renderConfigWriteResult({
+        file: result.filePath,
+        subcommand: result.subcommand,
+        key: "key" in result ? result.key : undefined,
+        changed: "changed" in result ? result.changed : undefined,
+        dryRun: result.dryRun,
+        editSavedLabel: "Landofile",
+        value: "value" in result ? result.value : undefined,
+      }) ?? tableRender(result)
+    );
   }
+  if (format === "yaml" && result.source === "resolved" && "landofile" in result)
+    return emitLandofileYaml({ ...Schema.encodeSync(LandofileShape)(result.landofile) });
+  if ("path" in result && !("layers" in result) && !("value" in result)) return "";
   return tableRender(result);
 };
 
-export const appConfig = Effect.fn("AppConfig.run")(function* (
-  options: AppConfigOptions = {},
-): Effect.fn.Return<AppConfigResult, AppConfigError, AppConfigServices> {
-  const subcommand = options.subcommand ?? "view";
-  if (subcommand === "get") return yield* appConfigGet(options);
-  if (subcommand === "set") return yield* appConfigSet(options);
-  if (subcommand === "unset") return yield* appConfigUnset(options);
-  if (subcommand === "edit") return yield* appConfigEdit(options);
-  if (subcommand === "validate") return yield* appConfigValidate(options);
-  if (subcommand !== "view") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `Unknown \`app config\` subcommand: "${subcommand}".`,
-        file: "",
-        issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
-        remediation: "Usage: `lando app config [view|set|unset|edit|validate]`.",
-      }),
-    );
+export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfigOptions = {}) {
+  switch (options.subcommand ?? "view") {
+    case "set":
+      return yield* appConfigSet(options);
+    case "unset":
+      return yield* appConfigUnset(options);
+    case "validate":
+      return yield* appConfigValidate(options);
+    case "edit":
+      return yield* appConfigEdit(options);
+    case "get":
+      return yield* appConfigGet(options);
+    case "view": {
+      const inspected = yield* appConfigView(options);
+      const decoded = yield* Schema.decodeUnknownEffect(Schema.toType(AppConfigResultSchema))(inspected).pipe(
+        Effect.orDie,
+      );
+      const result = { ...decoded, redactionTokens: inspected.redactionTokens };
+      if (!("source" in result) || result.source !== "resolved" || !("landofile" in result)) return result;
+      const hostEvents = yield* Effect.sync(() =>
+        hostEventStatusesForPlan({
+          name: result.landofile.name ?? "",
+          root: options.cwd ?? process.cwd(),
+          services: result.landofile.services ?? {},
+          ...(result.landofile.events === undefined ? {} : { events: result.landofile.events }),
+        }),
+      );
+      return { ...result, ...(hostEvents.length === 0 ? {} : { hostEvents }) };
+    }
+    default:
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: `Unknown \`app config\` subcommand: "${options.subcommand}".`,
+          file: "",
+          issues: [],
+          remediation: "Usage: `lando app config [view|get|set|unset|edit|validate]`.",
+        }),
+      );
   }
-
-  const landofileService = yield* LandofileService;
-  const landofile = yield* loadUserLandofile(landofileService);
-  const cwd = options.cwd ?? process.cwd();
-  const appRoot = yield* Effect.tryPromise({
-    try: async () => (await findDiscoveredLandofilePath(cwd)).appRoot,
-    catch: (cause) =>
-      cause instanceof LandofileNotFoundError
-        ? cause
-        : new ConfigError({ message: "Failed to discover the app root.", cause }),
-  }).pipe(Effect.catchTag("LandofileNotFoundError", () => Effect.succeed(cwd)));
-  const hostEvents = yield* Effect.try({
-    try: () =>
-      hostEventStatusesForPlan({
-        name: landofile.name ?? "",
-        root: appRoot,
-        services: landofile.services ?? {},
-        ...(landofile.events === undefined ? {} : { events: landofile.events }),
-      }),
-    catch: (cause) =>
-      cause instanceof ConfigError
-        ? cause
-        : new ConfigError({ message: "Failed to load hostEvents status.", cause }),
-  });
-  return {
-    app: landofile.name ?? "",
-    source: "resolved",
-    landofile,
-    sources: getLandofileIncludeSources(landofile),
-    redactionTokens: collectLandofileRedactionTokens(landofile),
-    ...(hostEvents.length === 0 ? {} : { hostEvents }),
-  };
 });

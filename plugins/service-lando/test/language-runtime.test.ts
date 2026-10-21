@@ -5,6 +5,7 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
+import { serviceTypeResolve } from "../src/services/_feature-helpers.ts";
 import { makeLanguageRuntime } from "../src/services/_language-runtime.ts";
 import { go122ServiceType, goServiceFeature } from "../src/services/go.ts";
 import { python312ServiceType, pythonServiceFeature } from "../src/services/python.ts";
@@ -250,11 +251,39 @@ for (const fixture of fixtures) {
     expect(factory.validateVersion(undefined, version)).toBe(version);
     expect(factory.validateVersion("other:1", version)).toBe(version);
     expect(() => factory.validateVersion(`${fixture.language}:bad`, version)).toThrow(
-      `Unsupported ${fixture.displayName} version "bad". Set type to one of: ${fixture.language}:${version} (got ${fixture.language}:bad).`,
+      `Unsupported ${fixture.displayName} version "bad".`,
     );
     expect(factory.validateFramework(undefined)).toBe("none");
     expect(() => factory.validateFramework("bad")).toThrow(
-      `Unsupported ${fixture.displayName} framework "bad". Set framework to one of: none (got bad).`,
+      `Unsupported ${fixture.displayName} framework "bad".`,
     );
+    const invalidVersion = Effect.runSync(
+      Effect.result(
+        serviceTypeResolve(fixture.language, "fallback", () =>
+          factory.validateVersion(`${fixture.language}:bad`, version),
+        ),
+      ),
+    );
+    expect(invalidVersion._tag).toBe("Failure");
+    if (invalidVersion._tag === "Failure")
+      expect(invalidVersion.failure.issues).toEqual([
+        {
+          path: ["type"],
+          message: `Unsupported ${fixture.displayName} version "bad".`,
+          suggestion: `Set type to one of: ${fixture.language}:${version} (got ${fixture.language}:bad).`,
+        },
+      ]);
+    const invalidFramework = Effect.runSync(
+      Effect.result(serviceTypeResolve(fixture.language, "fallback", () => factory.validateFramework("bad"))),
+    );
+    expect(invalidFramework._tag).toBe("Failure");
+    if (invalidFramework._tag === "Failure")
+      expect(invalidFramework.failure.issues).toEqual([
+        {
+          path: ["framework"],
+          message: `Unsupported ${fixture.displayName} framework "bad".`,
+          suggestion: "Set framework to one of: none (got bad).",
+        },
+      ]);
   });
 }

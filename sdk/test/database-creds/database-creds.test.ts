@@ -1,6 +1,32 @@
 import { describe, expect, test } from "bun:test";
 
-import { databaseEnvCreds, firstEnv } from "@lando/sdk/database-creds";
+import {
+  DATABASE_PORT_ENV_KEY,
+  databaseEnvCreds,
+  databaseEnvPort,
+  firstEnv,
+} from "@lando/sdk/database-creds";
+
+describe("databaseEnvPort", () => {
+  test.each([
+    ["mysql", 3306],
+    ["mariadb", 3306],
+    ["postgres", 5432],
+    ["mongodb", 27017],
+    ["mssql", 1433],
+  ] as const)("uses the %s published default when the planned port is absent", (family, port) => {
+    expect(databaseEnvPort(family, {})).toBe(port);
+  });
+  test.each(["", "0", "65536", "1.5", "port"])("falls back to the family default for %j", (value) => {
+    expect(databaseEnvPort("mongodb", { [DATABASE_PORT_ENV_KEY]: value })).toBe(27017);
+  });
+  test.each(["mysql", "mariadb", "postgres", "mongodb", "mssql"] as const)(
+    "reads %s's planned port rather than its family default",
+    (family) => {
+      expect(databaseEnvPort(family, { [DATABASE_PORT_ENV_KEY]: "43210" })).toBe(43210);
+    },
+  );
+});
 
 describe("firstEnv", () => {
   test.each([

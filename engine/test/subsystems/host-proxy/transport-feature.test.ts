@@ -23,7 +23,6 @@ import {
 } from "@lando/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   connectHostProxyRunLando,
@@ -147,13 +146,6 @@ describe("hostProxyRunLandoFeature", () => {
       {
         type: "bind",
         source: session.shimPath,
-        target: "/usr/local/lib/lando/host-proxy-client",
-        readOnly: true,
-        realization: "passthrough",
-      },
-      {
-        type: "bind",
-        source: session.shimPath,
         target: "/usr/local/bin/lando",
         readOnly: true,
         realization: "passthrough",
@@ -239,13 +231,6 @@ describe("hostProxyRunLandoFeature", () => {
           type: "bind" as const,
           source: "/tmp/host-proxy.sock",
           target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
-          readOnly: true,
-          realization: "passthrough" as const,
-        },
-        {
-          type: "bind" as const,
-          source: "/tmp/lando-shim",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
           readOnly: true,
           realization: "passthrough" as const,
         },

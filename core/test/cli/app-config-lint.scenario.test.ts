@@ -67,7 +67,7 @@ describe("renderConfigLintResult", () => {
     restoreExitCode(() => {
       const before = process.exitCode;
       const text = renderConfigLintResult(result, "text");
-      expect(text).toContain("no canonical-schema violations");
+      expect(text).toContain("no config lint findings");
       expect(process.exitCode).toBe(before);
     });
   });
@@ -77,7 +77,15 @@ describe("renderConfigLintResult", () => {
       app: "bad",
       file: "/x/.lando.yml",
       valid: false,
-      violations: [{ path: ["bogus"], message: "is unexpected", suggestion: "Remove the unsupported key" }],
+      violations: [
+        {
+          rule: "landofile.validation",
+          severity: "error",
+          path: ["bogus"],
+          message: "is unexpected",
+          suggestion: "Remove the unsupported key",
+        },
+      ],
     };
     restoreExitCode(() => {
       process.exitCode = 37;
@@ -93,7 +101,9 @@ describe("renderConfigLintResult", () => {
       app: "bad",
       file: "/x/.lando.yml",
       valid: false,
-      violations: [{ path: ["bogus"], message: "is unexpected" }],
+      violations: [
+        { rule: "landofile.validation", severity: "error", path: ["bogus"], message: "is unexpected" },
+      ],
     };
     restoreExitCode(() => {
       const encoded = Schema.encodeSync(ConfigLintResult)(result);
@@ -103,6 +113,37 @@ describe("renderConfigLintResult", () => {
 });
 
 describe("lando app:config:lint (source dispatch)", () => {
+  test("resolved service and route errors are lint violations rather than a failed envelope", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        'name: resolved-errors\nservices:\n  db:\n    type: postgres:16\n    environment:\n      PGPORT: "5433"\n  web:\n    type: nginx\n    hostnames: [bad_host!]\n    routes:\n      - hostname: "{{ app.name }}_bad.lndo.site"\n      - hostname: ok.lndo.site\n        pathPrefix: no-slash\n',
+      );
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      expect(result.exitCode).toBe(0);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+      expect(parsed.valid).toBe(false);
+      expect(parsed.violations.map((issue) => issue.path)).toEqual([
+        ["services", "db", "environment", "PGPORT"],
+        ["services", "web", "routes", 0, "hostname"],
+        ["services", "web", "routes", 1, "pathPrefix"],
+        ["services", "web", "hostnames", 0],
+      ]);
+      expect(parsed.violations.every((issue) => issue.source?.file === join(dir, ".lando.yml"))).toBe(true);
+    });
+  });
+  test("warning-only lint renders its stable rule and exits successfully", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        'name: warning\nservices:\n  web:\n    type: node:lts\n    healthcheck: [CMD, "echo ready"]\n',
+      );
+      const result = await runCli(["app:config:lint"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("healthcheck.bare-compose-marker");
+      expect(result.stdout).toContain("warning");
+    });
+  });
   test("help --all names the typeable lint command and its canonical id", async () => {
     await withTempCwd(async (dir) => {
       const help = await runCli(["help", "--all"], dir);
@@ -117,7 +158,7 @@ describe("lando app:config:lint (source dispatch)", () => {
       await writeFile(join(dir, ".lando.yml"), "name: clean-app\nrecipe: lamp\n");
       const result = await runCli(["app:config:lint"], dir);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("no canonical-schema violations");
+      expect(result.stdout).toContain("no config lint findings");
     });
   });
 

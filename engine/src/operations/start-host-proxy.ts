@@ -1,6 +1,6 @@
-import { Effect, Ref, type Scope } from "effect";
+import { Effect, type Scope } from "effect";
 
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { type ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
 import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
@@ -8,7 +8,7 @@ import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { prepareHostProxyShimArtifact } from "../composition.ts";
+import { resolveContainerHelper } from "../composition.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
@@ -19,13 +19,20 @@ import {
   serviceHasHostProxyFeature,
   startDetachedHostProxyWorker,
 } from "../subsystems/host-proxy/worker.ts";
-import { withRetainedSession } from "./retained-session.ts";
+import { type PublishSession, withRetainedSession } from "./retained-session.ts";
 import { startHostProxyTreeId } from "./start-progress.ts";
 
 const HOST_PROXY_CONTAINER_TARGET_CAPABILITY = "ProviderCapabilities.hostProxy.containerTargets";
 const HOST_PROXY_HOST_GATEWAY_CAPABILITY = "ProviderCapabilities.hostProxy.tcpHostGateway";
 
 const targetKey = (target: HostProxyShimTarget): string => `${target.os}-${target.arch}`;
+
+const helperUnavailable = (error: ContainerHelperUnavailableError): HostProxyTransportUnavailableError =>
+  new HostProxyTransportUnavailableError({
+    message: error.message,
+    socketPath: `container-helper:${targetKey(error.target)}`,
+    remediation: error.remediation,
+  });
 
 const hostProxyShimTargetFor = (
   capabilities: ProviderCapabilities,
@@ -95,7 +102,11 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
-  options: RootOverrides & { readonly workerPlan?: AppPlan; readonly reusePolicy?: "exact" | "adopt" } = {},
+  options: RootOverrides & {
+    readonly workerPlan?: AppPlan;
+    readonly reusePolicy?: "exact" | "adopt";
+    readonly managed?: { readonly scope: Scope.Scope };
+  } = {},
 ) {
   yield* Effect.context<ShellRunner | EventService | RedactionService>();
   const eligibleServices = hostProxyEligibleServices(plan);
@@ -107,7 +118,6 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
   const events = yield* EventService;
   const privateFileAccess = yield* PrivateFileAccessService;
-  const acquired = yield* Ref.make<HostProxyRunLandoSession | undefined>(undefined);
   return yield* runWithTaskTree(
     makeTaskTree(events, {
       parentId: startHostProxyTreeId(String(plan.id)),
@@ -118,37 +128,41 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
     (tree) =>
       Effect.gen(function* () {
         yield* tree.startTask("session");
-        const shimArtifactPath = yield* prepareHostProxyShimArtifact(shimTarget);
-        const session = yield* startDetachedHostProxyWorker({
-          app,
-          plan: options.workerPlan ?? plan,
-          reusePolicy: options.reusePolicy ?? "exact",
-          paths: { ...landoPaths.roots, platform },
-          shimArtifactPath,
-          shimTarget,
-          privateFileAccess,
-          ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
-        });
-        yield* Ref.set(acquired, session);
-        yield* tree.completeTask(
-          "session",
-          session.reused ? "Host-proxy session reused" : "Host-proxy session ready",
+        const helper = yield* resolveContainerHelper(shimTarget, {
+          cacheRoot: landoPaths.toolDownloadsDir("container-helper"),
+        }).pipe(Effect.mapError(helperUnavailable));
+        return yield* withRetainedSession(
+          (publish: PublishSession<HostProxyRunLandoSession & { readonly reused?: boolean }>) =>
+            startDetachedHostProxyWorker({
+              publish,
+              app,
+              plan: options.workerPlan ?? plan,
+              reusePolicy: options.reusePolicy ?? "exact",
+              paths: { ...landoPaths.roots, platform },
+              shimArtifactPath: helper.path,
+              shimDigest: helper.digest,
+              shimTarget,
+              privateFileAccess,
+              ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
+            }),
+          (session) =>
+            tree
+              .completeTask(
+                "session",
+                session.reused ? "Host-proxy session reused" : "Host-proxy session ready",
+              )
+              .pipe(Effect.as(session)),
+          {
+            close: (session) => Effect.promise(() => session.close()),
+            ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+          },
         );
-        return session;
       }),
     {
       success: `${plan.name} host-proxy ready`,
       failure: `${plan.name} host-proxy failed`,
       interrupt: `${plan.name} host-proxy interrupted`,
     },
-  ).pipe(
-    Effect.onError(() =>
-      Ref.get(acquired).pipe(
-        Effect.flatMap((session) =>
-          session === undefined ? Effect.void : Effect.promise(() => session.close()),
-        ),
-      ),
-    ),
   );
 });
 
@@ -169,17 +183,12 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
   R | ShellRunner | EventService | RedactionService | PathsService | PrivateFileAccessService
 > {
   const paths = yield* PathsService;
-  return yield* withRetainedSession(
-    startHostProxyRunLandoSession(plan, app, capabilities, {
-      ...paths.roots,
-      platform: options.platform ?? paths.platform,
-      workerPlan: options.workerPlan ?? plan,
-      reusePolicy: options.reusePolicy ?? "exact",
-    }),
-    (session) => options.use(session === undefined ? plan : withHostProxyRunLando(plan, session)),
-    {
-      close: (session) => (session === undefined ? Effect.void : Effect.promise(() => session.close())),
-      ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
-    },
-  );
+  const session = yield* startHostProxyRunLandoSession(plan, app, capabilities, {
+    ...paths.roots,
+    platform: options.platform ?? paths.platform,
+    workerPlan: options.workerPlan ?? plan,
+    reusePolicy: options.reusePolicy ?? "exact",
+    ...(options.managed === undefined ? {} : { managed: options.managed }),
+  });
+  return yield* options.use(session === undefined ? plan : withHostProxyRunLando(plan, session));
 });

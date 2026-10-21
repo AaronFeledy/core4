@@ -139,6 +139,26 @@ bun test core/test/library sdk/test/library
 bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 ```
 
+## In-container helper
+
+Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
+
+```bash
+bun run --filter='@lando/core' build:container-helper
+```
+
+Run this after `bun install` and `bun run codegen` on a clean checkout, before `bun test` on Linux or compiling `lando` on any host. It needs a working provider configured by `lando setup`; no host Go installation is needed. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker.
+
+That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way.
+
+Verify the host-architecture helper on Linux:
+
+```bash
+bun test core/test/container-helper/helper.integration.test.ts
+```
+
+In CI, the `container-helper` job sets up Lando with the Docker provider and no router, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The required `static-checks` aggregate rejects any arm64 helper result other than success, including skipped and cancelled runs. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
+
 ## Platform binary builds
 
 CI builds and smokes one binary per required PR platform:
@@ -269,6 +289,27 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (35 minutes for the live linux-x64 job, 25 minutes for linux-arm64, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+
+## Lint guide YAML and negative fixtures
+
+Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+Full `.lando.yml` documents keep full authoring requirements, including native
+`!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
+Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,
+and command envelopes, is not validated as a Landofile. Unknown siblings do not
+exclude a document that has a Landofile-specific key such as `services` or `tooling`.
+
+For an intentionally invalid fixture, put `# lando-lint: expect-invalid REASON`
+on its first physical line. A UTF-8 BOM before the comment and CRLF line endings
+are accepted. Leading blank lines or license comments make the marker misplaced
+and produce `guide.fixture.landofile-marker-placement`. Every marker asserts a
+native authoring failure; its reason never selects another dialect, even when it
+starts with `lando3`. A body that validates produces
+`guide.fixture.landofile-unexpected-valid`. Keep the negative body invalid rather
+than hiding it behind a skip.
+
+Only a standalone `nolint` fence metadata token opts out. A title such as
+`title="nolint-example.yaml"` or a quoted value containing `nolint` does not.
 
 ## Guide e2e smoke subset
 

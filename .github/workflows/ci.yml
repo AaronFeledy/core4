@@ -3,7 +3,6 @@ name: ci
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -77,6 +76,14 @@ jobs:
       - name: Runtime-bundle manifest invariant
         run: bun run check:runtime-bundle-manifest
 
+      - name: Check runtime bundle license metadata
+        run: bun run check:runtime-bundle-licenses
+
+      - name: Check compiled binary notices
+        run: |
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          bun run check:compiled-binary-notices
+
       - name: Static scope notice for portable static matrix
         run: |
           echo "::notice title=static-checks-scope::${{ matrix.platform }} on ${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04. Full cross-platform static test portability remains a follow-up portability effort."
@@ -87,7 +94,7 @@ jobs:
           echo "::notice title=ci-timing::static-checks/${{ matrix.platform }}/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   static-checks:
-    needs: [static-checks-platform]
+    needs: [static-checks-platform, container-helper-arm64]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -96,6 +103,10 @@ jobs:
         run: |
           if [[ "${{ needs.static-checks-platform.result }}" != "success" ]]; then
             echo "static-checks platform matrix result: ${{ needs.static-checks-platform.result }}"
+            exit 1
+          fi
+          if [[ "${{ needs.container-helper-arm64.result }}" != "success" ]]; then
+            echo "arm64 container helper result: ${{ needs.container-helper-arm64.result }}"
             exit 1
           fi
           echo "static-checks platform matrix passed"
@@ -124,6 +135,7 @@ jobs:
           echo "::notice title=ci-timing::bun-install-isolated-experiment completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   unit-tests-linux-x64-shard:
+    needs: container-helper
     strategy:
       fail-fast: false
       matrix:
@@ -147,6 +159,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Unit test shard
         run: bun run test:unit:shard ${{ matrix.shard }}/3
@@ -257,6 +279,70 @@ jobs:
         run: |
           echo "::notice title=ci-timing::test-isolation-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
+  container-helper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      # The builder publishes no routes, so it needs no router. Lando's global router always
+      # runs on the Lando-managed provider, which this job doesn't install.
+      - name: Set up Lando with Docker
+        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Build and test the container helper with Lando
+        run: |
+          bun run scripts/build-container-helper.ts --test
+          bun test core/test/container-helper/helper.integration.test.ts
+
+      - name: Upload container helper
+        uses: actions/upload-artifact@v6
+        with:
+          name: container-helper
+          path: core/container-helper/dist/
+          if-no-files-found: error
+          retention-days: 14
+  container-helper-arm64:
+    needs: container-helper
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Test the arm64 container helper
+        run: bun test core/test/container-helper/helper.integration.test.ts
   schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -292,7 +378,7 @@ jobs:
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
@@ -967,7 +1053,7 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-darwin-arm64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -987,18 +1073,27 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build darwin-arm64 binary
         run: |
           mkdir -p dist
-          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1020,8 +1115,7 @@ jobs:
           name: lando-darwin-arm64
           path: |
             dist/lando
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1031,7 +1125,7 @@ jobs:
           echo "::notice title=ci-timing::build-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-darwin-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
@@ -1051,18 +1145,27 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build darwin-x64 binary
         run: |
           mkdir -p dist
-          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1084,8 +1187,7 @@ jobs:
           name: lando-darwin-x64
           path: |
             dist/lando
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1095,7 +1197,7 @@ jobs:
           echo "::notice title=ci-timing::build-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-linux-arm64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -1115,18 +1217,27 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build linux-arm64 binary
         run: |
           mkdir -p dist
-          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1148,8 +1259,7 @@ jobs:
           name: lando-linux-arm64
           path: |
             dist/lando
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1159,7 +1269,7 @@ jobs:
           echo "::notice title=ci-timing::build-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-linux-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -1179,18 +1289,27 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build linux-x64 binary
         run: |
           mkdir -p dist
-          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1212,8 +1331,7 @@ jobs:
           name: lando-linux-x64
           path: |
             dist/lando
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1223,7 +1341,7 @@ jobs:
           echo "::notice title=ci-timing::build-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-windows-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
@@ -1240,14 +1358,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: lando-linux-x64
-          path: linux-sidecars
-
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1255,10 +1377,11 @@ jobs:
       - name: Build windows-x64 binary
         run: |
           mkdir -p dist
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1277,8 +1400,7 @@ jobs:
           name: lando-windows-x64
           path: |
             dist/lando-windows-x64.exe
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1288,7 +1410,7 @@ jobs:
           echo "::notice title=ci-timing::build-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   build-windows-arm64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
     runs-on: windows-11-arm
     timeout-minutes: 35
     steps:
@@ -1305,14 +1427,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: lando-linux-x64
-          path: linux-sidecars
-
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1320,10 +1446,11 @@ jobs:
       - name: Build windows-arm64 binary
         run: |
           mkdir -p dist
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-arm64.exe
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1342,8 +1469,7 @@ jobs:
           name: lando-windows-arm64
           path: |
             dist/lando-windows-arm64.exe
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1366,7 +1492,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
 
       - name: Setup Bun
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
@@ -1509,7 +1635,7 @@ jobs:
           echo "::notice title=ci-timing::perf-budget-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   provider-integration-darwin-arm64:
-    needs: [build-darwin-arm64]
+    needs: [build-darwin-arm64, container-helper]
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -1528,6 +1654,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download darwin-arm64 binary artifact
         uses: actions/download-artifact@v7
@@ -1561,7 +1697,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-darwin-x64:
-    needs: [build-darwin-x64]
+    needs: [build-darwin-x64, container-helper]
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
@@ -1580,6 +1716,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download darwin-x64 binary artifact
         uses: actions/download-artifact@v7
@@ -1613,7 +1759,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-linux-arm64:
-    needs: [build-linux-arm64]
+    needs: [build-linux-arm64, container-helper]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     steps:
@@ -1632,6 +1778,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download linux-arm64 binary artifact
         uses: actions/download-artifact@v7
@@ -1665,7 +1821,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
   provider-integration-linux-x64-runner:
-    needs: [build-linux-x64, runtime-bundle-linux-x64]
+    needs: [build-linux-x64, runtime-bundle-linux-x64, container-helper]
     strategy:
       fail-fast: false
       matrix:
@@ -1688,6 +1844,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download linux-x64 binary artifact
         uses: actions/download-artifact@v7
@@ -1898,7 +2064,7 @@ jobs:
           echo "provider-integration-linux-x64 matrix passed on ubuntu-24.04, ubuntu-26.04"
 
   provider-integration-windows-x64:
-    needs: [build-windows-x64, runtime-bundle-win32-x64]
+    needs: [build-windows-x64, runtime-bundle-win32-x64, container-helper]
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -1917,6 +2083,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download windows-x64 binary artifact
         uses: actions/download-artifact@v7
@@ -1979,7 +2155,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-windows-arm64:
-    needs: [build-windows-arm64]
+    needs: [build-windows-arm64, container-helper]
     runs-on: windows-11-arm
     timeout-minutes: 20
     steps:
@@ -1998,6 +2174,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download windows-arm64 binary artifact
         uses: actions/download-artifact@v7

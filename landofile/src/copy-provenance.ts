@@ -12,6 +12,8 @@ import {
   hasLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
+import { copyOrigins } from "./pipeline/origins.ts";
+import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import {
   getInternalToolingTasks,
   hasInternalToolingTasks,
@@ -25,6 +27,9 @@ import {
 
 /** Transfer remembered metadata without synthesizing absent provenance. */
 export const copyLandofileProvenance = <T extends object>(from: object, to: T): T => {
+  copyOrigins(from, to);
+  const documents = getSourceDocuments(from);
+  if (documents.length > 0) rememberSourceDocuments(to, documents);
   const appRoot = getLandofileAppRoot(from);
   if (appRoot !== undefined) rememberLandofileAppRoot(to, appRoot);
   if (hasLocalIncludePaths(from)) rememberLocalIncludePaths(to, getLocalIncludePaths(from));

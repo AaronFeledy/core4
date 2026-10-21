@@ -21,7 +21,7 @@
  * A provider's `logs()` projects only `line` events into its `LogChunk` stream;
  * diagnostics are surfaced elsewhere (`lando info`), never as service log lines.
  */
-import { Clock, DateTime, Duration, Effect, Option, Result, Stream } from "effect";
+import { Clock, DateTime, Duration, Effect, Option, Result, type Scope, Stream } from "effect";
 
 import { ProviderUnavailableError } from "../errors/index.ts";
 import type { LogSource, LogSourceId, ServiceName } from "../schema/index.ts";
@@ -112,7 +112,12 @@ export interface FollowLogSourcesInput {
   readonly follow: boolean;
   readonly tail?: number;
   readonly since?: number;
-  readonly access: LogFileAccess;
+  /**
+   * File access for every selected source, or a scoped acquisition run once per
+   * source and released when that source's stream ends (for example, an
+   * in-container reader installed for the follow and removed afterwards).
+   */
+  readonly access: LogFileAccess | Effect.Effect<LogFileAccess, ProviderError, Scope.Scope>;
   /** Optional single-source id filter (`--source`). */
   readonly source?: LogSourceId;
   readonly maxLineBytes?: number;
@@ -188,7 +193,23 @@ export const makeLineFramer = (maxLineBytes: number = DEFAULT_MAX_LINE_BYTES) =>
     return [emit()];
   };
 
-  return { feed, flush };
+  /** True when the pending bytes stop partway through a multi-byte UTF-8 character. */
+  const endsMidCharacter = (): boolean => {
+    let start = line.length - 1;
+    while (start >= 0 && line.length - start <= 4 && ((line[start] ?? 0) & 0xc0) === 0x80) start -= 1;
+    const lead = line[start] ?? 0;
+    const width = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+    return start >= 0 && line.length - start < width;
+  };
+
+  /**
+   * Flush a trailing partial line unless it ends mid-character. A follower that
+   * starts while the writer is mid-character keeps those bytes, and the next read
+   * completes the line instead of emitting a broken character.
+   */
+  const flushComplete = (): ReadonlyArray<FramedLine> => (!overflowed && endsMidCharacter() ? [] : flush());
+
+  return { feed, flush, flushComplete };
 };
 
 type LineFramer = ReturnType<typeof makeLineFramer>;
@@ -356,7 +377,7 @@ export const followLogSource = (
           const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
           return [lineEvents(tailed), Option.none<BodyState>()] as const;
         }
-        const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
+        const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flushComplete()], input.tail));
         return [backfillEvents, Option.some<BodyState>({ kind: "poll", state })] as const;
       }
 
@@ -486,12 +507,12 @@ export const followLogSources = (
 
   if (selected.length === 0) return Stream.empty;
 
-  const streams = selected.map((source) =>
+  const followWith = (source: LogSource, access: LogFileAccess) =>
     followLogSource({
       service: input.service,
       source,
       follow: input.follow,
-      access: input.access,
+      access,
       ...(input.tail === undefined ? {} : { tail: input.tail }),
       ...(input.since === undefined ? {} : { since: input.since }),
       ...(input.maxLineBytes === undefined ? {} : { maxLineBytes: input.maxLineBytes }),
@@ -500,7 +521,12 @@ export const followLogSources = (
         ? {}
         : { readinessTimeoutMillis: input.readinessTimeoutMillis }),
       ...(input.maxReadBytes === undefined ? {} : { maxReadBytes: input.maxReadBytes }),
-    }),
+    });
+  const access = input.access;
+  const streams = selected.map((source) =>
+    Effect.isEffect(access)
+      ? Stream.unwrap(Effect.map(access, (acquired) => followWith(source, acquired)))
+      : followWith(source, access),
   );
 
   return Stream.mergeAll(streams, { concurrency: "unbounded" });

@@ -5,6 +5,7 @@ export type SqlFamily = DatabaseFamily;
 export type SqlCommandCreds = {
   readonly user: string;
   readonly database: string;
+  readonly port: number;
 };
 
 const SQL_FAMILIES = {
@@ -35,10 +36,10 @@ export const isSqlServiceType = (type: string): boolean => familyFromServiceType
 
 export const mssqlBackupServicePath = (database: string): string => `/var/opt/mssql/backup/${database}.bak`;
 
-const mssqlClient = (extra: ReadonlyArray<string>): ReadonlyArray<string> => [
+const mssqlClient = (port: number, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "/opt/mssql-tools18/bin/sqlcmd",
   "-S",
-  "localhost",
+  `localhost,${port}`,
   "-U",
   "sa",
   "-C",
@@ -51,14 +52,14 @@ export const mssqlPrepareBackupCommand = (): ReadonlyArray<string> => [
   "/var/opt/mssql/backup",
 ];
 
-export const mssqlBackupCommand = (database: string): ReadonlyArray<string> =>
-  mssqlClient([
+export const mssqlBackupCommand = (database: string, port: number): ReadonlyArray<string> =>
+  mssqlClient(port, [
     "-Q",
     `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
   ]);
 
-export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> =>
-  mssqlClient([
+export const mssqlRestoreCommand = (database: string, port: number): ReadonlyArray<string> =>
+  mssqlClient(port, [
     "-Q",
     `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
   ]);
@@ -81,6 +82,8 @@ const mysqlClient = (
   mysqlFamilyBinaries(family).client,
   "-h",
   "127.0.0.1",
+  "-P",
+  String(creds.port),
   "-u",
   creds.user,
   ...extra,
@@ -88,6 +91,8 @@ const mysqlClient = (
 
 const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "psql",
+  "-p",
+  String(creds.port),
   "-U",
   creds.user,
   "-d",
@@ -115,32 +120,23 @@ export const dumpCommand = (
 ): ReadonlyArray<string> => {
   switch (family) {
     case "mysql":
-      return [
-        mysqlFamilyBinaries(family).dump,
-        "-h",
-        "127.0.0.1",
-        "-u",
-        creds.user,
-        "--single-transaction",
-        "--quick",
-        "--set-gtid-purged=OFF",
-        "--no-tablespaces",
-        creds.database,
-      ];
     case "mariadb":
       return [
         mysqlFamilyBinaries(family).dump,
         "-h",
         "127.0.0.1",
+        "-P",
+        String(creds.port),
         "-u",
         creds.user,
         "--single-transaction",
         "--quick",
+        ...(family === "mysql" ? ["--set-gtid-purged=OFF"] : []),
         "--no-tablespaces",
         creds.database,
       ];
     case "postgres":
-      return ["pg_dump", "-U", creds.user, "-d", creds.database];
+      return ["pg_dump", "-p", String(creds.port), "-U", creds.user, "-d", creds.database];
     case "mongodb":
       return mongoTool("mongodump --archive", `--db=${quoteShell(creds.database)}`);
     default:
@@ -167,7 +163,7 @@ export const loadCommand = (
           : `--nsInclude=${quoteShell(`${sourceDatabase}.*`)} --nsFrom=${quoteShell(`${sourceDatabase}.*`)} --nsTo=${quoteShell(`${creds.database}.*`)}`,
       );
     case "mssql":
-      return mssqlRestoreCommand(creds.database);
+      return mssqlRestoreCommand(creds.database, creds.port);
     default:
       return assertNever(family);
   }
@@ -192,7 +188,14 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("db.getCollectionNames().length")}`);
     case "mssql":
-      return mssqlClient(["-d", creds.database, "-Q", "SELECT COUNT(*) FROM sys.tables", "-h", "-1"]);
+      return mssqlClient(creds.port, [
+        "-d",
+        creds.database,
+        "-Q",
+        "SELECT COUNT(*) FROM sys.tables",
+        "-h",
+        "-1",
+      ]);
     default:
       return assertNever(family);
   }
@@ -208,7 +211,7 @@ export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): Reado
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("print(db.version())")}`);
     case "mssql":
-      return mssqlClient([
+      return mssqlClient(creds.port, [
         "-d",
         creds.database,
         "-h",
@@ -264,7 +267,7 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
     case "mssql":
-      return mssqlClient([
+      return mssqlClient(creds.port, [
         "-Q",
         `ALTER DATABASE [${creds.database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${creds.database}]; CREATE DATABASE [${creds.database}];`,
       ]);

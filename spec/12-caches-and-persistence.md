@@ -111,7 +111,7 @@ A crash before `prepared` MUST alter no target. Unjournaled stages MUST NOT be g
 
 #### 12.4.2 Durable ownership manifest
 
-This durable provider-private identity record lets stop and destroy finish when a failed attempt or rollback left resources (§5.3.1). It survives app-plan cache invalidation. Verified absent or removed containers and private networks are retired; volume identities remain until the existing volume flags select their cleanup.
+This durable provider-private identity record lets stop, destroy, and a converging start finish when a failed or interrupted attempt left resources in place (§5.3.1, §6.7). It survives app-plan cache invalidation. Verified absent or removed containers and private networks are retired; volume identities remain until the existing volume flags select their cleanup.
 
 | Field | Contract |
 |---|---|
@@ -162,7 +162,7 @@ Hot-path caches remain under their existing readers and MAY adopt `StateStore` o
 
 #### 12.7.2 Reference consumers
 
-The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec without advisory locking; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
+The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec in an unlocked bucket, and its writers re-read and merge under a host-wide `StateStore.withLock` operation lock so no lock file lands beside it; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
 
 #### 12.7.3 Plugins and embedding hosts
 

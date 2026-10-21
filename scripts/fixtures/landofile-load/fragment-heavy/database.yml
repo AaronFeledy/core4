@@ -1,0 +1,6 @@
+services:
+  database:
+    type: postgres:17
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app

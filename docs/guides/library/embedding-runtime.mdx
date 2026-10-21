@@ -29,6 +29,10 @@ retained runtime scope. A no-selector `runtime.app()` resolves the project at th
 runtime's construction working directory, and the handle stays bound to that root
 even if the host later changes its process working directory.
 
+The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
+
+That is a privacy boundary: an existing handle does not observe a later app `agentEnv: false` edit. Invocation-time `ConfigService.get("agentEnv")` and the current `LANDO_AGENT_ENV=0` emergency veto still disable automatic forwarding. The config service keeps its existing loading semantics; this does not promise automatic global-config disk reload. Vetoes do not remove explicit service or command env and do not revoke commands already running. Provider status remains live, including shallow `info`, which does not load a Landofile for a supplied target.
+
 ```ts
 import { Effect } from "effect";
 import { openLandoRuntime } from "@lando/core";
@@ -48,7 +52,11 @@ const info = await Effect.runPromise(Effect.scoped(program));
 
 `app.start()` keeps start-state resources (such as file-sync sessions) alive on a
 managed scope between calls; `app.stop()`, `app.restart()`, `app.destroy()`, and
-runtime-scope close each tear that scope down exactly once. Use
+runtime-scope close each tear that scope down exactly once. A failed or
+interrupted `app.start()` keeps the current managed scope while the runtime
+scope remains open. It also leaves containers and published routes in place.
+Call `app.start()` again to converge, or `app.stop()` / `app.destroy()` to
+shut down or remove the app. Use
 `app.start({ detached: true })` when you want the started resources to outlive the
 runtime scope, matching the CLI's detached semantics.
 
@@ -104,7 +112,7 @@ For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
 entry point, while the lower-level Effect operations behind built-in commands remain
 available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
 `stopApp`). These are building blocks for hosts that want command parity without
-OCLIF — they return typed results rather than rendered text — but they are not the
+OCLIF. They return typed results rather than rendered text, but they are not the
 preferred app lifecycle API. Prefer the `App` handle for lifecycle work and reach
 for the raw operations only when you need command-level dispatch.
 
@@ -134,14 +142,7 @@ yield* Effect.promise(() =>
     "name: embedded-app\nruntime: 4\nprovider: test\nservices:\n  cache:\n    type: redis\n    primary: true\n",
   ),
 );
-const previousShimArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
-const shimArtifact = join(context.testDir, "lando-shim");
-yield* Effect.promise(() => Bun.write(shimArtifact, "#!/usr/bin/env sh\nexit 0\n"));
-
-let lifecycle;
-try {
-  process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = shimArtifact;
-  lifecycle = yield* LandoCore.openLandoRuntime({
+const lifecycle = yield* LandoCore.openLandoRuntime({
     cwd: context.testDir,
     plugins: { policy: "bundled-only", layers: providerLayers },
   }).pipe(
@@ -153,10 +154,6 @@ try {
       ),
     ),
   );
-} finally {
-  if (previousShimArtifact === undefined) Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-  else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousShimArtifact;
-}
 
 expect(lifecycle.info.app).toBe("embedded-app");
 expect(lifecycle.started.servicesStarted.map((service) => service.name)).toContain("cache");

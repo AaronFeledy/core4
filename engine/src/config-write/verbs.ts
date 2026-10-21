@@ -1,14 +1,15 @@
 import { Effect, Result } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
-import { validationIssue } from "@lando/sdk/schema";
+import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
+import { setAtPath } from "./dot-path";
+import { prepareConfigEdit } from "./prepare-edit";
+import { parseTypedValue } from "./value-parse";
 
 import {
   type ValueType,
   applySetMutation,
   applyUnsetMutation,
-  decodeIssues,
-  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "./write-core";
 
@@ -33,87 +34,206 @@ export const editorFailedError = (
   });
 
 export interface ConfigVerbIo<
-  D extends Result.Result<unknown, unknown>,
+  D extends Result.Result<unknown, readonly ValidationIssue[]>,
   ERead,
   EWrite,
   EAfter = never,
   R = never,
+  EParse = never,
 > {
   readonly file: string;
-  readonly readTree: Effect.Effect<Record<string, unknown>, ERead, R>;
+  readonly readText: Effect.Effect<string, ERead, R>;
+  readonly parse: (
+    text: string,
+  ) => Record<string, unknown> | Effect.Effect<Record<string, unknown>, EParse, R>;
+  readonly editCommand: string;
   readonly decode: (next: unknown) => D | Effect.Effect<D, EAfter, R>;
   readonly afterDecode?: (decoded: D) => EAfter | undefined;
   readonly writeText: (file: string, text: string) => Effect.Effect<void, EWrite, R>;
 }
 
-const decodeAndWrite = Effect.fnUntraced(function* <
-  D extends Result.Result<unknown, unknown>,
+const persistMutation = Effect.fnUntraced(function* <
+  D extends Result.Result<unknown, readonly ValidationIssue[]>,
   ERead,
   EWrite,
   EAfter = never,
   R = never,
+  EParse = never,
 >(
-  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R> & { readonly key: string },
-  next: unknown,
-  shouldWrite: boolean,
+  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R, EParse> & { readonly key: string },
+  mutation: { readonly text: string; readonly shouldWrite: boolean; readonly decoded: D },
 ): Effect.fn.Return<void, LandofileWriteValidationError | EAfter | EWrite, R> {
-  const decoding = input.decode(next);
-  const decoded = yield* Effect.isEffect(decoding) ? decoding : Effect.succeed(decoding);
-  const issues = decodeIssues(decoded);
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: input.file, issues, path: input.key }));
-  }
-  const afterError = input.afterDecode?.(decoded);
+  const afterError = input.afterDecode?.(mutation.decoded);
   if (afterError !== undefined) return yield* Effect.fail(afterError);
-  if (shouldWrite) {
-    const emitted = emitConfigYaml({ file: input.file, value: next, path: input.key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* input.writeText(input.file, emitted.success);
+  if (mutation.shouldWrite) {
+    yield* input.writeText(input.file, mutation.text);
   }
 });
 
+const resolve = <A, E, R>(value: A | Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.isEffect(value) ? value : Effect.succeed(value);
+
+const PRE_EXISTING = "already present before this change: ";
+
+interface DecodeAttempt {
+  readonly label: string;
+  readonly issues: readonly ValidationIssue[];
+}
+
+const interpretationLabel = (value: unknown): string => {
+  if (typeof value === "string") return "text";
+  if (value === null) return "null";
+  if (typeof value === "object") return "JSON";
+  return typeof value;
+};
+
+const issueIdentity = (issue: ValidationIssue): string => JSON.stringify([issue.path, issue.message]);
+
+// Issues every interpretation shares stay as-is; the rest name the interpretation that produced them.
+const mergeAttemptIssues = (
+  attempts: readonly DecodeAttempt[],
+  baseline: readonly ValidationIssue[],
+): ValidationIssue[] => {
+  const existing = new Set(baseline.map(issueIdentity));
+  const identities = attempts.map((attempt) => new Set(attempt.issues.map(issueIdentity)));
+  const seen = new Set<string>();
+  const merged: ValidationIssue[] = [];
+  for (const attempt of attempts) {
+    for (const issue of attempt.issues) {
+      const identity = issueIdentity(issue);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      const shared = identities.every((set) => set.has(identity));
+      if (existing.has(identity)) {
+        merged.push({ ...issue, message: `${PRE_EXISTING}${issue.message}` });
+      } else if (shared) {
+        merged.push(issue);
+      } else {
+        merged.push({ ...issue, message: `as ${attempt.label}: ${issue.message}` });
+      }
+    }
+  }
+  return merged;
+};
+
+const failureRemediation = (
+  editCommand: string,
+  issues: readonly ValidationIssue[],
+  attemptCount: number,
+): { readonly remediation?: string } => {
+  if (issues.some((issue) => issue.message.startsWith(PRE_EXISTING))) {
+    return {
+      remediation: `Fix the issues already present before this change first (unset them or use \`${editCommand}\`), then retry. The file was left unchanged.`,
+    };
+  }
+  if (attemptCount > 1) {
+    return {
+      remediation:
+        "Fix the reported issue(s), or pass `--type` to force how the value is parsed, then retry the write. The file was left unchanged.",
+    };
+  }
+  return {};
+};
+
 export const runSetVerb = Effect.fnUntraced(function* <
-  D extends Result.Result<unknown, unknown>,
+  D extends Result.Result<unknown, readonly ValidationIssue[]>,
   ERead,
   EWrite,
   EAfter = never,
   R = never,
+  EParse = never,
 >(
-  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R> & {
+  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R, EParse> & {
     readonly key: string;
     readonly raw: string;
-    readonly type: ValueType;
+    readonly type?: ValueType | undefined;
     readonly dryRun: boolean;
   },
 ) {
-  const tree = yield* input.readTree;
+  const source = yield* input.readText;
+  const tree = yield* resolve(input.parse(source));
   const mutation = applySetMutation({
     tree,
     key: input.key,
     raw: input.raw,
-    type: input.type,
+    type: input.type ?? "string",
     file: input.file,
   });
   if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  yield* decodeAndWrite(input, mutation.success.next, !input.dryRun);
-  return { key: input.key, value: mutation.success.value, changed: true as const, dryRun: input.dryRun };
+  const candidates = [mutation.success];
+  if (input.type === undefined) {
+    const parsed = parseTypedValue(input.raw, "yaml");
+    if (Result.isSuccess(parsed) && typeof parsed.success !== "string") {
+      candidates.push({ next: setAtPath(tree, input.key, parsed.success), value: parsed.success });
+    }
+  }
+  const attempts: DecodeAttempt[] = [];
+  for (const candidate of candidates) {
+    const decoded = yield* resolve(input.decode(candidate.next));
+    if (Result.isSuccess(decoded)) {
+      const text = yield* prepareConfigEdit({
+        ...input,
+        source,
+        tree,
+        next: candidate.next,
+        operation: "set",
+      });
+      yield* persistMutation(input, { text, shouldWrite: !input.dryRun, decoded });
+      return { key: input.key, value: candidate.value, changed: true as const, dryRun: input.dryRun };
+    }
+    attempts.push({ label: interpretationLabel(candidate.value), issues: decoded.failure });
+  }
+  const original = yield* resolve(input.decode(tree));
+  const baseline = Result.isFailure(original) ? original.failure : [];
+  const issues = mergeAttemptIssues(attempts, baseline);
+  return yield* Effect.fail(
+    writeValidationErrorFromIssues({
+      file: input.file,
+      path: input.key,
+      issues,
+      ...failureRemediation(input.editCommand, issues, attempts.length),
+    }),
+  );
 });
 
 export const runUnsetVerb = Effect.fnUntraced(function* <
-  D extends Result.Result<unknown, unknown>,
+  D extends Result.Result<unknown, readonly ValidationIssue[]>,
   ERead,
   EWrite,
   EAfter = never,
   R = never,
+  EParse = never,
 >(
-  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R> & {
+  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R, EParse> & {
     readonly key: string;
     readonly dryRun: boolean;
   },
 ) {
-  const tree = yield* input.readTree;
+  const source = yield* input.readText;
+  const tree = yield* resolve(input.parse(source));
   const mutation = applyUnsetMutation({ tree, key: input.key, file: input.file });
   if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  yield* decodeAndWrite(input, mutation.success.next, !input.dryRun && mutation.success.changed);
+  const decoded = yield* resolve(input.decode(mutation.success.next));
+  if (Result.isFailure(decoded)) {
+    const original = yield* resolve(input.decode(tree));
+    const baseline = Result.isFailure(original) ? original.failure : [];
+    const issues = mergeAttemptIssues([{ label: "text", issues: decoded.failure }], baseline);
+    return yield* Effect.fail(
+      writeValidationErrorFromIssues({
+        file: input.file,
+        issues,
+        path: input.key,
+        ...failureRemediation(input.editCommand, issues, 1),
+      }),
+    );
+  }
+  const text = mutation.success.changed
+    ? yield* prepareConfigEdit({ ...input, source, tree, next: mutation.success.next, operation: "unset" })
+    : source;
+  yield* persistMutation(input, {
+    text,
+    shouldWrite: !input.dryRun && mutation.success.changed,
+    decoded,
+  });
   return { key: input.key, changed: mutation.success.changed, dryRun: input.dryRun };
 });

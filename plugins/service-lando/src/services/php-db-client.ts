@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import type { AppFeatureContext, AppFeatureDefinition, AppFeatureServiceView } from "@lando/sdk/services";
 
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import { phpDbClientBuildStepsForSources } from "./php-db-client-sources.ts";
 
 export { PHP_MONGOSH_RELEASE } from "./php-db-client-sources.ts";
@@ -55,7 +56,11 @@ export const resolvePhpDbClient = (value: unknown): PhpDbClientSelection => {
       return { mode: "explicit", family, version };
     }
   }
-  throw new Error(`Unsupported database client ${JSON.stringify(value)}. ${PHP_DB_CLIENT_REMEDIATION}`);
+  throw new ServiceConfigIssue(
+    ["db_client"],
+    `Unsupported database client ${JSON.stringify(value)}.`,
+    PHP_DB_CLIENT_REMEDIATION,
+  );
 };
 
 const compareVersions = (left: string, right: string): number =>
@@ -86,16 +91,20 @@ export const detectPhpDbClients = (
   for (const view of views) {
     const detection = familyFromService(view);
     if (detection?.kind === "unknown-mysql") {
-      throw new Error(
-        `Service ${detection.serviceName} has unknown MySQL client compatibility. Set an explicit db_client supported by that custom image, or set db_client: false.`,
+      throw new ServiceConfigIssue(
+        ["db_client"],
+        `Service ${detection.serviceName} has unknown MySQL client compatibility.`,
+        "Set an explicit db_client supported by that custom image, or set db_client: false.",
       );
     }
     const detected = detection?.install;
     if (detected === undefined) continue;
     const current = highest.get(detected.family);
     if (detected.family === "mysql" && current !== undefined && current !== detected.version) {
-      throw new Error(
-        `Cannot select db_client: auto for mixed MySQL series ${current} and ${detected.version}. Set an explicit db_client or set db_client: false.`,
+      throw new ServiceConfigIssue(
+        ["db_client"],
+        `Cannot select db_client: auto for mixed MySQL series ${current} and ${detected.version}.`,
+        "Set an explicit db_client or set db_client: false.",
       );
     }
     if (current === undefined || compareVersions(detected.version, current) > 0) {

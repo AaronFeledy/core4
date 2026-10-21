@@ -67,7 +67,7 @@ describe("provider-podman log source binding", () => {
         env: {},
         podmanApi: api,
         logFileAccess: memory.access,
-        logFileHelperPayloads: { "linux-x64": new Uint8Array([1]) },
+        resolveContainerHelper: () => Effect.die("injected access must bypass helper resolution"),
       }),
     );
     // When: only the file source is requested.
@@ -113,7 +113,8 @@ describe("provider-podman log source binding", () => {
             return Effect.succeed({ status: 503, body: "unavailable" });
           },
         },
-        logFileHelperPayloads: { "linux-x64": new Uint8Array([1]) },
+        resolveContainerHelper: (target) =>
+          Effect.succeed({ target, digest: "1".repeat(64), path: AbsolutePath.make(import.meta.filename) }),
       }),
     );
     // When: file logs attempt to install the helper.
@@ -123,6 +124,6 @@ describe("provider-podman log source binding", () => {
       ),
     );
     // Then: upload targets this service, not another container.
-    expect(paths[0]).toBe("/containers/lando-bindingapp-web/archive?path=/tmp");
+    expect(paths).toContain("/containers/lando-bindingapp-web/archive?path=/tmp");
   });
 });

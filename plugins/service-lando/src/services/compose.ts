@@ -3,7 +3,7 @@ import { Effect, Predicate, Schema } from "effect";
 import { splitComposeCommand } from "@lando/sdk/landofile";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { ServiceConfigIssue, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
@@ -23,8 +23,10 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const hasImage = service.image !== undefined && service.image.length > 0;
   const hasComposeBuild = service.build !== undefined && "context" in service.build;
   if (!hasImage && !hasComposeBuild) {
-    throw new Error(
-      `compose service "${ctx.serviceName}" requires either "image:" or "build:" (Compose build block).`,
+    throw new ServiceConfigIssue(
+      ["type"],
+      "A Compose service requires an image or build artifact.",
+      'Set "image:" or "build:" (Compose build block).',
     );
   }
 
@@ -33,8 +35,8 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   }
 
   const appName = appNameFor(ctx);
-  const composeVolumes = (service.volumes ?? []).map((entry) =>
-    classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }),
+  const composeVolumes = (service.volumes ?? []).map((entry, index) =>
+    classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }, index),
   );
   const occupied = occupiedTargets(service);
   const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
@@ -86,8 +88,10 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     if (authored === undefined) continue;
     const argv = typeof authored === "string" ? splitComposeCommand(authored)?.argv : authored;
     if (argv === undefined) {
-      throw new Error(
-        `Compose ${field} has malformed quoting or escaping; use valid quoting or an argv list.`,
+      throw new ServiceConfigIssue(
+        [field],
+        `Compose ${field} has malformed quoting or escaping.`,
+        "Use valid quoting or an argv list.",
       );
     }
     switch (field) {

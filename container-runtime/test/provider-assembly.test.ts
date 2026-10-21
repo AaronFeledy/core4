@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { AppPlanSanitizer, EventService, LogFileHelperAssets, PathsService } from "@lando/sdk/services";
+import { AppPlanSanitizer, ContainerHelperAssets, EventService, PathsService } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
 import {
   bindResolvedProviderOps,
@@ -85,11 +85,12 @@ const paths = PathsService.of({
   globalConfigFile: "",
   pluginTrustFile: "",
 });
-const payloads = { "linux-arm64": new Uint8Array([1, 2, 3]) };
+const resolveContainerHelper: typeof ContainerHelperAssets.Service.resolve = () =>
+  Effect.die("helper resolution must stay lazy");
 const sanitizeForPersistence = (value: AppPlan) => ({ ...value, name: "sanitized" });
 const hostLayer = Layer.mergeAll(
   Layer.succeed(PathsService, paths),
-  Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed(payloads) }),
+  Layer.succeed(ContainerHelperAssets, { resolve: resolveContainerHelper }),
   Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence }),
 );
 
@@ -176,7 +177,7 @@ describe("provider assembly", () => {
     expect(Object.hasOwn(inputs, "eventService")).toBe(false);
     expect(inputs.paths).toBe(paths);
     expect(inputs.platform).toBe("wsl");
-    expect(inputs.logFileHelperPayloads).toBe(payloads);
+    expect(inputs.resolveContainerHelper).toBe(resolveContainerHelper);
     expect(inputs.sanitizeAppliedPlan).toBe(sanitizeForPersistence);
   });
   test("keeps the provided EventService", async () => {
