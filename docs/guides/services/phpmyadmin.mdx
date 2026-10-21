@@ -96,7 +96,7 @@ services:
     port: 8080
 ```
 
-Lando sets `APACHE_PORT` from `port:`. An authored `APACHE_PORT` must match the planned port, or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor the planned port.
+Lando sets `APACHE_PORT` from `port:`. An authored `APACHE_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.APACHE_PORT`. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor the planned port.
 
 This moves the UI listener only; database connections keep using each sibling's planned port. Apply the change with `lando rebuild`, then check the route:
 

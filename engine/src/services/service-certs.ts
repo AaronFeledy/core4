@@ -24,7 +24,7 @@ import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services"
 import { assertUnderRoot } from "@lando/landofile/include-guard";
 import { validationIssue } from "@lando/sdk/schema";
 
-const CERTS_FEATURE_ID = "lando.certs" as const;
+export const CERTS_FEATURE_ID = "lando.certs" as const;
 
 const CA_REMEDIATION =
   "Run `lando setup` to install a certificate authority, or set certs to false or a custom certificate path.";

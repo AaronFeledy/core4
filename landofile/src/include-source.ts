@@ -15,9 +15,14 @@ export const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
       };
 export const authoredIncludeEntries = (
   landofile: Pick<LandofileShape, "include" | "includes">,
-): ReadonlyArray<IncludeEntry> => [
-  ...(landofile.includes ?? []).filter((entry) => typeof entry === "string" || entry.kind !== "tooling"),
-  ...(landofile.include ?? []),
+): ReadonlyArray<IncludeEntry> => authoredIncludeEntriesWithPaths(landofile).map(({ entry }) => entry);
+export const authoredIncludeEntriesWithPaths = (landofile: Pick<LandofileShape, "include" | "includes">) => [
+  ...(landofile.includes ?? []).flatMap((entry, index) =>
+    typeof entry === "string" || entry.kind !== "tooling"
+      ? [{ entry, path: ["includes", index] as const }]
+      : [],
+  ),
+  ...(landofile.include ?? []).map((entry, index) => ({ entry, path: ["include", index] as const })),
 ];
 export const hasResolvableIncludes = (
   landofile: Pick<LandofileShape, "include" | "includes" | "toolingIncludes">,

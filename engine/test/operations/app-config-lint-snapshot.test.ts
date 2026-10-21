@@ -41,6 +41,9 @@ test("event-name errors remain tagged when masked fragment findings coexist with
     if (Exit.isFailure(result)) {
       const error = Cause.findErrorOption(result.cause);
       expect(error._tag === "Some" ? error.value._tag : undefined).toBe("LandofileUnknownEventError");
+      expect(error._tag === "Some" ? error.value : undefined).toMatchObject({
+        file: join(root, ".lando.yml"),
+      });
     }
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -1,11 +1,11 @@
 import { basename, dirname } from "node:path";
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
-import { valueOriginAt } from "@lando/sdk/landofile";
 import {
   type ConfigLintResult,
   type ConfigLintViolation,
   LandofileAuthoringFragmentNative,
   type LandofileShape,
+  type ValidationIssue,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
@@ -13,16 +13,27 @@ import { findLandofilePath } from "./discovery.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
 import { attributeLintIssue } from "./lint-source.ts";
-import { appNameOf, rejectionViolation, routeViolations, violationsFromSchema } from "./lint-violations.ts";
+import { appNameOf, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
-import { getOrigins } from "./pipeline/origins.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
 import { acquireLandofileRootLayers } from "./root-compile.ts";
 import { prepareLandofileValue } from "./source.ts";
 
-export { routeViolations } from "./lint-violations.ts";
+import { getLandofileValueSource } from "./validation.ts";
+
+export const attributeEffectiveLintIssue = (
+  landofile: LandofileShape,
+  issue: ValidationIssue & { readonly rule: string },
+): ConfigLintViolation => {
+  const source = getLandofileValueSource(landofile, issue.path) ?? issue.source;
+  return attributeLintIssue(
+    { ...issue, severity: "error", ...(source === undefined ? {} : { source }) },
+    "effective",
+    getSourceDocuments(landofile),
+  );
+};
 
 export interface LintLandofileOptions {
   readonly cwd?: string;
@@ -30,6 +41,7 @@ export interface LintLandofileOptions {
 }
 export interface LandofileLintSnapshot {
   readonly result: ConfigLintResult;
+  readonly landofilePath: string;
   readonly resolved?: LandofileShape;
 }
 
@@ -67,6 +79,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     if (discovered.failure instanceof LandofileFormConflictError)
       return yield* Effect.fail(discovered.failure);
     return {
+      landofilePath: cwd,
       result: {
         app: "",
         file: cwd,
@@ -131,21 +144,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     );
     documents = finalizedDocuments;
     if (Result.isFailure(effective)) return yield* Effect.fail(effective.failure);
-    const resolved = effective.success;
-    const origins = getOrigins(merged);
-    violations.push(
-      ...routeViolations(resolved, { deferExpressions: true }).map((issue) =>
-        attributeLintIssue(
-          {
-            ...issue,
-            ...(origins === undefined ? {} : { source: valueOriginAt(origins, issue.path).source }),
-          },
-          "effective",
-          documents,
-        ),
-      ),
-    );
-    return resolved;
+    return effective.success;
   }).pipe(Effect.result);
   if (Result.isFailure(finalized)) {
     const error = finalized.failure;
@@ -153,9 +152,17 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     if (error._tag === "LandofileValidationError")
       violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
     else {
-      const errorFile =
-        "filePath" in error ? error.filePath : "sourceFile" in error ? error.sourceFile : file;
+      const path = error._tag === "LandofileIncludeError" ? (error.path ?? []) : [];
+      let errorFile = file;
+      if (error._tag === "LandofileIncludeError" && error.file !== undefined) {
+        errorFile = error.file;
+      } else if ("filePath" in error) {
+        errorFile = error.filePath;
+      } else if ("sourceFile" in error) {
+        errorFile = error.sourceFile;
+      }
       const layer =
+        (error._tag === "LandofileIncludeError" ? error.layer : undefined) ??
         documents.find((document) => document.file === errorFile)?.layer ??
         LANDOFILE_LAYER_POSITIONS.find((position) => basename(errorFile).startsWith(`${position.basename}.`))
           ?.layer ??
@@ -163,9 +170,9 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       violations.push({
         rule: "landofile.load",
         severity: "error",
-        path: [],
+        path,
         scope,
-        source: { file: errorFile, layer, path: [] },
+        source: { file: errorFile, layer, path },
         message: error.message,
         ...(error._tag === "LandofileParseError" && error.line !== undefined ? { line: error.line } : {}),
         ...(error._tag === "LandofileParseError" && error.column !== undefined
@@ -183,6 +190,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
   const primary = unique[0]?.source?.file ?? file;
   return {
+    landofilePath: file,
     result: {
       app,
       file: primary,

@@ -66,7 +66,7 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
-  assertListenerConfig(service, ctx.serviceName, POSTGRES_LISTENER);
+  assertListenerConfig(service, POSTGRES_LISTENER);
   const port = plannedPort(service, POSTGRES_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -122,7 +122,7 @@ export const postgresServiceType: ServiceType = {
   resolve: (input) => {
     const creds = credsFor(input);
     return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, POSTGRES_LISTENER);
+      assertListenerConfig(input.service, POSTGRES_LISTENER);
       return {
         base: "lando",
         normalizedConfig: {

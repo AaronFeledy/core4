@@ -33,9 +33,6 @@ const ARTIFACTS = {
   "2022": "mcr.microsoft.com/mssql/server:2022-latest",
 } as const;
 const AMD64_HOST_ARCHES = new Set(["x64", "amd64", "x86_64"]);
-const ARCH_REMEDIATION =
-  "upstream SQL Server images are amd64-only; use an amd64 host or a provider with architecture emulation";
-
 export const MSSQL_FEATURE_ID = "service-lando.mssql";
 
 const defaultRootPassword = (appName: string, serviceName: string): string =>
@@ -74,7 +71,7 @@ const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCH
 
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  assertListenerConfig(service, ctx.serviceName, MSSQL_LISTENER);
+  assertListenerConfig(service, MSSQL_LISTENER);
   const port = plannedPort(service, MSSQL_LISTENER);
   const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
@@ -129,7 +126,14 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
     ) {
       return Effect.fail(
         new ServiceTypeError({
-          message: ARCH_REMEDIATION,
+          message: "Upstream SQL Server images are amd64-only.",
+          issues: [
+            {
+              path: ["type"],
+              message: "Upstream SQL Server images are amd64-only.",
+              suggestion: "Use an amd64 host or a provider with architecture emulation.",
+            },
+          ],
           serviceType: id,
         }),
       );
@@ -145,7 +149,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
     });
     const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, input.name);
     return serviceTypeResolve(id, "mssql service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, MSSQL_LISTENER);
+      assertListenerConfig(input.service, MSSQL_LISTENER);
       return {
         base: "lando",
         normalizedConfig: {

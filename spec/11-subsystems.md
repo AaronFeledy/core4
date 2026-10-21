@@ -365,6 +365,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 - `DoctorCheckContext` exposes bounded app/provider identity, resource inspection, and path-only executable lookup. It MUST NOT execute candidates, read executable contents or state, or import `@lando/container-runtime`.
 - Bundled `@lando/lando3` contributes read-only `lando3-leftovers` and `lando3-shadow` checks. They MUST NOT mutate or read Lando 3 user state; `LegacyProxyContainerDetected` solely owns legacy proxy detection.
+- With `--app`, the config section runs the same validation as `app:config:lint` and reports its `ConfigLintResult`; uncaught failures stay isolated under §10.9.1.
 - Core covers discovery, removed wrappers, plugin metadata, provider availability, and legacy proxy conflicts. A conflict raises `LegacyProxyContainerConflictError`. Plugin metadata failures become attributed self checks rather than aborting the report.
 - Core `orphaned-volume-snapshots` warns about eligible unindexed provider images and prescribes `lando snapshots:gc --prune`; unavailable providers pass with a skip note and MUST NOT be started.
 - Shell-shaped checks and fixes SHOULD use `ShellRunner`; transcripts persist at `<userCacheRoot>/logs/doctor/<run-id>.transcript`. `lando doctor --transcript-only` prints that transcript.

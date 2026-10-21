@@ -124,7 +124,7 @@ test.each(["site", "disabled"])(
     expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
       "services.web.appMount.target",
     ]);
-    expect(error.message).toBe(
+    expect(error.issues[0]?.message).toBe(
       `Container destination ${JSON.stringify(appMount)} must be an absolute path starting with "/".`,
     );
     expect(error.issues[0]?.suggestion).toBe(
