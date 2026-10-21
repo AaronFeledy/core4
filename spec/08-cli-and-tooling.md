@@ -168,7 +168,7 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 |---|---|
 | default / `view` | Read `raw`, `merged`, or default `resolved`; supports `--path` and structured formats |
 | `get` | Read one key path |
-| `set` | Write a typed value with `--type string\|number\|boolean\|json\|yaml` |
+| `set` | Infer the value type by full-tree schema decoding, trying raw text first, then a non-string number, boolean, null, or JSON interpretation; `--type string\|number\|boolean\|json\|yaml` overrides inference |
 | `unset` | Remove a key |
 | `edit` | Open `$VISUAL`/`$EDITOR`; `--target canonical\|local\|user` |
 | `validate` | Validate merged Landofile (§7.8) |
@@ -177,6 +177,8 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 | `migrate` | Ordered migration proposals; `--yes`, `--dry-run`, `--format json` |
 
 Ordinary writes target the canonical Landofile unless `edit --target` selects another editable layer. They validate before atomic §12.3 persistence; failure returns `LandofileWriteValidationError`. Translation and migration use §12.4 transactions. Successful writes invalidate the app-plan cache. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+
+`set` and `unset` MUST preserve comments and formatting outside the changed value or removed entry through source-offset splices. Every proposed serialization, including dry-run and canonical fallback, MUST parse with the document's own parser and equal the intended authored tree, including merge-directive symbols; decoded defaults MUST NOT be serialized. Unsupported edits MUST fail closed with `LandofileWriteValidationError`, the reason, and a pointer to `lando app:config edit` (or `lando global:config edit` for the global app) or hand editing. Full re-emission is permitted only for a blank file or an original already byte-identical to canonical emission. A failed full-tree decode MUST label issues also present in the original snapshot as already present before the change and direct the user to fix those first; candidate acceptance still requires a successful full decode.
 
 Conversion is preview-only without `--write`, MUST be explicit or unambiguous, and MUST NOT build an `AppPlan` or contact a runtime provider. Declared refresh is the separate §7.4.2 mode: `--refresh [<id>]` materializes and MAY fetch nonsecret remote metadata; `--refresh [<id>] --check` MUST use local state only and MUST NOT write. Conversion selectors and `--write` MUST NOT combine with refresh mode. Translators MAY also load in the bounded lifecycle refresh phase, never discovery or ordinary loading.
 
@@ -191,6 +193,8 @@ All remote commands MUST enforce central effective protection (§10.12.8), indep
 #### 8.2.2 The `meta:config` command
 
 `meta:config` mirrors ordinary app-config operations against `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. Writes MUST validate the global schema, including plugin and provider extensions, and persist atomically. `view --source raw` reads only `config.yml`; `resolved` includes overlays and environment overrides. It runs outside app context at `minimal` bootstrap.
+
+Its `set` and `unset` writes follow the comment/format-preserving and fail-closed contract above, verified with the config.yml parser. Refusals MUST point to `lando config edit` or hand editing.
 
 #### 8.2.3 The `app:shell` command
 

@@ -25,8 +25,7 @@ export const writeGlobalText = (filePath: string, content: string): Effect.Effec
     catch: (cause) => new ConfigError({ message: `Failed to write ${filePath}`, path: filePath, cause }),
   });
 
-export const readGlobalTree = Effect.fnUntraced(function* (filePath: string) {
-  const content = yield* readGlobalText(filePath);
+export const parseGlobalTree = Effect.fnUntraced(function* (filePath: string, content: string) {
   if (content.trim() === "") return { name: "global", runtime: 4 } as Record<string, unknown>;
   return (yield* parseLandofile({ file: filePath, content, cwd: filePath })) as Record<string, unknown>;
 });
@@ -65,4 +64,5 @@ export const decodeGlobalConfigDocument = (filePath: string) => (next: unknown) 
   Effect.fromResult(emitConfigYaml({ file: filePath, value: next })).pipe(
     Effect.flatMap((content) => compileGlobalConfigDocument(filePath, content)),
     Effect.map(Result.succeed),
+    Effect.catchTag("LandofileWriteValidationError", (error) => Effect.succeed(Result.fail(error.issues))),
   );

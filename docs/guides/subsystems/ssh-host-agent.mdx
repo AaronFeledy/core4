@@ -55,7 +55,7 @@ An explicit `socket` has to be a real socket. A missing path, a symlink, a regul
 `sshAgent` also lives in global config, so a team Landofile can stay on the sidecar default while your machine forwards its agent. Each field resolves Landofile, then global config, then default.
 
 ```sh
-lando config set sshAgent.sidecar false --type=boolean
+lando config set sshAgent.sidecar false
 lando config set sshAgent.socket /home/me/.1password/agent.sock
 lando config get sshAgent --format=json
 ```

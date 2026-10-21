@@ -21,11 +21,11 @@ import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
-import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
+import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
-import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
+import { type ValueType, writeValidationErrorFromIssues } from "../config-write/write-core";
 import { findAgentEnvPatternNames } from "../config/agent-env";
 import { resolveUserConfRoot } from "../config/roots";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../runtime/cli-options";
@@ -194,6 +194,9 @@ const readConfigText = (path: string): Effect.Effect<string, ConfigError> =>
     catch: (cause) => configReadError(path, cause),
   });
 
+const parseConfigText = (path: string) => (text: string) =>
+  Effect.try({ try: () => parseMinimalYaml(text), catch: (cause) => configReadError(path, cause) });
+
 const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, ConfigError> =>
   Effect.tryPromise({
     try: () => writeFileAtomicViaRename(path, content),
@@ -201,7 +204,9 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
   });
 
 const decodeGlobalConfig = (input: unknown) =>
-  Schema.decodeUnknownResult(GlobalConfig)(input, { onExcessProperty: "error", errors: "all" });
+  Schema.decodeUnknownResult(GlobalConfig)(input, { onExcessProperty: "error", errors: "all" }).pipe(
+    Result.mapError((cause) => validationIssuesFromCause(cause, { fallback: "Invalid config." })),
+  );
 
 const agentEnvPatternError = (
   decoded: ReturnType<typeof decodeGlobalConfig>,
@@ -280,9 +285,11 @@ const metaConfigSet = Effect.fnUntraced(function* (
     file: path,
     key,
     raw,
-    type: options.type ?? "string",
+    type: options.type,
     dryRun: options.dryRun === true,
-    readTree: readConfigTree(path),
+    readText: readConfigText(path),
+    parse: parseConfigText(path),
+    editCommand: "lando config edit",
     decode: decodeGlobalConfig,
     afterDecode: (decoded) => configWritePolicyError(decoded, path, key),
     writeText: writeConfigAtomic,
@@ -320,7 +327,9 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     file: path,
     key,
     dryRun: options.dryRun === true,
-    readTree: readConfigTree(path),
+    readText: readConfigText(path),
+    parse: parseConfigText(path),
+    editCommand: "lando config edit",
     decode: decodeGlobalConfig,
     afterDecode: (decoded) => configWritePolicyError(decoded, path, key),
     writeText: writeConfigAtomic,
@@ -341,7 +350,7 @@ const metaConfigValidate = Effect.fnUntraced(function* (
   const path = resolveConfigWritePath(options);
   const tree = yield* readConfigTree(path);
   const decoded = decodeGlobalConfig(tree);
-  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(tree)];
+  const issues = [...(Result.isFailure(decoded) ? decoded.failure : []), ...hostEventsTreeIssues(tree)];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);
@@ -387,7 +396,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       }),
   });
   const decoded = decodeGlobalConfig(parsed);
-  const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(parsed)];
+  const issues = [...(Result.isFailure(decoded) ? decoded.failure : []), ...hostEventsTreeIssues(parsed)];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);
