@@ -31,6 +31,7 @@ import {
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
+import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -50,7 +51,10 @@ const repairedLandofile = (): JsonSchema =>
 
 const expectedLandofile = (): JsonSchema =>
   evolveHistoricalServicePort(
-    evolveHistoricalTimestamps(evolveHistoricalShorthand(repairedLandofile()), "bare"),
+    evolveHistoricalTimestamps(
+      evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
+      "bare",
+    ),
   );
 
 describe("closed x-* extension artifact repair", () => {

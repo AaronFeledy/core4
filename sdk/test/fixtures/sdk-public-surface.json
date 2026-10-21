@@ -901,6 +901,7 @@
     "./fuzzy": ["bestFuzzy", "rankFuzzy"],
     "./landofile": [
       "ComposeDispositionMatrixError",
+      "GENERIC_FLOW_MAPPING_REMEDIATION",
       "LANDOFILE_LAYER_ORDER",
       "LANDOFILE_LEADING_COMMENT_BLOCKS",
       "LANDOFILE_MERGE_DIRECTIVE",
@@ -922,6 +923,7 @@
       "emitLandofileYamlEither",
       "encodeLandofileSourceValue",
       "expandRouteSchemes",
+      "flowMappingRemediation",
       "isLandofileOverride",
       "isLandofileReset",
       "isLegacyTagged",
@@ -951,6 +953,7 @@
       "valueOriginAt",
       "withValueOrigins"
     ],
+    "./landofile/flow-mapping-remediation": ["GENERIC_FLOW_MAPPING_REMEDIATION", "flowMappingRemediation"],
     "./log-follow": [
       "DEFAULT_MAX_LINE_BYTES",
       "DEFAULT_MAX_READ_BYTES",
@@ -1089,8 +1092,10 @@
       "COMPOSE_TOP_LEVEL_KEYS",
       "CONTAINER_USER_PATTERN",
       "CORE_SERVICE_ENV_KEYS",
+      "CaInput",
       "CertificateAuthorityContribution",
       "CertificatePlan",
+      "CertsInput",
       "CheckResult",
       "ChoicesFrom",
       "CleanupProps",

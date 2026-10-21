@@ -160,6 +160,7 @@ describe("Landofile package seam", () => {
     expect(Object.keys(coreModule).sort()).toEqual(
       [
         "ComposeDispositionMatrixError",
+        "GENERIC_FLOW_MAPPING_REMEDIATION",
         "LANDOFILE_LAYER_ORDER",
         "LANDOFILE_LEADING_COMMENT_BLOCKS",
         "LANDOFILE_MERGE_DIRECTIVE",
@@ -181,6 +182,7 @@ describe("Landofile package seam", () => {
         "emitLandofileYamlEither",
         "encodeLandofileSourceValue",
         "expandRouteSchemes",
+        "flowMappingRemediation",
         "isLandofileOverride",
         "isLandofileReset",
         "isLegacyTagged",

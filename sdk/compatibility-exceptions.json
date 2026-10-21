@@ -1,5 +1,89 @@
 [
   {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
     "surface": "schema:ConfigLintViolation",
     "changeKind": "property-added",
     "path": "$.rule",

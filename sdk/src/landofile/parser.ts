@@ -22,6 +22,7 @@ import { Effect } from "effect";
 
 import type { LandofileParseError } from "../errors/index.ts";
 import { LandofileParseError as LandofileParseErrorClass } from "../errors/index.ts";
+import { flowMappingRemediation } from "./flow-mapping-remediation.ts";
 import { isLandofileOverride, isMergeDirective, override, reset } from "./merge-directives.ts";
 import {
   YAML_REFERENCE_NAME_PATTERN,
@@ -293,6 +294,7 @@ const parseScalar = (
   depth: number,
   maxDepth: number,
   references: YamlReferenceState,
+  parentKey?: string,
 ): unknown => {
   const trimmed = value.trim();
 
@@ -329,6 +331,7 @@ const parseScalar = (
       depth,
       maxDepth,
       references,
+      parentKey,
     );
     bindYamlAnchor(references, reference.name, anchored);
     return anchored;
@@ -365,8 +368,7 @@ const parseScalar = (
       filePath,
       line,
       column: column + Math.max(value.search(/\S/), 0),
-      remediation:
-        "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+      remediation: flowMappingRemediation(trimmed, parentKey === undefined ? {} : { parentKey }),
     });
   }
   return trimmed;
@@ -840,6 +842,7 @@ const parseMember = (context: MemberContext, entry: MappingEntry): readonly [unk
       depth,
       maxDepth,
       references,
+      entry.key,
     );
   }
   if (
