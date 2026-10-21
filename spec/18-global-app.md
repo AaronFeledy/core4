@@ -235,7 +235,7 @@ All errors are tagged and include remediation where applicable:
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
 - `GlobalAppError`, the umbrella for global state-transition failures. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
-- `AppPlacementError`, with `app`, `desiredProviderId`, `realizedProviderId`, message, and remediation. Fixed `GlobalAppError` channels MUST preserve it as `cause` and expose its remediation.
+- `AppPlacementError`, with `app`, `desiredProviderId`, `realizedProviderId`, message, and remediation. Start, setup, and global lifecycle commands MUST return it as the top-level failure, never wrapped by `GlobalAppError`, `GlobalAutoStartError`, or `ProxySetupError`.
 - `ServiceNotReadyError`, the shared post-commit readiness verdict. It participates in group outcomes and partial-failure aggregation; if no group succeeds the first original failure remains unchanged. Remediation uses `lando global:logs -s <service>` and `lando global:start`, except `inspect-failed`, which prescribes `lando doctor`. Established resources and published routes remain available for diagnosis and convergence on retry (§20.6.5).
 - `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)
 

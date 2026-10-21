@@ -76,6 +76,8 @@ A Landofile `provider:` or a one-off `--provider` selects only that app's desire
 
 If older starts left copies on two providers, retire the unwanted copy with `lando destroy --provider=<id> --yes`. Without that explicit selection, ambiguous cleanup fails closed. The router and other global services stay on the host provider: `LANDO_PROVIDER`, else `defaultProviderId`, else `lando`.
 
+Placement failures report `code: AppPlacementError` at the top level for start, setup, and global lifecycle commands. Machine output keeps the app identity, both provider ids, and the recovery commands in the same failure rather than hiding them inside a proxy or global-service cause.
+
 ## Switch providers while the global app is running
 
 Lando never moves the global app on its own. If the router already runs on one provider and you change the host provider (for example `lando setup --provider=docker` after it started on `lando`), `lando global:install`, `global:start`, `global:restart`, `global:rebuild`, and any `lando start` that publishes routes fail with `AppPlacementError`.

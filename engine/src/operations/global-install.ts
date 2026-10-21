@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import {
+  type AppPlacementError,
   GlobalAppError,
   type GlobalDistConflictError,
   type GlobalLandofilePathConflictError,
@@ -55,6 +56,7 @@ export const globalInstall = Effect.fn("AppOperation.globalInstall")(function* (
 ): Effect.fn.Return<
   GlobalInstallResult,
   | GlobalAppError
+  | AppPlacementError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError

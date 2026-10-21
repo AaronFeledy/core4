@@ -280,7 +280,8 @@ export const makeHarness = (
     logs: options.logs ?? (() => Stream.empty),
   };
   const runtimeProviderRegistry = {
-    appliedPlansFor: () => Effect.succeed(options.appliedPlans ?? []),
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed((options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root)),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),

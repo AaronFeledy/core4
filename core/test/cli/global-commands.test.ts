@@ -618,11 +618,9 @@ describe("meta:global command effects", () => {
       expect(result).toMatchObject({
         _tag: "Failure",
         failure: {
-          cause: {
-            _tag: "GlobalAppPlacementError",
-            desiredProviderId: "docker",
-            realizedProviderId: "lando",
-          },
+          _tag: "AppPlacementError",
+          desiredProviderId: "docker",
+          realizedProviderId: "lando",
         },
       });
       expect(harness.calls.apply).toHaveLength(before);
@@ -656,7 +654,7 @@ describe("meta:global command effects", () => {
       // Then: placement fails and nothing was torn down.
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { cause: { _tag: "GlobalAppPlacementError", realizedProviderId: "lando" } },
+        failure: { _tag: "AppPlacementError", realizedProviderId: "lando" },
       });
       expect(harness.calls.destroy).toHaveLength(stopsBefore);
       expect(harness.calls.routesRemoved).toEqual([]);

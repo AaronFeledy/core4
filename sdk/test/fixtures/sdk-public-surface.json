@@ -130,12 +130,12 @@
       "writeFile:(path:string,content:string) => Effect.Effect<void,FileSystemError>"
     ],
     "GlobalAppService": [
-      "ensureProviderReady?:Effect.Effect<void,GlobalAppError>",
+      "ensureProviderReady?:Effect.Effect<void,GlobalAppError|AppPlacementError>",
       "ensureRoot:Effect.Effect<void,GlobalAppError,Scope.Scope>",
-      "ensureRunning:(services:ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<{ name:string;state:string;endpoints:ReadonlyArray<string>;}>,GlobalAppError>",
+      "ensureRunning:(services:ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<{ name:string;state:string;endpoints:ReadonlyArray<string>;}>,GlobalAppError|AppPlacementError>",
       "ensureUserLandofile:Effect.Effect<{ path:AbsolutePath;created:boolean },GlobalAppError|GlobalLandofilePathConflictError>",
       "id:\"global\"",
-      "occupiedPublishPorts?:(ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError>",
+      "occupiedPublishPorts?:(ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError|AppPlacementError>",
       "ownedPublishPorts?:(service:ServiceName,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError>",
       "paths:Effect.Effect<GlobalAppPaths,GlobalAppError>",
       "providerId?:Effect.Effect<ProviderId,GlobalAppError>",
@@ -273,10 +273,10 @@
       "applyRoutes:(routes:ReadonlyArray<RoutePlan>,appId:AppId) => Effect.Effect<ProxyApplyResult,ProxyApplyError>",
       "capabilities:ProxyCapabilities",
       "id:string",
-      "prepare?:(config:ProxyConfig) => Effect.Effect<void,ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch>",
+      "prepare?:(config:ProxyConfig) => Effect.Effect<void,AppPlacementError|ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch>",
       "removeRoutes:(appId:AppId) => Effect.Effect<void,ProxyError>",
       "revalidateStartup:Effect.Effect<void,ProxyError|RouterWatcherError>",
-      "setup:(config:ProxyConfig,options?:{ autoApprove?:boolean;/** Rescan host ports instead of reusing the persisted pair;set only by explicit `lando setup`. */ reacquirePorts?:boolean;}) => Effect.Effect<void,ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch|RouterWatcherError,Scope.Scope>",
+      "setup:(config:ProxyConfig,options?:{ autoApprove?:boolean;/** Rescan host ports instead of reusing the persisted pair;set only by explicit `lando setup`. */ reacquirePorts?:boolean;}) => Effect.Effect<void,AppPlacementError|ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch|RouterWatcherError,Scope.Scope>",
       "status:Effect.Effect<ProxyStatus,ProxyError>",
       "stop:Effect.Effect<void,ProxyError>"
     ],

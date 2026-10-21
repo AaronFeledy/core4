@@ -5,6 +5,7 @@ import type { Effect } from "effect";
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  AppPlacementError,
   AppResolveError,
   CapabilityError,
   CommandAliasConflictError,
@@ -62,6 +63,7 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | AppPlacementError
   | LandofileCompileError
   | CapabilityError
   | CommandAliasConflictError
@@ -102,6 +104,7 @@ type LegacyOrphanTeardownError =
   | StateStoreError;
 
 type LegacyGlobalInstallChannel =
+  | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
@@ -112,6 +115,7 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | AppPlacementError
   | LandofileCompileError
   | ServiceNotReadyError
   | CommandAliasConflictError
@@ -195,6 +199,7 @@ describe("Engine plan-carrying error channels", () => {
         | ProviderSelectionError
         | FileSystemError
         | GlobalAppError
+        | AppPlacementError
         | LandofileParseError
       >
     >(true);

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
-import { AppPlacementError, FileNotFoundError, GlobalAppError } from "@lando/sdk/errors";
+import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
@@ -52,7 +52,7 @@ const unusedPrivilege = {
 };
 
 type WatcherDependencies = {
-  readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError>;
+  readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError | AppPlacementError>;
   readonly readTraefikLogs?: () => Effect.Effect<
     { readonly providerId: string; readonly text: string },
     unknown
@@ -218,16 +218,17 @@ describe("Traefik RouterService", () => {
         remediation: "Destroy the old global app before retrying.",
       });
       const harness = makeHarness(undefined, {
-        ensureProviderReady: Effect.fail(
-          new GlobalAppError({ message: error.message, cause: error, remediation: error.remediation }),
-        ),
+        ensureProviderReady: Effect.fail(error),
       });
       const operation = harness.service[method];
       if (operation === undefined) throw new Error("router operation missing");
       const result = await Effect.runPromise(
         Effect.scoped(operation({ defaultDomain: "lndo.site" })).pipe(Effect.result),
       );
-      expect(result).toMatchObject({ _tag: "Failure", failure: { remediation: error.remediation } });
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", remediation: error.remediation },
+      });
       expect(harness.files.size).toBe(0);
     },
   );

@@ -98,8 +98,9 @@ test("creation refuses a different realized provider with placement remediation"
   expect(result).toMatchObject({
     _tag: "Failure",
     failure: {
-      _tag: "GlobalAppError",
-      cause: { _tag: "AppPlacementError", desiredProviderId: "docker", realizedProviderId: "lando" },
+      _tag: "AppPlacementError",
+      desiredProviderId: "docker",
+      realizedProviderId: "lando",
     },
   });
 });

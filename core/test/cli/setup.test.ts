@@ -33,6 +33,7 @@ import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import {
   AmbiguousCertificateAuthoritiesError,
+  AppPlacementError,
   InteractionCancelledError,
   InteractionUnavailableError,
   ProviderUnavailableError,
@@ -1124,6 +1125,47 @@ describe("meta:setup command", () => {
       };
       expect(readiness.status).toBe("failed");
       expect(readiness.steps.find((step) => step.id === "ca")?.status).toBe("failed");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("setup preserves a router placement failure as the top-level error", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-placement-"));
+    const error = new AppPlacementError({
+      app: { kind: "global", id: "global", root: AbsolutePath.make(join(userDataRoot, "global")) },
+      desiredProviderId: "docker",
+      realizedProviderId: "lando",
+      message: "Placement mismatch",
+      remediation: "Run `lando poweroff`, then retry setup.",
+    });
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    };
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: { ...makeTestRouterService(), setup: () => Effect.fail(error) },
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+          Effect.result,
+        ),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", remediation: error.remediation },
+      });
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }

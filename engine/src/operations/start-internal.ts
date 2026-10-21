@@ -2,6 +2,7 @@ import { DateTime, Effect, Option, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
+  AppPlacementError,
   type ComposeKeyRejectedError,
   FileSyncStartError,
   GlobalAutoStartError,
@@ -275,7 +276,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
     }).pipe(
       mapFailureErrors((cause) =>
-        cause instanceof ServiceNotReadyError
+        cause instanceof ServiceNotReadyError || cause instanceof AppPlacementError
           ? cause
           : new GlobalAutoStartError({
               message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,

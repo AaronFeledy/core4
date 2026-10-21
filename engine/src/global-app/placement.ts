@@ -34,14 +34,15 @@ export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
       ),
     );
   },
-  Effect.mapError(
-    (cause) =>
-      new GlobalAppError({
-        message: "Unable to resolve global app placement.",
-        operation: "placement",
-        remediation: taggedErrorRemediation(cause),
-        cause,
-      }),
+  Effect.mapError((cause) =>
+    cause instanceof AppPlacementError
+      ? cause
+      : new GlobalAppError({
+          message: "Unable to resolve global app placement.",
+          operation: "placement",
+          remediation: taggedErrorRemediation(cause),
+          cause,
+        }),
   ),
 );
 

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
+import { type AppPlacementError, GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -35,6 +35,7 @@ export interface LoadedGlobalPlanResult {
 export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanResult;
 
 export type LoadGlobalPlanError =
+  | AppPlacementError
   | AppPlannerError
   | LandofileCompileError
   | ProviderSelectionError

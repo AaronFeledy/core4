@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import { GlobalAppError } from "@lando/sdk/errors";
+import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -52,28 +52,31 @@ export const layer = Layer.effect(
       ),
       ensureProviderReady: createProvider.pipe(
         Effect.flatMap((provider) => provider.ensureReady ?? Effect.void),
-        Effect.mapError(
-          (cause) =>
-            new GlobalAppError({
-              message: "Unable to start the global service runtime before port selection.",
-              operation: "ensureProviderReady",
-              remediation: taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
-              cause,
-            }),
+        Effect.mapError((cause) =>
+          cause instanceof AppPlacementError
+            ? cause
+            : new GlobalAppError({
+                message: "Unable to start the global service runtime before port selection.",
+                operation: "ensureProviderReady",
+                remediation:
+                  taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
+                cause,
+              }),
         ),
       ),
       occupiedPublishPorts: (ports) =>
         createProvider.pipe(
           Effect.flatMap((provider) => provider.occupiedPublishPorts?.(ports) ?? Effect.succeed([])),
-          Effect.mapError(
-            (cause) =>
-              new GlobalAppError({
-                message: "Unable to inspect provider-host published TCP ports.",
-                operation: "occupiedPublishPorts",
-                remediation:
-                  taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
-                cause,
-              }),
+          Effect.mapError((cause) =>
+            cause instanceof AppPlacementError
+              ? cause
+              : new GlobalAppError({
+                  message: "Unable to inspect provider-host published TCP ports.",
+                  operation: "occupiedPublishPorts",
+                  remediation:
+                    taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
+                  cause,
+                }),
           ),
         ),
       ownedPublishPorts: (serviceId, ports) =>
@@ -156,16 +159,17 @@ export const layer = Layer.effect(
         ensureGlobalServicesRunning({ services }).pipe(
           Effect.provide(context),
           Effect.map((result) => result.servicesStarted),
-          Effect.mapError(
-            (cause) =>
-              new GlobalAppError({
-                message: "Unable to ensure global services are running.",
-                operation: "ensureRunning",
-                remediation:
-                  taggedErrorRemediation(cause) ??
-                  "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry.",
-                cause,
-              }),
+          Effect.mapError((cause) =>
+            cause instanceof AppPlacementError
+              ? cause
+              : new GlobalAppError({
+                  message: "Unable to ensure global services are running.",
+                  operation: "ensureRunning",
+                  remediation:
+                    taggedErrorRemediation(cause) ??
+                    "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry.",
+                  cause,
+                }),
           ),
         ),
     });

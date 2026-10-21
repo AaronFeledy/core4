@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { AppResolveError } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -11,6 +13,7 @@ import {
   observedAppPlan,
   resolveAppPlacement,
 } from "../../src/providers/app-placement.ts";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 const desired = { ...plan, provider: ProviderId.make("docker") };
@@ -21,6 +24,63 @@ const applied = {
 };
 const app = { kind: "user" as const, id: desired.id, root: desired.root };
 const target = { app, root: desired.root, plan: desired };
+
+test("user start preserves a required global service placement failure at top level", async () => {
+  const appliedPlans: AppPlan[] = [];
+  let applies = 0;
+  const plannedApp = { ...plan, requires: { globalServices: ["traefik"] } };
+  const harness = makeHarness({
+    plannedApp,
+    appliedPlans,
+    onApply: () => {
+      applies += 1;
+    },
+  });
+  const root = AbsolutePath.make(join(harness.userDataRoot, "global"));
+  appliedPlans.push({
+    ...applied,
+    id: AppId.make("global"),
+    root,
+    identity: { appRoot: root, ownerKey: "global" },
+  });
+  try {
+    const result = await Effect.runPromise(
+      startApp({}, { plan: plannedApp, app, root: plannedApp.root }).pipe(
+        Effect.provideService(
+          GlobalAppService,
+          GlobalAppService.of({
+            id: "global",
+            root: Effect.succeed(root),
+            paths: Effect.succeed({
+              root,
+              distLandofile: AbsolutePath.make(join(root, ".lando.dist.yml")),
+              userLandofile: AbsolutePath.make(join(root, ".lando.yml")),
+            }),
+            ensureRoot: Effect.die("placement must precede materialization"),
+            ensureUserLandofile: Effect.die("placement must precede materialization"),
+            regenerateDist: () => Effect.die("placement must precede materialization"),
+            ensureRunning: () => Effect.succeed([]),
+          }),
+        ),
+        Effect.provide(harness.layer),
+        Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "AppPlacementError",
+        app: { kind: "global" },
+        desiredProviderId: "docker",
+        realizedProviderId: "lando",
+      },
+    });
+    expect(applies).toBe(0);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
 
 for (const operation of [startApp, rebuildApp, restartApp]) {
   test(`${operation.name} refuses another provider's applied app before apply or teardown`, async () => {
