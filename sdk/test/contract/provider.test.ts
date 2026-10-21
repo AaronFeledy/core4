@@ -43,6 +43,70 @@ const expectContractFailure = async (
 };
 
 describe("RuntimeProvider contract", () => {
+  test("checks the runner-supplied digest when artifact pull is supported", async () => {
+    // Given
+    const ref = `registry.example/helper@sha256:${"a".repeat(64)}`;
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+    };
+    // When
+    const result = await Effect.runPromise(runProviderContract(provider, ref));
+    // Then
+    expect(result).toBeUndefined();
+  });
+
+  test.each([undefined, `sha256:${"b".repeat(64)}`])(
+    "rejects an unverified pull digest: %s",
+    async (digest) => {
+      // Given
+      const provider: typeof TestRuntimeProvider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: ({ ref }) =>
+          Effect.succeed({
+            providerId: TEST_PROVIDER_ID,
+            ref,
+            ...(digest === undefined ? {} : { digest }),
+          }),
+      };
+      // When
+      const failure = await Effect.runPromise(
+        runProviderContract(provider, `registry.example/helper@sha256:${"a".repeat(64)}`).pipe(Effect.flip),
+      );
+      // Then
+      expect(failure).toBeInstanceOf(ContractFailure);
+      expect(failure.assertion).toBe("pullArtifact reports the requested digest");
+    },
+  );
+
+  test("skips the digest fixture when artifact pull is unsupported", async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: false },
+      pullArtifact: () => Effect.die("unsupported artifact pull must not run"),
+    };
+    // When
+    const result = await Effect.runPromise(runProviderContract(provider, "helper@sha256:pin"));
+    // Then
+    expect(result).toBeUndefined();
+  });
+
+  test("rejects a tag-only pull fixture before calling the provider", async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: () => Effect.die("invalid fixture must not reach the provider"),
+    };
+    // When
+    const failure = await Effect.runPromise(runProviderContract(provider, "helper:latest").pipe(Effect.flip));
+    // Then
+    expect(failure).toBeInstanceOf(ContractFailure);
+    expect(failure.assertion).toBe("pull fixture is digest-qualified");
+  });
+
   test.each([
     [["lando-contract-split-", "line", "L".repeat(20_000)], "logs reassemble a line written in pieces"],
     [

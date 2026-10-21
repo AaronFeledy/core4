@@ -19,6 +19,9 @@ import {
 } from "effect";
 import { TestClock } from "effect/testing";
 
+import { libpodPullDialect } from "@lando/container-runtime/dialect";
+import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { pullImage } from "@lando/container-runtime/image-pull";
 import { providerImages } from "@lando/data-mover/provider-images";
 import * as BunDataMover from "@lando/data-mover/service";
 import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@lando/data-mover/service";
@@ -48,6 +51,7 @@ import {
   type VolumeIdentity,
 } from "@lando/sdk/schema";
 import {
+  type ArtifactPullSpec,
   DataMover,
   type EventFor,
   EventService,
@@ -3250,43 +3254,76 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       overwrite: true,
     });
 
-  test("pulls and runs the digest-qualified pinned ref before the helper container runs", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let pulledRef: string | undefined;
-      let ranImage: string | undefined;
-
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const dataMover = yield* DataMover;
-            yield* importToVolume(dataMover, source);
-          }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(
-            providerLayer({
-              capabilities: volumeCaps,
-              pullArtifact: (spec) =>
-                Effect.sync(() => {
-                  pulledRef = spec.ref;
-                  return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
-                }),
-              run: (spec) => {
-                ranImage = spec.image;
-                return TestRuntimeProvider.run(spec);
-              },
+  test.each([false, true])(
+    "transfers to a volume using the observed libpod helper digest (cached: %s)",
+    async (cached) => {
+      await withTempDir(async (dir) => {
+        // Given: the real pull path observes an engine-owned digest, never an echoed pin.
+        const source = join(dir, "seed.txt");
+        await writeFile(source, "pinned-helper-payload");
+        const pinnedRef = `${pinned.image}@${pinned.digest}`;
+        const inspectRequest: EngineHttpRequest = {
+          method: "GET",
+          path: `/libpod/images/${encodeURIComponent(pinnedRef)}/json`,
+        };
+        const pulls: ArtifactPullSpec[] = [];
+        const requests: EngineHttpRequest[] = [];
+        let present = cached;
+        let ranImage: string | undefined;
+        const api: EngineHttpApi = {
+          request: (request) =>
+            Effect.sync(() => {
+              requests.push(request);
+              if (request.method === "POST") {
+                present = true;
+                return { status: 200, body: '{"status":"Pull complete"}\n' };
+              }
+              return {
+                status: present ? 200 : 404,
+                body: JSON.stringify({ RepoDigests: ["other/helper@sha256:other", pinnedRef] }),
+              };
             }),
-          ),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-        ),
-      );
+        };
 
-      expect(pulledRef).toBe(`${pinned.image}@${pinned.digest}`);
-      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
-    });
-  });
+        // When
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* importToVolume(dataMover, source);
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(
+              providerLayer({
+                capabilities: volumeCaps,
+                pullArtifact: (spec) => {
+                  pulls.push(spec);
+                  return pullImage(api, spec.ref, {
+                    ctx: { providerId: "test", remediation: "Check the test engine." },
+                    dialect: libpodPullDialect,
+                    ...spec,
+                  }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));
+                },
+                run: (spec) => {
+                  ranImage = spec.image;
+                  return TestRuntimeProvider.run(spec);
+                },
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then
+        expect(pulls).toEqual([{ ref: pinnedRef, policy: "missing" }]);
+        expect(requests).toEqual(
+          cached ? [inspectRequest] : [inspectRequest, libpodPullDialect.request(pinnedRef), inspectRequest],
+        );
+        expect(ranImage).toBe(pinnedRef);
+      });
+    },
+  );
 
   test("runs the digest-qualified pinned ref without pullArtifact when artifact pull is unavailable", async () => {
     await withTempDir(async (dir) => {
@@ -3336,7 +3373,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       await writeFile(source, "pinned-helper-payload");
       let runCalls = 0;
 
-      const exit = await Effect.runPromiseExit(
+      const failure = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -3360,10 +3397,11 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
       expect(runCalls).toBe(0);
     });
   });
@@ -3374,7 +3412,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       await writeFile(source, "pinned-helper-payload");
       let runCalls = 0;
 
-      const exit = await Effect.runPromiseExit(
+      const failure = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -3393,10 +3431,11 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
       expect(runCalls).toBe(0);
     });
   });
@@ -3412,7 +3451,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
         capabilities: volumeCaps,
         pullArtifact: (spec) =>
           Effect.sync(() => {
-            if (!warmCache.has(spec.ref)) {
+            if (spec.policy !== "missing" || !warmCache.has(spec.ref)) {
               networkPulls += 1;
               warmCache.add(spec.ref);
             }

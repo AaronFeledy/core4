@@ -436,7 +436,14 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
   buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),
-  pullArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: spec.ref }),
+  pullArtifact: (spec) => {
+    const digest = spec.ref.includes("@") ? spec.ref.slice(spec.ref.lastIndexOf("@") + 1) : undefined;
+    return Effect.succeed({
+      providerId: TEST_PROVIDER_ID,
+      ref: spec.ref,
+      ...(digest === undefined ? {} : { digest }),
+    });
+  },
   removeArtifact: (_ref) => Effect.void,
 
   apply: (plan) =>

@@ -411,7 +411,7 @@ const resolveDataHelperImage = (
 ): Effect.Effect<string, DataTransferError> => {
   const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
   if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
-  return provider.pullArtifact({ ref: pinnedRef }).pipe(
+  return provider.pullArtifact({ ref: pinnedRef, policy: "missing" }).pipe(
     Effect.mapError((cause) => providerFailure("pullArtifact", cause)),
     Effect.flatMap((ref) => {
       if (ref.digest !== dataHelperImage.digest) {
