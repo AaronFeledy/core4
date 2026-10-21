@@ -318,18 +318,23 @@ describe("host-proxy runLando physical transport", () => {
 
   test("configure requires every credential and changes state only for valid bounded JSON", async () => {
     let current: unknown = "initial";
-    const session = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), {
-      configure: async (body) => {
-        current = body;
-      },
+    const configure = async (body: unknown) => {
+      current = body;
+    };
+    const session = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), { configure });
+    // The stalled-body check needs a short read timeout. It gets its own session so the 16 MiB body
+    // below is rejected for its size instead of racing that timeout while it is still being written.
+    const stalledSession = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), {
+      configure,
       bodyReadTimeoutMs: 20,
     });
-    const headers = {
-      "x-lando-host-proxy-control": session.controlToken,
-      authorization: `Bearer ${session.token}`,
-      "x-lando-host-proxy-session": session.sessionId,
-      "x-lando-host-proxy-app": session.appId,
-    };
+    const credentials = (target: typeof session) => ({
+      "x-lando-host-proxy-control": target.controlToken,
+      authorization: `Bearer ${target.token}`,
+      "x-lando-host-proxy-session": target.sessionId,
+      "x-lando-host-proxy-app": target.appId,
+    });
+    const headers = credentials(session);
     try {
       for (const key of Object.keys(headers)) {
         const denied = await controlHttpExchange(
@@ -364,10 +369,10 @@ describe("host-proxy runLando physical transport", () => {
       const stalled = await new Promise<number | undefined>((resolve, reject) => {
         const request = httpRequest(
           {
-            socketPath: socketPathOf(session),
+            socketPath: socketPathOf(stalledSession),
             method: "POST",
             path: "/_lando/host-proxy/configure",
-            headers: { ...headers, "content-length": "100" },
+            headers: { ...credentials(stalledSession), "content-length": "100" },
           },
           (response) => {
             response.resume();
@@ -393,6 +398,7 @@ describe("host-proxy runLando physical transport", () => {
       expect(current).toEqual({ routes: [] });
     } finally {
       await session.close();
+      await stalledSession.close();
     }
   });
 
