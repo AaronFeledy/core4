@@ -34,6 +34,10 @@ describe("release workflow", () => {
       expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
     }
     expect(workflow).toContain("gh release create");
+    expect(workflow).toContain("--name container-helper --dir dist/container-helper");
+    expect(workflow).toContain("test -s dist/container-helper/licenses/go/LICENSE");
+    expect(workflow).toContain("go_notices=(dist/container-helper-go-*)");
+    expect(workflow.match(/^\s+gh release create .+$/m)?.[0]).toContain('"${go_notices[@]}"');
     expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
     expect(workflow).toContain("dist/SHA256SUMS");
     expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");

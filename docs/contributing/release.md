@@ -31,6 +31,8 @@ Stages run in order and are numbered `1-codegen`, `2-container-helper`, `3-typec
 
 Stage `2-container-helper` runs `bun run scripts/build-container-helper.ts --test` for both binary and library releases before typecheck, tests, bundling, or compilation. The release host needs a working Lando provider: Go vet, tests, and the static `linux-x64` and `linux-arm64` builds run inside a Lando builder container, not on the host. To skip the build, set `LANDO_CONTAINER_HELPER_DIR` to the downloaded CI `container-helper` artifact from the same commit. Linux integration tests and package/compile stages then use those exact helpers.
 
+Keep `licenses/go/` with the helper binaries: binary releases attach the toolchain notices, and `@lando/core` packages include them under `container-helper/dist/licenses/go/`. Compilation and release reject incomplete notices.
+
 Stage `6-schema-artifacts` regenerates schema artifacts (`bun run codegen:schema-snapshot`) immediately before package/compile stages (`7-library-bundle`, `8-compile`).
 
 ### Platform scope

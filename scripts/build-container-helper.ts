@@ -6,7 +6,7 @@
  * there, so no Go toolchain is needed on the host. `--test` also runs `go vet`
  * and `go test` first.
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import {
@@ -15,6 +15,7 @@ import {
   containerHelperGoArch,
 } from "@lando/container-runtime/container-helper";
 
+import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
 import {
   CONTAINER_HELPER_SOURCE_DIGEST_PATH,
   CONTAINER_HELPER_SOURCE_ROOT,
@@ -32,6 +33,11 @@ export const containerHelperBuildCommands = (options: {
   const inBuilder = (...argv: ReadonlyArray<string>) => ["exec", "builder", "--cwd", "/app", "--", ...argv];
   return [
     ["start"],
+    inBuilder(
+      "sh",
+      "-ec",
+      'rm -rf dist/licenses/go; mkdir -p dist/licenses/go; goroot=$(go env GOROOT); cp "$goroot/LICENSE" dist/licenses/go/LICENSE; if [ -f "$goroot/PATENTS" ]; then cp "$goroot/PATENTS" dist/licenses/go/PATENTS; printf \'["licenses/go/LICENSE","licenses/go/PATENTS"]\\n\' > dist/licenses/go/files.json; else printf \'["licenses/go/LICENSE"]\\n\' > dist/licenses/go/files.json; fi',
+    ),
     ...(options.test ? [inBuilder("go", "vet", "./..."), inBuilder("go", "test", "./...")] : []),
     ...CONTAINER_HELPER_ARCHES.map((arch) =>
       inBuilder(
@@ -66,8 +72,10 @@ const run = async (argv: ReadonlyArray<string>): Promise<void> => {
 if (import.meta.main) {
   const test = process.argv.includes("--test");
   const digest = await containerHelperSourceDigest();
+  await rm(CONTAINER_HELPER_SOURCE_DIGEST_PATH, { force: true });
   for (const argv of containerHelperBuildCommands({ test, linkerFlags: containerHelperLinkerFlags() }))
     await run(argv);
+  await containerHelperNotices(resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
   await mkdir(dirname(CONTAINER_HELPER_SOURCE_DIGEST_PATH), { recursive: true });
   await writeFile(CONTAINER_HELPER_SOURCE_DIGEST_PATH, `${digest}\n`);
 }

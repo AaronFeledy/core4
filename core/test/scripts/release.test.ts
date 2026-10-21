@@ -22,6 +22,7 @@ import {
   runRelease,
 } from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
+import { stubContainerHelperDir } from "../build/fixtures/container-helper-stubs.ts";
 
 type ReleaseStage = (typeof RELEASE_STAGES)[number];
 
@@ -32,6 +33,12 @@ const passingManifestGate = async () => ({ ok: true as const, violations: [] });
 const withReleaseFixtureRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-release-deprecations-"));
   try {
+    await writeFixtureFile(root, "core/container-helper/dist/licenses/go/LICENSE", "fixture Go license\n");
+    await writeFixtureFile(
+      root,
+      "core/container-helper/dist/licenses/go/files.json",
+      '["licenses/go/LICENSE"]',
+    );
     await run(root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -177,11 +184,12 @@ describe("release orchestrator", () => {
     // Given helpers downloaded from CI for the release commit.
     const commands: ReadonlyArray<string>[] = [];
     const logs: string[] = [];
+    const helperDir = await stubContainerHelperDir();
 
     // When the helper stage runs with the artifact directory.
     await releaseStage("2-container-helper").run({
       target: "library",
-      env: { LANDO_CONTAINER_HELPER_DIR: "/release/container-helper" },
+      env: { LANDO_CONTAINER_HELPER_DIR: helperDir },
       localRehearsal: false,
       runner: {
         spawn: async ({ cmd }) => {
@@ -200,8 +208,9 @@ describe("release orchestrator", () => {
     // Then no build runs and the selected artifact location is visible.
     expect(commands).toEqual([]);
     expect(logs).toEqual([
-      "[release] skip 2-container-helper build (using prebuilt helpers from /release/container-helper)",
+      `[release] skip 2-container-helper build (using prebuilt helpers from ${helperDir})`,
     ]);
+    await rm(helperDir, { recursive: true, force: true });
   });
 
   test("reports actionable remediation when the container helper build fails", async () => {

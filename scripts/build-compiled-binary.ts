@@ -8,6 +8,8 @@ import { CONTAINER_HELPER_ARCHES } from "@lando/container-runtime/container-help
 import { Effect } from "effect";
 
 import { resolveContainerHelper } from "../core/src/container-helper/assets.ts";
+import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
+import { CONTAINER_HELPER_SOURCE_ROOT } from "../core/src/container-helper/source.ts";
 
 import type { BunPlugin } from "bun";
 
@@ -37,12 +39,13 @@ export type ContainerHelperAssetBuilder = (stagingDir: string) => Promise<readon
  * `bun run build:container-helper`, which builds them with Lando.
  */
 export const buildContainerHelperAssets: ContainerHelperAssetBuilder = async (stagingDir) => {
+  await containerHelperNotices(
+    process.env.LANDO_CONTAINER_HELPER_DIR ?? resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"),
+  );
   const assets: string[] = [];
   for (const arch of CONTAINER_HELPER_ARCHES) {
     const helper = await Effect.runPromise(
-      resolveContainerHelper({ os: "linux", arch }, { standalone: false }).pipe(
-        Effect.mapError((error) => new Error(`${error.message} ${error.remediation}`)),
-      ),
+      resolveContainerHelper({ os: "linux", arch }, { standalone: false }),
     );
     const asset = resolve(stagingDir, `lando-container-helper-linux-${arch}-${helper.digest}.gz`);
     await writeFile(asset, gzipSync(await readFile(helper.path), { level: 9 }));

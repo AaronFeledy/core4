@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
-import { readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { basename, relative, resolve } from "node:path";
 
 import { $ } from "bun";
 
+import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
 import {
   type DeprecationReleaseOffender,
   type DeprecationReleaseResult,
@@ -826,7 +827,9 @@ const uniqueAssetPaths = (assets: ReadonlyArray<string>): ReadonlyArray<string> 
   return unique;
 };
 
-const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<ReadonlyArray<string>> => {
+export const releaseGitHubAssetPaths = async (
+  context: ReleaseStageContext,
+): Promise<ReadonlyArray<string>> => {
   const version = releaseVersion(context.env);
   const manifest = await readReleaseManifest();
   const assets: Array<string> = [];
@@ -862,6 +865,15 @@ const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<Re
     "dist/release-artifacts.json",
   );
   if (context.target !== "library") {
+    const notices = await containerHelperNotices(
+      envValue(context.env, "LANDO_CONTAINER_HELPER_DIR") ?? "core/container-helper/dist",
+    );
+    await mkdir("dist", { recursive: true });
+    for (const notice of notices) {
+      const asset = `dist/container-helper-go-${basename(notice)}`;
+      await copyFile(notice, asset);
+      assets.push(asset);
+    }
     assets.push(
       "plugins/service-lando/tomcat/LICENSE",
       "plugins/service-lando/tomcat/NOTICE",
@@ -1437,6 +1449,7 @@ const containerHelperStage: ReleaseStage = {
   run: async (context): Promise<void> => {
     const helperDir = envValue(context.env, "LANDO_CONTAINER_HELPER_DIR");
     if (helperDir !== undefined) {
+      await containerHelperNotices(helperDir);
       context.logger(`[release] skip 2-container-helper build (using prebuilt helpers from ${helperDir})`);
       return;
     }

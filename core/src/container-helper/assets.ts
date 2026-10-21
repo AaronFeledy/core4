@@ -11,6 +11,7 @@ import { AbsolutePath, type ContainerHelperArtifact, type ContainerHelperTarget 
 import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 
+import { containerHelperNotices } from "./notices.ts";
 import {
   CONTAINER_HELPER_SOURCE_DIGEST_PATH,
   containerHelperDistPath,
@@ -49,6 +50,7 @@ const fromFile = async (target: ContainerHelperTarget, path: string): Promise<Co
 };
 
 const fromSourceBuild = async (target: ContainerHelperTarget): Promise<ContainerHelperArtifact> => {
+  await containerHelperNotices(dirname(dirname(containerHelperDistPath(target.arch))));
   const recorded = await readIfPresent(CONTAINER_HELPER_SOURCE_DIGEST_PATH);
   if (
     recorded === undefined ||

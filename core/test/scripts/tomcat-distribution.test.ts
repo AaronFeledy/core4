@@ -18,6 +18,10 @@ const notices = ["LICENSE", "NOTICE"] as const;
 const withFixture = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-tomcat-distribution-"));
   try {
+    const goNotices = join(root, "core/container-helper/dist/licenses/go");
+    await mkdir(goNotices, { recursive: true });
+    await writeFile(join(goNotices, "LICENSE"), "fixture Go license\n");
+    await writeFile(join(goNotices, "files.json"), '["licenses/go/LICENSE"]');
     await run(root);
   } finally {
     await rm(root, { recursive: true, force: true });

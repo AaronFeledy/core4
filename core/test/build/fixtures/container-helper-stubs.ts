@@ -10,6 +10,9 @@ import { CONTAINER_HELPER_ARCHES, CONTAINER_HELPER_FILE } from "@lando/container
  */
 export const stubContainerHelperDir = async (): Promise<string> => {
   const root = await mkdtemp(join(tmpdir(), "lando-helper-stub-"));
+  await mkdir(join(root, "licenses/go"), { recursive: true });
+  await writeFile(join(root, "licenses/go/LICENSE"), "fixture Go license\n");
+  await writeFile(join(root, "licenses/go/files.json"), '["licenses/go/LICENSE"]\n');
   for (const arch of CONTAINER_HELPER_ARCHES) {
     await mkdir(join(root, `linux-${arch}`), { recursive: true });
     await writeFile(join(root, `linux-${arch}`, CONTAINER_HELPER_FILE), "#!/bin/sh\nexit 0\n", {

@@ -44,7 +44,7 @@ const isBuildInput = (name: string): boolean =>
 /** Digest of everything that determines the built binaries: Go sources, toolchain image, and linker flags. */
 export const containerHelperSourceDigest = async (): Promise<string> => {
   const names = (await readdir(CONTAINER_HELPER_SOURCE_ROOT)).filter(isBuildInput).sort();
-  const parts = [`ldflags\0${containerHelperLinkerFlags()}`];
+  const parts = ["notices-v1", `ldflags\0${containerHelperLinkerFlags()}`];
   for (const name of names) {
     parts.push(`${name}\0${await readFile(join(CONTAINER_HELPER_SOURCE_ROOT, name), "utf8")}`);
   }

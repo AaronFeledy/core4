@@ -102,6 +102,8 @@ Installers and self-update MUST verify checksums and signatures. Trust roots are
 
 Every release publishes a CycloneDX SBOM, SLSA v1.0 provenance for each binary, and keyless cosign signatures and certificates for every binary. The SBOM covers dependencies, bundled plugins and recipes, Bun, the Go standard library linked into the in-container helper, and `@lando/sdk`; provenance identifies the source commit, workflow, build inputs, and generated artifacts. Releases target SLSA build level 3.
 
+Binary and library distributions MUST carry the license notices of compiled-in third-party code, including the Go standard library in the container helper.
+
 The pipeline SHOULD produce reproducible binaries from identical source, Bun version, plugin set, and codegen outputs. Weekly independent rebuild drift triggers a release advisory but does not retroactively invalidate signed artifacts.
 
 ### 17.6 Self-update
