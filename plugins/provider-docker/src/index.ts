@@ -232,7 +232,7 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
-    composeKnobs: { supported: ["restart", "extra_hosts"] },
+    composeKnobs: { supported: ["restart", "cap_add", "cap_drop", "extra_hosts"] },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],

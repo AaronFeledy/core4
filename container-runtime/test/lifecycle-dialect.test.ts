@@ -201,6 +201,25 @@ describe("lifecycle dialect", () => {
     });
   });
 
+  test("names the shared network in the create body of a global service without a later connect", async () => {
+    // Given
+    const globalPlan: AppPlan = { ...plan, id: AppId.make("global"), name: "global", slug: "global" };
+    const fake = makeBringUpApi();
+
+    // When
+    await Effect.runPromise(bringUp(globalPlan, { api: fake.api, ctx, dialect: dockerLifecycleDialect }));
+
+    // Then
+    expect(
+      fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
+    ).toMatchObject({
+      NetworkingConfig: {
+        EndpointsConfig: { lando_bridge_network: { Aliases: ["web.global.internal"] } },
+      },
+    });
+    expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([]);
+  });
+
   test("reconnects an existing container to the shared network", async () => {
     const fake = makeBringUpApi([{ status: 201, body: "{}" }], { existing: true });
 

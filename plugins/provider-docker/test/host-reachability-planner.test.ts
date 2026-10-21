@@ -10,5 +10,5 @@ test("plans authored extra_hosts with Docker capabilities without post-plan exte
   const plan = await Effect.runPromise(planHostProbe("host-planner-regression", capabilities));
   // Then: the authored values reach the provider input unchanged.
   expect(plan.services[hostProbeService]?.extensions.compose).toEqual({ extra_hosts: authoredExtraHosts });
-  expect(capabilities.composeKnobs).toEqual({ supported: ["restart", "extra_hosts"] });
+  expect(capabilities.composeKnobs).toEqual({ supported: ["restart", "cap_add", "cap_drop", "extra_hosts"] });
 });
