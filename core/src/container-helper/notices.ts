@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Schema } from "effect";
 
-export const CONTAINER_HELPER_GO_LICENSE = "licenses/go/LICENSE";
-export const CONTAINER_HELPER_GO_PATENTS = "licenses/go/PATENTS";
-export const CONTAINER_HELPER_NOTICE_MANIFEST = "licenses/go/files.json";
+const CONTAINER_HELPER_GO_LICENSE = "licenses/go/LICENSE";
+const CONTAINER_HELPER_GO_PATENTS = "licenses/go/PATENTS";
+const CONTAINER_HELPER_NOTICE_MANIFEST = "licenses/go/files.json";
 
 export class ContainerHelperNoticeError extends Schema.TaggedError<ContainerHelperNoticeError>()(
   "ContainerHelperNoticeError",

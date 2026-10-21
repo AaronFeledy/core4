@@ -29,7 +29,7 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
     entryPath: process.argv[1],
     bunSourceEntryPath: new URL("../../bin/lando.ts", import.meta.url).pathname,
   }),
-  resolveContainerHelper: (target, options) => resolveContainerHelper(target, options),
+  resolveContainerHelper,
 };
 
 installEngineCompositionIfAbsent(baseEngineCompositionInputs);

@@ -14,6 +14,7 @@ import { Effect, Layer } from "effect";
 import { containerHelperNotices } from "./notices.ts";
 import {
   CONTAINER_HELPER_SOURCE_DIGEST_PATH,
+  CONTAINER_HELPER_SOURCE_ROOT,
   containerHelperDistPath,
   containerHelperSourceDigest,
 } from "./source.ts";
@@ -50,7 +51,7 @@ const fromFile = async (target: ContainerHelperTarget, path: string): Promise<Co
 };
 
 const fromSourceBuild = async (target: ContainerHelperTarget): Promise<ContainerHelperArtifact> => {
-  await containerHelperNotices(dirname(dirname(containerHelperDistPath(target.arch))));
+  await containerHelperNotices(join(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
   const recorded = await readIfPresent(CONTAINER_HELPER_SOURCE_DIGEST_PATH);
   if (
     recorded === undefined ||
