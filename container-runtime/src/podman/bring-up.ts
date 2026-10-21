@@ -568,9 +568,14 @@ const createBodyNetworkNames = (deps: BringUpDeps, plan: AppPlan): ReadonlyArray
     ? networkNames(plan).slice(0, 1)
     : networkNames(plan);
 
-/** The shared network still to connect after create, when the create body did not name it. */
-const sharedNetworkAfterCreate = (deps: BringUpDeps, plan: AppPlan): string | undefined => {
+/** Existing Docker containers need an idempotent connect even when create would attach the shared network. */
+const sharedNetworkAfterCreate = (deps: BringUpDeps, plan: AppPlan, created: boolean): string | undefined => {
   const shared = sharedNetworkName(plan);
+  if (
+    !created &&
+    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+  )
+    return shared;
   return shared === undefined || createBodyNetworkNames(deps, plan).includes(shared) ? undefined : shared;
 };
 
@@ -762,7 +767,7 @@ const startService = Effect.fnUntraced(function* (
     createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
     changed = true;
   }
-  const sharedNetwork = sharedNetworkAfterCreate(deps, plan);
+  const sharedNetwork = sharedNetworkAfterCreate(deps, plan, !before.exists);
   if (sharedNetwork !== undefined) {
     yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
   }
@@ -798,8 +803,9 @@ const startService = Effect.fnUntraced(function* (
         }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
-        if (sharedNetwork !== undefined) {
-          yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+        const retrySharedNetwork = sharedNetworkAfterCreate(deps, plan, true);
+        if (retrySharedNetwork !== undefined) {
+          yield* connectSharedNetwork(deps, plan, service, name, retrySharedNetwork);
         }
         retry = yield* startContainer(deps, name);
       }

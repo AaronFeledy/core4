@@ -57,7 +57,7 @@ const plan: AppPlan = {
 
 const makeBringUpApi = (
   createResponses: ReadonlyArray<EngineHttpResponse> = [{ status: 201, body: "{}" }],
-  options: { readonly existing?: boolean } = {},
+  options: { readonly existing?: boolean; readonly plan?: AppPlan } = {},
 ) => {
   const requests: EngineHttpRequest[] = [];
   let created = options.existing === true;
@@ -78,7 +78,7 @@ const makeBringUpApi = (
                 status: 200,
                 body: JSON.stringify({
                   Id: "lando-lifecycle-dialect-app-web-id",
-                  Config: { Labels: commonContainerLabels(plan, service) },
+                  Config: { Labels: commonContainerLabels(options.plan ?? plan, service) },
                   State: { Running: true, Status: "running" },
                 }),
               }
@@ -283,6 +283,40 @@ describe("lifecycle dialect", () => {
         body: {
           Container: "lando-lifecycle-dialect-app-web",
           EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
+        },
+      },
+    ]);
+  });
+
+  test("reattaches a global container on later Docker bring-ups without connecting redundantly on creation", async () => {
+    const globalPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("global"),
+      slug: "global",
+      networking: landoNetworkingPlan({
+        slug: "global",
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: true,
+        perAppBridge: false,
+      }),
+    };
+    const fake = makeBringUpApi(undefined, { plan: globalPlan });
+    const options = { api: fake.api, ctx, dialect: dockerLifecycleDialect };
+
+    await Effect.runPromise(bringUp(globalPlan, options));
+    expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([]);
+    fake.requests.length = 0;
+
+    await Effect.runPromise(bringUp(globalPlan, options));
+
+    expect(fake.requests.some((request) => request.path.startsWith("/containers/create?"))).toBe(false);
+    expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([
+      {
+        method: "POST",
+        path: "/networks/lando_bridge_network/connect",
+        body: {
+          Container: "lando-global-web",
+          EndpointConfig: { Aliases: ["web.global.internal"] },
         },
       },
     ]);
