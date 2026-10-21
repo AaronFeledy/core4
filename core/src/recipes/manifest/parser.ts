@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { RecipeManifestParseError } from "@lando/sdk/errors";
+import { flowMappingRemediation } from "@lando/sdk/landofile/flow-mapping-remediation";
 
 export interface RecipeYamlParseOptions {
   readonly source: string;
@@ -34,7 +35,7 @@ const parseInlineArray = (value: string, source: string, line: number): Readonly
   return inner.split(",").map((part) => parseScalar(part.trim(), source, line));
 };
 
-const parseScalar = (value: string, source: string, line: number): unknown => {
+const parseScalar = (value: string, source: string, line: number, parentKey?: string): unknown => {
   const trimmed = value.trim();
   if (trimmed === "") return "";
   if (trimmed === "null" || trimmed === "~") return null;
@@ -43,7 +44,12 @@ const parseScalar = (value: string, source: string, line: number): unknown => {
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) return parseInlineArray(trimmed, source, line);
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    throw parseError(source, `Inline objects are not supported in recipe.yml at line ${line}`, line);
+    const suggestion = flowMappingRemediation(trimmed, parentKey === undefined ? {} : { parentKey });
+    throw parseError(
+      source,
+      `Inline objects are not supported in recipe.yml at line ${line}. ${suggestion}`,
+      line,
+    );
   }
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
@@ -114,7 +120,7 @@ const parseMap = (
       continue;
     }
 
-    result[key] = parseScalar(rawValue, source, line.line);
+    result[key] = parseScalar(rawValue, source, line.line, key);
     index += 1;
   }
 
@@ -203,7 +209,7 @@ const parseListItemMap = (
       index = nextIndex;
       return;
     }
-    item[key] = parseScalar(rawValue, source, keyLine);
+    item[key] = parseScalar(rawValue, source, keyLine, key);
   };
 
   consumeKey(firstKey, firstRawValue, startLine.line, childIndent);

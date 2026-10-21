@@ -1,10 +1,12 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
 import { buildPublicTranscript, parseGuideScenarioAst } from "../../../scripts/build-guide-scenarios.ts";
+import { classifiedFormFor, validateClassified } from "../../../scripts/lint-guides-yaml-fence.ts";
+import { lintFixtureLandofiles } from "../../../scripts/lint-guides-yaml-fixtures.ts";
 import {
   type GuideFixtureInventoryEntry,
   checkScenarioSourceMap,
@@ -437,6 +439,164 @@ describe("lint:guides", () => {
     expect(diagnostics).toEqual([
       "core/test/lint/guides/shell-fence.mdx:26:1: guide.shell-fence: Raw fenced `bash` code block is not allowed inside <Scenario>; use <Run> or <Inline>.",
     ]);
+  });
+
+  test("reports invalid full Landofile yaml fences", async () => {
+    const diagnostics = await lintFixture("yaml-fence-bad-full");
+
+    expect(diagnostics).toEqual([
+      "core/test/lint/guides/yaml-fence-bad-full.mdx:10:1: guide.yaml-fence.invalid: notARealKey: Expected no excess property",
+    ]);
+  });
+
+  test("reports invalid Landofile fragment yaml fences", async () => {
+    const diagnostics = await lintFixture("yaml-fence-bad-fragment");
+
+    expect(diagnostics).toEqual([
+      "core/test/lint/guides/yaml-fence-bad-fragment.mdx:10:1: guide.yaml-fence.invalid: services.web.notARealServiceKey: Expected no excess property",
+    ]);
+  });
+
+  test("accepts bare service bodies wrapped as services.x fragments", async () => {
+    expect(await lintFixture("yaml-fence-bare-service")).toEqual([]);
+  });
+
+  test("accepts GlobalConfig-only yaml fences", async () => {
+    expect(await lintFixture("yaml-fence-global-config")).toEqual([]);
+  });
+
+  test("skips yaml fences marked nolint", async () => {
+    expect(await lintFixture("yaml-fence-nolint")).toEqual([]);
+  });
+
+  test("reports Landofile flow-map parse errors on yaml fences", async () => {
+    const diagnostics = await lintFixture("yaml-fence-flow-map");
+
+    expect(diagnostics).toEqual([
+      [
+        "core/test/lint/guides/yaml-fence-flow-map.mdx:11:11: guide.yaml-fence.parse: Inline objects are not supported in Landofiles at line 2. Use an indented block mapping instead. Rewrite the flow mapping as a block mapping:",
+        "services:",
+        "  web: lando",
+      ].join("\n"),
+    ]);
+  });
+
+  test("accepts valid full, fragment, bare-service, global, and skipped yaml fences", async () => {
+    expect(await lintFixture("yaml-fence-good")).toEqual([]);
+  });
+
+  test("reports invalid fixture .lando.local.yml via inventory with file:line:col format", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lint-guides-yaml-inv-"));
+    try {
+      const fixtureDir = join(dir, "docs/guides/probe/fixtures/app");
+      await mkdir(fixtureDir, { recursive: true });
+      await writeFile(
+        join(fixtureDir, ".lando.yml"),
+        ["name: ok", "services:", "  web:", "    type: lando", ""].join("\n"),
+      );
+      await writeFile(
+        join(fixtureDir, ".lando.local.yml"),
+        ["services:", "  web:", "    notARealServiceKey: true", ""].join("\n"),
+      );
+      await writeFile(join(fixtureDir, ".lando.ts"), "export default {}\n");
+      const diagnostics: Array<{
+        sourcePath: string;
+        line: number;
+        column: number;
+        code: string;
+        message: string;
+      }> = [];
+      await lintFixtureLandofiles(
+        dir,
+        [
+          {
+            name: "app",
+            sourcePath: "docs/guides/probe/fixtures/app",
+            scope: "local",
+            kind: "directory",
+          },
+        ],
+        diagnostics,
+      );
+      expect(diagnostics.map(formatGuideLintDiagnostic)).toEqual([
+        "docs/guides/probe/fixtures/app/.lando.local.yml:1:1: guide.fixture.landofile-invalid: services.web.notARealServiceKey: Expected no excess property",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fixture formOverride never skips arrays or scalars (decode fails instead)", () => {
+    expect(classifiedFormFor([], "fragment")).toEqual({ kind: "fragment", value: [] });
+    expect(classifiedFormFor("scalar", "fragment")).toEqual({ kind: "fragment", value: "scalar" });
+    expect(classifiedFormFor(42, "full")).toEqual({ kind: "full" });
+
+    const diagnostics: Array<{
+      sourcePath: string;
+      line: number;
+      column: number;
+      code: string;
+      message: string;
+    }> = [];
+    const fence = { type: "code", position: { start: { line: 0, column: 1 } } };
+    validateClassified(
+      {
+        sourcePath: "fixtures/app/.lando.local.yml",
+        fence,
+        diagnostics,
+        code: "guide.fixture.landofile-invalid",
+      },
+      [],
+      classifiedFormFor([], "fragment"),
+    );
+    expect(diagnostics.map(formatGuideLintDiagnostic)).toEqual([
+      "fixtures/app/.lando.local.yml:1:1: guide.fixture.landofile-invalid: Expected object",
+    ]);
+  });
+
+  test("lintGuides discovers fixture inventory and reports invalid .lando.local.yml", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lint-guides-yaml-lg-"));
+    try {
+      const guideRoot = "guides";
+      const fixtureDir = join(dir, guideRoot, "probe", "fixtures", "app");
+      await mkdir(fixtureDir, { recursive: true });
+      await writeFile(
+        join(dir, guideRoot, "probe.mdx"),
+        [
+          "---",
+          "id: probe",
+          "provider: test",
+          "diataxis: tutorial",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path">',
+          '    <Step name="scaffold">',
+          '      <UseFixture name="app" />',
+          "    </Step>",
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(
+        join(fixtureDir, ".lando.yml"),
+        ["name: ok", "services:", "  web:", "    type: lando", ""].join("\n"),
+      );
+      await writeFile(
+        join(fixtureDir, ".lando.local.yml"),
+        ["services:", "  web:", "    notARealServiceKey: true", ""].join("\n"),
+      );
+      const diagnostics = (await lintGuides(dir, { guideRoot })).diagnostics.map(formatGuideLintDiagnostic);
+      expect(diagnostics).toEqual([
+        "guides/probe/fixtures/app/.lando.local.yml:1:1: guide.fixture.landofile-invalid: services.web.notARealServiceKey: Expected no excess property",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("requires every <Run> to declare a display-vs-execute binding", async () => {

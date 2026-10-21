@@ -290,6 +290,27 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (35 minutes for the live linux-x64 job, 25 minutes for linux-arm64, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
+## Lint guide YAML and negative fixtures
+
+Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+Full `.lando.yml` documents keep full authoring requirements, including native
+`!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
+Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,
+and command envelopes, is not validated as a Landofile. Unknown siblings do not
+exclude a document that has a Landofile-specific key such as `services` or `tooling`.
+
+For an intentionally invalid fixture, put `# lando-lint: expect-invalid REASON`
+on its first physical line. A UTF-8 BOM before the comment and CRLF line endings
+are accepted. Leading blank lines or license comments make the marker misplaced
+and produce `guide.fixture.landofile-marker-placement`. Every marker asserts a
+native authoring failure; its reason never selects another dialect, even when it
+starts with `lando3`. A body that validates produces
+`guide.fixture.landofile-unexpected-valid`. Keep the negative body invalid rather
+than hiding it behind a skip.
+
+Only a standalone `nolint` fence metadata token opts out. A title such as
+`title="nolint-example.yaml"` or a quoted value containing `nolint` does not.
+
 ## Guide e2e smoke subset
 
 The scenario-layer generated guide tests run on all six PR platforms (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, `windows-arm64`) through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.

@@ -7,13 +7,12 @@ import type {
   NotImplementedError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
-import type { LandofileLoadScope } from "./compile.ts";
 import { includeError } from "./include-guard.ts";
 import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type {
   GitAcquisitionPort,
   LandofileRuntimePorts,
@@ -41,8 +40,8 @@ export interface LandofileRelaxedRead {
   readonly appRoot: string;
 }
 export interface ResolveLandofileIncludesOptions {
-  readonly loadScope: LandofileLoadScope;
-  readonly landofile: LandofileShape;
+  readonly loadScope?: LandofileLoadScope;
+  readonly landofile: Record<string, unknown>;
   readonly appRoot: string;
   readonly sourcePath?: string;
   readonly cacheRoot?: string;
@@ -80,7 +79,7 @@ export interface RemoteIncludeOrigin {
 export interface ResolveContext {
   readonly ancestors?: ReadonlyArray<string>;
   readonly remoteOrigin?: RemoteIncludeOrigin | undefined;
-  readonly loadScope: LandofileLoadScope;
+  readonly loadScope: LandofileLoadScope | undefined;
   readonly appRoot: string;
   readonly sourceRoot: string;
   readonly userOwned: boolean;

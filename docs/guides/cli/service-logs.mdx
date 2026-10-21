@@ -28,7 +28,7 @@ services:
         label: myapp error log
 ```
 
-A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and timestamp behavior. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream.
+A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and `timestamps`. Set `timestamps: true` only when the file's lines carry parseable leading timestamps so `--since` can filter them. It defaults to false; Lando does not add timestamps to the file. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream.
 
 Lando-built images can redirect daemon log files through stdout/stderr. Bring-your-own images and logs that cannot redirect are followed by the active runtime provider. You do not run `tail -F` yourself.
 
@@ -81,7 +81,7 @@ lando logs -s appserver --tail 50
 lando info
 ```
 
-Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: { disable: true }` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
+Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: false` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
 
 With authored `restart: always` or `unless-stopped`, an exit or observed restart delegates recovery to the container engine. `on-failure` does that only for a non-zero exit; exit 0 remains a readiness failure. Start warns with the reason, available exit code, a short redacted log tail, and app-specific logs remediation, then reports `restarting`. Exhausted healthchecks still fail, and completion jobs must exit 0 regardless of restart policy. Pressing Ctrl-C during user-app readiness leaves the applied app running while the command exits as interrupted.
 
@@ -92,6 +92,14 @@ A blocked dependency gate captures the dependency that failed the gate, not the 
 Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
 
 <Guide>
+  <Scenario id="declared-source" render>
+    <Step name="check-declared-source">
+      <UseFixture name="declared-source" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"logs\":\\s*\\[\\{[^}]*\"path\":\\s*\"/tmp/app.log\"[^}]*\"id\":\\s*\"applog\"[^}]*\"timestamps\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
   <Scenario id="documented-flags" tags={["scenario", "read-only"]} render={false} reason="Verify the documented logs flags without a running container">
     <Step name="check-flags">
       <Run command="lando logs --help" />

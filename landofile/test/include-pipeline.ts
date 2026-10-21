@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { buildLandofileLoadScope } from "../src/compile.ts";
 import {
   type ResolveLandofileIncludesOptions,
   type UpdateLandofileIncludesOptions,
@@ -10,6 +9,7 @@ import {
   updateLandofileIncludes,
   verifyLandofileIncludes,
 } from "../src/includes.ts";
+import { buildLandofileLoadScope } from "../src/pipeline/materialize.ts";
 
 export const authoredRecipe = (options: LandofileRecipeProvenance["options"]) => ({
   id: "lamp",

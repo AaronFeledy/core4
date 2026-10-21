@@ -21,11 +21,11 @@ cd reverb-demo
 `--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml` and change the `command` and `dependsOn` of `worker`:
 
 ```yaml
-  worker:
-    command: php artisan queue:listen
-    dependsOn:
-      database:
-        condition: service_healthy
+worker:
+  command: php artisan queue:listen
+  dependsOn:
+    database:
+      condition: service_healthy
 ```
 
 Start the app and install Laravel:
@@ -94,6 +94,7 @@ VITE_REVERB_SCHEME=https
 Add two services under `services:` in `.lando.yml`:
 
 ```yaml
+services:
   reverb:
     type: "php:{{ recipe.php }}"
     port: 8080

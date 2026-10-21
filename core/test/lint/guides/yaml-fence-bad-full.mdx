@@ -1,0 +1,20 @@
+---
+id: yaml-fence-bad-full
+provider: test
+diataxis: tutorial
+---
+
+Full Landofile with an unknown top-level key.
+
+```yaml
+name: demo
+notARealKey: true
+```
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

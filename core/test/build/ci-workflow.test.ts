@@ -611,7 +611,13 @@ describe("ci workflow", () => {
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
-    expect(schemaSnapshot).toContain("          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+    expect(schemaSnapshot).toContain(
+      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+    );
+    expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "pull_request", 2)).not.toContain(
+      "branches:",
+    );
+    expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "push", 2)).toContain("branches: [main]");
     expect(schemaSnapshot).toContain("        run: bun run check:schema-compatibility");
     expect(schemaSnapshot.indexOf("Verify committed schema fixture is current")).toBeLessThan(
       schemaSnapshot.indexOf("Check schema compatibility"),

@@ -1,0 +1,8 @@
+name: healthcheck-shorthand
+services:
+  db:
+    type: mysql
+    healthcheck: false
+  cache:
+    type: redis
+    healthcheck: redis-cli ping
