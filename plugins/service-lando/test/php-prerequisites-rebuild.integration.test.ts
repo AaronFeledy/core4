@@ -238,7 +238,7 @@ const orchestratorLayer = (engine: ReturnType<typeof makeEngine>) => {
   return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
 };
 
-describe("PHP prerequisites rebuild — moved base tag", () => {
+describe("PHP prerequisites rebuild: moved base tag", () => {
   test("rebuild picks up a retagged upstream base digest", async () => {
     const engine = makeEngine();
     const plan = appPlan(servicePlan());

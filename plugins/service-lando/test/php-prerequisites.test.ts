@@ -271,7 +271,7 @@ describe("PHP Composer compatibility", () => {
 });
 
 describe("PHP prerequisites build key", () => {
-  test("omits a base digest until rebuild resolves one", () => {
+  test("keeps planned step inputs on the apt pins and extensions", () => {
     const [step] = phpPrerequisiteBuildSteps(false);
 
     expect(step?.id).toBe(PHP_PREREQUISITES_STEP_ID);
@@ -280,17 +280,5 @@ describe("PHP prerequisites build key", () => {
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
     });
-  });
-
-  test("invalidates the cached layer when the resolved upstream digest moves", () => {
-    const first = phpPrerequisitesBuildKeyInputs("sha256:first");
-    const moved = phpPrerequisitesBuildKeyInputs("sha256:second");
-    const [firstStep] = phpPrerequisiteBuildSteps(false, { baseDigest: first.baseDigest });
-    const [movedStep] = phpPrerequisiteBuildSteps(false, { baseDigest: moved.baseDigest });
-
-    expect(firstStep?.buildKeyInputs).toEqual(first);
-    expect(movedStep?.buildKeyInputs).toEqual(moved);
-    expect(movedStep?.buildKeyInputs).not.toEqual(firstStep?.buildKeyInputs);
-    expect(phpPrerequisitesBuildKeyInputs("sha256:first")).toEqual(first);
   });
 });

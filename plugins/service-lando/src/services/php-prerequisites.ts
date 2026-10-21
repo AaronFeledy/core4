@@ -96,10 +96,9 @@ export const PHP_PREREQUISITES_STEP_ID = "service-lando.php:prerequisites" as co
 
 export const PHP_COMPOSER_STEP_ID = "service-lando.php:composer" as const;
 
-export const phpPrerequisitesBuildKeyInputs = (baseDigest?: string) => ({
+export const phpPrerequisitesBuildKeyInputs = () => ({
   aptPackages: PHP_APT_PACKAGE_PINS,
   extensions: PHP_COMMON_EXTENSIONS,
-  ...(baseDigest === undefined ? {} : { baseDigest }),
 });
 
 /**
@@ -154,14 +153,13 @@ export const assertPhpComposerCompatible = (phpVersion: string, composerValue: u
 
 export const phpPrerequisiteBuildSteps = (
   composer: unknown = undefined,
-  options: { readonly baseDigest?: string } = {},
 ): ReadonlyArray<ServiceBuildStepIntent> => {
   const prerequisites: ServiceBuildStepIntent = {
     id: PHP_PREREQUISITES_STEP_ID,
     phase: "build",
     command: PHP_PREREQUISITES_COMMAND,
     user: "root",
-    buildKeyInputs: phpPrerequisitesBuildKeyInputs(options.baseDigest),
+    buildKeyInputs: phpPrerequisitesBuildKeyInputs(),
   };
   const release = resolvePhpComposer(composer);
   if (release === false) return [prerequisites];
