@@ -5,14 +5,13 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
-import type { BunPlugin } from "bun";
-
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
+import { compiledBinaryBundleConfig } from "./compiled-binary-bundle.ts";
 import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
-import { opentuiNativeCatalog } from "./generated/opentui-native/catalog.generated.ts";
 import { WINDOWS_BRANDING, windowsPeVersion } from "./windows-branding.ts";
 
 export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
+export { createOpenTuiPruningPlugin, resolveOpenTuiNativeImport } from "./compiled-binary-bundle.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_OUTFILE = resolve(REPO_ROOT, "core/dist/lando");
@@ -82,31 +81,6 @@ const bunTargetFor = (platform: CiPlatform): Bun.Build.CompileTarget => {
 const hostTarget = (): string =>
   `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
 
-const nativeRootFor = (target: string): string => {
-  const root = Object.entries(opentuiNativeCatalog.targetToNativeRoot).find(
-    ([candidate]) => candidate === target,
-  )?.[1];
-  if (root === undefined) throw new Error(`Unknown Lando release target: ${target}.`);
-  return root;
-};
-
-export const resolveOpenTuiNativeImport = (target: string, path: string): string | undefined => {
-  if (!opentuiNativeCatalog.rootImportFilter.test(path)) return undefined;
-  const targetNativeRoot = nativeRootFor(target);
-  if (targetNativeRoot === path) return undefined;
-  return opentuiNativeCatalog.stubPathFor(target, path);
-};
-
-export const createOpenTuiPruningPlugin = (target: string): BunPlugin => ({
-  name: "opentui-native-pruning",
-  setup(build) {
-    build.onResolve({ filter: opentuiNativeCatalog.rootImportFilter }, ({ path }) => {
-      const resolvedPath = resolveOpenTuiNativeImport(target, path);
-      return resolvedPath === undefined ? undefined : { path: resolvedPath };
-    });
-  },
-});
-
 const emitMetafileMarkdown = async (options: CompiledBinaryOptions): Promise<void> => {
   if (options.metafileMd === undefined) return;
 
@@ -156,10 +130,10 @@ export const buildCompiledBinary = async (
     }
     const shimAssets = await prepareShimAssets(stagingDir);
     const output = await build({
-      entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts"), ...shimAssets],
-      target: "bun",
-      format: "esm",
-      splitting: true,
+      ...compiledBinaryBundleConfig(platform.id, version, [
+        resolve(REPO_ROOT, "core/bin/lando.ts"),
+        ...shimAssets,
+      ]),
       // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json.
       compile: {
         target: bunTargetFor(platform),
@@ -170,13 +144,6 @@ export const buildCompiledBinary = async (
           : {}),
       },
       bytecode: true,
-      minify: true,
-      sourcemap: "external",
-      define: {
-        __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(nativeRootFor(platform.id)),
-        __LANDO_CORE_VERSION__: JSON.stringify(version),
-      },
-      plugins: [createOpenTuiPruningPlugin(platform.id)],
     });
     if (!output.success) throw new CompiledBinaryBuildError(output.logs);
     await emitMetafileMarkdown(options);

@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { RUNTIME_BUNDLE_TARGETS, type RuntimeBundleTarget } from "./build-runtime-bundle.ts";
+import { resolveManifestRepository } from "./check-runtime-bundle-manifest.ts";
 import {
   type InspectCommandRunner,
   buildLinuxHelperFromSource,
@@ -27,6 +28,7 @@ import {
   verifyManagedLinuxPodman,
 } from "./linux-podman-source-build.ts";
 import { fetchOverHttps } from "./runtime-bundle-fetch.ts";
+import { stageRuntimeBundleLicenses } from "./runtime-bundle-licenses.ts";
 import {
   LinuxPodmanSourceBuild,
   RUNTIME_BUNDLE_SOURCES_PATH,
@@ -121,6 +123,8 @@ export interface AssembleBundleOptions {
   readonly hostKey: string;
   readonly sources: RuntimeBundleSources;
   readonly outDir: string;
+  /** `owner/repo` the bundle is published from; build-recipe links in the notices point here. */
+  readonly repository: string;
   readonly fetchArtifact: (url: string) => Promise<Uint8Array>;
   readonly inspectCommand?: InspectCommandRunner;
   readonly verifyCommand?: BundleCommandRunner;
@@ -143,6 +147,13 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
   const stageDir = await mkdtemp(join(tmpdir(), "rb-stage-"));
   const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
   try {
+    await stageRuntimeBundleLicenses({
+      components: group.components,
+      runtimeVersion: options.sources.runtimeVersion,
+      repository: options.repository,
+      stageDir,
+      fetchArtifact: options.fetchArtifact,
+    });
     for (const component of group.components) {
       if ("inputs" in component) {
         const artifactPaths = new Map<string, string>();
@@ -213,7 +224,13 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
   if (hostKey === undefined) throw new Error("assemble-runtime-bundle: --platform <host-key> is required");
   const sources = parseRuntimeBundleSources(JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")));
-  const result = await assembleBundle({ hostKey, sources, outDir, fetchArtifact: fetchOverHttps });
+  const result = await assembleBundle({
+    hostKey,
+    sources,
+    outDir,
+    repository: await resolveManifestRepository(),
+    fetchArtifact: fetchOverHttps,
+  });
   process.stdout.write(`${result.artifactPath}\n`);
 };
 

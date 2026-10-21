@@ -273,8 +273,11 @@ const npmDevPublishScript = (): string =>
     "npm view @lando/core dist-tags.dev --json | grep -Eq '\"?4\\.0\\.0-dev\\.[0-9]+\"?'",
   ].join("\n");
 
-const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
-  releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]);
+const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> => [
+  ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+  ...releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]),
+  ["bun", "run", "scripts/check-compiled-binary-notices.ts", "--core-dist"],
+];
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 const compileBudgetMs = 10 * 60 * 1000;
@@ -365,7 +368,7 @@ const macosNotarizationCommands = (
 
 const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
 const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
-  "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
+  "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$";
 const COSIGN_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 
 const envValue = (env: ReleaseEnvironment, name: string): string | undefined => {
@@ -853,6 +856,7 @@ const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<Re
   }
 
   assets.push(
+    "dist/THIRD_PARTY_NOTICES.md",
     "dist/SHA256SUMS",
     "dist/SHA256SUMS.asc",
     "dist/SHA256SUMS.sig",
@@ -943,10 +947,10 @@ const releaseProvenanceScript = (context: ReleaseStageContext): string => {
     "--commit-sha",
     envValue(context.env, "GITHUB_SHA") ?? "",
     "--repository",
-    envValue(context.env, "GITHUB_REPOSITORY") ?? "lando-community/core4",
+    envValue(context.env, "GITHUB_REPOSITORY") ?? "AaronFeledy/core4",
     "--workflow-ref",
     envValue(context.env, "GITHUB_WORKFLOW_REF") ??
-      `lando-community/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
+      `AaronFeledy/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
     ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
   ];
   return args.map(shellQuote).join(" ");
@@ -1072,6 +1076,14 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
     summary: "install locked native packages for all release targets",
     remediation: defaultRemediation,
     cmd: ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+  });
+
+  await context.runner.spawn({
+    stageId: "7-compile",
+    artifactFamily,
+    summary: "generate compiled binary notices",
+    remediation: defaultRemediation,
+    cmd: ["bun", "run", "check:compiled-binary-notices"],
   });
 
   for (const platform of platforms) {
