@@ -1440,7 +1440,7 @@ describe("AppPlannerLayer.layer", () => {
     process.env.LANDO_PROVIDER = "docker";
     try {
       const appPlan = await planWithConfig(
-        { ...landofileFixture, provider: ProviderId.make("podman") },
+        { ...landofileFixture, provider: ProviderId.make("podman"), router: { enabled: false } },
         ProviderId.make("lando"),
       );
       expect(String(appPlan.provider)).toBe("podman");

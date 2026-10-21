@@ -3,7 +3,12 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { CapabilityError, LandofileValidationError, causeMessage } from "@lando/sdk/errors";
+import {
+  CapabilityError,
+  LandofileValidationError,
+  RouteProviderMismatchError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -422,7 +427,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
 
   const finalized = yield* finalizeServices({
-    hostProvider,
     plannedServiceDrafts,
     appId,
     appRoot,
@@ -434,6 +438,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     fileSyncEngineId,
     fileSystem,
   });
+  if (routerEnabled && finalized.routes.length > 0 && provider !== hostProvider) {
+    return yield* Effect.fail(
+      new RouteProviderMismatchError({
+        message: `App provider ${provider} differs from host router provider ${hostProvider}.`,
+        providerId: provider,
+        hostProviderId: hostProvider,
+        remediation: `Run lando setup --provider=${provider} to move the global app and router there; remove provider: from the Landofile so the app follows the host provider; or set router.enabled: false and use published host ports.`,
+      }),
+    );
+  }
   if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
     yield* Effect.fail(
       new CapabilityError({
