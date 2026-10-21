@@ -13,6 +13,7 @@ import type {
   NotImplementedError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouteProviderMismatchError,
 } from "../errors/index.ts";
 import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
 import type { ProviderError, ProviderSelectionError } from "./provider.ts";
@@ -20,6 +21,7 @@ import type { ProviderError, ProviderSelectionError } from "./provider.ts";
 export type AppPlannerError =
   | LandofileValidationError
   | RouteInputError
+  | RouteProviderMismatchError
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
