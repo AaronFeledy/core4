@@ -101,6 +101,31 @@ const objectString = (value: unknown, key: "error" | "message"): string | undefi
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 };
 
+const sha256Digest = (value: unknown): string | undefined =>
+  typeof value === "string" && value.startsWith("sha256:") && value.length > "sha256:".length
+    ? value
+    : undefined;
+
+const digestFromRepoDigest = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const separator = value.indexOf("@");
+  return separator === -1 ? undefined : sha256Digest(value.slice(separator + 1));
+};
+
+/** Registry digest first, then a local image id when the tag was never pulled. */
+export const decodeImageInspectDigest = (json: unknown): string | undefined => {
+  if (typeof json !== "object" || json === null) return undefined;
+  if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
+    const fromRepo = digestFromRepoDigest(json.RepoDigests[0]);
+    if (fromRepo !== undefined) return fromRepo;
+  }
+  if ("Digest" in json) {
+    const digest = sha256Digest(json.Digest);
+    if (digest !== undefined) return digest;
+  }
+  return "Id" in json ? sha256Digest(json.Id) : undefined;
+};
+
 export const dockerWaitDialect: WaitDialect = {
   request: (containerName, signal) => ({
     method: "POST",
@@ -155,14 +180,7 @@ export const dockerPullDialect: PullDialect = {
       method: "GET",
       path: `/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest: (json) => {
-      if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
-      if (!Array.isArray(json.RepoDigests)) return undefined;
-      const first = json.RepoDigests[0];
-      if (typeof first !== "string") return undefined;
-      const separator = first.indexOf("@");
-      return separator === -1 ? undefined : first.slice(separator + 1);
-    },
+    decodeDigest: decodeImageInspectDigest,
   },
 };
 
@@ -175,4 +193,11 @@ export const libpodPullDialect: PullDialect = {
     ),
   }),
   frameError: (frame) => objectString(frame, "error"),
+  inspect: {
+    request: (reference) => ({
+      method: "GET",
+      path: `/libpod/images/${encodeURIComponent(reference)}/json`,
+    }),
+    decodeDigest: decodeImageInspectDigest,
+  },
 };

@@ -585,6 +585,52 @@ describe("BuildOrchestratorLayer.layer", () => {
     },
   );
 
+  test("rebuild folds the refreshed base digest into the derived image build key", async () => {
+    const derived: ServicePlan = {
+      ...web,
+      artifact: { kind: "ref", ref: "php:8.2-apache-bookworm" },
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [
+            {
+              id: "service-lando.php:prerequisites",
+              phase: "build",
+              command: "true",
+              buildKeyInputs: { aptPackages: { unzip: "1" }, extensions: ["gd"] },
+            },
+          ],
+        },
+      },
+    };
+    const artifactPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+    const keys: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
+      pullArtifact: () =>
+        Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: "sha256:moved-base" }),
+      buildArtifact: (spec: ArtifactBuildSpec) =>
+        Effect.sync(() => {
+          keys.push(spec.buildKey);
+          return { providerId, ref: `php-derived:${keys.length}` };
+        }),
+    };
+
+    await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+        Effect.gen(function* () {
+          yield* orchestrator.build(artifactPlan);
+          yield* orchestrator.build(artifactPlan, { refresh: true });
+        }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
+    const startKey = await Effect.runPromise(buildKeyForService(provider, derived));
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(startKey);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
   test("uses the local artifact and publishes one redacted warning when refresh fails", async () => {
     // Given
     const ref = "debian:12.11-slim";

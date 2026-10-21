@@ -143,9 +143,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
         path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
       },
     ]);
-    expect(result).toEqual(
-      dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
-    );
+    expect(result).toEqual({ ref: reference, digest: "sha256:test" });
     expect(events).toEqual([]);
   });
 
@@ -206,9 +204,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     // Then
     expect(requests[0]?.method).toBe("GET");
     expect(requests[1]).toEqual(dialect.request(reference));
-    expect(result).toEqual(
-      dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
-    );
+    expect(result).toEqual({ ref: reference, digest: "sha256:test" });
   });
 
   test.each(["always", undefined] as const)("pulls before any inspect when policy is %s", async (policy) => {
@@ -233,7 +229,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
 
     // Then
     expect(requests[0]).toEqual(dialect.request(reference));
-    expect(requests).toHaveLength(dialect === dockerPullDialect ? 2 : 1);
+    expect(requests).toHaveLength(2);
   });
 
   test("fails without pulling when local inspect returns 500", async () => {
@@ -791,10 +787,17 @@ describe("pull failure handling", () => {
     try {
       // When
       await Effect.runPromise(
-        pullImage({ stream: () => Stream.fromIterable([bytes('{"stream":"pulling"}\n')]) }, "alpine:3.20", {
-          ctx: landoCtx,
-          dialect: libpodPullDialect,
-        }),
+        pullImage(
+          {
+            stream: () => Stream.fromIterable([bytes('{"stream":"pulling"}\n')]),
+            request: () => Effect.succeed(inspectSuccess("alpine:3.20")),
+          },
+          "alpine:3.20",
+          {
+            ctx: landoCtx,
+            dialect: libpodPullDialect,
+          },
+        ),
       );
 
       // Then

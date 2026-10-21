@@ -1,4 +1,4 @@
-import { Context, DateTime, Effect, Layer } from "effect";
+import { Context, DateTime, Effect, Layer, Predicate } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
@@ -127,6 +127,35 @@ const resolveSourceArtifact = (
   );
 };
 
+const withRefreshBaseDigest = (step: unknown, digest: string): unknown => {
+  if (!Predicate.isObject(step) || step.phase === "app") return step;
+  const inputs = Predicate.isObject(step.buildKeyInputs) ? step.buildKeyInputs : {};
+  return { ...step, buildKeyInputs: { ...inputs, baseDigest: digest } };
+};
+
+const serviceWithRefreshDigest = (
+  service: ServicePlan,
+  sourceArtifact: ArtifactRef | undefined,
+  refresh: boolean,
+): ServicePlan => {
+  if (service.artifact?.kind !== "ref" || sourceArtifact?.digest === undefined) return service;
+  const digest = sourceArtifact.digest;
+  const withArtifact: ServicePlan = { ...service, artifact: { ...service.artifact, digest } };
+  if (!refresh) return withArtifact;
+  const extension = service.extensions["@lando/core/service-features"];
+  if (!Predicate.isObject(extension) || !Array.isArray(extension.buildSteps)) return withArtifact;
+  return {
+    ...withArtifact,
+    extensions: {
+      ...service.extensions,
+      "@lando/core/service-features": {
+        ...extension,
+        buildSteps: extension.buildSteps.map((step) => withRefreshBaseDigest(step, digest)),
+      },
+    },
+  };
+};
+
 const sourceIdentityMatches = (
   complete: {
     readonly sourceArtifactRef?: string | undefined;
@@ -166,19 +195,13 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         })
       : identityRedactor;
   const context = redactedBuildContext(redactor, plan, service);
-  const step = yield* buildStepFor(provider, service);
   const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
     refresh: input.refresh,
     events,
     redactor,
   });
-  const resolvedService =
-    service.artifact?.kind === "ref" && sourceArtifact?.digest !== undefined
-      ? {
-          ...service,
-          artifact: { ...service.artifact, digest: sourceArtifact.digest },
-        }
-      : service;
+  const resolvedService = serviceWithRefreshDigest(service, sourceArtifact, input.refresh);
+  const step = yield* buildStepFor(provider, input.refresh ? resolvedService : service);
   const resolvedPlan =
     resolvedService === service
       ? plan

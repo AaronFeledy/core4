@@ -77,6 +77,7 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
   const existing = new Set<string>();
   const running = new Set<string>();
   let createIndex = 0;
+  let pulled = false;
   const api = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.void,
@@ -88,13 +89,14 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
         if (request.path === "/networks/create") return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
           return {
-            status: options.inspectStatus ?? 404,
+            status: pulled ? 200 : (options.inspectStatus ?? 404),
             body: JSON.stringify(
               options.inspectBody ?? { Os: "linux", Architecture: "arm64", RepoDigests: [] },
             ),
           };
         }
         if (request.method === "POST" && request.path.startsWith("/libpod/images/pull")) {
+          pulled = true;
           return { status: 200, body: '{"status":"Pull complete"}\n' };
         }
         if (

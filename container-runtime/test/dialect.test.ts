@@ -119,6 +119,7 @@ describe("container engine dialects", () => {
       }),
     ).toBe("sha256:first");
     expect(dockerPullDialect.inspect?.decodeDigest({ RepoDigests: ["invalid"] })).toBeUndefined();
+    expect(dockerPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" })).toBe("sha256:local-only");
   });
 
   test("builds libpod pull requests and reads only string error fields", () => {
@@ -143,6 +144,16 @@ describe("container engine dialects", () => {
     });
     expect(libpodPullDialect.frameError({ error: "denied" })).toBe("denied");
     expect(libpodPullDialect.frameError({ errorDetail: "ignored" })).toBeUndefined();
-    expect(libpodPullDialect.inspect).toBeUndefined();
+    expect(libpodPullDialect.inspect?.request("team/app:v1")).toEqual({
+      method: "GET",
+      path: "/libpod/images/team%2Fapp%3Av1/json",
+    });
+    expect(
+      libpodPullDialect.inspect?.decodeDigest({
+        RepoDigests: ["team/app@sha256:first"],
+        Id: "sha256:local",
+      }),
+    ).toBe("sha256:first");
+    expect(libpodPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" })).toBe("sha256:local-only");
   });
 });
