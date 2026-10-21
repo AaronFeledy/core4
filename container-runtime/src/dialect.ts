@@ -20,7 +20,7 @@ export interface PullDialect {
   readonly frameError: (frame: unknown) => string | undefined;
   readonly inspect?: {
     readonly request: (reference: string) => EngineHttpRequest;
-    readonly decodeDigest: (json: unknown) => string | undefined;
+    readonly decodeDigest: (json: unknown, reference: string) => string | undefined;
   };
 }
 
@@ -106,24 +106,30 @@ const sha256Digest = (value: unknown): string | undefined =>
     ? value
     : undefined;
 
-const digestFromRepoDigest = (value: unknown): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const separator = value.indexOf("@");
-  return separator === -1 ? undefined : sha256Digest(value.slice(separator + 1));
+const reposMatch = (requested: string, candidate: string): boolean =>
+  requested === candidate || requested.endsWith(`/${candidate}`) || candidate.endsWith(`/${requested}`);
+
+const digestForRequestedRepo = (entries: readonly unknown[], reference: string): string | undefined => {
+  const requested = parseImageReference(reference).fromImage;
+  for (const entry of entries) {
+    if (typeof entry !== "string") continue;
+    const separator = entry.indexOf("@");
+    if (separator === -1) continue;
+    const candidate = parseImageReference(entry.slice(0, separator)).fromImage;
+    if (reposMatch(requested, candidate)) return sha256Digest(entry.slice(separator + 1));
+  }
+  return undefined;
 };
 
-/** Registry digest first, then a local image id when the tag was never pulled. */
-export const decodeImageInspectDigest = (json: unknown): string | undefined => {
+/** Registry digest for the requested repo. Local image ids are not registry digests. */
+export const decodeImageInspectDigest = (json: unknown, reference: string): string | undefined => {
   if (typeof json !== "object" || json === null) return undefined;
   if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
-    const fromRepo = digestFromRepoDigest(json.RepoDigests[0]);
+    const fromRepo = digestForRequestedRepo(json.RepoDigests, reference);
     if (fromRepo !== undefined) return fromRepo;
   }
-  if ("Digest" in json) {
-    const digest = sha256Digest(json.Digest);
-    if (digest !== undefined) return digest;
-  }
-  return "Id" in json ? sha256Digest(json.Id) : undefined;
+  if ("Digest" in json) return sha256Digest(json.Digest);
+  return undefined;
 };
 
 export const dockerWaitDialect: WaitDialect = {

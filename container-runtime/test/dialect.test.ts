@@ -114,12 +114,23 @@ describe("container engine dialects", () => {
     expect(dockerPullDialect.frameError({ error: "failed" })).toBe("failed");
     expect(dockerPullDialect.frameError({ errorDetail: { message: 42 } })).toBeUndefined();
     expect(
-      dockerPullDialect.inspect?.decodeDigest({
-        RepoDigests: ["team/app@sha256:first", "team/app@sha256:second"],
-      }),
+      dockerPullDialect.inspect?.decodeDigest(
+        { RepoDigests: ["team/app@sha256:first", "team/app@sha256:second"] },
+        "team/app:v1",
+      ),
     ).toBe("sha256:first");
-    expect(dockerPullDialect.inspect?.decodeDigest({ RepoDigests: ["invalid"] })).toBeUndefined();
-    expect(dockerPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" })).toBe("sha256:local-only");
+    expect(
+      dockerPullDialect.inspect?.decodeDigest(
+        { RepoDigests: ["other/app@sha256:wrong", "docker.io/library/php@sha256:right"] },
+        "php:8.2-apache-bookworm",
+      ),
+    ).toBe("sha256:right");
+    expect(
+      dockerPullDialect.inspect?.decodeDigest({ RepoDigests: ["invalid"] }, "team/app:v1"),
+    ).toBeUndefined();
+    expect(
+      dockerPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" }, "team/app:v1"),
+    ).toBeUndefined();
   });
 
   test("builds libpod pull requests and reads only string error fields", () => {
@@ -149,11 +160,13 @@ describe("container engine dialects", () => {
       path: "/libpod/images/team%2Fapp%3Av1/json",
     });
     expect(
-      libpodPullDialect.inspect?.decodeDigest({
-        RepoDigests: ["team/app@sha256:first"],
-        Id: "sha256:local",
-      }),
+      libpodPullDialect.inspect?.decodeDigest(
+        { RepoDigests: ["team/app@sha256:first"], Id: "sha256:local" },
+        "team/app:v1",
+      ),
     ).toBe("sha256:first");
-    expect(libpodPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" })).toBe("sha256:local-only");
+    expect(
+      libpodPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" }, "team/app:v1"),
+    ).toBeUndefined();
   });
 });
