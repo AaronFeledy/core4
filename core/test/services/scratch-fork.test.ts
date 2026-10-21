@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
-import { AppPlacementError, ScratchAppError } from "@lando/core/errors";
+import { AppPlacementError, RouteProviderMismatchError, ScratchAppError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -244,7 +244,6 @@ const makeScratchForkLayer = (
     readonly onCapabilities?: () => void;
     readonly routes?: RouteRecorder;
     readonly applyRoutes?: Effect.Effect<void>;
-    readonly inspect?: RuntimeProviderShape["inspect"];
     readonly globalPlan?: AppPlan;
     readonly setupRouter?: Effect.Effect<void, AppPlacementError>;
     readonly requiredGlobalServices?: ReadonlyArray<string>;
@@ -286,16 +285,14 @@ const makeScratchForkLayer = (
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
     run: () => die("run"),
     logs: () => Stream.empty,
-    inspect:
-      options.inspect ??
-      ((target) =>
-        Effect.succeed({
-          app: target.app,
-          service: target.service,
-          providerId,
-          status: "running",
-          lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
-        })),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+      }),
     list: () => Effect.succeed([]),
   });
 
@@ -521,6 +518,13 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(routes.applied).toEqual([handleId]);
       expect(routes.removed).toEqual([handleId]);
       expect(appliedPlans[0]?.routes[0]?.hostname).toBe(`forkme--${handleId}.lndo.site`);
+      expect(appliedPlans[0]?.routes[0]?.backend).toMatchObject({ service: "appserver", port: 3000 });
+      expect(appliedPlans[0]?.routes[0]?.backend.host).toBeUndefined();
+      expect(
+        Object.values(appliedPlans[0]?.services ?? {})
+          .flatMap((service) => service.endpoints)
+          .every((endpoint) => endpoint._tag === "internal"),
+      ).toBe(true);
     });
   });
 
@@ -638,57 +642,64 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
-  test.each([true, false])(
-    "cross-engine route discovery only inspects backends (routes=%s)",
-    async (routed) => {
-      const landofile = `${routed ? routedForkLandofile : routedForkLandofile.replace("    routes:\n      - hostname: forkme.lndo.site\n", "")}  sidecar:\n    type: lando\n    image: alpine:3\n    home: false\n`;
-      await withTempProject(landofile, async () => {
-        // Given: the non-routed sidecar cannot be inspected until route setup has finished.
-        const routes: RouteRecorder = { applied: [], removed: [] };
-        const beforeRoutes: string[] = [];
-        const destroyed: DestroyCall[] = [];
-        // When
-        const handle = await Effect.runPromise(
-          Effect.flatMap(ScratchAppService, (service) =>
-            Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
-          ).pipe(
-            Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
-            Effect.provide(
-              makeScratchForkLayer([], destroyed, {
-                routes,
-                inspect: (target) => {
-                  // Readiness still inspects all services; only route discovery needs endpoints.
-                  const discovering = routed && routes.applied.length === 0;
-                  if (discovering) beforeRoutes.push(String(target.service));
-                  if (discovering && target.service === "sidecar")
-                    return Effect.die("non-routed inspect failed");
-                  return Effect.succeed({
-                    app: target.app,
-                    service: target.service,
-                    providerId,
-                    status: "running",
-                    endpoints: [
-                      {
-                        _tag: "published",
-                        protocol: "http",
-                        port: 80,
-                        publication: { bindAddress: "127.0.0.1" },
-                        materialization: { bindAddress: "127.0.0.1", hostPort: 32768 },
-                      },
-                    ],
-                  });
-                },
-              }),
-            ),
-          ),
-        );
-        // Then
-        expect(handle.id).toMatch(/^scratch-/u);
-        expect(beforeRoutes).toEqual(routed ? ["appserver"] : []);
-        expect(destroyed).toEqual([]);
-      });
-    },
-  );
+  test("rejects a routed cross-provider fork before applying resources", async () => {
+    await withTempProject(routedForkLandofile, async () => {
+      // Given
+      const applied: AppPlan[] = [];
+      const routes: RouteRecorder = { applied: [], removed: [] };
+      // When
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
+        ).pipe(
+          Effect.provide(makeScratchForkLayer(applied, [], { routes })),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        ),
+      );
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.findErrorOption(exit.cause);
+        expect(error._tag).toBe("Some");
+        if (error._tag === "Some") {
+          expect(error.value).toBeInstanceOf(ScratchAppError);
+          if (error.value instanceof ScratchAppError)
+            expect(error.value.cause).toBeInstanceOf(RouteProviderMismatchError);
+        }
+      }
+      expect(applied).toEqual([]);
+      expect(routes.applied).toEqual([]);
+    });
+  });
+
+  test.each([
+    routedForkLandofile.replace("    routes:\n      - hostname: forkme.lndo.site", "    routes: []"),
+    unroutedForkLandofile,
+  ])("accepts an unrouted cross-provider fork", async (landofile) => {
+    await withTempProject(landofile, async () => {
+      // Given
+      const applied: AppPlan[] = [];
+      const routes: RouteRecorder = { applied: [], removed: [] };
+      // When
+      const handle = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
+        ).pipe(
+          Effect.provide(makeScratchForkLayer(applied, [], { routes })),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        ),
+      );
+      // Then
+      expect(handle.id).toMatch(/^scratch-/u);
+      expect(applied).toHaveLength(1);
+      expect(routes.applied).toEqual([]);
+      expect(
+        Object.values(applied[0]?.services ?? {})
+          .flatMap((service) => service.endpoints)
+          .every((endpoint) => endpoint._tag === "internal"),
+      ).toBe(true);
+    });
+  });
 
   test("keeps opted-out and explicitly preserved hostnames unchanged", async () => {
     await withTempProject(routedForkLandofile, async () => {
