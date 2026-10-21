@@ -134,7 +134,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:recipes:validate` | none | `minimal` | Validate `recipe.yml` |
 | `meta:setup` | `setup` | `provider` | Configure provider, CA, router, shell integration |
 | `meta:shellenv` | `shellenv` | `none` | Print embedded shell snippets |
-| `meta:uninstall` | `uninstall` | `minimal` | Remove recorded Lando-owned files; `--yes`, `--dry-run` |
+| `meta:uninstall` | `uninstall` | `none` | Remove recorded Lando-owned files through a command-owned maintenance runtime that does not require valid global configuration; `--yes`, `--dry-run` |
 | `meta:update` | `update` | `plugins` | Update core and plugins |
 | `meta:version` | `version` | `none` | Print embedded version |
 | `meta:x` | `x` | `minimal` | One-shot package execution through `BunSelfRunner.x` |
@@ -198,7 +198,7 @@ All remote commands MUST enforce central effective protection (§10.12.8), indep
 
 #### 8.2.2 The `meta:config` command
 
-`meta:config` is the repair surface for `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. It runs outside app context at bootstrap `none`, builds no `ConfigService`, and is exempt from `notify.commands` promotion, so it MUST work when the §7.5 stack does not decode. `--source raw` (`view`, `get`) returns the parsed `config.yml` alone, redacted, even when that file fails validation; unparseable YAML still fails with `ConfigError`. Resolved reads (`view`, `get`, default) decode the full stack and fail with the structured §7.5 `ConfigError`. `validate` decodes the full stack (file, drop-ins, env, host) and fails with that same `ConfigError`; it MUST NOT report config problems as `LandofileWriteValidationError`. `set`, `unset`, `edit`, and `telemetry off` strictly validate the candidate `config.yml` they would write, including plugin and provider extensions, and persist atomically; a candidate that fails is `LandofileWriteValidationError` with `issues` and the file is unchanged. Problems in other layers MUST NOT block the write and surface as envelope warnings with code `LANDO_CONFIG_OTHER_SOURCE_INVALID` carrying the §7.5 message and remediation.
+`meta:config` is the repair surface for `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. It runs outside app context at bootstrap `none`, builds no `ConfigService`, and is exempt from `notify.commands` promotion, so it MUST work when the §7.5 stack does not decode. `--source raw` (`view`, `get`) returns the parsed `config.yml` alone, redacted, even when that file fails validation; unparseable YAML still fails with `ConfigError`. Resolved reads (`view`, `get`, default) decode the full stack and fail with the structured §7.5 `ConfigError`. `validate` decodes the full stack (file, drop-ins, env, host) and fails with that same `ConfigError`; it MUST NOT report config problems as `LandofileWriteValidationError`. `set`, `unset`, `edit`, and `telemetry off` strictly validate the candidate `config.yml` they would write, including plugin and provider extensions, and persist atomically; a candidate that fails is `LandofileWriteValidationError` with `issues` and the file is unchanged. Problems in other layers MUST NOT block the write and surface as envelope warnings with code `LANDO_CONFIG_OTHER_SOURCE_INVALID` carrying the §7.5 message and remediation, rendered once as a warning line in text mode.
 
 #### 8.2.3 The `app:shell` command
 
@@ -683,7 +683,7 @@ Renderers MUST meet §2.1 policy:
 | Table first paint | Headers by first row within 80 ms cold |
 | Spinner | Show after 100 ms without progress; avoid shorter flashes |
 | Completion | Final line within 50 ms of terminal event |
-| Level `none` | Direct native output; `Renderer` is not involved |
+| Level-`none` fast path | Direct native output without `Renderer`; dispatcher-routed `none` commands may use the normal renderer boundary |
 
 The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. All narration, including live regions and every `message.*` contract, MUST use stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. A terminal stdout payload MUST suspend and erase the stderr live frame, write the original payload bytes to stdout, then repaint on stderr. A redirected stdout payload MUST NOT interact with the live frame. Result decoration and table width MUST use stdout TTY state and dimensions. Non-streaming JSON emits one stdout envelope; streaming JSON follows §8.11.3. JSON emits structured stderr events, with a first stderr event inside the meaningful-line budget.
 
@@ -760,7 +760,7 @@ The default TTY renderer MUST emit sanitized OSC 99 frames through the stderr wr
 
 Bundled plugin `@lando/notify-lando` owns policy through `NotifyConfig` at global `notify:` with `enabled` default true, `thresholdMs` default 15000, and bounded additional canonical `commands`. The default eligible family is ordered: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. Config ids validate against the cwd-independent global registry, then deduplicate in first-occurrence order. Unknown ids return `ConfigError`.
 
-Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per run, on success or failure. Nested canonical calls never notify independently. Lower-tier eligible commands promote to bootstrap `commands` except contract-sensitive `meta:doctor`, which remains `none` and cannot notify. The subscriber priority is **900**. `notify.enabled: false`, plugin disablement, non-TTY, or missing capability silences presentation. Container-initiated notification or clipboard relay is a non-goal (§10.10).
+Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per run, on success or failure. Nested canonical calls never notify independently. Lower-tier eligible commands promote to bootstrap `commands` except `meta:doctor`, `meta:config`, `meta:version`, `meta:shellenv`, and `meta:uninstall`, which keep their safe-mode bootstraps and cannot notify. The subscriber priority is **900**. `notify.enabled: false`, plugin disablement, non-TTY, or missing capability silences presentation. Container-initiated notification or clipboard relay is a non-goal (§10.10).
 
 #### 8.9.8 Interactive log viewer
 

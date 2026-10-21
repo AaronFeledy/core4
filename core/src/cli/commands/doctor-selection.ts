@@ -1,4 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
+
+import { GlobalConfigSources } from "@lando/engine/services/config";
 
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
@@ -48,7 +50,12 @@ export const gatherSelectionInputs = Effect.fnUntraced(function* (
 
   const flag = branded(options.flagProviderId);
   const landofile = branded(options.landofileProviderId);
-  const env = readProviderEnvVar(options.env ?? process.env);
+  // Same env the runtime's provider registry selects from, so a hermetic host previews what it gets.
+  const captured = yield* Effect.serviceOption(GlobalConfigSources);
+  const providerEnv =
+    options.env ??
+    (Option.isSome(captured) ? (captured.value.sources.env ? captured.value.env : {}) : process.env);
+  const env = readProviderEnvVar(providerEnv);
   return {
     inputs: {
       ...(flag === undefined ? {} : { flag }),

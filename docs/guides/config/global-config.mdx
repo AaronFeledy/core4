@@ -79,11 +79,11 @@ Lando reads global config from ordered layers. A later layer wins:
 
 Maps deep-merge across layers. Arrays and scalars replace. `appEnv` and `appLabels` replace as whole maps. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase key, for example `LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman` or `LANDO_CONFIG__ROUTER__HTTP_PORT=8080`.
 
-The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.local/share/lando/config.yml` on Linux. That root is fixed before any file is read, so a `userConfRoot` key inside `config.yml` or a drop-in is ignored. The other roots resolve as runtime option, then root env var, then config files, then the platform default.
+The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.config/lando/config.yml` on Linux. That root is fixed before any file is read, so a `userConfRoot` key inside `config.yml` or a drop-in is ignored. The other roots resolve as runtime option, then root env var, then config files, then the platform default.
 
 Each command resolves config once, at startup, and keeps that snapshot. Long-lived runtimes such as `lando mcp serve` or an embedding host keep the config they started with until you restart them.
 
-Lando warns once per command about an unknown key, with the closest match when it has one: `Unknown config.yml key "routerr". Did you mean "router"?`. `--format=json` carries the same text under `warnings`.
+Lando warns once per command about an unknown key, with the closest match when it has one: `Unknown config.yml key "routerr". Did you mean "router"?`. Text mode prints it as a `⚠` line before the result, including from `lando config get`, `lando config`, and `lando doctor`. `--format=json` carries the same text under `warnings` with code `LANDO_MESSAGE_WARN`.
 
 Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a tab and a newline. Use single quotes (`'C:\temp\new'`) or doubled backslashes (`"C:\\temp\\new"`) for Windows paths. Lando warns at load when a path-like root value decodes with control characters.
 
@@ -126,28 +126,32 @@ lando config get router --source raw --format=json
 
 Every command that needs global config fails the same way when any layer doesn't decode: one `ConfigError` at exit `1`, raised before the command runs. That covers `lando info`, `lando start`, `lando app:config:lint`, and the resolved `lando config` views. Nothing deletes or rewrites a file for you.
 
-Each issue names where the bad value came from and the exact fix:
+Each issue names where the bad value came from and the exact fix. With `httpPort: 99999` in `config.yml`, `lando config` prints:
 
 ```
-Invalid config file /home/user/.local/share/lando/config.yml: router.httpPort: Invalid configuration value. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`
-  ↳ Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>` Run `lando config validate`, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.
+Invalid config file /home/user/.config/lando/config.yml: router.httpPort: Expected a value between 1 and 65535. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.
+  ↳ Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`. Run `lando config validate`, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.
 code: ConfigError
 commandId: meta:config
-issues:
-/home/user/.local/share/lando/config.yml: router.httpPort: Invalid configuration value. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`
-path: /home/user/.local/share/lando/config.yml
+issues: 
+/home/user/.config/lando/config.yml: router.httpPort: Expected a value between 1 and 65535. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.
+path: /home/user/.config/lando/config.yml
+logsDir: /home/user/.cache/lando/logs
+cacheDir: /home/user/.cache/lando
 ```
+
+Messages say what the schema expected (`Expected string | null`, `Expected a value between 1 and 65535`, `Expected one of lando, json, plain, verbose.`) and never echo the value you wrote, so a secret pasted into the wrong key doesn't land in a log.
 
 `--format=json` carries the same facts under `error.path`, `error.remediation`, and `error.issues`. Each issue is `{ path, message, suggestion, source }`: `path` is an array of keys, `suggestion` is the fix, and `source` says which layer supplied the value:
 
 | Layer | `source` | `suggestion` |
 | --- | --- | --- |
-| `config.yml` | `{ layer: "config-file", file, path }` | `lando config set` / `lando config unset` |
-| Drop-in | `{ layer: "config-drop-in", file, path }` | `Edit <file>` |
-| Environment | `{ layer: "env", variable, path }` | `Unset <variable> or set it to a valid value` |
-| Host option | `{ layer: "host", path }` | Fix the host `config` option |
+| `config.yml` | `{ layer: "config-file", file, path }` | `` Run `lando config unset <key>` or `lando config set <key> <value>`. `` |
+| Drop-in | `{ layer: "config-drop-in", file, path }` | `Edit <file>.` |
+| Environment | `{ layer: "env", variable, path }` | `Unset <variable> or set it to a valid value.` |
+| Host option | `{ layer: "host", path }` | `` Fix the `<key>` host config option. `` |
 
-The message starts with `Invalid config file <path>` when every issue comes from `config.yml`, and `Invalid global configuration (<sources>)` otherwise, for example `(environment override LANDO_ROUTER_HTTP_PORT)` or `(config file /home/user/.local/share/lando/config.d/10-team.yml)`. When several layers are wrong, it names each.
+The message starts with `Invalid config file <path>` when every issue comes from `config.yml`, and `Invalid global configuration (<sources>)` otherwise, for example `(environment override LANDO_ROUTER_HTTP_PORT)` or `(config file /home/user/.config/lando/config.d/10-team.yml and environment override LANDO_ROUTER_HTTP_PORT)`. When several layers are wrong, it names each.
 
 `lando config` itself doesn't need a valid config, so the repair verbs keep working:
 
@@ -166,11 +170,15 @@ lando config unset router.httpPort
 lando config edit
 ```
 
-`set`, `unset`, `edit`, and `telemetry off` strictly validate the `config.yml` they are about to write. A write that would leave the file invalid fails with `LandofileWriteValidationError` and the file is unchanged. Problems in another layer never block the write: fixing `config.yml` while `LANDO_ROUTER_HTTP_PORT=99999` is still exported succeeds, and the envelope carries a `LANDO_CONFIG_OTHER_SOURCE_INVALID` warning naming the variable and the fix. Unset the variable or edit the drop-in it names, then rerun `lando config validate`.
+`set`, `unset`, `edit`, and `telemetry off` strictly validate the `config.yml` they are about to write. A write that would leave the file invalid fails with `LandofileWriteValidationError` and the file is unchanged. Problems in another layer never block the write: fixing `config.yml` while `LANDO_ROUTER_HTTP_PORT=99999` is still exported succeeds, prints a `⚠` line naming the variable and the fix, and `--format=json` carries it as a `LANDO_CONFIG_OTHER_SOURCE_INVALID` warning. Unset the variable or edit the drop-in it names, then rerun `lando config validate`.
 
-Broken YAML syntax is the one case `set` and `unset` cannot repair, since there is no tree to write into. `--source raw` fails too. Fix the syntax with `lando config edit` or your own editor.
+Broken YAML syntax is the one case `set` and `unset` cannot repair, since there is no tree to write into. Both `--source raw` and the resolved views fail with the same `Invalid YAML in config file <path>: ...` message, and the error carries no `issues`. The detail is a location, never the rejected text: `Unsupported YAML value at line 2, column 13`, `Malformed YAML at line 1, column 1`, or `Malformed YAML indentation at line N, column M`. Fix the syntax with `lando config edit` or your own editor.
 
-`lando doctor` still runs with a broken config and exits `1`. Its first section, `global-config`, reports the `ConfigError` and its fix, and the sections that need config (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`) show as `SKIPPED` instead of failing one by one. `lando uninstall` also runs without a valid config.
+An invalid `renderer` or `logLevel` in `config.yml`, a drop-in, or `LANDO_CONFIG__RENDERER` does not change how the error is printed: Lando falls back to the default renderer and log level, then reports the key as a `ConfigError` issue like any other (`renderer: Expected one of lando, json, plain, verbose.`). An invalid `--renderer` flag or `LANDO_RENDERER` value still fails before the command runs, with `RendererSelectionError`.
+
+`notify.commands` entries are checked against the canonical command ids, including ids that enabled plugins contribute. A typo is a config issue with the closest match: `notify.commands[0]: Unknown canonical command id. Did you mean "app:start"?`.
+
+`lando doctor` still runs with a broken config and exits `1`. Its first section, `global-config`, reports the `ConfigError` and its fix. Sections that need the config (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when you pass `--app` or `--deprecations`) show as `SKIPPED` instead of failing one by one. Checks that don't depend on config, such as `filesystem-watch`, still run. `lando uninstall` and `lando version` also run without a valid config.
 
   <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError with env provenance from an invalid env override">
     <Step name="build-with-bad-override">

@@ -112,9 +112,10 @@ const runtime = makeLandoRuntime({
 
 `configSources` turns the user and environment layers off for hermetic hosts.
 `{ user: false }` skips `config.yml` and `config.d`; `{ env: false }` skips
-`LANDO_CONFIG__*`, aliases, and `LANDO_USER_*` root vars. Platform defaults still
-come from `HOME` or `APPDATA`, so set the roots in `config` when you want full
-isolation:
+`LANDO_CONFIG__*`, aliases, `LANDO_USER_*` root vars, `LANDO_PROVIDER`, and the
+proxy and CA variables (`HTTPS_PROXY`, `NO_PROXY`, `LANDO_NETWORK_CA_CERTS`)
+the HTTP client would otherwise read. Platform defaults still come from `HOME`
+or `APPDATA`, so set the roots in `config` when you want full isolation:
 
 ```ts
 const hermetic = makeLandoRuntime({
@@ -131,8 +132,10 @@ and a suggestion naming the option to fix. The error keeps its own tag; it is no
 wrapped in `LandoRuntimeBootstrapError`.
 
 Once built, `ConfigService.load` and `ConfigService.get` never fail. They return
-the snapshot the runtime was built with. To pick up a changed `config.yml` or
-environment, build a new runtime.
+the snapshot the runtime was built with, and the runtime's `StateStore`, plugin
+trust store, and HTTP egress use that snapshot's roots and environment rather
+than `process.env`. Two runtimes in one process never share a snapshot. To pick
+up a changed `config.yml` or environment, build a new runtime.
 
 ## Running arbitrary effects and command operations
 

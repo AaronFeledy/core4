@@ -112,7 +112,8 @@ export const formatValidationIssuePath = (path: ValidationIssuePath): string => 
 /** One text line: `<path>: <message>`, root path with no prefix, suggestion on the same line. */
 export const formatValidationIssueLine = (issue: ValidationIssue): string => {
   const where = formatValidationIssuePath(issue.path);
-  const suggestion = issue.suggestion === undefined ? "" : ` ${issue.suggestion}`;
+  const suggestion =
+    issue.suggestion === undefined ? "" : `${/[.?!:]$/.test(issue.message) ? "" : "."} ${issue.suggestion}`;
   return where.length === 0 ? `${issue.message}${suggestion}` : `${where}: ${issue.message}${suggestion}`;
 };
 
