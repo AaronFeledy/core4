@@ -105,6 +105,47 @@ const managedLandoTeardown = `      - name: Teardown managed Lando runtime
             "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true
           fi`;
 
+const dockerFallbackSmoke = `  docker-fallback-smoke:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      LANDO_USER_CONF_ROOT: \${{ runner.temp }}/docker-fallback/conf
+      LANDO_USER_DATA_ROOT: \${{ runner.temp }}/docker-fallback/data
+      LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/docker-fallback/cache
+    steps:
+      - uses: actions/checkout@v5
+
+${setupBunSteps}
+
+${containerHelperDownloadStep}
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Set up Docker fallback with global services
+        run: bun core/bin/lando.ts setup --provider=docker --yes --no-interactive
+
+      - name: Start routed Docker fixture and curl through the router
+        working-directory: scripts/fixtures/docker-fallback
+        run: |
+          bun "$GITHUB_WORKSPACE/core/bin/lando.ts" start
+          bun "$GITHUB_WORKSPACE/core/bin/lando.ts" info --format=json > "$RUNNER_TEMP/docker-fallback-info.json"
+          URL=$(jq -er '[.result.services[] | select(.service == "web") | .endpoints[] | select(startswith("https://docker-fallback.lndo.site"))][0]' "$RUNNER_TEMP/docker-fallback-info.json")
+          PORT=$(bun -e 'console.log(new URL(process.argv[1]).port || "443")' "$URL")
+          curl --fail --silent --show-error --insecure --noproxy '*' --retry 10 --retry-all-errors --retry-delay 1 --resolve "docker-fallback.lndo.site:$PORT:127.0.0.1" "$URL" > "$RUNNER_TEMP/docker-fallback-response.html"
+          grep -Fq 'Welcome to nginx!' "$RUNNER_TEMP/docker-fallback-response.html"
+
+      - name: Destroy Docker fixture
+        if: always()
+        working-directory: scripts/fixtures/docker-fallback
+        run: bun "$GITHUB_WORKSPACE/core/bin/lando.ts" destroy --provider=docker --yes
+
+      - name: Destroy Docker global app
+        if: always()
+        run: bun core/bin/lando.ts global:destroy --provider=docker --yes
+`;
+
 export const renderProviderMatrixWorkflow = (): string => `${GENERATED_HEADER}
 name: provider-matrix
 
@@ -118,6 +159,7 @@ permissions:
 
 jobs:
 ${renderContainerHelperJob()}
+${dockerFallbackSmoke}
   provider-contracts:
     needs: [${CONTAINER_HELPER_JOB_ID}]
     env:
