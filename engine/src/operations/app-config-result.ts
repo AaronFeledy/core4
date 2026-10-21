@@ -32,7 +32,14 @@ const write = { filePath: Schema.String, dryRun: Schema.optionalKey(Schema.Boole
 const fullView = { path: Schema.optionalKey(Schema.Never), subcommand: Schema.optionalKey(Schema.Never) };
 
 export const AppConfigResultSchema = Schema.Union([
-  Schema.Struct({ ...metadata, ...fullView, source: Schema.Literal("resolved"), landofile: LandofileShape }),
+  Schema.Struct({
+    app: metadata.app,
+    source: Schema.Literal("resolved"),
+    landofile: LandofileShape,
+    sources: metadata.sources,
+    hostEvents: metadata.hostEvents,
+    ...fullView,
+  }),
   Schema.Struct({
     ...metadata,
     ...fullView,
