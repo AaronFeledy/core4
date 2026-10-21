@@ -8,7 +8,6 @@ import type {
   AppResolveError,
   CapabilityError,
   CommandAliasConflictError,
-  ConfigError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -63,7 +62,6 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
-  | ConfigError
   | LandofileCompileError
   | CapabilityError
   | CommandAliasConflictError
@@ -83,7 +81,6 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
-  | ConfigError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
@@ -96,7 +93,6 @@ type LegacyPlanAppChannel =
   | LandofileUnknownEventError;
 
 type LegacyOrphanTeardownError =
-  | ConfigError
   | AppResolveError
   | ProviderError
   | ProviderUnavailableError
@@ -106,7 +102,6 @@ type LegacyOrphanTeardownError =
   | StateStoreError;
 
 type LegacyGlobalInstallChannel =
-  | ConfigError
   | GlobalAppError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
@@ -117,7 +112,6 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
-  | ConfigError
   | LandofileCompileError
   | ServiceNotReadyError
   | CommandAliasConflictError
@@ -149,7 +143,6 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
-  | ConfigError
   | RemoteSyncError
   | UserLandofileError
   | LandofileUnknownEventError
@@ -164,7 +157,6 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
-  | ConfigError
   | UserLandofileError
   | LandofileUnknownEventError
   | CapabilityError

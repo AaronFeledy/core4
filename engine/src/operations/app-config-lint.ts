@@ -6,7 +6,6 @@ import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 
 import type {
   CommandAliasConflictError,
-  ConfigError,
   LandofileFormConflictError,
   LandofileNotFoundError,
   LandofileUnknownEventError,
@@ -28,7 +27,6 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
 ): Effect.fn.Return<
   ConfigLintResult,
   | LandofileNotFoundError
-  | ConfigError
   | LandofileFormConflictError
   | LandofileUnknownEventError
   | LandofileValidationError

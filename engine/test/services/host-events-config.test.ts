@@ -10,7 +10,10 @@ import { Effect } from "effect";
 import { ConfigService } from "@lando/sdk/services";
 
 import { isExcludedFromUserAppDefaults } from "../../src/planner/app-defaults.ts";
-import { layer, loadGlobalConfigSync, typoWarningsForConfig } from "../../src/services/config.ts";
+import { GlobalConfigSnapshot, layer } from "../../src/services/config.ts";
+
+const loadGlobalConfigSync = () =>
+  Effect.runSync(Effect.flatMap(ConfigService, (service) => service.load).pipe(Effect.provide(layer)));
 
 const previous = new Map<string, string>();
 
@@ -107,8 +110,10 @@ describe("config.yml hostEvents load", () => {
       () => {
         const parsed = parseMinimalYaml('userDataRoot: "C:\\temp\\new"\n');
         expect(String(parsed.userDataRoot)).toMatch(/\t|\n/);
-        const loaded = loadGlobalConfigSync();
-        const warnings = typoWarningsForConfig(loaded);
+        const snapshot = Effect.runSync(
+          Effect.flatMap(GlobalConfigSnapshot, Effect.succeed).pipe(Effect.provide(layer)),
+        );
+        const warnings = snapshot.warnings;
         expect(warnings.some((warning) => warning.includes("userDataRoot"))).toBe(true);
         expect(warnings.some((warning) => warning.includes("control characters"))).toBe(true);
       },
@@ -123,12 +128,16 @@ describe("config.yml hostEvents load", () => {
           'hostEvent:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n',
         ),
       () => {
-        const loaded = loadGlobalConfigSync();
-        expect(loaded.hostEvents).toBeUndefined();
-        const warnings = typoWarningsForConfig(loaded);
+        const snapshot = Effect.runSync(
+          Effect.flatMap(GlobalConfigSnapshot, Effect.succeed).pipe(Effect.provide(layer)),
+        );
+        expect(snapshot.config.hostEvents).toBeUndefined();
+        const warnings = snapshot.warnings;
         expect(warnings.some((warning) => warning.includes('Unknown config.yml key "hostEvent"'))).toBe(true);
         expect(warnings.some((warning) => warning.includes("hostEvents"))).toBe(true);
-        expect(typoWarningsForConfig(loaded)).toEqual(warnings);
+        expect(Effect.runSync(snapshot.takeWarnings)).toEqual(warnings);
+        expect(Effect.runSync(snapshot.takeWarnings)).toEqual([]);
+        expect(snapshot.warnings).toEqual(warnings);
       },
     );
   });

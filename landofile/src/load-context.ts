@@ -1,4 +1,3 @@
-import type { ConfigError } from "@lando/sdk/errors";
 import type { LandofileLayer } from "@lando/sdk/schema";
 import { ConfigService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
@@ -27,7 +26,7 @@ export const ensureConsistentRoot = Effect.fnUntraced(function* (
 
 export const loadContext = Effect.fnUntraced(function* (
   appRoot: string,
-): Effect.fn.Return<Omit<LandofileLoadContext, "layer">, ConfigError> {
+): Effect.fn.Return<Omit<LandofileLoadContext, "layer">> {
   const config = yield* Effect.serviceOption(ConfigService);
   const logger = yield* Effect.serviceOption(Logger);
   const policy =

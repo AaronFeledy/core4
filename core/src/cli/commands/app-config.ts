@@ -137,14 +137,12 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfi
       );
       const result = { ...decoded, redactionTokens: inspected.redactionTokens };
       if (!("source" in result) || result.source !== "resolved" || !("landofile" in result)) return result;
-      const hostEvents = yield* Effect.sync(() =>
-        hostEventStatusesForPlan({
-          name: result.landofile.name ?? "",
-          root: options.cwd ?? process.cwd(),
-          services: result.landofile.services ?? {},
-          ...(result.landofile.events === undefined ? {} : { events: result.landofile.events }),
-        }),
-      );
+      const hostEvents = yield* hostEventStatusesForPlan({
+        name: result.landofile.name ?? "",
+        root: options.cwd ?? process.cwd(),
+        services: result.landofile.services ?? {},
+        ...(result.landofile.events === undefined ? {} : { events: result.landofile.events }),
+      });
       return { ...result, ...(hostEvents.length === 0 ? {} : { hostEvents }) };
     }
     default:

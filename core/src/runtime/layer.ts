@@ -71,7 +71,7 @@ import {
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
 import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import type { GlobalConfigSources } from "@lando/engine/services/config";
+import type { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
@@ -100,6 +100,7 @@ export const withRuntimeProviderRegistryOverride = <A>(
 
 type NoneRuntimeServices = RuntimeLayerFactory | GlobalConfigSources;
 type MinimalRuntimeServices =
+  | GlobalConfigSnapshot
   | NoneRuntimeServices
   | Logger
   | Renderer
@@ -168,9 +169,9 @@ type RuntimeLayer =
   | Layer.Layer<never, LandoRuntimeBootstrapError>
   | Layer.Layer<NoneRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices>
-  | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<MinimalRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<PluginRuntimeServices>
-  | Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<PluginRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<CommandRuntimeServices>
   | Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
@@ -225,10 +226,10 @@ type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOpt
 export function makeLandoRuntime(options: LandoRuntimeOptionsFor<"none">): Layer.Layer<NoneRuntimeServices>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"minimal">,
-): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<MinimalRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"plugins">,
-): Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<PluginRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"commands">,
 ): Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;

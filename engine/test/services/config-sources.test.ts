@@ -9,9 +9,16 @@ import {
   readGlobalConfigSources,
 } from "@lando/paths/config-sources";
 import type { ConfigError } from "@lando/sdk/errors";
+import { ConfigService } from "@lando/sdk/services";
 import { Result } from "effect";
+import { Effect } from "effect";
 import { decodeGlobalConfigSources } from "../../src/config/global-config.ts";
-import { loadGlobalConfigSync } from "../../src/services/config.ts";
+import { layerWith } from "../../src/services/config.ts";
+
+const loadGlobalConfigSync = (inputs: ConfigSourceInputs) =>
+  Effect.runSync(
+    Effect.flatMap(ConfigService, (service) => service.load).pipe(Effect.provide(layerWith(inputs))),
+  );
 
 const roots: string[] = [];
 const fixture = (): ConfigSourceInputs => {

@@ -98,7 +98,6 @@ describe("SDK public-surface snapshot", () => {
   test("matches every Landofile service failure tag", () => {
     const tags = {
       ComposeKeyRejectedError: true,
-      ConfigError: true,
       Lando3LandofileDetected: true,
       LandofileDialectMixError: true,
       LandofileFormConflictError: true,

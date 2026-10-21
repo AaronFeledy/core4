@@ -20,7 +20,6 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ComposeKeyRejectedError,
-  ConfigError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -107,7 +106,6 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.
 type LegacyAppPlannerChannel =
-  | ConfigError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
@@ -120,7 +118,6 @@ type LegacyAppPlannerChannel =
   | LandofileUnknownEventError;
 
 type LegacyBuildChannel =
-  | ConfigError
   | EventError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -128,7 +125,6 @@ type LegacyBuildChannel =
   | ProviderUnavailableError;
 
 type LegacyBuildAppChannel =
-  | ConfigError
   | BuildPhaseFailedError
   | EventError
   | NoProviderInstalledError
@@ -137,7 +133,6 @@ type LegacyBuildAppChannel =
   | ProviderUnavailableError;
 
 type LegacyDiscoverChannel =
-  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | LandofileNotFoundError
@@ -159,7 +154,6 @@ type LegacyDiscoverChannel =
 
 // The app contract's local LandofileNotFoundError alias includes LandofileFormConflictError.
 type LegacyStartAppError =
-  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -220,7 +214,6 @@ type LegacyStartAppError =
   | VolumeOperationError;
 
 type LegacyStopAppError =
-  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -268,7 +261,6 @@ type LegacyInfoAppError =
   | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
-  | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError
@@ -306,7 +298,6 @@ type LegacyExecAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError
@@ -343,7 +334,6 @@ type LegacyToolingError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigError
   | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileFormConflictError
@@ -373,7 +363,6 @@ type LegacyToolingError =
   | ToolingExecError;
 
 type LegacyLogsAppError =
-  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -434,7 +423,7 @@ describe("SDK plan-carrying error channels", () => {
     assertType<
       Equal<
         ErrOf<ServiceOf<typeof RuntimeProviderRegistry>["capabilities"]>,
-        ConfigError | NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
+        NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
       >
     >(true);
     expect(true).toBe(true);
@@ -444,7 +433,7 @@ describe("SDK plan-carrying error channels", () => {
     assertType<
       Equal<
         ErrOf<ReturnType<ServiceOf<typeof RuntimeProviderRegistry>["select"]>>,
-        ConfigError | NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
+        NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
       >
     >(true);
     expect(true).toBe(true);
@@ -515,7 +504,7 @@ describe("SDK named error channels", () => {
       assertType<
         Equal<
           ProviderSelectionError,
-          ConfigError | NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
+          NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
         >
       >(true),
     ).toBe(true);

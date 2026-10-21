@@ -7,7 +7,7 @@ import { Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer";
 import { withEnvVar } from "../_support/temp-cwd";
 
-test.each(["provider", "app", "scratch"] as const)(
+test.each(["minimal", "plugins", "commands", "tooling", "provider", "global", "scratch", "app"] as const)(
   "%s bootstrap preserves invalid ambient config",
   async (bootstrap) => {
     const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-error-"));
@@ -30,7 +30,17 @@ test.each(["provider", "app", "scratch"] as const)(
             expect(result.failure).toBeInstanceOf(ConfigError);
             expect(result.failure).toMatchObject({
               path: join(conf, "config.yml"),
-              issues: [{ path: ["router", "httpPort"], message: expect.any(String) }],
+              issues: [
+                {
+                  path: ["router", "httpPort"],
+                  message: expect.any(String),
+                  source: {
+                    layer: "config-file",
+                    file: join(conf, "config.yml"),
+                    path: ["router", "httpPort"],
+                  },
+                },
+              ],
               remediation: expect.stringContaining("lando config validate"),
             });
           }),

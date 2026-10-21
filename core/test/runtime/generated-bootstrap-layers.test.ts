@@ -51,7 +51,7 @@ describe("generated bootstrap layers", () => {
     expect(minimal).not.toContain("PluginRegistryLayer.layerWith");
     expect(minimal).toContain('from "@lando/managed-file/transaction-guard"');
     expect(minimal).toContain(
-      "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
+      "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(\n      Layer.provide(Layer.mergeAll(privateFileAccessLayer, configLayer)),\n    ),",
     );
     expect(minimal).toContain(
       "    StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",

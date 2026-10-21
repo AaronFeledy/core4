@@ -1,7 +1,6 @@
 {
   "landofileServiceErrorTags": [
     "ComposeKeyRejectedError",
-    "ConfigError",
     "Lando3LandofileDetected",
     "LandofileDialectMixError",
     "LandofileFormConflictError",
@@ -60,8 +59,8 @@
     "CommandFramework": ["id:string"],
     "CommandRegistry": ["list:Effect.Effect<ReadonlyArray<RegisteredCommand>,never>"],
     "ConfigService": [
-      "get:<K extends keyof GlobalConfig>(key:K) => Effect.Effect<GlobalConfig[K],ConfigError>",
-      "load:Effect.Effect<GlobalConfig,ConfigError>"
+      "get:<K extends keyof GlobalConfig>(key:K) => Effect.Effect<GlobalConfig[K]>",
+      "load:Effect.Effect<GlobalConfig>"
     ],
     "ConfigTranslator": [
       "detect:(input:ConfigTranslateDetectInput) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>,ConfigTranslateError,never>",

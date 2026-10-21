@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
-import { ConfigError, PluginLoadError } from "@lando/sdk/errors";
+import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
@@ -27,6 +27,7 @@ import { DateTime, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
+import * as ConfigLayer from "../../src/services/config";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -82,20 +83,20 @@ test.each([
     };
   });
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "configured-default" });
-  const configError = new ConfigError({
-    message: "Invalid global configuration.",
-    path: "/tmp/config.yml",
-    issues: [{ path: ["router", "httpPort"], message: "Invalid port." }],
-    remediation: "Run `lando config validate`.",
-  });
-  const load = invalidConfig ? Effect.fail(configError) : Effect.succeed(config);
+  const load = Effect.succeed(config);
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
   const dependencies = Layer.mergeAll(
-    Layer.succeed(
-      ConfigService,
-      ConfigService.of({ load, get: (key) => Effect.map(load, (value) => value[key]) }),
-    ),
+    invalidConfig
+      ? ConfigLayer.layerWith({
+          env: {},
+          sources: { user: false, env: false },
+          host: { router: { httpPort: 99999 } },
+        })
+      : Layer.succeed(
+          ConfigService,
+          ConfigService.of({ load, get: (key) => Effect.map(load, (value) => value[key]) }),
+        ),
     Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
@@ -133,7 +134,11 @@ test.each([
   // Then
   if (invalidConfig) {
     expect(selected._tag).toBe("Failure");
-    if (selected._tag === "Failure") expect(selected.failure).toBe(configError);
+    if (selected._tag === "Failure")
+      expect(selected.failure).toMatchObject({
+        _tag: "ConfigError",
+        issues: [{ path: ["router", "httpPort"] }],
+      });
     expect(initialized).toEqual([]);
     return;
   }

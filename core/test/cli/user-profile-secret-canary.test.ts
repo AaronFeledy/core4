@@ -228,7 +228,7 @@ test.each([
               events: [...(yield* Queue.clear(queue))],
             };
           }),
-        ).pipe(Effect.provide(layer)),
+        ).pipe(Effect.provide(layer), Effect.provide(LandoConfigService.layer)),
       );
 
       // Then: provider action sees the value; durable identities and every observed surface do not.

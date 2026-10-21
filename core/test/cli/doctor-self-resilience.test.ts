@@ -48,18 +48,14 @@ describe("doctor safe mode", () => {
                   Effect.provide(runtimeLayerFactoryLive),
                 ),
               );
-              const bootstrap = report.self?.checks.find((check) => check.section === "provider-bootstrap");
+              const bootstrap = report.self?.checks.find((check) => check.section === "global-config");
               expect(bootstrap?.context.failure).toBe("ConfigError");
               expect(
                 bootstrap?.solutions.some((solution) =>
                   solution.description.includes("Unset or fix the environment override for router.httpPort"),
                 ),
               ).toBe(true);
-              expect(
-                bootstrap?.solutions.some((solution) =>
-                  solution.description.includes("checks only the file tree"),
-                ),
-              ).toBe(true);
+              expect(report.globalConfig?.error?.issues?.[0]?.source?.layer).toBe("env");
               expect(bootstrap?.context.message).not.toContain("Invalid config file");
               expect(
                 bootstrap?.solutions.some((solution) => solution.description.includes("github.com")),
@@ -108,9 +104,7 @@ describe("doctor safe mode", () => {
       );
 
       // Then the provider section degrades but the report is intact
-      const bootstrapSelf = (report.self?.checks ?? []).find(
-        (check) => check.section === "provider-bootstrap",
-      );
+      const bootstrapSelf = (report.self?.checks ?? []).find((check) => check.section === "global-config");
       expect(bootstrapSelf).toMatchObject({ status: "fail", severity: "error" });
       expect(bootstrapSelf?.context.failure).toBe("ConfigError");
       expect(bootstrapSelf?.context.message).toContain(detail);
@@ -118,9 +112,23 @@ describe("doctor safe mode", () => {
         true,
       );
       expect(report.provider.checks).toEqual([]);
-      const certs = report.subsystems.checks.find((check) => check.name === "certs");
-      expect(certs?.context).toMatchObject({ subsystemId: "unavailable", ready: "false" });
-      expect(certs?.context.certsReason).toBeUndefined();
+      expect(report.subsystems.checks).toEqual([]);
+      expect(report.globalConfig?.status).toBe("fail");
+      expect(report.globalConfig?.error?._tag).toBe("ConfigError");
+      expect(report.skipped?.map((entry) => entry.section)).toEqual([
+        "provider",
+        "subsystems",
+        "network-trust",
+        "certificate-authority",
+        "global-app",
+        "mcp",
+      ]);
+      expect(
+        report.skipped?.every(
+          (entry) => entry.status === "skipped" && entry.reason.includes("global-config"),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(report)).not.toContain("--fix");
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
       restoreEnv("HOME", priorHome);

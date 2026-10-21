@@ -51,9 +51,9 @@ const resolveTrust = Effect.fnUntraced(function* (
   if (injected !== undefined) return injected;
   const config = Context.getOption(context, ConfigService);
   if (Option.isNone(config)) return undefined;
-  const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
+  const globalConfig = yield* config.value.load;
   const plan = yield* Effect.try({
-    try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
+    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }),
     catch: (cause) =>
       new HttpTrustError({
         message: cause instanceof Error ? cause.message : "Could not resolve network trust",

@@ -1,6 +1,5 @@
-import { Effect, Result } from "effect";
+import { Effect } from "effect";
 
-import type { ConfigError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
@@ -11,12 +10,6 @@ import {
   readProviderEnvVar,
 } from "@lando/engine/providers/precedence";
 import type { DoctorSelectionRecord } from "./doctor-contract";
-import {
-  type DoctorSelfCheck,
-  describeDoctorFailure,
-  doctorSelfCheck,
-  redactDoctorMessage,
-} from "./doctor-self";
 
 export interface DoctorSelectionOptions {
   readonly flagProviderId?: string | undefined;
@@ -26,30 +19,7 @@ export interface DoctorSelectionOptions {
 
 export interface GatheredSelectionInputs {
   readonly inputs: ProviderSelectionInputs;
-  readonly configFailure?: unknown;
 }
-
-export const selectionConfigFailureCheck = (
-  section: string,
-  cause: unknown,
-  redact: (value: string) => string,
-): DoctorSelfCheck => {
-  const described = describeDoctorFailure(cause);
-  return doctorSelfCheck({
-    section,
-    reason: "failure",
-    message: redactDoctorMessage(described.message, redact),
-    ...(described.tag === undefined ? {} : { tag: described.tag }),
-    solutions: [
-      {
-        kind: "manual",
-        description:
-          "Lando configuration could not be read, so this input fell back to its default. Inspect it with `lando config view` and repair or remove the offending file.",
-        command: "lando config view",
-      },
-    ],
-  });
-};
 
 const branded = (value: string | undefined): ProviderId | undefined => {
   if (value === undefined) return undefined;
@@ -74,12 +44,11 @@ export const gatherSelectionInputs = Effect.fnUntraced(function* (
   options: DoctorSelectionOptions,
 ): Effect.fn.Return<GatheredSelectionInputs, never, ConfigService> {
   const configService = yield* ConfigService;
-  const configProvider = yield* Effect.result(configService.get("defaultProviderId"));
+  const config = (yield* configService.get("defaultProviderId")) ?? undefined;
 
   const flag = branded(options.flagProviderId);
   const landofile = branded(options.landofileProviderId);
   const env = readProviderEnvVar(options.env ?? process.env);
-  const config = Result.isSuccess(configProvider) ? (configProvider.success ?? undefined) : undefined;
   return {
     inputs: {
       ...(flag === undefined ? {} : { flag }),
@@ -88,13 +57,12 @@ export const gatherSelectionInputs = Effect.fnUntraced(function* (
       ...(config === undefined ? {} : { config }),
       capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
     },
-    ...(Result.isFailure(configProvider) ? { configFailure: configProvider.failure } : {}),
   };
 });
 
 export const resolveStateDir = Effect.fnUntraced(function* (
   configService: typeof ConfigService.Service,
-): Effect.fn.Return<string | undefined, ConfigError> {
+): Effect.fn.Return<string | undefined> {
   const userDataRoot = yield* configService.get("userDataRoot");
   if (typeof userDataRoot !== "string" || userDataRoot.length === 0) return undefined;
   return `${userDataRoot}/providers`;

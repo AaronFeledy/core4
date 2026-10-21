@@ -81,7 +81,7 @@ describe("CLI runtime telemetry precedence", () => {
       const bootstrap = resolveEffectiveCliBootstrap("meta:config", "minimal");
       // Then notification subscribers get the required commands bootstrap tier.
       expect(bootstrap).toBe("minimal");
-      expect(resolveEffectiveCliBootstrap("meta:version", "none")).toBe("commands");
+      expect(resolveEffectiveCliBootstrap("meta:version", "none")).toBe("none");
     });
   });
   test("defaults CLI telemetry on when config and env are absent", async () => {
@@ -134,14 +134,22 @@ describe("CLI runtime telemetry precedence", () => {
   test("env false disables CLI telemetry even when config.yml is malformed", async () => {
     await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "0" }, async (dir) => {
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: [\n");
-      await expect(readCliTelemetry()).resolves.toBe(false);
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: false, source: "env" });
+      await expect(readCliTelemetry()).rejects.toMatchObject({
+        _tag: "ConfigError",
+        path: join(dir, "config.yml"),
+      });
     });
   });
 
   test("malformed config.yml without an explicit telemetry env keeps the CLI default on", async () => {
     await withEnv({}, async (dir) => {
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: [\n");
-      await expect(readCliTelemetry()).resolves.toBe(true);
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: true, source: "default" });
+      await expect(readCliTelemetry()).rejects.toMatchObject({
+        _tag: "ConfigError",
+        path: join(dir, "config.yml"),
+      });
     });
   });
 
@@ -151,7 +159,16 @@ describe("CLI runtime telemetry precedence", () => {
         join(dir, "config.yml"),
         ["defaultProviderId: 42", "telemetry:", "  enabled: false", ""].join("\n"),
       );
-      await expect(readCliTelemetry()).resolves.toBe(false);
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: false, source: "config" });
+      await expect(readCliTelemetry()).rejects.toMatchObject({
+        _tag: "ConfigError",
+        issues: [
+          {
+            path: ["defaultProviderId"],
+            source: { layer: "config-file", file: join(dir, "config.yml"), path: ["defaultProviderId"] },
+          },
+        ],
+      });
     });
   });
 

@@ -5,7 +5,6 @@ import type {
   AppResolveError,
   ArtifactBuildError,
   ArtifactTransferError,
-  ConfigError,
   NoProviderInstalledError,
   ProviderCapabilityError,
   ProviderConfigError,
@@ -80,7 +79,6 @@ export type ProviderError =
   | ArtifactTransferError;
 
 export type ProviderSelectionError =
-  | ConfigError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderUnavailableError;

@@ -417,7 +417,7 @@ describe("HttpClient network trust", () => {
     expect(capture.init()?.tls).toBeUndefined();
   });
 
-  test("self-resolves proxy and CA from env when ConfigService.load fails", async () => {
+  test("does not perform egress when config construction fails", async () => {
     const dir = await makeTempDir();
     const caPath = join(dir, "env-only.pem");
     const envCaPem = "-----BEGIN CERTIFICATE-----\nFROMENV\n-----END CERTIFICATE-----";
@@ -426,12 +426,9 @@ describe("HttpClient network trust", () => {
     stashEnv("HTTP_PROXY", "http://env-proxy:8080");
     stashEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([caPath]));
 
-    const configLayer = Layer.succeed(
+    const configLayer = Layer.effect(
       ConfigService,
-      ConfigService.of({
-        load: Effect.fail(new ConfigError({ message: "global config unavailable" })),
-        get: () => Effect.die("unused"),
-      }),
+      Effect.fail(new ConfigError({ message: "global config unavailable" })),
     );
 
     const capture = captureFetch();
@@ -445,9 +442,9 @@ describe("HttpClient network trust", () => {
       ),
     );
 
-    await Effect.runPromise(program);
-    expect(capture.init()?.proxy).toBe("http://env-proxy:8080");
-    expect(capture.init()?.tls).toEqual({ ca: [envCaPem] });
+    const result = await Effect.runPromise(Effect.result(program));
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigError" } });
+    expect(capture.init()).toBeUndefined();
   });
 
   test("self-resolves proxy and CA from ConfigService when NetworkTrust is absent", async () => {

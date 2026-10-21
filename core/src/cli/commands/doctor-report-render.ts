@@ -337,6 +337,35 @@ export const buildDoctorReportSummary = (
   const push = (section: SummarySection | undefined): void => {
     if (section !== undefined) sections.push(section);
   };
+  if (report.globalConfig !== undefined)
+    push({
+      title: "global-config",
+      rows: [
+        {
+          label: "global-config",
+          value: report.globalConfig.status,
+          tone: report.globalConfig.status === "pass" ? "ok" : "error",
+        },
+      ],
+      ...(report.globalConfig.error === undefined
+        ? {}
+        : {
+            notes: [
+              report.globalConfig.error.message,
+              report.globalConfig.error.remediation ?? "lando config validate",
+            ],
+          }),
+    });
+  if (report.skipped !== undefined)
+    push({
+      title: "skipped",
+      rows: report.skipped.map((entry) => ({
+        label: entry.section,
+        value: "SKIPPED",
+        tone: "skipped",
+        fields: [{ label: "reason", value: entry.reason }],
+      })),
+    });
   push(checkSection("provider", report.provider.checks, options));
   push(checkSection("subsystems", report.subsystems.checks, options));
   push(checkSection("global app", report.globalApp.checks, options));
@@ -432,6 +461,18 @@ export const renderDoctorReport = (
   const version = report.version === undefined || report.version === "" ? "" : `version: ${report.version}`;
   const parts = [
     version,
+    ...(report.globalConfig === undefined
+      ? []
+      : [
+          `global-config: ${report.globalConfig.status}`,
+          ...(report.globalConfig.error === undefined
+            ? []
+            : [
+                report.globalConfig.error.message,
+                report.globalConfig.error.remediation ?? "lando config validate",
+              ]),
+        ]),
+    ...(report.skipped ?? []).map((entry) => `${entry.section}: SKIPPED · ${entry.reason}`),
     provider,
     subsystems,
     globalApp,

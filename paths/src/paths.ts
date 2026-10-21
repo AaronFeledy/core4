@@ -31,6 +31,7 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 
 import {
+  type ConfigLayer,
   type ConfigSourceInputs,
   mergeGlobalConfigSources,
   readGlobalConfigSources,
@@ -62,6 +63,10 @@ const resolveLandoRootsForPlatform = (overrides: PathInputs, platform: HostPlatf
     rootOverrides: { ...overrides, platform },
     platform,
   });
+  return resolveLandoRootsFromSources(layers);
+};
+
+export const resolveLandoRootsFromSources = (layers: readonly ConfigLayer[]): LandoRoots => {
   const merged = mergeGlobalConfigSources(layers).tree;
   const defaults = layers[0]?.tree ?? {};
   const root = (key: keyof LandoRoots): string => {
@@ -104,6 +109,15 @@ const appRootFingerprint = (appRoot: string): string =>
 
 // --- derived path factory ----------------------------------------------------
 
+export const managedFileLedgerPath = (
+  userDataRoot: string,
+  appId: string,
+  platform = normalizeHostPlatform(),
+): string => joinFor(platform)(userDataRoot, "managed-files", appId, "ledger.json");
+
+export const globalAppRootPath = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
+  joinFor(platform)(userDataRoot, "global");
+
 /**
  * Resolve every root and return builders for every derived path in the catalog.
  * App-scoped builders sanitize app names and fingerprint the app root so two
@@ -113,6 +127,11 @@ export const makeLandoPaths = (overrides: PathInputs = {}): LandoPaths => {
   const env = overrides.env ?? process.env;
   const platform = normalizeHostPlatform({ platform: overrides.platform, env });
   const roots = resolveLandoRootsForPlatform(overrides, platform);
+  return makeLandoPathsFromRoots(roots, platform);
+};
+
+/** Build derived paths from an already resolved runtime snapshot without reading sources. */
+export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatform): LandoPaths => {
   const j = joinFor(platform);
 
   const { userConfRoot, userCacheRoot, userDataRoot, systemPluginRoot } = roots;
@@ -144,10 +163,10 @@ export const makeLandoPaths = (overrides: PathInputs = {}): LandoPaths => {
       j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}-${kind}-agent`),
     providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
-    globalAppRoot: j(userDataRoot, "global"),
+    globalAppRoot: globalAppRootPath(userDataRoot, platform),
     snapshotsDir: j(userDataRoot, "snapshots"),
     appSnapshotsDir: (appId: string) => j(userDataRoot, "snapshots", appId),
-    managedFileLedger: (appId: string) => j(userDataRoot, "managed-files", appId, "ledger.json"),
+    managedFileLedger: (appId: string) => managedFileLedgerPath(userDataRoot, appId, platform),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),
     toolDownloadsDir: (toolId: string) => j(userCacheRoot, "tool-downloads", toolId),

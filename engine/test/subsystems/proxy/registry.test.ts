@@ -27,10 +27,12 @@ test("preserves config failures during router selection", async () => {
   });
   const registry = makeRouterServiceRegistry({
     registrations: [first],
-    configured: Effect.fail(error),
+    configured: Effect.succeed(undefined),
     platform: "linux",
   });
-  const result = await Effect.runPromise(Effect.result(registry.select()));
+  const result = await Effect.runPromise(
+    Effect.result(registry.select().pipe(Effect.provide(Layer.effect(RouterService, Effect.fail(error))))),
+  );
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") expect(result.failure).toBe(error);
 });

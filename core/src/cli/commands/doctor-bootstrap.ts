@@ -1,17 +1,16 @@
+import { CORE_VERSION } from "@lando/engine/version";
+import type { ConfigError } from "@lando/sdk/errors";
 /**
  * Safe-mode `lando doctor` entry point.
  *
- * `meta:doctor` bootstraps at `none` and builds the `provider` runtime here,
- * inside the doctor program, so a bootstrap failure becomes a
- * `provider-bootstrap` self check in an otherwise normal report instead of
- * leaving the user with no diagnostics. Every other command keeps failing loudly
- * on a bad plugin graph or unreadable config, which is the correct behavior for
- * them.
+ * `meta:doctor` validates global config before building the provider runtime.
+ * Invalid config skips dependent sections; provider bootstrap failures become
+ * self checks while independent diagnostics continue.
  *
  * The runtime is built exactly once, inside a `Scope` that stays open for the
  * runtime-dependent sections and closes with the report.
  */
-import { Context, Effect, Layer, type Scope } from "effect";
+import { Context, Effect, Layer, Option, type Scope } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
@@ -44,12 +43,54 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
   const { redactor } = yield* resolveSecretsRedactor({ sourceEnv });
 
   const runtimeLayerFactory = yield* RuntimeLayerFactory;
+  const captured = yield* Effect.serviceOption(LandoConfigService.GlobalConfigSources);
+  const configLayer = Option.isSome(captured)
+    ? LandoConfigService.layerWith(captured.value)
+    : LandoConfigService.layer;
+  let configError: ConfigError | undefined;
+  const config = yield* isolateDoctorSection({
+    section: "global-config",
+    effect: Layer.build(configLayer).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          configError = error;
+        }),
+      ),
+    ),
+    fallback: undefined,
+    solutions: [
+      {
+        kind: "manual",
+        description: "Repair global configuration before rerunning doctor.",
+        command: "lando config validate",
+      },
+    ],
+    redact: (value) => redactor.redactString(value),
+    budgetMs: doctorSectionBudgetMs(sourceEnv),
+  });
+  if (config.value === undefined)
+    return {
+      version: CORE_VERSION,
+      globalConfig: { status: "fail", ...(configError === undefined ? {} : { error: configError }) },
+      skipped: ["provider", "subsystems", "network-trust", "certificate-authority", "global-app", "mcp"].map(
+        (section) => ({
+          section,
+          status: "skipped" as const,
+          reason: "Requires a passing global-config check.",
+        }),
+      ),
+      provider: { checks: [] },
+      subsystems: { checks: [] },
+      globalApp: { checks: [] },
+      mcp: { checks: [] },
+      ...(config.self === undefined ? {} : { self: { checks: [config.self] } }),
+    };
   const runtime = runtimeLayerFactory.make(
-    cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
+    cliRuntimeOptions({ bootstrap: "provider", telemetry: false, plugins: { policy: "discovery" } }),
   );
   const built = yield* isolateDoctorSection({
     section: "provider-bootstrap",
-    effect: Layer.build(runtime),
+    effect: Layer.build(runtime).pipe(Effect.provide(config.value)),
     fallback: undefined,
     budgetMs: doctorSectionBudgetMs(sourceEnv),
     redact: (value) => redactor.redactString(value),
@@ -57,9 +98,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
   });
   const context = built.value;
 
-  // `LandoConfigService.layer` is a pure `Layer.succeed`, so providing it here
-  // cannot fail even when the full runtime could not be built.
-  return yield* collectDoctorReport({
+  const report = yield* collectDoctorReport({
     options,
     appConfig:
       context === undefined ? Effect.succeed(undefined) : appConfigForReport().pipe(Effect.provide(context)),
@@ -85,5 +124,6 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
             ),
         }),
     ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
-  }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(LandoConfigService.layer));
+  }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(config.value));
+  return { ...report, globalConfig: { status: "pass" } };
 }, Effect.scoped);

@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { type ConfigError, ProxyError } from "@lando/sdk/errors";
+import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import {
@@ -48,7 +48,7 @@ interface RouterServiceRegistryShape {
   readonly list: Effect.Effect<ReadonlyArray<string>>;
   readonly select: (
     selection?: RouterServiceSelection,
-  ) => Effect.Effect<RouterServiceRegistration, ProxyError | ConfigError>;
+  ) => Effect.Effect<RouterServiceRegistration, ProxyError>;
 }
 
 export class RouterServiceRegistry extends Context.Service<
@@ -88,7 +88,7 @@ export class RouterServiceRegistry extends Context.Service<
 
 interface MakeRouterServiceRegistryOptions {
   readonly registrations: ReadonlyArray<RouterServiceRegistration>;
-  readonly configured: Effect.Effect<string | undefined, ProxyError | ConfigError>;
+  readonly configured: Effect.Effect<string | undefined, ProxyError>;
   readonly platform: HostPlatform;
 }
 

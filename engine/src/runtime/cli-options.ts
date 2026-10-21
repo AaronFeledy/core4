@@ -32,7 +32,13 @@ const DEFAULT_LOWER_TIER_NOTIFY_COMMANDS = new Set(["meta:update"]);
  * bootstrap failure is reported rather than fatal; promoting it would rebuild
  * that fallible runtime eagerly and defeat the guarantee.
  */
-const BOOTSTRAP_PROMOTION_EXEMPT_COMMANDS = new Set(["meta:doctor", "meta:config"]);
+const BOOTSTRAP_PROMOTION_EXEMPT_COMMANDS = new Set([
+  "meta:doctor",
+  "meta:config",
+  "meta:version",
+  "meta:shellenv",
+  "meta:uninstall",
+]);
 
 export const effectiveBootstrapForCommand = (
   commandId: string,

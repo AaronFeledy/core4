@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
-import { LandofileShape, type ProviderCapabilities, validationIssue } from "@lando/sdk/schema";
+import { LandofileShape, type ProviderCapabilities } from "@lando/sdk/schema";
 import { ConfigService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Schema } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import { planApp } from "../../src/planner/assemble.ts";
+import * as ConfigLayer from "../../src/services/config.ts";
 
 const missingPlugin = (id: string) =>
   new PluginLoadError({ message: `Plugin ${id} is not registered.`, pluginName: id });
@@ -23,21 +24,10 @@ const pluginRegistry = PluginRegistry.of({
 
 describe("event-set global config load failures", () => {
   test("keeps the real issue path instead of blaming network injection", async () => {
-    const configService = ConfigService.of({
-      load: Effect.fail(
-        new ConfigError({
-          message: 'config.yml hostEvents.pre-start[0] cannot target a container. Use service: ":host".',
-          path: "/tmp/config.yml",
-          issues: [
-            validationIssue(
-              ["hostEvents", "pre-start", 0],
-              'config.yml hostEvents.pre-start[0] cannot target a container. Use service: ":host".',
-            ),
-          ],
-          remediation: "Use `lando config edit`.",
-        }),
-      ),
-      get: () => Effect.die("unused"),
+    const configLayer = ConfigLayer.layerWith({
+      env: {},
+      sources: { user: false, env: false },
+      host: { hostEvents: { "pre-start": ["echo container"] } },
     });
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "path-fix",
@@ -45,25 +35,27 @@ describe("event-set global config load failures", () => {
     });
     const capabilities: ProviderCapabilities = TestRuntimeProvider.capabilities;
     const exit = await Effect.runPromiseExit(
-      planApp(
-        pluginRegistry,
-        undefined,
-        configService,
-        undefined,
-        undefined,
-        undefined,
-        landofile,
-        capabilities,
-      ),
+      Effect.gen(function* () {
+        return yield* planApp(
+          pluginRegistry,
+          undefined,
+          yield* ConfigService,
+          undefined,
+          undefined,
+          undefined,
+          landofile,
+          capabilities,
+        );
+      }).pipe(Effect.provide(configLayer)),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
     const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure).toBeInstanceOf(ConfigError);
     if (!(failure instanceof ConfigError)) throw failure;
-    expect(failure.path).toBe("/tmp/config.yml");
+    expect(failure.issues?.[0]?.source).toEqual({ layer: "host", path: ["hostEvents", "pre-start", 0] });
     expect(failure.issues?.[0]?.path).toEqual(["hostEvents", "pre-start", 0]);
-    expect(failure.remediation).toContain("lando config edit");
+    expect(failure.remediation).toContain("host config");
     expect(failure.message).toContain("hostEvents.pre-start[0]");
   });
 });
