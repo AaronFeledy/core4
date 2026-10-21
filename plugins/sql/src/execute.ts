@@ -2,7 +2,12 @@ import { DateTime, Effect, absurd } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import {
+  SqlConfirmRequiredError,
+  SqlDumpTtyError,
+  SqlSeedSourceError,
+  SqlServiceNotFoundError,
+} from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
@@ -11,6 +16,7 @@ import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
+import { isStdinDumpArg, isStdoutDumpArg } from "./dump-stdio.ts";
 import { countCommand } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
@@ -80,14 +86,29 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       : undefined;
   const file = hostFile(deps.plan, { ...input, service: target.name });
   const action = input.action;
+  if (
+    action === "export" &&
+    isStdoutDumpArg(file) &&
+    process.stdout.isTTY === true &&
+    input.forceTty !== true
+  ) {
+    return yield* Effect.fail(
+      new SqlDumpTtyError({
+        message: "Refusing to write a binary dump to a terminal.",
+        path: file,
+        remediation: "Redirect stdout, or pass --force-tty to write the dump to this terminal.",
+      }),
+    );
+  }
   let restoreSource: SnapshotInfo | undefined;
   const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
   const dump =
     action === "import" || (action === "seed" && input.file !== undefined)
       ? yield* ensureReadableDump(file, deps.plan.root)
       : undefined;
-  const expectedDigest = dump?.digest;
-  const compression = dump?.compression ?? compressionFromExportPath(file);
+  const expectedDigest = dump?.streaming === true ? undefined : dump?.digest;
+  const compression =
+    dump?.streaming === true ? "none" : (dump?.compression ?? compressionFromExportPath(file));
   const steps: DbCommandStep[] = [
     {
       id: action,
@@ -102,15 +123,24 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       .exec(target.name, countCommand(target.family, creds), env)
       .pipe(Effect.catch(() => Effect.succeed({ ok: false, stdout: "" })));
     const count = counted.ok ? parseCount(counted.stdout) : undefined;
-    yield* confirmOrFail(
-      input,
-      deps.confirm,
-      target.name,
-      steps,
+    const message =
       count === undefined || count > 0
         ? `Import will replace data in ${target.name}.`
-        : `Import will initialize ${target.name}.`,
-    );
+        : `Import will initialize ${target.name}.`;
+    if (isStdinDumpArg(file)) {
+      if (!input.yes) {
+        return yield* Effect.fail(
+          new SqlConfirmRequiredError({
+            message,
+            service: target.name,
+            steps,
+            remediation: "Pass --yes. `-` reads the dump from stdin and does not prompt.",
+          }),
+        );
+      }
+    } else {
+      yield* confirmOrFail(input, deps.confirm, target.name, steps, message);
+    }
   }
   if (action === "reset") {
     yield* confirmOrFail(
@@ -328,5 +358,6 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     ...(seedStatus === undefined ? {} : { seedStatus }),
     ...(transfer?.accelerated === undefined ? {} : { accelerated: transfer.accelerated }),
     ...(transfer?.sizeBytes === undefined ? {} : { sizeBytes: transfer.sizeBytes }),
+    ...(transfer?.digest === undefined ? {} : { digest: transfer.digest }),
   };
 });

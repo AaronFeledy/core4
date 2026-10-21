@@ -22,6 +22,7 @@ export const DbCommandResult = Schema.Struct({
   seedStatus: Schema.optionalKey(Schema.Literal("seeded")),
   accelerated: Schema.optionalKey(Schema.Boolean),
   sizeBytes: Schema.optionalKey(Schema.Number),
+  digest: Schema.optionalKey(Schema.String),
   steps: Schema.Array(DbCommandStep),
 });
 export type DbCommandResult = typeof DbCommandResult.Type;

@@ -1,18 +1,20 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
-import { SqlDumpCompressionError } from "@lando/sdk/errors";
+import { SqlDumpCompressionError, SqlDumpEmptyError, SqlDumpStageError } from "@lando/sdk/errors";
 
 import {
   collectDumpPrefix,
   compressionFromExportPath,
   detectDumpCompression,
+  withHostDumpCompression,
   writeDumpTransform,
 } from "../src/compression.ts";
+import { canUseFifo, captureFifo, feedFifo, mkfifo, stopProc, writeFifoPayload } from "./support/fifo.ts";
 
 describe("dump compression helpers", () => {
   let dir = "";
@@ -87,5 +89,189 @@ describe("dump compression helpers", () => {
     if (!(error instanceof SqlDumpCompressionError)) return;
     expect(error.compression).toBe("zstd");
     expect(error.operation).toBe("decompress");
+  });
+
+  test("compresses an export onto a FIFO without renaming it into a regular file", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql.gz");
+    const captured = join(dir, "captured.gz");
+    await mkfifo(fifo);
+    const reader = captureFifo(fifo, captured);
+    try {
+      const payload = "select 1;\n";
+      await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "gzip",
+          direction: "export",
+          transfer: (path) =>
+            Effect.promise(async () => {
+              await writeFile(path, payload);
+              return { accelerated: true, sizeBytes: payload.length };
+            }),
+        }),
+      );
+      expect(await reader.exited).toBe(0);
+      expect((await stat(fifo)).isFIFO()).toBe(true);
+      expect(new Uint8Array(await readFile(captured)).subarray(0, 2)).toEqual(Uint8Array.from([0x1f, 0x8b]));
+      const restored = await new Response(
+        new Blob([await readFile(captured)]).stream().pipeThrough(new DecompressionStream("gzip")),
+      ).text();
+      expect(restored).toBe(payload);
+    } catch (error) {
+      await stopProc(reader);
+      throw error;
+    }
+  });
+
+  test("stages a compressed FIFO export in tmpdir, not dirname", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql.gz");
+    const captured = join(dir, "captured.gz");
+    await mkfifo(fifo);
+    const reader = captureFifo(fifo, captured);
+    const staged: string[] = [];
+    try {
+      const payload = "select 1;\n";
+      await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "gzip",
+          direction: "export",
+          transfer: (path) =>
+            Effect.promise(async () => {
+              staged.push(path);
+              await writeFile(path, payload);
+              return { accelerated: true, sizeBytes: payload.length };
+            }),
+        }),
+      );
+      expect(await reader.exited).toBe(0);
+      expect(staged).toHaveLength(1);
+      const stagedPath = staged[0] ?? "";
+      expect(stagedPath.includes(".lando-dump-")).toBe(true);
+      expect(dirname(dirname(stagedPath))).toBe(tmpdir());
+      expect(stagedPath.startsWith(dir)).toBe(false);
+    } catch (error) {
+      await stopProc(reader);
+      throw error;
+    }
+  });
+
+  test("imports an uncompressed FIFO without seeking the source", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql");
+    const payload = "select 2;\n";
+    const source = await writeFifoPayload(dir, "plain.sql", payload);
+    await mkfifo(fifo);
+    const writer = feedFifo(source, fifo);
+    try {
+      const result = await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "none",
+          direction: "import",
+          transfer: (workingPath, digest) =>
+            Effect.promise(async () => {
+              expect(await readFile(workingPath, "utf8")).toBe(payload);
+              expect(digest).toHaveLength(64);
+              if (digest === undefined) throw new Error("expected digest");
+              return { accelerated: false, sizeBytes: payload.length, digest };
+            }),
+        }),
+      );
+      expect(await writer.exited).toBe(0);
+      expect(result.digest).toHaveLength(64);
+    } catch (error) {
+      await stopProc(writer);
+      throw error;
+    }
+  });
+
+  test("imports a gzip FIFO by decompressing in one pass to a staged file", async () => {
+    if (!canUseFifo) return;
+    const fifo = join(dir, "dump.sql.gz");
+    const payload = "select 3;\n";
+    const compressed = Buffer.from(
+      await new Response(
+        new Blob([payload]).stream().pipeThrough(new CompressionStream("gzip")),
+      ).arrayBuffer(),
+    );
+    const source = await writeFifoPayload(dir, "plain.sql.gz", compressed);
+    await mkfifo(fifo);
+    const writer = feedFifo(source, fifo);
+    try {
+      await Effect.runPromise(
+        withHostDumpCompression({
+          path: fifo,
+          compression: "none",
+          direction: "import",
+          transfer: (workingPath, digest) =>
+            Effect.promise(async () => {
+              expect(await readFile(workingPath, "utf8")).toBe(payload);
+              expect(digest).toHaveLength(64);
+              if (digest === undefined) throw new Error("expected digest");
+              return { accelerated: false, sizeBytes: payload.length, digest };
+            }),
+        }),
+      );
+      expect(await writer.exited).toBe(0);
+    } catch (error) {
+      await stopProc(writer);
+      throw error;
+    }
+  });
+
+  test("rejects an empty streaming import without calling it gzip", async () => {
+    const exit = await Effect.runPromiseExit(
+      withHostDumpCompression({
+        path: "/dev/null",
+        compression: "none",
+        direction: "import",
+        transfer: () => Effect.succeed({ accelerated: false, sizeBytes: 0 }),
+      }),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(SqlDumpEmptyError);
+    if (!(error instanceof SqlDumpEmptyError)) return;
+    expect(error.message).not.toMatch(/gzip/i);
+    expect(error.path).toBe("/dev/null");
+  });
+
+  test("uncompressed staged-import failures stay off the gzip decompress path", async () => {
+    if (process.platform === "win32") return;
+    const { createServer } = await import("node:net");
+    const sockPath = join(dir, "dump.sock");
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(sockPath, () => resolve());
+    });
+    try {
+      const exit = await Effect.runPromiseExit(
+        withHostDumpCompression({
+          path: sockPath,
+          compression: "none",
+          direction: "import",
+          transfer: () => Effect.succeed({ accelerated: false, sizeBytes: 0 }),
+        }),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).not.toBeInstanceOf(SqlDumpCompressionError);
+      if (error instanceof SqlDumpEmptyError) {
+        expect(error.message).not.toMatch(/gzip/i);
+        return;
+      }
+      expect(error).toBeInstanceOf(SqlDumpStageError);
+      if (!(error instanceof SqlDumpStageError)) return;
+      expect(error.message).not.toMatch(/gzip/i);
+      expect(error.message).toContain("stage");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

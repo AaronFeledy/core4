@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -154,6 +154,12 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       Effect.sync((): DataTransferResult => {
         transfers.push(spec);
         if (spec.to._tag === "hostPath") {
+          try {
+            const info = statSync(spec.to.path);
+            if (!info.isFile() && !info.isDirectory()) return { accelerated: true, sizeBytes: 12 };
+          } catch {
+            // Destination does not exist yet; write a regular file.
+          }
           mkdirSync(dirname(spec.to.path), { recursive: true });
           writeFileSync(spec.to.path, "dump");
         }

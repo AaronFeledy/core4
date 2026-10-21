@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Schema } from "effect";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ToolingCommandLookupError } from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
@@ -17,6 +18,7 @@ import {
   pluginOwnedCommandEffect,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
+  resultIoForPayloadStdout,
 } from "../../src/cli/run-plugin-owned-command.ts";
 
 const DbImportResult = Schema.Struct({
@@ -283,5 +285,15 @@ describe("plugin-owned command dispatch", () => {
     if (error instanceof UnknownCliFlagError) {
       expect(error.flag).toBe("--servce");
     }
+  });
+
+  test("routes result envelopes to stderr when the payload owns stdout", () => {
+    const io = createBufferedRendererIO();
+    const routed = resultIoForPayloadStdout(io);
+    routed.writeStdout("dump-bytes");
+    expect(io.stdout()).toBe("");
+    expect(io.stderr()).toBe("dump-bytes");
+    routed.writeStderr("progress\n");
+    expect(io.stderr()).toBe("dump-bytesprogress\n");
   });
 });

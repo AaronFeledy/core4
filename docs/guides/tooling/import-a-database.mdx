@@ -15,7 +15,7 @@ Grab the database name and user from `lando info` first. It redacts the password
 lando info
 ```
 
-Use `lando db:import dump.sql.gz --yes` when you want the bundled helper.
+Use `lando db:import dump.sql.gz --yes` when you want the bundled helper. Pipe a dump into it with `lando db:import - --yes`. You must pass `--yes`; `-` uses stdin for the dump, so Lando will not prompt.
 
 ## Import into MySQL or MariaDB
 

@@ -10,6 +10,7 @@ import type {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   DataTransferError,
+  DataTransferPartialStreamError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
@@ -32,6 +33,7 @@ import type {
 
 export type DataMoverError =
   | DataTransferError
+  | DataTransferPartialStreamError
   | DataEndpointUnsupportedError
   | DataChecksumMismatchError
   | DataSourceOutsideRootError

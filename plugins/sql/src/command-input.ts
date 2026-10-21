@@ -4,13 +4,25 @@ import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 
 import type { DbAction, DbCommandInput } from "./command-types.ts";
 import { DEFAULT_SQL_PASSWORD } from "./creds.ts";
+import { resolveStdioDumpPath } from "./dump-stdio.ts";
 import type { SqlLandofileService, SqlPlan } from "./views.ts";
 
 export const hostFile = (
   plan: SqlPlan,
-  input: { readonly service: string; readonly file?: string; readonly hostCwd?: string },
+  input: {
+    readonly service: string;
+    readonly file?: string;
+    readonly hostCwd?: string;
+    readonly action?: DbAction;
+  },
 ): string => {
   const file = input.file ?? `${input.service}.sql.gz`;
+  if (file === "-") {
+    return resolveStdioDumpPath(
+      file,
+      input.action === "import" || input.action === "seed" ? "stdin" : "stdout",
+    );
+  }
   if (isAbsolute(file)) return file;
   const hostCwd = input.hostCwd ?? process.cwd();
   const rel = relative(resolve(plan.root), resolve(hostCwd));
@@ -75,4 +87,5 @@ export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInp
   input.flags.compression === "none"
     ? { compression: input.flags.compression }
     : {}),
+  ...(input.flags["force-tty"] === true ? { forceTty: true } : {}),
 });

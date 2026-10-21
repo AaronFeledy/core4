@@ -28,6 +28,7 @@ import {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   DataTransferError,
+  DataTransferPartialStreamError,
   ProviderUnavailableError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
@@ -63,6 +64,7 @@ import {
 import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import {
   VerifiedStreamError,
+  VerifiedStreamPartialError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
@@ -83,6 +85,7 @@ interface DataMoverEvents {
 type DataMoverTransferError =
   | ArchiveFormatError
   | DataTransferError
+  | DataTransferPartialStreamError
   | DataEndpointUnsupportedError
   | DataChecksumMismatchError
   | DataTargetExistsError;
@@ -598,7 +601,19 @@ const providerCommandSpec = (
   ...(env === undefined ? {} : { env }),
 });
 
-const mapVerifiedError = (error: VerifiedStreamError, spec: DataTransferSpec) => {
+const mapVerifiedError = (
+  error: VerifiedStreamError | VerifiedStreamPartialError,
+  spec: DataTransferSpec,
+) => {
+  if (error instanceof VerifiedStreamPartialError) {
+    return new DataTransferPartialStreamError({
+      message: error.message,
+      bytesWritten: error.bytesWritten,
+      path: spec.to._tag === "hostPath" || spec.to._tag === "hostArchive" ? spec.to.path : undefined,
+      remediation: error.remediation,
+      cause: error,
+    });
+  }
   if (error.reason === "checksum") {
     return new DataChecksumMismatchError({
       message: "Data transfer checksum did not match the expected SHA-256.",
@@ -715,6 +730,44 @@ const ensureInsideScratch = Effect.fnUntraced(function* (path: string, scratchDi
     return yield* Effect.fail(escapes);
 });
 
+const isStdioHostPath = (path: string): boolean =>
+  path === "/dev/stdout" ||
+  path === "/dev/stderr" ||
+  path === "/dev/stdin" ||
+  /^(?:\/dev\/fd|\/proc\/self\/fd)\/\d+$/u.test(path);
+
+const isStagedDumpHostPath = (path: string): boolean => /(?:^|\/)\.lando-dump-[^/]+\//u.test(path);
+
+const isNonRegularExistingHostPath = (path: string): Effect.Effect<boolean> =>
+  Effect.promise(async () => {
+    try {
+      const info = await stat(path);
+      return !info.isFile() && !info.isDirectory();
+    } catch {
+      return false;
+    }
+  });
+
+const skipTrustedHostPathRoot = Effect.fnUntraced(function* (
+  endpoint: Extract<DataEndpoint, { readonly _tag: "hostPath" }>,
+  role: "from" | "to",
+) {
+  if (endpoint.trusted !== true) return false;
+  if (role === "from") return true;
+  if (isStdioHostPath(endpoint.path) || isStagedDumpHostPath(endpoint.path)) return true;
+  return yield* isNonRegularExistingHostPath(endpoint.path);
+});
+
+const validateHostEndpoint = Effect.fnUntraced(function* (
+  endpoint: DataEndpoint,
+  role: "from" | "to",
+  root: string,
+) {
+  if (endpoint._tag !== "hostPath" && endpoint._tag !== "hostArchive") return;
+  if (endpoint._tag === "hostPath" && (yield* skipTrustedHostPathRoot(endpoint, role))) return;
+  yield* ensureInsideRoot(endpoint.path, root);
+});
+
 const validateHostEndpoints = Effect.fnUntraced(function* (spec: DataTransferSpec, scratchDir: string) {
   const scratchHostCopy =
     spec.from._tag === "hostPath" &&
@@ -748,14 +801,8 @@ const validateHostEndpoints = Effect.fnUntraced(function* (spec: DataTransferSpe
         path: endpoints[0]?.path ?? process.cwd(),
       }),
   });
-  yield* Effect.all(
-    endpoints.map((endpoint) =>
-      endpoint === spec.from && endpoint._tag === "hostPath" && endpoint.trusted === true
-        ? Effect.void
-        : ensureInsideRoot(endpoint.path, root),
-    ),
-    { discard: true },
-  );
+  yield* validateHostEndpoint(spec.from, "from", root);
+  yield* validateHostEndpoint(spec.to, "to", root);
 });
 
 const reflinkCopyTree = async (source: string, destination: string): Promise<boolean> => {
@@ -1003,7 +1050,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         expectedSha256: spec.expectedDigest,
       }).pipe(
         Effect.mapError((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+            ? mapVerifiedError(error, spec)
+            : error,
         ),
       );
       return { accelerated: false, sizeBytes: result.sizeBytes, digest: result.sha256 };
@@ -1016,7 +1065,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
         Effect.mapError((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+            ? mapVerifiedError(error, spec)
+            : error,
         ),
       );
       yield* persistVerifiedStream({
@@ -1029,7 +1080,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         destinationPath: target.path,
       }).pipe(
         Effect.mapError((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+            ? mapVerifiedError(error, spec)
+            : error,
         ),
       );
       return {
@@ -1049,7 +1102,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
           Effect.mapError((error) =>
-            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+            error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+              ? mapVerifiedError(error, spec)
+              : error,
           ),
         );
         yield* provider
@@ -1098,7 +1153,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
           Effect.mapError((error) =>
-            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+            error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+              ? mapVerifiedError(error, spec)
+              : error,
           ),
         );
         const helperImage = yield* resolveDataHelperImage(provider);
@@ -1138,7 +1195,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
           Effect.mapError((error) =>
-            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+            error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+              ? mapVerifiedError(error, spec)
+              : error,
           ),
         );
         yield* provider
@@ -1171,7 +1230,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
         Effect.mapError((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
+            ? mapVerifiedError(error, spec)
+            : error,
         ),
       );
       const stdinStream = Bun.file(staged.path).stream();
@@ -1435,7 +1496,7 @@ export const makeDataMoverService = (
                 ),
               }).pipe(
                 Effect.mapError((error) =>
-                  error instanceof VerifiedStreamError
+                  error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
                     ? mapVerifiedError(error, {
                         from: { _tag: "volume", app: store.app, store: store.store },
                         to: {
@@ -1547,7 +1608,7 @@ export const makeDataMoverService = (
           expectedSizeBytes: info.sizeBytes,
         }).pipe(
           Effect.mapError((error) =>
-            error instanceof VerifiedStreamError
+            error instanceof VerifiedStreamError || error instanceof VerifiedStreamPartialError
               ? mapVerifiedError(error, {
                   from: {
                     _tag: "hostArchive",

@@ -14,6 +14,21 @@ export class DataTransferError extends Schema.TaggedError<DataTransferError>()("
 }) {}
 
 /**
+ * A streaming destination closed after some bytes were written (EPIPE).
+ * CLI maps this to exit 141, the SIGPIPE convention.
+ */
+export class DataTransferPartialStreamError extends Schema.TaggedError<DataTransferPartialStreamError>()(
+  "DataTransferPartialStreamError",
+  {
+    message: Schema.String,
+    bytesWritten: Schema.Number,
+    path: Schema.optional(Schema.String),
+    remediation: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+/**
  * The `(from, to)` endpoint pair is not realizable on the active provider
  * (missing native capability and no generic fallback). Carries the pair and
  * remediation.

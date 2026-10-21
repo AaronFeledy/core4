@@ -4,9 +4,16 @@ import { basename, dirname, join } from "node:path";
 
 import { Effect, Stream } from "effect";
 
-import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/errors";
+import {
+  DataChecksumMismatchError,
+  SqlDumpCompressionError,
+  SqlDumpEmptyError,
+  SqlDumpStageError,
+} from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
-import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { VerifiedStreamPartialError, persistVerifiedStream } from "@lando/sdk/verified-stream";
+
+import { isNonRegularExistingPath } from "./dump-stdio.ts";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
 
@@ -75,6 +82,28 @@ const dumpCompressionError = (
         : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import.",
   });
 
+const dumpStageError = (path: string): SqlDumpStageError =>
+  new SqlDumpStageError({
+    message: `Failed to stage dump file: ${path}`,
+    path,
+    remediation: "Confirm the dump is readable and the host temp directory is writable, then retry.",
+  });
+
+const dumpEmptyError = (path: string): SqlDumpEmptyError =>
+  new SqlDumpEmptyError({
+    message: `Dump is empty: ${path}`,
+    path,
+    remediation: "Pass a non-empty dump. Empty stdin is rejected.",
+  });
+
+const mapPersistError = (
+  error: unknown,
+  fallback: SqlDumpCompressionError | SqlDumpStageError,
+): SqlDumpCompressionError | SqlDumpStageError | VerifiedStreamPartialError => {
+  if (error instanceof VerifiedStreamPartialError) return error;
+  return fallback;
+};
+
 export const writeDumpTransform = (
   sourcePath: string,
   destPath: string,
@@ -83,7 +112,7 @@ export const writeDumpTransform = (
   expectedDigest?: string,
 ): Effect.Effect<
   { readonly digest: string; readonly sizeBytes: number },
-  SqlDumpCompressionError | DataChecksumMismatchError
+  SqlDumpCompressionError | SqlDumpStageError | DataChecksumMismatchError | VerifiedStreamPartialError
 > =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -98,6 +127,11 @@ export const writeDumpTransform = (
             },
           }),
         );
+      const fallback = dumpCompressionError(
+        operation === "compress" ? destPath : sourcePath,
+        compression,
+        operation,
+      );
       const result = yield* persistVerifiedStream({
         body: Stream.fromReadableStream({
           evaluate: () => streamThrough(source, compression, operation),
@@ -106,11 +140,7 @@ export const writeDumpTransform = (
         }),
         destinationPath: destPath,
         mode: 0o600,
-      }).pipe(
-        Effect.mapError(() =>
-          dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
-        ),
-      );
+      }).pipe(Effect.mapError((error) => mapPersistError(error, fallback)));
       const actualDigest = hash.digest("hex");
       if (expectedDigest !== undefined && actualDigest !== expectedDigest) {
         return yield* Effect.fail(
@@ -127,39 +157,113 @@ export const writeDumpTransform = (
     }),
   );
 
-export const acquireStagedDump = (
-  parent: string,
-  compression: Exclude<DumpCompression, "none">,
-  operation: "compress" | "decompress",
-): Effect.Effect<string, SqlDumpCompressionError> =>
+export const acquireStagedDump = (parent: string): Effect.Effect<string, SqlDumpStageError> =>
   Effect.tryPromise({
     try: async () => {
       await mkdir(parent, { recursive: true });
       return mkdtemp(join(parent, ".lando-dump-"));
     },
-    catch: () => dumpCompressionError(parent, compression, operation),
+    catch: () => dumpStageError(parent),
   });
 
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
   Effect.promise(() => rm(path, { recursive: true, force: true }));
 
-export const withHostDumpCompression = <E, R>(input: {
+const peekDumpSource = async (
+  path: string,
+): Promise<{ readonly compression: DumpCompression; readonly source: ReadableStream<Uint8Array> }> => {
+  const reader = Bun.file(path).stream().getReader();
+  let prefix: Uint8Array = new Uint8Array();
+  const pending: Uint8Array[] = [];
+  while (prefix.byteLength < 4) {
+    const next = await reader.read();
+    if (next.done) break;
+    pending.push(next.value);
+    prefix = collectDumpPrefix(next.value, prefix);
+  }
+  let index = 0;
+  return {
+    compression: detectDumpCompression(prefix),
+    source: new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        const queued = pending[index];
+        if (queued !== undefined) {
+          index += 1;
+          controller.enqueue(queued);
+          return;
+        }
+        const next = await reader.read();
+        if (next.done) {
+          reader.releaseLock();
+          controller.close();
+          return;
+        }
+        controller.enqueue(next.value);
+      },
+      cancel: () => reader.cancel(),
+    }),
+  };
+};
+
+const stageStreamingImport = (
+  sourcePath: string,
+  destPath: string,
+): Effect.Effect<
+  { readonly digest: string; readonly sizeBytes: number },
+  SqlDumpCompressionError | SqlDumpStageError | SqlDumpEmptyError | VerifiedStreamPartialError
+> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peeked = yield* Effect.tryPromise({
+        try: () => peekDumpSource(sourcePath),
+        catch: () => dumpStageError(sourcePath),
+      });
+      const body =
+        peeked.compression === "none"
+          ? peeked.source
+          : streamThrough(peeked.source, peeked.compression, "decompress");
+      const persistError =
+        peeked.compression === "none"
+          ? dumpStageError(sourcePath)
+          : dumpCompressionError(sourcePath, peeked.compression, "decompress");
+      const result = yield* persistVerifiedStream({
+        body: Stream.fromReadableStream({
+          evaluate: () => body,
+          onError: () => persistError,
+          releaseLockOnEnd: true,
+        }),
+        destinationPath: destPath,
+        mode: 0o600,
+      }).pipe(Effect.mapError((error) => mapPersistError(error, persistError)));
+      if (result.sizeBytes === 0) return yield* Effect.fail(dumpEmptyError(sourcePath));
+      return { digest: result.sha256, sizeBytes: result.sizeBytes };
+    }),
+  );
+
+export const withHostDumpCompression = Effect.fn("Sql.withHostDumpCompression")(function* <E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly direction: "export" | "import";
   readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<DataTransferResult, E, R>;
-}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataChecksumMismatchError, R> => {
+}) {
+  const special = yield* isNonRegularExistingPath(input.path);
+  if (input.direction === "import" && special) {
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(acquireStagedDump(tmpdir()), releaseStagedDump);
+        const staged = join(directory, "dump");
+        const stagedDump = yield* stageStreamingImport(input.path, staged);
+        return yield* input.transfer(staged, stagedDump.digest);
+      }),
+    );
+  }
   const compression = input.compression;
-  if (compression === "none") return input.transfer(input.path);
-  return Effect.scoped(
+  if (compression === "none") return yield* input.transfer(input.path);
+  return yield* Effect.scoped(
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(
-        acquireStagedDump(
-          input.direction === "export" ? dirname(input.path) : tmpdir(),
-          compression,
-          input.direction === "export" ? "compress" : "decompress",
-        ),
+        acquireStagedDump(input.direction === "export" && !special ? dirname(input.path) : tmpdir()),
         releaseStagedDump,
       );
       const staged = join(directory, "dump");
@@ -178,4 +282,4 @@ export const withHostDumpCompression = <E, R>(input: {
       return { ...result, ...compressed };
     }),
   );
-};
+});

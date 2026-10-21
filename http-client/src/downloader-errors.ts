@@ -9,7 +9,7 @@ import {
   DownloadSizeMismatchError,
   type DownloadSourceForbiddenError,
 } from "@lando/sdk/errors";
-import type { VerifiedStreamError } from "@lando/sdk/verified-stream";
+import type { VerifiedStreamError, VerifiedStreamPartialError } from "@lando/sdk/verified-stream";
 import type * as HttpClientError from "effect/http/HttpClientError";
 
 export type DownloadError =
@@ -59,7 +59,17 @@ export const mapHttpClientError = (
   });
 };
 
-export const mapVerifiedError = (error: VerifiedStreamError, origin: string): DownloadError => {
+export const mapVerifiedError = (
+  error: VerifiedStreamError | VerifiedStreamPartialError,
+  origin: string,
+): DownloadError => {
+  if (error._tag === "VerifiedStreamPartialError") {
+    return new DownloadPersistError({
+      message: error.message,
+      operation: "write",
+      ...(error.cause === undefined ? {} : { cause: error }),
+    });
+  }
   switch (error.reason) {
     case "checksum":
       return new DownloadChecksumError({

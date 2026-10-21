@@ -8,6 +8,8 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { SqlDumpNotFoundError } from "@lando/sdk/errors";
 
 import { ensureReadableDump } from "../src/dump-file.ts";
+import { STDIN_DUMP_PATH } from "../src/dump-stdio.ts";
+import { canUseFifo, mkfifo, withTimeout } from "./support/fifo.ts";
 
 describe("ensureReadableDump", () => {
   let appRoot = "";
@@ -90,6 +92,29 @@ describe("ensureReadableDump", () => {
     if (!(error instanceof SqlDumpNotFoundError)) return;
     expect(error.path).toBe(path);
     expect(error.message).toContain("not readable");
+  });
+
+  test("treats stdin aliases as streaming without stating the path", async () => {
+    for (const path of [STDIN_DUMP_PATH, "-", "/dev/fd/0", "/proc/self/fd/0"] as const) {
+      const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
+      expect(dump.streaming).toBe(true);
+      expect(dump.digest).toBeUndefined();
+      expect(dump.compression).toBe("none");
+    }
+  });
+
+  test("does not block or consume a FIFO dump source", async () => {
+    if (!canUseFifo) return;
+    const path = join(appRoot, "dump.fifo");
+    await mkfifo(path);
+    const dump = await withTimeout(
+      Effect.runPromise(ensureReadableDump(path, appRoot)),
+      1000,
+      "ensureReadableDump(FIFO)",
+    );
+    expect(dump.streaming).toBe(true);
+    expect(dump.digest).toBeUndefined();
+    expect(dump.compression).toBe("none");
   });
 
   test("fails with SqlDumpNotFoundError when the dump path is a directory", async () => {
