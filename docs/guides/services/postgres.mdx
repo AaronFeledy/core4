@@ -120,7 +120,7 @@ services:
     port: 5433
 ```
 
-Other services then connect to `db:5433`. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails. With `config.server`, Lando pins `port:` or the default on its command line.
+Other services then connect to `db:5433`. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.db.environment.PGPORT` with the `port:` value to set. With `config.server`, Lando pins `port:` or the default on its command line.
 
 The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you author `command:` or `entrypoint:`, you own the daemon's flags; make your launcher honor the planned port, including when you load a config file yourself.
 

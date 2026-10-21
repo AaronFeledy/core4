@@ -57,7 +57,7 @@ describe("lintLandofile", () => {
     );
   });
 
-  test("reports invalid route shorthand with the authored key path", async () => {
+  test("retains route shorthand for resolved planner validation", async () => {
     // Given
     await write(
       'name: routes\nservices:\n  web:\n    routes:\n      - "http://app.lndo.site"\nproxy:\n  api:\n    - "api.lndo.site"\n    - "api:65536"\n',
@@ -65,31 +65,8 @@ describe("lintLandofile", () => {
     // When
     const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
     // Then
-    expect(result.valid).toBe(false);
-    expect(result.violations).toEqual([
-      {
-        path: ["services", "web", "routes", 0],
-        rule: "landofile.route",
-        severity: "error",
-        message: expect.any(String),
-        suggestion: expect.any(String),
-        scope: "effective",
-        source: { file: join(dir, ".lando.yml"), layer: "canonical", path: ["services", "web", "routes", 0] },
-        line: 5,
-        column: 7,
-      },
-      {
-        path: ["proxy", "api", 1],
-        rule: "landofile.route",
-        severity: "error",
-        message: expect.any(String),
-        suggestion: expect.any(String),
-        scope: "effective",
-        source: { file: join(dir, ".lando.yml"), layer: "canonical", path: ["proxy", "api", 1] },
-        line: 9,
-        column: 5,
-      },
-    ]);
+    expect(result.valid).toBe(true);
+    expect(result.violations).toEqual([]);
   });
 
   test("accepts filters on object routes", async () => {

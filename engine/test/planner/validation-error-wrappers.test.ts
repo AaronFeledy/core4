@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError, ServiceTypeError } from "@lando/sdk/errors";
 import { appFeatureError, servicePlanError } from "../../src/planner/service-types.ts";
 
 const wrappers = [
@@ -18,6 +18,35 @@ const wrappers = [
     remediation: "Correct the app-feature configuration or remove the failing feature.",
   },
 ];
+
+test("service type field issues are prefixed without losing their suggestions", () => {
+  const error = new ServiceTypeError({
+    serviceType: "synthetic",
+    message: "Bad listener",
+    issues: [
+      { path: ["environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
+      { path: ["port"], message: "Reserved port" },
+    ],
+  });
+  expect(servicePlanError("/app", "db", error).issues).toEqual([
+    { path: ["services", "db", "environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
+    { path: ["services", "db", "port"], message: "Reserved port" },
+  ]);
+});
+
+test.each([{ issues: undefined }, { issues: [] }])(
+  "service type errors without fields keep a service-level issue: %j",
+  ({ issues }) => {
+    const error = new ServiceTypeError({
+      serviceType: "synthetic",
+      message: "Bad service",
+      ...(issues === undefined ? {} : { issues }),
+    });
+    expect(servicePlanError("/app", "db", error).issues).toEqual([
+      { path: ["services", "db"], message: "Bad service" },
+    ]);
+  },
+);
 
 test.each(wrappers)("$name preserves structured validation errors by identity", ({ wrap }) => {
   // Given

@@ -8,7 +8,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
-import { commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import { ServiceConfigIssue, commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -48,11 +48,10 @@ export const SolrCoreName = Schema.String.pipe(
 
 const isSolrCoreName = Schema.is(SolrCoreName);
 
-const coreNameRejection = (keyPath: string, core: string): string =>
-  `${keyPath} ${JSON.stringify(core)} is not a usable Solr core directory name. ${CORE_NAME_REMEDIATION}`;
+const coreNameRejection = (core: string): string =>
+  `${JSON.stringify(core)} is not a usable Solr core directory name.`;
 
 const rejectUnsafeCores = (
-  serviceName: string,
   serviceType: string,
   cores: ReadonlyArray<string>,
 ): ServiceTypeError | undefined => {
@@ -61,19 +60,21 @@ const rejectUnsafeCores = (
   if (core === undefined) return undefined;
   return new ServiceTypeError({
     serviceType,
-    message: coreNameRejection(`services.${serviceName}.cores[${index}]`, core),
+    message: coreNameRejection(core),
+    issues: [{ path: ["cores", index], message: coreNameRejection(core), suggestion: CORE_NAME_REMEDIATION }],
   });
 };
 
-const validateCoreName = (core: string): void => {
-  if (!isSolrCoreName(core)) throw new Error(coreNameRejection("cores", core));
+const validateCoreName = (core: string, index: number): void => {
+  if (!isSolrCoreName(core))
+    throw new ServiceConfigIssue(["cores", index], coreNameRejection(core), CORE_NAME_REMEDIATION);
 };
 
 const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: boolean): string[] => {
   if (cores.length === 0) {
     return ["solr-foreground", "-p", String(port)];
   }
-  for (const core of cores) validateCoreName(core);
+  cores.forEach(validateCoreName);
   return [
     "bash",
     "-c",
@@ -139,7 +140,7 @@ const IDENTITY: ServiceImageIdentity = {
 const resolveSolr =
   (serviceType: string): ServiceType["resolve"] =>
   (input) => {
-    const rejection = rejectUnsafeCores(input.name, serviceType, input.service.cores ?? []);
+    const rejection = rejectUnsafeCores(serviceType, input.service.cores ?? []);
     if (rejection !== undefined) return Effect.fail(rejection);
     return Effect.succeed({
       base: "lando",

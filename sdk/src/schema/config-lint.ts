@@ -9,7 +9,7 @@ import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
 // so both shapes participate in the schema-snapshot gate.
 
 /**
- * A single canonical-schema violation, addressed for inline editor
+ * A single config lint finding, addressed for inline editor
  * diagnostics.
  */
 export const ConfigLintViolation = Schema.Struct({
@@ -45,7 +45,7 @@ export const ConfigLintResult = Schema.Struct({
   app: Schema.String,
   /** Absolute path of the Landofile that was linted. */
   file: Schema.String,
-  /** Whether the Landofile passed canonical-schema validation. */
+  /** Whether the Landofile has no error-severity finding. */
   valid: Schema.Boolean,
   /** Ordered findings, including warnings that do not invalidate configuration. */
   violations: Schema.Array(ConfigLintViolation),

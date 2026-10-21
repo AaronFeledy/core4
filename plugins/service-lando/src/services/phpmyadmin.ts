@@ -44,7 +44,7 @@ export const PHPMYADMIN_WIRE_FEATURE_ID = "service-lando.phpmyadmin.wire";
 
 const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  assertListenerConfig(service, ctx.serviceName, PHPMYADMIN_LISTENER);
+  assertListenerConfig(service, PHPMYADMIN_LISTENER);
   const port = plannedPort(service, PHPMYADMIN_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
@@ -81,7 +81,7 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
     return serviceTypeResolve(id, "phpmyadmin service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, PHPMYADMIN_LISTENER);
+      assertListenerConfig(input.service, PHPMYADMIN_LISTENER);
       return {
         base: "lando",
         normalizedConfig: {

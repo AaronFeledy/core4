@@ -4,6 +4,7 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   addEnvRecord,
   loopbackTcpHealthcheck,
   rootIdentity,
@@ -91,7 +92,11 @@ const validateVersion = (
   if ((SUPPORTED_PHP_VERSIONS as ReadonlyArray<string>).includes(version)) {
     return version as SupportedPhpVersion;
   }
-  throw new Error(`Unsupported PHP version "${version}". ${REMEDIATION_VERSION(version)}`);
+  throw new ServiceConfigIssue(
+    ["type"],
+    `Unsupported PHP version "${version}".`,
+    REMEDIATION_VERSION(version),
+  );
 };
 
 const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config as PhpFeatureConfig;

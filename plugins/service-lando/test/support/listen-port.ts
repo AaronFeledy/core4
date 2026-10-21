@@ -49,14 +49,28 @@ export const nativeListenPortSuite = (input: {
       },
     );
     test("rejects conflicting port declarations", async () => {
-      await expect(plan({ port, environment: { [input.variable]: String(port + 1) } })).rejects.toThrow(
-        `Set port: ${port + 1}`,
+      await expect(plan({ port, environment: { [input.variable]: String(port + 1) } })).rejects.toMatchObject(
+        {
+          issues: [
+            {
+              path: ["environment", input.variable],
+              message: `${input.variable} is ${port + 1}, but the service listens on ${port}.`,
+              suggestion: `Set port: ${port + 1} instead; Lando sets ${input.variable} from port:.`,
+            },
+          ],
+        },
       );
     });
     test("rejects a native variable selecting a different port without port:", async () => {
-      await expect(plan({ environment: { [input.variable]: String(port) } })).rejects.toThrow(
-        `Set port: ${port}`,
-      );
+      await expect(plan({ environment: { [input.variable]: String(port) } })).rejects.toMatchObject({
+        issues: [
+          {
+            path: ["environment", input.variable],
+            message: `${input.variable} is ${port}, but the service listens on ${input.defaultPort}.`,
+            suggestion: `Set port: ${port} instead; Lando sets ${input.variable} from port:.`,
+          },
+        ],
+      });
     });
     test("accepts a native variable equal to the published default", async () => {
       const result = await plan({ environment: { [input.variable]: String(input.defaultPort) } });
@@ -79,19 +93,39 @@ export const nativeListenPortSuite = (input: {
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure).toBeInstanceOf(ServiceTypeError);
-        expect(result.failure.message).toBe(
-          `services.db.environment.${input.variable} is ${port}, but the service listens on ${input.defaultPort}. Set port: ${port} instead; Lando sets ${input.variable} from port:.`,
-        );
+        expect(result.failure.issues).toEqual([
+          {
+            path: ["environment", input.variable],
+            message: `${input.variable} is ${port}, but the service listens on ${input.defaultPort}.`,
+            suggestion: `Set port: ${port} instead; Lando sets ${input.variable} from port:.`,
+          },
+        ]);
       }
     });
     for (const reservedPort of input.reservedPorts ?? []) {
       test(`rejects a native ${input.variable} set to reserved port ${reservedPort}`, async () => {
-        await expect(plan({ environment: { [input.variable]: String(reservedPort) } })).rejects.toThrow(
-          "Remove it and set port: to another TCP port number",
+        await expect(plan({ environment: { [input.variable]: String(reservedPort) } })).rejects.toMatchObject(
+          {
+            issues: [
+              {
+                path: ["environment", input.variable],
+                message: expect.stringContaining("reserves for its"),
+                suggestion: `Remove it and set port: to another TCP port number; Lando sets ${input.variable} from port:.`,
+              },
+            ],
+          },
         );
       });
       test(`rejects reserved port ${reservedPort}`, async () => {
-        await expect(plan({ port: reservedPort })).rejects.toThrow("reserves for its");
+        await expect(plan({ port: reservedPort })).rejects.toMatchObject({
+          issues: [
+            {
+              path: ["port"],
+              message: expect.stringContaining("reserves for its"),
+              suggestion: "Set port: to another TCP port number.",
+            },
+          ],
+        });
       });
     }
     if (["mysql", "mariadb", "mssql"].includes(type)) {
@@ -113,9 +147,15 @@ export const nativeListenPortSuite = (input: {
       });
     }
     test.each(["", "0", "65536", "1.5", "db", "-1"])("rejects invalid native port %j", async (value) => {
-      await expect(plan({ environment: { [input.variable]: value } })).rejects.toThrow(
-        "which is not a TCP port number",
-      );
+      await expect(plan({ environment: { [input.variable]: value } })).rejects.toMatchObject({
+        issues: [
+          {
+            path: ["environment", input.variable],
+            message: `${input.variable} is ${JSON.stringify(value)}, which is not a TCP port number.`,
+            suggestion: `Remove it and set port: instead; Lando sets ${input.variable} from port:.`,
+          },
+        ],
+      });
     });
     test("preserves an authored command", async () => {
       const result = await plan({ port, command: ["custom-server", "--custom"] });

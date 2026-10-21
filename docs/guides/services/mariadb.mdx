@@ -108,7 +108,7 @@ services:
 
 Other services now connect to `db:3307`. Lando sets `MYSQL_TCP_PORT` for the server and in-container clients, and publishes the same value as `LANDO_DB_PORT`. `lando mariadb` and `lando db:*` commands use that planned port.
 
-An authored `MYSQL_TCP_PORT` must match the planned port, or planning fails. With `config.server`, Lando pins `port:` or the default on its command line. If you author `command:` or `entrypoint:`, you own the daemon's flags; pass `--port=3307` yourself if the option file sets another port.
+An authored `MYSQL_TCP_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.MYSQL_TCP_PORT`. With `config.server`, Lando pins `port:` or the default on its command line. If you author `command:` or `entrypoint:`, you own the daemon's flags; pass `--port=3307` yourself if the option file sets another port.
 
 Apply the change with `lando rebuild`, then check the running server:
 

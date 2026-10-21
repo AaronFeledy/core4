@@ -9,7 +9,12 @@ import type {
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  ServiceConfigIssue,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -236,7 +241,11 @@ const validateVersion = (
   if ((SUPPORTED_NODE_VERSIONS as ReadonlyArray<string>).includes(version)) {
     return version as SupportedNodeVersion;
   }
-  throw new Error(`Unsupported Node version "${version}". ${REMEDIATION_VERSION(version)}`);
+  throw new ServiceConfigIssue(
+    ["type"],
+    `Unsupported Node version "${version}".`,
+    REMEDIATION_VERSION(version),
+  );
 };
 
 // Official Node images ship Corepack shims at /usr/local/bin/{yarn,pnpm}.

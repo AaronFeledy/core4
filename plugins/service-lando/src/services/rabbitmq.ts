@@ -5,6 +5,7 @@ import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
@@ -28,25 +29,31 @@ const RABBITMQ_LISTENER = {
   ],
 } as const;
 
-const assertDistributionPort = (service: ServiceConfig, serviceName: string): void => {
+const assertDistributionPort = (service: ServiceConfig): void => {
   const port = plannedPort(service, RABBITMQ_LISTENER);
   const authored = service.environment?.RABBITMQ_DIST_PORT;
   const distribution =
     authored === undefined ? port + 20000 : /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
   if (authored === undefined && distribution > 65535) {
-    throw new Error(
-      `services.${serviceName}.port is ${port}, so RabbitMQ's distribution port (port + 20000 = ${distribution}) exceeds 65535. Set port: to at most 45535, or set RABBITMQ_DIST_PORT to a TCP port number.`,
+    throw new ServiceConfigIssue(
+      ["port"],
+      `Port ${port} makes RabbitMQ's distribution port (port + 20000 = ${distribution}) exceed 65535.`,
+      "Set port: to at most 45535, or set RABBITMQ_DIST_PORT to a TCP port number.",
     );
   }
   if (!Number.isInteger(distribution) || distribution < 1 || distribution > 65535) {
-    throw new Error(
-      `services.${serviceName}.environment.RABBITMQ_DIST_PORT is ${JSON.stringify(authored)}, which is not a TCP port number (1-65535).`,
+    throw new ServiceConfigIssue(
+      ["environment", "RABBITMQ_DIST_PORT"],
+      `RABBITMQ_DIST_PORT is ${JSON.stringify(authored)}, which is not a TCP port number (1-65535).`,
+      "Set RABBITMQ_DIST_PORT to a TCP port number (1-65535).",
     );
   }
   const collision = RABBITMQ_LISTENER.reserved.find((entry) => entry.port === distribution);
   if (distribution === port || collision !== undefined) {
-    throw new Error(
-      `services.${serviceName}.environment.RABBITMQ_DIST_PORT is ${distribution}, which conflicts with the ${collision?.use ?? "AMQP listener"} port. Set RABBITMQ_DIST_PORT to a different TCP port number.`,
+    throw new ServiceConfigIssue(
+      authored === undefined ? ["port"] : ["environment", "RABBITMQ_DIST_PORT"],
+      `RabbitMQ's distribution port is ${distribution}, which conflicts with the ${collision?.use ?? "AMQP listener"} port.`,
+      "Set RABBITMQ_DIST_PORT to a different TCP port number.",
     );
   }
 };
@@ -62,8 +69,8 @@ export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  assertListenerConfig(service, ctx.serviceName, RABBITMQ_LISTENER);
-  assertDistributionPort(service, ctx.serviceName);
+  assertListenerConfig(service, RABBITMQ_LISTENER);
+  assertDistributionPort(service);
   const port = plannedPort(service, RABBITMQ_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["4"] });
@@ -115,8 +122,8 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
     const managementUser = input.service.environment?.RABBITMQ_DEFAULT_USER ?? "lando";
     const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD;
     return serviceTypeResolve(id, "rabbitmq service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, RABBITMQ_LISTENER);
-      assertDistributionPort(input.service, input.name);
+      assertListenerConfig(input.service, RABBITMQ_LISTENER);
+      assertDistributionPort(input.service);
       return {
         base: "lando",
         normalizedConfig: {
