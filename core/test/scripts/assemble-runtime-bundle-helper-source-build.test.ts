@@ -9,6 +9,7 @@ import {
   assembleBundle,
   parseRuntimeBundleSources,
 } from "../../../scripts/assemble-runtime-bundle.ts";
+import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const netavarkBytes = new TextEncoder().encode("pinned-netavark-binary");
 const passtBytes = new TextEncoder().encode("pinned-passt-binary");
@@ -27,6 +28,7 @@ const linuxHelperSources = (sourceArchive: Uint8Array, vendorArchive: Uint8Array
         components: [
           {
             name: "netavark",
+            license: fixtureLicense("9.9.9", sourceArchive),
             version: "9.9.9",
             sourceBuild: "netavark-linux-native",
             inputs: [
@@ -60,6 +62,7 @@ const passtSources = (sourceArchive: Uint8Array) =>
         components: [
           {
             name: "passt",
+            license: fixtureLicense("2026_06_11.a9c61ff", sourceArchive),
             version: "2026_06_11.a9c61ff",
             sourceBuild: "passt-linux-native",
             inputs: [
@@ -172,6 +175,7 @@ describe("Linux helper source builds", () => {
       };
 
       await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources: linuxHelperSources(sourceArchive, vendorArchive),
         outDir: dir,
@@ -208,6 +212,7 @@ describe("Linux helper source builds", () => {
       };
 
       await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources: passtSources(sourceArchive),
         outDir: dir,

@@ -7,6 +7,7 @@ import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
+import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";
 import { hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
 
@@ -23,7 +24,7 @@ export const appConfigRedactionTokens = (result: unknown): readonly string[] => 
     return result.redactionTokens.filter((token): token is string => typeof token === "string");
   if ("landofile" in result && Schema.is(LandofileShape)(result.landofile))
     return collectLandofileRedactionTokens(result.landofile);
-  return [];
+  return configRedactionTokens(result);
 };
 
 export const appConfigSet = (options: AppConfigOptions) => Writes.appConfigSet(options);
@@ -109,6 +110,7 @@ export const renderAppConfigResult = (
         changed: "changed" in result ? result.changed : undefined,
         dryRun: result.dryRun,
         editSavedLabel: "Landofile",
+        value: "value" in result ? result.value : undefined,
       }) ?? tableRender(result)
     );
   }

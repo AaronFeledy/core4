@@ -1,3 +1,4 @@
+import { configRedactionTokens } from "../../../commands/config-redaction";
 import { Args } from "../../../spec/metadata";
 
 import {
@@ -16,6 +17,7 @@ const makeSpec = (
   metadata: Pick<LandoCommandSpec, "args" | "flags">,
 ): LandoCommandSpec<GlobalConfigResult> => ({
   resultSchema: GlobalConfigResultSchema,
+  redactionTokens: configRedactionTokens,
   id: `meta:global:config:${subcommand}`,
   summary,
   description: summary,

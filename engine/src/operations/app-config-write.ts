@@ -1,7 +1,7 @@
 import { parseLandofile } from "@lando/landofile/parser";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
-import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
+import { LandofileSourceValue, type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { Effect, Predicate, Result, Schema } from "effect";
 import {
   readAppConfigFile,
@@ -41,25 +41,33 @@ const mutationIo = Effect.fnUntraced(function* (options: AppConfigWriteOptions, 
   return {
     file: inputPath,
     dryRun: options.dryRun === true,
-    readTree: readMutableAppConfigFile(inputPath, verb).pipe(
-      Effect.flatMap((content) => parseLandofile({ file: inputPath, content, cwd: appRoot })),
-      Effect.flatMap((value) =>
-        Predicate.isObject(value) && !Array.isArray(value)
-          ? Effect.succeed(value)
-          : Effect.fail(
-              writeValidationErrorFromIssues({
-                file: inputPath,
-                issues: [validationIssue([], "Expected a Landofile mapping.")],
-              }),
-            ),
+    readText: readMutableAppConfigFile(inputPath, verb),
+    editCommand: "lando app:config edit",
+    parse: (content: string) =>
+      parseLandofile({ file: inputPath, content, cwd: appRoot }).pipe(
+        Effect.flatMap((value) =>
+          Predicate.isObject(value) && !Array.isArray(value)
+            ? Effect.succeed(value)
+            : Effect.fail(
+                writeValidationErrorFromIssues({
+                  file: inputPath,
+                  issues: [validationIssue([], "Expected a Landofile mapping.")],
+                }),
+              ),
+        ),
       ),
-    ),
-    decode: Effect.fnUntraced(function* (next: unknown) {
-      const emitted = emitConfigYaml({ file: inputPath, value: next });
-      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-      yield* validateLandofileReplacement({ appRoot, targetFile: inputPath, content: emitted.success });
-      return Result.succeed(undefined);
-    }),
+    // A rejected candidate is a validation result; discovery, I/O, and sibling-layer
+    // parse failures stay fatal so inference never mistakes them for a wrong type.
+    decode: (next: unknown) =>
+      Effect.fromResult(emitConfigYaml({ file: inputPath, value: next })).pipe(
+        Effect.flatMap((content) =>
+          validateLandofileReplacement({ appRoot, targetFile: inputPath, content }),
+        ),
+        Effect.map((): Result.Result<undefined, readonly ValidationIssue[]> => Result.succeed(undefined)),
+        Effect.catchTag("LandofileWriteValidationError", (error) =>
+          Effect.succeed(Result.fail(error.issues)),
+        ),
+      ),
     writeText: writeAppConfigFile,
   };
 });
@@ -68,7 +76,7 @@ export const appConfigSet = Effect.fn("AppConfig.set")(function* (options: AppCo
   const key = options.key ?? options.path;
   if (key === undefined || options.value === undefined) return yield* Effect.fail(missingKey("set"));
   const io = yield* mutationIo(options, "set");
-  const outcome = yield* runSetVerb({ ...io, key, raw: options.value, type: options.type ?? "string" });
+  const outcome = yield* runSetVerb({ ...io, key, raw: options.value, type: options.type });
   const value = yield* Schema.decodeUnknownEffect(LandofileSourceValue)(
     encodeLandofileSourceValue(outcome.value),
   ).pipe(Effect.orDie);

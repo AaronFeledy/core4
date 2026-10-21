@@ -119,6 +119,14 @@ ${setupBunSteps}
       - name: Runtime-bundle manifest invariant
         run: bun run check:runtime-bundle-manifest
 
+      - name: Check runtime bundle license metadata
+        run: bun run check:runtime-bundle-licenses
+
+      - name: Check compiled binary notices
+        run: |
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          bun run check:compiled-binary-notices
+
       - name: Static scope notice for portable static matrix
         run: |
           echo "::notice title=static-checks-scope::\${{ matrix.platform }} on \${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ${linuxX64RunnerList}. Full cross-platform static test portability remains a follow-up portability effort."
@@ -233,9 +241,11 @@ ${containerHelperDownloadStep}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -252,7 +262,9 @@ ${renderSmokeCommands(platform)}
         uses: actions/upload-artifact@v6
         with:
           name: lando-${platform.id}
-          path: dist/${platform.binaryName}
+          path: |
+            dist/${platform.binaryName}
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -532,7 +544,7 @@ ${timingStartStep}
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache}
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
 
       - name: Setup Bun
         if: ${linuxRuntimeBundleCacheMiss}
