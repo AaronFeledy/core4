@@ -3,6 +3,7 @@ import { Result, Schema } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
+  ConfigLintViolation,
   LandofileShape,
   ValidationIssue,
   formatValidationIssueLine,
@@ -14,6 +15,39 @@ import {
 const authoredDecode = { onExcessProperty: "error", errors: "all" } as const;
 
 describe("validation issues", () => {
+  test("retains the shared rule through validation error encoding", () => {
+    // Given
+    const issue = {
+      rule: "landofile.event",
+      path: ["events", "pre-buidl"],
+      message: "Unknown app event pre-buidl.",
+    };
+    const error = new LandofileValidationError({
+      file: ".lando.yml",
+      message: "Invalid events.",
+      remediation: "Fix events.",
+      issues: [issue],
+    });
+    // When
+    const encoded = Schema.encodeSync(LandofileValidationError)(error);
+    // Then
+    expect(encoded.issues).toEqual([issue]);
+  });
+
+  test("encodes a single config-lint defect with both scopes", () => {
+    // Given
+    const finding = {
+      rule: "landofile.validation",
+      severity: "error",
+      path: ["imagee"],
+      message: "Expected no excess property",
+      scopes: ["fragment", "effective"],
+    } satisfies typeof ConfigLintViolation.Encoded;
+    // When
+    const decoded = Schema.decodeUnknownSync(ConfigLintViolation)(finding, authoredDecode);
+    // Then
+    expect(Schema.encodeSync(ConfigLintViolation)(decoded)).toEqual(finding);
+  });
   test("preserves an issue's authored source independently of its effective path", () => {
     // Given
     const issue = {
