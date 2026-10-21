@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { config as configOperation } from "@lando/engine/operations/config";
 import { ConfigError } from "@lando/sdk/errors";
 import { ConfigService, PathsService } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
@@ -64,4 +65,19 @@ test("runtime config uses the environment captured by its own construction", asy
     // Then the runtime's explicit input wins over later ambient process state.
     expect(config.router?.httpPort).toBe(8125);
   });
+});
+
+test("none repair operations retain captured host inputs and hermetic source policy", async () => {
+  const runtime = makeLandoRuntime({
+    bootstrap: "none",
+    configSources: { user: false, env: false },
+    config: { userConfRoot: "/host/config", router: { httpPort: 8127 } },
+  });
+  const operation = configOperation({ subcommand: "get", key: "router.httpPort" });
+  const resolved = operation.pipe(Effect.provide(runtime));
+  const result = await withEnvVar("LANDO_USER_CONF_ROOT", "/ambient/config-must-not-be-read", () =>
+    Effect.runPromise(resolved),
+  );
+  expect(result.value).toBe(8127);
+  expect(String(result.config?.userConfRoot)).toBe("/host/config");
 });

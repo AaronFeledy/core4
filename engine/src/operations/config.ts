@@ -1,29 +1,29 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { Effect, Predicate, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import {
-  AgentEnvPatternError,
   ConfigError,
   type LandoCommandError,
   LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { GlobalConfigView } from "@lando/sdk/schema";
-import type { ConfigService } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
+import { mergeGlobalConfigSources } from "@lando/paths/config-sources";
 import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
-import { decodeGlobalConfigFile } from "../config/global-config.ts";
-import { type CliTelemetrySource, resolveCliTelemetryState } from "../runtime/cli-options";
-import { loadGlobalConfigView } from "../services/config.ts";
+import { configSourceStack, validateConfigCandidate } from "../config/config-repair.ts";
+import { decodeGlobalConfigSources } from "../config/global-config.ts";
+import { recordCommandWarning } from "../landofile/command-warnings.ts";
+import type { CliTelemetrySource } from "../runtime/cli-options";
+import { GlobalConfigSources } from "../services/config.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.
 
@@ -55,6 +55,7 @@ export interface ConfigOptions {
 }
 
 export interface ConfigResult {
+  readonly raw?: unknown;
   readonly config?: GlobalConfigView;
   readonly subcommand?: string;
   readonly key?: string;
@@ -73,6 +74,7 @@ export interface ConfigResult {
 }
 
 export const ConfigResultSchema = Schema.Struct({
+  raw: Schema.optionalKey(Schema.Unknown),
   config: Schema.optionalKey(GlobalConfigView),
   subcommand: Schema.optionalKey(Schema.String),
   key: Schema.optionalKey(Schema.String),
@@ -100,8 +102,6 @@ export const ConfigResultSchema = Schema.Struct({
 const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
 
-const telemetryConfigPath = (): string => makeLandoPaths().configFile;
-
 const configReadError = (path: string, cause: unknown): ConfigError =>
   cause instanceof ConfigError
     ? cause
@@ -126,66 +126,7 @@ const readConfigObject = (path: string): Record<string, unknown> => {
   }
 };
 
-const writeConfigObject = (path: string, configObject: Record<string, unknown>): void => {
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, emitLandofileYaml(configObject));
-  } catch (cause) {
-    throw configWriteError(path, cause);
-  }
-};
-
-const setTelemetryEnabled = (
-  configObject: Record<string, unknown>,
-  enabled: boolean,
-): Record<string, unknown> => {
-  const telemetry = configObject.telemetry;
-  return {
-    ...configObject,
-    telemetry: {
-      ...(Predicate.isObject(telemetry) ? telemetry : {}),
-      enabled,
-    },
-  };
-};
-
-const telemetryConfig = (
-  action: string | undefined,
-  format: ConfigOptions["format"],
-): Effect.Effect<ConfigResult, ConfigError | NotImplementedError> => {
-  const configPath = telemetryConfigPath();
-  return Effect.try({
-    try: () => {
-      const normalizedAction = action ?? "status";
-      if (normalizedAction !== "off" && normalizedAction !== "status") {
-        throw new NotImplementedError({
-          message: `meta:config telemetry ${normalizedAction} is not supported.`,
-          commandId: "meta:config",
-          remediation: "Use `lando config telemetry status` or `lando config telemetry off`.",
-        });
-      }
-
-      if (normalizedAction === "off") {
-        const current = readConfigObject(configPath);
-        writeConfigObject(configPath, setTelemetryEnabled(current, false));
-      }
-
-      return {
-        telemetry: resolveCliTelemetryState(),
-        changed: normalizedAction === "off",
-        configPath,
-        format: format ?? "table",
-      };
-    },
-    catch: (cause) => {
-      if (cause instanceof ConfigError || cause instanceof NotImplementedError) return cause;
-      return configWriteError(configPath, cause);
-    },
-  });
-};
-
-const resolveConfigWritePath = (options: ConfigOptions): string =>
-  options.configPath ?? telemetryConfigPath();
+const resolveConfigWritePath = (options: ConfigOptions): string => options.configPath ?? "";
 
 const readConfigTree = (path: string): Effect.Effect<Record<string, unknown>, ConfigError> =>
   Effect.try({ try: () => readConfigObject(path), catch: (cause) => configReadError(path, cause) });
@@ -201,16 +142,6 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
     try: () => writeFileAtomicViaRename(path, content),
     catch: (cause) => configWriteError(path, cause),
   });
-
-const agentEnvPatternError = (
-  decoded: ReturnType<typeof decodeGlobalConfigFile>,
-): AgentEnvPatternError | undefined => {
-  return Result.isFailure(decoded) &&
-    decoded.failure.issues?.every((issue) => issue.path[0] === "agentEnv") &&
-    decoded.failure.cause instanceof AgentEnvPatternError
-    ? decoded.failure.cause
-    : undefined;
-};
 
 const configValidationError = (
   path: string,
@@ -238,7 +169,7 @@ const hostEventsWriteError = (key: string, file: string): LandofileWriteValidati
 
 const metaConfigSet = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
   const key = options.key ?? options.path;
   const raw = options.value;
   if (key !== undefined && isHostEventsConfigPath(key)) {
@@ -262,11 +193,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
     type: options.type ?? "string",
     dryRun: options.dryRun === true,
     readTree: readConfigTree(path),
-    decode: (input) => {
-      const decoded = decodeGlobalConfigFile(input, path);
-      const pattern = agentEnvPatternError(decoded);
-      return pattern === undefined ? Effect.succeed(decoded) : Effect.fail(pattern);
-    },
+    decode: (input) => validateConfigCandidate(input, path),
     writeText: writeConfigAtomic,
   });
   return {
@@ -282,7 +209,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
 
 const metaConfigUnset = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
   const key = options.key ?? options.path;
   if (key !== undefined && isHostEventsConfigPath(key)) {
     return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
@@ -303,11 +230,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     key,
     dryRun: options.dryRun === true,
     readTree: readConfigTree(path),
-    decode: (input) => {
-      const decoded = decodeGlobalConfigFile(input, path);
-      const pattern = agentEnvPatternError(decoded);
-      return pattern === undefined ? Effect.succeed(decoded) : Effect.fail(pattern);
-    },
+    decode: (input) => validateConfigCandidate(input, path),
     writeText: writeConfigAtomic,
   });
   return {
@@ -322,24 +245,11 @@ const metaConfigUnset = Effect.fnUntraced(function* (
 
 const metaConfigValidate = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
   const path = resolveConfigWritePath(options);
-  const tree = yield* readConfigTree(path);
-  const decoded = decodeGlobalConfigFile(tree, path);
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
-  const issues = decodeIssues(decoded);
-  if (issues.length > 0) {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `config.yml failed validation: ${path}.`,
-        file: path,
-        issues,
-        remediation:
-          "Fix each reported key with `lando config set <key> <value>` / `lando config unset <key>`, or run `lando config edit`.",
-      }),
-    );
-  }
+  const stack = yield* configSourceStack(path);
+  const decoded = decodeGlobalConfigSources(stack, { excessKeys: "error" });
+  if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
   return {
     subcommand: "validate",
     valid: true,
@@ -351,7 +261,7 @@ const metaConfigValidate = Effect.fnUntraced(function* (
 
 const metaConfigEdit = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
   const path = resolveConfigWritePath(options);
   const content = yield* readConfigText(path);
   const runner = options.editorRunner;
@@ -381,9 +291,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
         remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
       }),
   });
-  const decoded = decodeGlobalConfigFile(parsed, path);
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
+  const decoded = yield* validateConfigCandidate(parsed, path);
   const issues = decodeIssues(decoded);
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   yield* writeConfigAtomic(path, edited.content);
@@ -397,18 +305,60 @@ const metaConfigEdit = Effect.fnUntraced(function* (
 });
 
 export const config = Effect.fn("AppOperation.config")(function* (
-  options: ConfigOptions = {},
+  inputOptions: ConfigOptions = {},
 ): Effect.fn.Return<
   ConfigResult,
-  | ConfigError
-  | LandoCommandError
-  | LandofileWriteValidationError
-  | NotImplementedError
-  | AgentEnvPatternError,
-  ConfigService
+  ConfigError | LandoCommandError | LandofileWriteValidationError | NotImplementedError,
+  GlobalConfigSources
 > {
+  const inputs = yield* GlobalConfigSources;
+  const options = {
+    ...inputOptions,
+    configPath:
+      inputOptions.configPath ??
+      makeLandoPaths({ ...inputs.rootOverrides, env: inputs.env, host: inputs.host, sources: inputs.sources })
+        .configFile,
+  };
   const subcommand = options.subcommand ?? "view";
-  if (subcommand === "telemetry") return yield* telemetryConfig(options.key, options.format);
+  if (subcommand === "telemetry") {
+    const action = options.key ?? "status";
+    if (action !== "off" && action !== "status")
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: `meta:config telemetry ${action} is not supported.`,
+          commandId: "meta:config",
+          remediation: "Use `lando config telemetry status` or `lando config telemetry off`.",
+        }),
+      );
+    if (action === "off") {
+      const written = yield* metaConfigSet({
+        ...options,
+        key: "telemetry.enabled",
+        value: "false",
+        type: "boolean",
+      });
+      const stack = yield* configSourceStack(options.configPath);
+      const merged = mergeGlobalConfigSources(stack);
+      const enabled = getAtPath(merged.tree, "telemetry.enabled");
+      const source = merged.originAt(["telemetry", "enabled"]).layer.layer === "env" ? "env" : "config";
+      return {
+        ...written,
+        telemetry: { enabled: typeof enabled === "boolean" ? enabled : false, source },
+        subcommand: "telemetry",
+      };
+    }
+    const stack = yield* configSourceStack(options.configPath);
+    const decoded = decodeGlobalConfigSources(stack, { excessKeys: "warn" });
+    if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
+    const origin = mergeGlobalConfigSources(stack).originAt(["telemetry", "enabled"]).layer.layer;
+    const source = origin === "env" ? "env" : origin === "default" ? "default" : "config";
+    return {
+      telemetry: { enabled: decoded.success.config.telemetry.enabled, source },
+      changed: false,
+      configPath: options.configPath,
+      format: options.format ?? "table",
+    };
+  }
   if (subcommand === "set") return yield* metaConfigSet(options);
   if (subcommand === "unset") return yield* metaConfigUnset(options);
   if (subcommand === "validate") return yield* metaConfigValidate(options);
@@ -435,9 +385,30 @@ export const config = Effect.fn("AppOperation.config")(function* (
     );
   }
 
-  const merged = yield* loadGlobalConfigView;
-
   const key = options.key ?? options.path;
+  if (options.source === "raw") {
+    const raw = yield* inputs.sources.user
+      ? readConfigTree(resolveConfigWritePath(options))
+      : Effect.succeed({});
+    const value = key === undefined ? undefined : getAtPath(raw, key);
+    return {
+      raw,
+      ...(key === undefined ? {} : { key }),
+      ...(value === undefined ? {} : { value }),
+      format: options.format ?? "table",
+    };
+  }
+  const stack = yield* configSourceStack(options.configPath);
+  const decoded = decodeGlobalConfigSources(stack, { excessKeys: "warn" });
+  if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
+  for (const message of decoded.success.warnings)
+    yield* recordCommandWarning({ code: "LANDO_CONFIG_WARNING", message });
+  const merged = yield* Schema.encodeEffect(GlobalConfigView)(decoded.success.config).pipe(
+    Effect.mapError(
+      (cause) => new ConfigError({ message: "Failed to project public global config.", cause }),
+    ),
+  );
+
   const value = key === undefined ? undefined : getAtPath(merged, key);
   return {
     config: merged,

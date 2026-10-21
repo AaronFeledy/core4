@@ -2,9 +2,10 @@ import { type ConfigLayer, configRecord, mergeGlobalConfigSources } from "@lando
 import { AgentEnvPatternError, ConfigError } from "@lando/sdk/errors";
 import {
   GlobalConfig,
+  HostEvents,
   type ValidationIssue,
+  formatHostEventsIssueMessage,
   formatValidationIssuePath,
-  hostEventsConfigIssues,
   hostEventsSemanticIssues,
   suggestionForUnknownKey,
   validationIssuesFromCause,
@@ -72,7 +73,19 @@ export const decodeGlobalConfigSources = (
       }
     }
   }
-  const hostIssues = Object.hasOwn(tree, "hostEvents") ? hostEventsConfigIssues(tree.hostEvents) : [];
+  const hostDecoded = Object.hasOwn(tree, "hostEvents")
+    ? Schema.decodeUnknownResult(HostEvents)(tree.hostEvents, { errors: "all", onExcessProperty: "error" })
+    : undefined;
+  const hostIssues =
+    hostDecoded === undefined
+      ? []
+      : Result.isSuccess(hostDecoded)
+        ? hostEventsSemanticIssues(hostDecoded.success)
+        : validationIssuesFromCause(hostDecoded.failure).map((issue) => ({
+            ...issue,
+            path: ["hostEvents", ...issue.path],
+            message: formatHostEventsIssueMessage({ ...issue, message: "Invalid host event configuration." }),
+          }));
   const schemaTree =
     hostIssues.length === 0
       ? tree
@@ -98,7 +111,13 @@ export const decodeGlobalConfigSources = (
       ? Schema.decodeUnknownResult(GlobalConfig)(schemaTree, { errors: "all" })
       : strict;
   const issues: ValidationIssue[] = [...hostIssues];
-  if (Result.isFailure(decoded)) issues.push(...validationIssuesFromCause(decoded.failure));
+  if (Result.isFailure(decoded))
+    issues.push(
+      ...validationIssuesFromCause(decoded.failure).map((issue) => ({
+        ...issue,
+        message: "Invalid configuration value.",
+      })),
+    );
   else if (decoded.success.hostEvents !== undefined && hostIssues.length === 0)
     issues.push(...hostEventsSemanticIssues(decoded.success.hostEvents));
   let cause: AgentEnvPatternError | undefined;

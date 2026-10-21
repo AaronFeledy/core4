@@ -33,7 +33,7 @@ export interface BootstrapLayerInputs {
   readonly pluginManifests: ReadonlyArray<ResolvedPluginInput>;
   readonly externalImports: boolean;
   readonly cwd: string;
-  readonly configInputs: import("@lando/paths/config-sources").ConfigSourceInputs;
+  readonly configInputs: import("../services/config.ts").GlobalConfigSources["Service"];
 }
 
 const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({

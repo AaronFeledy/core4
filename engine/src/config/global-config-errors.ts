@@ -91,9 +91,6 @@ export const globalConfigIssuesError = (
             "Run `lando config validate`, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.",
           ]
         : []),
-      ...(issues.some((issue) => issue.source?.layer === "env")
-        ? ["`lando config validate` checks only the file tree."]
-        : []),
     ].join(" "),
     ...(cause === undefined ? {} : { cause }),
   });

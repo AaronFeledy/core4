@@ -71,6 +71,7 @@ import {
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
 import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
+import type { GlobalConfigSources } from "@lando/engine/services/config";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
@@ -97,7 +98,7 @@ export const withRuntimeProviderRegistryOverride = <A>(
   thunk: () => Promise<A>,
 ): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
-type NoneRuntimeServices = RuntimeLayerFactory;
+type NoneRuntimeServices = RuntimeLayerFactory | GlobalConfigSources;
 type MinimalRuntimeServices =
   | NoneRuntimeServices
   | Logger

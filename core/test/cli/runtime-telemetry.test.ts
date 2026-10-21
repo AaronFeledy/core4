@@ -73,11 +73,15 @@ describe("CLI runtime telemetry precedence", () => {
     await withEnv({}, async (dir) => {
       // Given a drop-in requesting notification for a minimal command.
       await mkdir(join(dir, "config.d"));
-      await writeFile(join(dir, "config.d", "notify.yml"), 'notify:\n  commands: ["meta:config"]\n');
+      await writeFile(
+        join(dir, "config.d", "notify.yml"),
+        'notify:\n  commands: ["meta:config", "meta:version"]\n',
+      );
       // When cold bootstrap selection runs.
       const bootstrap = resolveEffectiveCliBootstrap("meta:config", "minimal");
       // Then notification subscribers get the required commands bootstrap tier.
-      expect(bootstrap).toBe("commands");
+      expect(bootstrap).toBe("minimal");
+      expect(resolveEffectiveCliBootstrap("meta:version", "none")).toBe("commands");
     });
   });
   test("defaults CLI telemetry on when config and env are absent", async () => {

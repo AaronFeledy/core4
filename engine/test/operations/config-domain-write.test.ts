@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { config } from "../../src/operations/config.ts";
+import { GlobalConfigSources } from "../../src/services/config.ts";
 
 test.each([false, true])("rejects invalid proxy.defaultDomain before writing (dryRun=%s)", async (dryRun) => {
   // Given
@@ -23,7 +23,7 @@ test.each([false, true])("rejects invalid proxy.defaultDomain before writing (dr
         configPath: file,
         dryRun,
       }).pipe(
-        Effect.provideService(ConfigService, { load: Effect.die("unused"), get: () => Effect.die("unused") }),
+        Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
         Effect.result,
       ),
     );

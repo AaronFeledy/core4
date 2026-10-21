@@ -244,10 +244,11 @@ const renderNone = (): string =>
     'import { Layer } from "effect";',
     "",
     'import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";',
+    'import { GlobalConfigSources } from "@lando/engine/services/config";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
     "",
     "export const makeNoneBootstrapLayer = (inputs: BootstrapLayerInputs) =>",
-    "  Layer.succeed(RuntimeLayerFactory, inputs.runtimeLayerFactory);",
+    "  Layer.mergeAll(Layer.succeed(RuntimeLayerFactory, inputs.runtimeLayerFactory), Layer.succeed(GlobalConfigSources, inputs.configInputs));",
     "",
   ].join("\n");
 
