@@ -152,7 +152,12 @@ export const listSnapshotInfos = Effect.fn("DataMover.listSnapshotInfos")(functi
       }
     }
   }
-  return infos;
+  // Directory order varies by filesystem; listings are oldest first, then by id.
+  return infos.toSorted(
+    (left, right) =>
+      DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt) ||
+      (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+  );
 });
 
 export const resolveSnapshotInfo = Effect.fn("DataMover.resolveSnapshotInfo")(function* (

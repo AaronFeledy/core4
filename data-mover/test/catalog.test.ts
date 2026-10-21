@@ -43,6 +43,34 @@ test("same app and store produce separate owner trees and owner listing reads on
     expect((await run(f.mover().listSnapshots({}).pipe(Effect.result)))._tag).toBe("Failure");
   }));
 
+test("listing is ordered oldest first, then by id, across owner trees", () =>
+  withCatalog(async (f) => {
+    // Given snapshots in two owner trees, whose directory order the filesystem decides.
+    const first = await runScoped(f.mover().snapshot(store));
+    const other = planAppIdentity({ root: AbsolutePath.make(join(f.root, "other-app")) });
+    const source = fixtureVolume(store);
+    const second = await runScoped(
+      f
+        .mover(
+          f.provider({
+            listVolumes: () =>
+              Effect.succeed([{ ...source, identity: { ...source.identity, ownerRoot: other.appRoot } }]),
+          }),
+        )
+        .snapshot(store),
+    );
+    // When listing every owner.
+    const infos = await run(f.mover().listSnapshots({}));
+    // Then the order follows creation time, with ids breaking ties.
+    const expected = [...infos].sort(
+      (left, right) =>
+        left.createdAt.epochMilliseconds - right.createdAt.epochMilliseconds ||
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+    );
+    expect(infos.map((info) => info.id)).toEqual(expected.map((info) => info.id));
+    expect(new Set(infos.map((info) => info.id))).toEqual(new Set([first.id, second.id]));
+  }));
+
 test.each(["", ".", "..", "a/b", "a\\b", "a\0b", "C:drive"])(
   "rejects unsafe snapshot store/id segment %j",
   (segment) =>
