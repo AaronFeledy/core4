@@ -365,7 +365,7 @@ const macosNotarizationCommands = (
 
 const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
 const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
-  "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
+  "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$";
 const COSIGN_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 
 const envValue = (env: ReleaseEnvironment, name: string): string | undefined => {
@@ -943,10 +943,10 @@ const releaseProvenanceScript = (context: ReleaseStageContext): string => {
     "--commit-sha",
     envValue(context.env, "GITHUB_SHA") ?? "",
     "--repository",
-    envValue(context.env, "GITHUB_REPOSITORY") ?? "lando-community/core4",
+    envValue(context.env, "GITHUB_REPOSITORY") ?? "AaronFeledy/core4",
     "--workflow-ref",
     envValue(context.env, "GITHUB_WORKFLOW_REF") ??
-      `lando-community/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
+      `AaronFeledy/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
     ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
   ];
   return args.map(shellQuote).join(" ");

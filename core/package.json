@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
-  "repository": "lando-community/core4",
-  "bugs": "https://github.com/lando-community/core4/issues",
+  "homepage": "https://github.com/AaronFeledy/core4",
+  "repository": "AaronFeledy/core4",
+  "bugs": "https://github.com/AaronFeledy/core4/issues",
   "type": "module",
   "private": true,
   "engines": {

@@ -84,9 +84,9 @@ describe("release orchestrator", () => {
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
     GITHUB_REF: "refs/tags/v4.0.0-beta.1",
-    GITHUB_REPOSITORY: "lando-community/core4",
+    GITHUB_REPOSITORY: "AaronFeledy/core4",
     GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
-    GITHUB_WORKFLOW_REF: "lando-community/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
+    GITHUB_WORKFLOW_REF: "AaronFeledy/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
   };
   const windowsSigningEnv = {
     LANDO_RELEASE_WINDOWS_CERTIFICATE: "certs/windows-release.pfx",
@@ -406,7 +406,7 @@ describe("release orchestrator", () => {
           released: "2026-06-17T12:00:00.000Z",
           minimum: "4.0.0-alpha.1",
           distDir: "dist",
-          repository: "lando-community/core4",
+          repository: "AaronFeledy/core4",
           allowMissingBinaries: true,
         });
         const decoded = Schema.decodeUnknownSync(UpdateManifestSchema)(manifest, {
@@ -422,18 +422,17 @@ describe("release orchestrator", () => {
             .sort(),
         );
         expect(decoded.binaries["linux-x64"]).toEqual({
-          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/lando-linux-x64",
+          url: "https://github.com/AaronFeledy/core4/releases/download/v4.0.0-next.2/lando-linux-x64",
           sha256: sha256Text("linux-x64 artifact"),
           size: "linux-x64 artifact".length,
         });
         expect(decoded.binaries["windows-x64"].sha256).toBe("0".repeat(64));
         expect(decoded.binaries["windows-x64"].size).toBe(0);
         expect(decoded.checksums).toEqual({
-          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/SHA256SUMS",
-          signature:
-            "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/SHA256SUMS.sig",
+          url: "https://github.com/AaronFeledy/core4/releases/download/v4.0.0-next.2/SHA256SUMS",
+          signature: "https://github.com/AaronFeledy/core4/releases/download/v4.0.0-next.2/SHA256SUMS.sig",
         });
-        expect(decoded.notes).toBe("https://github.com/lando-community/core4/releases/tag/v4.0.0-next.2");
+        expect(decoded.notes).toBe("https://github.com/AaronFeledy/core4/releases/tag/v4.0.0-next.2");
       });
     });
   });
@@ -1019,7 +1018,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1114,7 +1113,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1137,7 +1136,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1160,7 +1159,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1183,7 +1182,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1206,7 +1205,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1229,7 +1228,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1362,7 +1361,7 @@ describe("release orchestrator", () => {
       });
       expect(mismatchedVerifyCommand).toContain("--certificate-identity-regexp");
       expect(mismatchedVerifyCommand).toContain(
-        "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+        "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
       );
       expect(mismatchedVerifyCommand).toContain("--certificate-oidc-issuer");
       expect(mismatchedVerifyCommand).toContain("https://token.actions.githubusercontent.com");
@@ -1411,7 +1410,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1434,7 +1433,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1678,10 +1677,10 @@ describe("release orchestrator", () => {
           { name: "lando-linux-x64", digest: { sha256: binaryEntry.sha256 } },
         ]);
         expect(provenance.predicate.runDetails.builder.id).toBe(
-          "https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
+          "https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
         );
         expect(provenance.predicate.buildDefinition.resolvedDependencies[0].uri).toBe(
-          "git+https://github.com/lando-community/core4@refs/tags/v4.0.0-beta.1",
+          "git+https://github.com/AaronFeledy/core4@refs/tags/v4.0.0-beta.1",
         );
         expect(provenance.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit).toBe(
           "0123456789abcdef0123456789abcdef01234567",
@@ -1708,7 +1707,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1731,7 +1730,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1910,7 +1909,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
