@@ -18,6 +18,7 @@ const runCli = async (
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
+    env: { ...process.env },
     cwd,
     stdout: "pipe",
     stderr: "pipe",
@@ -64,6 +65,25 @@ const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) =
 };
 
 describe("meta:config command", () => {
+  test.each([{ args: [] }, { args: ["get", "router.httpPort"] }])(
+    "CLI preserves config issues for read arguments $args",
+    async ({ args }) => {
+      await withTempEnv({}, async (dir) => {
+        await writeFile(join(dir, "config.yml"), "router:\n  httpPort: 99999\n");
+        const result = await runCli(["config", ...args, "--format=json"], dir);
+        expect(result.exitCode).not.toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          ok: false,
+          error: {
+            _tag: "ConfigError",
+            path: join(dir, "config.yml"),
+            issues: [{ path: ["router", "httpPort"], message: expect.any(String) }],
+            remediation: expect.stringContaining("lando config validate"),
+          },
+        });
+      });
+    },
+  );
   test("encodes the resolved global config result faithfully", async () => {
     const result = await Effect.runPromise(
       config({ format: "json" }).pipe(

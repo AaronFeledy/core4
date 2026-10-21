@@ -4,6 +4,7 @@ import type {
   BuildPhaseFailedError,
   CapabilityError,
   CommandAliasConflictError,
+  ConfigError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -18,6 +19,7 @@ import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/in
 import type { ProviderError, ProviderSelectionError } from "./provider.ts";
 
 export type AppPlannerError =
+  | ConfigError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError

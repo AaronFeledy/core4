@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
@@ -163,13 +163,18 @@ test("config load is fail-loud for hostEvents and still returns Effect failures"
   await withConfRoot(
     (dir) => writeFile(join(dir, "config.yml"), "hostEvents:\n  post-destroy:\n    - echo gone\n"),
     async () => {
-      const exit = await Effect.runPromiseExit(
-        Effect.gen(function* () {
-          const service = yield* ConfigService;
-          return yield* service.load;
-        }).pipe(Effect.provide(layer)),
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.gen(function* () {
+            const service = yield* ConfigService;
+            return yield* service.load;
+          }).pipe(Effect.provide(layer)),
+        ),
       );
-      expect(Exit.isFailure(exit)).toBe(true);
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") return;
+      expect(result.failure.issues?.[0]?.path).toEqual(["hostEvents", "post-destroy", 0]);
+      expect(result.failure.remediation).toContain("lando config edit");
     },
   );
 });

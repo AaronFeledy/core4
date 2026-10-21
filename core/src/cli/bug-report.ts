@@ -177,6 +177,7 @@ const extractExtraTagFields = (
     if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
   }
   if (
+    tag === "ConfigError" ||
     tag === "RecipeManifestValidationError" ||
     tag === "LandofileValidationError" ||
     tag === "LandofileWriteValidationError"

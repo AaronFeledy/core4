@@ -28,8 +28,8 @@ import { resolveSecretsRedactor } from "./secrets-redactor";
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
   description:
-    "Lando could not start its provider runtime, so provider diagnostics were skipped. This is usually an unreadable `config.yml` or a conflicting installed plugin: check `lando config view` and `lando plugin list`.",
-  command: "lando config view",
+    "Lando could not start its provider runtime, so provider diagnostics were skipped. Validate config.yml with `lando config validate`; repair it with `lando config edit`, or check `lando plugin list` for conflicting plugins.",
+  command: "lando config validate",
 };
 
 export const resilientDoctorReport = Effect.fn("Doctor.resilientReport")(

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
-import { PluginLoadError } from "@lando/sdk/errors";
+import { ConfigError, PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
@@ -47,10 +47,11 @@ const plan: AppPlan = {
 };
 
 test.each([
-  { target: requested, expected: "requested", kind: "explicit ID" },
-  { target: plan, expected: "requested", kind: "real plan" },
-  { target: undefined, expected: "configured-default", kind: "no argument" },
-])("selects $expected with $kind", async ({ target, expected }) => {
+  { target: requested, expected: "requested", kind: "explicit ID", invalidConfig: false },
+  { target: plan, expected: "requested", kind: "real plan", invalidConfig: false },
+  { target: undefined, expected: "configured-default", kind: "no argument", invalidConfig: false },
+  { target: undefined, expected: "ConfigError", kind: "invalid configuration", invalidConfig: true },
+])("selects $expected with $kind", async ({ target, expected, invalidConfig }) => {
   // Given: the configured default differs from the explicit target.
   const initialized: string[] = [];
   const modules: readonly LandoPluginModule[] = ["configured-default", "requested"].map((id) => {
@@ -81,12 +82,19 @@ test.each([
     };
   });
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "configured-default" });
+  const configError = new ConfigError({
+    message: "Invalid global configuration.",
+    path: "/tmp/config.yml",
+    issues: [{ path: ["router", "httpPort"], message: "Invalid port." }],
+    remediation: "Run `lando config validate`.",
+  });
+  const load = invalidConfig ? Effect.fail(configError) : Effect.succeed(config);
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
   const dependencies = Layer.mergeAll(
     Layer.succeed(
       ConfigService,
-      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+      ConfigService.of({ load, get: (key) => Effect.map(load, (value) => value[key]) }),
     ),
     Layer.succeed(
       PluginRegistry,
@@ -111,16 +119,26 @@ test.each([
   );
   // When
   const selected = await Effect.runPromise(
-    Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(target)).pipe(
-      Effect.provide(
-        makeRuntimeProviderRegistry(modules, {
-          enforce: async () => undefined,
-          verify: async () => undefined,
-        }).pipe(Layer.provide(dependencies)),
+    Effect.result(
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(target)).pipe(
+        Effect.provide(
+          makeRuntimeProviderRegistry(modules, {
+            enforce: async () => undefined,
+            verify: async () => undefined,
+          }).pipe(Layer.provide(dependencies)),
+        ),
       ),
     ),
   );
   // Then
-  expect(selected.id).toBe(expected);
+  if (invalidConfig) {
+    expect(selected._tag).toBe("Failure");
+    if (selected._tag === "Failure") expect(selected.failure).toBe(configError);
+    expect(initialized).toEqual([]);
+    return;
+  }
+  expect(selected._tag).toBe("Success");
+  if (selected._tag !== "Success") throw selected.failure;
+  expect(selected.success.id).toBe(expected);
   expect(initialized).toEqual([expected]);
 });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
-import { ConfigError, LandofileValidationError } from "@lando/sdk/errors";
+import { ConfigError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities, validationIssue } from "@lando/sdk/schema";
 import { ConfigService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -28,14 +28,13 @@ describe("event-set global config load failures", () => {
         new ConfigError({
           message: 'config.yml hostEvents.pre-start[0] cannot target a container. Use service: ":host".',
           path: "/tmp/config.yml",
-          cause: {
-            issues: [
-              validationIssue(
-                ["hostEvents", "pre-start", 0],
-                'config.yml hostEvents.pre-start[0] cannot target a container. Use service: ":host".',
-              ),
-            ],
-          },
+          issues: [
+            validationIssue(
+              ["hostEvents", "pre-start", 0],
+              'config.yml hostEvents.pre-start[0] cannot target a container. Use service: ":host".',
+            ),
+          ],
+          remediation: "Use `lando config edit`.",
         }),
       ),
       get: () => Effect.die("unused"),
@@ -60,10 +59,11 @@ describe("event-set global config load failures", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
     const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-    expect(failure).toBeInstanceOf(LandofileValidationError);
-    if (!(failure instanceof LandofileValidationError)) throw failure;
-    expect(failure.issues[0]?.path).toEqual(["hostEvents", "pre-start", 0]);
-    expect(failure.issues[0]?.path).not.toEqual(["network"]);
+    expect(failure).toBeInstanceOf(ConfigError);
+    if (!(failure instanceof ConfigError)) throw failure;
+    expect(failure.path).toBe("/tmp/config.yml");
+    expect(failure.issues?.[0]?.path).toEqual(["hostEvents", "pre-start", 0]);
+    expect(failure.remediation).toContain("lando config edit");
     expect(failure.message).toContain("hostEvents.pre-start[0]");
   });
 });

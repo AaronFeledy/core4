@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProxyError } from "@lando/sdk/errors";
+import { ConfigError, ProxyError } from "@lando/sdk/errors";
 import { RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
@@ -17,6 +17,23 @@ const last: RouterServiceRegistration = {
   id: "same",
   layer: Layer.succeed(RouterService, makeTestRouterService()),
 };
+
+test("preserves config failures during router selection", async () => {
+  const error = new ConfigError({
+    message: "Invalid global configuration.",
+    path: "/tmp/config.yml",
+    issues: [{ path: ["router", "httpPort"], message: "Invalid port." }],
+    remediation: "Run `lando config validate`.",
+  });
+  const registry = makeRouterServiceRegistry({
+    registrations: [first],
+    configured: Effect.fail(error),
+    platform: "linux",
+  });
+  const result = await Effect.runPromise(Effect.result(registry.select()));
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBe(error);
+});
 
 test("raw duplicate router ids select the last explicitly and the first on platform fallback", async () => {
   const registry = makeRouterServiceRegistry({

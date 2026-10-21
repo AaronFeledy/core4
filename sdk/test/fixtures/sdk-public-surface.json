@@ -1,4 +1,5 @@
 {
+  "configErrorFields": ["_tag", "cause", "issues", "message", "path", "remediation"],
   "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
   "publicDefaultCredentialExports": [
     "DEFAULT_PASSWORD",

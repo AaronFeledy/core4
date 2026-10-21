@@ -94,6 +94,83 @@ lando config validate
 lando config edit
 ```
 
+## Repair an invalid config.yml
+
+Every command that reads global config fails the same way when `config.yml` or an env override doesn't decode: one `ConfigError` at exit `1`. That covers `lando config`, `lando info`, `lando start`, `lando doctor`, and the planner. Nothing deletes or rewrites the file for you.
+
+The text output names the file, prints one `<dotted path>: <message>` line per issue, and says how to fix it:
+
+```
+Invalid config file /home/user/.local/share/lando/config.yml: router.httpPort: Expected a value between 1 and 65535
+  ↳ Run `lando config validate` for file issues, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.
+code: ConfigError
+commandId: meta:config
+issues:
+router.httpPort: Expected a value between 1 and 65535
+path: /home/user/.local/share/lando/config.yml
+```
+
+`--format=json` carries the same facts under `error.path`, `error.issues` (each `{ path, message }`, with `path` as an array of keys), and `error.remediation`.
+
+Repair it with the write verbs. They keep working on a file that fails validation. `set` and `unset` validate the whole resulting tree, so fixing or removing the bad key is enough:
+
+```sh
+# List every issue in the file (checks config.yml only, not env overrides)
+lando config validate
+
+# Replace the bad value, or drop the key to fall back to the default
+lando config set router.httpPort 8080 --type number
+lando config unset router.httpPort
+
+# Fix it by hand; the editor flow validates before it saves
+lando config edit
+```
+
+When an env override supplies the bad value, such as `LANDO_CONFIG__ROUTER__HTTP_PORT=99999` or the alias `LANDO_ROUTER_HTTP_PORT=99999`, the message starts with `Invalid global configuration (environment override)` and the remediation points at the override. `lando config validate` passes in that case because it checks only the file. Fix or unset the variable. If the file and an override are both wrong, the message names both sources.
+
+Broken YAML syntax is the one case `set` and `unset` cannot repair, since there is no tree to write into. Fix the syntax with `lando config edit` or your own editor.
+
+`lando doctor` still runs when config is broken. Its provider-bootstrap self check reports the `ConfigError` with the first issue, and its suggested command is `lando config validate`.
+
+  <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError from an invalid env override">
+    <Step name="load-with-bad-override">
+      <Run
+        runtime="library"
+        code={`const { ConfigService } = yield* Effect.promise(() => import("@lando/sdk/services"));
+const { layer } = yield* Effect.promise(() => import("@lando/engine/services/config"));
+const previous = process.env.LANDO_CONFIG__ROUTER__HTTP_PORT;
+process.env.LANDO_CONFIG__ROUTER__HTTP_PORT = "99999";
+const failure = yield* Effect.flip(
+  Effect.gen(function* () {
+    const config = yield* ConfigService;
+    return yield* config.load;
+  }),
+).pipe(
+  Effect.provide(layer),
+  Effect.ensuring(
+    Effect.sync(() => {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_CONFIG__ROUTER__HTTP_PORT");
+      else process.env.LANDO_CONFIG__ROUTER__HTTP_PORT = previous;
+    }),
+  ),
+);
+expect(failure._tag).toBe("ConfigError");
+expect(failure.message).toMatch(/environment override/);
+expect(failure.message).toMatch(/router\.httpPort: Expected a value between 1 and 65535/);
+expect(failure.path).toMatch(/config\.yml$/);
+expect(failure.issues?.map((issue) => issue.path)).toContainEqual(["router", "httpPort"]);
+expect(failure.remediation).toMatch(/environment override for router\.httpPort/);
+expect(failure.remediation).toMatch(/lando config validate/);`}
+        displayCode={`import { Effect } from "effect";
+import { ConfigService } from "@lando/sdk/services";
+
+process.env.LANDO_CONFIG__ROUTER__HTTP_PORT = "99999";
+const failure = await Effect.runPromise(Effect.flip(Effect.flatMap(ConfigService, (config) => config.load)));
+console.log(failure._tag, failure.issues, failure.remediation);`}
+      />
+    </Step>
+  </Scenario>
+
 ## Add host-wide lifecycle steps
 
 Edit `<userConfRoot>/config.yml` to add `hostEvents` for every user app. The shared global app and scratch apps are excluded. Environment overrides cannot set this key, and `lando config set` / `lando config unset` refuse every `hostEvents` path.

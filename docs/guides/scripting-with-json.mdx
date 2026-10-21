@@ -313,7 +313,9 @@ to converge.
 
 The error also keeps its remaining JSON-safe fields directly under `error`.
 For example, `ConfigExpressionError` carries `error.path` (a dotted string),
-`error.expression`, and `error.filePath`; `ConfigError` can carry `error.path`.
+`error.expression`, and `error.filePath`; `ConfigError` carries `error.path`
+and, for a global config that fails validation, `error.issues` and
+`error.remediation` (see below).
 JSON, YAML, terminal result frames, and MCP envelopes preserve the same fields
 with the same secret redaction. `cause`, `stack`, and private redaction metadata
 are excluded. Fields containing class instances, unsupported values, cycles,
@@ -342,6 +344,21 @@ Three independent mistakes produce three issues in one run. Branch on
 is the human rendering of the same list. `lando app:config:lint
 --format=json` reports the same issues as `violations` inside a successful
 result, which suits editors that want the list without a failing exit.
+
+A global `config.yml` or `LANDO_CONFIG__*` override that fails validation
+produces a `ConfigError` envelope at exit `1` from every command that reads
+config, including `lando config`, `lando info`, and `lando start`. It carries
+the same `error.issues` shape, plus `error.path` (the `config.yml` location)
+and `error.remediation`. When an env override caused the failure,
+`error.message` starts with `Invalid global configuration (environment
+override)` and the remediation names the override instead of the file:
+
+```sh
+lando config --format=json | jq ".error | {path, issues, remediation}"
+```
+
+A `config.yml` with broken YAML syntax also fails with `ConfigError`, but
+without `error.issues`, because there is no decoded tree to report paths into.
 
 The generated command reference lists every public command and documents the
 universal `--format json` flag once in its machine-readable output section.

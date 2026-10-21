@@ -614,6 +614,7 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
+    | ConfigError
     | LandofileNotFoundError
     | LandofileUnknownEventError
     | LandofileValidationError

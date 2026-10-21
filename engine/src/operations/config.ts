@@ -20,7 +20,7 @@ import {
 import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
-import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
@@ -110,7 +110,16 @@ const telemetryConfigPath = (): string =>
   join(resolveConfigFileRoot(resolveUserConfRoot(), envOverlay()), "config.yml");
 
 const configReadError = (path: string, cause: unknown): ConfigError =>
-  new ConfigError({ message: `Failed to read global config: ${path}`, path, cause });
+  cause instanceof ConfigError
+    ? cause
+    : new ConfigError({
+        message: `Failed to read global config ${path}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        path,
+        cause,
+        ...(cause instanceof MinimalYamlError
+          ? { remediation: "Fix the YAML syntax with `lando config edit` or edit config.yml directly." }
+          : {}),
+      });
 
 const configWriteError = (path: string, cause: unknown): ConfigError =>
   new ConfigError({ message: `Failed to write global config: ${path}`, path, cause });
@@ -342,7 +351,17 @@ const metaConfigValidate = Effect.fnUntraced(function* (
   const tree = yield* readConfigTree(path);
   const decoded = decodeGlobalConfig(tree);
   const issues = [...decodeIssues(decoded), ...hostEventsTreeIssues(tree)];
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+  if (issues.length > 0) {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: `config.yml failed validation: ${path}.`,
+        file: path,
+        issues,
+        remediation:
+          "Fix each reported key with `lando config set <key> <value>` / `lando config unset <key>`, or run `lando config edit`.",
+      }),
+    );
+  }
   const patternError = agentEnvPatternError(decoded);
   if (patternError !== undefined) return yield* Effect.fail(patternError);
   return {

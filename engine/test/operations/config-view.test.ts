@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ConfigError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 import { type ConfigOptions, ConfigResultSchema, config } from "../../src/operations/config.ts";
 import * as LandoConfigService from "../../src/services/config.ts";
@@ -28,6 +29,39 @@ afterEach(async () => {
 });
 const run = (options: ConfigOptions) =>
   Effect.runPromise(config(options).pipe(Effect.provide(LandoConfigService.layer)));
+
+test.each(["view", "get"] as const)("%s retains structured config failures", async (subcommand) => {
+  await writeFile(join(root, "config.yml"), "router:\n  httpPort: 99999\n");
+  const result = await Effect.runPromise(
+    Effect.result(
+      config({ subcommand, key: "router.httpPort" }).pipe(Effect.provide(LandoConfigService.layer)),
+    ),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.failure).toBeInstanceOf(ConfigError);
+  expect(result.failure).toMatchObject({
+    path: join(root, "config.yml"),
+    issues: [{ path: ["router", "httpPort"], message: expect.any(String) }],
+    remediation: expect.stringContaining("lando config validate"),
+  });
+});
+
+test("unset preserves YAML parser detail instead of wrapping ConfigError twice", async () => {
+  await writeFile(join(root, "config.yml"), "router:\n  httpPort: [\n");
+  const result = await Effect.runPromise(
+    Effect.result(
+      config({ subcommand: "unset", key: "router.httpPort" }).pipe(Effect.provide(LandoConfigService.layer)),
+    ),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.failure).toBeInstanceOf(ConfigError);
+  if (!(result.failure instanceof ConfigError)) return;
+  expect(result.failure.cause).not.toBeInstanceOf(ConfigError);
+  expect(result.failure.message).toContain("Unsupported YAML value: [");
+  expect(result.failure.remediation).toContain("lando config edit");
+});
 
 for (const [key, value] of [
   ["appEnv", { TEAM: "platform", MODE: "development" }],

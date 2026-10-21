@@ -194,9 +194,22 @@ describe("meta config validate", () => {
   });
 
   test("invalid config fails with issues", async () => {
+    // Given a file with one wrongly typed key.
     await seed("telemetry:\n  enabled: notbool\n");
+    // When it is validated.
     const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    // Then the failure names the key and read-only repair commands, not a retried write.
     expect(Exit.isFailure(result)).toBe(true);
+    if (!Exit.isFailure(result)) return;
+    const failure = Cause.findErrorOption(result.cause);
+    expect(Option.isSome(failure)).toBe(true);
+    if (!Option.isSome(failure)) return;
+    expect(failure.value).toMatchObject({
+      _tag: "LandofileWriteValidationError",
+      issues: [{ path: ["telemetry", "enabled"] }],
+      remediation: expect.stringContaining("lando config unset <key>"),
+    });
+    expect(failure.value.message).not.toContain("resulting config");
   });
 });
 

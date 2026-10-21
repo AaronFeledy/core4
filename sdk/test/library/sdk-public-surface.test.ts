@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
+import { ConfigError } from "@lando/sdk/errors";
 import * as sdkServices from "@lando/sdk/services";
 
 import sdkPackage from "../../package.json";
@@ -93,6 +94,9 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches the structured global config error fields", () => {
+    expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
   test("matches every package export subpath", () => {
     expect(Object.keys(publicSurface.subpathExports).sort()).toEqual(Object.keys(sdkPackage.exports).sort());
   });

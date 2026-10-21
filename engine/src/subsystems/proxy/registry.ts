@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { ProxyError } from "@lando/sdk/errors";
+import { type ConfigError, ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import {
@@ -48,7 +48,7 @@ interface RouterServiceRegistryShape {
   readonly list: Effect.Effect<ReadonlyArray<string>>;
   readonly select: (
     selection?: RouterServiceSelection,
-  ) => Effect.Effect<RouterServiceRegistration, ProxyError>;
+  ) => Effect.Effect<RouterServiceRegistration, ProxyError | ConfigError>;
 }
 
 export class RouterServiceRegistry extends Context.Service<
@@ -76,13 +76,7 @@ export class RouterServiceRegistry extends Context.Service<
           ...(eventService._tag === "Some" ? { eventService: eventService.value } : {}),
           ...(redaction._tag === "Some" ? { redaction: redaction.value } : {}),
         });
-        const configured = config
-          .get("defaultRouterService")
-          .pipe(
-            Effect.mapError((cause) =>
-              selectionError(`Unable to read RouterService selection: ${cause.message}`, "unknown"),
-            ),
-          );
+        const configured = config.get("defaultRouterService");
         return RouterServiceRegistry.of(
           makeRouterServiceRegistry({ registrations, configured, platform: paths.platform }),
         );
@@ -94,7 +88,7 @@ export class RouterServiceRegistry extends Context.Service<
 
 interface MakeRouterServiceRegistryOptions {
   readonly registrations: ReadonlyArray<RouterServiceRegistration>;
-  readonly configured: Effect.Effect<string | undefined, ProxyError>;
+  readonly configured: Effect.Effect<string | undefined, ProxyError | ConfigError>;
   readonly platform: HostPlatform;
 }
 

@@ -5,7 +5,6 @@ import {
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
   ProviderCapabilityError,
-  ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -53,14 +52,6 @@ const toProviderUnavailable = (cause: unknown) =>
     providerId: "unknown",
     operation: "list",
     message: "Unable to list runtime provider plugins.",
-    cause,
-  });
-
-const toProviderConfig = (cause: unknown) =>
-  new ProviderConfigError({
-    providerId: "unknown",
-    operation: "select",
-    message: "Unable to read the default runtime provider configuration.",
     cause,
   });
 
@@ -113,9 +104,7 @@ export const makeRuntimeProviderRegistry = (
       );
 
       const configuredProviderId = Effect.gen(function* () {
-        const defaultProviderId = yield* configService
-          .get("defaultProviderId")
-          .pipe(Effect.mapError(toProviderConfig));
+        const defaultProviderId = yield* configService.get("defaultProviderId");
         const envProviderId = readProviderEnvVar(process.env);
         return resolveProviderSelection({
           ...(envProviderId === undefined ? {} : { env: envProviderId }),
