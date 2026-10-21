@@ -26,6 +26,7 @@ const stageBinaryBlock = (): string =>
       `gh run download "\${{ github.event.workflow_run.id }}" --name lando-${platform.id} --dir ${artifactDir}`,
       `test -f ${source}`,
       `mv ${source} ${staged}`,
+      `${platform.id === CI_PLATFORMS[0]?.id ? "cp" : "cmp"} ${artifactDir}/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md`,
       ...(isWindowsCiPlatform(platform) ? [] : [`chmod +x ${staged}`]),
       `test -f ${staged}`,
     ];
@@ -44,6 +45,7 @@ const releaseAssetArgs = (): string =>
   [
     ...CI_PLATFORMS.map((platform) => `dist/${releaseBinaryFileName(platform)}`),
     "dist/SHA256SUMS",
+    "dist/THIRD_PARTY_NOTICES.md",
     "plugins/service-lando/tomcat/LICENSE",
     "plugins/service-lando/tomcat/NOTICE",
     '"\u0024{go_notices[@]}"',

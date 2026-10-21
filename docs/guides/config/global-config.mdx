@@ -25,8 +25,8 @@ Use `appEnv` for environment defaults and `appLabels` for container-label defaul
 These commands replace each whole map. Keep any existing entries you want before running them.
 
 ```sh
-lando config set appEnv '{"TEAM":"platform"}' --type=json
-lando config set appLabels '{"team":"platform"}' --type=json
+lando config set appEnv '{"TEAM":"platform"}'
+lando config set appLabels '{"team":"platform"}'
 lando config get appEnv --format=json
 lando config get appLabels --format=json
 lando config --format=json
@@ -77,12 +77,16 @@ Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a
 
 ## Get, set, unset, validate, or edit a key
 
+Lando picks the value type from the config schema: text first, then number, boolean, null, or JSON. Use `--type` to force a type, for example `--type=json` to write a JSON array into a field that also accepts text.
+
+`set` and `unset` keep comments and formatting outside the value or entry you change. If Lando can't edit safely, it refuses without changing the file. Use `lando config edit` or edit by hand instead. The same rule applies to `lando app:config` and `lando global:config`; use their `edit` verb when an edit is refused.
+
 ```sh
 # Read a single dot-path key
 lando config get defaultProviderId
 
-# Write a single dot-path key to config.yml; --type controls how the value is parsed
-lando config set defaultProviderId podman --type string
+# Write a single dot-path key to config.yml
+lando config set defaultProviderId podman
 
 # Remove a key from config.yml
 lando config unset defaultProviderId
@@ -93,6 +97,13 @@ lando config validate
 # Open config.yml in $VISUAL or $EDITOR, or pass --editor
 lando config edit
 ```
+
+  <Scenario id="infer-numeric-value" render>
+    <Step name="preview-port">
+      <Run command="lando config set router.httpPort 8080 --dry-run --format=json" />
+      <Verify command="lando config set router.httpPort 8080 --dry-run --format=json" expect={{ stdout: { regex: "\"value\":\\s*8080\\s*[,}]" } }} />
+    </Step>
+  </Scenario>
 
 ## Add host-wide lifecycle steps
 

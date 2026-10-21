@@ -471,6 +471,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
     expect(staticChecksPlatform).toContain("        run: bun run check:compose-coverage");
     expect(staticChecksPlatform).toContain("        run: bun run check:runtime-bundle-manifest");
+    expect(staticChecksPlatform).toContain("          bun run check:compiled-binary-notices");
+    expect(staticChecksPlatform).toContain("          bun install --frozen-lockfile --os='*' --cpu='*'");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(
       "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04",
@@ -718,6 +720,8 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          ./dist/lando --help");
     expect(buildLinux).toContain("          ./dist/lando shellenv");
     expect(buildLinux).toContain("        uses: actions/upload-artifact@v6");
+    expect(buildLinux).toContain("            dist/THIRD_PARTY_NOTICES.md");
+    expect(buildLinux).toContain("          bun run check:compiled-binary-notices");
     expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
     expect(buildLinux).toContain("          path: dist/lando");

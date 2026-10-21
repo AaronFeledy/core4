@@ -706,6 +706,9 @@ jobs:
       - name: Verify committed runtime-bundle manifest resolves live
         run: bun run check:runtime-bundle-manifest --live
 
+      - name: Verify runtime bundle licenses and source links live
+        run: bun run check:runtime-bundle-licenses --live
+
   distribution-rehearsal-linux-x64:
     needs: [container-helper]
     runs-on: ubuntu-24.04

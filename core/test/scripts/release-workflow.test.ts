@@ -40,6 +40,13 @@ describe("release workflow", () => {
     expect(workflow.match(/^\s+gh release create .+$/m)?.[0]).toContain('"${go_notices[@]}"');
     expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
     expect(workflow).toContain("dist/SHA256SUMS");
+    expect(workflow).toContain("dist/THIRD_PARTY_NOTICES.md");
+    expect(workflow).toContain(
+      "cp dist/artifacts/darwin-arm64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md",
+    );
+    expect(workflow).toContain(
+      "cmp dist/artifacts/windows-arm64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md",
+    );
     expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
     expect(workflow).not.toContain("if-no-files-found");
   });

@@ -76,6 +76,14 @@ jobs:
       - name: Runtime-bundle manifest invariant
         run: bun run check:runtime-bundle-manifest
 
+      - name: Check runtime bundle license metadata
+        run: bun run check:runtime-bundle-licenses
+
+      - name: Check compiled binary notices
+        run: |
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          bun run check:compiled-binary-notices
+
       - name: Static scope notice for portable static matrix
         run: |
           echo "::notice title=static-checks-scope::${{ matrix.platform }} on ${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04. Full cross-platform static test portability remains a follow-up portability effort."
@@ -1081,9 +1089,11 @@ jobs:
       - name: Build darwin-arm64 binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1103,7 +1113,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: lando-darwin-arm64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1149,9 +1161,11 @@ jobs:
       - name: Build darwin-x64 binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1171,7 +1185,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: lando-darwin-x64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1217,9 +1233,11 @@ jobs:
       - name: Build linux-arm64 binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1239,7 +1257,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: lando-linux-arm64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1285,9 +1305,11 @@ jobs:
       - name: Build linux-x64 binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1307,7 +1329,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: lando-linux-x64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1353,9 +1377,11 @@ jobs:
       - name: Build windows-x64 binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1372,7 +1398,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: lando-windows-x64
-          path: dist/lando-windows-x64.exe
+          path: |
+            dist/lando-windows-x64.exe
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1418,9 +1446,11 @@ jobs:
       - name: Build windows-arm64 binary
         run: |
           mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-arm64.exe
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -1437,7 +1467,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: lando-windows-arm64
-          path: dist/lando-windows-arm64.exe
+          path: |
+            dist/lando-windows-arm64.exe
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1460,7 +1492,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
 
       - name: Setup Bun
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'

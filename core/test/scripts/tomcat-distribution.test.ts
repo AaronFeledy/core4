@@ -105,7 +105,11 @@ test.skipIf(process.platform === "win32")(
     if (publish === undefined) throw new Error("Missing dev publication command");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
-      for (const name of [...CI_PLATFORMS.map(releaseBinaryFileName), "SHA256SUMS"]) {
+      for (const name of [
+        ...CI_PLATFORMS.map(releaseBinaryFileName),
+        "SHA256SUMS",
+        "THIRD_PARTY_NOTICES.md",
+      ]) {
         await writeFile(join(root, "dist", name), name);
       }
 
@@ -118,6 +122,9 @@ test.skipIf(process.platform === "win32")(
           await readFile(resolve(repoRoot, tomcatPath, name), "utf8"),
         );
       }
+      expect(await readFile(join(root, "published/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "THIRD_PARTY_NOTICES.md",
+      );
       for (const platform of CI_PLATFORMS) {
         expect(await readFile(join(root, "published", releaseBinaryFileName(platform)), "utf8")).toBe(
           releaseBinaryFileName(platform),
@@ -157,6 +164,7 @@ test.skipIf(process.platform === "win32")(
         "update-manifest.json.sig",
         "update-manifest.json.crt",
         "release-notes.md",
+        "THIRD_PARTY_NOTICES.md",
       ])
         await writeFile(join(root, "dist", name), name);
       await writeFile(
@@ -189,6 +197,9 @@ test.skipIf(process.platform === "win32")(
           await readFile(resolve(repoRoot, tomcatPath, name), "utf8"),
         );
       }
+      expect(await readFile(join(root, "published/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "THIRD_PARTY_NOTICES.md",
+      );
     });
   },
 );

@@ -311,7 +311,10 @@ const runtimeBundleManifestLiveJob = `
 ${bunSetupStep}
 
       - name: Verify committed runtime-bundle manifest resolves live
-        run: bun run check:runtime-bundle-manifest --live`;
+        run: bun run check:runtime-bundle-manifest --live
+
+      - name: Verify runtime bundle licenses and source links live
+        run: bun run check:runtime-bundle-licenses --live`;
 
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
