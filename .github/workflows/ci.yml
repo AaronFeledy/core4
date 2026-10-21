@@ -127,6 +127,7 @@ jobs:
           echo "::notice title=ci-timing::bun-install-isolated-experiment completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   unit-tests-linux-x64-shard:
+    needs: container-helper
     strategy:
       fail-fast: false
       matrix:
@@ -150,6 +151,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Unit test shard
         run: bun run test:unit:shard ${{ matrix.shard }}/3
@@ -315,13 +326,15 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Regenerate derived sources
         run: bun run codegen
 
       - name: Test the arm64 container helper
-        run: |
-          chmod +x core/container-helper/dist/linux-arm64/lando-container-helper
-          bun test core/test/container-helper/helper.integration.test.ts
+        run: bun test core/test/container-helper/helper.integration.test.ts
   schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -1058,6 +1071,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
@@ -1121,6 +1138,10 @@ jobs:
         with:
           name: container-helper
           path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1186,6 +1207,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
@@ -1249,6 +1274,10 @@ jobs:
         with:
           name: container-helper
           path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1314,6 +1343,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
@@ -1374,6 +1407,10 @@ jobs:
         with:
           name: container-helper
           path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1592,6 +1629,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Download darwin-arm64 binary artifact
         uses: actions/download-artifact@v7
         with:
@@ -1650,6 +1691,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Download darwin-x64 binary artifact
         uses: actions/download-artifact@v7
         with:
@@ -1707,6 +1752,10 @@ jobs:
         with:
           name: container-helper
           path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download linux-arm64 binary artifact
         uses: actions/download-artifact@v7
@@ -1769,6 +1818,10 @@ jobs:
         with:
           name: container-helper
           path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download linux-x64 binary artifact
         uses: actions/download-artifact@v7
@@ -2005,6 +2058,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Download windows-x64 binary artifact
         uses: actions/download-artifact@v7
         with:
@@ -2091,6 +2148,10 @@ jobs:
         with:
           name: container-helper
           path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download windows-arm64 binary artifact
         uses: actions/download-artifact@v7

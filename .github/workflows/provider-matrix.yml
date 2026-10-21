@@ -172,6 +172,10 @@ jobs:
           name: container-helper
           path: core/container-helper/dist
 
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Notice unsupported hosted runner cell
         if: ${{ matrix['advisory-skip'] == true }}
         run: |

@@ -43,11 +43,16 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
           if-no-files-found: error
           retention-days: 14`;
 
+// Artifacts drop the executable bit; tests run the downloaded helpers directly.
 export const containerHelperDownloadStep = `      - name: Download container helper
         uses: actions/download-artifact@v7
         with:
           name: ${CONTAINER_HELPER_ARTIFACT}
-          path: core/container-helper/dist`;
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper`;
 
 export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER_ARM64_JOB_ID}:
     needs: ${CONTAINER_HELPER_JOB_ID}
@@ -70,6 +75,4 @@ ${containerHelperDownloadStep}
         run: bun run codegen
 
       - name: Test the arm64 container helper
-        run: |
-          chmod +x core/container-helper/dist/linux-arm64/lando-container-helper
-          bun test core/test/container-helper/helper.integration.test.ts`;
+        run: bun test core/test/container-helper/helper.integration.test.ts`;
