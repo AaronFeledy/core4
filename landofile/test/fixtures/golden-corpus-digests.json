@@ -878,6 +878,18 @@
       "digest": "73ea7bef30c9322a030af6ebcd01c068220211e5ea260ca90602c67802dbaf3b"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/command-form",
+      "digest": "92f08d2367bf66b8d539ce908b66aef8643d4b6425889ec17ae3298ed14e9c42"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/disabled",
+      "digest": "b853a254137be7a7099a5cbda45917de8871e481c0801182fa0737e7ff249d6c"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/object-form",
+      "digest": "22a9ed76520c5ca9f641346c1030d21a800dd5123e47d32f8de2430376ebbeb3"
+    },
+    {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
       "digest": "e255b8a8f88085098cc3f1ab03162cee3441074b5c2cfd55e384e6bdfed690e3"
     },

@@ -1,0 +1,19 @@
+name: wait-command-form
+services:
+  shell:
+    type: "node:22"
+    primary: true
+    command:
+      - node
+      - server.mjs
+    healthcheck: curl -fsS http://localhost:3000/
+  argv:
+    type: "node:22"
+    port: 3001
+    command:
+      - node
+      - server.mjs
+    healthcheck:
+      - curl
+      - -fsS
+      - http://localhost:3001/

@@ -35,6 +35,8 @@ lando info
 
 That's the whole product in one file. The rest of this site is footnotes.
 
+MySQL and Postgres already wait on their own probe. To wait on your app, set `healthcheck:` on the service. See [Make start wait for your app](../services/wait-for-your-app.mdx).
+
 ## Add a hostname
 
 Most apps skip `routes:`. Default hostnames look like `app.your-landofile-demo.lndo.site`. Authored routes replace the default hostname, so list every name you want:
@@ -266,3 +268,4 @@ lando info
 - [Run tasks at app lifecycle events](./events.mdx)
 - [Includes and the lockfile](./includes-and-lockfile.mdx)
 - [Env overrides](./env-overrides.mdx)
+- [Make start wait for your app](../services/wait-for-your-app.mdx)
