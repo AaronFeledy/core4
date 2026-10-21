@@ -521,6 +521,18 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     request: (request) =>
       Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
+        // Pinned data-plane helpers are already cached locally; inspect reports the digest they name.
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/libpod/images/") &&
+          request.path.endsWith("/json")
+        ) {
+          const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
+          const at = ref.lastIndexOf("@");
+          if (at === -1) return { status: 404, body: "" };
+          const name = ref.slice(0, at).replace(/:[^/:]+$/, "");
+          return { status: 200, body: JSON.stringify({ RepoDigests: [`${name}${ref.slice(at)}`] }) };
+        }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           containers.set(name, { body: request.body, stdout: new Uint8Array(), exitCode: 0 });
