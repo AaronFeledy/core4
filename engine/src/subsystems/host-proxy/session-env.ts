@@ -11,7 +11,6 @@ export const HOST_PROXY_RUN_LANDO_ENV_NAMES: ReadonlyArray<string> = [
   "LANDO_HOST_PROXY_SESSION",
   "LANDO_HOST_PROXY_APP",
   "LANDO_HOST_PROXY_DEPTH",
-  "LANDO_HOST_PROXY_SHIM",
 ];
 
 export const isHostProxyRunLandoEnvName = (name: string): boolean =>

@@ -149,6 +149,7 @@ If you are looking for a public surface or policy:
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
+| In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
 | Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
 | `DataMover`, endpoints, snapshots, and errors | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |

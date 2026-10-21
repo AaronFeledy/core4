@@ -50,7 +50,6 @@ export const createConfigFingerprint = (
   }
   if (service.environment.LANDO_HOST_PROXY_SESSION !== undefined) {
     sessionMountTargets.add("/run/lando/host-proxy.sock");
-    sessionMountTargets.add("/usr/local/lib/lando/host-proxy-client");
     sessionMountTargets.add("/usr/local/bin/lando");
   }
   const projection = {

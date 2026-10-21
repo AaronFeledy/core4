@@ -25,7 +25,7 @@ import type {
   PluginDoctorReport,
 } from "../schema/plugin-doctor.ts";
 import type { ConfigTranslatorShape } from "../services/config-translator.ts";
-import type { LogFileHelperAssets } from "../services/host-assets.ts";
+import type { ContainerHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
   CertificateAuthority,
@@ -50,7 +50,7 @@ import type { LandoPluginContext } from "./index.ts";
 export type RuntimeProviderFactoryRequirements =
   | PathsService
   | Downloader
-  | LogFileHelperAssets
+  | ContainerHelperAssets
   | AppPlanSanitizer;
 
 export interface RuntimeProviderContribution {

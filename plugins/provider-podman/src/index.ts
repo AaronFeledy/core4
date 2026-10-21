@@ -27,10 +27,9 @@ import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
@@ -507,7 +506,7 @@ export interface ProviderLayerOptions {
   ) => Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError>;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
@@ -639,10 +638,8 @@ const assembleRuntimeProvider = (
           const logSourceBinding = makeProviderLogSourceBinding({
             providerId: PROVIDER_ID,
             logFileAccess: options.logFileAccess,
-            helperPayload: logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              capabilities.hostProxy?.containerTargets,
-            ),
+            helperTarget: capabilities.hostProxy?.containerTargets[0],
+            resolveHelper: options.resolveContainerHelper,
           });
           return {
             serverVersion,
@@ -937,12 +934,12 @@ export const plugin = definePlugin({
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan } = yield* providerHostInputs;
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({
             platform,
             stateDir: `${paths.roots.userDataRoot}/providers`,
             appliedPlanState: ctx.stateStore,
-            logFileHelperPayloads,
+            resolveContainerHelper,
             sanitizeAppliedPlan,
           });
         }),

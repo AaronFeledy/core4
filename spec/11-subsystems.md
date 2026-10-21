@@ -404,7 +404,9 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 #### 10.10.2 In-container shim and required behavior
 
-One static client is installed as `xdg-open`, `open`, and `lando`; optional `lando.host-proxy.bun: true` installs `bun` only when it does not shadow an existing Bun. It dispatches by invocation name, filters forwarded environment, remaps cwd through `AppMountInfo`, rejects `BUN_BE_BUN` recursion, and prints deterministic fallback errors when proxy env is absent. It is a signed wire client, not the host `lando` binary.
+One static client is installed as `xdg-open`, `open`, and `lando`; optional `lando.host-proxy.bun: true` installs `bun` only when it does not shadow an existing Bun. It dispatches by invocation name, filters forwarded environment, remaps cwd through `AppMountInfo`, never forwards `BUN_BE_BUN`, and prints deterministic fallback errors when proxy env is absent. It is a signed wire client, not the host `lando` binary.
+
+The client is the in-container helper (§17.3), a statically linked executable with no libc or runtime dependency, so it runs in glibc, musl (Alpine), distroless, and scratch images without detecting the image's libc. Having no dynamic loader, it is unaffected by the image's `LD_PRELOAD` and `LD_LIBRARY_PATH`. The start-time overlay copies it into the session directory and bind-mounts that file read-only, so replacing the session directory never alters a running container's copy.
 
 - The `HostProxyService` implementation layer MUST construct lazily and do nothing for apps without the feature.
 - Every request, including rejection, publishes redacted `pre-host-proxy-call` and `post-host-proxy-call`.

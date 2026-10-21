@@ -10,6 +10,40 @@ permissions:
   contents: read
 
 jobs:
+  container-helper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      # The builder publishes no routes, so it needs no router. Lando's global router always
+      # runs on the Lando-managed provider, which this job doesn't install.
+      - name: Set up Lando with Docker
+        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Build and test the container helper with Lando
+        run: |
+          bun run scripts/build-container-helper.ts --test
+          bun test core/test/container-helper/helper.integration.test.ts
+
+      - name: Upload container helper
+        uses: actions/upload-artifact@v6
+        with:
+          name: container-helper
+          path: core/container-helper/dist/
+          if-no-files-found: error
+          retention-days: 14
 
   file-sync-contract-linux-x64:
     runs-on: ubuntu-24.04
@@ -88,6 +122,7 @@ jobs:
           LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   provider-lando-e2e-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -100,6 +135,16 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Regenerate derived sources
         run: bun run codegen
@@ -267,6 +312,7 @@ jobs:
           retention-days: 7
 
   published-manifest-setup-linux-x64:
+    needs: [container-helper]
     strategy:
       fail-fast: false
       matrix:
@@ -283,6 +329,16 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Provision rootless runtime prerequisites
         run: |
@@ -365,6 +421,7 @@ jobs:
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
   mysql-arm-client-linux-arm64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
@@ -377,6 +434,16 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Provision rootless runtime prerequisites
         run: |
@@ -473,8 +540,6 @@ jobs:
         run: |
           mkdir -p dist
           bun run --filter='@lando/core' build:manifest
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
@@ -645,6 +710,7 @@ jobs:
         run: bun run check:runtime-bundle-licenses --live
 
   distribution-rehearsal-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -658,14 +724,22 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
           bun install --frozen-lockfile --os="*" --cpu="*"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --version "$VERSION" --minify --sourcemap=external

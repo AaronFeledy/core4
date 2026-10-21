@@ -118,6 +118,7 @@ export * from "./log-source.ts";
 export * from "./command-trace.ts";
 export * from "./machine-output.ts";
 export * from "./host-proxy.ts";
+export * from "./container-helper.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";

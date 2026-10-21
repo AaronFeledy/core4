@@ -48,6 +48,7 @@ const releaseAssetArgs = (): string =>
     "dist/THIRD_PARTY_NOTICES.md",
     "plugins/service-lando/tomcat/LICENSE",
     "plugins/service-lando/tomcat/NOTICE",
+    '"\u0024{go_notices[@]}"',
   ].join(" ");
 
 export const renderReleaseWorkflow = (): string => `${GENERATED_HEADER}
@@ -88,6 +89,18 @@ jobs:
           set -euo pipefail
           ${stageBinaryBlock()}
 
+      - name: Download Go toolchain notices
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "\${{ github.event.workflow_run.id }}" --name container-helper --dir dist/container-helper
+          test -s dist/container-helper/licenses/go/LICENSE
+          bun -e 'const files = await Bun.file("dist/container-helper/licenses/go/files.json").json(); if (!files.includes("licenses/go/LICENSE")) throw new Error("Go LICENSE missing; download the complete container-helper artifact"); for (const file of files) { if (!["licenses/go/LICENSE", "licenses/go/PATENTS"].includes(file) || (await Bun.file("dist/container-helper/" + file).bytes()).length === 0) throw new Error("Invalid Go notice: " + file); }'
+          for notice in dist/container-helper/licenses/go/LICENSE dist/container-helper/licenses/go/PATENTS; do
+            if [ -f "$notice" ]; then cp "$notice" "dist/container-helper-go-$(basename "$notice")"; fi
+          done
+
       - name: Install first-launch sandbox tools
         run: |
           sudo apt-get update
@@ -116,6 +129,8 @@ jobs:
           GH_TOKEN: \${{ github.token }}
           RELEASE_TAG: v4.0.0-dev.\${{ github.run_number }}
         run: |
+          set -euo pipefail
+          go_notices=(dist/container-helper-go-*)
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$RELEASE_TAG" ${releaseAssetArgs()} --prerelease --target "\${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev \${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run \${{ github.event.workflow_run.id }}."
 `;

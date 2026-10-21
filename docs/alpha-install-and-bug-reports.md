@@ -74,10 +74,14 @@ git clone https://github.com/AaronFeledy/core4.git
 cd core4
 bun install
 bun run codegen
+bun run core/bin/lando.ts setup
+bun run --filter='@lando/core' build:container-helper
 bun run build
 # Use the source CLI directly:
 bun run core/bin/lando.ts --version
 ```
+
+The in-container helper is built with Lando itself, so run setup first. You don't need Go installed.
 
 ## Run lando setup
 

@@ -5,6 +5,7 @@ import * as composition from "../../src/composition.ts";
 import { withStartedHostProxy } from "../../src/operations/start-host-proxy.ts";
 import type { HostProxyRunLandoSession } from "../../src/subsystems/host-proxy/transport.ts";
 import * as worker from "../../src/subsystems/host-proxy/worker.ts";
+import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const selected = {
@@ -39,8 +40,8 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
         closed++;
       },
     };
-    const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-      Effect.succeed("/shim"),
+    const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+      Effect.succeed(stubContainerHelper("/shim")),
     );
     const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) =>
       (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session)),
@@ -114,8 +115,8 @@ for (const reused of [false, true]) {
       const scope = await Effect.runPromise(Scope.make());
       let closed = 0;
       let applied = false;
-      const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-        Effect.succeed("/shim"),
+      const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+        Effect.succeed(stubContainerHelper("/shim")),
       );
       const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) => {
         const session: HostProxyRunLandoSession & { readonly reused?: boolean } = {

@@ -14,7 +14,7 @@ import { AppPlanSanitizer } from "@lando/sdk/services";
 
 import * as AppPlanSanitizerLayer from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
 import {
-  HOST_PROXY_CONTAINER_SHIM,
+  HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   stripHostProxyRunLando,
 } from "../../../src/subsystems/host-proxy/transport-feature.ts";
@@ -42,7 +42,7 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
       {
         type: "bind",
         source: "/tmp/lando-shim",
-        target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
+        target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
         readOnly: true,
         realization: "passthrough",
       },

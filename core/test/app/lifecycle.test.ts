@@ -31,6 +31,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import * as composition from "@lando/engine/composition";
 import { beginOrResumeAcceleratedStart } from "@lando/engine/operations/accelerated-start-journal";
 import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
+import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
@@ -345,8 +346,8 @@ describe("App handle managed lifecycle scopes", () => {
             hostProxy: { containerTargets: targets },
           },
         };
-        const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-          Effect.succeed("/shim"),
+        const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+          Effect.succeed(stubContainerHelper("/shim")),
         );
         const spawn = spyOn(hostProxyWorker, "startDetachedHostProxyWorker").mockImplementation((options) => {
           const session = {

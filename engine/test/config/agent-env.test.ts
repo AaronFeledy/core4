@@ -260,7 +260,6 @@ describe("filterHostProxyEnv — shim filter with agent-context append", () => {
       LANDO_HOST_PROXY_URL: "http://127.0.0.1:1234",
       LANDO_HOST_PROXY_APP: "demo",
       LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
-      LANDO_HOST_PROXY_SHIM: "/usr/local/bin/lando",
       LANDO_HOST_PROXY_DEPTH: "7",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",

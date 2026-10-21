@@ -142,6 +142,7 @@ import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts"
  * requirement channel because the retained runtime already satisfies them.
  */
 export type LandoRuntimeServices =
+  | import("../services/host-assets.ts").ContainerHelperAssets
   | Logger
   | Renderer
   | Telemetry

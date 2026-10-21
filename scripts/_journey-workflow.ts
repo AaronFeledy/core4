@@ -1,3 +1,4 @@
+import { containerHelperDownloadStep } from "./_container-helper-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import {
   CI_PLATFORMS,
@@ -9,12 +10,7 @@ import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
 const SCHEDULE_IF = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
 
-export const runtimeHelperBuilds = `          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-`;
-
-export const createJourneyWorkflowBuilder = (workflow: string, buildCommands: string) => {
+export const createJourneyWorkflowBuilder = (workflow: string) => {
   const assertNever = (value: never): never => {
     throw new Error(`Unexpected ${workflow} value: ${String(value)}`);
   };
@@ -71,13 +67,15 @@ export const createJourneyWorkflowBuilder = (workflow: string, buildCommands: st
   const derivedSourcesSteps = `      - name: Regenerate derived sources
         run: bun run codegen
 
+${containerHelperDownloadStep}
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest`;
 
   const renderCompileStep = (platform: CiPlatform): string => `      - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-${buildCommands}          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external`;
 
   const renderLinuxSourceBuildPrereqs = (): string => `

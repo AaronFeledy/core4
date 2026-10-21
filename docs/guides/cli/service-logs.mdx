@@ -32,6 +32,8 @@ A user-declared source needs a `path`. You can also set `id`, `label`, `stream`,
 
 Lando-built images can redirect daemon log files through stdout/stderr. Bring-your-own images and logs that cannot redirect are followed by the active runtime provider. You do not run `tail -F` yourself.
 
+Following works the same in Debian, Alpine, and distroless images. The image needs no shell, no `tail`, and no particular libc. Lando copies a small static reader into the container's `/tmp` once per followed source and removes it when `lando logs` exits, so that directory must be writable and allow running programs.
+
 ## Filter and follow
 
 Select one declared source id, or select the combined stdout/stderr stream with `console`:

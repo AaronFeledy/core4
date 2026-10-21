@@ -114,6 +114,7 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
 - **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. The CLI surface lives in `core/src/cli/spec/` (spec machinery), `core/src/cli/command-specs/` (per-command declarations), and `core/src/cli/commands/` (operation invocation and render helpers). OCLIF is not a shipping engine.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
+- **In-container helper:** a small static Go program in `core/container-helper/`, built with Lando itself (`bun run build:container-helper`). You don't need Go installed.
 
 ## Building from source
 
@@ -123,6 +124,10 @@ bun install
 
 # Materialize generated sources from the codegen catalog
 bun run codegen
+
+# Configure a working provider, then build the helper (no host Go needed)
+bun core/bin/lando.ts setup
+bun run --filter='@lando/core' build:container-helper
 
 # Type check the whole workspace
 bun run typecheck
@@ -136,6 +141,8 @@ bun run format
 # Run the full test suite
 bun test
 ```
+
+On Linux, the full test suite needs the built helper; compiling `lando` needs it on every host. Rebuild after editing `core/container-helper/` sources or `.lando.yml`; compilation refuses stale helpers. See [the helper build instructions](./docs/contributing/ci.md#in-container-helper) for provider prerequisites and verification.
 
 > The combined CI gate is `bun run typecheck` **and** `bun test` — root `tsc -b`
 > typechecks source and non-docs test trees, while Astro owns `docs/**` through `docs:check` and `docs:test`.
@@ -155,7 +162,7 @@ bun test
 | `bun run lint:guides` | Lint executable-guide MDX |
 | `bun run check:boundaries` | Run every boundary rule in one shared scan |
 | `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
-| `bun run release` | 13-stage release orchestrator (compile, sign, SBOM, provenance, publish) |
+| `bun run release` | 14-stage release orchestrator (container helper, compile, sign, SBOM, provenance, publish) |
 
 ### Executable guides vs integration tests
 

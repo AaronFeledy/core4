@@ -33,9 +33,7 @@ export type {
 export { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
 export { buildRunLandoRequest, filterHostProxyEnv } from "./shim.ts";
 export {
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
-  HOST_PROXY_SHIM_SOURCE,
   connectHostProxyRunLando,
   createHostProxyRunLandoSession,
   hostProxyRunLandoFeature,

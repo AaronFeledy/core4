@@ -215,6 +215,10 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   DownloadResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DownloaderCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ArchiveFormat: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ContainerHelperArch: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ContainerHelperTarget: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ContainerHelperDigest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ContainerHelperArtifact: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DataEndpoint: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -600,6 +604,14 @@ const recipeProvenanceFixture = {
 } as const;
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  ContainerHelperArch: "x64",
+  ContainerHelperTarget: { os: "linux", arch: "arm64" },
+  ContainerHelperDigest: "a".repeat(64),
+  ContainerHelperArtifact: {
+    target: { os: "linux", arch: "x64" },
+    digest: "b".repeat(64),
+    path: "/tmp/lando-container-helper",
+  },
   GuideProps: {},
   CleanupProps: {},
   RouteFilter: { type: "stripPrefix", prefix: "/api" },
