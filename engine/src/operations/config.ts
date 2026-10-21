@@ -18,7 +18,7 @@ import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
-import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
+import { type ValueType, writeValidationErrorFromIssues } from "../config-write/write-core";
 import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
 import { recordConfigWarning } from "../config/config-warnings.ts";
 import type { CliTelemetrySource } from "../runtime/cli-options";
@@ -136,12 +136,19 @@ const readConfigText = (path: string): Effect.Effect<string, ConfigError> =>
     catch: (cause) => configReadError(path, cause),
   });
 
+const parseConfigText = (path: string) => (text: string) =>
+  Effect.try({ try: () => parseMinimalYaml(text), catch: (cause) => configReadError(path, cause) });
+
 const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, ConfigError> =>
   Effect.tryPromise({
     try: () => writeFileAtomicViaRename(path, content),
     catch: (cause) => configWriteError(path, cause),
   });
 
+const decodeConfigCandidate = (input: unknown, path: string) =>
+  validateConfigCandidate(input, path).pipe(
+    Effect.map(Result.mapError((error) => error.issues ?? [validationIssue([], error.message)])),
+  );
 const configValidationError = (
   path: string,
   issues: readonly ValidationIssue[],
@@ -189,10 +196,12 @@ const metaConfigSet = Effect.fnUntraced(function* (
     file: path,
     key,
     raw,
-    type: options.type ?? "string",
+    type: options.type,
     dryRun: options.dryRun === true,
-    readTree: readConfigTree(path),
-    decode: (input) => validateConfigCandidate(input, path),
+    readText: readConfigText(path),
+    parse: parseConfigText(path),
+    editCommand: "lando config edit",
+    decode: (input) => decodeConfigCandidate(input, path),
     writeText: writeConfigAtomic,
   });
   return {
@@ -228,8 +237,10 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     file: path,
     key,
     dryRun: options.dryRun === true,
-    readTree: readConfigTree(path),
-    decode: (input) => validateConfigCandidate(input, path),
+    readText: readConfigText(path),
+    parse: parseConfigText(path),
+    editCommand: "lando config edit",
+    decode: (input) => decodeConfigCandidate(input, path),
     writeText: writeConfigAtomic,
   });
   return {
@@ -290,8 +301,8 @@ const metaConfigEdit = Effect.fnUntraced(function* (
         remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
       }),
   });
-  const decoded = yield* validateConfigCandidate(parsed, path);
-  const issues = decodeIssues(decoded);
+  const decoded = yield* decodeConfigCandidate(parsed, path);
+  const issues = Result.isFailure(decoded) ? decoded.failure : [];
   if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
   yield* writeConfigAtomic(path, edited.content);
   return {

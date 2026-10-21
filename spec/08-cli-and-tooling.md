@@ -168,7 +168,7 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 |---|---|
 | default / `view` | Read `raw`, `merged`, or default `resolved`; supports `--path` and structured formats |
 | `get` | Read one key path |
-| `set` | Write a typed value with `--type string\|number\|boolean\|json\|yaml` |
+| `set` | Infer the value type by full-tree schema decoding, trying raw text first, then a non-string number, boolean, null, or JSON interpretation; `--type string\|number\|boolean\|json\|yaml` overrides inference |
 | `unset` | Remove a key |
 | `edit` | Open `$VISUAL`/`$EDITOR` for the canonical YAML source |
 | `validate` | Validate merged Landofile (§7.8) |
@@ -186,6 +186,8 @@ Ordinary writes target the canonical YAML Landofile. A private source-replacemen
 
 Lint validates retained root/include fragments in their authoring role and attempts normal effective finalization. Findings distinguish `scope: "fragment" | "effective"` and carry `{ file, layer, path }` source attribution, preserving effective versus authored paths. Coordinates MUST come from retained content. Different sources/scopes MUST NOT be deduplicated by path/message alone. The private lint snapshot retains the exact successful resolved object even alongside independent fragment findings; engine event validation reuses it without acquiring or evaluating sources again.
 
+`set` and `unset` MUST preserve comments and formatting outside the changed value or removed entry through source-offset splices. Every proposed serialization, including dry-run and canonical fallback, MUST parse with the document's own parser and equal the intended authored tree, including merge-directive symbols; decoded defaults MUST NOT be serialized. Unsupported edits MUST fail closed with `LandofileWriteValidationError`, the reason, and a pointer to `lando app:config edit` (or `lando global:config edit` for the global app) or hand editing. Full re-emission is permitted only for a blank file or an original already byte-identical to canonical emission. A failed full-tree decode MUST label issues also present in the original snapshot as already present before the change and direct the user to fix those first; candidate acceptance still requires a successful full decode.
+
 Conversion is preview-only without `--write`, MUST be explicit or unambiguous, and MUST NOT build an `AppPlan` or contact a runtime provider. Declared refresh is the separate §7.4.2 mode: `--refresh [<id>]` materializes and MAY fetch nonsecret remote metadata; `--refresh [<id>] --check` MUST use local state only and MUST NOT write. Conversion selectors and `--write` MUST NOT combine with refresh mode. Translators MAY also load in the bounded lifecycle refresh phase, never discovery or ordinary loading.
 
 Only encoders with registered safe target mappings MAY write. `--file` MUST remain within that layer's authorized dependency closure. Preview and write MUST produce identical ordered, redacted diagnostics: `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. Unsupported input or unpreservable loss MUST block writing.
@@ -199,6 +201,8 @@ All remote commands MUST enforce central effective protection (§10.12.8), indep
 #### 8.2.2 The `meta:config` command
 
 `meta:config` is the repair surface for `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. It runs outside app context at bootstrap `none`, builds no `ConfigService`, and is exempt from `notify.commands` promotion, so it MUST work when the §7.5 stack does not decode. `--source raw` (`view`, `get`) returns the parsed `config.yml` alone, redacted, even when that file fails validation; unparseable YAML still fails with `ConfigError`. Resolved reads (`view`, `get`, default) decode the full stack and fail with the structured §7.5 `ConfigError`. `validate` decodes the full stack (file, drop-ins, env, host) and fails with that same `ConfigError`; it MUST NOT report config problems as `LandofileWriteValidationError`. `set`, `unset`, `edit`, and `telemetry off` strictly validate the candidate `config.yml` they would write, including plugin and provider extensions, and persist atomically; a candidate that fails is `LandofileWriteValidationError` with `issues` and the file is unchanged. Problems in other layers MUST NOT block the write and surface as envelope warnings with code `LANDO_CONFIG_OTHER_SOURCE_INVALID` carrying the §7.5 message and remediation, rendered once as a warning line in text mode.
+
+Its `set` and `unset` writes follow the comment/format-preserving and fail-closed contract above, verified with the config.yml parser. Refusals MUST point to `lando config edit` or hand editing.
 
 #### 8.2.3 The `app:shell` command
 

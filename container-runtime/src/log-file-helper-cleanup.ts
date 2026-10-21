@@ -44,7 +44,8 @@ export const cleanupLogFileHelper = (options: LogFileHelperCleanupOptions, paths
     body: {
       Cmd: [paths.helperPath, "cleanup", paths.directoryPath],
       AttachStdin: false,
-      AttachStdout: false,
+      // Podman refuses to start a non-detached exec with no attached stream.
+      AttachStdout: true,
       AttachStderr: false,
       OpenStdin: false,
       Tty: false,

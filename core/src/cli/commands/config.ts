@@ -29,6 +29,7 @@ export const renderConfigResult = (result: ConfigResult): string => {
     file: result.configPath ?? "",
     subcommand: result.subcommand,
     key: result.key,
+    value: result.value,
     changed: result.changed,
     dryRun: result.dryRun,
     editSavedLabel: "config",

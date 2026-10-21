@@ -113,6 +113,13 @@ const makeFakeApi = () => {
           return { status: 200, body: "{}" };
         }
         if (request.method === "POST" && request.path === "/containers/service/exec") {
+          // Podman refuses to start an exec with no attached stream.
+          if (
+            !["AttachStdin", "AttachStdout", "AttachStderr"].some(
+              (key) => objectField(request.body, key) === true,
+            )
+          )
+            return { status: 500, body: "must provide at least one stream to attach to" };
           const id = `exec-${nextExec}`;
           nextExec += 1;
           const body = request.body;
