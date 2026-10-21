@@ -203,6 +203,8 @@ describe("installRuntimeBundle", () => {
       const archiveBytes = buildTarGz([
         { path: "bin/podman", bytes: encoder.encode("podman") },
         { path: "bin/fuse-overlayfs", bytes: encoder.encode("fuse-overlayfs") },
+        { path: "bin/licenses/podman/LICENSE", bytes: encoder.encode("upstream-license-bytes") },
+        { path: "bin/licenses/THIRD_PARTY_NOTICES.md", bytes: encoder.encode("source-links") },
       ]);
 
       await Effect.runPromise(
@@ -211,6 +213,13 @@ describe("installRuntimeBundle", () => {
 
       expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
       expect(existsSync(join(runtimeBinDir, "fuse-overlayfs"))).toBe(true);
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("podman");
+      expect(await readFile(join(runtimeBinDir, "licenses/podman/LICENSE"), "utf8")).toBe(
+        "upstream-license-bytes",
+      );
+      expect(await readFile(join(runtimeBinDir, "licenses/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "source-links",
+      );
       expect(existsSync(join(runtimeBinDir, "bin", "podman"))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });

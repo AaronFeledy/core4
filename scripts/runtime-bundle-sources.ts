@@ -26,7 +26,20 @@ const Sha256 = Schema.String.pipe(
 );
 
 const HttpsUrl = Schema.String.pipe(Schema.check(Schema.isPattern(/^https:\/\//u)));
-const RuntimeVersion = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)));
+const SafeName = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)));
+const RuntimeVersion = SafeName;
+
+const License = Schema.Struct({
+  spdx: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  source: HttpsUrl,
+  texts: Schema.Array(
+    Schema.Struct({
+      url: HttpsUrl,
+      sha256: Sha256,
+      file: SafeName,
+    }),
+  ).pipe(Schema.check(Schema.isMinLength(1))),
+});
 
 const RuntimeBundleSourceInput = Schema.Struct({
   name: Schema.Literals(["source", "vendor"]),
@@ -42,7 +55,8 @@ const RuntimeBundleSourceOutput = Schema.Struct({
 });
 
 const RuntimeBundleBinaryComponent = Schema.Struct({
-  name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  license: License,
+  name: SafeName,
   version: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   url: HttpsUrl,
   sha256: Sha256,
@@ -54,7 +68,8 @@ const RuntimeBundleBinaryComponent = Schema.Struct({
 });
 
 const RuntimeBundleSourceComponent = Schema.Struct({
-  name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  license: License,
+  name: SafeName,
   version: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   sourceBuild: Schema.Literals([
     LinuxNetavarkSourceBuild,
@@ -86,7 +101,26 @@ const decodeSources = Schema.decodeUnknownSync(RuntimeBundleSources);
 
 export const isLinuxRuntimeBundle = (hostKey: string): boolean => linuxHostKeys.has(hostKey);
 
+// The version must appear as a whole token: `2.2.1` must not match `v2.2.10` or `v2.2.1.5`.
+const urlNamesVersion = (url: string, version: string): boolean => {
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(?<![0-9A-Za-z.])v?${escaped}(?![0-9A-Za-z]|\\.[0-9])`, "u").test(url);
+};
+
 const validateComponent = (hostKey: string, component: RuntimeBundleComponent): void => {
+  const pinnedUrls = "inputs" in component ? component.inputs.map((input) => input.url) : [component.url];
+  if (
+    !pinnedUrls.includes(component.license.source) &&
+    !urlNamesVersion(component.license.source, component.version)
+  ) {
+    throw new Error(
+      `assemble-runtime-bundle: ${component.name} license source must identify pinned version ${component.version}`,
+    );
+  }
+  const files = component.license.texts.map((text) => text.file);
+  if (new Set(files).size !== files.length) {
+    throw new Error(`assemble-runtime-bundle: ${component.name} has duplicate license filenames`);
+  }
   if ("installName" in component && uidmapInstallNames.has(component.installName)) {
     throw new Error("assemble-runtime-bundle: newuidmap/newgidmap must not be bundled");
   }
