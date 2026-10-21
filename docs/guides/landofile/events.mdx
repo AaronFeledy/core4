@@ -63,6 +63,8 @@ A bare or plain-string step defaults to provider exec, which needs a running ser
 
 You can attach tasks to `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Steps run in declaration order. `lando restart` fires `pre-restart`, then the stop and start event trees, then `post-restart`.
 
+`lando destroy` runs your `pre-destroy` and `post-destroy` steps only when it tears down an app that was started. Cleaning up leftovers (orphaned containers, ownership records, or `--purge` snapshots after the app is gone) still fires both events for plugins but skips your steps, since Lando no longer holds the config that defined them. A destroy that fails partway skips `post-destroy`.
+
 Every non-internal tooling task also gets `pre-<task>` and `post-<task>`. See [Run steps before and after a tooling task](../events/task-events.mdx).
 
 ## Run the same steps on every app

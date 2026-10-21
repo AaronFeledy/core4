@@ -90,7 +90,9 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     );
   }
   const journalRefs = uniqueDestroyRefs([...recorded, ...(desired === undefined ? [] : [desired.app])]);
-  const pending = yield* Effect.forEach(journalRefs.slice(0, 1), (app) =>
+  // The accelerated-start journal is keyed by app root, so read it once per distinct root.
+  const journalRoots = [...new Map(journalRefs.map((ref) => [ref.root, ref])).values()];
+  const pending = yield* Effect.forEach(journalRoots, (app) =>
     readDiscardableStart(app).pipe(Effect.map(({ pending }) => ({ app, pending }))),
   );
   const unfinished = pending.filter(({ pending }) => pending !== null && pending.phase !== "completed");
