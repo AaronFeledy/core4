@@ -7,6 +7,7 @@ import type { EventService } from "@lando/sdk/services";
 import type { RedactionService } from "@lando/redaction/service";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
+import type { HostProxyOpenExecutor } from "./open-target.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
 
 export interface HostProxyInFlightRequest {
@@ -21,6 +22,7 @@ export interface HandlerOptions {
   readonly allowlist: ReadonlyArray<string>;
   readonly callerService: string;
   readonly executor: HostProxyRunLandoExecutor;
+  readonly openExecutor?: HostProxyOpenExecutor;
   readonly maxDepth: number;
   readonly concurrency: number;
   readonly bodyReadTimeoutMs: number;

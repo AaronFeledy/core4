@@ -7,6 +7,7 @@ import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
+import type { HostProxyOpenExecutor } from "./open-target.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 
 export const DEFAULT_CONCURRENCY = 16;
@@ -21,6 +22,7 @@ export interface HostProxyRunLandoSessionOptions {
   readonly allowlist: ReadonlyArray<string>;
   readonly callerService: string;
   readonly executor: HostProxyRunLandoExecutor;
+  readonly openExecutor?: HostProxyOpenExecutor;
   readonly paths?: RootOverrides;
   readonly concurrency?: number;
   readonly maxDepth?: number;
