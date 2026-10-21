@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
-  "repository": "lando-community/core4",
-  "bugs": "https://github.com/lando-community/core4/issues",
+  "homepage": "https://github.com/AaronFeledy/core4",
+  "repository": "AaronFeledy/core4",
+  "bugs": "https://github.com/AaronFeledy/core4/issues",
   "type": "module",
   "private": true,
   "engines": {
@@ -117,6 +117,6 @@
     "clean": "rm -rf dist .tsbuildinfo",
     "test": "bun test",
     "typecheck": "tsc -b",
-    "prepack": "bun run build:manifest"
+    "prepack": "bun run build:manifest && bun run ../scripts/check-compiled-binary-notices.ts --core-dist"
   }
 }

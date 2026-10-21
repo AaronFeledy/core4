@@ -23,7 +23,7 @@ export type ComponentFrameResolution =
 
 type ComponentProps = Readonly<Record<string, unknown>>;
 
-export const DEFAULT_SOURCE_LINK_BASE = "https://github.com/lando-community/core4/blob/main";
+export const DEFAULT_SOURCE_LINK_BASE = "https://github.com/AaronFeledy/core4/blob/main";
 
 const envValue = (name: string): string | undefined => {
   const value = process.env[name];

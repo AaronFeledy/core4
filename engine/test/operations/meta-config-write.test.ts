@@ -38,6 +38,31 @@ const writeErrorIssues = (result: Exit.Exit<unknown, unknown>): string => {
 };
 
 describe("meta config set (S4)", () => {
+  test.each(["set", "unset"] as const)("keeps comments through config %s", async (subcommand) => {
+    // Given
+    await seed("# host\nrenderer: json # chosen\n# tail\n");
+    // When
+    await run(config({ subcommand, key: "renderer", value: "plain", configPath: configPath() }));
+    // Then
+    expect(await readFile(configPath(), "utf8")).toBe(
+      subcommand === "set" ? "# host\nrenderer: plain # chosen\n# tail\n" : "# host\n# tail\n",
+    );
+  });
+
+  test.each([
+    ["router.httpPort", "8080", 8080],
+    ["gpgAgent.forward", "true", true],
+    ["appEnv", '{"TEAM":"platform"}', { TEAM: "platform" }],
+  ])("infers %s without a type override", async (key, value, expected) => {
+    // Given
+    await seed("renderer: json\n");
+    // When
+    const result = await run(config({ subcommand: "set", key, value, configPath: configPath() }));
+    // Then
+    expect(result.value).toEqual(expected);
+    expect((await run(config({ subcommand: "validate", configPath: configPath() }))).valid).toBe(true);
+  });
+
   test("writes a scalar to config.yml", async () => {
     const result = await run(
       config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath() }),

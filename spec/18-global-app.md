@@ -139,7 +139,7 @@ The global app owns one route definition. `RouterService` does not expose a read
 
 | Canonical id | Alias | Bootstrap | Contract |
 |---|---|---|---|
-| `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map. The generated layer is read-only. |
+| `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map; `set`/`unset` follow the §8.2.1 format-preserving, fail-closed write contract. The generated layer is read-only. |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--purge` follows §20.9. |
 | `meta:global:info` | `global:info` | `global` | Report service information; supports `--service` and `--format`. |
 | `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |

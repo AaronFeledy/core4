@@ -1,13 +1,24 @@
 {
   "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend.",
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.6",
+  "runtimeVersion": "0.1.7",
   "hostProvidedHelpers": ["newuidmap", "newgidmap"],
   "bundles": {
     "linux-x64": {
       "components": [
         {
           "name": "podman",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/podman/v6.0.1/LICENSE",
+                "sha256": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+              }
+            ]
+          },
           "version": "6.0.1",
           "url": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
           "sha256": "4829d7c1423523a6a4d5537dea7968ae7f6c22ed7f1d5f416638fd81c83caa47",
@@ -18,6 +29,22 @@
         },
         {
           "name": "crun",
+          "license": {
+            "spdx": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+            "source": "https://github.com/containers/crun/archive/refs/tags/1.28.tar.gz",
+            "texts": [
+              {
+                "file": "COPYING",
+                "url": "https://raw.githubusercontent.com/containers/crun/1.28/COPYING",
+                "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+              },
+              {
+                "file": "COPYING.libcrun",
+                "url": "https://raw.githubusercontent.com/containers/crun/1.28/COPYING.libcrun",
+                "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+              }
+            ]
+          },
           "version": "1.28",
           "url": "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-amd64",
           "sha256": "2aa6b7024a9c9f153895c0d11ae233d3758f54844011c3a039e3e89048d01d42",
@@ -27,6 +54,17 @@
         },
         {
           "name": "conmon",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/conmon/archive/refs/tags/v2.2.1.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/conmon/v2.2.1/LICENSE",
+                "sha256": "9c9d771d4004725237a31ada889fe06c85a24fd0a29e41825181ab4cde54f016"
+              }
+            ]
+          },
           "version": "2.2.1",
           "url": "https://github.com/containers/conmon/releases/download/v2.2.1/conmon.amd64",
           "sha256": "1d97294c14c43d477e0a0826e9cd0f2a2af373ddfafe6f10252e8a3c43f32be6",
@@ -36,6 +74,17 @@
         },
         {
           "name": "netavark",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/netavark/archive/refs/tags/v2.0.0.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/netavark/v2.0.0/LICENSE",
+                "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+              }
+            ]
+          },
           "version": "2.0.0",
           "sourceBuild": "netavark-linux-native",
           "inputs": [
@@ -56,6 +105,17 @@
         },
         {
           "name": "aardvark-dns",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/aardvark-dns/archive/refs/tags/v2.0.0.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/aardvark-dns/v2.0.0/LICENSE",
+                "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+              }
+            ]
+          },
           "version": "2.0.0",
           "sourceBuild": "aardvark-dns-linux-native",
           "inputs": [
@@ -78,6 +138,22 @@
         },
         {
           "name": "passt",
+          "license": {
+            "spdx": "GPL-2.0-or-later AND BSD-3-Clause",
+            "source": "https://passt.top/passt/snapshot/passt-2026_06_11.a9c61ff.tar.xz",
+            "texts": [
+              {
+                "file": "GPL-2.0-or-later.txt",
+                "url": "https://passt.top/passt/plain/LICENSES/GPL-2.0-or-later.txt?h=2026_06_11.a9c61ff",
+                "sha256": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3"
+              },
+              {
+                "file": "BSD-3-Clause.txt",
+                "url": "https://passt.top/passt/plain/LICENSES/BSD-3-Clause.txt?h=2026_06_11.a9c61ff",
+                "sha256": "32dfe03d9985f5feb581da26a2fe6c84530cccb6b53ede0d8dab075cd048ac5b"
+              }
+            ]
+          },
           "version": "2026_06_11.a9c61ff",
           "sourceBuild": "passt-linux-native",
           "inputs": [
@@ -95,6 +171,17 @@
         },
         {
           "name": "gvproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-linux-amd64",
           "sha256": "3011c5629c9138d2050fb23c510e09ae53e30ec52e6a9ab85632bc1550e8ef63",
@@ -104,6 +191,17 @@
         },
         {
           "name": "fuse-overlayfs",
+          "license": {
+            "spdx": "GPL-2.0-or-later",
+            "source": "https://github.com/containers/fuse-overlayfs/archive/refs/tags/v1.17.tar.gz",
+            "texts": [
+              {
+                "file": "COPYING",
+                "url": "https://raw.githubusercontent.com/containers/fuse-overlayfs/v1.17/COPYING",
+                "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+              }
+            ]
+          },
           "version": "1.17",
           "url": "https://github.com/containers/fuse-overlayfs/releases/download/v1.17/fuse-overlayfs-x86_64",
           "sha256": "1684ef18c337702a0378a4e9942802770c83b11aed6a93c445d43e641a1f3c90",
@@ -117,6 +215,17 @@
       "components": [
         {
           "name": "podman",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/podman/v6.0.1/LICENSE",
+                "sha256": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+              }
+            ]
+          },
           "version": "6.0.1",
           "url": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
           "sha256": "4829d7c1423523a6a4d5537dea7968ae7f6c22ed7f1d5f416638fd81c83caa47",
@@ -127,6 +236,22 @@
         },
         {
           "name": "crun",
+          "license": {
+            "spdx": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+            "source": "https://github.com/containers/crun/archive/refs/tags/1.28.tar.gz",
+            "texts": [
+              {
+                "file": "COPYING",
+                "url": "https://raw.githubusercontent.com/containers/crun/1.28/COPYING",
+                "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+              },
+              {
+                "file": "COPYING.libcrun",
+                "url": "https://raw.githubusercontent.com/containers/crun/1.28/COPYING.libcrun",
+                "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+              }
+            ]
+          },
           "version": "1.28",
           "url": "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-arm64",
           "sha256": "cc1e8ec89aef1422e0741be196f9ed099e2e09d2f48f30f27cd44a22ef1f0342",
@@ -136,6 +261,17 @@
         },
         {
           "name": "conmon",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/conmon/archive/refs/tags/v2.2.1.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/conmon/v2.2.1/LICENSE",
+                "sha256": "9c9d771d4004725237a31ada889fe06c85a24fd0a29e41825181ab4cde54f016"
+              }
+            ]
+          },
           "version": "2.2.1",
           "url": "https://github.com/containers/conmon/releases/download/v2.2.1/conmon.arm64",
           "sha256": "c2fa62b3555eb0a729d853df23c5784d970f46050f2fb5f9931ded1bf455d216",
@@ -145,6 +281,17 @@
         },
         {
           "name": "netavark",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/netavark/archive/refs/tags/v2.0.0.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/netavark/v2.0.0/LICENSE",
+                "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+              }
+            ]
+          },
           "version": "2.0.0",
           "sourceBuild": "netavark-linux-native",
           "inputs": [
@@ -165,6 +312,17 @@
         },
         {
           "name": "aardvark-dns",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/aardvark-dns/archive/refs/tags/v2.0.0.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/aardvark-dns/v2.0.0/LICENSE",
+                "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+              }
+            ]
+          },
           "version": "2.0.0",
           "sourceBuild": "aardvark-dns-linux-native",
           "inputs": [
@@ -187,6 +345,22 @@
         },
         {
           "name": "passt",
+          "license": {
+            "spdx": "GPL-2.0-or-later AND BSD-3-Clause",
+            "source": "https://passt.top/passt/snapshot/passt-2026_06_11.a9c61ff.tar.xz",
+            "texts": [
+              {
+                "file": "GPL-2.0-or-later.txt",
+                "url": "https://passt.top/passt/plain/LICENSES/GPL-2.0-or-later.txt?h=2026_06_11.a9c61ff",
+                "sha256": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3"
+              },
+              {
+                "file": "BSD-3-Clause.txt",
+                "url": "https://passt.top/passt/plain/LICENSES/BSD-3-Clause.txt?h=2026_06_11.a9c61ff",
+                "sha256": "32dfe03d9985f5feb581da26a2fe6c84530cccb6b53ede0d8dab075cd048ac5b"
+              }
+            ]
+          },
           "version": "2026_06_11.a9c61ff",
           "sourceBuild": "passt-linux-native",
           "inputs": [
@@ -204,6 +378,17 @@
         },
         {
           "name": "gvproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-linux-arm64",
           "sha256": "6ecca02839254c9a0cc184bba7aac63755a22d7ed10d455b852528a99d7f7d4b",
@@ -213,6 +398,17 @@
         },
         {
           "name": "fuse-overlayfs",
+          "license": {
+            "spdx": "GPL-2.0-or-later",
+            "source": "https://github.com/containers/fuse-overlayfs/archive/refs/tags/v1.17.tar.gz",
+            "texts": [
+              {
+                "file": "COPYING",
+                "url": "https://raw.githubusercontent.com/containers/fuse-overlayfs/v1.17/COPYING",
+                "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+              }
+            ]
+          },
           "version": "1.17",
           "url": "https://github.com/containers/fuse-overlayfs/releases/download/v1.17/fuse-overlayfs-aarch64",
           "sha256": "34c9995c929dd52f45cca985858d7e58d9a9626104bc2610db218aaa11115c23",
@@ -226,6 +422,17 @@
       "components": [
         {
           "name": "podman",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/podman/archive/refs/tags/v6.0.0.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/podman/v6.0.0/LICENSE",
+                "sha256": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+              }
+            ]
+          },
           "version": "6.0.0",
           "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-release-darwin_arm64.zip",
           "sha256": "72ba7f340b9b08fc9194723db06d1a9d9da55ec633dcacd02fb0b31836ac7c18",
@@ -236,6 +443,17 @@
         },
         {
           "name": "gvproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-darwin",
           "sha256": "c6f7b4bc7f21bf810b5cf54e04d979b014c5d96472a03a9e97fe62a00940067c",
@@ -249,6 +467,17 @@
       "components": [
         {
           "name": "podman",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/podman/archive/refs/tags/v6.1.2.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/podman/v6.1.2/LICENSE",
+                "sha256": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+              }
+            ]
+          },
           "version": "6.1.2",
           "url": "https://github.com/podman-container-tools/podman/releases/download/v6.1.2/podman-remote-release-windows_amd64.zip",
           "sha256": "98c309e1cba4f36fc89a0819607de0696d52f0dcc0c5ef3a8d5cd87fdcf062ba",
@@ -259,6 +488,17 @@
         },
         {
           "name": "gvproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-windows.exe",
           "sha256": "a3b6915d8a976f5ed2bbba727af52c90c55b9d5e85f680b584c8a1c5d6b546bc",
@@ -268,6 +508,17 @@
         },
         {
           "name": "win-sshproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/win-sshproxy.exe",
           "sha256": "42cb9051ebdcaa2b607bda724c884e31f613253fe4b095c5528be1dfd48e4311",
@@ -281,6 +532,17 @@
       "components": [
         {
           "name": "podman",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/podman/archive/refs/tags/v6.1.2.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/podman/v6.1.2/LICENSE",
+                "sha256": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+              }
+            ]
+          },
           "version": "6.1.2",
           "url": "https://github.com/podman-container-tools/podman/releases/download/v6.1.2/podman-remote-release-windows_arm64.zip",
           "sha256": "9c652543765737d22692023e682b1dea0be72bc4dc93d1d3c940718c689360dd",
@@ -291,6 +553,17 @@
         },
         {
           "name": "gvproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-windows-arm64.exe",
           "sha256": "a00867aaf0a6694877d3261d0c8e6df5dcfe8eec2fb4b81a084d2bf7a65d7ae8",
@@ -300,6 +573,17 @@
         },
         {
           "name": "win-sshproxy",
+          "license": {
+            "spdx": "Apache-2.0",
+            "source": "https://github.com/containers/gvisor-tap-vsock/archive/refs/tags/v0.8.9.tar.gz",
+            "texts": [
+              {
+                "file": "LICENSE",
+                "url": "https://raw.githubusercontent.com/containers/gvisor-tap-vsock/v0.8.9/LICENSE",
+                "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+              }
+            ]
+          },
           "version": "0.8.9",
           "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/win-sshproxy-arm64.exe",
           "sha256": "a7e9c46ee9898a800dc8f6a0db5e5d74116a42236d96d0bb9b379b6a63512dce",

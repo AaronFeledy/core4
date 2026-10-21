@@ -33,7 +33,7 @@ Prereq: GnuPG on the host, with `gpg-agent` running. The service image has to sh
 `gpgAgent.forward` defaults to false. Set it per app, or in global config when every app on this machine should sign:
 
 ```sh
-lando config set gpgAgent.forward true --type=boolean
+lando config set gpgAgent.forward true
 ```
 
 Each field resolves Landofile, then global config, then the default. To pin the socket instead of letting Lando ask `gpgconf`:
