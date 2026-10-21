@@ -163,7 +163,6 @@ test.each(["/etc/passwd", "/application/README", "/app/../README", "/app/escape"
 test.each([0, 7])("publishes redacted pre/post events for opener exit %s", async (exitCode) => {
   const runner = recorder(exitCode);
   const recorded = lifecycle();
-  await Effect.runPromise(registerRedactionValues(["hostopen-secret-123"]));
   const result = await Effect.runPromise(
     Effect.result(
       dispatchHostOpen(
