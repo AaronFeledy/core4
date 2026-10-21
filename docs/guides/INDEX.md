@@ -310,3 +310,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Solr 10 on the typed solr service | `docs/guides/services/solr10.mdx` | Shipped |
 | - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |
 | - | - | make start wait for your app | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
+| - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |

@@ -1,0 +1,193 @@
+---
+id: ollama
+provider: test
+timeout: 90000
+tags: [beta, docs, ollama, llm, compose, service, node]
+---
+
+# Run a local LLM with Ollama
+
+Your app needs a language model to call, and you don't want every developer on a hosted API key just to run it locally. Run Ollama as a `type: compose` service, pull a model into a volume, and call it from the host or from your Node service.
+
+You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Make an empty app directory and save this as `.lando.yml` in it:
+
+```yaml
+name: ollama-demo
+router:
+  enabled: false
+services:
+  ollama:
+    type: compose
+    image: ollama/ollama:latest
+    appMount: false
+    home: false
+    ports:
+      - 11434:11434
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 5s
+      retries: 12
+  app:
+    type: "node:22"
+    primary: true
+    endpoints: []
+    dependsOn:
+      ollama:
+        condition: service_healthy
+tooling:
+  ollama:
+    service: ollama
+    cmd: [ollama]
+    description: Run the Ollama CLI inside the ollama service.
+  node:
+    service: app
+    cmd: [node]
+    dir: /app
+    description: Run Node inside the app service.
+```
+
+- `router.enabled: false` skips the shared router. Nothing here needs a `*.lndo.site` URL; the host reaches Ollama on the published port `11434`.
+- `appMount: false` keeps your source out of the Ollama container. A Landofile-supplied image needs `home: false` or `home.path`, and Lando doesn't know this image's home, so the example uses `home: false`.
+- `ollama-models` is a named volume for downloaded models, so `lando destroy` doesn't make you download them again.
+- The healthcheck runs `ollama list`, which only succeeds once the server answers. `lando start` waits for it, and `condition: service_healthy` holds `app` until then.
+- `cmd: [ollama]` runs the Ollama CLI inside `ollama`, with your arguments appended.
+
+Start it:
+
+```sh
+lando start
+lando info
+```
+
+Check that `lando info` lists `tcp://localhost:11434` for `ollama`. That proves the port is published to the host. It doesn't prove a model is loaded; you haven't pulled one yet.
+
+## Pull a model and run it
+
+Pull a small model into the volume, then list what's there:
+
+```sh
+lando ollama pull smollm2:135m
+lando ollama list
+```
+
+Check that `lando ollama list` shows `smollm2:135m`. Swap in any model name from the Ollama library. Bigger models take longer to download, need more memory, and this Landofile runs them on the CPU, so start small while you wire things up.
+
+Ask it something:
+
+```sh
+lando ollama run smollm2:135m "Name one planet."
+```
+
+You get a short answer back. A 135M-parameter model is fast and cheap, not an astronomer.
+
+In a script or CI job with no terminal, add `</dev/null` to the command so `ollama run` doesn't sit waiting for more prompt text on stdin.
+
+## Call the API from the host
+
+Ollama's REST API is on the published port. Check the server, list models, and generate a reply:
+
+```sh
+curl -sf http://localhost:11434/api/version
+curl -sf http://localhost:11434/api/tags
+curl -sf http://localhost:11434/api/generate \
+  -d '{"model":"smollm2:135m","prompt":"Name one planet.","stream":false}'
+```
+
+Check that `/api/tags` lists `smollm2:135m` and the generate response has `"done":true`. That proves the server loaded the model and answered over HTTP.
+
+Ollama also serves an OpenAI-compatible API under `/v1`:
+
+```sh
+curl -sf http://localhost:11434/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"smollm2:135m","messages":[{"role":"user","content":"Name one planet."}]}'
+```
+
+Check that the response has `"object":"chat.completion"` and a `choices` array.
+
+## Call Ollama from your Node service
+
+Inside the app, the host is the service key `ollama`, not `localhost`. `localhost` inside `app` is `app` itself. Save this as `chat.mjs` next to `.lando.yml`:
+
+```js
+const base = process.env.OLLAMA_URL ?? "http://ollama:11434";
+
+const res = await fetch(`${base}/api/chat`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "smollm2:135m",
+    messages: [{ role: "user", content: "Name one planet." }],
+    stream: false,
+  }),
+});
+if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
+
+const data = await res.json();
+console.log(data.message.content);
+```
+
+Node 22 ships `fetch`, so there's nothing to install. Run it:
+
+```sh
+lando node chat.mjs
+```
+
+Check that it prints a reply. That proves `app` reached `ollama` over the app network and the model answered. `OLLAMA_URL` is there for when you run the same script against another Ollama.
+
+## Pin a version
+
+`latest` moves when Ollama ships. Set the tag to a release from the `ollama/ollama` Docker Hub page when your team needs to stay on the same server:
+
+```yaml
+services:
+  ollama:
+    type: compose
+    image: ollama/ollama:<release-tag>
+```
+
+Replace `<release-tag>` with the tag you picked.
+
+## Check the config
+
+`lando app:config:lint` validates the Landofile and `lando app:config` prints it resolved, without starting containers. These checks confirm the image, the health gate, the router setting, and the tooling. They don't boot Ollama or pull a model:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="ollama-demo" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ollama\":\\s*\\{[^}]*\"type\":\\s*\"compose\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ollama/ollama:latest" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"source\":\\s*\"ollama-models\",\\s*\"target\":\\s*\"/root/\\.ollama\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"healthcheck\":\\s*\\{[^}]*\"command\":\\s*\\[\\s*\"ollama\"\\s*,\\s*\"list\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":\\s*\\{\\s*\"ollama\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"router\":\\s*\\{\\s*\"enabled\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"ollama\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Tear down
+
+`lando destroy -y` removes the app containers and networks. The `ollama-models` volume stays, so the next `lando start` has your models ready.
+
+Adding `--volumes` also deletes that volume and every model in it. You'll download them again on the next pull.
+
+```sh
+lando destroy -y
+```
+
+## Next
+
+- [Add a Compose service](./compose-passthrough.mdx) for the Compose keys `type: compose` accepts
+- [Run vector search on Postgres with pgvector](./postgres-pgvector.mdx) for a vector store next to your model
+- [Reach services by name](../subsystems/service-dns.mdx) for service keys and `.internal` names
+- [Turn the router off and tune the post-start URL scanner](./router-and-scanner.mdx) for what `router.enabled` changes

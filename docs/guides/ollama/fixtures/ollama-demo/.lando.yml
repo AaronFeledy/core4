@@ -1,0 +1,34 @@
+name: ollama-demo
+router:
+  enabled: false
+services:
+  ollama:
+    type: compose
+    image: ollama/ollama:latest
+    appMount: false
+    home: false
+    ports:
+      - 11434:11434
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 5s
+      retries: 12
+  app:
+    type: "node:22"
+    primary: true
+    endpoints: []
+    dependsOn:
+      ollama:
+        condition: service_healthy
+tooling:
+  ollama:
+    service: ollama
+    cmd: [ollama]
+    description: Run the Ollama CLI inside the ollama service.
+  node:
+    service: app
+    cmd: [node]
+    dir: /app
+    description: Run Node inside the app service.
