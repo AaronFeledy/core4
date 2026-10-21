@@ -1070,6 +1070,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     listVolumeSnapshots: () => listNativeSnapshots(options),
     removeVolumeSnapshot: Effect.fn("ProviderDataPlane.removeVolumeSnapshot")(function* (
       snapshot: VolumeSnapshotRef,
+      _options?: Parameters<RuntimeProviderShape["removeVolumeSnapshot"]>[1],
     ): Effect.fn.Return<void, ProviderError, Scope.Scope> {
       if (options.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(unsupportedSnapshot("removeVolumeSnapshot"));

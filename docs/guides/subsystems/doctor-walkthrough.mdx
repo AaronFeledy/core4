@@ -36,7 +36,8 @@ lando doctor --all
 | accelerated-start | An accelerated file-sync start didn't finish. In the reported app root, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
 | missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
-| orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. Legacy app-id catalogs still protect their recorded images; an unreadable catalog blocks GC. Stopped runtimes are skipped during discovery. |
+| orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
+| legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
 Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
 
@@ -56,6 +57,10 @@ Read the orphan report before deleting anything. Without `--prune`, this command
 </Guide>
 
 **`lando snapshots:gc --prune` deletes eligible native images.** It does not prune your catalogued manual or recovery snapshots; use the [database snapshot commands](../tooling/db-import-export.mdx) for those.
+
+GC skips stopped runtimes during discovery. If a runtime stops after the removal recheck, GC reports that provider as failed and does not count the failed deletion as removed. It never starts or repairs the runtime. `lando destroy --purge` may start a stopped runtime to remove catalogued snapshots.
+
+The `legacy-snapshot-catalogs` check reads the filesystem only. It finds old `index.bin` catalogs outside the owner-keyed directories, even when no runtime is running. An unreadable legacy catalog blocks GC rather than risking its images. **Deleting a legacy catalog directory releases its image protection.** Keep it if you still need those images; otherwise delete the reported catalog's containing directory, then run `lando snapshots:gc` to review the newly eligible images. Run `lando doctor` again to check the remaining catalogs.
 
 ## Finish an interrupted accelerated start
 
