@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { SqlDumpNotFoundError, errnoCode } from "@lando/sdk/errors";
 
 import { type DumpCompression, collectDumpPrefix, detectDumpCompression } from "./compression.ts";
+import { isStdinDumpArg } from "./dump-stdio.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
 
@@ -39,8 +40,11 @@ export type ReadableDump = {
 export const ensureReadableDump = (
   path: string,
   appRoot: string,
-): Effect.Effect<ReadableDump, SqlDumpNotFoundError> =>
-  Effect.tryPromise({
+): Effect.Effect<ReadableDump, SqlDumpNotFoundError> => {
+  // `/dev/stdin` is a Unix path alias. Windows has no such node, so stating it
+  // would fail as SqlDumpNotFoundError before import confirmation can run.
+  if (isStdinDumpArg(path)) return Effect.succeed({ compression: "none" as const, streaming: true });
+  return Effect.tryPromise({
     try: async () => {
       const info = await stat(path);
       if (info.isDirectory()) throw dumpNotFound(path, appRoot, "directory");
@@ -64,3 +68,4 @@ export const ensureReadableDump = (
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),
   });
+};
