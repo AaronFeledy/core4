@@ -53,7 +53,7 @@ test("attributes httpsPort to the file when env changes only httpPort", () => {
     expect.objectContaining({
       path: ["router", "httpsPort"],
       source: { layer: "config-file", file, path: ["router", "httpsPort"] },
-      suggestion: "Run `lando config unset router.httpsPort` or `lando config set router.httpsPort <value>`",
+      suggestion: "Run `lando config unset router.httpsPort` or `lando config set router.httpsPort <value>`.",
     }),
   ]);
 });
@@ -167,7 +167,7 @@ test("drop-in values are validated and repaired in the actual drop-in file", () 
   const error = failure(readGlobalConfigSources(input));
   // Then repair targets the drop-in, never config set on the main file.
   expect(error.issues?.[0]?.source).toEqual({ layer: "config-drop-in", file, path: ["router", "httpPort"] });
-  expect(error.issues?.[0]?.suggestion).toBe(`Edit ${file}`);
+  expect(error.issues?.[0]?.suggestion).toBe(`Edit ${file}.`);
 });
 
 test.each([true, false])("decoded roots agree with PathsService when env sources are %s", (enabled) => {

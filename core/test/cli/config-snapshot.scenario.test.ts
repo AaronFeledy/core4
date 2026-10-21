@@ -9,7 +9,7 @@ const fixture = async (body: string) => {
   await writeFile(join(root, "config.yml"), body);
   await writeFile(join(root, ".lando.yml"), "name: config-snapshot\nservices: {}\n");
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("LANDO_")));
-  const run = async (args: readonly string[]) => {
+  const run = async (args: readonly string[], overrides: Readonly<Record<string, string>> = {}) => {
     const child = Bun.spawn([process.execPath, entry, ...args], {
       cwd: root,
       env: {
@@ -19,6 +19,7 @@ const fixture = async (body: string) => {
         LANDO_USER_CACHE_ROOT: join(root, "cache"),
         LANDO_SYSTEM_PLUGIN_ROOT: join(root, "system"),
         LANDO_TELEMETRY: "false",
+        ...overrides,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -95,7 +96,9 @@ test("repair commands remain available under invalid config and notification pro
     const report = JSON.parse(doctor.stdout).result;
     expect(report.globalConfig).toMatchObject({ status: "fail", error: { _tag: "ConfigError" } });
     expect(report.skipped).toHaveLength(6);
-    expect(report.subsystems.checks).toEqual([]);
+    expect(
+      report.subsystems.checks.some((check: { readonly name: string }) => check.name === "filesystem-watch"),
+    ).toBe(true);
     expect(doctor.stdout).not.toContain("--fix");
     const repaired = await temp.run(["config", "unset", "router.httpPort", "--format=json"]);
     expect(repaired.code).toBe(0);
@@ -116,3 +119,113 @@ test("source info prints a config typo warning once", async () => {
     await temp.close();
   }
 });
+
+test("info keeps malformed YAML secrets out of its error envelope", async () => {
+  // Given malformed secret-bearing global configuration.
+  const secret = "opaque-canary-info-yaml";
+  const temp = await fixture(`tracing:\n  otlp:\n    headers: [${secret}\n`);
+  try {
+    // When a normal command bootstraps.
+    const result = await temp.run(["info", "--format=json"]);
+    // Then the envelope reports a safe syntax diagnostic.
+    expect(result.code).toBe(1);
+    expect(result.stdout + result.stderr).not.toContain(secret);
+    expect(JSON.parse(result.stdout).error).toMatchObject({
+      _tag: "ConfigError",
+      message: expect.stringContaining("line 3, column 14"),
+    });
+  } finally {
+    await temp.close();
+  }
+});
+
+test("invalid presentation config cannot block doctor or config repair", async () => {
+  // Given invalid presentation overrides and an independently invalid port.
+  const temp = await fixture("router:\n  httpPort: 99999\n");
+  const env = {
+    LANDO_CONFIG__RENDERER: "invalid",
+    LANDO_CONFIG__LOG_LEVEL: "invalid",
+    LANDO_DOCTOR_SECTION_BUDGET_MS: "1000",
+  };
+  try {
+    // When doctor and repair dispatch through the source CLI.
+    const doctor = await temp.run(["doctor", "--app", "--deprecations", "--format=json"], env);
+    const repair = await temp.run(["config", "unset", "router.httpPort", "--format=json"], env);
+    const flag = await temp.run(["doctor", "--renderer=invalid", "--format=json"], env);
+    // Then doctor reports config issues and independent checks, repair works, and explicit flags still fail.
+    const report = JSON.parse(doctor.stdout).result;
+    expect(doctor.code).toBe(1);
+    expect(
+      report.globalConfig.error.issues.map((issue: { readonly path: readonly string[] }) => issue.path),
+    ).toEqual(expect.arrayContaining([["renderer"], ["logLevel"], ["router", "httpPort"]]));
+    expect(
+      report.subsystems.checks.some((check: { readonly name: string }) => check.name === "filesystem-watch"),
+    ).toBe(true);
+    expect(report.skipped.map((entry: { readonly section: string }) => entry.section)).toEqual(
+      expect.arrayContaining(["app-config", "app-version-constraints", "deprecations"]),
+    );
+    expect(doctor.stdout).not.toContain("--fix");
+    expect(repair.code).toBe(0);
+    expect(JSON.parse(repair.stdout).warnings).toMatchObject([{ code: "LANDO_CONFIG_OTHER_SOURCE_INVALID" }]);
+    expect(flag.code).not.toBe(0);
+    expect(JSON.parse(flag.stdout).error._tag).toBe("RendererSelectionError");
+  } finally {
+    await temp.close();
+  }
+});
+
+test.each(["text", "json"] as const)(
+  "config get and doctor deliver a config warning once in %s",
+  async (format) => {
+    // Given an unknown global config key and bounded doctor probes.
+    const temp = await fixture("defaultProvidreId: docker\n");
+    try {
+      // When reading config and running safe-mode doctor.
+      const results = await Promise.all(
+        [["config", "get", "defaultProviderId"], ["doctor"]].map((args) =>
+          temp.run([...args, ...(format === "json" ? ["--format=json"] : [])], {
+            LANDO_DOCTOR_SECTION_BUDGET_MS: "1000",
+          }),
+        ),
+      );
+      // Then each command renders or envelopes the same warning exactly once.
+      for (const result of results) {
+        if (format === "text") expect(result.stderr.match(/defaultProvidreId/g)).toHaveLength(1);
+        else
+          expect(JSON.parse(result.stdout).warnings).toEqual([
+            expect.objectContaining({
+              code: "LANDO_MESSAGE_WARN",
+              message: expect.stringContaining("defaultProvidreId"),
+            }),
+          ]);
+      }
+    } finally {
+      await temp.close();
+    }
+  },
+  30_000,
+);
+
+test.each(["text", "json"] as const)(
+  "config repair delivers its other-source warning once in %s",
+  async (format) => {
+    // Given a valid file candidate and an invalid independent environment layer.
+    const temp = await fixture("router:\n  httpPort: 8080\n");
+    try {
+      // When removing a file setting while the other source remains invalid.
+      const result = await temp.run(
+        ["config", "unset", "router.httpPort", ...(format === "json" ? ["--format=json"] : [])],
+        { LANDO_ROUTER_HTTPS_PORT: "99999" },
+      );
+      // Then the write succeeds and the warning reaches the chosen surface once.
+      expect(result.code).toBe(0);
+      if (format === "text") expect(result.stderr.match(/Invalid global configuration/g)).toHaveLength(1);
+      else
+        expect(JSON.parse(result.stdout).warnings).toEqual([
+          expect.objectContaining({ code: "LANDO_CONFIG_OTHER_SOURCE_INVALID" }),
+        ]);
+    } finally {
+      await temp.close();
+    }
+  },
+);

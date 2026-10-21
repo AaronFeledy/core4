@@ -112,7 +112,7 @@ describe("doctor safe mode", () => {
         true,
       );
       expect(report.provider.checks).toEqual([]);
-      expect(report.subsystems.checks).toEqual([]);
+      expect(report.subsystems.checks.some((check) => check.name === "filesystem-watch")).toBe(true);
       expect(report.globalConfig?.status).toBe("fail");
       expect(report.globalConfig?.error?._tag).toBe("ConfigError");
       expect(report.skipped?.map((entry) => entry.section)).toEqual([

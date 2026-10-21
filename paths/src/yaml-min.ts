@@ -26,7 +26,10 @@ export class MinimalYamlError extends Error {
   }
 }
 
-export const parseScalar = (value: string): unknown => {
+export const parseScalar = (
+  value: string,
+  location?: { readonly line: number; readonly column: number },
+): unknown => {
   const trimmed = value.trim();
   if (trimmed === "") return "";
   if (trimmed === "null") return null;
@@ -38,8 +41,11 @@ export const parseScalar = (value: string): unknown => {
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
       return JSON.parse(trimmed) as unknown;
-    } catch {
-      throw new MinimalYamlError(`Unsupported YAML value: ${trimmed}`);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new MinimalYamlError(
+        `Unsupported YAML value${location === undefined ? "" : ` at line ${location.line}, column ${location.column}`}`,
+      );
     }
   }
   if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
@@ -66,6 +72,9 @@ interface ParsedLine {
   readonly line: number;
   readonly text: string;
 }
+
+const yamlError = (category: string, line: ParsedLine): MinimalYamlError =>
+  new MinimalYamlError(`${category} at line ${line.line}, column ${line.indent + 1}`);
 
 const VALUE_PREFIX = /^( *)(?:- )?(?:[A-Za-z0-9_.-]+:(?:[ \t]+)?)?/;
 
@@ -130,34 +139,43 @@ const parseList = (
   while (index < lines.length) {
     const line = lines[index];
     if (line === undefined || line.indent < indent) break;
-    if (line.indent > indent) throw new MinimalYamlError(`Malformed YAML indentation at line ${line.line}`);
+    if (line.indent > indent) throw yamlError("Malformed YAML indentation", line);
     if (!line.text.startsWith("- ")) break;
 
     const value = line.text.slice(2).trim();
-    if (value === "") throw new MinimalYamlError(`Malformed YAML at line ${line.line}`);
+    if (value === "") throw yamlError("Malformed YAML", line);
     const mapMatch = value.match(/^([A-Za-z0-9_.-]+):(?:\s+(.*))?$/);
     if (mapMatch !== null) {
       const [, firstKey, firstRawValueRaw] = mapMatch as [string, string, string?];
       const item: Record<string, unknown> = {};
-      item[firstKey] = parseScalar(firstRawValueRaw ?? "");
+      item[firstKey] = parseScalar(firstRawValueRaw ?? "", {
+        line: line.line,
+        column: line.indent + line.text.indexOf(":") + 3,
+      });
       index += 1;
       while (index < lines.length) {
         const child = lines[index];
         if (child === undefined || child.indent <= indent) break;
         if (child.text.startsWith("- ")) break;
-        if (child.indent !== indent + 2)
-          throw new MinimalYamlError(`Malformed YAML indentation at line ${child.line}`);
+        if (child.indent !== indent + 2) throw yamlError("Malformed YAML indentation", child);
         const childMatch = child.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
-        if (childMatch === null) throw new MinimalYamlError(`Malformed YAML at line ${child.line}`);
+        if (childMatch === null) throw yamlError("Malformed YAML", child);
         const [, childKey, childRawValue] = childMatch as [string, string, string];
-        item[childKey] = parseScalar(childRawValue);
+        item[childKey] = parseScalar(childRawValue, {
+          line: child.line,
+          column:
+            child.indent +
+            child.text.indexOf(":") +
+            2 +
+            (childRawValue.length - childRawValue.trimStart().length),
+        });
         index += 1;
       }
       result.push(item);
       continue;
     }
 
-    result.push(parseScalar(value));
+    result.push(parseScalar(value, { line: line.line, column: line.indent + 3 }));
     index += 1;
   }
   return [result, index];
@@ -174,7 +192,7 @@ const parseMap = (
     const line = lines[index];
     if (line === undefined || line.indent < indent) break;
     if (line.text.startsWith("- ")) {
-      if (line.indent > indent) throw new MinimalYamlError(`Malformed YAML indentation at line ${line.line}`);
+      if (line.indent > indent) throw yamlError("Malformed YAML indentation", line);
       break;
     }
 
@@ -185,7 +203,7 @@ const parseMap = (
     // file; `parseMinimalYaml` favors recovering a usable root object over
     // rejecting a config.yml for a single misindented line.
     const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
-    if (match === null) throw new MinimalYamlError(`Malformed YAML at line ${line.line}`);
+    if (match === null) throw yamlError("Malformed YAML", line);
 
     const [, key, rawValue] = match as [string, string, string];
     if (rawValue.trim() === "") {
@@ -207,7 +225,10 @@ const parseMap = (
       continue;
     }
 
-    root[key] = parseScalar(rawValue);
+    root[key] = parseScalar(rawValue, {
+      line: line.line,
+      column: line.indent + key.length + 2 + (rawValue.length - rawValue.trimStart().length),
+    });
     index += 1;
   }
   return [root, index];
@@ -218,7 +239,7 @@ export const parseMinimalYaml = (text: string): Record<string, unknown> => {
   const [parsed, index] = parseMap(lines, 0, 0);
   if (index < lines.length) {
     const line = lines[index];
-    if (line !== undefined) throw new MinimalYamlError(`Malformed YAML at line ${line.line}`);
+    if (line !== undefined) throw yamlError("Malformed YAML", line);
   }
   return parsed;
 };

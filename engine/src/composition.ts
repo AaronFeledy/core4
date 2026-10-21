@@ -1,7 +1,9 @@
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import type { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
+import type { Downloader } from "@lando/sdk/services";
 import type { Effect } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import type { HostProxyShimTarget } from "./subsystems/host-proxy/transport-shim.ts";
 
@@ -9,6 +11,10 @@ export interface EngineCompositionInputs {
   readonly bundledPluginModules: ReadonlyArray<LandoPluginModule>;
   readonly builtInCommandIds: ReadonlyArray<string>;
   readonly landofileRuntimeInputs: LandofileRuntimeInputs;
+  readonly landofileSourcePorts: (
+    client: HttpClient.HttpClient,
+    downloader: typeof Downloader.Service,
+  ) => Pick<LandofileRuntimeInputs["ports"], "npmRecipeSource" | "tarball">;
   readonly hostProxyWorkerEntry: () => HostProxyWorkerEntry;
   readonly bunDevDistRoot: () => string;
   readonly prepareHostProxyShimArtifact: (
@@ -47,6 +53,9 @@ export const builtInCommandIds = (): ReadonlyArray<string> => requireComposition
 
 export const landofileRuntimeInputs = (): LandofileRuntimeInputs =>
   requireComposition().landofileRuntimeInputs;
+
+export const landofileSourcePorts = (client: HttpClient.HttpClient, downloader: typeof Downloader.Service) =>
+  requireComposition().landofileSourcePorts(client, downloader);
 
 export const hostProxyWorkerEntry = (): HostProxyWorkerEntry => requireComposition().hostProxyWorkerEntry();
 

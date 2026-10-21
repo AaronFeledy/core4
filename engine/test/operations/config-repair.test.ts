@@ -169,3 +169,27 @@ test("raw view preserves a YAML ConfigError instead of attempting schema decode"
   });
   expect("issues" in result.failure ? result.failure.issues : undefined).toBeUndefined();
 });
+
+test.each([
+  { subcommand: "view", source: "resolved" },
+  { subcommand: "view", source: "raw" },
+  { subcommand: "validate" },
+  { subcommand: "edit" },
+] as const)("$subcommand $source omits malformed YAML secrets", async (options) => {
+  // Given a parser failure containing an opaque secret.
+  const secret = "opaque-canary-malformed-yaml";
+  await writeFile(join(root, "config.yml"), `tracing:\n  otlp:\n    headers: [${secret}\n`);
+  // When reading, validating, or editing the malformed document.
+  const { result } = await run({
+    ...options,
+    editorRunner: async () => ({ kind: "edited", content: `tracing:\n  otlp:\n    headers: [${secret}\n` }),
+  });
+  // Then the failure carries syntax location, never the rejected bytes.
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) return;
+  expect(JSON.stringify(result.failure)).not.toContain(secret);
+  expect(result.failure.message).toContain(
+    options.subcommand === "edit" ? "not valid YAML" : "Invalid YAML in config file",
+  );
+  expect(result.failure.message).toContain("line 3, column 14");
+});

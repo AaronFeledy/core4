@@ -5,12 +5,13 @@ import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect } from "effect";
+import { type Context, DateTime, Effect, Option } from "effect";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../providers/precedence.ts";
+import { GlobalConfigSources } from "../services/config.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling, validateServiceTypeReservedToolingNames } from "./effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
@@ -50,7 +51,10 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
-  const envProvider = readProviderEnvVar(process.env);
+  const captured = yield* Effect.serviceOption(GlobalConfigSources);
+  const envProvider = readProviderEnvVar(
+    Option.isSome(captured) && captured.value.sources.env ? captured.value.env : {},
+  );
   const configProvider = globalConfig?.defaultProviderId;
   const provider = resolveProviderSelection({
     ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),

@@ -4,7 +4,7 @@ import { dirname, relative, resolve } from "node:path";
 import { Effect } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
-import type { StateRoot } from "@lando/sdk/services";
+import type { LandoRoots, StateRoot } from "@lando/sdk/services";
 
 import { isPathWithin, resolveLandoRoots } from "@lando/paths";
 
@@ -23,18 +23,18 @@ export const findRealpathAncestor = async (
   }
 };
 
-const baseDirForRoot = (root: StateRoot): string => {
+const baseDirForRoot = (root: StateRoot, roots?: LandoRoots): string => {
   if (typeof root === "object") {
     return "app" in root ? root.app : root.path;
   }
-  const roots = resolveLandoRoots();
+  const resolvedRoots = roots ?? resolveLandoRoots();
   switch (root) {
     case "userData":
-      return roots.userDataRoot;
+      return resolvedRoots.userDataRoot;
     case "userCache":
-      return roots.userCacheRoot;
+      return resolvedRoots.userCacheRoot;
     case "userConf":
-      return roots.userConfRoot;
+      return resolvedRoots.userConfRoot;
   }
 };
 
@@ -82,10 +82,11 @@ export const resolveStatePath = (
   namespace: string | undefined,
   key: string,
   operation: string,
+  roots?: LandoRoots,
 ): Effect.Effect<ResolvedStatePath, StateStoreError> =>
   Effect.tryPromise({
     try: async () => {
-      const baseDir = baseDirForRoot(root);
+      const baseDir = baseDirForRoot(root, roots);
       const segments: string[] = [];
       if (namespace !== undefined && namespace !== "")
         segments.push(sanitizeSegment(namespace, operation, baseDir));
@@ -107,5 +108,5 @@ export const resolveStatePath = (
       return { rootReal, file: target } satisfies ResolvedStatePath;
     },
     catch: (cause) =>
-      cause instanceof StateStoreError ? cause : pathError(operation, baseDirForRoot(root), cause),
+      cause instanceof StateStoreError ? cause : pathError(operation, baseDirForRoot(root, roots), cause),
   });

@@ -143,6 +143,7 @@ beforeEach(() => {
     bundledPluginModules: [],
     builtInCommandIds: [],
     landofileRuntimeInputs,
+    landofileSourcePorts: () => landofileRuntimeInputs.ports,
     hostProxyWorkerEntry: () => ({
       execPath: "/tmp/lando-start-host-proxy-missing-exec",
       entryPath: undefined,

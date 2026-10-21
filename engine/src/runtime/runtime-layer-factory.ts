@@ -7,6 +7,7 @@ import type {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import type { GlobalConfigSnapshot } from "../services/config.ts";
 import type { LandoRuntimeOptions } from "./runtime-options.ts";
 
 export type RuntimeLayer =
@@ -23,7 +24,7 @@ export class RuntimeLayerFactory extends Context.Service<
   RuntimeLayerFactory,
   {
     readonly make: {
-      (options: ProviderRuntimeOptions): ProviderRuntimeLayer;
+      (options: ProviderRuntimeOptions, snapshot?: GlobalConfigSnapshot["Service"]): ProviderRuntimeLayer;
       (
         options: LandoRuntimeOptions & { readonly bootstrap: "minimal" },
       ): Layer.Layer<ConfigService | PathsService, ConfigError | LandoRuntimeBootstrapError>;

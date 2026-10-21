@@ -195,7 +195,7 @@ const runtimeLayerFor = (
   lifecycle: BootstrapLifecycleTracker,
   pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
   cwd: string,
-  configInputs: import("@lando/paths/config-sources").ConfigSourceInputs,
+  configInputs: GlobalConfigSources["Service"],
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
     runtimeLayerFactory: { make: makeLandoRuntime },
@@ -238,6 +238,7 @@ export function makeLandoRuntime(
 ): Layer.Layer<ToolingRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"provider">,
+  snapshot?: GlobalConfigSnapshot["Service"],
 ): Layer.Layer<ProviderRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"global">,
@@ -250,7 +251,7 @@ export function makeLandoRuntime(
 ): Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
-export function makeLandoRuntime(options: unknown): RuntimeLayer {
+export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapshot["Service"]): RuntimeLayer {
   const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
 
   if (Result.isFailure(decoded)) {
@@ -304,6 +305,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
         env: decoded.success.configSources?.env ?? true,
       },
       rootOverrides: rootOverridesFromConfig(decoded.success.config),
+      ...(snapshot === undefined ? {} : { ...snapshot.inputs, snapshot }),
     },
   );
 

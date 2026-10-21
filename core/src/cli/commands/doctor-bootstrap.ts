@@ -12,12 +12,14 @@ import type { ConfigError } from "@lando/sdk/errors";
  */
 import { Context, Effect, Layer, Option, type Scope } from "effect";
 
+import { recordConfigWarning } from "@lando/engine/config/config-warnings";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
@@ -68,25 +70,52 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     redact: (value) => redactor.redactString(value),
     budgetMs: doctorSectionBudgetMs(sourceEnv),
   });
-  if (config.value === undefined)
+  if (config.value === undefined) {
+    const filesystemWatch = yield* isolateDoctorSection({
+      section: "filesystem-watch",
+      effect: filesystemWatchDoctor(redactor.redactString, options.platform),
+      fallback: [],
+      budgetMs: doctorSectionBudgetMs(sourceEnv),
+      redact: redactor.redactString,
+    });
     return {
       version: CORE_VERSION,
       globalConfig: { status: "fail", ...(configError === undefined ? {} : { error: configError }) },
-      skipped: ["provider", "subsystems", "network-trust", "certificate-authority", "global-app", "mcp"].map(
-        (section) => ({
-          section,
-          status: "skipped" as const,
-          reason: "Requires a passing global-config check.",
-        }),
-      ),
+      skipped: [
+        "provider",
+        "subsystems",
+        "network-trust",
+        "certificate-authority",
+        "global-app",
+        "mcp",
+        ...(options.app ? ["app-config", "app-version-constraints"] : []),
+        ...(options.deprecations ? ["deprecations"] : []),
+      ].map((section) => ({
+        section,
+        status: "skipped" as const,
+        reason:
+          section === "subsystems"
+            ? "Config-dependent subsystem checks require a passing global-config check; filesystem-watch ran independently."
+            : "Requires the runtime built from a passing global-config check.",
+      })),
       provider: { checks: [] },
-      subsystems: { checks: [] },
+      subsystems: { checks: filesystemWatch.value },
       globalApp: { checks: [] },
       mcp: { checks: [] },
-      ...(config.self === undefined ? {} : { self: { checks: [config.self] } }),
+      self: {
+        checks: [
+          ...(config.self === undefined ? [] : [config.self]),
+          ...(filesystemWatch.self === undefined ? [] : [filesystemWatch.self]),
+        ],
+      },
     };
+  }
+  const snapshot = Context.get(config.value, LandoConfigService.GlobalConfigSnapshot);
+  for (const message of yield* snapshot.takeWarnings)
+    yield* recordConfigWarning({ code: "LANDO_MESSAGE_WARN", message });
   const runtime = runtimeLayerFactory.make(
     cliRuntimeOptions({ bootstrap: "provider", telemetry: false, plugins: { policy: "discovery" } }),
+    snapshot,
   );
   const built = yield* isolateDoctorSection({
     section: "provider-bootstrap",

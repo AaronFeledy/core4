@@ -1,19 +1,21 @@
 import { makeLandoPathsFromRoots, normalizeHostPlatform, resolveLandoRootsFromSources } from "@lando/paths";
-import type { ConfigSourceInputs } from "@lando/paths/config-sources";
 import * as ConfigSources from "@lando/paths/config-sources";
 import { ConfigError } from "@lando/sdk/errors";
 import type { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, type LandoPaths, PathsService } from "@lando/sdk/services";
-import { Context, Effect, Layer, Option, Result } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
+import { type ConfigDecoderInputs, configCommandIds } from "../config/config-command-ids.ts";
 import { decodeGlobalConfigSources } from "../config/global-config.ts";
 
-export class GlobalConfigSources extends Context.Service<GlobalConfigSources, ConfigSourceInputs>()(
-  "@lando/engine/GlobalConfigSources",
-) {}
+export class GlobalConfigSources extends Context.Service<
+  GlobalConfigSources,
+  ConfigDecoderInputs & { readonly snapshot?: typeof GlobalConfigSnapshot.Service }
+>()("@lando/engine/GlobalConfigSources") {}
 export class GlobalConfigSnapshot extends Context.Service<
   GlobalConfigSnapshot,
   {
     readonly config: GlobalConfig;
+    readonly inputs: ConfigDecoderInputs;
     readonly paths: LandoPaths;
     readonly warnings: readonly string[];
     readonly takeWarnings: Effect.Effect<readonly string[]>;
@@ -31,9 +33,8 @@ const snapshotContext = (snapshot: typeof GlobalConfigSnapshot.Service) =>
 
 export const layerFromSources = Layer.effectContext(
   Effect.gen(function* () {
-    const supplied = yield* Effect.serviceOption(GlobalConfigSnapshot);
-    if (Option.isSome(supplied)) return snapshotContext(supplied.value);
     const captured = yield* GlobalConfigSources;
+    if (captured.snapshot !== undefined) return snapshotContext(captured.snapshot);
     const sources = yield* Effect.try({
       try: () => ConfigSources.readGlobalConfigSources(captured),
       catch: (cause) =>
@@ -41,7 +42,11 @@ export const layerFromSources = Layer.effectContext(
           ? cause
           : new ConfigError({ message: "Failed to load global config.", cause }),
     });
-    const decoded = decodeGlobalConfigSources(sources, { excessKeys: "warn" });
+    const commandIds = yield* configCommandIds(sources, captured);
+    const decoded = decodeGlobalConfigSources(sources, {
+      excessKeys: "warn",
+      ...(commandIds === undefined ? {} : { commandIds }),
+    });
     if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
     const { config: loaded, warnings } = decoded.success;
     const platform =
@@ -50,6 +55,7 @@ export const layerFromSources = Layer.effectContext(
     let warningsPending = true;
     const snapshot = GlobalConfigSnapshot.of({
       config: loaded,
+      inputs: captured,
       paths: makeLandoPathsFromRoots(resolveLandoRootsFromSources(sources), platform),
       warnings,
       takeWarnings: Effect.sync(() => {
@@ -62,7 +68,7 @@ export const layerFromSources = Layer.effectContext(
   }),
 );
 
-export const layerWith = (inputs: ConfigSourceInputs) =>
+export const layerWith = (inputs: ConfigDecoderInputs) =>
   layerFromSources.pipe(Layer.provideMerge(Layer.succeed(GlobalConfigSources, inputs)));
 
 export const layer = Layer.suspend(() =>

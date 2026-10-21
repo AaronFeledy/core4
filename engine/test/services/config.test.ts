@@ -64,7 +64,7 @@ describe("LandoConfigService.layer", () => {
           message: expect.any(String),
           source: { layer: "config-file", file: path, path: ["router", "httpPort"] },
           suggestion:
-            "Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`",
+            "Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.",
         },
       ]);
       expect(result.failure.message).toContain("router.httpPort:");

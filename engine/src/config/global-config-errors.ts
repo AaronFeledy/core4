@@ -18,11 +18,11 @@ export const attributeConfigIssue = (issue: ValidationIssue, origin: ConfigOrigi
       fix =
         path[0] === "hostEvents"
           ? "Edit hostEvents in config.yml directly or use `lando config edit`."
-          : `Run \`lando config unset ${key}\` or \`lando config set ${key} <value>\``;
+          : `Run \`lando config unset ${key}\` or \`lando config set ${key} <value>\`.`;
       break;
     case "config-drop-in":
       source = { layer: layer.layer, file: layer.file, path };
-      fix = `Edit ${layer.file}`;
+      fix = `Edit ${layer.file}.`;
       break;
     case "env": {
       let variable = "LANDO_CONFIG__";
@@ -34,22 +34,22 @@ export const attributeConfigIssue = (issue: ValidationIssue, origin: ConfigOrigi
         }
       }
       source = { layer: "env", variable, path };
-      fix = `Unset ${variable} or set it to a valid value`;
+      fix = `Unset ${variable} or set it to a valid value.`;
       if (
         variable === "LANDO_NETWORK_CA_INJECT_INTO_SERVICES" ||
         variable === "LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES"
       ) {
-        fix += `. Set ${variable} to "true" or "false", or unset it.`;
+        fix += ` Set ${variable} to "true" or "false", or unset it.`;
       }
       break;
     }
     case "host":
       source = { layer: "host", path };
-      fix = `Fix the \`${key}\` host config option`;
+      fix = `Fix the \`${key}\` host config option.`;
       break;
     case "default":
       source = { layer: "default", path };
-      fix = `Fix the \`${key}\` default config option`;
+      fix = `Fix the \`${key}\` default config option.`;
       break;
   }
   return { ...issue, source, suggestion: [issue.suggestion, fix].filter(Boolean).join(" ") };
@@ -71,7 +71,8 @@ export const globalConfigIssuesError = (
       }),
     ),
   ].sort();
-  const detail = `${issues[0] === undefined ? "Invalid value." : formatValidationIssueLine(issues[0])}${issues.length > 1 ? ` (and ${issues.length - 1} more issues)` : ""}`;
+  const first = issues[0];
+  const detail = `${first === undefined ? "Invalid value." : formatValidationIssueLine({ ...first, message: /[.!?]$/.test(first.message) ? first.message : `${first.message}.` })}${issues.length > 1 ? ` (and ${issues.length - 1} more issues)` : ""}`;
   const onlyFile = issues.every((issue) => issue.source?.layer === "config-file");
   return new ConfigError({
     path: file,

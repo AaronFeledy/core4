@@ -19,9 +19,8 @@ import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
-import { configSourceStack, validateConfigCandidate } from "../config/config-repair.ts";
-import { decodeGlobalConfigSources } from "../config/global-config.ts";
-import { recordCommandWarning } from "../landofile/command-warnings.ts";
+import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
+import { recordConfigWarning } from "../config/config-warnings.ts";
 import type { CliTelemetrySource } from "../runtime/cli-options";
 import { GlobalConfigSources } from "../services/config.ts";
 
@@ -106,7 +105,7 @@ const configReadError = (path: string, cause: unknown): ConfigError =>
   cause instanceof ConfigError
     ? cause
     : new ConfigError({
-        message: `Failed to read global config ${path}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `${cause instanceof MinimalYamlError ? "Invalid YAML in config file" : "Failed to read global config"} ${path}: ${cause instanceof Error ? cause.message : String(cause)}`,
         path,
         cause,
         ...(cause instanceof MinimalYamlError
@@ -248,7 +247,7 @@ const metaConfigValidate = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
   const path = resolveConfigWritePath(options);
   const stack = yield* configSourceStack(path);
-  const decoded = decodeGlobalConfigSources(stack, { excessKeys: "error" });
+  const decoded = yield* decodeConfigStack(stack, "error");
   if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
   return {
     subcommand: "validate",
@@ -348,8 +347,10 @@ export const config = Effect.fn("AppOperation.config")(function* (
       };
     }
     const stack = yield* configSourceStack(options.configPath);
-    const decoded = decodeGlobalConfigSources(stack, { excessKeys: "warn" });
+    const decoded = yield* decodeConfigStack(stack, "warn");
     if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
+    for (const message of decoded.success.warnings)
+      yield* recordConfigWarning({ code: "LANDO_MESSAGE_WARN", message });
     const origin = mergeGlobalConfigSources(stack).originAt(["telemetry", "enabled"]).layer.layer;
     const source = origin === "env" ? "env" : origin === "default" ? "default" : "config";
     return {
@@ -399,10 +400,10 @@ export const config = Effect.fn("AppOperation.config")(function* (
     };
   }
   const stack = yield* configSourceStack(options.configPath);
-  const decoded = decodeGlobalConfigSources(stack, { excessKeys: "warn" });
+  const decoded = yield* decodeConfigStack(stack, "warn");
   if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
   for (const message of decoded.success.warnings)
-    yield* recordCommandWarning({ code: "LANDO_CONFIG_WARNING", message });
+    yield* recordConfigWarning({ code: "LANDO_MESSAGE_WARN", message });
   const merged = yield* Schema.encodeEffect(GlobalConfigView)(decoded.success.config).pipe(
     Effect.mapError(
       (cause) => new ConfigError({ message: "Failed to project public global config.", cause }),

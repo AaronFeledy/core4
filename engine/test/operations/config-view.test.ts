@@ -59,7 +59,7 @@ test("unset preserves YAML parser detail instead of wrapping ConfigError twice",
   expect(result.failure).toBeInstanceOf(ConfigError);
   if (!(result.failure instanceof ConfigError)) return;
   expect(result.failure.cause).not.toBeInstanceOf(ConfigError);
-  expect(result.failure.message).toContain("Unsupported YAML value: [");
+  expect(result.failure.message).toContain("Unsupported YAML value at line 2, column 13");
   expect(result.failure.remediation).toContain("lando config edit");
 });
 

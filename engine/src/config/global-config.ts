@@ -3,10 +3,12 @@ import { AgentEnvPatternError, ConfigError } from "@lando/sdk/errors";
 import {
   GlobalConfig,
   HostEvents,
+  LOG_LEVELS,
   type ValidationIssue,
   formatHostEventsIssueMessage,
   formatValidationIssuePath,
   hostEventsSemanticIssues,
+  suggestionForUnknownKey,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Result, Schema, type SchemaIssue } from "effect";
@@ -33,7 +35,7 @@ const excessPaths = (issue: SchemaIssue.Issue, path: readonly PropertyKey[] = []
 
 export const decodeGlobalConfigSources = (
   stack: readonly ConfigLayer[],
-  options: { readonly excessKeys: "warn" | "error" },
+  options: { readonly excessKeys: "warn" | "error"; readonly commandIds?: ReadonlySet<string> },
 ): Result.Result<{ readonly config: GlobalConfig; readonly warnings: readonly string[] }, ConfigError> => {
   const file = stack.find((layer) => layer.layer === "config-file");
   const path = file !== undefined && "file" in file ? file.file : "";
@@ -65,7 +67,11 @@ export const decodeGlobalConfigSources = (
     }
   }
   const hostDecoded = Object.hasOwn(tree, "hostEvents")
-    ? Schema.decodeUnknownResult(HostEvents)(tree.hostEvents, { errors: "all", onExcessProperty: "error" })
+    ? Schema.decodeUnknownResult(HostEvents)(tree.hostEvents, {
+        errors: "all",
+        onExcessProperty: "error",
+        reportInput: false,
+      })
     : undefined;
   const hostIssues =
     hostDecoded === undefined
@@ -84,6 +90,7 @@ export const decodeGlobalConfigSources = (
   const strict = Schema.decodeUnknownResult(GlobalConfig)(schemaTree, {
     errors: "all",
     onExcessProperty: "error",
+    reportInput: false,
   });
   if (options.excessKeys === "warn" && Result.isFailure(strict)) {
     const paths = new Set(excessPaths(strict.failure.issue));
@@ -99,19 +106,30 @@ export const decodeGlobalConfigSources = (
   }
   const decoded =
     options.excessKeys === "warn" && Result.isFailure(strict)
-      ? Schema.decodeUnknownResult(GlobalConfig)(schemaTree, { errors: "all" })
+      ? Schema.decodeUnknownResult(GlobalConfig)(schemaTree, { errors: "all", reportInput: false })
       : strict;
   const issues: ValidationIssue[] = [...hostIssues];
-  if (Result.isFailure(decoded))
-    issues.push(
-      ...validationIssuesFromCause(decoded.failure).map((issue) => ({
-        ...issue,
-        message: "Invalid configuration value.",
-      })),
-    );
+  if (typeof tree.renderer === "string" && !["lando", "json", "plain", "verbose"].includes(tree.renderer))
+    issues.push({ path: ["renderer"], message: "Expected one of lando, json, plain, verbose." });
+  if (typeof tree.logLevel === "string" && !LOG_LEVELS.some((level) => level === tree.logLevel))
+    issues.push({ path: ["logLevel"], message: `Expected one of ${LOG_LEVELS.join(", ")}.` });
+  if (Result.isFailure(decoded)) issues.push(...validationIssuesFromCause(decoded.failure));
   else if (decoded.success.hostEvents !== undefined && hostIssues.length === 0)
     issues.push(...hostEventsSemanticIssues(decoded.success.hostEvents));
   let cause: AgentEnvPatternError | undefined;
+  if (Result.isSuccess(decoded) && decoded.success.notify?.enabled && options.commandIds !== undefined) {
+    const commandIds = options.commandIds;
+    decoded.success.notify.commands.forEach((id, index) => {
+      if (!commandIds.has(id))
+        issues.push({
+          path: ["notify", "commands", index],
+          message: "Unknown canonical command id.",
+          suggestion:
+            suggestionForUnknownKey(id, [...commandIds]) ??
+            "Choose a registered command id, or install and enable the plugin that contributes it.",
+        });
+    });
+  }
   if (options.excessKeys === "error" && Result.isSuccess(decoded) && decoded.success.agentEnv !== undefined) {
     const agentEnv = decoded.success.agentEnv;
     const patterns = findAgentEnvPatternNames([...(agentEnv.allow ?? []), ...(agentEnv.deny ?? [])]);
@@ -148,6 +166,7 @@ export const decodeGlobalConfigSources = (
 export const decodeGlobalConfigFile = (
   input: unknown,
   file: string,
+  options?: { readonly commandIds?: ReadonlySet<string> },
 ): Result.Result<GlobalConfig, ConfigError> => {
   if (!configRecord(input))
     return Result.fail(
@@ -162,7 +181,10 @@ export const decodeGlobalConfigFile = (
       ),
     );
   return Result.map(
-    decodeGlobalConfigSources([{ layer: "config-file", file, tree: input }], { excessKeys: "error" }),
+    decodeGlobalConfigSources([{ layer: "config-file", file, tree: input }], {
+      ...options,
+      excessKeys: "error",
+    }),
     (value) => value.config,
   );
 };

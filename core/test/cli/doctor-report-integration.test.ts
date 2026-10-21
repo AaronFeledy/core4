@@ -192,7 +192,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
     const report = await Effect.runPromise(resilientDoctorReport().pipe(Effect.provide(layer)));
 
     // Then
-    expect(report.subsystems.checks).toEqual([]);
+    expect(report.subsystems.checks.some((check) => check.name === "filesystem-watch")).toBe(true);
     expect(report.skipped?.map((entry) => entry.section)).toContain("network-trust");
     expect(report.self?.checks).toContainEqual(
       expect.objectContaining({ section: "global-config", reason: "failure" }),

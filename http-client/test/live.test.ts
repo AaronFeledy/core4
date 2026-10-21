@@ -4,14 +4,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Cause, Duration, Effect, Exit, Fiber, Layer, Stream, Tracer } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Layer, Schema, Stream, Tracer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ConfigError } from "@lando/sdk/errors";
-import type { GlobalConfig } from "@lando/sdk/schema";
+import { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService, EventService, type LandoEvent, SecretStore } from "@lando/sdk/services";
 
@@ -487,6 +487,24 @@ describe("HttpClient network trust", () => {
     await Effect.runPromise(program);
     expect(capture.init()?.proxy).toBe("http://config-proxy:3128");
     expect(capture.init()?.tls).toEqual({ ca: [fromConfig] });
+  });
+
+  test("ignores ambient proxies when the runtime supplies an empty environment", async () => {
+    // Given a captured policy-filtered environment and a conflicting live proxy.
+    stashEnv("HTTPS_PROXY", "http://ambient.invalid:8311");
+    const config = Schema.decodeUnknownSync(GlobalConfig)({});
+    const capture = captureFetch();
+    const configLayer = Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    );
+    const clientLayer = layerWith({ env: {}, fetch: capture.fetchImpl, systemCaPems: () => [] }).pipe(
+      Layer.provide(configLayer),
+    );
+    // When HTTP executes using only its retained layer services.
+    await run(getCollect("https://example.com/retained"), clientLayer);
+    // Then no ambient proxy reaches the transport.
+    expect(capture.init()?.proxy).toBeUndefined();
   });
 
   test("fails before fetch when a configured CA path is unreadable", async () => {

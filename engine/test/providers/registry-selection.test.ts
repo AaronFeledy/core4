@@ -52,7 +52,9 @@ test.each([
   { target: plan, expected: "requested", kind: "real plan", invalidConfig: false },
   { target: undefined, expected: "configured-default", kind: "no argument", invalidConfig: false },
   { target: undefined, expected: "ConfigError", kind: "invalid configuration", invalidConfig: true },
-])("selects $expected with $kind", async ({ target, expected, invalidConfig }) => {
+  { target: undefined, expected: "requested", kind: "captured environment", invalidConfig: false },
+  { target: undefined, expected: "configured-default", kind: "disabled environment", invalidConfig: false },
+])("selects $expected with $kind", async ({ target, expected, invalidConfig, kind }) => {
   // Given: the configured default differs from the explicit target.
   const initialized: string[] = [];
   const modules: readonly LandoPluginModule[] = ["configured-default", "requested"].map((id) => {
@@ -87,6 +89,10 @@ test.each([
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
   const dependencies = Layer.mergeAll(
+    Layer.succeed(ConfigLayer.GlobalConfigSources, {
+      env: { LANDO_PROVIDER: "requested" },
+      sources: { user: false, env: kind === "captured environment" },
+    }),
     invalidConfig
       ? ConfigLayer.layerWith({
           env: {},

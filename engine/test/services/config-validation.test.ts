@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { decodeGlobalConfigFile } from "../../src/config/global-config.ts";
+import { decodeGlobalConfigFile, decodeGlobalConfigSources } from "../../src/config/global-config.ts";
 import { layer } from "../../src/services/config";
 
 let root = "";
@@ -100,4 +100,65 @@ test("config file decoding attributes invalid host events to the owning file", (
       },
     ],
   });
+});
+
+test("retains specific expected-value diagnostics without rejected values", () => {
+  // Given independent type and range errors carrying a secret value.
+  const input = { router: { httpPort: 99999 }, appEnv: { TOKEN: ["opaque-canary-schema"] } };
+  // When the candidate is decoded.
+  const result = decodeGlobalConfigFile(input, join(root, "config.yml"));
+  // Then useful schema expectations survive but actual values never do.
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.failure.issues).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: ["router", "httpPort"],
+        message: expect.stringContaining("between 1 and 65535"),
+      }),
+      expect.objectContaining({
+        path: ["appEnv", "TOKEN"],
+        message: expect.stringContaining("Expected string"),
+      }),
+    ]),
+  );
+  expect(JSON.stringify(result.failure)).not.toContain("opaque-canary-schema");
+  expect(result.failure.remediation).toContain("<value>`. Run");
+});
+
+test("attributes unknown notify command ids and suggests the closest registered id", () => {
+  // Given a misspelled id in an environment-authored notification allowlist.
+  const variable = "LANDO_CONFIG__NOTIFY__COMMANDS";
+  // When the complete config decoder validates membership.
+  const result = decodeGlobalConfigSources(
+    [
+      {
+        layer: "env",
+        tree: { notify: { commands: ["app:strat"] } },
+        variables: new Map([[JSON.stringify(["notify", "commands"]), variable]]),
+      },
+    ],
+    { excessKeys: "error", commandIds: new Set(["app:start", "example:release"]) },
+  );
+  // Then validation reports a sourced array issue with a useful repair suggestion.
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.failure.issues).toMatchObject([
+    {
+      path: ["notify", "commands", 0],
+      source: { layer: "env", variable },
+      suggestion: expect.stringContaining("app:start"),
+    },
+  ]);
+});
+
+test("accepts plugin-contributed notify command ids", () => {
+  // Given a command catalog that includes an enabled global plugin.
+  const commandIds = new Set(["app:start", "example:release"]);
+  // When decoding a notification policy targeting that plugin.
+  const result = decodeGlobalConfigFile({ notify: { commands: ["example:release"] } }, "/config.yml", {
+    commandIds,
+  });
+  // Then it is valid before subscriber bootstrap.
+  expect(result._tag).toBe("Success");
 });

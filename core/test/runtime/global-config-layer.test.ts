@@ -49,7 +49,7 @@ test("invalid library host config produces ConfigError with host provenance", as
   expect(result.failure).toBeInstanceOf(ConfigError);
   if (!(result.failure instanceof ConfigError)) throw new Error("Expected ConfigError");
   expect(result.failure.issues?.[0]?.source).toEqual({ layer: "host", path: ["router", "httpPort"] });
-  expect(result.failure.issues?.[0]?.suggestion).toBe("Fix the `router.httpPort` host config option");
+  expect(result.failure.issues?.[0]?.suggestion).toBe("Fix the `router.httpPort` host config option.");
 });
 
 test("runtime config uses the environment captured by its own construction", async () => {
