@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { GlobalAppError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
@@ -47,6 +48,13 @@ test("a failed user start preserves the primary tag without rollback-role errors
   expect(destroyed).toBe(0);
 });
 
+// Placement reads the global paths before any global mutation, so the stub returns real paths.
+const globalPaths = {
+  root: AbsolutePath.make("/tmp/start-failure-roles/global"),
+  distLandofile: AbsolutePath.make("/tmp/start-failure-roles/global/.lando.dist.yml"),
+  userLandofile: AbsolutePath.make("/tmp/start-failure-roles/global/.lando.yml"),
+};
+
 test("startForTarget global error mapping preserves secondary roles and reasons", async () => {
   const primary = new GlobalAppError({ message: "global start", remediation: "repair" });
   const rollback = new GlobalAppError({ message: "global rollback", remediation: "undo" });
@@ -65,7 +73,7 @@ test("startForTarget global error mapping preserves secondary roles and reasons"
       Effect.provideService(GlobalAppService, {
         id: "global",
         root: Effect.succeed(plan.root),
-        paths: Effect.die("unused"),
+        paths: Effect.succeed(globalPaths),
         ensureRoot: Effect.failCause(cause),
         ensureUserLandofile: Effect.die("unused"),
         regenerateDist: () => Effect.die("unused"),
@@ -170,7 +178,7 @@ test("a failure before any app mutation records the no-change notice", async () 
       Effect.provideService(GlobalAppService, {
         id: "global",
         root: Effect.succeed(plan.root),
-        paths: Effect.die("unused"),
+        paths: Effect.succeed(globalPaths),
         ensureRoot: Effect.fail(new GlobalAppError({ message: "global start", remediation: "repair" })),
         ensureUserLandofile: Effect.die("unused"),
         regenerateDist: () => Effect.die("unused"),

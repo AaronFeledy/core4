@@ -24,7 +24,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 1. **Core never shells out to provider binaries.** Every provider operation goes through `RuntimeProvider`.
 2. **Core never makes provider-native files the source of truth.** Providers MAY emit native files from a plan.
-3. **Provider selection is explicit and cached.** App or global configuration overrides the bundled `lando` default; host-only commands and host tooling require no provider.
+3. **Provider selection is explicit and cached.** App or global configuration overrides the bundled `lando` default; host-only commands and host tooling require no provider unless they operate on runtime resources. The host provider resolves setup's scoped override, then `LANDO_PROVIDER`, then config `defaultProviderId`, then `lando`. An app's Landofile provider MUST NOT change the host provider. Planner and registry MUST share this override-aware resolution. Plan cache identity MUST include the host provider.
 4. **Capabilities are validated before planning completes and before provider action.** Missing required behavior fails with a typed capability error.
 5. **Provider-specific configuration is namespaced** under `providers.<id>`.
 6. **Escape hatches are non-portable.** Supported Compose input remains shared input; provider extensions do not become portable semantics.
@@ -90,7 +90,9 @@ Before any provider `apply` mutates app containers, private networks, or volumes
 
 `RuntimeProviderContribution.resourceOwnership(ctx, root)` is a filesystem-only query and MUST NOT construct, initialize, or contact a runtime. It reads the provider-private `ctx.stateStore` `resource-ownership` namespace, keyed by canonical owner (§12.4.2). `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is the optional per-provider form of the same query, with the same filesystem-only restriction.
 
-Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown (global stop and global destroy) is the exception to the every-contribution query: it consults only the Lando-managed provider's inventory through `RuntimeProviderRegistry.resourceOwnership` and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
+`RuntimeProviderRegistry.appliedPlansFor(root)` returns the applied plans of every installed contribution whose `identity.appRoot` exactly equals `root`. Callers pass a canonical root. It is filesystem-only and MUST NOT construct, initialize, or contact a runtime. Global placement (§20.1) uses it.
+
+Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown is the exception to the every-contribution inventory query: it consults only the realized global provider's inventory, or the host provider's when no applied global plan exists, through `RuntimeProviderRegistry.resourceOwnership`, and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
 
 Inventories are teardown evidence only. Non-teardown resolution (selected restart, applied-state resolution) serves a matching applied plan without reading any provider's inventory; it consults inventories only when no applied plan matches, and a nonempty hint then produces the existing orphan refusal (`AppResolveError`). Only teardown probes the availability and cleanup capability of inventory providers. The internal whole-app stop that restart and rebuild run does not perform ownership cleanup.
 
@@ -272,6 +274,6 @@ The Podman provider targets system Podman 6 or newer and is selected by app or g
 
 ### 5.9 Multi-provider apps (deferred)
 
-One provider is selected per app. Per-service provider data remains a non-portable extension hint. Cross-provider networking, route ownership, lifecycle ordering, failure handling, and capability negotiation are not specified; the ROADMAP sequences any future work.
+One provider is selected per app. Per-service provider data remains a non-portable extension hint. Multiple providers within one app, including their networking, route ownership, lifecycle ordering, failure handling, and capability negotiation, are deferred. Host-provider placement of the global app and the cross-engine consumer behavior specified in §10.2 and §10.4 are not deferred.
 
 ---

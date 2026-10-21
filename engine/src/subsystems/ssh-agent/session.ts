@@ -13,9 +13,8 @@ import {
   SSH_AGENT_SOCKET_NAME,
   ServiceName,
 } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../providers/managed.ts";
 import { probeSshAgent } from "./agent-probe.ts";
 import type { AgentRelayUpstream } from "./relay.ts";
 
@@ -46,7 +45,9 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
 export const runtimeSshAgentState = Effect.gen(function* () {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry)) return "stopped" as const;
-  const provider = yield* registry.value.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const globalApp = yield* Effect.serviceOption(GlobalAppService);
+  if (Option.isNone(globalApp) || globalApp.value.providerId === undefined) return "starting" as const;
+  const provider = yield* registry.value.select(yield* globalApp.value.providerId);
   const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
   const service = yield* provider.inspect(target);
   const status = service.state ?? service.status;
@@ -64,8 +65,6 @@ export const runtimeSshAgentState = Effect.gen(function* () {
   Effect.catch(() => Effect.succeed("starting" as const)),
 );
 
-// The sidecar always runs on the managed runtime, so its container state ends a wait early
-// even when the app reaches the agent through a host socket.
 export const sidecarSocketState = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>
   runtimeSshAgentState.pipe(
     Effect.flatMap((sidecar) =>

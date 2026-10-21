@@ -14,7 +14,8 @@ import {
 } from "@lando/sdk/services";
 
 import { ensureGlobalServicesRunning } from "../operations/ensure-global-services.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "../providers/managed.ts";
+import { taggedErrorRemediation } from "../providers/managed.ts";
+import { globalCreateProviderId, globalObserveProviderId } from "./placement.ts";
 
 export const layer = Layer.effect(
   GlobalAppService,
@@ -30,9 +31,26 @@ export const layer = Layer.effect(
       Context.add(PluginRegistry, yield* PluginRegistry),
       Context.add(RuntimeProviderRegistry, yield* RuntimeProviderRegistry),
     );
+    const observedProviderId = globalObserveProviderId.pipe(Effect.provide(context));
+    const observedProvider = observedProviderId.pipe(Effect.flatMap((id) => registry.select(id)));
+    const createProvider = globalCreateProviderId().pipe(
+      Effect.provide(context),
+      Effect.flatMap((id) => registry.select(id)),
+    );
     return GlobalAppService.of({
       ...globalApp,
-      ensureProviderReady: registry.select(MANAGED_PROVIDER_SELECT_PLAN).pipe(
+      providerId: observedProviderId.pipe(
+        Effect.mapError(
+          (cause) =>
+            new GlobalAppError({
+              message: "Unable to resolve the global runtime provider.",
+              operation: "placement",
+              remediation: taggedErrorRemediation(cause),
+              cause,
+            }),
+        ),
+      ),
+      ensureProviderReady: createProvider.pipe(
         Effect.flatMap((provider) => provider.ensureReady ?? Effect.void),
         Effect.mapError(
           (cause) =>
@@ -45,7 +63,7 @@ export const layer = Layer.effect(
         ),
       ),
       occupiedPublishPorts: (ports) =>
-        registry.select(MANAGED_PROVIDER_SELECT_PLAN).pipe(
+        createProvider.pipe(
           Effect.flatMap((provider) => provider.occupiedPublishPorts?.(ports) ?? Effect.succeed([])),
           Effect.mapError(
             (cause) =>
@@ -59,7 +77,7 @@ export const layer = Layer.effect(
           ),
         ),
       ownedPublishPorts: (serviceId, ports) =>
-        registry.select(MANAGED_PROVIDER_SELECT_PLAN).pipe(
+        observedProvider.pipe(
           Effect.flatMap((provider) =>
             provider.list({ app: AppId.make("global") }).pipe(
               Effect.flatMap((services) =>
@@ -105,7 +123,7 @@ export const layer = Layer.effect(
           ),
         ),
       restartRunningService: (serviceId) =>
-        registry.select(MANAGED_PROVIDER_SELECT_PLAN).pipe(
+        observedProvider.pipe(
           Effect.flatMap((provider) =>
             provider
               .list({ app: AppId.make("global") })

@@ -29,6 +29,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(TestRuntimeProvider),

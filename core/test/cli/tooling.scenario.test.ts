@@ -256,6 +256,7 @@ const cachedPlanKey = async (
   provider: RuntimeProviderShape,
 ): Promise<string> =>
   deriveAppPlanCacheKey({
+    hostProvider: "lando",
     appRoot,
     landofile: { ...landofile, provider: ProviderId.make(provider.id) },
     pluginManifests: [],

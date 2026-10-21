@@ -93,7 +93,7 @@ You need the Alpha binary from the steps above. Follow [Put lando on PATH and ru
 lando setup
 ```
 
-`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers. Leftover `defaultProviderId` in user config does not pick Docker on setup.
+`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers on its own. Bare setup keeps the `defaultProviderId` already in your config; switch back to the default with `lando setup --provider=lando`.
 
 Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime, and the runtime may not come up. Do not treat this path as guaranteed.
 
@@ -138,7 +138,7 @@ LANDO_PROVIDER=docker lando setup
 
 On Linux, if the managed runtime still cannot install and you have working system Docker, use the same commands as the supported fallback.
 
-`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
+`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. After a successful `lando setup --provider=docker`, later `lando doctor`, `lando start`, and bare `lando setup` stay on Docker. You do not need to repeat the flag. The router and the other global services run on that provider too.
 
 `LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 

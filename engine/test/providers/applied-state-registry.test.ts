@@ -79,7 +79,7 @@ const moduleFor = (
   return { name: manifest.name, manifest, runtimeProviders: new Map([[providerId, contribution]]) };
 };
 
-const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
+const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false, exactRoot?: AbsolutePath) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
@@ -115,6 +115,10 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
   return Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
+      if (exactRoot !== undefined) {
+        if (registry.appliedPlansFor === undefined) return yield* Effect.die("missing exact-root query");
+        return yield* registry.appliedPlansFor(exactRoot);
+      }
       if (observe) {
         if (registry.observeRuntime === undefined) return yield* Effect.die("missing observer");
         return yield* registry.observeRuntime;
@@ -158,6 +162,22 @@ test("recovers the persisted owner when an unrelated provider cannot initialize"
   // Then
   expect(result).toMatchObject({ _tag: "Success", success: { plan, providerId: "lando" } });
   expect(unrelatedInitializations).toBe(0);
+});
+
+test("exact-root placement reads contribution plans without constructing any runtime", async () => {
+  const modules = [
+    moduleFor(
+      "lando",
+      Effect.succeed([
+        plan,
+        { ...plan, identity: { appRoot: AbsolutePath.make(`${root}/child`), ownerKey: "child" } },
+      ]),
+      Effect.die("must not construct managed runtime"),
+    ),
+    moduleFor("docker", Effect.succeed([]), Effect.die("must not introspect Docker capabilities")),
+  ];
+  const result = await run(modules, false, root);
+  expect(result).toMatchObject({ _tag: "Success", success: [plan] });
 });
 
 test.each([false, true])(

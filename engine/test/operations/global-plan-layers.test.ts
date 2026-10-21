@@ -43,10 +43,11 @@ const withGlobalFiles = async <A>(
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: (plan) => {
-          expect(plan).toMatchObject({ provider: "lando" });
+          expect(typeof plan === "string" ? plan : plan?.provider).toBe(ProviderId.make("lando"));
           return Effect.succeed(TestRuntimeProvider);
         },
       }),

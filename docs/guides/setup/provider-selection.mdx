@@ -36,11 +36,11 @@ LANDO_PROVIDER=docker lando setup
 lando doctor
 ```
 
-After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
+After a successful `lando setup --provider=docker`, setup writes `defaultProviderId: docker` to your config. Later `lando doctor`, `lando start`, and bare `lando setup` stay on Docker. You do not need to repeat the flag. An interactive provider choice persists the same way. A failed config write fails setup.
 
 `LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 
-`lando setup` and `lando setup --yes` with no `--provider` still ignore leftover `defaultProviderId` in user config, so a leftover Docker value does not pick Docker on setup. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+`lando setup` and `lando setup --yes` with no `--provider` keep the `defaultProviderId` already in your config. Setup prompts for a provider only when nothing chose one. `--yes` consents to confirmation and privileged host changes. It does not switch providers. To return to the default, run `lando setup --provider=lando`.
 
 System `podman` is also opt-in with `--provider=podman`. It needs an existing Podman install. Setup fails with remediation if that runtime is missing. It does not install Docker or Podman for you.
 
@@ -49,8 +49,10 @@ System `podman` is also opt-in with `--provider=podman`. It needs an existing Po
 Setup (`lando setup`, including `--yes`) uses:
 
 ```
---provider > LANDO_PROVIDER > capability default (lando)
+--provider > LANDO_PROVIDER > user-config defaultProviderId > interactive prompt > capability default (lando)
 ```
+
+The router, ssh-agent sidecar, and other global services run on the provider setup selected, and every later command keeps them there.
 
 App commands (`lando start`, `lando doctor`) use:
 
@@ -69,6 +71,35 @@ Or for one shell:
 ```sh
 LANDO_PROVIDER=docker lando start
 ```
+
+A Landofile `provider:` or a one-off `--provider` moves only that app. The router and the other global services stay on the host provider: `LANDO_PROVIDER`, else `defaultProviderId`, else `lando`. An app on another provider still gets its routes through host-published ports, but it cannot use same-runtime features such as global Mailpit SMTP over `mailpit.global.internal` or the ssh-agent runtime volume.
+
+## Switch providers while the global app is running
+
+Lando never moves the global app on its own. If the router already runs on one provider and you change the host provider (for example `lando setup --provider=docker` after it started on `lando`), `lando global:install`, `global:start`, `global:restart`, `global:rebuild`, and any `lando start` that publishes routes fail with `GlobalAppPlacementError`.
+
+1. Stop the apps that use the router:
+
+```sh
+lando stop
+```
+
+2. Destroy the global app. The command targets the provider where the global app actually runs:
+
+```sh
+lando global:destroy --yes
+```
+
+3. Retry the command that failed. The global app comes up on the new provider.
+
+Or switch back to the provider that still holds it. If `LANDO_PROVIDER` picked the new provider, unset it first, or every later command picks it again:
+
+```sh
+unset LANDO_PROVIDER
+lando setup --provider=lando
+```
+
+`lando global:stop`, `global:destroy`, `global:status`, `global:info`, and `global:logs` always act on the provider where the global app actually runs, so they keep working while the mismatch exists.
 
 ## Resolve a provider conflict
 

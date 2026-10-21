@@ -5,7 +5,6 @@ import {
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
   ProviderCapabilityError,
-  ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -37,11 +36,7 @@ import {
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "./applied-state-resolution.ts";
-import {
-  CAPABILITY_DEFAULT_PROVIDER_ID,
-  readProviderEnvVar,
-  resolveProviderSelection,
-} from "./precedence.ts";
+import { hostProviderId } from "./host-provider.ts";
 
 const manifestProviderIds = (manifest: PluginManifest): ReadonlyArray<ProviderId> =>
   (manifest.contributes?.providers ?? []).map((entry) =>
@@ -53,14 +48,6 @@ const toProviderUnavailable = (cause: unknown) =>
     providerId: "unknown",
     operation: "list",
     message: "Unable to list runtime provider plugins.",
-    cause,
-  });
-
-const toProviderConfig = (cause: unknown) =>
-  new ProviderConfigError({
-    providerId: "unknown",
-    operation: "select",
-    message: "Unable to read the default runtime provider configuration.",
     cause,
   });
 
@@ -112,19 +99,7 @@ export const makeRuntimeProviderRegistry = (
         Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
       );
 
-      const configuredProviderId = Effect.gen(function* () {
-        const defaultProviderId = yield* configService
-          .get("defaultProviderId")
-          .pipe(Effect.mapError(toProviderConfig));
-        const envProviderId = readProviderEnvVar(process.env);
-        return resolveProviderSelection({
-          ...(envProviderId === undefined ? {} : { env: envProviderId }),
-          ...(defaultProviderId === undefined || defaultProviderId === null
-            ? {}
-            : { config: defaultProviderId }),
-          capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-        }).providerId;
-      });
+      const configuredProviderId = hostProviderId.pipe(Effect.provideService(ConfigService, configService));
 
       const contributionFor = Effect.fnUntraced(function* (providerId: ProviderId) {
         const manifests = yield* providerManifests;
@@ -284,6 +259,16 @@ export const makeRuntimeProviderRegistry = (
 
       return RuntimeProviderRegistry.of({
         list: providerIds,
+        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
+          const ids = yield* providerIds;
+          const plans = yield* Effect.forEach(ids, (id) =>
+            contributionFor(id).pipe(
+              Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),
+              Effect.provideService(PathsService, paths),
+            ),
+          );
+          return plans.flat().filter((plan) => plan.identity?.appRoot === root);
+        }),
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: Effect.fn("RuntimeProviderRegistry.select")(function* (target?: AppPlan | ProviderId) {
           return yield* target === undefined

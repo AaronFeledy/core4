@@ -1,12 +1,9 @@
 /**
  * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
- * Setup ignores leftover `defaultProviderId` in user config so a last-used
- * system runtime cannot poison `lando setup` / `lando setup --yes`. Effective
- * setup precedence is `--provider > LANDO_PROVIDER > capability default (lando)`.
- * App commands may still honor leftover config as a last-used hint.
+ * Provider precedence is flag, environment, configuration, interactive choice, default.
  */
-import { Effect, Result } from "effect";
+import { Effect } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
 import {
@@ -17,11 +14,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { emitConfigYaml } from "@lando/engine/config-write/write-core";
-import { resolveUserConfRoot } from "@lando/engine/config/roots";
+import { config as writeConfig } from "@lando/engine/operations/config";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -29,7 +23,6 @@ import {
 } from "@lando/engine/providers/precedence";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
-import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { formatSummary } from "@lando/renderer/summary";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
@@ -69,26 +62,6 @@ export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-input
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
 export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
-const writeConfigDefaultProvider = Effect.fnUntraced(
-  function* (providerId: string): Effect.fn.Return<void, never> {
-    const confRoot = resolveUserConfRoot();
-    const configPath = join(confRoot, "config.yml");
-
-    try {
-      const existing = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "";
-      const tree = existing.length > 0 ? (parseMinimalYaml(existing) as Record<string, unknown>) : {};
-      tree.defaultProviderId = providerId;
-      const emitted = emitConfigYaml({ file: configPath, value: tree, path: "defaultProviderId" });
-      if (Result.isFailure(emitted)) return;
-      mkdirSync(confRoot, { recursive: true });
-      yield* Effect.promise(() => writeFileAtomicViaRename(configPath, emitted.success));
-    } catch {
-      // Silently fail - config persistence is optional
-    }
-  },
-  Effect.catch(() => Effect.void),
-);
-
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
@@ -116,13 +89,14 @@ export const setupSpec: LandoCommandSpec<
     const resolution = resolveProviderSelection({
       ...(flag === undefined ? {} : { flag }),
       ...(env === undefined ? {} : { env }),
+      ...(config === undefined ? {} : { config }),
       capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
     });
 
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
 
-    const selectedProvider = yield* maybeSelectSetupProvider({
+    const selection = yield* maybeSelectSetupProvider({
       resolution,
       yes: inputBooleanFlag(input, "yes"),
       nonInteractive: inputBooleanFlag(input, "no-interactive"),
@@ -130,6 +104,8 @@ export const setupSpec: LandoCommandSpec<
       ...(interaction === undefined ? {} : { interaction }),
     });
 
+    const selectedProvider = selection.providerId;
+    const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
     const networkProbe = inputNetworkProbe(input);
     const privilege = yield* Effect.serviceOption(PrivilegeService);
@@ -144,10 +120,8 @@ export const setupSpec: LandoCommandSpec<
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
 
-    // Persist an explicit --provider as a last-used hint for doctor / start /
-    // planner / app commands. Setup itself still ignores leftover
-    // defaultProviderId so a later `lando setup --yes` stays on lando.
-    const shouldPersistProvider = flag !== undefined && flag !== config;
+    const shouldPersistProvider =
+      (selection.source === "flag" || selection.source === "prompt") && selectedProvider !== config;
 
     if (!inputBooleanFlag(input, "skip-provider")) {
       if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
@@ -195,7 +169,9 @@ export const setupSpec: LandoCommandSpec<
       });
 
       if (shouldPersistProvider) {
-        yield* writeConfigDefaultProvider(selectedProviderId);
+        yield* writeConfig({ subcommand: "set", key: "defaultProviderId", value: selectedProviderId }).pipe(
+          Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
+        );
       }
     } else {
       yield* recorder.record({
@@ -205,9 +181,9 @@ export const setupSpec: LandoCommandSpec<
       });
     }
 
-    yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId);
-    yield* runProxySetupStep(input, recorder, selectedProviderId);
-    yield* runShellServiceSetupStep(input, recorder, selectedProviderId);
+    yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(withHostProvider);
+    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
+    yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
     if (shouldDisableHostProxyForSetup(input)) {
       yield* HostProxyServiceDisabled.setup({ mode: "none" });
@@ -250,7 +226,7 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       network,
       recorder,
-    });
+    }).pipe(withHostProvider);
 
     const failedStep = recorder.firstFailedStep();
     if (failedStep !== undefined) {

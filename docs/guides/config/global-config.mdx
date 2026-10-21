@@ -73,7 +73,7 @@ The installation config lives at `config.yml` under the resolved user config roo
 
 Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a tab and a newline. Use single quotes (`'C:\temp\new'`) or doubled backslashes (`"C:\\temp\\new"`) for Windows paths. Lando warns at load when a path-like root value decodes with control characters.
 
-`LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
+`LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, setup writes `defaultProviderId: docker`, and later `lando doctor`, `lando start`, and bare `lando setup` stay on Docker.
 
 ## Get, set, unset, validate, or edit a key
 
@@ -170,7 +170,7 @@ Lando merges the six standard Landofile layers from `<userDataRoot>/global/`. A 
 | 5 | `.lando.local.yml` | You, optional |
 | 6 | `.lando.user.yml` | You, optional |
 
-The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and always runs on the `lando` provider, whatever the layers say.
+The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and runs on the host provider (`LANDO_PROVIDER`, else `defaultProviderId`, else `lando`), whatever the layers say. A `provider:` key in these layers does not move it.
 
 ## Change the global app
 

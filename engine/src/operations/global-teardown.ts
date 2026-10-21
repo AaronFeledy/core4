@@ -10,8 +10,8 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import { globalObserveProviderId } from "../global-app/placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
-import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
@@ -31,9 +31,10 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const paths = yield* globalApp.paths;
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(paths.root));
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const providerId = yield* globalObserveProviderId;
+  const provider = yield* registry.select(providerId);
   const resourceOwnership = registry.resourceOwnership;
-  const ownership = yield* resourceOwnership?.(MANAGED_PROVIDER_ID, root) ?? Effect.succeed(undefined);
+  const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);
   const observedProvider = {
     ...provider,
     isAvailable: runtimeOnline(provider),

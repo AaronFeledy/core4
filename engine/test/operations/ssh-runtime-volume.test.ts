@@ -1,10 +1,16 @@
 import { expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { SshError } from "@lando/sdk/errors";
-import { AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { GlobalAppError, SshError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { EventService, PathsService, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import {
+  EventService,
+  GlobalAppService,
+  PathsService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Fiber, Schema } from "effect";
@@ -45,6 +51,25 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
 });
 const app = { kind: "user" as const, id: "demo", root: plan.root };
 const capabilities = { agentSocket: { delivery: "guest-bridge" as const } };
+const globalApp = GlobalAppService.of({
+  id: "global",
+  root: Effect.succeed(AbsolutePath.make("/global")),
+  paths: Effect.succeed({
+    root: AbsolutePath.make("/global"),
+    distLandofile: AbsolutePath.make("/global/.lando.dist.yml"),
+    userLandofile: AbsolutePath.make("/global/.lando.yml"),
+  }),
+  ensureRoot: Effect.void,
+  ensureRunning: () => Effect.succeed([]),
+  ensureUserLandofile: Effect.succeed({ path: AbsolutePath.make("/global/.lando.yml"), created: false }),
+  regenerateDist: () =>
+    Effect.succeed({
+      path: AbsolutePath.make("/global/.lando.dist.yml"),
+      status: "unchanged",
+      serviceIds: [],
+    }),
+  providerId: Effect.succeed(ProviderId.make("lando")),
+});
 const ssh = {
   id: "sidecar",
   setup: () => Effect.void,
@@ -70,6 +95,54 @@ const registry = (state: string, selected: string[]) => ({
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     });
   },
+});
+
+test("Docker app uses the runtime volume when the global app is realized on Docker", async () => {
+  const selected: string[] = [];
+  const upstream = await Effect.runPromise(
+    resolveSshAgentUpstream({
+      appId: plan.id,
+      provider: ProviderId.make("docker"),
+      intent: { mode: "sidecar" },
+    }).pipe(
+      Effect.provideService(SshService, ssh),
+      Effect.provideService(GlobalAppService, {
+        ...globalApp,
+        providerId: Effect.succeed(ProviderId.make("docker")),
+      }),
+      Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+      Effect.provide(LandoEventService.layer),
+    ),
+  );
+  expect(upstream).toEqual({ _tag: "volume", volume: "plugin-owned-agent" });
+  expect(selected).toEqual(["docker"]);
+});
+
+test("global placement failure keeps its reason and remediation in the sidecar error", async () => {
+  // Given
+  const remediation = "Remove the duplicate global app realization, then retry.";
+  // When
+  const failure = await Effect.runPromise(
+    resolveSshAgentUpstream({
+      appId: plan.id,
+      provider: ProviderId.make("docker"),
+      intent: { mode: "sidecar" },
+    }).pipe(
+      Effect.provideService(SshService, ssh),
+      Effect.provideService(GlobalAppService, {
+        ...globalApp,
+        providerId: Effect.fail(
+          new GlobalAppError({ message: "Ambiguous global placement.", operation: "placement", remediation }),
+        ),
+      }),
+      Effect.provideService(RuntimeProviderRegistry, registry("running", [])),
+      Effect.provide(LandoEventService.layer),
+      Effect.flip,
+    ),
+  );
+  // Then
+  expect(failure).toMatchObject({ _tag: "SshAgentUnavailableError", mode: "sidecar", remediation });
+  expect(failure.message).toContain("Ambiguous global placement.");
 });
 
 test.each(["win32", "linux", "darwin"] as const)(
@@ -101,6 +174,7 @@ test.each(["win32", "linux", "darwin"] as const)(
             }),
         }),
         Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+        Effect.provideService(GlobalAppService, globalApp),
         Effect.provideService(PathsService, makeLandoPaths({ platform })),
         Effect.provide(LandoEventService.layer),
         Effect.provide(PrivateFileAccessService.layer),
@@ -143,6 +217,7 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
           }),
       }),
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
       Effect.provide(LandoEventService.layer),
       Effect.provide(PrivateFileAccessService.layer),
@@ -181,6 +256,7 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
         setup: () => Effect.fail(new SshError({ sshId: "sidecar", message: "offline" })),
       }),
       Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provide(LandoEventService.layer),
     ),
   );
@@ -209,6 +285,7 @@ test("host-socket path stops waiting when the started sidecar exits", async () =
           }),
       }),
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provide(LandoEventService.layer),
     ),
   );
@@ -270,6 +347,7 @@ test("stopped sidecar starts once and forwards after delayed readiness with task
       Effect.provide(PrivateFileAccessService.layer),
       Effect.provide(LandoEventService.layer),
       Effect.provide(TestClock.layer()),
+      Effect.provideService(GlobalAppService, globalApp),
     ),
   );
   // Then
@@ -303,6 +381,7 @@ test.each([
           ),
       }),
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RedactionService, {
         registerValues: () => Effect.void,
         payloadValues: () => Effect.succeed(() => ["super-secret"]),

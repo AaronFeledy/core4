@@ -318,6 +318,14 @@ export class RuntimeProviderRegistry extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
     readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
+    /**
+     * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
+     * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
+     * or contacts a runtime.
+     */
+    readonly appliedPlansFor?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;

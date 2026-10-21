@@ -8,10 +8,10 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema
 import { AppPlanner, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
-import { MANAGED_PROVIDER_ID } from "../../src/providers/managed.ts";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 
-describe("loadGlobalPlan managed provider", () => {
-  test("plans the global app on the Lando-managed provider even with leftover docker config", async () => {
+describe("loadGlobalPlan host provider", () => {
+  test("plans the global app on the selected host provider", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-796-plan-data-"));
     try {
       const globalRoot = join(dataRoot, "global");
@@ -64,6 +64,7 @@ describe("loadGlobalPlan managed provider", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed({} as never),
             select: (plan) => {
@@ -104,14 +105,19 @@ describe("loadGlobalPlan managed provider", () => {
         ),
       );
 
-      const loaded = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
+      const loaded = await Effect.runPromise(
+        loadGlobalPlan().pipe(
+          Effect.provide(layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        ),
+      );
       expect(loaded.materialized).toBe(true);
       if (loaded.materialized) {
-        expect(String(loaded.plan.provider)).toBe("lando");
-        expect(String(loaded.landofile.provider)).toBe(String(MANAGED_PROVIDER_ID));
+        expect(String(loaded.plan.provider)).toBe("docker");
+        expect(String(loaded.landofile.provider)).toBe("docker");
       }
-      expect(selected).toEqual(["lando"]);
-      expect(planned).toEqual(["lando"]);
+      expect(selected).toEqual(["docker"]);
+      expect(planned).toEqual(["docker"]);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

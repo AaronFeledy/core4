@@ -7,11 +7,7 @@ import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Predicate, Result } from "effect";
-import {
-  CAPABILITY_DEFAULT_PROVIDER_ID,
-  readProviderEnvVar,
-  resolveProviderSelection,
-} from "../providers/precedence.ts";
+import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling, validateServiceTypeReservedToolingNames } from "./effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
@@ -79,14 +75,8 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
-  const envProvider = readProviderEnvVar(process.env);
-  const configProvider = globalConfig?.defaultProviderId;
-  const provider = resolveProviderSelection({
-    ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
-    ...(envProvider === undefined ? {} : { env: envProvider }),
-    ...(configProvider === undefined || configProvider === null ? {} : { config: configProvider }),
-    capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-  }).providerId;
+  const hostProvider = yield* hostProviderIdFrom(globalConfig?.defaultProviderId);
+  const provider = landofile.provider ?? hostProvider;
   const manifests = yield* pluginRegistry.list.pipe(
     Effect.mapError(
       (error) =>
@@ -165,6 +155,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       globalConfig,
       appDefaults,
       provider,
+      hostProvider,
       manifests,
       routes: validated.routes,
       canonicalFile: input.file,

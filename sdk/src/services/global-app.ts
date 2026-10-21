@@ -5,7 +5,7 @@ import type {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
 } from "../errors/index.ts";
-import type { AbsolutePath, PortNumber, ServiceConfig, ServiceName } from "../schema/index.ts";
+import type { AbsolutePath, PortNumber, ProviderId, ServiceConfig, ServiceName } from "../schema/index.ts";
 
 export interface GlobalAppPaths {
   readonly root: AbsolutePath;
@@ -27,6 +27,11 @@ export class GlobalAppService extends Context.Service<
     readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
     /** Make the global service provider reachable before probing provider-host ports. */
     readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError>;
+    /**
+     * Provider holding the applied global plan for the canonical global root, else the host provider.
+     * Reads applied state only; never constructs or initializes a runtime.
+     */
+    readonly providerId?: Effect.Effect<ProviderId, GlobalAppError>;
     readonly paths: Effect.Effect<GlobalAppPaths, GlobalAppError>;
     readonly ensureUserLandofile: Effect.Effect<
       { readonly path: AbsolutePath; readonly created: boolean },

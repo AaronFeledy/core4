@@ -82,7 +82,7 @@ After a successful `lando setup --provider=docker`, later `lando doctor` and `la
 
 `LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+`lando setup` and `lando setup --yes` keep the `defaultProviderId` already in your config. `--yes` consents to confirmation and privileged host changes. It does not switch providers. To go back to the default, run `lando setup --provider=lando`.
 
 Do not pass `--provider=podman` unless you already have system Podman and want that opt-in. Setup does not install Docker or Podman for you.
 

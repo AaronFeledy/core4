@@ -26,6 +26,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -47,10 +48,11 @@ const plan: AppPlan = {
 };
 
 test.each([
-  { target: requested, expected: "requested", kind: "explicit ID" },
-  { target: plan, expected: "requested", kind: "real plan" },
-  { target: undefined, expected: "configured-default", kind: "no argument" },
-])("selects $expected with $kind", async ({ target, expected }) => {
+  { target: requested, expected: "requested", kind: "explicit ID", override: undefined },
+  { target: plan, expected: "requested", kind: "real plan", override: undefined },
+  { target: undefined, expected: "configured-default", kind: "no argument", override: undefined },
+  { target: undefined, expected: "requested", kind: "scoped host override", override: requested },
+])("selects $expected with $kind", async ({ target, expected, override }) => {
   // Given: the configured default differs from the explicit target.
   const initialized: string[] = [];
   const modules: readonly LandoPluginModule[] = ["configured-default", "requested"].map((id) => {
@@ -115,6 +117,7 @@ test.each([
   // When
   const selected = await Effect.runPromise(
     Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(target)).pipe(
+      Effect.provideService(HostProviderOverride, override),
       Effect.provide(
         makeRuntimeProviderRegistry(modules, {
           enforce: async () => undefined,

@@ -138,6 +138,7 @@
       "occupiedPublishPorts?:(ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError>",
       "ownedPublishPorts?:(service:ServiceName,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError>",
       "paths:Effect.Effect<GlobalAppPaths,GlobalAppError>",
+      "providerId?:Effect.Effect<ProviderId,GlobalAppError>",
       "regenerateDist:(input?:{ services?:Record<string,ServiceConfig>}) => Effect.Effect<GlobalDistResult,GlobalAppError|GlobalDistConflictError>",
       "restartRunningService?:(service:ServiceName) => Effect.Effect<boolean,GlobalAppError>",
       "root:Effect.Effect<AbsolutePath,GlobalAppError>"
@@ -337,6 +338,7 @@
       "waitForExit:(target:ServiceSelector,options?:WaitForExitOptions) => Effect.Effect<ServiceExitResult,ProviderError,Scope.Scope>"
     ],
     "RuntimeProviderRegistry": [
+      "appliedPlansFor?:(root:AbsolutePath) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
       "observeRuntime?:Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>,AppResolveError|ProviderError|NoProviderInstalledError>",
@@ -558,6 +560,7 @@
       "FileSyncStartError",
       "FileSyncStopError",
       "GlobalAppError",
+      "GlobalAppPlacementError",
       "GlobalAutoStartError",
       "GlobalDestroyConfirmationError",
       "GlobalDistConflictError",

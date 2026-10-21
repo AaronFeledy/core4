@@ -84,7 +84,6 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
     userConfRoot: roots.userConfRoot,
     userCacheRoot: roots.userCacheRoot,
     systemPluginRoot: roots.systemPluginRoot,
-    defaultProviderId: "lando",
   };
   const merged = deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
   for (const key of ["appEnv", "appLabels"] as const) {

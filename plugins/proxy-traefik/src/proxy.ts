@@ -4,10 +4,7 @@ import { redactString } from "@lando/container-runtime/redact";
 import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
-  AbsolutePath,
   AppId,
-  type AppPlan,
-  ProviderId,
   type ProxyApplyResult,
   type ProxyConfig,
   type RoutePlan,
@@ -95,31 +92,6 @@ export { renderTraefikDynamicConfig } from "./routing.ts";
 const TRAEFIK_PROXY_ID = "traefik";
 const ROUTE_RELOAD_LOCK_WAIT_MS = 120_000;
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
-
-/**
- * Selecting a provider reads only `plan.provider`. The host-level global app that
- * runs Traefik is always applied with the Lando-managed provider, regardless of a
- * user `defaultProviderId`, so the log observation pins the same provider. If that
- * provider is not installed the selection fails and the observation is skipped.
- */
-const GLOBAL_LOG_SELECT_PLAN: AppPlan = {
-  id: AppId.make("global"),
-  name: "global",
-  slug: "global",
-  root: AbsolutePath.make("/"),
-  provider: ProviderId.make("lando"),
-  services: {},
-  routes: [],
-  networks: [],
-  stores: [],
-  fileSync: [],
-  metadata: {
-    resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00.000Z"),
-    source: "global-app",
-    runtime: 4,
-  },
-  extensions: {},
-};
 
 const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(function* (
   dependencies: TraefikProxyDependencies,
@@ -305,9 +277,7 @@ export const makeTraefikRouterService = (
       : operation;
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {
-    if (dependencies.paths.platform === "win32") {
-      yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
-    }
+    yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
     yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
     const socketProxy = yield* resolveSocketProxy(dependencies);
     return yield* persistPortAcquisition({
@@ -347,9 +317,7 @@ export const makeTraefikRouterService = (
         (config, options) =>
           guardRouterMutation(
             Effect.gen(function* () {
-              if (dependencies.paths.platform === "win32") {
-                yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
-              }
+              yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
               yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
               const socketProxy = yield* resolveSocketProxy(dependencies);
               const decision = yield* persistPortAcquisition(
@@ -665,7 +633,11 @@ export const layer = (stateStore: PluginStateStore) =>
           onNone: () => ({}),
           onSome: (registry) => ({
             readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {
-              const provider = yield* registry.select(GLOBAL_LOG_SELECT_PLAN);
+              if (globalApp.providerId === undefined)
+                return yield* Effect.fail(
+                  proxyError("log observation", "Global runtime placement is unavailable."),
+                );
+              const provider = yield* registry.select(yield* globalApp.providerId);
               if (provider.capabilities.serviceLogs !== true) {
                 return yield* Effect.fail(proxyError("log observation", "Service logs are unavailable."));
               }

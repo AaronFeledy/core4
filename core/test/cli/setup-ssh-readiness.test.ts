@@ -9,6 +9,7 @@ import {
   ConfigService,
   Downloader,
   EventService,
+  GlobalAppService,
   InteractionService,
   RuntimeProviderRegistry,
   SshService,
@@ -20,6 +21,7 @@ import { runShellServiceSetupStep } from "../../src/cli/command-specs/meta/setup
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { type SetupReadinessStep, readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
+import { globalAppForProvider } from "../_support/global-provider.ts";
 
 test.each([
   { state: "running", exitCode: 0, status: "satisfied", probes: 1 },
@@ -101,6 +103,7 @@ test.each([
                   }),
               }),
               Layer.succeed(SshService, { ...ssh, id: "sidecar" }),
+              Layer.succeed(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
               Layer.succeed(EventService, events),
               Layer.succeed(Downloader, downloader.service),
               Layer.succeed(InteractionService, interaction.service),

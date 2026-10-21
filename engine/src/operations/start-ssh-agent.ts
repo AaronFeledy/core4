@@ -10,11 +10,10 @@ import {
   type ProviderId,
   SSH_AGENT_SOCKET_NAME,
 } from "@lando/sdk/schema";
-import { EventService, PathsService, SshService } from "@lando/sdk/services";
+import { EventService, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option, type Scope } from "effect";
-import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
@@ -91,7 +90,28 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
       const ssh = yield* Effect.serviceOption(SshService);
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
       const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
-      if (input.provider === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
+      const globalApp = yield* Effect.serviceOption(GlobalAppService);
+      const globalProvider =
+        Option.isSome(globalApp) && globalApp.value.providerId !== undefined
+          ? yield* globalApp.value.providerId.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new SshAgentUnavailableError({
+                    message: `Unable to resolve the global app provider for the SSH agent sidecar: ${cause.message}`,
+                    mode: "sidecar",
+                    reason: "sidecar-not-running",
+                    remediation:
+                      cause.remediation ??
+                      "Run `lando doctor` to inspect global app placement, then restart this app.",
+                  }),
+              ),
+            )
+          : undefined;
+      if (
+        input.provider === globalProvider &&
+        globalProvider !== undefined &&
+        socket.runtimeVolume !== undefined
+      ) {
         const upstream = { _tag: "volume" as const, volume: socket.runtimeVolume };
         if (yield* runtimeSshAgentReady) return upstream;
         return yield* startSshSidecar(input, ssh.value, upstream);

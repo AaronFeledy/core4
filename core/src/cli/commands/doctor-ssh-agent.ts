@@ -1,5 +1,4 @@
 import { homedir } from "node:os";
-import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { probeSshAgent } from "@lando/engine/subsystems/ssh-agent/agent-probe";
 import {
   type HostAgentDiscoveryOptions,
@@ -14,6 +13,7 @@ import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
+  GlobalAppService,
   LandofileService,
   type ProcessRunner,
   RuntimeProviderRegistry,
@@ -76,13 +76,18 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         const socket = yield* input.sshService.getAgentSocket(AppId.make("global"));
         const provider =
           socket.runtimeVolume !== undefined && Option.isSome(registry)
-            ? yield* registry.value.select(
-                landofile?.provider === undefined
-                  ? undefined
-                  : { ...MANAGED_PROVIDER_SELECT_PLAN, provider: landofile.provider },
-              )
+            ? yield* registry.value.select(landofile?.provider)
             : undefined;
-        if (provider?.id === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
+        const globalApp = yield* Effect.serviceOption(GlobalAppService);
+        const globalProvider =
+          Option.isSome(globalApp) && globalApp.value.providerId !== undefined
+            ? yield* globalApp.value.providerId
+            : undefined;
+        if (
+          globalProvider !== undefined &&
+          provider?.id === globalProvider &&
+          socket.runtimeVolume !== undefined
+        ) {
           delivery = "runtime-volume";
           runtimeVolume = socket.runtimeVolume;
           return {

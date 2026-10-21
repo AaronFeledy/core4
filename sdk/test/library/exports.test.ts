@@ -440,6 +440,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
+    expect(errors.GlobalAppPlacementError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
     expect(errors.GlobalServiceCollisionError).toBeDefined();
     expect(errors.GlobalServiceMissingError).toBeDefined();

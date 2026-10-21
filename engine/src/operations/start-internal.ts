@@ -50,6 +50,7 @@ import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes } from "../lifecycle/routes.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
+import { hostProviderId } from "../providers/host-provider.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -368,6 +369,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
               const routedPlan = {
                 ...builtPlan,
                 routes: rewriteCrossEngineProxyRoutes({
+                  hostProvider: yield* hostProviderId,
+                  sharedCrossAppNetwork: provider.capabilities.sharedCrossAppNetwork,
                   plan: builtPlan,
                   published: inspectedServices.flatMap((service) => service.published),
                 }),
