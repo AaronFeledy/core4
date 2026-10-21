@@ -10,7 +10,9 @@ tags: [beta, docs, plugins, deprecations]
 
 Attach a `DeprecationNotice` on the plugin manifest. Same shape everywhere: `since`, optional `removeIn`, optional `severity`, optional `replacement`, required `note`, optional `docsUrl`, optional `ticket`.
 
-```yaml
+`nolint` on the fence: this is a plugin manifest, not a Landofile, so Landofile schema checks do not apply.
+
+```yaml nolint
 name: "@acme/lando-plugin-demo"
 version: 0.1.0
 api: 4

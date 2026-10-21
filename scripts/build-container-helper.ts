@@ -54,6 +54,8 @@ export const containerHelperBuildCommands = (options: {
         ".",
       ),
     ),
+    // Under rootful Docker the builder writes as root; hand the outputs back to the checkout's owner.
+    inBuilder("sh", "-ec", 'chown -R "$(stat -c %u:%g /app)" dist .cache'),
   ];
 };
 
@@ -73,12 +75,13 @@ if (import.meta.main) {
   const test = process.argv.includes("--test");
   const digest = await containerHelperSourceDigest();
   await rm(CONTAINER_HELPER_SOURCE_DIGEST_PATH, { force: true });
+  // Create dist/ as the host user so the digest can be written even if the builder runs as root.
+  await mkdir(dirname(CONTAINER_HELPER_SOURCE_DIGEST_PATH), { recursive: true });
   let built = false;
   try {
     for (const argv of containerHelperBuildCommands({ test, linkerFlags: containerHelperLinkerFlags() }))
       await run(argv);
     await containerHelperNotices(resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
-    await mkdir(dirname(CONTAINER_HELPER_SOURCE_DIGEST_PATH), { recursive: true });
     await writeFile(CONTAINER_HELPER_SOURCE_DIGEST_PATH, `${digest}\n`);
     built = true;
   } finally {

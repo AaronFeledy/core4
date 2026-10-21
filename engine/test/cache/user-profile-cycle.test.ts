@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { deserialize } from "node:v8";
 import { Effect, Layer, Schema } from "effect";
 
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, CacheService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";

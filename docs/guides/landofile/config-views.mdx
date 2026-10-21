@@ -1,0 +1,71 @@
+---
+id: config-views
+provider: test
+timeout: 60000
+tags: [beta, docs, landofile, config]
+---
+
+# Inspect each stage of your Landofile
+
+Run `lando app:config --source raw --format=json` from your app directory to see what each layer authored.
+
+## Compare raw, merged, and resolved values
+
+```sh
+lando app:config --source raw --format=json
+lando app:config --source merged --format=json
+lando app:config --source resolved --format=json
+```
+
+Raw lists layers from low to high precedence. Each entry carries its `layer`, `file`, `form`, and parsed `document`. YAML templates render and TypeScript runs in its sandbox, but includes and load helpers don't run. Merge directives use JSON envelopes; literal maps that resemble those envelopes are escaped.
+
+Merged shows the authored composition, including included fragments and canonical service aliases. Expressions stay authored. Defaults and tooling contributions haven't been assembled yet.
+
+Resolved is the default. It shows the canonical configuration after expression materialization and validation. Raw and merged still work when a later runtime-schema check would reject the configuration. A syntax error can still stop raw; a broken include can stop merged.
+
+<Guide>
+  <Scenario id="compare-stages" render>
+    <Step name="inspect-layers">
+      <UseFixture name="layered" />
+      <Run command="lando app:config --source raw --path services.web.primary --format=json" />
+      <Verify command="lando app:config --source raw --path services.web.primary --format=json" expect={{ stdout: { regex: "\"source\":\\s*\"raw\"" } }} />
+    </Step>
+    <Step name="inspect-composition">
+      <Run command="lando app:config --source merged --path services.web.primary --format=json" />
+      <Verify command="lando app:config --source merged --path services.web.primary --format=json" expect={{ stdout: { regex: "eq\\(1, 1\\)" } }} />
+    </Step>
+    <Step name="inspect-resolved">
+      <Run command="lando app:config --path services.web.primary --format=json" />
+      <Verify command="lando app:config --path services.web.primary --format=json" expect={{ stdout: { regex: "\"value\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="inspect-invalid" render>
+    <Step name="read-before-validation">
+      <UseFixture name="invalid" />
+      <Run command="lando app:config --source merged --path runtime --format=json" />
+      <Verify command="lando app:config --source merged --path runtime --format=json" expect={{ stdout: { regex: "\"value\":\\s*\"wrong\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Select inside a document
+
+```sh
+lando app:config get services.web.environment --source merged --format=json
+lando app:config get --source raw --path 'services.web.ports[0]' --format=json
+```
+
+Raw applies the selector independently to every layer. A layer that doesn't contain the path stays in the array without `document`. Raw get returns that array if any layer matches; if none match, `value` is absent. Merged and resolved return the selected `value`. Null is a value, not a missing path. An unindexed array stays an array. Missing human output is empty.
+
+## Choose YAML output
+
+```sh
+lando app:config --format=yaml
+lando app:config --source merged --format=yaml
+```
+
+Only the full resolved view emits a bare Landofile. Raw, merged, selected values, and get use normal YAML result envelopes. Literal secrets are redacted before emission, including values in shadowed layers. Inspection doesn't read secret stores or env files to discover more secrets.
+
+The read-only MCP `app:config:view` and `app:config:get` tools accept `source` and `path`; get also accepts an optional `key`. The fixed `lando://app/config` resource remains resolved.
+
+Next: [lint every source](./config-lint.mdx) or [change a layer](./your-landofile.mdx#override-a-list-in-a-local-layer).

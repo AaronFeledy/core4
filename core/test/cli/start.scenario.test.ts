@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 
+import { CONTAINER_HELPER_ARCHES, CONTAINER_HELPER_FILE } from "@lando/container-runtime/container-helper";
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
   BuildPhaseFailedError,
@@ -225,20 +226,20 @@ const fileSyncWebWithExtra: ServicePlan = {
   ],
 };
 
-const hostProxyArtifactRoots: string[] = [];
-let previousHostProxyArtifact: string | undefined;
+const containerHelperRoots: string[] = [];
+let previousContainerHelperDir: string | undefined;
 
 beforeEach(async () => {
-  previousHostProxyArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
-  process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = await fakeHostProxyArtifact();
+  previousContainerHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
+  process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
 });
 
 afterEach(async () => {
-  if (previousHostProxyArtifact === undefined)
-    Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-  else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousHostProxyArtifact;
-  previousHostProxyArtifact = undefined;
-  for (const root of hostProxyArtifactRoots.splice(0)) await rm(root, { recursive: true, force: true });
+  if (previousContainerHelperDir === undefined)
+    Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+  else process.env.LANDO_CONTAINER_HELPER_DIR = previousContainerHelperDir;
+  previousContainerHelperDir = undefined;
+  for (const root of containerHelperRoots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -254,15 +255,11 @@ const withHostProxyArtifact = async <T>(
   run: (roots: { readonly cacheRoot: string; readonly dataRoot: string }) => Promise<T>,
 ): Promise<T> => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-")));
-  const artifactPath = join(root, "dist", "host-proxy", "lando-shim");
-  const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+  const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
   const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
   const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
   try {
-    await mkdir(join(root, "dist", "host-proxy"), { recursive: true });
-    await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-    await chmod(artifactPath, 0o755);
-    process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+    process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
     process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
     process.env.LANDO_USER_DATA_ROOT = join(root, "data");
     return await run({
@@ -270,8 +267,8 @@ const withHostProxyArtifact = async <T>(
       dataRoot: process.env.LANDO_USER_DATA_ROOT,
     });
   } finally {
-    if (previousArtifact === undefined) Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-    else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+    if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+    else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
     if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
     if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -377,13 +374,16 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   ),
 );
 
-const fakeHostProxyArtifact = async (): Promise<string> => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-artifact-")));
-  hostProxyArtifactRoots.push(root);
-  const artifactPath = join(root, "lando-shim");
-  await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-  await chmod(artifactPath, 0o755);
-  return artifactPath;
+const fakeContainerHelperDir = async (): Promise<string> => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-container-helper-")));
+  containerHelperRoots.push(root);
+  for (const arch of CONTAINER_HELPER_ARCHES) {
+    await mkdir(join(root, `linux-${arch}`), { recursive: true });
+    await writeFile(join(root, `linux-${arch}`, CONTAINER_HELPER_FILE), "#!/usr/bin/env sh\nexit 0\n", {
+      mode: 0o755,
+    });
+  }
+  return root;
 };
 
 const makeStartLayer = (
@@ -1406,14 +1406,10 @@ describe("lando start", () => {
 
   test("creates host-proxy session under the resolved PathsService roots", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-paths-")));
-    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+    const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
     const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
     try {
-      const artifactPath = join(root, "dist", "host-proxy", "lando-shim");
-      await mkdir(dirname(artifactPath), { recursive: true });
-      await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-      await chmod(artifactPath, 0o755);
-      process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+      process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
       process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
       const dataRoot = join(root, "service-data");
       const eligiblePlan = {
@@ -1444,9 +1440,8 @@ describe("lando start", () => {
         }).hostProxyRunDir(plan.id, plan.root),
       );
     } finally {
-      if (previousArtifact === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+      if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+      else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       await Effect.runPromise(
@@ -1460,19 +1455,16 @@ describe("lando start", () => {
 
   test("selects the provider-declared linux-arm64 shim for an eligible service on an x64 host", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-cross-arch-shim-")));
-    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
-    const previousDistRoot = process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT;
+    const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
     const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
     const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
     try {
-      Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT = join(root, "dist");
+      const helperDir = await fakeContainerHelperDir();
+      process.env.LANDO_CONTAINER_HELPER_DIR = helperDir;
       process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
       process.env.LANDO_USER_DATA_ROOT = join(root, "data");
-      const shimArtifact = join(root, "dist", "host-proxy", "linux-arm64", "lando-shim");
-      await mkdir(dirname(shimArtifact), { recursive: true });
+      const shimArtifact = join(helperDir, "linux-arm64", CONTAINER_HELPER_FILE);
       await writeFile(shimArtifact, "#!/usr/bin/env sh\n# linux-arm64-selected\nexit 0\n");
-      await chmod(shimArtifact, 0o755);
       const dataRoot = join(root, "data");
       const eligiblePlan = {
         ...plan,
@@ -1498,12 +1490,8 @@ describe("lando start", () => {
       );
       expect(await readFile(join(hostProxyDir, "lando"), "utf8")).toContain("linux-arm64-selected");
     } finally {
-      if (previousArtifact === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
-      if (previousDistRoot === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_DIST_ROOT");
-      else process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT = previousDistRoot;
+      if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+      else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
       if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
       else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2849,12 +2837,9 @@ describe("lando start", () => {
 
   test("retains already-created valid file-sync sessions and the host-proxy worker when a later session fails", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-file-sync-host-proxy-")));
-    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+    const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
     const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
-    const artifactPath = join(root, "lando-shim");
-    await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-    await chmod(artifactPath, 0o755);
-    process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+    process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
     process.env.LANDO_USER_DATA_ROOT = join(root, "data");
     const planWithFileSync: AppPlan = {
       ...plan,
@@ -3010,9 +2995,8 @@ describe("lando start", () => {
         makeLandoPaths({ userDataRoot: join(root, "data") }).hostProxyRunDir(plan.id, plan.root),
       );
     } finally {
-      if (previousArtifact === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+      if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+      else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       await Effect.runPromise(

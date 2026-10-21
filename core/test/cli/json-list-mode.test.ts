@@ -2,8 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { Schema } from "effect";
 
 import { listSelectableResultKeys } from "@lando/sdk/command-result";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
 
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 
@@ -44,10 +46,10 @@ const isolationEnv = (): Record<string, string | undefined> => {
   return env;
 };
 
-const runSourceCli = async (args: ReadonlyArray<string>): Promise<RunResult> => {
+const runSourceCli = async (args: ReadonlyArray<string>, cwd = repoRoot): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
-    cwd: repoRoot,
+    cwd,
     env: isolationEnv(),
     stdout: "pipe",
     stderr: "pipe",
@@ -67,6 +69,42 @@ const versionKeys = (): readonly string[] => {
 };
 
 describe("json list-mode dispatch", () => {
+  test("app:config --json lists union keys when no Landofile exists without running the body", async () => {
+    // Given an empty isolated directory with no Landofile.
+    const cwd = await mkdtemp(join(tmpdir(), "lando-json-list-empty-"));
+    try {
+      // When bare --json requests the declared result keys.
+      const result = await runSourceCli(["app:config", "--json"], cwd);
+      // Then discovery succeeds without the app-loading body and emits no envelope.
+      expect(result.exitCode).toBe(0);
+      const keys = Schema.decodeUnknownSync(Schema.Array(Schema.String))(JSON.parse(result.stdout));
+      expect(keys).toContain("app");
+      expect(keys).toContain("landofile");
+      expect(keys).not.toContain("redactionTokens");
+      expect(result.stdout).not.toContain("apiVersion");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("app:config --json=app projects the app name when the result schema is a union", async () => {
+    // Given a named app in an isolated directory.
+    const cwd = await mkdtemp(join(tmpdir(), "lando-json-project-app-"));
+    try {
+      await Bun.write(join(cwd, ".lando.yml"), "name: union-projection-fixture\n");
+      // When equals-form --json executes and projects the result.
+      const result = await runSourceCli(["app:config", "--json=app"], cwd);
+      // Then the success envelope contains only the fixture's app name.
+      expect(result.exitCode).toBe(0);
+      const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(result.stdout));
+      expect(envelope.ok).toBe(true);
+      expect(envelope.command).toBe("app:config");
+      expect(envelope.result).toEqual({ app: "union-projection-fixture" });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   test("bare --json after version prints selectable keys and does not run the command", async () => {
     // Given the version command plus bare --json.
     const args = ["version", "--json"] as const;

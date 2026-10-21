@@ -45,6 +45,7 @@
     "./expressions": "./src/expressions/index.ts",
     "./fuzzy": "./src/fuzzy/index.ts",
     "./landofile": "./src/landofile/index.ts",
+    "./landofile/flow-mapping-remediation": "./src/landofile/flow-mapping-remediation.ts",
     "./log-follow": "./src/log-follow/index.ts",
     "./network-trust": "./src/network-trust/index.ts",
     "./probe": "./src/probe/index.ts",

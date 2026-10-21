@@ -108,7 +108,7 @@
     "@types/semver": "^7.7.1"
   },
   "scripts": {
-    "build": "bun run build:manifest && bun run build:container-helper && bun run build:compile",
+    "build": "bun run build:manifest && bun run build:compile",
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
     "build:container-helper": "bun run ../scripts/build-container-helper.ts",
     "build:manifest": "bun run ../scripts/build-command-registry-manifest.ts",

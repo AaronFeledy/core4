@@ -400,7 +400,9 @@ describe("ci workflow codegen", () => {
         with:
           fetch-depth: 0`);
       expect(workflow).toContain("- name: Check schema compatibility");
-      expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+      expect(workflow).toContain(
+        "LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+      );
       expect(workflow).toContain("run: bun run check:schema-compatibility");
       expect(fixtureVerificationStart).toBeLessThan(fixtureVerificationEnd);
       expect(workflow).toContain("- name: Regenerate Compose key matrix");

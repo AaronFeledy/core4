@@ -147,6 +147,7 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
 const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
 
 const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
+    needs: ${CONTAINER_HELPER_JOB_ID}
     strategy:
       fail-fast: false
       matrix:
@@ -162,6 +163,8 @@ ${timingStartStep}
 ${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Unit test shard
         run: bun run test:unit:shard \${{ matrix.shard }}/${UNIT_SHARD_COUNT}
@@ -860,7 +863,6 @@ name: ci
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -908,7 +910,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference

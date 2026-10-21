@@ -501,7 +501,15 @@ describe("ci workflow", () => {
     expect(staticChecks).toContain('          echo "static-checks platform matrix passed"');
 
     const unitTestShards = findIndentedBlock(jobs, "unit-tests-linux-x64-shard", 2);
-    expect(unitTestShards).not.toContain("    needs:");
+    // Unit tests that compile `lando` or run the real helper need the built container helper.
+    expect(unitTestShards).toContain("    needs: container-helper");
+    expect(unitTestShards).toContain("          path: core/container-helper/dist");
+    expect(unitTestShards).toContain(
+      "        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper",
+    );
+    expect(unitTestShards.indexOf("Download container helper")).toBeLessThan(
+      unitTestShards.indexOf("Unit test shard"),
+    );
     expect(unitTestShards).toContain("        shard: [1, 2, 3]");
     expect(unitTestShards).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
     expect(unitTestShards).toContain("    runs-on: ${{ matrix.runs-on }}");
@@ -611,7 +619,13 @@ describe("ci workflow", () => {
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
-    expect(schemaSnapshot).toContain("          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+    expect(schemaSnapshot).toContain(
+      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+    );
+    expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "pull_request", 2)).not.toContain(
+      "branches:",
+    );
+    expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "push", 2)).toContain("branches: [main]");
     expect(schemaSnapshot).toContain("        run: bun run check:schema-compatibility");
     expect(schemaSnapshot.indexOf("Verify committed schema fixture is current")).toBeLessThan(
       schemaSnapshot.indexOf("Check schema compatibility"),
@@ -671,9 +685,9 @@ describe("ci workflow", () => {
     expect(helper).toContain("          name: container-helper");
     expect(helper).toContain("          path: core/container-helper/dist");
     expect(helper).toContain(
-      "          chmod +x core/container-helper/dist/linux-arm64/lando-container-helper",
+      "        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper",
     );
-    expect(helper).toContain("          bun test core/test/container-helper/helper.integration.test.ts");
+    expect(helper).toContain("        run: bun test core/test/container-helper/helper.integration.test.ts");
     expect(helper.indexOf("Download container helper")).toBeLessThan(helper.indexOf("bun test "));
     expect(helper).not.toContain("setup-go");
     expect(helper).not.toContain("lando.ts setup");

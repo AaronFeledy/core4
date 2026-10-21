@@ -125,8 +125,10 @@ lando restart
 Adding a locale changes the build step, so the next `lando start` rebuilds that image. Append another `localedef` to the same `run` line:
 
 ```yaml
-        - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && localedef -i en_GB -c -f UTF-8 -A /usr/share/locale/locale.alias en_GB.UTF-8 && rm -rf /var/lib/apt/lists/*
-          user: root
+build:
+  artifact:
+    - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && localedef -i en_GB -c -f UTF-8 -A /usr/share/locale/locale.alias en_GB.UTF-8 && rm -rf /var/lib/apt/lists/*
+      user: root
 ```
 
 ```sh

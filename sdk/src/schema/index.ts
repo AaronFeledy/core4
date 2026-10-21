@@ -107,6 +107,7 @@ export * from "./json-schema.ts";
 export * from "./json-schema-editor.ts";
 export * from "./landofile.ts";
 export * from "./landofile-directive.ts";
+export * from "./landofile-source.ts";
 export * from "./landofile-overlay.ts";
 export { override, reset } from "../landofile/merge-directives.ts";
 export * from "./landofile-authoring-expression.ts";

@@ -92,6 +92,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Shipped |
 | PRD-08 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Shipped |
+| - | - | Raw, merged, and resolved config inspection | `docs/guides/landofile/config-views.mdx` | Shipped |
 | - | - | `app:config:explain` recipe provenance report | `docs/guides/landofile/config-explain.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Shipped |
 | PRD-10 | US-163 | service-mode `lando shell` | `docs/guides/tooling/lando-shell.mdx` | Shipped |
@@ -308,3 +309,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | FrankenPHP via Compose passthrough | `docs/guides/services/frankenphp.mdx` | Shipped |
 | - | - | Solr 10 on the typed solr service | `docs/guides/services/solr10.mdx` | Shipped |
 | - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |
+| - | - | make start wait for your app | `docs/guides/services/wait-for-your-app.mdx` | Shipped |

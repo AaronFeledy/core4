@@ -31,18 +31,23 @@ type ServiceOutcomeContext = {
   readonly service: ServiceConfig;
 };
 
-const expectedHealthcheck = (healthcheck: NonNullable<ServiceConfig["healthcheck"]>) => ({
-  kind: healthcheck.kind ?? "command",
-  intervalSeconds: healthcheck.intervalSeconds ?? 10,
-  timeoutSeconds: healthcheck.timeoutSeconds ?? 5,
-  retries: healthcheck.retries ?? 5,
-  ...(healthcheck.command === undefined ? {} : { command: healthcheck.command }),
-  ...(healthcheck.url === undefined ? {} : { url: healthcheck.url }),
-  ...(healthcheck.port === undefined ? {} : { port: healthcheck.port }),
-  ...(healthcheck.startPeriodSeconds === undefined
-    ? {}
-    : { startPeriodSeconds: healthcheck.startPeriodSeconds }),
-});
+const expectedHealthcheck = (
+  healthcheck: NonNullable<ServiceConfig["healthcheck"]>,
+): ServicePlan["healthcheck"] =>
+  healthcheck === false
+    ? { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 }
+    : {
+        kind: healthcheck.kind ?? "command",
+        intervalSeconds: healthcheck.intervalSeconds ?? 10,
+        timeoutSeconds: healthcheck.timeoutSeconds ?? 5,
+        retries: healthcheck.retries ?? 5,
+        ...(healthcheck.command === undefined ? {} : { command: healthcheck.command }),
+        ...(healthcheck.url === undefined ? {} : { url: healthcheck.url }),
+        ...(healthcheck.port === undefined ? {} : { port: healthcheck.port }),
+        ...(healthcheck.startPeriodSeconds === undefined
+          ? {}
+          : { startPeriodSeconds: healthcheck.startPeriodSeconds }),
+      };
 
 const expectedEnvironment = (serviceName: string, service: ServiceConfig) => ({
   // Host reachability is realized for every service from the provider's declared

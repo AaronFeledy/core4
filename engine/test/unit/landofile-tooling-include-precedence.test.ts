@@ -7,8 +7,8 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

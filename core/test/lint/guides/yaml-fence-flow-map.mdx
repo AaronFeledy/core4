@@ -1,0 +1,20 @@
+---
+id: yaml-fence-flow-map
+provider: test
+diataxis: tutorial
+---
+
+Flow mapping is rejected by the Landofile parser with a concrete block rewrite.
+
+```yaml
+name: demo
+services: { web: lando }
+```
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

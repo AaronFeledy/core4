@@ -22,7 +22,7 @@ export const normalizeBuildScripts = (value: BuildScript | undefined): ReadonlyA
 };
 
 export const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
-  const startInterval = service.healthcheck?.startInterval;
+  const startInterval = service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
   const hasDependencyRestart =
     service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
   const authoredExtensions = Object.entries(service).filter(([key]) => key.startsWith("x-"));

@@ -50,6 +50,7 @@ export const resolveMysqlVolume = (
         ? cause
         : new LandofileValidationError({
             message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
+            remediation: "Restore provider access and retry; no volumes have been changed.",
             file: `${plan.root}/.lando.yml`,
             issues: [
               validationIssue(

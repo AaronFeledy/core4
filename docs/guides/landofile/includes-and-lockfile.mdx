@@ -39,6 +39,12 @@ app's merged recipe options and the host environment, with the same typed
 whole-value results as the app's own layers. See
 [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 
+Fragments do not need to be complete runtime values. A fragment can set only
+`build.args` while the app supplies `build.context`. Lando composes the authored
+maps first, resolves recipe/env expressions, assembles tooling, and validates
+the effective Landofile once. Shorthand forms and defaults apply after that
+composition, not separately inside each fragment.
+
 Remote git and npm includes are pinned in `.lando.lock.yml` by resolved
 revision and SHA-256 content hash; local includes are not locked. See
 [Pin a remote include](#pin-a-remote-include).
