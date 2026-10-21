@@ -135,8 +135,8 @@ export const decodeImageInspectDigest = (json: unknown, reference: string): stri
   if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
     const fromRepo = digestForRequestedRepo(json.RepoDigests, reference);
     if (fromRepo !== undefined) return fromRepo;
+    if (json.RepoDigests.length > 0 && "Digest" in json) return sha256Digest(json.Digest);
   }
-  if ("Digest" in json) return sha256Digest(json.Digest);
   return undefined;
 };
 

@@ -174,5 +174,17 @@ describe("container engine dialects", () => {
     expect(
       libpodPullDialect.inspect?.decodeDigest({ Id: "sha256:local-only" }, "team/app:v1"),
     ).toBeUndefined();
+    expect(
+      libpodPullDialect.inspect?.decodeDigest(
+        { RepoDigests: [], Digest: "sha256:local-build" },
+        "php:8.2-apache-bookworm",
+      ),
+    ).toBeUndefined();
+    expect(
+      libpodPullDialect.inspect?.decodeDigest(
+        { RepoDigests: ["other/app@sha256:other"], Digest: "sha256:pulled" },
+        "php:8.2-apache-bookworm",
+      ),
+    ).toBe("sha256:pulled");
   });
 });
