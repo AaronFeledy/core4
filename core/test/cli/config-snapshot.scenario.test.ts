@@ -229,3 +229,34 @@ test.each(["text", "json"] as const)(
     }
   },
 );
+
+test.each(["text", "json"] as const)(
+  "config repair delivers remaining pre-existing issues once in %s",
+  async (format) => {
+    // Given three independent problems in the file being repaired.
+    const temp = await fixture(
+      "# my comment\nrouter:\n  httpPort: 99999\ndefaultProvidreId: docker\ntracing:\n  otlp:\n    headers: scalar\n",
+    );
+    try {
+      // When unsetting only one invalid key.
+      const result = await temp.run(["config", "unset", "router.httpPort", `--format=${format}`]);
+      // Then the command succeeds and each remaining issue and its fix appears once.
+      expect(result.code).toBe(0);
+      if (format === "text") {
+        expect(result.stderr.match(/Pre-existing issues remain/g)).toHaveLength(1);
+        expect(result.stderr.match(/defaultProvidreId:/g)).toHaveLength(1);
+        expect(result.stderr.match(/tracing\.otlp\.headers:/g)).toHaveLength(1);
+        expect(result.stderr).toContain("lando config unset");
+      } else {
+        const warnings = JSON.parse(result.stdout).warnings;
+        expect(warnings).toEqual([expect.objectContaining({ code: "LANDO_CONFIG_PREEXISTING_ISSUES" })]);
+        expect(warnings[0].message.match(/defaultProvidreId:/g)).toHaveLength(1);
+        expect(warnings[0].message.match(/tracing\.otlp\.headers:/g)).toHaveLength(1);
+        expect(warnings[0].message).toContain("lando config unset");
+        expect(result.stderr).not.toContain("Pre-existing issues remain");
+      }
+    } finally {
+      await temp.close();
+    }
+  },
+);

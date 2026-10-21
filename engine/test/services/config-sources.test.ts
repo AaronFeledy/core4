@@ -170,6 +170,20 @@ test("drop-in values are validated and repaired in the actual drop-in file", () 
   expect(error.issues?.[0]?.suggestion).toBe(`Edit ${file}.`);
 });
 
+test("mixed main-file and drop-in failures name each distinct source once", () => {
+  // Given invalid values in both source files.
+  const input = fixture();
+  const root = input.rootOverrides?.userConfRoot ?? "";
+  const main = join(root, "config.yml");
+  const dropIn = join(root, "config.d", "10-team.yml");
+  writeFileSync(main, "router:\n  httpPort: 99999\n");
+  writeFileSync(dropIn, "router:\n  httpsPort: 70000\n");
+  // When decoding the merged stack.
+  const error = failure(readGlobalConfigSources(input));
+  // Then the headline has an unambiguous, deduplicated source list.
+  expect(error.message).toStartWith(`Invalid global configuration (${dropIn} and ${main}):`);
+});
+
 test.each([true, false])("decoded roots agree with PathsService when env sources are %s", (enabled) => {
   // Given drop-in roots, env root overrides, and a fixed discovery root.
   const input = fixture();

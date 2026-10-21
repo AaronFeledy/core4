@@ -65,15 +65,15 @@ export const globalConfigIssuesError = (
       issues.map((issue) => {
         const source = issue.source;
         if (source?.layer === "env") return `environment override ${source.variable}`;
-        if (source?.layer === "config-file") return "config file";
-        if (source !== undefined && "file" in source) return `config file ${source.file}`;
+        if (source !== undefined && "file" in source) return source.file;
+        if (source?.layer === "host") return "host config";
         return source?.layer ?? "default";
       }),
     ),
   ].sort();
   const first = issues[0];
   const detail = `${first === undefined ? "Invalid value." : formatValidationIssueLine({ ...first, message: /[.!?]$/.test(first.message) ? first.message : `${first.message}.` })}${issues.length > 1 ? ` (and ${issues.length - 1} more issues)` : ""}`;
-  const onlyFile = issues.every((issue) => issue.source?.layer === "config-file");
+  const onlyFile = sources.length === 1 && issues.every((issue) => issue.source?.layer === "config-file");
   return new ConfigError({
     path: file,
     message: onlyFile

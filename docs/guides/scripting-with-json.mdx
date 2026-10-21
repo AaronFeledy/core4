@@ -391,15 +391,21 @@ detail is a location such as `Unsupported YAML value at line 2, column 13` or
 `Malformed YAML at line 1, column 1`, never the offending text. `--source raw`
 fails with the same message.
 
-`lando config set`, `unset`, `edit`, and `telemetry off` validate only the
-`config.yml` they write. A write that would leave that file invalid fails
-with `LandofileWriteValidationError` and `error.issues`. A problem in another
-layer does not block the write; the successful envelope carries a warning
+`lando config set` and `unset` reject a candidate only when it introduces an
+issue (a new path/message pair) or leaves the written key or a descendant
+invalid. Rejections use `LandofileWriteValidationError` and `error.issues`,
+without changing the file. Unchanged issues elsewhere don't block the write;
+the successful envelope carries one `LANDO_CONFIG_PREEXISTING_ISSUES` warning
+naming every remaining issue and its fix. `app:config` and `global:config`
+set/unset use the same rule. `telemetry off` applies it to `telemetry.enabled`.
+`config edit` still validates the whole edited file.
+
+A problem in another layer does not block the write. Once the candidate file
+is valid, the successful envelope carries a warning
 with code `LANDO_CONFIG_OTHER_SOURCE_INVALID`, whose `message` and
 `remediation` name the source and the fix. Unknown-key typos surface once per
 command as warning code `LANDO_MESSAGE_WARN` from every command, `lando
-config` and `lando doctor` included. Text mode prints both kinds of warning
-as a `⚠` line.
+config` and `lando doctor` included. Text mode prints warnings once.
 
 The generated command reference lists every public command and documents the
 universal `--format json` flag once in its machine-readable output section.

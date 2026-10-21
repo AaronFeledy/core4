@@ -192,17 +192,14 @@ describe("meta config unset", () => {
     expect(await readConfig()).not.toContain("renderer");
   });
 
-  test("rejects a remaining wildcard agentEnv entry with write issues, file untouched", async () => {
+  test("unsets a key despite a pre-existing wildcard agentEnv entry", async () => {
+    // Given
     await seed("agentEnv:\n  allow:\n    - CLAUDE_*\n  deny:\n    - CI\nrenderer: json\n");
-    const before = await readConfig();
-    const result = await exit(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
-    expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) {
-      const text = result.cause.toString();
-      expect(text).toContain("LandofileWriteValidationError");
-      expect(writeErrorIssues(result)).toContain("agentEnv");
-    }
-    expect(await readConfig()).toBe(before);
+    // When
+    const result = await run(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
+    // Then
+    expect(result.changed).toBe(true);
+    expect(await readConfig()).toBe("agentEnv:\n  allow:\n    - CLAUDE_*\n  deny:\n    - CI\n");
   });
 
   test("--path is honored when no positional key is given", async () => {
@@ -275,7 +272,7 @@ describe("meta config edit via injected editor seam", () => {
 
 describe("meta config hostEvents hand-edit", () => {
   test.each(["set", "unset"] as const)(
-    "%s rejects an unrelated write when existing hostEvents are invalid",
+    "%s permits an unrelated write when existing hostEvents are invalid",
     async (subcommand) => {
       // Given
       const before = "renderer: json\nhostEvents:\n  pre-start:\n    - echo container\n";
@@ -285,9 +282,10 @@ describe("meta config hostEvents hand-edit", () => {
         config({ subcommand, key: "renderer", value: "plain", configPath: configPath() }),
       );
       // Then
-      expect(Exit.isFailure(result)).toBe(true);
-      expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
-      expect(await readConfig()).toBe(before);
+      expect(Exit.isSuccess(result)).toBe(true);
+      expect(await readConfig()).toBe(
+        subcommand === "set" ? before.replace("json", "plain") : before.replace("renderer: json\n", ""),
+      );
     },
   );
 

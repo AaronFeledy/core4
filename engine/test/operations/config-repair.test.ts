@@ -128,18 +128,61 @@ test.each(["view", "validate"] as const)(
   },
 );
 
-test("telemetry off rejects an invalid complete file candidate without modifying it", async () => {
+test("telemetry off preserves unrelated invalid config and warns", async () => {
+  // Given
   const before = "router:\n  httpPort: nonsense\n";
   await writeFile(join(root, "config.yml"), before);
-  const { result } = await run({ subcommand: "telemetry", key: "off" });
-  expect(Result.isFailure(result)).toBe(true);
-  if (Result.isSuccess(result)) return;
-  expect(result.failure).toMatchObject({
-    _tag: "LandofileWriteValidationError",
-    issues: [{ path: ["router", "httpPort"], source: { layer: "config-file" } }],
-  });
-  expect(await readFile(join(root, "config.yml"), "utf8")).toBe(before);
+  // When
+  const { result, warnings } = await run({ subcommand: "telemetry", key: "off" });
+  // Then
+  expect(Result.isSuccess(result)).toBe(true);
+  expect(warnings).toMatchObject([
+    { code: "LANDO_CONFIG_PREEXISTING_ISSUES", message: expect.stringContaining("router.httpPort") },
+  ]);
+  expect(await readFile(join(root, "config.yml"), "utf8")).toContain(before);
 });
+
+test.each([
+  { subcommand: "unset", key: "router.httpPort" },
+  { subcommand: "set", key: "router.httpPort", value: "8080" },
+] as const)("$subcommand repairs one of three problems and preserves comments", async (options) => {
+  // Given
+  await writeFile(
+    join(root, "config.yml"),
+    "# my comment\nrouter:\n  httpPort: 99999\ndefaultProvidreId: docker\ntracing:\n  otlp:\n    headers: scalar\n",
+  );
+  // When
+  const { result, warnings } = await run(options);
+  // Then
+  expect(Result.isSuccess(result)).toBe(true);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]?.code).toBe("LANDO_CONFIG_PREEXISTING_ISSUES");
+  expect(warnings[0]?.message).toContain("defaultProvidreId");
+  expect(warnings[0]?.message).toContain("tracing.otlp.headers");
+  expect(warnings[0]?.message).not.toContain("router.httpPort");
+  expect(warnings[0]?.message).toContain("lando config unset");
+  expect(await readFile(join(root, "config.yml"), "utf8")).toStartWith("# my comment\n");
+});
+
+test.each(["router.httpPort", "router.httpsPort"])(
+  "rejects an invalid set at %s without modifying the file",
+  async (key) => {
+    // Given
+    const before = "# my comment\nrouter:\n  httpPort: 99999\ndefaultProvidreId: docker\n";
+    await writeFile(join(root, "config.yml"), before);
+    // When
+    const { result, warnings } = await run({ subcommand: "set", key, value: "70000", type: "number" });
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure).toMatchObject({
+        _tag: "LandofileWriteValidationError",
+        issues: [{ path: key.split(".") }],
+      });
+    expect(warnings).toEqual([]);
+    expect(await readFile(join(root, "config.yml"), "utf8")).toBe(before);
+  },
+);
 
 test.each(["view", "validate"] as const)(
   "%s host-event schema failures omit received secret-bearing objects",

@@ -174,7 +174,49 @@ lando config unset router.httpPort
 lando config edit
 ```
 
-`set`, `unset`, `edit`, and `telemetry off` strictly validate the `config.yml` they are about to write. A write that would leave the file invalid fails with `LandofileWriteValidationError` and the file is unchanged. Problems in another layer never block the write: fixing `config.yml` while `LANDO_ROUTER_HTTP_PORT=99999` is still exported succeeds, prints a `⚠` line naming the variable and the fix, and `--format=json` carries it as a `LANDO_CONFIG_OTHER_SOURCE_INVALID` warning. Unset the variable or edit the drop-in it names, then rerun `lando config validate`.
+`set` and `unset` let you repair one key at a time. A write fails with `LandofileWriteValidationError` only when it introduces a problem or leaves the written key (or anything beneath it) invalid. The file stays unchanged on rejection. Problems already present elsewhere in `config.yml` don't block the write: the command succeeds and reports each remaining issue and its fix once, as a text warning or a `LANDO_CONFIG_PREEXISTING_ISSUES` warning in `--format=json`. Issue identity is its path plus its message. `telemetry off` follows the same rule for `telemetry.enabled`; `edit` still requires the whole edited file to be valid.
+
+For example, if `router.httpPort`, `defaultProvidreId`, and `tracing.otlp.headers` are all invalid, unset or fix one of them, then use the warnings to repair the others. Comments in the file stay put. `lando app:config set` / `unset` and `lando global:config set` / `unset` use the same write rule for their Landofiles.
+
+Problems in another config layer never block the write: fixing `config.yml` while `LANDO_ROUTER_HTTP_PORT=99999` is still exported succeeds. Once the candidate file is valid, the command reports the other source and its fix with `LANDO_CONFIG_OTHER_SOURCE_INVALID`. Unset the variable or edit the drop-in it names, then rerun `lando config validate`.
+
+  <Scenario id="repair-one-of-several-issues" render={false} reason="Repair one invalid key without blocking on unrelated pre-existing issues">
+    <Step name="repair-one-key">
+      <Run runtime="library" code={`const fs = yield* Effect.promise(() => import("node:fs/promises"));
+const { tmpdir } = yield* Effect.promise(() => import("node:os"));
+const { join } = yield* Effect.promise(() => import("node:path"));
+const { config } = yield* Effect.promise(() => import("@lando/engine/operations/config"));
+const { GlobalConfigSources } = yield* Effect.promise(() => import("@lando/engine/services/config"));
+const { CommandWarnings, makeCommandWarnings } = yield* Effect.promise(() => import("@lando/engine/landofile/command-warnings"));
+const root = yield* Effect.promise(() => fs.mkdtemp(join(tmpdir(), "lando-guide-repair-")));
+try {
+  const file = join(root, "config.yml");
+  yield* Effect.promise(() => fs.writeFile(file, "# my comment\nrouter:\n  httpPort: 99999\ndefaultProvidreId: docker\ntracing:\n  otlp:\n    headers: scalar\n"));
+  const warnings = makeCommandWarnings(true);
+  const result = yield* config({ subcommand: "unset", key: "router.httpPort" }).pipe(
+    Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: true, env: false }, rootOverrides: { userConfRoot: root } }),
+    Effect.provideService(CommandWarnings, warnings),
+  );
+  expect(result.changed).toBe(true);
+  const recorded = yield* warnings.list;
+  expect(recorded).toHaveLength(1);
+  expect(recorded[0]?.code).toBe("LANDO_CONFIG_PREEXISTING_ISSUES");
+  expect(recorded[0]?.message).toContain("defaultProvidreId");
+  expect(recorded[0]?.message).toContain("tracing.otlp.headers");
+  expect(recorded[0]?.message).not.toContain("router.httpPort");
+  const text = yield* Effect.promise(() => fs.readFile(file, "utf8"));
+  expect(text.startsWith("# my comment\n")).toBe(true);
+} finally {
+  yield* Effect.promise(() => fs.rm(root, { recursive: true, force: true }));
+}`} displayCode={`import { Effect } from "effect";
+import { config } from "@lando/engine/operations/config";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+
+await Effect.runPromise(config({ subcommand: "unset", key: "router.httpPort" }).pipe(
+  Effect.provideService(GlobalConfigSources, { env: process.env, sources: { user: true, env: true } }),
+));`} />
+    </Step>
+  </Scenario>
 
 Broken YAML syntax is the one case `set` and `unset` cannot repair, since there is no tree to write into. Both `--source raw` and the resolved views fail with the same `Invalid YAML in config file <path>: ...` message, and the error carries no `issues`. The detail is a location, never the rejected text: `Unsupported YAML value at line 2, column 13`, `Malformed YAML at line 1, column 1`, or `Malformed YAML indentation at line N, column M`. Fix the syntax with `lando config edit` or your own editor.
 
