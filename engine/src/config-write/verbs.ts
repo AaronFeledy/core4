@@ -49,6 +49,8 @@ export interface ConfigVerbIo<
   ) => Record<string, unknown> | Effect.Effect<Record<string, unknown>, EParse, R>;
   readonly editCommand: string;
   readonly decode: (next: unknown) => D | Effect.Effect<D, EAfter, R>;
+  /** Decodes the unchanged file for comparison; must not record warnings. Defaults to `decode`. */
+  readonly decodeBaseline?: ((current: unknown) => D | Effect.Effect<D, EAfter, R>) | undefined;
   readonly afterDecode?: (decoded: D) => EAfter | undefined;
   readonly writeText: (file: string, text: string) => Effect.Effect<void, EWrite, R>;
 }
@@ -175,7 +177,7 @@ export const runSetVerb = Effect.fnUntraced(function* <
     const decoded = yield* resolve(input.decode(candidate.next));
     const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
     if (Result.isFailure(decoded) && baseline === undefined) {
-      const original = yield* resolve(input.decode(tree));
+      const original = yield* resolve((input.decodeBaseline ?? input.decode)(tree));
       baseline = Result.isFailure(original) ? original.failure : [];
     }
     const blocking = blockingIssues(remainingIssues, baseline ?? [], input.key);
@@ -228,7 +230,9 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
   if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
   const decoded = yield* resolve(input.decode(mutation.success.next));
   const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
-  const original = Result.isFailure(decoded) ? yield* resolve(input.decode(tree)) : decoded;
+  const original = Result.isFailure(decoded)
+    ? yield* resolve((input.decodeBaseline ?? input.decode)(tree))
+    : decoded;
   const baseline = Result.isFailure(original) ? original.failure : [];
   const issues = blockingIssues(remainingIssues, baseline, input.key);
   if (issues.length > 0) {

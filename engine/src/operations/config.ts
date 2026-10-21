@@ -145,8 +145,8 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
     catch: (cause) => configWriteError(path, cause),
   });
 
-const decodeConfigCandidate = (input: unknown, path: string) =>
-  validateConfigCandidate(input, path).pipe(
+const decodeConfigCandidate = (input: unknown, path: string, reportOtherSources = true) =>
+  validateConfigCandidate(input, path, { reportOtherSources }).pipe(
     Effect.map(Result.mapError((error) => error.issues ?? [validationIssue([], error.message)])),
   );
 const configValidationError = (
@@ -202,6 +202,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
     parse: parseConfigText(path),
     editCommand: "lando config edit",
     decode: (input) => decodeConfigCandidate(input, path),
+    decodeBaseline: (input) => decodeConfigCandidate(input, path, false),
     writeText: writeConfigAtomic,
   });
   return {
@@ -241,6 +242,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     parse: parseConfigText(path),
     editCommand: "lando config edit",
     decode: (input) => decodeConfigCandidate(input, path),
+    decodeBaseline: (input) => decodeConfigCandidate(input, path, false),
     writeText: writeConfigAtomic,
   });
   return {

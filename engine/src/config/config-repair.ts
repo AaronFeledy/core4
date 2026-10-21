@@ -40,7 +40,11 @@ export const configSourceStack = Effect.fnUntraced(function* (file?: string) {
   });
 });
 
-export const validateConfigCandidate = Effect.fnUntraced(function* (input: unknown, file: string) {
+export const validateConfigCandidate = Effect.fnUntraced(function* (
+  input: unknown,
+  file: string,
+  options: { readonly reportOtherSources?: boolean } = {},
+) {
   if (!configRecord(input)) return decodeGlobalConfigFile(input, file);
   const stack = yield* configSourceStack(file);
   const inputs = yield* GlobalConfigSources;
@@ -48,7 +52,7 @@ export const validateConfigCandidate = Effect.fnUntraced(function* (input: unkno
   const candidate = decodeGlobalConfigFile(input, file, {
     ...(commandIds === undefined ? {} : { commandIds }),
   });
-  if (Result.isFailure(candidate)) return candidate;
+  if (Result.isFailure(candidate) || options.reportOtherSources === false) return candidate;
   const replacement: ConfigLayer = { layer: "config-file", file, tree: input };
   const full = decodeGlobalConfigSources(
     stack.some((layer) => layer.layer === "config-file")

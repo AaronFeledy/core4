@@ -236,3 +236,17 @@ test.each([
   );
   expect(result.failure.message).toContain("line 3, column 14");
 });
+
+test("inferred set reports an invalid external layer once", async () => {
+  // Given a valid file, an invalid env override, and a value whose text form fails first.
+  await writeFile(join(root, "config.yml"), "router:\n  httpPort: 8080\n");
+  // When the value type is inferred.
+  const { result, warnings } = await run(
+    { subcommand: "set", key: "router.httpPort", value: "8090" },
+    { LANDO_ROUTER_HTTPS_PORT: "99999" },
+  );
+  // Then the write succeeds and the external problem is reported exactly once.
+  expect(Result.isSuccess(result)).toBe(true);
+  expect(warnings.filter((warning) => warning.code === "LANDO_CONFIG_OTHER_SOURCE_INVALID")).toHaveLength(1);
+  expect(await readFile(join(root, "config.yml"), "utf8")).toBe("router:\n  httpPort: 8090\n");
+});
