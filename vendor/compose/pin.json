@@ -1,5 +1,5 @@
 {
-  "tag": "v2.16.1",
-  "sourceUrl": "https://raw.githubusercontent.com/compose-spec/compose-go/v2.16.1/schema/compose-spec.json",
-  "sha256": "85dec7c0fd8f4d6b439e5bdf98aabf91cbae244988ed5117f1c9fe5d347eff70"
+  "tag": "v2.16.2",
+  "sourceUrl": "https://raw.githubusercontent.com/compose-spec/compose-go/v2.16.2/schema/compose-spec.json",
+  "sha256": "f266dcbb043229405d7cedd5aec918f9102c2b3d5e3850808fdd8edd564a43ff"
 }
