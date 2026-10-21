@@ -642,7 +642,7 @@ describe("ci workflow", () => {
     const helper = findIndentedBlock(jobs, "container-helper", 2);
 
     expect(helper).toContain(
-      "        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-install-ca --skip-shell-integration --skip-file-sync",
+      "        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync",
     );
     expect(helper).toContain("          bun run scripts/build-container-helper.ts --test");
     expect(helper).toContain("          bun test core/test/container-helper/helper.integration.test.ts");

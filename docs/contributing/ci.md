@@ -157,7 +157,7 @@ Verify the host-architecture helper on Linux:
 bun test core/test/container-helper/helper.integration.test.ts
 ```
 
-In CI, the `container-helper` job sets up Lando with the Docker provider, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The required `static-checks` aggregate rejects any arm64 helper result other than success, including skipped and cancelled runs. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
+In CI, the `container-helper` job sets up Lando with the Docker provider and no router, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The required `static-checks` aggregate rejects any arm64 helper result other than success, including skipped and cancelled runs. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
 
 ## Platform binary builds
 

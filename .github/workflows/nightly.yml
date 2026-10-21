@@ -27,8 +27,10 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      # The builder publishes no routes, so it needs no router. Lando's global router always
+      # runs on the Lando-managed provider, which this job doesn't install.
       - name: Set up Lando with Docker
-        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-install-ca --skip-shell-integration --skip-file-sync
+        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
 
       - name: Build and test the container helper with Lando
         run: |
