@@ -214,10 +214,10 @@
     "./subsystems/ssh/api": "./src/subsystems/ssh/api.ts",
     "./subsystems/ssh/intent": "./src/subsystems/ssh/intent.ts",
     "./subsystems/ssh/registry": "./src/subsystems/ssh/registry.ts",
+    "./testing/container-helper": "./src/testing/container-helper.ts",
     "./testing/downloader": "./src/testing/downloader.ts",
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
-    "./testing/container-helper": "./src/testing/container-helper.ts",
     "./version": "./src/version.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

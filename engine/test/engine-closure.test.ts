@@ -42,6 +42,8 @@ const coreRuntimeAllowlist = new Set([
   "app/resolve.ts",
   "app/runtime.ts",
   "config/paths.ts",
+  // Resolves the compiled binary's embedded in-container helper; engine reaches it through composition.
+  "container-helper",
   "errors/index.ts",
   "landofile/index.ts",
   "lifecycle/index.ts",
