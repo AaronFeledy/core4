@@ -256,12 +256,17 @@ describe("release orchestrator", () => {
     });
 
     expect(spawnStages).toContainEqual({ stageId: "1-codegen", cmd: ["bun", "run", "scripts/codegen.ts"] });
-    expect(spawnStages.filter(({ stageId }) => stageId === "6-library-bundle")).toEqual(
-      releasePackageNames.map((packageName) => ({
+    expect(spawnStages.filter(({ stageId }) => stageId === "6-library-bundle")).toEqual([
+      { stageId: "6-library-bundle", cmd: ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"] },
+      ...releasePackageNames.map((packageName) => ({
         stageId: "6-library-bundle",
         cmd: ["bun", "run", `--filter=${packageName}`, "build"],
       })),
-    );
+      {
+        stageId: "6-library-bundle",
+        cmd: ["bun", "run", "scripts/check-compiled-binary-notices.ts", "--core-dist"],
+      },
+    ]);
     expect(spawnStages).not.toContainEqual({ stageId: "6-library-bundle", cmd: ["bun", "run", "build"] });
     expect(shellStages.some((entry) => entry.startsWith("11-manifest:mkdir -p dist"))).toBe(true);
     expect(shellStages.some((entry) => entry.includes("gpg --batch"))).toBe(true);
@@ -2403,6 +2408,7 @@ describe("release orchestrator", () => {
     expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1-sbom.cdx.json'");
     expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1-provenance.slsa.json'");
     expect(githubScript).toContain("'dist/SHA256SUMS'");
+    expect(githubScript).toContain("'dist/THIRD_PARTY_NOTICES.md'");
     expect(githubScript).toContain("'dist/SHA256SUMS.asc'");
     expect(githubScript).toContain("'dist/SHA256SUMS.sig'");
     expect(githubScript).toContain("'dist/SHA256SUMS.crt'");
@@ -2572,6 +2578,7 @@ describe("release orchestrator", () => {
     // Then: dependency installation, compilation, and sanitization run normally.
     expect(commands).toEqual([
       ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+      ["bun", "run", "check:compiled-binary-notices"],
       [
         "bun",
         "run",
@@ -2661,6 +2668,7 @@ describe("release orchestrator", () => {
     const compileCommands = spawnStages.filter(({ stageId }) => stageId === "7-compile");
     expect(compileCommands.map(({ cmd }) => cmd)).toEqual([
       ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+      ["bun", "run", "check:compiled-binary-notices"],
       ...CI_PLATFORMS.flatMap((platform) => {
         const outfile = `./dist/lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`;
         return [

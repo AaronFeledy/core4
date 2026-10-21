@@ -41,30 +41,36 @@ jobs:
           gh run download "${{ github.event.workflow_run.id }}" --name lando-darwin-arm64 --dir dist/artifacts/darwin-arm64
           test -f dist/artifacts/darwin-arm64/lando
           mv dist/artifacts/darwin-arm64/lando dist/lando-darwin-arm64
+          cp dist/artifacts/darwin-arm64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
           chmod +x dist/lando-darwin-arm64
           test -f dist/lando-darwin-arm64
           gh run download "${{ github.event.workflow_run.id }}" --name lando-darwin-x64 --dir dist/artifacts/darwin-x64
           test -f dist/artifacts/darwin-x64/lando
           mv dist/artifacts/darwin-x64/lando dist/lando-darwin-x64
+          cmp dist/artifacts/darwin-x64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
           chmod +x dist/lando-darwin-x64
           test -f dist/lando-darwin-x64
           gh run download "${{ github.event.workflow_run.id }}" --name lando-linux-arm64 --dir dist/artifacts/linux-arm64
           test -f dist/artifacts/linux-arm64/lando
           mv dist/artifacts/linux-arm64/lando dist/lando-linux-arm64
+          cmp dist/artifacts/linux-arm64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
           chmod +x dist/lando-linux-arm64
           test -f dist/lando-linux-arm64
           gh run download "${{ github.event.workflow_run.id }}" --name lando-linux-x64 --dir dist/artifacts/linux-x64
           test -f dist/artifacts/linux-x64/lando
           mv dist/artifacts/linux-x64/lando dist/lando-linux-x64
+          cmp dist/artifacts/linux-x64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
           chmod +x dist/lando-linux-x64
           test -f dist/lando-linux-x64
           gh run download "${{ github.event.workflow_run.id }}" --name lando-windows-x64 --dir dist/artifacts/windows-x64
           test -f dist/artifacts/windows-x64/lando-windows-x64.exe
           mv dist/artifacts/windows-x64/lando-windows-x64.exe dist/lando-windows-x64.exe
+          cmp dist/artifacts/windows-x64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
           test -f dist/lando-windows-x64.exe
           gh run download "${{ github.event.workflow_run.id }}" --name lando-windows-arm64 --dir dist/artifacts/windows-arm64
           test -f dist/artifacts/windows-arm64/lando-windows-arm64.exe
           mv dist/artifacts/windows-arm64/lando-windows-arm64.exe dist/lando-windows-arm64.exe
+          cmp dist/artifacts/windows-arm64/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
           test -f dist/lando-windows-arm64.exe
 
       - name: Install first-launch sandbox tools
@@ -107,4 +113,4 @@ jobs:
           RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}
         run: |
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS plugins/service-lando/tomcat/LICENSE plugins/service-lando/tomcat/NOTICE --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}."
+          gh release create "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.md plugins/service-lando/tomcat/LICENSE plugins/service-lando/tomcat/NOTICE --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}."

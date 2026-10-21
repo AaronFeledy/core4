@@ -76,6 +76,7 @@
     "check:codegen-drift": "bun run scripts/check-codegen-drift.ts",
     "check:runtime-bundle-manifest": "bun run scripts/check-runtime-bundle-manifest.ts",
     "check:runtime-bundle-licenses": "bun run scripts/check-runtime-bundle-licenses.ts",
+    "check:compiled-binary-notices": "bun run scripts/check-compiled-binary-notices.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
