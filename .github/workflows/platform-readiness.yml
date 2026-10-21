@@ -21,6 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -57,10 +65,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Isolate Lando roots
+        shell: bash
         run: |
           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -201,10 +211,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Isolate Lando roots
+        shell: bash
         run: |
           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -346,10 +358,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Isolate Lando roots
+        shell: bash
         run: |
           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -409,10 +423,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Isolate Lando roots
+        shell: bash
         run: |
           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -472,10 +488,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Isolate Lando roots
+        shell: bash
         run: |
           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -544,10 +562,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Isolate Lando roots
+        shell: bash
         run: |
           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

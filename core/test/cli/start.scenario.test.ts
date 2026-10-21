@@ -2045,7 +2045,7 @@ describe("lando start", () => {
     });
   });
 
-  test.skipIf(resolveLiveProviderSocket()?.source !== "env")(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "scaffolds an app and starts it against the live Podman socket",
     async () => {
       await withTempCwd(async (dir) => {

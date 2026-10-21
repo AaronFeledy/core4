@@ -211,7 +211,7 @@ export const writeProviderAcceptanceReport = async ({
 };
 
 export const runBunCommand = async (command: readonly string[]): Promise<CommandResult> => {
-  const proc = Bun.spawn({ cmd: Array.from(command), stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn({ cmd: Array.from(command), env: process.env, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
     new Response(proc.stdout).text(),

@@ -237,7 +237,7 @@ describe("ci workflow codegen", () => {
         "dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
       );
       expect(firstWorkflow).toContain(
-        "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock",
+        "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock",
       );
       expect(firstWorkflow).toContain("if: ${{ matrix.cell == 'podman-podman6-linux' }}");
       expect(firstWorkflow).toContain("Teardown managed Lando runtime");

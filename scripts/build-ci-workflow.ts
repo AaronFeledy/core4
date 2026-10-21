@@ -7,6 +7,7 @@ import {
   renderContainerHelperArm64Job,
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import {
   CI_PLATFORMS,
   type CiPlatform,
@@ -349,8 +350,8 @@ ${setupBunSteps}
 ${timingNoticeStep("perf-budget-linux-x64", 10)}
 `;
 
-export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true`;
 
@@ -362,7 +363,7 @@ const contractProviderTestSteps = `      - name: Run provider contract tests
           bun test plugins/provider-podman/test/contract.integration.test.ts
           bun test plugins/provider-podman/test/capabilities.test.ts`;
 
-export const landoRuntimeSocketPath = '"$HOME/.local/share/lando/runtime/run/podman.sock"';
+export const landoRuntimeSocketPath = '"$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"';
 
 export const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prerequisites
         run: |
@@ -417,7 +418,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -435,7 +436,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
             sleep 1
           done
           test -S ${landoRuntimeSocketPath}
-          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
+          curl --fail --max-time 5 --unix-socket ${landoRuntimeSocketPath} http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
         run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
@@ -447,8 +449,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 
       - name: Pre-pull container images
         run: |
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
@@ -512,11 +514,11 @@ ${landoManagedPodmanTeardownCommands}
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
           done
-          LANDO_RT="$HOME/.local/share/lando/runtime"
+          LANDO_RT="$LANDO_USER_DATA_ROOT/runtime"
           ls -la "$LANDO_RT/bin" > provider-diagnostics/runtime-bin.txt 2>&1 || true
           ls -la "$LANDO_RT/run" >> provider-diagnostics/runtime-bin.txt 2>&1 || true
           ps auxww | grep -i podman > provider-diagnostics/podman-processes.txt 2>&1 || true
-          cp -r "$HOME/.cache/lando/logs" provider-diagnostics/lando-logs 2>/dev/null || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-diagnostics/lando-logs 2>/dev/null || true
           LP="$LANDO_RT/bin/podman"
           if test -x "$LP"; then
             ldd "$LP" > provider-diagnostics/managed-podman-ldd.txt 2>&1 || true
@@ -623,19 +625,12 @@ const windowsManagedSetupSteps = `      - name: Download current-commit Windows 
 
       - name: Verify compiled Windows managed setup and API reachability
         env:
-          LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
-          LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
-          LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
           LANDO_RUNTIME_BUNDLE_MANIFEST: \${{ github.workspace }}/dist/cache/runtime-bundle/runtime-bundle-versions.json
         run: |
           bun run scripts/windows-managed-setup-acceptance.ts --binary dist/lando-windows-x64.exe --report provider-diagnostics/windows-managed-setup.json
 
       - name: Teardown Windows managed machine
         if: always()
-        env:
-          LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
-          LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
-          LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
         run: |
           powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\bin\\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\config\\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT; exit 0'`;
 
@@ -673,6 +668,8 @@ ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
       - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
 
 ${timingStartStep}
 
@@ -793,6 +790,8 @@ ${matrixBlock}    runs-on: ${runsOn}
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+${isolateLandoRootsStep}
 
 ${timingStartStep}
 
