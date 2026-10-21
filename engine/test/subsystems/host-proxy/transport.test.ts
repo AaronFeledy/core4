@@ -166,6 +166,10 @@ const stubContainerHelperDir = async (): Promise<string> => {
       mode: 0o755,
     });
   }
+  // Compile refuses helpers that arrive without their Go license notices.
+  await mkdir(join(root, "licenses/go"), { recursive: true });
+  await writeFile(join(root, "licenses/go/LICENSE"), "fixture Go license\n");
+  await writeFile(join(root, "licenses/go/files.json"), '["licenses/go/LICENSE"]\n');
   return root;
 };
 
