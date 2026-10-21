@@ -436,6 +436,22 @@ describe("docker image pull dialect", () => {
     expect(requests[1]).toEqual(inspectDialect.request(reference));
   });
 
+  test("returns the pulled ref when the stream client has no request transport", async () => {
+    // Given
+    const reference = "alpine:3.20";
+    const api: EngineHttpApi = {
+      stream: () => Stream.fromIterable([bytes('{"status":"Pull complete"}\n')]),
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      pullImage(api, reference, { ctx: dockerCtx, dialect: dockerPullDialect }),
+    );
+
+    // Then
+    expect(result).toEqual({ ref: reference });
+  });
+
   test("fails when post-pull inspect is non-200", async () => {
     // Given
     const api: EngineHttpApi = {

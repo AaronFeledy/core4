@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer } from "effect";
 
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
-import { type ContainerBuildHttpRequest, buildContainerArtifact } from "@lando/container-runtime/image-build";
+import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -106,7 +107,7 @@ const makeEngine = () => {
       Config: { User: "root" },
     });
 
-  const request = (input: ContainerBuildHttpRequest) =>
+  const request = (input: EngineHttpRequest) =>
     Effect.gen(function* () {
       if (input.method === "GET") {
         const reference = imagePath(input.path);
