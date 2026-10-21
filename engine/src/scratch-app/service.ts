@@ -64,6 +64,7 @@ import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
+import { SCRATCH_EXTENSION_KEY } from "./identity.ts";
 import { decodeScratchLandofile } from "./landofile.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
@@ -229,7 +230,6 @@ const sanitizeBase = (base: string): string => {
 export const isUnsafeScratchId = (id: string): boolean =>
   id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);
 
-const SCRATCH_EXTENSION_KEY = "@lando/core/scratch";
 const DEFAULT_SCRATCH_EXCLUDES = [".git/", "node_modules/", "vendor/", ".lando/cache/", ".DS_Store"] as const;
 
 const scratchExtension = (plan: AppPlan): Record<string, unknown> => {
