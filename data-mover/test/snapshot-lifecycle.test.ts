@@ -79,6 +79,28 @@ test.each(["copy", "native"] as const)("interrupted %s creation rolls back a ret
   }),
 );
 
+test.each(["copy", "native"] as const)("%s sidecar write that fails before writing rolls back", (mode) =>
+  withCatalog(async (f) => {
+    // Given a sidecar write that fails without committing anything.
+    const storage = StateStore.of({
+      ...f.stateStore,
+      open: (spec) =>
+        f.stateStore
+          .open(spec)
+          .pipe(Effect.map((bucket) => ({ ...bucket, set: () => Effect.fail(storeFailure()) }))),
+    });
+    // When snapshot creation fails.
+    const result = await runScoped(
+      f.mover(f.recording, storage).snapshot(store, { volumeSnapshot: mode }).pipe(Effect.result),
+    );
+    // Then nothing is left behind: no sidecar, no archive, no provider image.
+    expect(result._tag).toBe("Failure");
+    expect((await f.files()).filter((name) => /\.(json|tar)$/u.test(name))).toEqual([]);
+    expect(f.artifacts.size).toBe(0);
+    expect(f.removals.length).toBe(mode === "native" ? 1 : 0);
+  }),
+);
+
 test.each(["copy", "native"] as const)("ambiguous %s sidecar write preserves its data", (mode) =>
   withCatalog(async (f) => {
     // Given a real sidecar write that reports failure after committing its bytes.

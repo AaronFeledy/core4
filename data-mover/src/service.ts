@@ -1125,16 +1125,19 @@ export const makeDataMoverService = (
       const snapshotId = randomUUID();
       let rollbackNative: VolumeSnapshotRef | undefined;
       let rollbackArchive: string | undefined;
-      let sidecarAttempted = false;
+      let sidecarCommitted = false;
       return yield* Effect.scoped(
         Effect.gen(function* () {
+          // Best-effort: a native image this misses is reclaimed by orphan GC after its grace period.
           yield* Effect.addFinalizer(() =>
             Effect.gen(function* () {
-              if (sidecarAttempted) return;
+              if (sidecarCommitted) return;
               if (rollbackNative !== undefined)
                 yield* Effect.scoped(provider.removeVolumeSnapshot(rollbackNative));
               if (rollbackArchive !== undefined) yield* removeSnapshotArchive(rollbackArchive);
-            }).pipe(Effect.orDie),
+            }).pipe(
+              Effect.catchCause((cause) => Effect.logWarning("Snapshot rollback did not complete.", cause)),
+            ),
           );
           yield* events.publish(
             PreVolumeSnapshotEvent.make({
@@ -1261,10 +1264,28 @@ export const makeDataMoverService = (
             ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
           };
           const bucket = yield* openSnapshot(persistence, snapshotHandle(info));
-          yield* Effect.suspend(() => {
-            sidecarAttempted = true;
-            return bucket.set(info).pipe(Effect.mapError((cause) => stateFailure("write-sidecar", cause)));
-          });
+          // The sidecar is the commit point. The write runs uninterruptibly so its outcome is
+          // observable; after a failure, the sidecar's presence decides whether data was committed
+          // (keep the artifact) or not (roll it back). An unknown answer keeps the artifact.
+          yield* Effect.uninterruptible(
+            bucket.set(info).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  sidecarCommitted = true;
+                }),
+              ),
+              Effect.tapError(() =>
+                bucket.exists.pipe(
+                  Effect.catch(() => Effect.succeed(true)),
+                  Effect.tap((committed) =>
+                    Effect.sync(() => {
+                      sidecarCommitted = committed;
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ).pipe(Effect.mapError((cause) => stateFailure("write-sidecar", cause)));
           yield* events.publish(
             PostVolumeSnapshotEvent.make({
               eventName: "post-volume-snapshot",

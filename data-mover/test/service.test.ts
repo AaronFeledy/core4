@@ -2587,7 +2587,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("preserves native provider snapshots when a sidecar write fails ambiguously", async () => {
+  test("rolls back the native provider snapshot when the sidecar write fails before writing", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -2665,7 +2665,8 @@ describe("BunDataMover.layer", () => {
         );
 
         expect(exit._tag).toBe("Failure");
-        expect(removeNativeCalls).toBe(0);
+        // Nothing was committed, so the provider image is not left without a catalog entry.
+        expect(removeNativeCalls).toBe(1);
         expect(
           await Bun.file(join(dataRoot, "snapshots", fixtureOwnerKey, "data", "leak-test.json")).exists(),
         ).toBe(false);
