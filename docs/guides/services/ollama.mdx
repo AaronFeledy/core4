@@ -44,7 +44,6 @@ tooling:
   node:
     service: app
     cmd: [node]
-    dir: /app
     description: Run Node inside the app service.
 ```
 
@@ -191,3 +190,4 @@ lando destroy -y
 - [Run vector search on Postgres with pgvector](./postgres-pgvector.mdx) for a vector store next to your model
 - [Reach services by name](../subsystems/service-dns.mdx) for service keys and `.internal` names
 - [Turn the router off and tune the post-start URL scanner](./router-and-scanner.mdx) for what `router.enabled` changes
+- [Make start wait for your app](./wait-for-your-app.mdx) for how health gates hold `lando start`

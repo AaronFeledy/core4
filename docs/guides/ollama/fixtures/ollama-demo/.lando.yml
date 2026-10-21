@@ -30,5 +30,4 @@ tooling:
   node:
     service: app
     cmd: [node]
-    dir: /app
     description: Run Node inside the app service.
