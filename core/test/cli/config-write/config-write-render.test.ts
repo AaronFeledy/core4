@@ -61,6 +61,12 @@ describe("config write rendering", () => {
     { subcommand: "unset", dryRun: true, changed: false, expected: "/f: k was not present (no change)." },
     { subcommand: "unset", dryRun: true, changed: true, expected: "/f: would unset k (dry run)." },
     { subcommand: "unset", dryRun: false, changed: true, expected: "/f: unset k." },
+    {
+      subcommand: "edit",
+      dryRun: true,
+      changed: true,
+      expected: "/f: would save edited Landofile (dry run).",
+    },
     { subcommand: "edit", dryRun: false, changed: true, expected: "/f: saved edited Landofile." },
     { subcommand: "validate", dryRun: false, changed: false, expected: "/f: valid." },
     { subcommand: "view", dryRun: false, changed: false, expected: undefined },

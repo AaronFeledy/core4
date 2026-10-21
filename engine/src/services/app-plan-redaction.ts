@@ -2,6 +2,7 @@ import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { Effect, Option, Predicate } from "effect";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { isLandofileOverride, isLandofileReset } from "@lando/sdk/landofile";
 
 type EnvMap = Readonly<Record<string, unknown>> | undefined;
 
@@ -73,4 +74,20 @@ export const collectLandofileRedactionTokens = (
     ...toolingTokens,
     ...collectSecretEnvValues(stringEnv(landofile.toolingDefaults?.env)),
   ];
+};
+
+export const collectAuthoredRedactionTokens = (document: unknown): readonly string[] => {
+  if (isLandofileReset(document)) return [];
+  if (isLandofileOverride(document)) return collectAuthoredRedactionTokens(document.value);
+  if (Array.isArray(document))
+    return document.flatMap((entry) => {
+      if (typeof entry !== "string") return collectAuthoredRedactionTokens(entry);
+      const equals = entry.indexOf("=");
+      return equals < 0 ? [] : collectSecretEnvValues({ [entry.slice(0, equals)]: entry.slice(equals + 1) });
+    });
+  if (!Predicate.isObject(document)) return [];
+  return Object.entries(document).flatMap(([key, value]) => [
+    ...(typeof value === "string" ? collectSecretEnvValues({ [key]: value }) : []),
+    ...collectAuthoredRedactionTokens(value),
+  ]);
 };

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
 
+import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   LandofileShape,
+  ValidationIssue,
   formatValidationIssueLine,
   parseValidationIssuePath,
   suggestionForUnknownKey,
@@ -12,6 +14,52 @@ import {
 const authoredDecode = { onExcessProperty: "error", errors: "all" } as const;
 
 describe("validation issues", () => {
+  test("preserves an issue's authored source independently of its effective path", () => {
+    // Given
+    const issue = {
+      path: ["services", "web", "dependsOn", 1, "condition"],
+      message: "Invalid dependency condition.",
+      source: {
+        file: ".lando.local.yml",
+        layer: "local",
+        path: ["services", "web", "depends_on", "database", "condition"],
+      },
+    } satisfies typeof ValidationIssue.Encoded;
+    // When
+    const decoded = Schema.decodeUnknownSync(ValidationIssue)(issue, authoredDecode);
+    // Then
+    expect(Schema.encodeSync(ValidationIssue)(decoded)).toEqual(issue);
+  });
+
+  test.each([
+    { layer: "local", path: [] },
+    { file: ".lando.yml", path: [] },
+    { file: ".lando.yml", layer: "canonical" },
+    { file: ".lando.yml", layer: "unknown", path: [] },
+  ])("rejects an incomplete or unknown source location %j", (source) => {
+    // Given / When
+    const result = Schema.decodeUnknownResult(ValidationIssue)(
+      { path: [], message: "Invalid value.", source },
+      authoredDecode,
+    );
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+  });
+
+  test("requires remediation in a serialized LandofileValidationError", () => {
+    // Given
+    const wire = {
+      _tag: "LandofileValidationError",
+      file: ".lando.yml",
+      message: "Invalid value.",
+      issues: [],
+    };
+    // When
+    const result = Schema.decodeUnknownResult(LandofileValidationError)(wire);
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+  });
+
   test("suggests image for imgae and stays silent past distance 2", () => {
     expect(suggestionForUnknownKey("imgae", ["image", "type"])).toBe('Did you mean "image"?');
     expect(suggestionForUnknownKey("zzzzzz", ["image", "type"])).toBeUndefined();

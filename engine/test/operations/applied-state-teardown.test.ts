@@ -189,6 +189,7 @@ const appliedPlanMismatches: ReadonlyArray<readonly [string, (plan: AppPlan) => 
 
 const invalidDesiredConfig = new LandofileValidationError({
   message: "The current Landofile is invalid.",
+  remediation: "Fix the current Landofile before applying it.",
   file: ".lando.yml",
   issues: [{ path: [], message: "invalid test fixture" }],
 });

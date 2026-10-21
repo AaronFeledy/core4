@@ -25,10 +25,10 @@ import type { StateStore } from "@lando/sdk/services";
 
 import { scopedLandofileRuntimeInputs, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
+import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
 import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
-import { compileLandofileRootLayers } from "@lando/landofile/root-compile";
-import { validateLandofile } from "@lando/landofile/validation";
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
 
 export type {
   IncludeUpdateEntry,
@@ -117,9 +117,14 @@ export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function*
   const includes = [];
   const composeIncludes: string[] = [];
   const inputs = yield* scopedLandofileRuntimeInputs;
-  const { compiled, scope: loadScope } = yield* compileLandofileRootLayers(appRoot, filePath, inputs);
-  for (const { layer, landofile: overlay } of compiled) {
-    const landofile = yield* validateLandofile(layer.filePath, mergeLandofiles([overlay]));
+  const { prepared } = yield* prepareLandofileRootLayers(appRoot, inputs).pipe(
+    Effect.flatMap(validatePreparedAuthoringLayers),
+  );
+  const loadScope = yield* buildLandofileLoadScope(
+    prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+  );
+  for (const { landofile: overlay } of prepared) {
+    const landofile = includeAcquisitionView(overlay);
     includes.push(...(landofile.includes ?? []));
     composeIncludes.push(...(landofile.include ?? []));
   }
