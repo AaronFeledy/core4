@@ -91,6 +91,7 @@ for (const failBuild of [false, true]) {
     };
     const globalApp: typeof GlobalAppService.Service = {
       id: "global",
+      providerId: Effect.succeed(globalPlan.provider),
       root: Effect.succeed(root),
       ensureRoot: Effect.void,
       paths: Effect.succeed({ root, distLandofile, userLandofile }),

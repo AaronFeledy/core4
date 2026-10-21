@@ -73,6 +73,7 @@ const resultEnvelope = (ndjson: string) => {
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -716,6 +717,7 @@ describe("meta:doctor command", () => {
         const socket = "/run/user/1000/podman/podman.sock";
         await writeProviderLandoState(dataRoot, socket);
         const registry = RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("podman")]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.die("provider-podman should not be constructed when conflict is pre-detected"),

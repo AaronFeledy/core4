@@ -348,6 +348,9 @@ const makeGlobalAppService = (
     );
   return GlobalAppService.of({
     id: GLOBAL_APP_ID,
+    providerId: Effect.fail(
+      globalAppError("providerId", "Global provider resolution requires the app runtime.", undefined),
+    ),
     root,
     ensureRoot,
     paths,

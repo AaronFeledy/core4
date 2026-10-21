@@ -143,6 +143,7 @@ describe("lando app:cache:refresh", () => {
           Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),
               select: () => {
@@ -222,6 +223,7 @@ describe("lando app:cache:refresh", () => {
           Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),
               select: () => Effect.die("provider must not be selected"),

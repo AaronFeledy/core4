@@ -77,6 +77,7 @@ const ssh = {
     Effect.succeed({ appId, socketPath: "/missing-host-agent.sock", runtimeVolume: "plugin-owned-agent" }),
 };
 const registry = (state: string, selected: string[]) => ({
+  appliedPlansFor: () => Effect.succeed([]),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: (selectedPlan?: AppPlan | ProviderId) => {

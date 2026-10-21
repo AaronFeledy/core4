@@ -27,6 +27,7 @@ const runDoctor = (artifacts: ReadonlyArray<VolumeSnapshotArtifact>, running = t
       Effect.provideService(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("test")]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () =>

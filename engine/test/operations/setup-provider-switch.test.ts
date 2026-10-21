@@ -107,6 +107,7 @@ const withSwitch = async (
         GlobalAppService,
         GlobalAppService.of({
           id: "global",
+          providerId: Effect.succeed(ProviderId.make("lando")),
           root: Effect.succeed(root),
           paths: Effect.succeed({
             root,

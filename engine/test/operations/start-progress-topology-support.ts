@@ -22,6 +22,7 @@ import {
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
+  GlobalAppService,
   LandofileService,
   PathsService,
   PluginRegistry,
@@ -356,8 +357,15 @@ export const makeHarness = (
     ),
     LandoConfigService.layer,
     BunFileSystem.layer,
-    GlobalAppServiceLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    Layer.effect(
+      GlobalAppService,
+      Effect.map(GlobalAppService, (service) => ({ ...service, providerId: Effect.succeed(providerId) })),
+    ).pipe(
+      Layer.provide(
+        GlobalAppServiceLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+        ),
+      ),
     ),
     Layer.succeed(
       RouterService,

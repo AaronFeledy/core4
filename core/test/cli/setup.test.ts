@@ -110,6 +110,7 @@ const buildSetupLayers = (
   );
 
 const testRuntimeProviderRegistry = {
+  appliedPlansFor: () => Effect.succeed([]),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),
@@ -316,6 +317,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -361,6 +363,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -390,6 +393,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -436,6 +440,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -466,6 +471,7 @@ describe("meta:setup command", () => {
       }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -534,6 +540,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -558,6 +565,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -623,6 +631,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(providerId)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -722,6 +731,7 @@ describe("meta:setup command", () => {
         }),
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -796,6 +806,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -861,6 +872,7 @@ describe("meta:setup command", () => {
         getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -903,6 +915,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -956,6 +969,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1006,6 +1020,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1076,6 +1091,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1184,6 +1200,7 @@ describe("meta:setup command", () => {
     };
     const globalApp = GlobalAppService.of({
       id: "global",
+      providerId: Effect.succeed(ProviderId.make("podman")),
       root: Effect.succeed(root),
       paths: Effect.succeed({
         root,
@@ -1242,6 +1259,7 @@ describe("meta:setup command", () => {
       remediation: "Run `lando poweroff`, then retry setup.",
     });
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(TestRuntimeProvider),
@@ -1283,6 +1301,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1372,6 +1391,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1419,6 +1439,7 @@ describe("meta:setup command", () => {
       setup: () => Effect.void,
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1448,6 +1469,7 @@ describe("meta:setup command", () => {
     };
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1483,6 +1505,7 @@ describe("meta:setup command", () => {
           setup: () => Effect.void,
         };
         const registry = {
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -1565,6 +1588,7 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1648,6 +1672,7 @@ describe("meta:setup command", () => {
           ) as Effect.Effect<void, never, never>,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1693,6 +1718,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1758,6 +1784,7 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1889,6 +1916,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1951,6 +1979,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1988,6 +2017,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2132,6 +2162,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2187,6 +2218,7 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -2238,6 +2270,7 @@ describe("meta:setup command", () => {
       setup: () => Effect.die("native bind-mount provider should not run file-sync setup"),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2274,6 +2307,7 @@ describe("meta:setup command", () => {
         setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
       };
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -2356,6 +2390,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2391,6 +2426,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2418,6 +2454,7 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -2460,6 +2497,7 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -2487,6 +2525,7 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -2516,6 +2555,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: (plan?: AppPlan | ProviderId) => {
@@ -2552,6 +2592,7 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2604,6 +2645,7 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2655,6 +2697,7 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2976,6 +3019,7 @@ describe("meta:setup command", () => {
     const buildRegistryThatCapturesPlan = (provider: typeof TestRuntimeProvider) => {
       const observed: { providerId?: string | undefined } = {};
       const registry = {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([
           ProviderId.make("lando"),
           ProviderId.make("docker"),

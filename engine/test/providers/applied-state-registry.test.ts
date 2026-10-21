@@ -122,7 +122,6 @@ const run = (
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       if (exactRoot !== undefined) {
-        if (registry.appliedPlansFor === undefined) return yield* Effect.die("missing exact-root query");
         return yield* registry.appliedPlansFor(exactRoot);
       }
       if (observe) {

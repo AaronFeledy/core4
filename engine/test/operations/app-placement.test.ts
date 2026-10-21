@@ -90,6 +90,7 @@ test("user start preserves a required global service placement failure at top le
           GlobalAppService,
           GlobalAppService.of({
             id: "global",
+            providerId: Effect.succeed(ProviderId.make("lando")),
             root: Effect.succeed(root),
             paths: Effect.succeed({
               root,

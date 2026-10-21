@@ -88,6 +88,7 @@ export const runScanner = <A, E>(
       Effect.provideService(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed(providers.map((provider) => ProviderId.make(provider.id))),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: (target) => {

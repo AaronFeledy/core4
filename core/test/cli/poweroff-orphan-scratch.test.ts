@@ -29,6 +29,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
     const providerLayer = Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () =>

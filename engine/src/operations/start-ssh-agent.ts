@@ -91,22 +91,21 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
       const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
       const globalApp = yield* Effect.serviceOption(GlobalAppService);
-      const globalProvider =
-        Option.isSome(globalApp) && globalApp.value.providerId !== undefined
-          ? yield* globalApp.value.providerId.pipe(
-              Effect.mapError(
-                (cause) =>
-                  new SshAgentUnavailableError({
-                    message: `Unable to resolve the global app provider for the SSH agent sidecar: ${cause.message}`,
-                    mode: "sidecar",
-                    reason: "sidecar-not-running",
-                    remediation:
-                      cause.remediation ??
-                      "Run `lando doctor` to inspect global app placement, then restart this app.",
-                  }),
-              ),
-            )
-          : undefined;
+      const globalProvider = Option.isSome(globalApp)
+        ? yield* globalApp.value.providerId.pipe(
+            Effect.mapError(
+              (cause) =>
+                new SshAgentUnavailableError({
+                  message: `Unable to resolve the global app provider for the SSH agent sidecar: ${cause.message}`,
+                  mode: "sidecar",
+                  reason: "sidecar-not-running",
+                  remediation:
+                    cause.remediation ??
+                    "Run `lando doctor` to inspect global app placement, then restart this app.",
+                }),
+            ),
+          )
+        : undefined;
       if (
         input.provider === globalProvider &&
         globalProvider !== undefined &&

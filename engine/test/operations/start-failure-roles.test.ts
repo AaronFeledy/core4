@@ -72,6 +72,7 @@ test("startForTarget global error mapping preserves secondary roles and reasons"
     ).pipe(
       Effect.provideService(GlobalAppService, {
         id: "global",
+        providerId: Effect.succeed(plan.provider),
         root: Effect.succeed(plan.root),
         paths: Effect.succeed(globalPaths),
         ensureRoot: Effect.failCause(cause),
@@ -177,6 +178,7 @@ test("a failure before any app mutation records the no-change notice", async () 
     withIncompleteStartNotice(startAppForTarget({}, { ...noticeTarget, plan: plannedApp })).pipe(
       Effect.provideService(GlobalAppService, {
         id: "global",
+        providerId: Effect.succeed(plan.provider),
         root: Effect.succeed(plan.root),
         paths: Effect.succeed(globalPaths),
         ensureRoot: Effect.fail(new GlobalAppError({ message: "global start", remediation: "repair" })),

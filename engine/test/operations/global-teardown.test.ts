@@ -118,6 +118,7 @@ const harnessAt = (
       GlobalAppService,
       GlobalAppService.of({
         id: "global",
+        providerId: Effect.succeed(providerId),
         root: Effect.succeed(root),
         ensureRoot: Effect.die("no desired root mutation"),
         paths: Effect.succeed({

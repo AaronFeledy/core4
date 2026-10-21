@@ -790,6 +790,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
   const globalAppService = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(providerId),
     root: Effect.succeed(globalPaths.root),
     ensureRoot: Effect.void,
     paths: Effect.succeed(globalPaths),

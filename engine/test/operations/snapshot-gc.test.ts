@@ -15,6 +15,7 @@ const orphan: VolumeSnapshotArtifact = {
 
 test("reports providers unavailable when registry construction cannot reach their runtime", async () => {
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("offline")]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () =>
@@ -46,6 +47,7 @@ test("reports a stopped native provider as unavailable without invoking data-pla
   };
   const mover = { ...emptySnapshots, findOrphanedSnapshots: Effect.die("must not inspect stopped runtime") };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -81,6 +83,7 @@ test.each([false, true])("reports orphan details and prunes only when requested 
       }),
   };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -110,6 +113,7 @@ test("does not issue a successful removal report when the orphan recheck refuses
     remediation: "Review the current orphan report.",
   });
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
@@ -153,6 +157,7 @@ test("reports a failing provider without hiding another provider's orphans", asy
     }),
   };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("broken"), ProviderId.make("healthy")]),
     capabilities: Effect.succeed(healthy.capabilities),
     select: (target) => Effect.succeed(String(target) === "broken" ? broken : healthy),

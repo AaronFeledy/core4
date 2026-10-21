@@ -39,6 +39,7 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
   const providerLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: (plan) =>

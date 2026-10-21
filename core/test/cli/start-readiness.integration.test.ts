@@ -46,6 +46,7 @@ test.skipIf(socket === undefined)(
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(provider.id)]),
                       capabilities: Effect.succeed(provider.capabilities),
                       select: () => Effect.succeed(provider),
@@ -122,6 +123,7 @@ test.skipIf(socket === undefined)(
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(provider.id)]),
                       capabilities: Effect.succeed(provider.capabilities),
                       select: () => Effect.succeed(provider),

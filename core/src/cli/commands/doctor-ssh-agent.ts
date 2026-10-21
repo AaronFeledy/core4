@@ -79,10 +79,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
             ? yield* registry.value.select(landofile?.provider)
             : undefined;
         const globalApp = yield* Effect.serviceOption(GlobalAppService);
-        const globalProvider =
-          Option.isSome(globalApp) && globalApp.value.providerId !== undefined
-            ? yield* globalApp.value.providerId
-            : undefined;
+        const globalProvider = Option.isSome(globalApp) ? yield* globalApp.value.providerId : undefined;
         if (
           globalProvider !== undefined &&
           provider?.id === globalProvider &&

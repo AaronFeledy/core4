@@ -1,4 +1,4 @@
-import { AppPlacementError, AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, type AppRef, type ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
@@ -27,15 +27,6 @@ export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
 ) {
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(app.root));
   const registry = yield* RuntimeProviderRegistry;
-  if (registry.appliedPlansFor === undefined)
-    return yield* Effect.fail(
-      new ProviderUnavailableError({
-        providerId: desired,
-        operation: "placement",
-        message: "The runtime provider registry cannot query app placement.",
-        remediation: "Use a registry implementing filesystem-only applied plan queries.",
-      }),
-    );
   const plans = (yield* registry.appliedPlansFor(root)).filter(
     (plan) => providerId === undefined || plan.provider === providerId,
   );

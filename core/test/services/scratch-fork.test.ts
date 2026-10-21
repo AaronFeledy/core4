@@ -294,6 +294,7 @@ const makeScratchForkLayer = (
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.sync(() => {
         options.onCapabilities?.();

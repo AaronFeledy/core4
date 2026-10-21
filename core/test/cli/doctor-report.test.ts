@@ -72,6 +72,7 @@ const decodeCommandEnvelope = (line: string) =>
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

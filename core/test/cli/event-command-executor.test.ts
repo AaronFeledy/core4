@@ -850,6 +850,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: string[] = [];
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -903,6 +904,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: ToolingInvocation[] = [];
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -953,6 +955,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -997,6 +1000,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),

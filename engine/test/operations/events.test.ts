@@ -143,6 +143,7 @@ const runWithFakes = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -242,6 +243,7 @@ const eventRuntime = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -949,6 +951,7 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1068,6 +1071,7 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1109,6 +1113,7 @@ describe("hostEvents runtime", () => {
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  appliedPlansFor: () => Effect.succeed([]),
                   list: Effect.succeed([ProviderId.make("test")]),
                   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                   select: () => Effect.succeed(inspecting),
@@ -1175,6 +1180,7 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),

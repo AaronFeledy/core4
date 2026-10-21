@@ -45,6 +45,7 @@ describe("loadGlobalPlan host provider", () => {
           GlobalAppService,
           GlobalAppService.of({
             id: "global",
+            providerId: Effect.succeed(ProviderId.make("docker")),
             root: Effect.succeed(AbsolutePath.make(globalRoot)),
             ensureRoot: Effect.void,
             paths: Effect.succeed({
@@ -59,7 +60,7 @@ describe("loadGlobalPlan host provider", () => {
             ensureRunning: () => Effect.succeed([]),
             regenerateDist: () =>
               Effect.succeed({ path: AbsolutePath.make(distPath), status: "unchanged", serviceIds: [] }),
-          } as never),
+          }),
         ),
         Layer.succeed(
           RuntimeProviderRegistry,

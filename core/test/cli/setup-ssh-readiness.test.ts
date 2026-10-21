@@ -94,6 +94,7 @@ test.each([
                 get: (key) => Effect.succeed(config[key]),
               }),
               Layer.succeed(RuntimeProviderRegistry, {
+                appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("lando")]),
                 capabilities: Effect.succeed(provider.capabilities),
                 select: (plan) =>

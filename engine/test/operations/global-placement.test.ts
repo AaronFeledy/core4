@@ -47,6 +47,7 @@ const layers = (plans: ReadonlyArray<AppPlan>, globalRoot: AbsolutePath = root) 
       GlobalAppService,
       GlobalAppService.of({
         id: "global",
+        providerId: Effect.die("placement must resolve through the registry"),
         root: Effect.succeed(globalRoot),
         paths: Effect.succeed({
           root: globalRoot,

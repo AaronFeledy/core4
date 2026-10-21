@@ -154,6 +154,7 @@ export const globalTeardownHarness = async (
       GlobalAppService,
       GlobalAppService.of({
         id: "global",
+        providerId: Effect.succeed(ProviderId.make("lando")),
         root: Effect.succeed(root),
         ensureRoot: Effect.die("root must not be materialized"),
         paths: Effect.succeed({

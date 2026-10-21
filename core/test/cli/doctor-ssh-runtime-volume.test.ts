@@ -44,6 +44,7 @@ test.each(["running", "exited"])(
         Effect.provideService(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([provider.id]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),

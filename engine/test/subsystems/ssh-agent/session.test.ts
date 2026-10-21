@@ -64,6 +64,7 @@ test.each([0, 2])("running agent exec exit %s distinguishes ready from starting"
     runtimeSshAgentState.pipe(
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -100,6 +101,7 @@ test.each([
     runtimeSshAgentState.pipe(
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -137,6 +139,7 @@ test.each([false, true])(
       }).pipe(
         Effect.provideService(GlobalAppService, globalApp),
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make(provider.id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -176,6 +179,7 @@ test("wait exhausts its budget when a running agent never answers", async () => 
     }).pipe(
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

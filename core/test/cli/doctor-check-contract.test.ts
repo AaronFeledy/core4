@@ -34,6 +34,7 @@ import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
 
 const buildRegistry = (provider: RuntimeProviderShape) =>
   RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

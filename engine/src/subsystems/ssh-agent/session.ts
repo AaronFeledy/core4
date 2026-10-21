@@ -46,7 +46,7 @@ export const runtimeSshAgentState = Effect.gen(function* () {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry)) return "stopped" as const;
   const globalApp = yield* Effect.serviceOption(GlobalAppService);
-  if (Option.isNone(globalApp) || globalApp.value.providerId === undefined) return "starting" as const;
+  if (Option.isNone(globalApp)) return "starting" as const;
   const provider = yield* registry.value.select(yield* globalApp.value.providerId);
   const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
   const service = yield* provider.inspect(target);

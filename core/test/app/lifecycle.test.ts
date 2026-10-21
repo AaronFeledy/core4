@@ -288,6 +288,7 @@ const appLayer = (
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
             capabilities: Effect.succeed(fixtureProvider.capabilities),
             select: () => Effect.succeed(fixtureProvider),
@@ -1324,6 +1325,7 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),

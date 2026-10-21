@@ -30,6 +30,7 @@ const withGlobalFiles = async <A>(
   };
   const globalApp = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(ProviderId.make("lando")),
     root: Effect.succeed(paths.root),
     paths: Effect.succeed(paths),
     ensureRoot: Effect.void,

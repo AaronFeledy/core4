@@ -323,7 +323,7 @@ export class RuntimeProviderRegistry extends Context.Service<
      * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
      * or contacts a runtime.
      */
-    readonly appliedPlansFor?: (
+    readonly appliedPlansFor: (
       root: AbsolutePath,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (

@@ -41,6 +41,7 @@ test("public captured handle reuses configuration until resolution while emergen
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  appliedPlansFor: () => Effect.succeed([]),
                   list: Effect.succeed([ProviderId.make("test")]),
                   capabilities: Effect.succeed(provider.capabilities),
                   select: () => Effect.succeed(provider),

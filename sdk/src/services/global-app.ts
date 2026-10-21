@@ -32,7 +32,7 @@ export class GlobalAppService extends Context.Service<
      * Provider holding the applied global plan for the canonical global root, else the host provider.
      * Reads applied state only; never constructs or initializes a runtime.
      */
-    readonly providerId?: Effect.Effect<ProviderId, GlobalAppError>;
+    readonly providerId: Effect.Effect<ProviderId, GlobalAppError>;
     readonly paths: Effect.Effect<GlobalAppPaths, GlobalAppError>;
     readonly ensureUserLandofile: Effect.Effect<
       { readonly path: AbsolutePath; readonly created: boolean },

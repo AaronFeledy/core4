@@ -633,10 +633,6 @@ export const layer = (stateStore: PluginStateStore) =>
           onNone: () => ({}),
           onSome: (registry) => ({
             readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {
-              if (globalApp.providerId === undefined)
-                return yield* Effect.fail(
-                  proxyError("log observation", "Global runtime placement is unavailable."),
-                );
               const provider = yield* registry.select(yield* globalApp.providerId);
               if (provider.capabilities.serviceLogs !== true) {
                 return yield* Effect.fail(proxyError("log observation", "Service logs are unavailable."));

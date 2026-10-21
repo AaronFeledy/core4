@@ -58,6 +58,7 @@ describe("lifecycle confirmation boundary", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.die("Unexpected provider list"),
                     capabilities: Effect.die("Unexpected capabilities"),
                     select: () => Effect.die("Unexpected provider selection"),
@@ -103,6 +104,7 @@ describe("lifecycle confirmation boundary", () => {
           Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.die("Unexpected provider list"),
               capabilities: Effect.die("Unexpected provider capabilities"),
               select: () => Effect.die("Unexpected provider selection"),

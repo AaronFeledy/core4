@@ -165,6 +165,7 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),
@@ -365,6 +366,7 @@ test("fails runTooling reserved when Landofile authors run even if php also cont
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.succeed(TestRuntimeProvider),

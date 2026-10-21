@@ -91,6 +91,7 @@ const makeRegistry = (observations: Readonly<Record<string, Observed>>, inspecte
     },
   };
   return RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),

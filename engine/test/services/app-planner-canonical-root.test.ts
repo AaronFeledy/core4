@@ -47,6 +47,7 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     await Effect.runPromise(
       validateResolvedAppTarget(target).pipe(
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),

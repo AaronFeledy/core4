@@ -292,6 +292,10 @@ const makeLayer = (input: {
       ),
   };
   const registry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed(
+        appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
+      ),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),

@@ -61,6 +61,7 @@ const providerLayers = [
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(TestRuntimeProvider),

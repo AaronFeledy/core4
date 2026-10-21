@@ -19,6 +19,7 @@ void runAgentRelayWorkerProcess({
   runtime: Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
