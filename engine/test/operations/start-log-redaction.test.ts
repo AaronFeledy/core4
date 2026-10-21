@@ -40,7 +40,7 @@ const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
         plan.provider,
         {
           id: plan.provider,
-          appliedPlans: () => Effect.die("not used"),
+          appliedPlans: () => Effect.succeed([]),
           make: () => harness.runtimeProviderRegistry.select(),
         },
       ],

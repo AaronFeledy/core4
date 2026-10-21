@@ -2,9 +2,12 @@ import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { AppResolveError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { GlobalAppService } from "@lando/sdk/services";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import { infoApp } from "../../src/operations/info.ts";
+import { logsApp } from "../../src/operations/logs.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -20,10 +23,47 @@ const desired = { ...plan, provider: ProviderId.make("docker") };
 const applied = {
   ...plan,
   provider: ProviderId.make("lando"),
-  identity: { appRoot: plan.root, ownerKey: "owner" },
+  identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) },
 };
 const app = { kind: "user" as const, id: desired.id, root: desired.root };
 const target = { app, root: desired.root, plan: desired };
+
+const observations: ReadonlyArray<{
+  readonly name: string;
+  readonly run: Effect.Effect<
+    { readonly app: string },
+    Effect.Error<ReturnType<typeof infoApp>> | Effect.Error<ReturnType<typeof logsApp>>,
+    Effect.Services<ReturnType<typeof infoApp>> | Effect.Services<ReturnType<typeof logsApp>>
+  >;
+}> = [
+  { name: "info", run: infoApp() },
+  { name: "logs", run: logsApp() },
+];
+for (const operation of observations) {
+  test(`${operation.name} reads applied placement without planning the unavailable desired provider`, async () => {
+    const harness = makeHarness({
+      plannedApp: desired,
+      appliedPlans: [applied],
+      resolveAppliedPlan: () => Effect.succeed(applied),
+    });
+    try {
+      const result = await Effect.runPromise(
+        withResolvedCwd(
+          plan.root,
+          operation.run.pipe(
+            Effect.provideService(
+              AppPlanner,
+              AppPlanner.of({ plan: () => Effect.die("observation must not plan desired state") }),
+            ),
+          ),
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.app).toBe(applied.name);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  });
+}
 
 test("user start preserves a required global service placement failure at top level", async () => {
   const appliedPlans: AppPlan[] = [];
