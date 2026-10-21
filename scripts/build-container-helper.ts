@@ -73,8 +73,18 @@ if (import.meta.main) {
   const test = process.argv.includes("--test");
   const digest = await containerHelperSourceDigest();
   await rm(CONTAINER_HELPER_SOURCE_DIGEST_PATH, { force: true });
-  for (const argv of containerHelperBuildCommands({ test, linkerFlags: containerHelperLinkerFlags() }))
-    await run(argv);
+  let built = false;
+  try {
+    for (const argv of containerHelperBuildCommands({ test, linkerFlags: containerHelperLinkerFlags() }))
+      await run(argv);
+    built = true;
+  } finally {
+    // Every checkout uses the same builder app name, and same-name apps can't coexist.
+    // Destroying the builder lets another checkout (git worktree) build next.
+    await run(["destroy", "--yes"]).catch((error: unknown) => {
+      if (built) throw error;
+    });
+  }
   await containerHelperNotices(resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
   await mkdir(dirname(CONTAINER_HELPER_SOURCE_DIGEST_PATH), { recursive: true });
   await writeFile(CONTAINER_HELPER_SOURCE_DIGEST_PATH, `${digest}\n`);

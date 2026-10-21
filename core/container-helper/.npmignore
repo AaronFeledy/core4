@@ -1,5 +1,2 @@
 # Unlike git, library packages must ship the built helpers and toolchain notices.
 /.cache/
-/node_modules/
-/tmp/
-/vendor/
