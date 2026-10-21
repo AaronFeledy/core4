@@ -7,14 +7,24 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { addEnvRecord, commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  addEnvRecord,
+  commandHealthcheck,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const DEFAULT_PORT = 1433;
+const MSSQL_LISTENER = {
+  port: 1433,
+  variable: "MSSQL_TCP_PORT",
+  daemon: "SQL Server",
+  reserved: [{ port: 1434, use: "dedicated admin connection" }],
+} as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";
 const VERSIONS = ["2019", "2022"] as const;
@@ -23,9 +33,6 @@ const ARTIFACTS = {
   "2022": "mcr.microsoft.com/mssql/server:2022-latest",
 } as const;
 const AMD64_HOST_ARCHES = new Set(["x64", "amd64", "x86_64"]);
-const ARCH_REMEDIATION =
-  "upstream SQL Server images are amd64-only; use an amd64 host or a provider with architecture emulation";
-
 export const MSSQL_FEATURE_ID = "service-lando.mssql";
 
 const defaultRootPassword = (appName: string, serviceName: string): string =>
@@ -38,12 +45,19 @@ const defaultCreds = (appName: string, serviceName: string) => ({
   rootPassword: defaultRootPassword(appName, serviceName),
 });
 
-const sqlcmdToolingArgv = (): readonly string[] => [SQLCMD, "-S", "localhost", "-U", "sa", "-C"];
-
-const sqlcmdHealthcheckArgv = (rootPassword: string): readonly string[] => [
+const sqlcmdToolingArgv = (port: number): readonly string[] => [
   SQLCMD,
   "-S",
-  "localhost",
+  `localhost,${port}`,
+  "-U",
+  "sa",
+  "-C",
+];
+
+const sqlcmdHealthcheckArgv = (rootPassword: string, port: number): readonly string[] => [
+  SQLCMD,
+  "-S",
+  `localhost,${port}`,
   "-U",
   "sa",
   "-P",
@@ -57,6 +71,8 @@ const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCH
 
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
+  assertListenerConfig(service, MSSQL_LISTENER);
+  const port = plannedPort(service, MSSQL_LISTENER);
   const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
   const creds = resolveServiceCreds({
@@ -72,15 +88,16 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("MSSQL_PID", environment.MSSQL_PID ?? "Developer");
   addEnvRecord(ctx, {
     ...familyEnvFor("mssql", creds),
-    ...landoDbEnvFor(creds),
+    ...landoDbEnvFor(creds, port),
+    MSSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
     store: `${appName}-mssql-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(rootPassword)], 30));
+  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
+  ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(rootPassword, port)], 30));
 
   applyAuthoredProcessFields(ctx);
 };
@@ -109,7 +126,14 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
     ) {
       return Effect.fail(
         new ServiceTypeError({
-          message: ARCH_REMEDIATION,
+          message: "Upstream SQL Server images are amd64-only.",
+          issues: [
+            {
+              path: ["type"],
+              message: "Upstream SQL Server images are amd64-only.",
+              suggestion: "Use an amd64 host or a provider with architecture emulation.",
+            },
+          ],
           serviceType: id,
         }),
       );
@@ -124,26 +148,29 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
     });
     const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, input.name);
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "mssql",
-        image: input.service.image ?? image,
-        creds,
-        environment: {
-          ...authoredEnv,
-          ...familyEnvFor("mssql", creds),
+    return serviceTypeResolve(id, "mssql service type failed to resolve", () => {
+      assertListenerConfig(input.service, MSSQL_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "mssql",
+          image: input.service.image ?? image,
+          creds,
+          environment: {
+            ...authoredEnv,
+            ...familyEnvFor("mssql", creds),
+          },
         },
-      },
-      features: [{ id: MSSQL_FEATURE_ID }],
-      tooling: {
-        sqlcmd: {
-          service: input.name,
-          cmd: [...sqlcmdToolingArgv()],
-          env: { SQLCMDPASSWORD: rootPassword },
+        features: [{ id: MSSQL_FEATURE_ID }],
+        tooling: {
+          sqlcmd: {
+            service: input.name,
+            cmd: [...sqlcmdToolingArgv(plannedPort(input.service, MSSQL_LISTENER))],
+            env: { SQLCMDPASSWORD: rootPassword },
+          },
         },
-      },
+      };
     });
   },
 });

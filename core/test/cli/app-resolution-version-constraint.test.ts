@@ -12,7 +12,7 @@ import { LandofileService, Renderer } from "@lando/sdk/services";
 import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/landofile/app-resolution";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";

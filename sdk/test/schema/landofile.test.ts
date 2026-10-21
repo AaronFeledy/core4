@@ -55,6 +55,23 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
 };
 
 describe("LandofileShape — schema gate", () => {
+  test("include checksum is rejected with the usual unknown-key issue", () => {
+    // Given
+    const input = { includes: [{ source: "github:acme/shared", path: "web.yml", checksum: "ignored" }] };
+    // When
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          path: ["includes", 0, "checksum"],
+          message: "Expected no excess property",
+        }),
+      );
+    }
+  });
   test("LandofileShape strictly decodes and round-trips per-app command aliases", () => {
     // Given
     const input = {
@@ -373,6 +390,22 @@ describe("LandofileShape — schema gate", () => {
 });
 
 describe("LandofileShape (MVP)", () => {
+  test.each([0, 70000, 1.5])("rejects service port %s outside the TCP port domain", (port) => {
+    const result = Schema.decodeUnknownResult(LandofileShape)({
+      name: "port-test",
+      services: { db: { type: "mysql", port } },
+    });
+    expect(Result.isFailure(result)).toBe(true);
+  });
+
+  test("accepts a valid authored TCP port", () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "port-test",
+      services: { db: { type: "mysql", port: 3307 } },
+    });
+    expect(decoded.services?.[ServiceName.make("db")]?.port).toBe(3307);
+  });
+
   test("decodes a minimal Landofile with one app name + one service block + Compose-subset keys", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)(minimalLandofileFixture);
     expect(decoded.name).toBe("myapp");
@@ -546,6 +579,7 @@ describe("LandofileShape (MVP)", () => {
 
     const err = new LandofileValidationError({
       message: `Landofile rejected ${rejectedKeys.length} unknown key(s): ${rejectedKeys.join(", ")}`,
+      remediation: "Remove unknown keys or correct their spelling.",
       file: "/srv/apps/myapp/.lando.yml",
       issues: rejectedKeys.map((key) => ({
         path: key.length === 0 ? [] : key.split("."),

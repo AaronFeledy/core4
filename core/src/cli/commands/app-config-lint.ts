@@ -9,10 +9,10 @@ export const renderConfigLintResult = (
   result: ConfigLintResult,
   _format: AppConfigLintFormat = "text",
 ): string => {
-  if (result.valid) {
-    return `${result.file}: no canonical-schema violations.`;
+  if (result.violations.length === 0) {
+    return `${result.file}: no config lint findings.`;
   }
-  const header = `${result.file}: ${result.violations.length} canonical-schema violation${
+  const header = `${result.file}: ${result.violations.length} config lint finding${
     result.violations.length === 1 ? "" : "s"
   }.`;
   const lines = result.violations.map(renderConfigLintViolation);

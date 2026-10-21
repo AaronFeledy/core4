@@ -1,8 +1,8 @@
 import { dirname } from "node:path";
-import { loadLandofileLayers } from "@lando/landofile/service";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
-import { resolveKnownEventSet } from "../planner/event-set.ts";
+import { knownEventSetFrom, resolveLandofileForPlanning } from "../planner/event-set.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 
 import type {
@@ -15,13 +15,15 @@ import type {
 } from "@lando/sdk/errors";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import { type LintLandofileOptions, routeViolations } from "@lando/landofile/lint";
-import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
+import { type LintLandofileOptions, attributeEffectiveLintIssue } from "@lando/landofile/lint";
+import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
 /**
- * Schema and resolved event-name validation shared by config lint and doctor.
+ * Config lint shared by `app:config:lint` and doctor: the load snapshot's
+ * findings plus the planner's resolved-Landofile validation stage, so lint
+ * reports what planning would reject, then resolved event-name validation.
  */
 export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   options: AppConfigLintOptions = {},
@@ -35,40 +37,54 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   | NotImplementedError,
   PluginRegistry
 > {
-  const result = yield* lintLandofile(options);
-  if (!result.valid) return result;
-  const runtimeInputs = yield* scopedLandofileRuntimeInputs;
-  const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
-    ...runtimeInputs,
-    ...(options.templates === undefined ? {} : { templates: options.templates }),
-  }).pipe(Effect.result);
-  if (Result.isFailure(loaded)) {
-    return { ...result, valid: false, violations: [{ path: [], message: loaded.failure.message }] };
-  }
+  const snapshot = yield* lintLandofileSnapshot(options);
+  const { result } = snapshot;
+  if (snapshot.resolved === undefined) return result;
+  const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  const resolved = yield* resolveKnownEventSet({
-    landofile: loaded.success,
+  const resolved = yield* resolveLandofileForPlanning({
+    landofile,
     pluginRegistry,
     configService,
     fileSystem,
     pathsService,
-    file: result.file,
+    file: snapshot.landofilePath,
+    appRoot: dirname(snapshot.landofilePath),
   }).pipe(Effect.result);
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
+      const path = configExpressionIssuePath(resolved.failure);
+      const source = getLandofileValueSource(landofile, path);
       return {
         ...result,
         valid: false,
         violations: [
-          { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
+          ...result.violations,
+          {
+            rule: "landofile.expression",
+            severity: "error",
+            path,
+            message: resolved.failure.message,
+            scope: "effective" as const,
+            ...(source === undefined ? {} : { source }),
+          },
         ],
       };
     }
     return yield* Effect.fail(resolved.failure);
   }
-  const violations = routeViolations(resolved.success.landofile, { deferExpressions: false });
-  return violations.length === 0 ? result : { ...result, valid: false, violations };
+  if (resolved.success._tag === "Resolved") {
+    yield* knownEventSetFrom(resolved.success.resolution);
+    return result;
+  }
+  const evaluated = resolved.success.issues.map((issue) => attributeEffectiveLintIssue(landofile, issue));
+  return {
+    ...result,
+    file: result.violations[0]?.source?.file ?? evaluated[0]?.source?.file ?? result.file,
+    valid: false,
+    violations: [...result.violations, ...evaluated],
+  };
 });

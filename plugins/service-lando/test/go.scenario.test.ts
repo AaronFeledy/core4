@@ -139,11 +139,15 @@ const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly onDiscover?: () => void;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => {
+        options.onDiscover?.();
+        return options.landofile;
+      }),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -250,22 +254,31 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(calls[0]?.command).toEqual(["go", "build", "./..."]);
   });
 
-  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+  test.each([false, true])("resolved tooling targets retain captured policy enabled=%s", async (enabled) => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      agentEnv: false,
+      agentEnv: !enabled,
       services: { web: { type: "go:1.22" } },
       tooling: { go: { service: "web", cmd: "go" } },
     });
-    const staleLandofile = Schema.decodeUnknownSync(LandofileShape)({
+    const capturedLandofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
+      ...(enabled ? {} : { agentEnv: false }),
       services: { web: { type: "go:1.22" } },
       tooling: { go: { service: "web", cmd: "go" } },
     });
     const appPlan = await planLandofile(landofile);
 
     const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "go version go1.22.0 linux/amd64\n" }]);
-    const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
+    let discoveries = 0;
+    const layer = makeToolingLayer({
+      landofile,
+      plan: appPlan,
+      provider,
+      onDiscover: () => {
+        discoveries++;
+      },
+    });
     const saved = process.env.CLAUDECODE;
     process.env.CLAUDECODE = "1";
     try {
@@ -276,16 +289,18 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
             plan: appPlan,
             root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: appPlan.id, root: appPlan.root },
-            landofile: staleLandofile,
+            landofile: capturedLandofile,
           },
         ).pipe(Effect.provide(layer)),
       );
 
       expect(result.exitCode).toBe(0);
     } finally {
-      process.env.CLAUDECODE = saved;
+      if (saved === undefined) Reflect.deleteProperty(process.env, "CLAUDECODE");
+      else process.env.CLAUDECODE = saved;
     }
 
-    expect(calls[0]?.env).toBeUndefined();
+    expect(calls[0]?.env?.CLAUDECODE).toBe(enabled ? "1" : undefined);
+    expect(discoveries).toBe(0);
   });
 });

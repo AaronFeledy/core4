@@ -29,15 +29,12 @@ import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { compensateFailure, compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
-import { isReadinessFailure } from "../lifecycle/readiness-failure.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
@@ -46,6 +43,7 @@ import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
+import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
@@ -111,6 +109,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
         .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
     { discard: true },
   );
+  yield* markStartMutation(target.plan);
   yield* stopSelected;
   const builtPlan = yield* withBuildProvider(builds.build(plan, { refresh: true }), provider);
   const readinessPlan = { ...target.plan, services: { ...target.plan.services, ...builtPlan.services } };
@@ -144,7 +143,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
                   serviceEnvironment,
                   onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
                 }),
-              ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected)));
+              );
+              yield* prepareGpgHome;
               yield* Effect.forEach(services, (service) =>
                 inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
                   Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
@@ -199,13 +199,13 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
           yield* startApp(
             options.signal === undefined ? {} : { signal: options.signal },
             resolvedTarget,
-            managed,
+            managed?.resume ?? managed,
+            { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
           );
         const stopPreflight = yield* preflightStopApp(resolvedTarget);
         yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
         yield* ensureStartTransactionConsistent(resolvedTarget);
         if (pending === null) yield* runAppInitEvents(plan);
-        const proxy = yield* RouterService;
         const ref: AppRef = resolvedTarget.app;
         const timestamp = () => DateTime.nowUnsafe();
         const preRebuild = PreRebuildEvent.make({
@@ -223,25 +223,22 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
               }),
             }
           : yield* Effect.gen(function* () {
+              yield* markStartMutation(plan);
               yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
               yield* managed?.onStopped ?? Effect.void;
-              return yield* compensateFailureUnless(
-                startApp(
-                  {
-                    reconcile: true,
-                    ...(options.signal === undefined ? {} : { signal: options.signal }),
-                  },
-                  resolvedTarget,
-                  managed,
-                  {
-                    buildOptions: { refresh: true },
-                    forceAppBuild: true,
-                    skipInitEvents: true,
-                    transactionPreflightDone: true,
-                  },
-                ),
-                proxy.removeRoutes(plan.id),
-                (error) => isPostStartStepError(error) || isReadinessFailure(error),
+              return yield* startApp(
+                {
+                  reconcile: true,
+                  ...(options.signal === undefined ? {} : { signal: options.signal }),
+                },
+                resolvedTarget,
+                managed,
+                {
+                  buildOptions: { refresh: true },
+                  forceAppBuild: true,
+                  skipInitEvents: true,
+                  transactionPreflightDone: true,
+                },
               );
             });
         const postRebuild = PostRebuildEvent.make({

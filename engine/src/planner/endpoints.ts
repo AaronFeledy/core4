@@ -53,6 +53,7 @@ const duplicateEndpointNameError = (
 ): LandofileValidationError =>
   new LandofileValidationError({
     message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
+    remediation: `Give each endpoint of service ${serviceName} a unique name.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -89,6 +90,7 @@ export const resolveRoute = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
+        remediation: `Select an HTTP endpoint of service ${serviceName} for route ${hostname}.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(

@@ -1,7 +1,9 @@
+import { CONTAINER_HELPER_FILE } from "./container-helper.ts";
 import { END_OF_ARCHIVE, TAR_BLOCK_SIZE, encodeUstarHeader, padToBlock } from "./tar.ts";
 
-export const archiveLogFileHelper = (payload: Uint8Array, directoryName: string): Uint8Array => {
-  const padded = payload.byteLength + padToBlock(payload.byteLength);
+/** A tar with `directoryName/` and the helper executable inside it, for `PUT /archive`. */
+export const archiveLogFileHelper = (helper: Uint8Array, directoryName: string): Uint8Array => {
+  const padded = helper.byteLength + padToBlock(helper.byteLength);
   const directoryHeader = encodeUstarHeader({
     name: `${directoryName}/`,
     mode: 0o755,
@@ -9,15 +11,15 @@ export const archiveLogFileHelper = (payload: Uint8Array, directoryName: string)
     typeflag: "5",
   });
   const fileHeader = encodeUstarHeader({
-    name: `${directoryName}/lando-log-file-helper`,
+    name: `${directoryName}/${CONTAINER_HELPER_FILE}`,
     mode: 0o755,
-    size: payload.byteLength,
+    size: helper.byteLength,
     typeflag: "0",
   });
   const output = new Uint8Array(TAR_BLOCK_SIZE * 2 + padded + END_OF_ARCHIVE.length);
   output.set(directoryHeader, 0);
   output.set(fileHeader, TAR_BLOCK_SIZE);
-  output.set(payload, TAR_BLOCK_SIZE * 2);
+  output.set(helper, TAR_BLOCK_SIZE * 2);
   output.set(END_OF_ARCHIVE, TAR_BLOCK_SIZE * 2 + padded);
   return output;
 };

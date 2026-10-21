@@ -1,6 +1,13 @@
 import { resolve } from "node:path";
 
 import {
+  CONTAINER_HELPER_ARM64_JOB_ID,
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperArm64Job,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
+import {
   CI_PLATFORMS,
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
@@ -51,7 +58,7 @@ const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string, label: str
           echo "${label} matrix passed on ${linuxX64RunnerList}"
 `;
 
-const buildNeeds = "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]";
+const buildNeeds = `[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, ${CONTAINER_HELPER_JOB_ID}]`;
 
 const timingStartStep = `      - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"`;
@@ -112,6 +119,14 @@ ${setupBunSteps}
       - name: Runtime-bundle manifest invariant
         run: bun run check:runtime-bundle-manifest
 
+      - name: Check runtime bundle license metadata
+        run: bun run check:runtime-bundle-licenses
+
+      - name: Check compiled binary notices
+        run: |
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          bun run check:compiled-binary-notices
+
       - name: Static scope notice for portable static matrix
         run: |
           echo "::notice title=static-checks-scope::\${{ matrix.platform }} on \${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ${linuxX64RunnerList}. Full cross-platform static test portability remains a follow-up portability effort."
@@ -119,7 +134,7 @@ ${setupBunSteps}
 ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}", 35)}
 
   static-checks:
-    needs: [static-checks-platform]
+    needs: [static-checks-platform, ${CONTAINER_HELPER_ARM64_JOB_ID}]
     if: always()
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 5
@@ -130,12 +145,17 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
             echo "static-checks platform matrix result: \${{ needs.static-checks-platform.result }}"
             exit 1
           fi
+          if [[ "\${{ needs.${CONTAINER_HELPER_ARM64_JOB_ID}.result }}" != "success" ]]; then
+            echo "arm64 container helper result: \${{ needs.${CONTAINER_HELPER_ARM64_JOB_ID}.result }}"
+            exit 1
+          fi
           echo "static-checks platform matrix passed"
 `;
 
 const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
 
 const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
+    needs: ${CONTAINER_HELPER_JOB_ID}
     strategy:
       fail-fast: false
       matrix:
@@ -151,6 +171,8 @@ ${timingStartStep}
 ${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Unit test shard
         run: bun run test:unit:shard \${{ matrix.shard }}/${UNIT_SHARD_COUNT}
@@ -198,31 +220,8 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} --help
           ./dist/${platform.binaryName} shellenv`;
 
-const renderBuildNeeds = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]"
-    : buildNeeds;
-
-const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"`
-    : `          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"`;
-
-const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? `
-
-      - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: lando-linux-x64
-          path: linux-sidecars`
-    : "";
-
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
-    needs: ${renderBuildNeeds(platform)}
+    needs: ${buildNeeds}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
@@ -230,9 +229,11 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
 
 ${timingStartStep}
 
-${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
+${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -240,10 +241,11 @@ ${codegenStep}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-${renderHostProxyShimBuildCommands(platform)}
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -262,8 +264,7 @@ ${renderSmokeCommands(platform)}
           name: lando-${platform.id}
           path: |
             dist/${platform.binaryName}
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -543,7 +544,7 @@ ${timingStartStep}
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache}
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
 
       - name: Setup Bun
         if: ${linuxRuntimeBundleCacheMiss}
@@ -667,7 +668,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
     : `provider-integration-${platform.id}`;
 
   const runnerJob = `  ${jobId}:
-    needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : platform.id === "linux-x64" ? "[build-linux-x64, runtime-bundle-linux-x64]" : `[build-${platform.id}]`}
+    needs: ${platform.id === "windows-x64" ? `[build-windows-x64, runtime-bundle-win32-x64, ${CONTAINER_HELPER_JOB_ID}]` : platform.id === "linux-x64" ? `[build-linux-x64, runtime-bundle-linux-x64, ${CONTAINER_HELPER_JOB_ID}]` : `[build-${platform.id}, ${CONTAINER_HELPER_JOB_ID}]`}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
@@ -678,6 +679,8 @@ ${timingStartStep}
 ${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Download ${platform.id} binary artifact
         uses: actions/download-artifact@v7
@@ -872,7 +875,6 @@ name: ci
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -891,6 +893,8 @@ ${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}
+${renderContainerHelperJob()}
+${renderContainerHelperArm64Job()}
   schema-snapshot:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
@@ -918,7 +922,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference

@@ -145,7 +145,7 @@ Command-wide rules:
 
 - `app:cache:refresh` performs full app bootstrap and refreshes the plan, tooling graph, and app command index. It MUST NOT contact the provider unless materialization requires a missing managed dependency.
 - `app:info` and `app:rebuild` deduplicate services on first occurrence and validate all names before provider action. `app:info` selects no dependencies. `app:rebuild` selects transitive prerequisites in stable plan order and MUST leave unrelated services and dependents untouched.
-- `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
+- `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/` and MUST NOT resolve floating refs or update the lockfile. Missing pins, selector mismatches, content mismatches, and stale entries report `LandofileLockMismatchError` entries with update remediation. An undecodable lockfile fails with `LandofileParseError`; acquisition and fragment-validation failures keep their tagged errors.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
 - For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and EOF MUST close the command's stdin in every format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML disable PTYs and keyboard attachment; `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, `app:ssh` with terminal stdin, and `apps:scratch:run` and tooling with terminal stdin and stdout. Host `.bun.sh` scripts inherit Lando's stdin descriptor for piped and keyboard input, but stdout and stderr MUST still pass through the sink; keyboard mode MUST NOT bypass redaction by inheriting output descriptors. The CLI retires event rendering before keyboard-attached tooling or scripts, and retires scratch acquisition progress before exec (§8.9.2). Human host and container payloads MUST stream incrementally through one sink with byte-exact, value-only redaction (§3.7), including final partial lines, identically for terminal and redirected destinations. Tool body bytes MUST NOT become per-line `task.detail` events. Tool stdout alone goes to stdout; task trees and acquisition narration go to stderr (§8.9.1). Machine formats follow §8.11. Interruption MUST stop the tool or script; interrupted scripts report exit 130. Event, MCP, and library invocations MUST NOT consume process stdin.
@@ -168,15 +168,25 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 |---|---|
 | default / `view` | Read `raw`, `merged`, or default `resolved`; supports `--path` and structured formats |
 | `get` | Read one key path |
-| `set` | Write a typed value with `--type string\|number\|boolean\|json\|yaml` |
+| `set` | Infer the value type by full-tree schema decoding, trying raw text first, then a non-string number, boolean, null, or JSON interpretation; `--type string\|number\|boolean\|json\|yaml` overrides inference |
 | `unset` | Remove a key |
-| `edit` | Open `$VISUAL`/`$EDITOR`; `--target canonical\|local\|user` |
+| `edit` | Open `$VISUAL`/`$EDITOR` for the canonical YAML source |
 | `validate` | Validate merged Landofile (§7.8) |
 | `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write` |
 | `explain` | Read-only recipe provenance; `--format json` |
 | `migrate` | Ordered migration proposals; `--yes`, `--dry-run`, `--format json` |
 
-Ordinary writes target the canonical Landofile unless `edit --target` selects another editable layer. They validate before atomic §12.3 persistence; failure returns `LandofileWriteValidationError`. Translation and migration use §12.4 transactions. Successful writes invalidate the app-plan cache. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+Inspection exposes three stages without a second loader. Raw returns `{ source: "raw", layers: [{ layer, file, form, document }] }` in low-to-high order immediately after acquisition/render/parse or sandboxed TypeScript evaluation. It MUST NOT expand includes, evaluate load helpers, materialize expressions, or validate the effective schema. Merged returns `{ source: "merged", landofile }` after authored composition, including fragments, before recipe/env materialization, defaults, tooling assembly, or the final runtime decode. Resolved remains the default strict canonical `LandofileShape` with existing metadata. Final-schema-invalid documents remain inspectable through raw and merged; acquisition/composition failures still fail their respective stage. Source data uses recursive finite JSON values and the shared directive transport, including literal-envelope collision escaping.
+
+`--path` selects inside the exposed document, never inside the result envelope. Raw selects independently inside each encoded layer document and retains every identity and position; projected raw adds `path` and omits a missing `document`. Raw get returns `{ source: "raw", subcommand: "get", key, value? }`, where `value` is the layer projection array when any layer matches, with missing documents omitted; otherwise `value` is absent. Merged/resolved projections return `{ source, path, value? }`; get returns `{ source, subcommand: "get", key, value? }`. Get uses `key ?? path` and retains the tagged missing-selector failure. Dot/bracket syntax is shared with writes; missing members, malformed selectors, scalar traversal, and out-of-range indexes are missing, not null. Scalars, null, and arrays retain their types. Missing human text is empty; objects/arrays render compact JSON, other values use `String(value)`. Only a full resolved view emits bare canonical YAML. All other YAML output uses the normal success envelope. Result schemas MUST distinguish full views, projections, get, and actual write subcommands without a permissive fallback.
+
+Read-only MCP view/get projections expose and forward `source` and `path`, with optional get `key`, while forcing their read-only subcommand. `lando://app/config` remains resolved. Every view collects literal redaction tokens across all retained sources, including shadowed layers, directive payloads, and authored `KEY=value` arrays, before projection. Inspection MUST NOT resolve secret references or env files just to redact.
+
+Ordinary writes target the canonical YAML Landofile. A private source-replacement operation substitutes candidate bytes before parsing the old target, inserting an absent canonical source between upstream and local. It validates the original candidate as an expression-aware recursively partial native authoring fragment, discards the validation product, then runs the normal effective pipeline with one finalization. Only candidate and effective validity block writes; lint owns masked invalid untouched fragments. Set/unset persist the authored next tree, not decoded ASTs or defaults. Edit persists the exact validated buffer, including template directives; set/unset reject templates and canonical TypeScript writes remain unsupported. Dry-run fully validates without writing. Unchanged unset validates but creates no absent target. Candidate parse/schema failures and effective schema issues return `LandofileWriteValidationError` retaining source attribution; other loader tags remain intact. Persistence is atomic under §12.3. Translation and migration use §12.4 transactions. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+
+Lint validates retained root/include fragments in their authoring role and attempts normal effective finalization. Findings distinguish `scope: "fragment" | "effective"` and carry `{ file, layer, path }` source attribution, preserving effective versus authored paths. Coordinates MUST come from retained content. Different sources/scopes MUST NOT be deduplicated by path/message alone. The private lint snapshot retains the exact successfully load-finalized Landofile and its canonical path, even alongside independent fragment findings; the planner's resolve pass and event validation reuse retained root and include content without reacquiring or rerendering those sources (§7.8), while service resolution may read env files and authorized project inputs.
+
+`set` and `unset` MUST preserve comments and formatting outside the changed value or removed entry through source-offset splices. Every proposed serialization, including dry-run and canonical fallback, MUST parse with the document's own parser and equal the intended authored tree, including merge-directive symbols; decoded defaults MUST NOT be serialized. Unsupported edits MUST fail closed with `LandofileWriteValidationError`, the reason, and a pointer to `lando app:config edit` (or `lando global:config edit` for the global app) or hand editing. Full re-emission is permitted only for a blank file or an original already byte-identical to canonical emission. A failed full-tree decode MUST label issues also present in the original snapshot as already present before the change and direct the user to fix those first; candidate acceptance still requires a successful full decode.
 
 Conversion is preview-only without `--write`, MUST be explicit or unambiguous, and MUST NOT build an `AppPlan` or contact a runtime provider. Declared refresh is the separate §7.4.2 mode: `--refresh [<id>]` materializes and MAY fetch nonsecret remote metadata; `--refresh [<id>] --check` MUST use local state only and MUST NOT write. Conversion selectors and `--write` MUST NOT combine with refresh mode. Translators MAY also load in the bounded lifecycle refresh phase, never discovery or ordinary loading.
 
@@ -191,6 +201,8 @@ All remote commands MUST enforce central effective protection (§10.12.8), indep
 #### 8.2.2 The `meta:config` command
 
 `meta:config` mirrors ordinary app-config operations against `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. Writes MUST validate the global schema, including plugin and provider extensions, and persist atomically. `view --source raw` reads only `config.yml`; `resolved` includes overlays and environment overrides. It runs outside app context at `minimal` bootstrap.
+
+Its `set` and `unset` writes follow the comment/format-preserving and fail-closed contract above, verified with the config.yml parser. Refusals MUST point to `lando config edit` or hand editing.
 
 #### 8.2.3 The `app:shell` command
 
@@ -502,11 +514,11 @@ Migration snapshot helper names remain the closed pure §7.3.1 set, including sc
 |---|---|
 | bare id | Built-in `recipes/<id>/` |
 | relative or absolute path | Local directory |
-| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/` |
+| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/`; an `@ref` suffix selects a tag, branch, or full commit SHA |
 | `npm:` | `<userCacheRoot>/recipes/npm/` |
 | `registry:` | Reserved for `recipes.lando.dev`; implementation sequenced in the ROADMAP |
 
-Resolution is content-addressed and cached for offline reuse.
+Resolution is content-addressed and cached for offline reuse. A cached full commit SHA is reused without network access; a branch, tag, or default-branch request is fetched again on each resolution and falls back to the cached commit for the same source and ref only where a warning can be shown (`lando init --source=git`) and only when the fetch fails for a reason other than authentication; otherwise the failure stands.
 
 #### 8.8.5 Prompt types
 
@@ -871,7 +883,7 @@ CLI and MCP failure envelopes MUST share one Cause projection. The primary is th
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
-Validation failures carry structured `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `suggestion`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, so one run reports every problem in the file.
+Validation failures carry the collected `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `suggestion`, optional authored `source: { file, layer, path }`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, subject to the stage boundaries in §7.8. A completed lint returns `ok: true` with `ConfigLintResult`, including `valid: false` and its `violations` when configuration errors were found; a failure that prevents that result uses the failure envelope.
 
 #### 8.11.2 The single serialization seam
 

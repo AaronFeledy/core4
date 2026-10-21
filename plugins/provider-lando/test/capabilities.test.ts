@@ -164,7 +164,7 @@ describe("provider-lando capabilities", () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
       podmanApi: podmanApiForArch("x86_64"),
-      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
     });
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
@@ -173,8 +173,8 @@ describe("provider-lando capabilities", () => {
   test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: podmanApiForArch("aarch64"),
-      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      podmanApi: podmanApiForArch("riscv64"),
+      resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
     });
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(false);

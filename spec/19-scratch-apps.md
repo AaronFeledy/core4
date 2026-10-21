@@ -170,7 +170,7 @@ Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|bake
 
 Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userCacheRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 
-Scratch startup MUST pass the shared §6.7 readiness barrier before reporting success, returning a started handle, marking the registry running, or executing `apps:scratch:run` tooling. Readiness failure and interruption MUST follow scratch scope cleanup, including routes, containers, applicable volumes, and the materialized root; `--keep-on-failure` retains failed acquisition state. User-app readiness retention markers MUST NOT suppress scratch cleanup. Scratch remediation MUST address the scratch identity and MUST NOT prescribe `lando start`.
+Scratch startup MUST pass the shared §6.7 readiness barrier before reporting success, returning a started handle, marking the registry running, or executing `apps:scratch:run` tooling. Startup failure and interruption at any phase MUST follow scratch scope cleanup, including routes, containers, applicable volumes, and the materialized root; `--keep-on-failure` retains failed acquisition state. The user-app and global-app retention policy of §6.7 does not apply to scratch apps and MUST NOT suppress scratch cleanup. Scratch remediation MUST address the scratch identity and MUST NOT prescribe `lando start`.
 
 #### 21.10.2 Top-level alias reservation
 

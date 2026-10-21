@@ -213,11 +213,17 @@ const makeLayer = (options: {
   readonly landofile: LandofileShape;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly onDiscover?: () => void;
 }) =>
   Layer.mergeAll(
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed(options.landofile) }),
+      LandofileService.of({
+        discover: Effect.sync(() => {
+          options.onDiscover?.();
+          return options.landofile;
+        }),
+      }),
     ).pipe(Layer.provide(emptyConfigServiceLayer)),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(options.plan) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
@@ -759,28 +765,42 @@ describe("execApp — host agent-context env forwarding", () => {
     expect(calls[0]?.env).toBeUndefined();
   });
 
-  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
-    const plan = makePlan([makeService("appserver", true)]);
-    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+  test.each([false, true])(
+    "resolved app targets use captured policy enabled=%s without discovery",
+    async (enabled) => {
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+      let discoveries = 0;
 
-    await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
-      Effect.runPromise(
-        execApp(
-          { service: "appserver", command: ["env"] },
-          {
-            plan,
-            root: AbsolutePath.make(process.cwd()),
-            app: { kind: "user", id: plan.id, root: plan.root },
-            landofile: { name: "scenario" },
-          },
-        ).pipe(
-          Effect.provide(makeLayer({ landofile: { name: "scenario", agentEnv: false }, plan, provider })),
+      await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(
+          execApp(
+            { service: "appserver", command: ["env"] },
+            {
+              plan,
+              root: AbsolutePath.make(process.cwd()),
+              app: { kind: "user", id: plan.id, root: plan.root },
+              landofile: { name: "scenario", ...(enabled ? {} : { agentEnv: false }) },
+            },
+          ).pipe(
+            Effect.provide(
+              makeLayer({
+                landofile: { name: "scenario", agentEnv: !enabled },
+                plan,
+                provider,
+                onDiscover: () => {
+                  discoveries++;
+                },
+              }),
+            ),
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(calls[0]?.env).toBeUndefined();
-  });
+      expect(calls[0]?.env).toEqual(enabled ? { CLAUDECODE: "1", CI: "true" } : undefined);
+      expect(discoveries).toBe(0);
+    },
+  );
 
   test("LANDO_AGENT_ENV=0 disables forwarding for a single invocation", async () => {
     const plan = makePlan([makeService("appserver", true)]);

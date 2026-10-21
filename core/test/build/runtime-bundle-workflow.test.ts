@@ -27,6 +27,15 @@ describe("runtime-bundle workflow", () => {
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
   });
 
+  test("blocks asset publication on live license and source verification", async () => {
+    const workflow = await readWorkflow();
+    const publish = workflow.indexOf("  publish:");
+    const check = workflow.indexOf("run: bun run check:runtime-bundle-licenses --live", publish);
+    const release = workflow.indexOf("gh release create", publish);
+    expect(check).toBeGreaterThan(publish);
+    expect(release).toBeGreaterThan(check);
+  });
+
   test("triggers on a source-set release declaration and manual dispatch", async () => {
     const workflow = await readWorkflow();
     expect(workflow).toContain("plugins/provider-lando/runtime-bundle-sources.json");

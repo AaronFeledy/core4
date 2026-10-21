@@ -291,6 +291,7 @@ describe("@lando/sdk package exports", () => {
       "ServiceConfig",
       "RouteInput",
       "HealthcheckInput",
+      "AppMountInput",
       "ToolingTaskShape",
       "ExpressionTemplate",
       "ExpressionNode",
@@ -646,6 +647,9 @@ describe("@lando/sdk package exports", () => {
     expect(databaseCreds.databaseEnvCreds).toBeDefined();
     expect(databaseCreds.firstEnv).toBeDefined();
     expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
+    expect(databaseCreds.DATABASE_PORT_ENV_KEY).toBe("LANDO_DB_PORT");
+    expect(databaseCreds.DATABASE_FAMILY_DEFAULT_PORTS).toBeDefined();
+    expect(databaseCreds.databaseEnvPort("mysql", { LANDO_DB_PORT: "13306" })).toBe(13306);
   });
 
   test("digest entry point exports the hashing and canonical JSON helpers", async () => {
@@ -681,6 +685,8 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runProviderContract).toBeDefined();
     expect(sdkTest.runProviderContractMatrix).toBeDefined();
     expect(sdkTest.runProviderDataPlaneContract).toBeDefined();
+    expect(sdkTest.runProviderVolumeCreationContract).toBeDefined();
+    expect(sdkTest.runProviderStartRetentionContract).toBeDefined();
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 

@@ -15,7 +15,42 @@ permissions:
   contents: read
 
 jobs:
+  container-helper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      # The builder publishes no routes, so it needs no router. Lando's global router always
+      # runs on the Lando-managed provider, which this job doesn't install.
+      - name: Set up Lando with Docker
+        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Build and test the container helper with Lando
+        run: |
+          bun run scripts/build-container-helper.ts --test
+          bun test core/test/container-helper/helper.integration.test.ts
+
+      - name: Upload container helper
+        uses: actions/upload-artifact@v6
+        with:
+          name: container-helper
+          path: core/container-helper/dist/
+          if-no-files-found: error
+          retention-days: 14
   platform-readiness-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -37,6 +72,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -149,6 +194,7 @@ jobs:
           retention-days: 14
 
   platform-readiness-linux-arm64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
@@ -170,6 +216,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -283,6 +339,7 @@ jobs:
 
   platform-readiness-darwin-arm64:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [container-helper]
     runs-on: [self-hosted, lando-virt, macOS, ARM64]
     timeout-minutes: 45
     steps:
@@ -304,6 +361,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -335,6 +402,7 @@ jobs:
 
   platform-readiness-darwin-x64:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [container-helper]
     runs-on: [self-hosted, lando-virt, macOS, X64]
     timeout-minutes: 45
     steps:
@@ -356,6 +424,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -387,6 +465,7 @@ jobs:
 
   platform-readiness-windows-x64:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [container-helper]
     runs-on: [self-hosted, lando-virt, Windows, X64]
     timeout-minutes: 45
     steps:
@@ -408,6 +487,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -448,6 +537,7 @@ jobs:
 
   platform-readiness-windows-arm64:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [container-helper]
     runs-on: [self-hosted, lando-virt, Windows, ARM64]
     timeout-minutes: 45
     steps:
@@ -469,6 +559,16 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest

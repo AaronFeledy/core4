@@ -300,6 +300,17 @@ first, followed by `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`
 or `Also failed (<tag>)`. Each block includes its own remediation and distinct
 diagnostic fields, without stack traces or repeated command context.
 
+A failed `lando start` does not undo established app resources, so its
+envelope does not carry app-wide `rollback` entries. Other commands still
+can: role `rollback` means that command tried to undo partial work.
+Acquisition-local cleanup can still fail and show up with role `cleanup`.
+Whatever start established stays in place. The human report adds one warning
+after the error. It lists running, created/stopped, and unverified services,
+and says agent forwarding and file sync stay active where they were
+established. That warning is not in the JSON or YAML envelope. Call
+`lando info --format=json` to see what is there, then `lando start` again
+to converge.
+
 The error also keeps its remaining JSON-safe fields directly under `error`.
 For example, `ConfigExpressionError` carries `error.path` (a dotted string),
 `error.expression`, and `error.filePath`; `ConfigError` can carry `error.path`.
@@ -313,8 +324,9 @@ diagnostic details; use the envelope for nested objects.
 ## Read validation issues
 
 A Landofile that fails validation produces a `LandofileValidationError`
-envelope at exit `1`, and the error carries every problem under
-`error.issues`. Each issue is `{ path, message, suggestion? }`. `path` is an
+envelope at exit `1` from `lando app:config`, `lando start`, and
+`lando app:cache:refresh`, and the error carries every problem under
+`error.issues`. Each issue is `{ path, message, suggestion?, source? }`. `path` is an
 array of keys and indexes, never a dotted string, so a script indexes into
 the parsed Landofile with it directly. `suggestion` is present when Lando has
 a concrete fix, such as the closest allowed key for a typo:
@@ -329,8 +341,14 @@ For a service that spells `image` as `imgae`, that first issue has `path`
 Three independent mistakes produce three issues in one run. Branch on
 `error._tag`, then loop `error.issues`; do not parse `error.message`, which
 is the human rendering of the same list. `lando app:config:lint
---format=json` reports the same issues as `violations` inside a successful
-result, which suits editors that want the list without a failing exit.
+--format=json` reports the same issues as `violations` inside an `ok: true`
+result with `valid: false`, which suits editors that want the list without a
+failing exit. Lint and planning run one shared validation stage, so a
+service-type finding such as `["services", "db", "environment", "PGPORT"]`
+or a bad route hostname shows up with the same `path`, `message`,
+`suggestion`, and `source` in both envelopes. `lando app:config` stops
+earlier: it echoes the resolved Landofile and reports schema and
+expression issues, not service-type or route findings.
 
 The generated command reference lists every public command and documents the
 universal `--format json` flag once in its machine-readable output section.

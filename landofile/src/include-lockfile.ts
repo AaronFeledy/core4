@@ -1,74 +1,81 @@
 import { basename, dirname, resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
-import {
-  type LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileParseError,
-  causeMessage,
-} from "@lando/sdk/errors";
+import { type LandofileIncludeError, LandofileParseError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   type FragmentResult,
-  LOCK_REMEDIATION,
   type LockEntry,
   type ResolveContext,
   missingRuntimeInput,
 } from "./include-context.ts";
-import { includeError } from "./include-guard.ts";
+import { includeError, realpathOrSelf } from "./include-guard.ts";
 
-const lockScalar = (value: unknown): string | undefined => {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return undefined;
-};
+const CORRUPT_LOCK_REMEDIATION =
+  "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.";
+const PLAIN_SCALAR = /^[A-Za-z0-9._~:/@+-]+$/u;
+// Thrown inside the bucket codec; the bucket readers wrap it in LandofileParseError.
+const invalidLock = (message: string): Error => new Error(message);
+// Accept only the scalar forms renderLockfile writes: a plain allowlisted token or
+// a single-quoted string with doubled inner quotes. A damaged quote must not decode
+// to a different source id and silently unpin the include it named.
 const unescapeScalar = (value: string): string => {
   const trimmed = value.trim();
-  return trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")
-    ? trimmed.slice(1, -1).replace(/''/gu, "'")
-    : trimmed;
+  if (PLAIN_SCALAR.test(trimmed)) return trimmed;
+  const inner = trimmed.slice(1, -1);
+  if (
+    trimmed.length >= 2 &&
+    trimmed.startsWith("'") &&
+    trimmed.endsWith("'") &&
+    !/'/u.test(inner.replace(/''/gu, ""))
+  )
+    return inner.replace(/''/gu, "'");
+  throw invalidLock(`Invalid lockfile scalar: ${trimmed}`);
 };
 const parseLockfileYaml = (content: string): { includes: Array<Record<string, unknown>> } => {
   const includes: Array<Record<string, unknown>> = [];
   let current: Record<string, unknown> | undefined;
+  let header = false;
   for (const rawLine of content.split("\n")) {
     const line = rawLine.replace(/\r$/u, "");
     if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
-    if (/^includes:\s*$/u.test(line)) continue;
+    if (/^includes:\s*$/u.test(line) && !header) {
+      header = true;
+      continue;
+    }
     const itemMatch = /^ {2}- source:\s*(.*)$/u.exec(line);
-    if (itemMatch !== null) {
+    if (itemMatch !== null && header) {
       current = { source: unescapeScalar(itemMatch[1] ?? "") };
       includes.push(current);
       continue;
     }
-    const fieldMatch = /^ {4}(resolved|checksum):\s*(.*)$/u.exec(line);
+    const fieldMatch = /^ {4}(version|resolved|checksum):\s*(.*)$/u.exec(line);
     if (fieldMatch !== null && current !== undefined) {
       const key = fieldMatch[1];
-      if (key !== undefined) current[key] = unescapeScalar(fieldMatch[2] ?? "");
+      if (key !== undefined) {
+        if (Object.hasOwn(current, key)) throw invalidLock(`Duplicate lockfile field: ${key}`);
+        current[key] = unescapeScalar(fieldMatch[2] ?? "");
+      }
       continue;
     }
-    throw new Error(`Invalid include lockfile line: ${line}`);
+    throw invalidLock(`Invalid include lockfile line: ${line}`);
   }
+  if (!header) throw invalidLock("Missing includes lockfile header.");
   return { includes };
 };
-const parseLockEntriesFromText = (content: string): LockEntry[] => {
+const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
   const parsed = parseLockfileYaml(content);
-  if (!Predicate.isObject(parsed) || !Array.isArray(parsed.includes)) return [];
-  const entries: LockEntry[] = [];
-  for (const entry of parsed.includes) {
-    if (!Predicate.isObject(entry)) continue;
-    const source = lockScalar(entry.source);
-    const resolved = lockScalar(entry.resolved);
-    const checksum = lockScalar(entry.checksum);
-    if (source !== undefined && resolved !== undefined && checksum !== undefined)
-      entries.push({ source, resolved, checksum });
+  const entries = Schema.decodeUnknownSync(LockEntriesSchema)(parsed.includes, { onExcessProperty: "error" });
+  const sources = new Set<string>();
+  for (const entry of entries) {
+    if (sources.has(entry.source)) throw invalidLock(`Duplicate lockfile source: ${entry.source}`);
+    sources.add(entry.source);
   }
   return entries;
 };
 const escapeScalar = (value: string): string => {
-  if (/^[A-Za-z0-9._~:/@+-]+$/u.test(value) && value !== "true" && value !== "false" && value !== "null")
-    return value;
+  if (PLAIN_SCALAR.test(value) && value !== "true" && value !== "false" && value !== "null") return value;
   return `'${value.replace(/'/gu, "''")}'`;
 };
 export const byCodepointString = (left: string, right: string): number =>
@@ -77,6 +84,7 @@ const renderLockfile = (entries: ReadonlyArray<LockEntry>): string => {
   const lines = ["# DO NOT EDIT - generated by Lando.", "includes:"];
   for (const entry of [...entries].sort((left, right) => byCodepointString(left.source, right.source))) {
     lines.push(`  - source: ${escapeScalar(entry.source)}`);
+    if (entry.version !== undefined) lines.push(`    version: ${escapeScalar(entry.version)}`);
     lines.push(`    resolved: ${escapeScalar(entry.resolved)}`);
     lines.push(`    checksum: ${entry.checksum}`);
   }
@@ -84,7 +92,12 @@ const renderLockfile = (entries: ReadonlyArray<LockEntry>): string => {
   return lines.join("\n");
 };
 const LockEntriesSchema = Schema.Array(
-  Schema.Struct({ source: Schema.String, resolved: Schema.String, checksum: Schema.String }),
+  Schema.Struct({
+    source: Schema.String.check(Schema.isMinLength(1)),
+    version: Schema.optionalKey(Schema.String),
+    resolved: Schema.String.check(Schema.isMinLength(1)),
+    checksum: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+  }),
 );
 const lockTextDecoder = new TextDecoder();
 const lockfileRoot = (
@@ -109,7 +122,7 @@ const openLockfileBucket = (
       schema: LockEntriesSchema,
       version: 1,
       lock: "none",
-      onCorrupt: "discard",
+      onCorrupt: "fail",
       default: [],
       codec: {
         encode: (entries) => renderLockfile(entries),
@@ -124,6 +137,7 @@ const openLockfileBucket = (
             filePath: lockfilePath,
             line: undefined,
             column: undefined,
+            remediation: CORRUPT_LOCK_REMEDIATION,
             cause,
           }),
       ),
@@ -140,11 +154,16 @@ export const parseLockEntries = (
         Effect.mapError(
           (cause) =>
             new LandofileParseError({
-              message: `Failed to read include lockfile ${path}: ${causeMessage(cause)}`,
+              // StateStoreError carries no message of its own; the codec's reason is its cause.
+              message:
+                cause.reason === "decode"
+                  ? `Include lockfile ${path} is corrupt: ${causeMessage(cause.cause)}`
+                  : `Failed to read include lockfile ${path}: ${causeMessage(cause.cause ?? cause)}`,
               filePath: path,
               line: undefined,
               column: undefined,
-              cause,
+              ...(cause.reason === "decode" ? { remediation: CORRUPT_LOCK_REMEDIATION } : {}),
+              cause: cause.reason === "decode" ? cause.cause : cause,
             }),
         ),
       ),
@@ -157,51 +176,62 @@ export const parseLockEntries = (
   );
 export const writeLockEntries = (
   stateStore: StateStoreShape | undefined,
-  appRoot: string,
-  lockfilePath: string,
-  entries: ReadonlyArray<LockEntry>,
-): Effect.Effect<void, LandofileIncludeError> =>
-  openLockfileBucket(stateStore, appRoot, lockfilePath).pipe(
-    Effect.flatMap((bucket) => bucket.set(entries)),
-    Effect.mapError(() =>
-      includeError({
-        message: `Could not write include lockfile ${lockfilePath}.`,
-        source: lockfilePath,
-        kind: "fetch-failed",
+  input: {
+    readonly appRoot: string;
+    readonly lockfilePath: string;
+    readonly entries: ReadonlyArray<LockEntry>;
+    readonly merge: boolean;
+  },
+): Effect.Effect<void, LandofileIncludeError | LandofileParseError> =>
+  Effect.gen(function* () {
+    if (stateStore === undefined) return yield* Effect.fail(missingRuntimeInput("StateStore"));
+    const canonicalPath = yield* Effect.tryPromise(async () =>
+      resolve(await realpathOrSelf(dirname(input.lockfilePath)), basename(input.lockfilePath)),
+    );
+    yield* stateStore.withLock(
+      `landofile-include-lock:${sha256Hex(canonicalPath)}`,
+      Effect.gen(function* () {
+        const current = yield* parseLockEntries(stateStore, input.appRoot, input.lockfilePath);
+        const merged = new Map(input.merge ? current : []);
+        for (const entry of input.entries) merged.set(entry.source, entry);
+        const bucket = yield* openLockfileBucket(stateStore, input.appRoot, input.lockfilePath);
+        yield* bucket.set([...merged.values()]);
       }),
+    );
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof LandofileParseError
+        ? cause
+        : includeError({
+            message: `Could not write include lockfile ${input.lockfilePath}.`,
+            source: input.lockfilePath,
+            kind: "fetch-failed",
+          }),
     ),
   );
-export const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, LandofileIncludeError> => {
-  if (ctx.stagedLocks.size === 0) return Effect.void;
-  const merged = new Map(ctx.lockEntries);
-  for (const [source, entry] of ctx.stagedLocks) merged.set(source, entry);
-  return writeLockEntries(ctx.stateStore, ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
-};
-export const stageFragmentLock = (
-  fragment: FragmentResult,
+export const writeLockfileIfNeeded = (
   ctx: ResolveContext,
-): Effect.Effect<void, LandofileLockMismatchError> => {
+): Effect.Effect<void, LandofileIncludeError | LandofileParseError> => {
+  if (ctx.stagedLocks.size === 0) return Effect.void;
+  return writeLockEntries(ctx.stateStore, {
+    appRoot: ctx.appRoot,
+    lockfilePath: ctx.lockfilePath,
+    entries: [...ctx.stagedLocks.values()],
+    merge: true,
+  });
+};
+export const stageFragmentLock = (fragment: FragmentResult, ctx: ResolveContext): Effect.Effect<void> => {
+  // readPinnedFragment already verified pinned fragments; a load keeps existing entries as written.
   if (!fragment.locked || fragment.resolved === undefined) return Effect.void;
-  const actual = sha256Hex(fragment.content);
   const locked = ctx.lockEntries.get(fragment.sourceId);
-  if (ctx.mode === "pin" && locked !== undefined) {
-    if (locked.checksum !== actual || locked.resolved !== fragment.resolved)
-      return Effect.fail(
-        new LandofileLockMismatchError({
-          message: `Landofile include lock mismatch for ${fragment.sourceId}.`,
-          lockfile: ctx.lockfilePath,
-          source: fragment.sourceId,
-          expected: `${locked.resolved}:${locked.checksum}`,
-          actual: `${fragment.resolved}:${actual}`,
-          remediation: LOCK_REMEDIATION,
-        }),
-      );
-    return Effect.void;
-  }
+  if (ctx.mode === "pin" && locked !== undefined && locked.version === fragment.version) return Effect.void;
   ctx.stagedLocks.set(fragment.sourceId, {
     source: fragment.sourceId,
     resolved: fragment.resolved,
-    checksum: actual,
+    checksum: sha256Hex(fragment.content),
+    ...(fragment.version === undefined ? {} : { version: fragment.version }),
   });
   return Effect.void;
 };
+export const lockValue = (entry: LockEntry): string =>
+  `${entry.version === undefined ? "" : `${entry.version}@`}${entry.resolved}:${entry.checksum}`;

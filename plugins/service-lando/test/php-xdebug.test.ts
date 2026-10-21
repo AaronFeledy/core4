@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -89,8 +90,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
-      expect(message).toMatch(pattern);
+      expect(error).toBeInstanceOf(ServiceTypeError);
+      if (!(error instanceof ServiceTypeError)) throw error;
+      expect(error.issues).toEqual([
+        { path: ["xdebug"], message: expect.any(String), suggestion: expect.any(String) },
+      ]);
+      expect([error.issues?.[0]?.message, error.issues?.[0]?.suggestion].join(" ")).toMatch(pattern);
     },
   );
   expect(rejected).toBe(true);

@@ -12,6 +12,7 @@ import { startDetachedHostProxyWorker } from "../../src/subsystems/host-proxy/de
 import type { HostProxyWorkerSpawner } from "../../src/subsystems/host-proxy/worker-process.ts";
 import { readWorkerRecord, workerStatePath } from "../../src/subsystems/host-proxy/worker-state.ts";
 import * as worker from "../../src/subsystems/host-proxy/worker.ts";
+import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 const ensureWorker = startDetachedHostProxyWorker;
 
@@ -34,7 +35,9 @@ test("selected rebuild overlays the running host-proxy session and requests adop
       applied.push(value);
     },
   });
-  const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(Effect.succeed("/shim"));
+  const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+    Effect.succeed(stubContainerHelper("/shim")),
+  );
   const ensure = spyOn(worker, "startDetachedHostProxyWorker").mockReturnValue(
     Effect.succeed({
       appId: selected.id,
@@ -205,7 +208,9 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       entryPath: undefined,
       bunSourceEntryPath: "/fixture/worker.ts",
     });
-    const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(Effect.succeed(shim));
+    const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+      Effect.succeed(stubContainerHelper(shim)),
+    );
     const ensure = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) =>
       ensureWorker({ ...options, spawnWorker }),
     );
@@ -241,17 +246,13 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
         "/run/lando/host-proxy.sock",
       );
       expect(spawns).toBe(state === "configure-rejected" ? 2 : 1);
-      expect(terminations).toBe(state === "failed-fresh" ? 1 : 0);
+      expect(terminations).toBe(0);
       expect(shutdowns).toBe(state === "configure-rejected" ? 1 : 0);
       if (before !== undefined)
         expect(configuredPlans).toContainEqual(Schema.encodeUnknownSync(AppPlan)(selected));
       const record = await Effect.runPromise(readWorkerRecord(app, paths.roots));
       expect(record?.sessionId).toBe(
-        state === "failed-fresh"
-          ? undefined
-          : state === "configure-rejected"
-            ? "session-2"
-            : (before?.sessionId ?? "session-1"),
+        state === "configure-rejected" ? "session-2" : (before?.sessionId ?? "session-1"),
       );
       if (state === "missing") {
         await Effect.runPromise(
@@ -260,6 +261,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
             plan: selected,
             paths: { ...paths.roots, platform: paths.platform },
             shimArtifactPath: shim,
+            shimDigest: stubContainerHelper(shim).digest,
             shimTarget: { os: "linux", arch: "x64" },
             privateFileAccess: access,
             spawnWorker,

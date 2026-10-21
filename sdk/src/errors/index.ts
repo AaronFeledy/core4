@@ -34,6 +34,7 @@ export * from "./service.ts";
 export * from "./shell.ts";
 export * from "./sql.ts";
 export * from "./host-proxy.ts";
+export * from "./container-helper.ts";
 export * from "./ssh.ts";
 export * from "./state-store.ts";
 export * from "./tool.ts";

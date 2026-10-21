@@ -23,7 +23,6 @@ import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 
 export {
   HOST_PROXY_CONTAINER_LANDO,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_RUN_LANDO_ENV_NAMES,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
@@ -40,11 +39,6 @@ export type {
   HostProxyRunLandoSessionOptions,
   HostProxyTransportKind,
 } from "./transport-session.ts";
-export {
-  HOST_PROXY_SHIM_ARTIFACT,
-  HOST_PROXY_SHIM_ARTIFACT_ENV,
-  HOST_PROXY_SHIM_SOURCE,
-} from "./transport-shim.ts";
 
 export const createHostProxyRunLandoSession = (
   options: HostProxyRunLandoSessionOptions,
@@ -69,8 +63,8 @@ export const createHostProxyRunLandoSession = (
     if (shimArtifact === undefined) {
       return yield* Effect.fail(
         new HostProxyTransportUnavailableError({
-          message: "Host-proxy session creation requires an explicit shim artifact or container target.",
-          socketPath: "host-proxy-shim-target",
+          message: "Host-proxy session creation requires a resolved container helper.",
+          socketPath: "container-helper",
           remediation: "Resolve the host-proxy eligible container target before starting the session.",
         }),
       );

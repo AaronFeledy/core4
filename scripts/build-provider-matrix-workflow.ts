@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
 
+import {
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
@@ -46,8 +51,6 @@ const managedLandoSteps = `${landoRootlessPrereqStep}
         run: |
           mkdir -p dist
           bun run --filter='@lando/core' build:manifest
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
@@ -114,7 +117,9 @@ permissions:
   contents: read
 
 jobs:
+${renderContainerHelperJob()}
   provider-contracts:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     env:
       LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE }}
       LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE }}
@@ -130,6 +135,8 @@ ${matrixInclude}
       - uses: actions/checkout@v5
 
 ${setupBunSteps}
+
+${containerHelperDownloadStep}
 
       - name: Notice unsupported hosted runner cell
         if: \${{ matrix['advisory-skip'] == true }}

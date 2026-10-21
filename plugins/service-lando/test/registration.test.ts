@@ -357,7 +357,7 @@ describe("@lando/service-lando registration", () => {
     expect(database.healthcheck?.command).toEqual([
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
-      "localhost",
+      "localhost,1433",
       "-U",
       "sa",
       "-P",

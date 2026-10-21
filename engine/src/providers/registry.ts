@@ -13,9 +13,9 @@ import { AbsolutePath, type AppPlan, type PluginManifest, ProviderId } from "@la
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
   EventService,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   PluginRegistry,
@@ -99,7 +99,7 @@ export const makeRuntimeProviderRegistry = (
       const pluginRegistry = yield* PluginRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const downloader = yield* Downloader;
-      const logFileHelperAssets = yield* LogFileHelperAssets;
+      const containerHelperAssets = yield* ContainerHelperAssets;
       const managedFileService = yield* ManagedFileService;
       const paths = yield* PathsService;
       const redaction = yield* Effect.serviceOption(RedactionService);
@@ -194,7 +194,7 @@ export const makeRuntimeProviderRegistry = (
         const provider = contribution.make(context).pipe(
           Effect.provideService(PathsService, paths),
           Effect.provideService(Downloader, downloader),
-          Effect.provideService(LogFileHelperAssets, logFileHelperAssets),
+          Effect.provideService(ContainerHelperAssets, containerHelperAssets),
           Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
           Effect.map(
             (runtime) =>
