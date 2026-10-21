@@ -14,7 +14,6 @@ import { volumeSelectorValue } from "@lando/container-runtime/podman/volume-prun
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   HOST_PROXY_CONTAINER_LANDO,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -118,13 +117,6 @@ const hostProxyPlan: AppPlan = {
           type: "bind",
           source: "/tmp/host-proxy.sock",
           target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
-          readOnly: true,
-          realization: "passthrough",
-        },
-        {
-          type: "bind",
-          source: "/tmp/lando-shim",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
           readOnly: true,
           realization: "passthrough",
         },
@@ -407,7 +399,6 @@ describe("provider-lando cross-process state", () => {
       expect(persisted).not.toContain("LANDO_HOST_PROXY_SOCKET");
       expect(persisted).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persisted).not.toContain("host-proxy.sock");
-      expect(persisted).not.toContain(HOST_PROXY_CONTAINER_SHIM);
       expect(persisted).not.toContain(HOST_PROXY_CONTAINER_LANDO);
 
       const createdBodies = fake.calls

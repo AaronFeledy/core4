@@ -100,6 +100,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `DataMover` | Canonical local/volume byte movement and snapshots (§10.11); not plugin-replaceable |
 | `PrivilegeService` | Platform elevation boundary |
 | `EmbeddedAssetService` | Unified compiled-binary and library asset access; host/test-overridable, never plugin-contributed |
+| `ContainerHelperAssets` | Resolves the static in-container helper executable for a Linux target (§17.3), extracting it under `PathsService` roots; host/test-overridable, never plugin-contributed |
 | `PathsService` | Authoritative Lando roots and derived paths (§7.5.1) |
 | `Logger` | Structured Effect logging |
 | `Renderer` | User-facing output strategy (§8.9) |

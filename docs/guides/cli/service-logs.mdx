@@ -28,9 +28,11 @@ services:
         label: myapp error log
 ```
 
-A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and `timestamps`. Set `timestamps: true` only when the file's lines carry parseable leading timestamps so `--since` can filter them. It defaults to false; Lando does not add timestamps to the file. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream.
+A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and `timestamps`. Set `timestamps: true` only when the file's lines carry parseable leading timestamps so `--since` can filter them. It defaults to false; Lando does not add timestamps to the file. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream. `lando app:config:lint` accepts a declared source as written, and reports a duplicate `id` at the second `services.<name>.logs` entry that uses it.
 
 Lando-built images can redirect daemon log files through stdout/stderr. Bring-your-own images and logs that cannot redirect are followed by the active runtime provider. You do not run `tail -F` yourself.
+
+Following works the same in Debian, Alpine, and distroless images. The image needs no shell, no `tail`, and no particular libc. Lando copies a small static reader into the container's `/tmp` once per followed source and removes it when `lando logs` exits, so that directory must be writable and allow running programs.
 
 ## Filter and follow
 
@@ -95,6 +97,7 @@ Known secrets and credential patterns are redacted before truncation. Unregister
       <UseFixture name="declared-source" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"logs\":\\s*\\[\\{[^}]*\"path\":\\s*\"/tmp/app.log\"[^}]*\"id\":\\s*\"applog\"[^}]*\"timestamps\":\\s*true" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
   </Scenario>
 

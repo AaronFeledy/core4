@@ -14,10 +14,10 @@ import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId } from "@la
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
   EventService,
   type LandoEvent,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   RuntimeProviderRegistry,
@@ -89,7 +89,10 @@ const registryLayer = (
       Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     ),
     Layer.provideMerge(
-      Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+      Layer.succeed(
+        ContainerHelperAssets,
+        ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+      ),
     ),
     Layer.provideMerge(Layer.succeed(ManagedFileService, managedFiles.service)),
     Layer.provideMerge(PluginRegistryLayer.layer),

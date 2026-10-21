@@ -3,7 +3,7 @@ import { type EngineCompositionInputs, installEngineCompositionIfAbsent } from "
 
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
-import { prepareHostProxyShimArtifact } from "../cli/host-proxy/prepare-shim-artifact";
+import { resolveContainerHelper } from "../container-helper/assets";
 import { defaultGitRecipeCloner, publish } from "../recipes/git-source";
 import {
   DEFAULT_NPM_REGISTRY_URL,
@@ -49,8 +49,7 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
     entryPath: process.argv[1],
     bunSourceEntryPath: new URL("../../bin/lando.ts", import.meta.url).pathname,
   }),
-  bunDevDistRoot: () => new URL("../../dist", import.meta.url).pathname,
-  prepareHostProxyShimArtifact: (target) => prepareHostProxyShimArtifact({ target }),
+  resolveContainerHelper,
 };
 
 installEngineCompositionIfAbsent(baseEngineCompositionInputs);

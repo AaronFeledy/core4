@@ -22,7 +22,7 @@ import {
 } from "./include-provenance.ts";
 import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
-import { authoredIncludeEntries, classify, normalizeInclude } from "./include-source.ts";
+import { authoredIncludeEntriesWithPaths, classify, normalizeInclude } from "./include-source.ts";
 import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
@@ -70,7 +70,7 @@ export const resolveTree = Effect.fnUntraced(function* (
   });
   const incompatible = assertCompatibleIncludeFields(acquisition);
   if (incompatible !== undefined) return yield* Effect.fail(incompatible);
-  const includes = authoredIncludeEntries(acquisition);
+  const includes = authoredIncludeEntriesWithPaths(acquisition);
   if (includes.length === 0)
     return rememberIncludeOverlays(
       rememberLandofileIncludeSources(
@@ -89,8 +89,20 @@ export const resolveTree = Effect.fnUntraced(function* (
   const fragmentRecords: Record<string, unknown>[] = [];
   const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
   const includeSources = [...getLandofileIncludeSources(landofile)];
-  for (const rawEntry of includes) {
+  for (const { entry: rawEntry, path } of includes) {
     const entry = normalizeInclude(rawEntry);
+    const attributeError = (error: ResolveIncludesError): ResolveIncludesError =>
+      error instanceof LandofileIncludeError
+        ? new LandofileIncludeError({
+            message: error.message,
+            source: error.source,
+            kind: error.kind,
+            remediation: error.remediation,
+            path: error.path ?? path,
+            file: error.file ?? getSourceDocuments(sourced)[0]?.file ?? source,
+            layer: error.layer ?? layer,
+          })
+        : error;
     const fragment = yield* Effect.tryPromise({
       try: async () => {
         const kind = classify(entry.source);
@@ -116,18 +128,20 @@ export const resolveTree = Effect.fnUntraced(function* (
         cause instanceof LandofileIncludeError || cause instanceof LandofileLockMismatchError
           ? cause
           : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
-    });
+    }).pipe(Effect.mapError(attributeError));
     if (fragment === undefined) continue;
-    yield* stageFragmentLock(fragment, ctx);
+    yield* stageFragmentLock(fragment, ctx).pipe(Effect.mapError(attributeError));
     if (hasIncludeCycle(stack, fragment.sourceId))
       return yield* Effect.fail(
-        includeError({
-          message: `Landofile include cycle detected at ${entry.source}.`,
-          source: entry.source,
-          kind: "cycle",
-        }),
+        attributeError(
+          includeError({
+            message: `Landofile include cycle detected at ${entry.source}.`,
+            source: entry.source,
+            kind: "cycle",
+          }),
+        ),
       );
-    const parsed = yield* parseFragment(fragment, ctx, layer);
+    const parsed = yield* parseFragment(fragment, ctx, layer).pipe(Effect.mapError(attributeError));
     const nested = yield* resolveTree(
       parsed,
       {
@@ -142,7 +156,7 @@ export const resolveTree = Effect.fnUntraced(function* (
       fragment.sourceId,
       layer,
       order,
-    );
+    ).pipe(Effect.mapError(attributeError));
     fragments.push(nested);
     fragmentRecords.push(...getIncludeOverlays(nested));
     localIncludePaths.push(...getLocalIncludePaths(nested));

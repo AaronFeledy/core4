@@ -365,6 +365,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 - `DoctorCheckContext` exposes bounded app/provider identity, resource inspection, and path-only executable lookup. It MUST NOT execute candidates, read executable contents or state, or import `@lando/container-runtime`.
 - Bundled `@lando/lando3` contributes read-only `lando3-leftovers` and `lando3-shadow` checks. They MUST NOT mutate or read Lando 3 user state; `LegacyProxyContainerDetected` solely owns legacy proxy detection.
+- With `--app`, the config section runs the same validation as `app:config:lint` and reports its `ConfigLintResult`; uncaught failures stay isolated under §10.9.1.
 - Core covers discovery, removed wrappers, plugin metadata, provider availability, and legacy proxy conflicts. A conflict raises `LegacyProxyContainerConflictError`. Plugin metadata failures become attributed self checks rather than aborting the report.
 - Core `orphaned-volume-snapshots` warns about eligible unindexed provider images and prescribes `lando snapshots:gc --prune`; unavailable providers pass with a skip note and MUST NOT be started.
 - Shell-shaped checks and fixes SHOULD use `ShellRunner`; transcripts persist at `<userCacheRoot>/logs/doctor/<run-id>.transcript`. `lando doctor --transcript-only` prints that transcript.
@@ -385,7 +386,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 ### 10.10 Host proxy
 
-`HostProxyService` is the opt-in, per-app container-to-host RPC port installed by `lando.host-proxy` for `type: lando` services. It opens host URLs/paths and re-enters approved Lando or Bun operations. It is not a persistent agent, which is a non-goal (§14.2).
+`HostProxyService` is the opt-in, per-app container-to-host RPC port installed by `lando.host-proxy` for `type: lando` services. It opens host URLs, reveals app paths in the host file manager, and re-enters approved Lando or Bun operations. It is not a persistent agent, which is a non-goal (§14.2).
 
 #### 10.10.1 Architecture and protocol
 
@@ -397,14 +398,21 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 - The worker record holds the session id, bearer token, and control token so a later start can hand them to services. Lando registers them with `RedactionService` (§3.7) as soon as they are known; they MUST NOT appear in logs, events, transcripts, traces, errors, or machine output.
 - `HostProxyRequest` tags are `openUrl`, `openPath`, `runLando`, and `runBun`; `HostProxyResponse` tags are `ok` and `error`, classified by `HostProxyErrorCode`. Requests require bearer-token authentication. `runLando` streams NDJSON stdout, stderr, exit, or error frames.
 - Container-initiated notification and clipboard relay are outside the `HostProxyRequest` union; adding one is a protocol-schema change, not a plugin extension.
-- Default `openUrl` schemes are `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`. `file://` is always forbidden. Extensions use the service layer or global `hostProxy.allowedSchemes`.
+- Default `openUrl` schemes are `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`. `file:` is always forbidden, case-insensitively. Extensions use the service layer; global `hostProxy.allowedSchemes` remains planned, not an accepted config key.
+- `openPath` requires an existing absolute container path inside the app mount. The host remaps it through that mount, resolves the host root and target canonically, and rejects lexical or symlink escapes instead of using the `runLando` cwd fallback. Unrelated bind mounts and container-only paths are not eligible. Host opening is argv-precise through `ProcessRunner`, never shell interpolation.
 - `runLando` uses the generated `host-proxy-allowlist`. Lifecycle commands, `app:remote:tether`, `meta:bun`, and `meta:x` MUST NOT be allowed; violations fail with `HostProxyAllowlistConflictError`. Allowed remote operations MUST still enforce §10.12.8; the proxy MUST NOT synthesize typed confirmation.
 - `runBun` uses the non-plugin-extensible `host-proxy-bun-verb-allowlist`: `audit`, `outdated`, `pm`, `info`, and `why`. Mutating verbs fail with `HostProxyBunVerbNotAllowedError`.
 - Recursive re-entry is bounded by `LANDO_HOST_PROXY_DEPTH` and fails with `HostProxyRecursionLimitError`. Per-app concurrency is bounded by global `hostProxy.maxConcurrent` and fails with `HostProxyBackpressureError`.
 
 #### 10.10.2 In-container shim and required behavior
 
-One static client is installed as `xdg-open`, `open`, and `lando`; optional `lando.host-proxy.bun: true` installs `bun` only when it does not shadow an existing Bun. It dispatches by invocation name, filters forwarded environment, remaps cwd through `AppMountInfo`, rejects `BUN_BE_BUN` recursion, and prints deterministic fallback errors when proxy env is absent. It is a signed wire client, not the host `lando` binary.
+One static client is installed as `xdg-open`, `open`, and `lando`; optional `lando.host-proxy.bun: true` installs `bun` only when it does not shadow an existing Bun. It dispatches by invocation name, filters forwarded environment, remaps cwd through `AppMountInfo`, never forwards `BUN_BE_BUN`, and prints deterministic fallback errors when proxy env is absent. It is a signed wire client, not the host `lando` binary.
+
+The opener roles bind the session copy read-only at `/usr/local/bin/xdg-open` and `/usr/local/bin/open`, intentionally shadowing image openers when `/usr/local/bin` precedes `/usr/bin`. They accept exactly one nonempty argument and no flags (including `--`); unsupported arguments exit 64. A leading RFC-style scheme (`[A-Za-z][A-Za-z0-9+.-]*:`) selects `openUrl`; everything else becomes an absolute path relative to the container cwd for `openPath`. Neither request forwards environment. These binds are session-only: plan persistence and create fingerprints exclude them.
+
+`openPath` MUST reveal the canonical target in the host file manager, never launch it. The app mount is writable from the container: default file openers can execute scripts, application bundles, executables, or desktop entries supplied there, bypassing the host-command restrictions. Linux runs `xdg-open <directory>` with the canonical target for directories and its parent for files. macOS runs `open -R <target>` for both files and directories, including `.app` bundles. Windows runs argv `["explorer.exe", "/select," + target]`; Explorer's exit code is not a success signal, so a nonzero exit does not fail a reveal, while process-launch errors still do. Only `openUrl` reaches the URL opener (`xdg-open`, `open`, or `rundll32.exe url.dll,FileProtocolHandler`) after scheme validation. This does not change the existing host `lando open` shell launcher.
+
+The client is the in-container helper (§17.3), a statically linked executable with no libc or runtime dependency, so it runs in glibc, musl (Alpine), distroless, and scratch images without detecting the image's libc. Having no dynamic loader, it is unaffected by the image's `LD_PRELOAD` and `LD_LIBRARY_PATH`. The start-time overlay copies it into the session directory and bind-mounts that file read-only, so replacing the session directory never alters a running container's copy.
 
 - The `HostProxyService` implementation layer MUST construct lazily and do nothing for apps without the feature.
 - Every request, including rejection, publishes redacted `pre-host-proxy-call` and `post-host-proxy-call`.

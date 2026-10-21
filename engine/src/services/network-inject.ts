@@ -14,7 +14,7 @@ import { assertUnderRoot } from "@lando/landofile/include-guard";
 import { validationIssue } from "@lando/sdk/schema";
 
 const CERTIFICATE_PEM_PATTERN = /^(?:\s*-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----\s*)+$/u;
-const SECURITY_FEATURE_ID = "lando.security" as const;
+export const SECURITY_FEATURE_ID = "lando.security" as const;
 
 interface SecurityFeatureConfig extends Readonly<Record<string, unknown>> {
   readonly injectCa: boolean;

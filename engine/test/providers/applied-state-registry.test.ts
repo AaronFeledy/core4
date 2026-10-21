@@ -18,8 +18,8 @@ import {
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   PluginRegistry,
@@ -103,7 +103,10 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
     ),
     Layer.succeed(Downloader, Effect.runSync(makeTestDownloader()).service),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+    ),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
     Layer.succeed(StateStore, makeTestStateStore().service),

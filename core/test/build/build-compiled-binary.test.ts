@@ -14,11 +14,12 @@ import {
   resolveOpenTuiNativeImport,
 } from "../../../scripts/build-compiled-binary.ts";
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
+import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
-  "/fixture/lando-host-proxy-linux-x64.bin.gz",
-  "/fixture/lando-host-proxy-linux-arm64.bin.gz",
+  "/fixture/lando-container-helper-linux-x64.tar.gz",
+  "/fixture/lando-container-helper-linux-arm64.tar.gz",
 ];
 
 describe("compiled binary OpenTUI native pruning", () => {
@@ -265,8 +266,9 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(stderr).not.toContain("Uncaught");
   });
 
-  test("plain CLI compiles only the binary and its shims without distribution notice checks", async () => {
+  test("plain CLI compiles only the binary without distribution notice checks", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "lando-plain-compile-"));
+    const helperDir = await stubContainerHelperDir();
     try {
       const calls = resolve(root, "calls.json");
       const proc = Bun.spawn({
@@ -280,21 +282,23 @@ describe("compiled binary OpenTUI native pruning", () => {
           "--version=4.0.0-dev.1",
         ],
         cwd: resolve(import.meta.dirname, "../../.."),
-        env: { ...process.env, LANDO_TEST_COMPILE_CALLS: calls, LANDO_COMPILE_METAFILE: "0" },
+        env: {
+          ...process.env,
+          LANDO_TEST_COMPILE_CALLS: calls,
+          LANDO_COMPILE_METAFILE: "0",
+          LANDO_CONTAINER_HELPER_DIR: helperDir,
+        },
         stdout: "pipe",
         stderr: "pipe",
       });
       const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
 
       expect(exitCode, stderr).toBe(0);
-      expect(await Bun.file(calls).json()).toEqual([
-        { compile: true, metafile: false },
-        { compile: true, metafile: false },
-        { compile: true, metafile: false },
-      ]);
+      expect(await Bun.file(calls).json()).toEqual([{ compile: true, metafile: false }]);
       expect(await Bun.file(resolve(root, "THIRD_PARTY_NOTICES.md")).exists()).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
+      await rm(helperDir, { recursive: true, force: true });
     }
   });
 

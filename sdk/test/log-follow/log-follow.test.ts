@@ -416,6 +416,49 @@ describe("followLogSource follow", () => {
 });
 
 describe("followLogSources merge + lifecycle", () => {
+  test("acquires scoped access once per selected source and releases it when that stream ends", async () => {
+    // Given
+    const fs = makeMemoryLogFileAccess();
+    fs.writeFile("/a.log", "alpha\n");
+    fs.writeFile("/b.log", "beta\n");
+    const sources = [
+      source({ id: "a", path: "/a.log" }),
+      source({ id: "b", path: "/b.log" }),
+      source({ id: "redirect", path: "/redirect.log", strategy: "redirect" }),
+    ];
+    let acquired = 0;
+    const released: number[] = [];
+    const access = Effect.acquireRelease(
+      Effect.sync(() => ({ id: ++acquired, access: fs.access })),
+      (resource) =>
+        Effect.sync(() => {
+          released.push(resource.id);
+        }),
+    ).pipe(Effect.map((resource) => resource.access));
+    // When
+    const events = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* Stream.runCollect(
+            followLogSources({
+              service: SERVICE,
+              sources,
+              follow: false,
+              maxReadBytes: 1,
+              access,
+            }),
+          );
+          // Then: child streams release without waiting for this outer scope to close.
+          expect(acquired).toBe(2);
+          expect([...released].sort()).toEqual([1, 2]);
+          expect(fs.openHandleCount()).toBe(0);
+          return events;
+        }),
+      ),
+    );
+    expect([...lines(events)].sort()).toEqual(["alpha", "beta"]);
+  });
+
   test("S8 merges only follow sources and honors the source filter", async () => {
     const fs = makeMemoryLogFileAccess();
     fs.writeFile("/a.log", "a\n");

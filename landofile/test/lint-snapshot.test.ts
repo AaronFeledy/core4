@@ -40,6 +40,8 @@ describe("retained lint snapshot", () => {
     await write("fragment.yml", "services:\n  web:\n    primary: wrong\n");
     const snapshot = await lint();
     expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.landofilePath).toBe(join(root, ".lando.yml"));
+    expect(snapshot.result.file).toBe(join(root, "fragment.yml"));
     expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(true);
     expect(snapshot.result.violations).toEqual([
       expect.objectContaining({

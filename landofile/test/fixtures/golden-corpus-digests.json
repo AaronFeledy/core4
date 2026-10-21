@@ -109,6 +109,10 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-pgport",
+      "digest": "9af58cc2876625db8d252f8d3e0135ff558c57f81bd7bdc5d8189b911f9e3a14"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/marker-warning",
       "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
     },

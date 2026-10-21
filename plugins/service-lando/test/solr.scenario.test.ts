@@ -229,10 +229,15 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
         const failure = outcome.failure as LandofileValidationError;
         expect(failure.file.endsWith("/.lando.yml")).toBe(true);
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-          "services.search",
+          "services.search.cores[0]",
         ]);
-        expect(failure.message).toContain(`services.search.cores[0] ${JSON.stringify(core)}`);
-        expect(failure.message).toContain("Rename the core to a plain directory name.");
+        expect(failure.issues).toEqual([
+          expect.objectContaining({
+            path: ["services", "search", "cores", 0],
+            message: `${JSON.stringify(core)} is not a usable Solr core directory name.`,
+            suggestion: expect.stringContaining("Rename the core to a plain directory name."),
+          }),
+        ]);
       }
     },
   );

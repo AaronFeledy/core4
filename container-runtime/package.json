@@ -24,8 +24,8 @@
     "./tar": "./src/tar.ts",
     "./plan": "./src/plan.ts",
     "./image-build": "./src/image-build.ts",
+    "./container-helper": "./src/container-helper.ts",
     "./log-file-access": "./src/log-file-access.ts",
-    "./log-file-helper-payloads": "./src/log-file-helper-payloads.ts",
     "./log-source-binding": "./src/log-source-binding.ts",
     "./data-plane": "./src/data-plane.ts",
     "./capabilities": "./src/capabilities.ts",
@@ -76,8 +76,7 @@
     "effect": "catalog:"
   },
   "scripts": {
-    "build": "tsc -b && bun run build:log-file-helper",
-    "build:log-file-helper": "bun build ./src/log-file-helper-bin.ts --compile --target=bun-linux-x64 --outfile ./dist/log-file-access/linux-x64/lando-log-file-helper && bun build ./src/log-file-helper-bin.ts --compile --target=bun-linux-arm64 --outfile ./dist/log-file-access/linux-arm64/lando-log-file-helper",
+    "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
     "test": "bun test ./test",
     "typecheck": "tsc -b"

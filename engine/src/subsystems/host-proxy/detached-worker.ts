@@ -32,6 +32,8 @@ export interface DetachedHostProxyWorkerOptions {
   readonly plan: AppPlan;
   readonly paths?: RootOverrides;
   readonly shimArtifactPath: string;
+  /** Content digest of the helper, so a rebuilt helper at the same path replaces the worker. */
+  readonly shimDigest?: string;
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
   readonly spawnWorker?: HostProxyWorkerSpawner;
@@ -68,6 +70,7 @@ export const startDetachedHostProxyWorker = (
       const configDigest = sha256Hex(
         canonicalJson({
           ...configuration,
+          ...(options.shimDigest === undefined ? {} : { shimDigest: options.shimDigest }),
           providerId: options.plan.provider,
           workerEntry: hostProxyWorkerEntry(),
         }),

@@ -25,7 +25,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Predicate, Result } from "effect";
+import { type Context, DateTime, Effect, Predicate } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -41,7 +41,6 @@ import {
   snapshotAppFeatureEnv,
 } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
-import { mergeLogSources } from "../services/log-sources.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
 import { resolveCertsFeature } from "../services/service-certs.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
@@ -57,8 +56,7 @@ import {
 } from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
-import { validateAuthoredHealthchecks } from "./authored-healthcheck.ts";
-import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
+import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
   assertComposeKnobsSupported,
@@ -78,6 +76,7 @@ import { attachServiceCredsScope } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
+import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import {
   type ResolvedService,
@@ -86,8 +85,7 @@ import {
   contributionId,
   resolvedServiceCacheInput,
 } from "./service-types.ts";
-import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
-import { validateAuthoredWebroot } from "./webroot-policy.ts";
+import { authoredStorageScopes } from "./storage.ts";
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   pluginRegistry: Context.Service.Shape<typeof PluginRegistry>,
@@ -117,6 +115,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     manifests,
     topLevelEnvFiles,
     serviceCredsScope,
+    routes: resolvedRoutes,
   } = yield* resolveKnownEventSet({
     pluginRegistry,
     configService,
@@ -126,7 +125,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     capabilities: providerCapabilities,
     ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
   });
-  yield* validateAuthoredHealthchecks(authoredLandofile, landofilePath);
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -208,31 +206,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       envFileInputs,
     } = seed;
     const service = seed.authoredService;
-    const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
+    const routes = resolvedRoutes.get(name);
     const configSourceInputs = yield* resolveServiceConfigSources({
       appRoot,
       serviceName: name,
       config: service.config,
     });
     const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
-    if (resolvedAuthored.invalidCacheEntry !== undefined)
-      yield* Effect.fail(resolvedAuthored.invalidCacheEntry);
-    if (resolvedAuthored.globalEntry !== undefined) {
-      yield* Effect.fail(rejectGlobalScope(appRoot, name, resolvedAuthored.globalEntry));
-    }
     const authoredStores = new Map(authored.byStore);
     for (const [store, info] of resolvedAuthored.byStore) authoredStores.set(store, info);
     const storageAuthored = { ...authored, byStore: authoredStores };
-    const mergedLogSources = mergeLogSources({
-      appRoot,
-      serviceName: name,
-      base: resolution.base,
-      typeSources: resolution.logSources ?? [],
-      userSources: service.logs ?? [],
-    });
-    const logSources = yield* Result.isFailure(mergedLogSources)
-      ? Effect.fail(mergedLogSources.failure)
-      : Effect.succeed(mergedLogSources.success);
+    const logSources = seed.logSources;
+    const seededFeatureIds = plannerSeededFeatureIds(resolution.base);
     const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
     const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter(
       (id) => !resolutionFeatureIds.has(id),
@@ -277,8 +262,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         id: featureRef.id,
         ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
       })),
-    ].map((featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef);
-    yield* validateAuthoredWebroot(seed, featureRefs, landofilePath);
+    ].map((featureRef) =>
+      seededFeatureIds.has(featureRef.id)
+        ? (plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef)
+        : featureRef,
+    );
     if (
       sshAgentIntent.mode === "host" &&
       featureRefs.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&

@@ -94,6 +94,7 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo` schema | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
+| Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
@@ -110,7 +111,9 @@ If you are looking for a public surface or policy:
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
+| Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication | 07 | §7.8 |
+| Shared resolved-Landofile validation, lint rules, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |
@@ -146,6 +149,7 @@ If you are looking for a public surface or policy:
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
+| In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
 | Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
 | `DataMover`, endpoints, snapshots, and errors | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |

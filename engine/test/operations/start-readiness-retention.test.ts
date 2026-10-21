@@ -29,6 +29,7 @@ import * as worker from "../../src/subsystems/host-proxy/worker.ts";
 import * as relayWorker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import * as sshDiscovery from "../../src/subsystems/ssh-agent/host-agent-discovery.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
+import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { failureOf } from "../subsystems/healthcheck/support.ts";
 import { acceleratedPlan } from "./accelerated-start-recovery-support.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -160,8 +161,8 @@ for (const phase of phases) {
       const gpgSource = spyOn(gpgDiscovery, "discoverHostGpgAgent").mockReturnValue(
         Effect.succeed({ _tag: "unix", path: "/gpg.sock", source: "explicit" }),
       );
-      const shim = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-        Effect.succeed("/shim"),
+      const shim = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+        Effect.succeed(stubContainerHelper("/shim")),
       );
       const hostStart = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) => {
         const session: HostProxyRunLandoSession = {

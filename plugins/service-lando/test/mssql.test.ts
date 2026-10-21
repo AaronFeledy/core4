@@ -34,9 +34,6 @@ const metadata = {
 const featureOverrides = new Map([[MSSQL_FEATURE_ID, mssqlServiceFeature]]);
 
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";
-const ARCH_REMEDIATION =
-  "upstream SQL Server images are amd64-only; use an amd64 host or a provider with architecture emulation";
-
 const defaultRootPassword = (appName: string, serviceName: string): string =>
   `Lando!${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
 
@@ -367,6 +364,12 @@ describe("mssql ServiceType", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("expected arm64 without emulation to fail");
     expect(result.failure).toBeInstanceOf(ServiceTypeError);
-    expect(result.failure.message).toContain(ARCH_REMEDIATION);
+    expect(result.failure.issues).toEqual([
+      {
+        path: ["type"],
+        message: "Upstream SQL Server images are amd64-only.",
+        suggestion: "Use an amd64 host or a provider with architecture emulation.",
+      },
+    ]);
   });
 });

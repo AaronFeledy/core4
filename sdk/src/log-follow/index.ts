@@ -21,7 +21,7 @@
  * A provider's `logs()` projects only `line` events into its `LogChunk` stream;
  * diagnostics are surfaced elsewhere (`lando info`), never as service log lines.
  */
-import { Clock, DateTime, Duration, Effect, Option, Result, Stream } from "effect";
+import { Clock, DateTime, Duration, Effect, Option, Result, type Scope, Stream } from "effect";
 
 import { ProviderUnavailableError } from "../errors/index.ts";
 import type { LogSource, LogSourceId, ServiceName } from "../schema/index.ts";
@@ -112,7 +112,12 @@ export interface FollowLogSourcesInput {
   readonly follow: boolean;
   readonly tail?: number;
   readonly since?: number;
-  readonly access: LogFileAccess;
+  /**
+   * File access for every selected source, or a scoped acquisition run once per
+   * source and released when that source's stream ends (for example, an
+   * in-container reader installed for the follow and removed afterwards).
+   */
+  readonly access: LogFileAccess | Effect.Effect<LogFileAccess, ProviderError, Scope.Scope>;
   /** Optional single-source id filter (`--source`). */
   readonly source?: LogSourceId;
   readonly maxLineBytes?: number;
@@ -502,12 +507,12 @@ export const followLogSources = (
 
   if (selected.length === 0) return Stream.empty;
 
-  const streams = selected.map((source) =>
+  const followWith = (source: LogSource, access: LogFileAccess) =>
     followLogSource({
       service: input.service,
       source,
       follow: input.follow,
-      access: input.access,
+      access,
       ...(input.tail === undefined ? {} : { tail: input.tail }),
       ...(input.since === undefined ? {} : { since: input.since }),
       ...(input.maxLineBytes === undefined ? {} : { maxLineBytes: input.maxLineBytes }),
@@ -516,7 +521,12 @@ export const followLogSources = (
         ? {}
         : { readinessTimeoutMillis: input.readinessTimeoutMillis }),
       ...(input.maxReadBytes === undefined ? {} : { maxReadBytes: input.maxReadBytes }),
-    }),
+    });
+  const access = input.access;
+  const streams = selected.map((source) =>
+    Effect.isEffect(access)
+      ? Stream.unwrap(Effect.map(access, (acquired) => followWith(source, acquired)))
+      : followWith(source, access),
   );
 
   return Stream.mergeAll(streams, { concurrency: "unbounded" });

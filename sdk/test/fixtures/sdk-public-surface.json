@@ -37,10 +37,10 @@
   ],
   "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
   "serviceTags": {
-    "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "AppPlanner": [
       "plan:(landofile:LandofileShape,providerCapabilities:ProviderCapabilities) => Effect.Effect<AppPlan,AppPlannerError>"
     ],
+    "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "BuildOrchestrator": [
       "build:(plan:AppPlan,options?:BuildOptions) => Effect.Effect<AppPlan,BuildError>",
       "buildApp:(plan:AppPlan,options?:BuildAppOptions) => Effect.Effect<void,BuildAppError>"
@@ -72,6 +72,9 @@
     ],
     "ConfigTranslatorRegistry": [
       "list:Effect.Effect<ReadonlyArray<ConfigTranslatorShape>,ConfigTranslatorConflictError|PluginDescriptorMismatchError|PluginLoadError,never>"
+    ],
+    "ContainerHelperAssets": [
+      "resolve:(target:ContainerHelperTarget) => Effect.Effect<ContainerHelperArtifact,ContainerHelperUnavailableError>"
     ],
     "DataMover": [
       "findOrphanedSnapshots:Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,DataMoverError>",
@@ -180,7 +183,6 @@
       "select:<A extends PromptScalar>(spec:SelectSpec<A>) => Effect.Effect<A,InteractionError,Scope.Scope>"
     ],
     "LandofileService": ["discover:Effect.Effect<LandofileShape,LandofileServiceError>"],
-    "LogFileHelperAssets": ["payloads:Effect.Effect<Readonly<Record<string,Uint8Array>>,never>"],
     "Logger": [
       "debug:(message:string,data?:Readonly<Record<string,unknown>>) => Effect.Effect<void,EventError>",
       "error:(message:string,data?:Readonly<Record<string,unknown>>) => Effect.Effect<void,EventError>",
@@ -549,6 +551,7 @@
       "ConfigTranslateError",
       "ConfigTranslateNoTranslatorsError",
       "ConfigTranslatorConflictError",
+      "ContainerHelperUnavailableError",
       "DataChecksumMismatchError",
       "DataEndpointUnsupportedError",
       "DataSourceOutsideRootError",
@@ -1196,6 +1199,10 @@
       "ConfigTranslateSourceId",
       "ConfigTranslateSpan",
       "ConfigTranslatorContribution",
+      "ContainerHelperArch",
+      "ContainerHelperArtifact",
+      "ContainerHelperDigest",
+      "ContainerHelperTarget",
       "ContainerUser",
       "ContentSource",
       "ContributionRef",
@@ -1751,6 +1758,7 @@
       "ConfigService",
       "ConfigTranslator",
       "ConfigTranslatorRegistry",
+      "ContainerHelperAssets",
       "DataMover",
       "Dataset",
       "DeprecationService",
@@ -1763,7 +1771,6 @@
       "HostProxyService",
       "InteractionService",
       "LandofileService",
-      "LogFileHelperAssets",
       "Logger",
       "ManagedFileService",
       "ManagedFileTransactionGuard",

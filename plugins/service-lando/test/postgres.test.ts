@@ -124,9 +124,15 @@ describe("postgres ServiceType", () => {
   });
 
   test("rejects PGPORT selecting a non-default port without port:", async () => {
-    await expect(planPostgres({ type: "postgres", environment: { PGPORT: "6543" } })).rejects.toThrow(
-      "Set port: 6543",
-    );
+    await expect(planPostgres({ type: "postgres", environment: { PGPORT: "6543" } })).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["environment", "PGPORT"],
+          message: "PGPORT is 6543, but the service listens on 5432.",
+          suggestion: "Set port: 6543 instead; Lando sets PGPORT from port:.",
+        },
+      ],
+    });
   });
 
   test("accepts a PGPORT that matches port", async () => {
@@ -138,7 +144,15 @@ describe("postgres ServiceType", () => {
   test("rejects a PGPORT that disagrees with port", async () => {
     await expect(
       planPostgres({ type: "postgres", port: 6000, environment: { PGPORT: "6543" } }),
-    ).rejects.toThrow("Set port: 6543");
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["environment", "PGPORT"],
+          message: "PGPORT is 6543, but the service listens on 6000.",
+          suggestion: "Set port: 6543 instead; Lando sets PGPORT from port:.",
+        },
+      ],
+    });
   });
 
   test("rejects a PGPORT that is not a port number", async () => {

@@ -1,6 +1,6 @@
 import { Effect, type Scope } from "effect";
 
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { type ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
 import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
@@ -8,7 +8,7 @@ import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { prepareHostProxyShimArtifact } from "../composition.ts";
+import { resolveContainerHelper } from "../composition.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
@@ -26,6 +26,13 @@ const HOST_PROXY_CONTAINER_TARGET_CAPABILITY = "ProviderCapabilities.hostProxy.c
 const HOST_PROXY_HOST_GATEWAY_CAPABILITY = "ProviderCapabilities.hostProxy.tcpHostGateway";
 
 const targetKey = (target: HostProxyShimTarget): string => `${target.os}-${target.arch}`;
+
+const helperUnavailable = (error: ContainerHelperUnavailableError): HostProxyTransportUnavailableError =>
+  new HostProxyTransportUnavailableError({
+    message: error.message,
+    socketPath: `container-helper:${targetKey(error.target)}`,
+    remediation: error.remediation,
+  });
 
 const hostProxyShimTargetFor = (
   capabilities: ProviderCapabilities,
@@ -121,7 +128,9 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
     (tree) =>
       Effect.gen(function* () {
         yield* tree.startTask("session");
-        const shimArtifactPath = yield* prepareHostProxyShimArtifact(shimTarget);
+        const helper = yield* resolveContainerHelper(shimTarget, {
+          cacheRoot: landoPaths.toolDownloadsDir("container-helper"),
+        }).pipe(Effect.mapError(helperUnavailable));
         return yield* withRetainedSession(
           (publish: PublishSession<HostProxyRunLandoSession & { readonly reused?: boolean }>) =>
             startDetachedHostProxyWorker({
@@ -130,7 +139,8 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
               plan: options.workerPlan ?? plan,
               reusePolicy: options.reusePolicy ?? "exact",
               paths: { ...landoPaths.roots, platform },
-              shimArtifactPath,
+              shimArtifactPath: helper.path,
+              shimDigest: helper.digest,
               shimTarget,
               privateFileAccess,
               ...(hostGatewayName === undefined ? {} : { hostGatewayName }),

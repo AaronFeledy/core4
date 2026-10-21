@@ -196,8 +196,10 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.finalizeServices",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
+  const resolvedLandofile = spans.find((span) => span.name === "AppPlanner.resolve");
   const resolve = spans.find((span) => span.name === "AppPlanner.resolveServices");
-  expect(Option.getOrUndefined(resolve?.parent ?? Option.none())?.spanId).toBe(discover?.spanId);
+  expect(Option.getOrUndefined(resolvedLandofile?.parent ?? Option.none())?.spanId).toBe(discover?.spanId);
+  expect(Option.getOrUndefined(resolve?.parent ?? Option.none())?.spanId).toBe(resolvedLandofile?.spanId);
   expect(
     spans.some((span) => span.name === "AppPlanner.validateDependencies" && span.status._tag === "Ended"),
   ).toBe(true);
@@ -2809,7 +2811,7 @@ describe("AppPlannerLayer.layer", () => {
   test.each([
     [
       { type: "node:22.11.0" },
-      /LandofileValidationError: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
+      /services.web.type: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
     ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
@@ -3040,7 +3042,7 @@ describe("AppPlannerLayer.layer", () => {
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
           "services.worker",
         ]);
-        expect(failure.message).toContain('requires either "image:" or "build:"');
+        expect(failure.message).toContain("requires an image or build artifact");
       }
     });
   });
@@ -3707,7 +3709,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
         expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
-        expect(failure.remediation).toContain("kind: command");
+        expect(failure.issues[0]?.suggestion).toContain("kind: command");
       }
     });
   });
@@ -3736,7 +3738,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
         expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
-        expect(failure.remediation).toContain("kind: command");
+        expect(failure.issues[0]?.suggestion).toContain("kind: command");
       }
     });
   });

@@ -1,4 +1,4 @@
-import { DateTime, Option, Stream } from "effect";
+import { DateTime, type Effect, Option, type Scope, Stream } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
@@ -11,7 +11,8 @@ import { decodeLogStream } from "../streams.ts";
 
 export interface LogsOptions {
   readonly api?: EngineHttpApi;
-  readonly logFileAccess?: LogFileAccess;
+  /** Shared access, or a scoped acquisition run once per followed source. */
+  readonly logFileAccess?: LogFileAccess | Effect.Effect<LogFileAccess, ProviderError, Scope.Scope>;
   readonly ctx: ProviderErrorContext;
 }
 

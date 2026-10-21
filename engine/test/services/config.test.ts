@@ -176,7 +176,7 @@ describe("LandoConfigService.layer", () => {
       expect(result.failure.issues?.length).toBe(2);
       expect(result.failure.remediation).toContain("environment override for defaultProviderId");
       expect(result.failure.remediation).toContain("lando config edit");
-      expect(result.failure.message).toContain("config file and environment override");
+      expect(result.failure.message).toMatch(/\(\S+\/config\.yml and environment override LANDO_\w+\)/);
     });
   });
 
@@ -197,7 +197,7 @@ describe("LandoConfigService.layer", () => {
         expect(result._tag).toBe("Failure");
         if (result._tag !== "Failure") return;
         expect(result.failure.issues?.[0]?.path).toEqual(["defaultProviderId"]);
-        expect(result.failure.message).toContain("config file and environment override");
+        expect(result.failure.message).toMatch(/\(\S+\/config\.yml and environment override LANDO_\w+\)/);
         expect(result.failure.remediation).toContain("environment override for router.httpPort");
       } finally {
         if (previous === undefined) delete process.env[name];

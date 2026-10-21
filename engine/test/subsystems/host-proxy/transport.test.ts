@@ -4,7 +4,7 @@ import { type IncomingMessage, createServer, request as httpRequest } from "node
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Cause, Effect, Exit, Layer, Option, Predicate, Stream } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Stream } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -23,18 +23,10 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { resolveCompiledBinaryVersion } from "../../../../scripts/compiled-binary-version.ts";
-import type {
-  HostProxyRunLandoExecutor,
-  HostProxyRunLandoExecutorInput,
-} from "../../../src/subsystems/host-proxy/dispatch.ts";
+import type { HostProxyRunLandoExecutor } from "../../../src/subsystems/host-proxy/dispatch.ts";
 import { listenHostProxyServer } from "../../../src/subsystems/host-proxy/transport-listener.ts";
 import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
 import {
-  defaultHostProxyShimArtifactPath,
-  resolveHostProxyShimArtifactPath,
-} from "../../../src/subsystems/host-proxy/transport-shim.ts";
-import {
-  HOST_PROXY_SHIM_SOURCE,
   createHostProxyRunLandoSession,
   hostProxyRunLandoStateDir,
   scopedHostProxyRunLandoSession,
@@ -56,18 +48,6 @@ const tempRoot = async (): Promise<string> => {
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/srv/apps/demo" };
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
-
-const coreBuildHostProxyShimScript = async (): Promise<string> => {
-  const packageJson: unknown = await Bun.file(
-    join(import.meta.dirname, "../../../../core/package.json"),
-  ).json();
-  if (!isRecord(packageJson) || !isRecord(packageJson.scripts)) throw new Error("Invalid core package.json");
-  const script = packageJson.scripts["build:host-proxy-shim"];
-  if (typeof script !== "string") throw new Error("Missing build:host-proxy-shim script");
-  return script;
-};
 
 const envelope: CommandResultEnvelope = {
   apiVersion: "v4",
@@ -177,20 +157,25 @@ const fakeExecutable = async (): Promise<string> => {
   return path;
 };
 
-const compiledShimArtifact = async (): Promise<string> => {
-  const output = join(await tempRoot(), "lando-shim");
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "build", HOST_PROXY_SHIM_SOURCE, "--compile", "--outfile", output],
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-  if (exitCode !== 0) throw new Error(stderr);
-  return output;
+/** The compiled binary embeds a helper per arch; these tests never run it in a container. */
+const stubContainerHelperDir = async (): Promise<string> => {
+  const root = await tempRoot();
+  for (const arch of ["x64", "arm64"]) {
+    await mkdir(join(root, `linux-${arch}`), { recursive: true });
+    await writeFile(join(root, `linux-${arch}`, "lando-container-helper"), "#!/bin/sh\nexit 0\n", {
+      mode: 0o755,
+    });
+  }
+  // Compile refuses helpers that arrive without their Go license notices.
+  await mkdir(join(root, "licenses/go"), { recursive: true });
+  await writeFile(join(root, "licenses/go/LICENSE"), "fixture Go license\n");
+  await writeFile(join(root, "licenses/go/files.json"), '["licenses/go/LICENSE"]\n');
+  return root;
 };
 
 const compiledReleaseBinary = async (): Promise<string> => {
   const output = join(await tempRoot(), "lando");
+  const helperDir = await stubContainerHelperDir();
   const proc = Bun.spawn({
     cmd: [
       process.execPath,
@@ -201,6 +186,7 @@ const compiledReleaseBinary = async (): Promise<string> => {
       "--outfile",
       output,
     ],
+    env: { ...process.env, LANDO_CONTAINER_HELPER_DIR: helperDir },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -234,32 +220,6 @@ const waitForMissingPath = async (path: string): Promise<void> => {
 describe("host-proxy runLando physical transport", () => {
   test("treats malformed request URLs as an empty route pathname", () => {
     expect(requestPathname({ url: "http://[" } as IncomingMessage)).toBe("");
-  });
-
-  test("selects deterministic compiled shim sidecars for supported container targets", () => {
-    const distRoot = "/opt/lando/core/dist";
-
-    expect(
-      resolveHostProxyShimArtifactPath({
-        distRoot,
-        target: { os: "linux", arch: "x64" },
-      }),
-    ).toBe("/opt/lando/core/dist/host-proxy/linux-x64/lando-shim");
-    expect(
-      resolveHostProxyShimArtifactPath({
-        distRoot,
-        target: { os: "linux", arch: "arm64" },
-      }),
-    ).toBe("/opt/lando/core/dist/host-proxy/linux-arm64/lando-shim");
-  });
-
-  test("build script delivers every supported compiled shim sidecar path", async () => {
-    const script = await coreBuildHostProxyShimScript();
-
-    expect(script).toContain("bun build ./src/cli/host-proxy/shim-bin.ts --compile");
-    expect(script).not.toContain("../engine/src/subsystems/host-proxy/shim-bin.ts");
-    expect(script).toContain("--target=bun-linux-x64 --outfile ./dist/host-proxy/linux-x64/lando-shim");
-    expect(script).toContain("--target=bun-linux-arm64 --outfile ./dist/host-proxy/linux-arm64/lando-shim");
   });
 
   test("happy authenticated physical round trip preserves envelope and remapped cwd", async () => {
@@ -1031,106 +991,6 @@ describe("host-proxy runLando physical transport", () => {
     await expectMissingPath(socketPath);
     await expectMissingPath(shimPath);
   });
-
-  test("compiled shim has runtime isolation and forwards exact argv cwd tty and filtered env", async () => {
-    let captured: HostProxyRunLandoExecutorInput | undefined;
-    const session = await sessionFor(
-      (request) => {
-        captured = request;
-        return Effect.succeed({ envelope, exitCode: 0 });
-      },
-      {
-        shimArtifactPath: await compiledShimArtifact(),
-      },
-    );
-    expect(HOST_PROXY_SHIM_SOURCE).toBe("core/src/cli/host-proxy/shim-bin.ts");
-
-    const proc = Bun.spawn({
-      cmd: [session.shimPath, "open", "--print"],
-      cwd: "/tmp",
-      env: {
-        LANDO_HOST_PROXY_SOCKET: socketPathOf(session),
-        LANDO_HOST_PROXY_TOKEN: session.token,
-        LANDO_HOST_PROXY_SESSION: session.sessionId,
-        LANDO_HOST_PROXY_APP: session.appId,
-        LANDO_HOST_PROXY_CALLER: "web",
-        LANG: "C.UTF-8",
-        OPENCODE: "1",
-        SECRET_TOKEN: "do-not-forward",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    expect(await proc.exited).toBe(0);
-    expect(await new Response(proc.stdout).text()).toContain('"ok":true');
-    expect(await new Response(proc.stderr).text()).toBe("");
-    expect(captured).toEqual({
-      argv: ["open", "--print"],
-      commandId: "app:open",
-      cwd: "/srv/apps/demo",
-      tty: false,
-      env: {
-        LANDO_HOST_PROXY_CALLER: "web",
-        LANDO_HOST_PROXY_DEPTH: "1",
-        LANG: "C.UTF-8",
-        OPENCODE: "1",
-      },
-    });
-    await session.close();
-  });
-
-  test("release-shaped compiled binary supplies and executes the default host-proxy shim", async () => {
-    const artifactPath = await compiledReleaseBinary();
-    const shimArtifactPath = defaultHostProxyShimArtifactPath({
-      env: {},
-      execPath: artifactPath,
-      target: { os: "linux", arch: "x64" },
-    });
-    await mkdir(dirname(shimArtifactPath), { recursive: true });
-    const buildShim = Bun.spawn({
-      cmd: [process.execPath, "build", HOST_PROXY_SHIM_SOURCE, "--compile", "--outfile", shimArtifactPath],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [buildExitCode, buildStderr] = await Promise.all([
-      buildShim.exited,
-      new Response(buildShim.stderr).text(),
-    ]);
-    expect(buildExitCode).toBe(0);
-    expect(buildStderr).toBe("");
-    expect(shimArtifactPath).toBe(join(dirname(artifactPath), "host-proxy", "linux-x64", "lando-shim"));
-
-    let captured: HostProxyRunLandoExecutorInput | undefined;
-    const session = await sessionFor(
-      (request) => {
-        captured = request;
-        return Effect.succeed({ envelope, exitCode: 0 });
-      },
-      { shimArtifactPath },
-    );
-
-    const proc = Bun.spawn({
-      cmd: [session.shimPath, "open", "--print"],
-      cwd: "/tmp",
-      env: {
-        LANDO_HOST_PROXY_SOCKET: socketPathOf(session),
-        LANDO_HOST_PROXY_TOKEN: session.token,
-        LANDO_HOST_PROXY_SESSION: session.sessionId,
-        LANDO_HOST_PROXY_APP: session.appId,
-        LANDO_HOST_PROXY_CALLER: "web",
-        LANG: "C.UTF-8",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    expect(await proc.exited).toBe(0);
-    expect(await new Response(proc.stdout).text()).toContain('"ok":true');
-    expect(await new Response(proc.stderr).text()).toBe("");
-    expect(captured?.argv).toEqual(["open", "--print"]);
-    await session.close();
-  }, 120_000);
 
   test("release-shaped compiled host CLI ignores leaked host-proxy shim env", async () => {
     const artifactPath = await compiledReleaseBinary();

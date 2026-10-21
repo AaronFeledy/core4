@@ -168,6 +168,12 @@ import {
   TracingConfig,
 } from "./config.ts";
 import {
+  ContainerHelperArch,
+  ContainerHelperArtifact,
+  ContainerHelperDigest,
+  ContainerHelperTarget,
+} from "./container-helper.ts";
+import {
   ArchiveFormat,
   DataEndpoint,
   DataTransferProgress,
@@ -625,6 +631,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   DownloadResult,
   DownloaderCapabilities,
   ArchiveFormat,
+  ContainerHelperArch,
+  ContainerHelperTarget,
+  ContainerHelperDigest,
+  ContainerHelperArtifact,
   DataEndpoint,
   VolumeRef,
   VolumeInfo,
@@ -1108,6 +1118,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DownloadResult: "Public Lando schema contract for Download Result.",
   DownloaderCapabilities: "Public Lando schema contract for Downloader Capabilities.",
   ArchiveFormat: "Public Lando schema contract for Archive Format.",
+  ContainerHelperArch: "Linux architecture of the in-container helper executable.",
+  ContainerHelperTarget: "Container platform the in-container helper is resolved for.",
+  ContainerHelperDigest: "SHA-256 digest identifying a resolved helper executable.",
+  ContainerHelperArtifact: "Resolved in-container helper ready to bind-mount or copy into a container.",
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",

@@ -1,11 +1,12 @@
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
+import { landofileValidationError } from "@lando/landofile/validation";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Option } from "effect";
+import { type Context, DateTime, Effect, Iterable, Option, Result } from "effect";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -16,10 +17,13 @@ import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling, validateServiceTypeReservedToolingNames } from "./effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
 import {
+  deferredSiteKey,
   materializeLandofileScopes,
   materializeServiceScopeSites,
+  referencedServices,
   serviceScopeContext,
 } from "./landofile-scopes.ts";
+import { validateResolvedLandofile } from "./resolved-validation.ts";
 import { resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
 
@@ -34,7 +38,9 @@ export interface KnownEventSetInput {
   readonly appRoot?: string;
 }
 
-export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
+export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(function* (
+  input: KnownEventSetInput,
+) {
   const { pluginRegistry, configService, fileSystem, pathsService } = input;
   let landofile = input.landofile;
   const appRoot = input.appRoot ?? getLandofileAppRoot(landofile) ?? process.cwd();
@@ -95,12 +101,26 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   // Every service type has published its credentials now, so the sites the
   // identity pass deferred (tooling, extensions, and the services themselves)
   // resolve across the whole document before tooling is compiled.
+  // Sites that read a service whose type failed to resolve cannot be evaluated;
+  // the stage skips values holding them instead of reporting a cascade. A
+  // computed member cannot be analyzed, so it is held back too.
+  const blocked = new Set<string>();
+  if (seeds.unavailable.size > 0) {
+    for (const site of deferredSites) {
+      const references = referencedServices([], [site], landofilePath);
+      if (
+        Result.isFailure(references) ||
+        Iterable.some(references.success, (name) => seeds.unavailable.has(name))
+      )
+        blocked.add(deferredSiteKey(site.path));
+    }
+  }
   if (deferredSites.length > 0) {
     const serviceScoped = yield* materializeServiceScopeSites({
       value: landofile,
       landofilePath,
       pathPrefix: [],
-      deferredSites,
+      deferredSites: deferredSites.filter((site) => !blocked.has(deferredSiteKey(site.path))),
       context: serviceScopeContext({ landofile, appSlug, defaultDomain, services: seeds.serviceCredsScope }),
     });
     if (serviceScoped !== landofile) {
@@ -108,7 +128,41 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
       landofile = serviceScoped;
     }
   }
-  const toolingServices = seeds.services.map((entry) => ({
+  const validated = validateResolvedLandofile({ landofile, landofilePath, blocked });
+  const issues = [...seeds.issues, ...validated.issues];
+  if (issues.length > 0) return { _tag: "Invalid" as const, issues, landofile, landofilePath };
+  return {
+    _tag: "Resolved" as const,
+    resolution: {
+      ...seeds,
+      landofile,
+      appSlug,
+      defaultDomain,
+      appRoot,
+      appName,
+      landofilePath,
+      host,
+      encodedMetadata,
+      globalConfig,
+      appDefaults,
+      provider,
+      manifests,
+      routes: validated.routes,
+      canonicalFile: input.file,
+    },
+  };
+});
+
+type ResolvedLandofile = Extract<
+  Effect.Success<ReturnType<typeof resolveLandofileForPlanning>>,
+  { readonly _tag: "Resolved" }
+>["resolution"];
+
+export const knownEventSetFrom = Effect.fn("AppPlanner.knownEvents")(function* (
+  resolution: ResolvedLandofile,
+) {
+  const { landofile, appRoot, landofilePath } = resolution;
+  const toolingServices = resolution.services.map((entry) => ({
     name: entry.name,
     serviceTypeId: entry.serviceType.id,
     ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
@@ -120,7 +174,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   const unknown = unknownEventName(landofile.events, knownEventNames);
   if (unknown !== undefined) {
     const canonicalPath =
-      input.file ??
+      resolution.canonicalFile ??
       (yield* Effect.tryPromise({
         try: () => findLandofilePath(appRoot),
         catch: (cause) =>
@@ -139,22 +193,17 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
     return yield* Effect.fail(unknownEventError(unknown, knownEventNames, canonicalPath ?? landofilePath));
   }
   return {
-    ...seeds,
-    landofile,
-    appSlug,
-    defaultDomain,
+    ...resolution,
     effectiveTooling,
     knownEventNames,
-    appRoot,
-    appName,
-    landofilePath,
-    host,
-    encodedMetadata,
-    globalConfig,
-    appDefaults,
-    provider,
-    manifests,
   };
+});
+
+export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
+  const result = yield* resolveLandofileForPlanning(input);
+  if (result._tag === "Invalid")
+    return yield* Effect.fail(landofileValidationError(result.landofilePath, result.issues));
+  return yield* knownEventSetFrom(result.resolution);
 });
 
 export type KnownEventSetResolution = Effect.Success<ReturnType<typeof resolveKnownEventSet>>;

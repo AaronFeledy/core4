@@ -1,9 +1,15 @@
 #!/usr/bin/env bun
-import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+
+import { CONTAINER_HELPER_ARCHES } from "@lando/container-runtime/container-helper";
+import { Effect } from "effect";
+
+import { resolveContainerHelper } from "../core/src/container-helper/assets.ts";
+import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
+import { CONTAINER_HELPER_SOURCE_ROOT } from "../core/src/container-helper/source.ts";
 
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { compiledBinaryBundleConfig } from "./compiled-binary-bundle.ts";
@@ -24,27 +30,27 @@ export interface CompiledBinaryOptions {
 }
 
 export type CompiledBinaryBuildRunner = (config: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
-export type HostProxyShimAssetBuilder = (stagingDir: string) => Promise<readonly [string, string]>;
+export type ContainerHelperAssetBuilder = (stagingDir: string) => Promise<readonly string[]>;
 
-export const buildHostProxyShimAssets: HostProxyShimAssetBuilder = async (stagingDir) => {
-  const source = resolve(REPO_ROOT, "core/src/cli/host-proxy/shim-bin.ts");
+/**
+ * Gzips the prebuilt static helper for every Linux arch into embeddable assets
+ * named by digest. The helpers come from `LANDO_CONTAINER_HELPER_DIR` or from
+ * `bun run build:container-helper`, which builds them with Lando.
+ */
+export const buildContainerHelperAssets: ContainerHelperAssetBuilder = async (stagingDir) => {
+  await containerHelperNotices(
+    process.env.LANDO_CONTAINER_HELPER_DIR ?? resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"),
+  );
   const assets: string[] = [];
-  for (const arch of ["x64", "arm64"] as const) {
-    const outfile = resolve(stagingDir, `lando-host-proxy-linux-${arch}`);
-
-    const output = await Bun.build({
-      entrypoints: [source],
-      target: "bun",
-      compile: { target: `bun-linux-${arch}`, outfile },
-    });
-    if (!output.success) throw new CompiledBinaryBuildError(output.logs);
-    const bytes = await readFile(outfile);
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    const compressedAsset = resolve(stagingDir, `lando-host-proxy-linux-${arch}-${digest}.bin.gz`);
-    await writeFile(compressedAsset, gzipSync(bytes, { level: 9 }));
-    assets.push(compressedAsset);
+  for (const arch of CONTAINER_HELPER_ARCHES) {
+    const helper = await Effect.runPromise(
+      resolveContainerHelper({ os: "linux", arch }, { standalone: false }),
+    );
+    const asset = resolve(stagingDir, `lando-container-helper-linux-${arch}-${helper.digest}.gz`);
+    await writeFile(asset, gzipSync(await readFile(helper.path), { level: 9 }));
+    assets.push(asset);
   }
-  return assets as unknown as readonly [string, string];
+  return assets;
 };
 
 export class CompiledBinaryBuildError extends Error {
@@ -113,7 +119,7 @@ const emitMetafileMarkdown = async (options: CompiledBinaryOptions): Promise<voi
 export const buildCompiledBinary = async (
   options: CompiledBinaryOptions,
   build: CompiledBinaryBuildRunner = (config) => Bun.build(config),
-  prepareShimAssets: HostProxyShimAssetBuilder = buildHostProxyShimAssets,
+  prepareHelperAssets: ContainerHelperAssetBuilder = buildContainerHelperAssets,
   host: string = hostTarget(),
 ): Promise<Bun.BuildOutput> => {
   const platform = platformFor(options.target ?? hostTarget());
@@ -128,11 +134,11 @@ export const buildCompiledBinary = async (
         `[build-compiled-binary] ${platform.id}: Bun cannot embed the Lando icon or version info when cross-compiling; this binary keeps Bun's defaults. Compile on Windows for a branded binary.`,
       );
     }
-    const shimAssets = await prepareShimAssets(stagingDir);
+    const helperAssets = await prepareHelperAssets(stagingDir);
     const output = await build({
       ...compiledBinaryBundleConfig(platform.id, version, [
         resolve(REPO_ROOT, "core/bin/lando.ts"),
-        ...shimAssets,
+        ...helperAssets,
       ]),
       // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json.
       compile: {

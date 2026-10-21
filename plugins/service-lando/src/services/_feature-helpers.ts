@@ -1,12 +1,23 @@
 import { Effect } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import type { HealthcheckPlan } from "@lando/sdk/schema";
+import { type HealthcheckPlan, type ValidationIssuePath, formatValidationIssuePath } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
   ServiceImageIdentity,
 } from "@lando/sdk/services";
+
+export class ServiceConfigIssue extends Error {
+  constructor(
+    readonly path: ValidationIssuePath,
+    message: string,
+    readonly suggestion?: string,
+  ) {
+    super(message);
+    this.name = "ServiceConfigIssue";
+  }
+}
 
 export const serviceFeatureApply =
   (
@@ -19,7 +30,12 @@ export const serviceFeatureApply =
       try: () => apply(ctx),
       catch: (cause) =>
         new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : fallbackMessage,
+          message:
+            cause instanceof ServiceConfigIssue
+              ? `${formatValidationIssuePath(["services", ctx.serviceName, ...cause.path])}: ${cause.message}${cause.suggestion ? ` ${cause.suggestion}` : ""}`
+              : cause instanceof Error
+                ? cause.message
+                : fallbackMessage,
           feature: featureId,
           cause,
         }),
@@ -37,6 +53,17 @@ export const serviceTypeResolve = <A>(
         message: cause instanceof Error ? cause.message : fallbackMessage,
         serviceType,
         cause,
+        ...(cause instanceof ServiceConfigIssue
+          ? {
+              issues: [
+                {
+                  path: cause.path,
+                  message: cause.message,
+                  ...(cause.suggestion ? { suggestion: cause.suggestion } : {}),
+                },
+              ],
+            }
+          : {}),
       }),
   });
 
