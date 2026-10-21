@@ -13,7 +13,7 @@ const destroyCommand = (app: AppRef, provider: ProviderId): string => {
     case "global":
       return `lando global:destroy --provider=${provider} --yes`;
     case "scratch":
-      return `lando scratch destroy ${app.id} --yes`;
+      return `lando scratch:destroy ${app.id} --keep-volumes --yes`;
     case "user":
       return `lando destroy --provider=${provider} --yes`;
   }
