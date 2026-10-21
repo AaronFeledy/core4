@@ -813,7 +813,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid. The terminal error object also additively admits remaining JSON-safe own tagged-error fields, excluding cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe values; existing typed fields and canonical redaction remain unchanged."
+    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid. The terminal error object also additively admits remaining JSON-safe own tagged-error fields, excluding cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe values; existing typed fields and canonical redaction remain unchanged. Embedded validation issues on primary and additional errors also accept optional source: { file, layer, path }; this adds no required frame fields or union variants."
   },
   {
     "surface": "command:meta:doctor",

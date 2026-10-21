@@ -33,6 +33,7 @@ import {
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -47,7 +48,9 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalServicePort(evolveHistoricalShorthand(repairedLandofile()));
+  evolveHistoricalServicePort(
+    evolveHistoricalTimestamps(evolveHistoricalShorthand(repairedLandofile()), "bare"),
+  );
 
 describe("closed x-* extension artifact repair", () => {
   test("records the captured base artifact provenance", () => {
@@ -63,6 +66,7 @@ describe("closed x-* extension artifact repair", () => {
       "3e1bf2dce0e33bc8d22bc9664928c429355c5866dda24640dd9e6372be4e7ba2",
     );
     expect(shorthandDelta.provenanceCommit).toBe("4b13bf3bf278475b194cf0d82a3bc01de83325b2");
+    expect(timestampsDelta.provenanceCommit).toBe("08d1490c6ae5773be71abfd3283faf8ebe4f9189");
     expect(includeChecksumDelta.provenanceCommit).toBe("e397cae8cb39233d4ec3a693dc533549f7cbb7f3");
   });
 

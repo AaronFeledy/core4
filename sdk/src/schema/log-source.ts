@@ -94,13 +94,17 @@ const LogSourceInputFields = Schema.Struct({
   id: Schema.optionalKey(LogSourceId).annotate({
     description: "Optional source id; defaults to the path basename.",
   }),
+  timestamps: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
+    description:
+      "Whether lines carry parseable leading timestamps so `--since` filtering can apply; defaults to false.",
+  }),
 });
 
 /**
  * `LogSourceInput` is the Landofile-facing shape (`services.<name>.logs:`).
  * Decoding yields a full {@link LogSource}: user-declared sources always resolve
  * to `strategy: "follow"` (Lando does not own a user's arbitrary image build)
- * and `timestamps: false`; the id defaults to the path basename.
+ * and `required: false`; timestamps default to false and the id to the path basename.
  */
 export const LogSourceInput = LogSourceInputFields.pipe(
   Schema.decodeTo(
@@ -114,15 +118,14 @@ export const LogSourceInput = LogSourceInputFields.pipe(
           stream: input.stream,
           strategy: "follow" as const,
           required: false,
-          timestamps: false,
+          timestamps: input.timestamps,
         }),
       encode: (source: typeof LogSource.Encoded) => {
-        if (source.strategy !== "follow" || source.required !== false || source.timestamps !== false) {
+        if (source.strategy !== "follow" || source.required !== false) {
           return Effect.fail(
             new SchemaIssue.InvalidValue(
               {
-                message:
-                  "Landofile log source input can only encode follow sources with required=false and timestamps=false.",
+                message: "Landofile log source input can only encode follow sources with required=false.",
               },
               source,
             ),
@@ -134,6 +137,7 @@ export const LogSourceInput = LogSourceInputFields.pipe(
           ...(source.label === undefined ? {} : { label: source.label }),
           stream: source.stream,
           id: LogSourceId.make(source.id),
+          timestamps: source.timestamps ?? false,
         });
       },
     }),

@@ -23,7 +23,7 @@ import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-stat
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 

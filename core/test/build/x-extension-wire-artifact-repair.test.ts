@@ -12,6 +12,7 @@ import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/norma
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
@@ -70,7 +71,12 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
   const evolved = evolveHistoricalIncludeChecksum(
-    evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source])))),
+    evolveHistoricalTimestamps(
+      evolveHistoricalShorthand(
+        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+      ),
+      "authoring",
+    ),
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;
@@ -113,8 +119,11 @@ describe("embedded wire closed x-* artifact repair", () => {
   }, 120_000);
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
-    const repaired = evolveHistoricalShorthand(
-      normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+    const repaired = evolveHistoricalTimestamps(
+      evolveHistoricalShorthand(
+        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+      ),
+      "authoring",
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
@@ -138,7 +147,7 @@ describe("embedded wire closed x-* artifact repair", () => {
       async () => {
         // Given the independently pinned typed grammar, with every union alternative intact.
         const current = schemaAt(await currentArtifact(surface), path);
-        // When the separately pinned shorthand and include-checksum deltas follow closed-x repair.
+        // When the separately reviewed shorthand, timestamps, and include-checksum deltas follow closed-x repair.
         const repaired = evolvedTyped(source);
         // Then the entire normalized subtree matches, not just the reported keyword.
         expect(jsonEquals(repaired, current)).toBe(true);

@@ -917,6 +917,7 @@
       "decodeLandofileAuthoringLayer",
       "decodeLandofileLayer",
       "detectLandofileTags",
+      "directivePathProblem",
       "emitLandofileYaml",
       "emitLandofileYamlEither",
       "expandRouteSchemes",
@@ -929,6 +930,7 @@
       "listLayerMergeRules",
       "mergeLandofiles",
       "mergeValues",
+      "mergeValuesWithOrigins",
       "override",
       "parseLandofile",
       "parseLegacyLandofile",
@@ -944,7 +946,9 @@
       "routeMatchKey",
       "splitComposeCommand",
       "validateConfigTranslateInput",
-      "validateConfigTranslateResult"
+      "validateConfigTranslateResult",
+      "valueOriginAt",
+      "withValueOrigins"
     ],
     "./log-follow": [
       "DEFAULT_MAX_LINE_BYTES",

@@ -12,6 +12,38 @@ import { loadLandofileFile } from "../src/service.ts";
 import { landofileValidationError, validateLandofile } from "../src/validation.ts";
 
 describe("Landofile validation issues", () => {
+  test("retains remediation as a machine field rather than only message text", () => {
+    // Given
+    const framing = {
+      headline: "Invalid port",
+      remediation: "Set services.web.port to a number, or remove the local override.",
+    };
+    // When
+    const result = landofileValidationError(
+      "/app/.lando.yml",
+      [{ path: ["services", "web", "port"], message: "Expected number." }],
+      framing,
+    );
+    // Then
+    expect(result).toHaveProperty("remediation", framing.remediation);
+  });
+
+  test("uses the primary issue's authored source as the top-level error file", () => {
+    // Given
+    const source = {
+      file: "/app/.lando.local.yml",
+      layer: "local" as const,
+      path: ["services", "web", "port"],
+    };
+    // When
+    const result = landofileValidationError("/app/.lando.yml", [
+      { path: source.path, message: "Expected number.", source },
+    ]);
+    // Then
+    expect(result.file).toBe(source.file);
+    expect(result.issues[0]).toHaveProperty("source", source);
+  });
+
   test("preserves the closest-key suggestion when an unknown key contains a planner expression", async () => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-unknown-planner-key-"));

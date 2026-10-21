@@ -139,6 +139,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     catch: (cause) =>
       new LandofileValidationError({
         message: `Global network trust configuration is invalid: ${causeMessage(cause)}`,
+        remediation: "Correct the global network trust configuration and retry planning.",
         file: landofilePath,
         issues: [
           validationIssue(
@@ -172,6 +173,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         (error) =>
           new LandofileValidationError({
             message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
+            remediation: `Install or repair the plugin that provides app feature ${ref.id}.`,
             file: landofilePath,
             issues: [
               validationIssue(
