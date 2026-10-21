@@ -954,6 +954,10 @@ ${setupBunSteps}
       - name: Regenerate paired Tomcat catalog
         run: bun run codegen:tomcat-catalog
 
+      # Gitignored output that container-runtime imports, so bundled plugins need it first.
+      - name: Regenerate provider images manifest
+        run: bun run codegen:provider-images
+
       - name: Regenerate bundled plugins
         run: bun run codegen:bundled-plugins
 
@@ -965,9 +969,6 @@ ${setupBunSteps}
 
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions
-
-      - name: Regenerate provider images manifest
-        run: bun run codegen:provider-images
 
       - name: Regenerate OpenTUI native catalog
         run: bun run codegen:opentui-native-stubs

@@ -140,6 +140,34 @@ const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string)
   return undefined;
 };
 
+// A real engine can inspect an image right after pulling it; libpod pulls inspect to report its digest.
+const pulledImageReference = (request: EngineHttpRequest): string | undefined =>
+  request.path.startsWith("/libpod/images/pull?")
+    ? (new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1)).get("reference") ?? undefined)
+    : undefined;
+
+const pulledImageInspect = (
+  pulled: ReadonlySet<string>,
+  request: EngineHttpRequest,
+): EngineHttpResponse | undefined => {
+  if (
+    request.method !== "GET" ||
+    !request.path.startsWith("/libpod/images/") ||
+    !request.path.endsWith("/json")
+  )
+    return undefined;
+  const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
+  if (!pulled.has(ref)) return { status: 404, body: "" };
+  return {
+    status: 200,
+    body: JSON.stringify({
+      Os: "linux",
+      Architecture: "amd64",
+      RepoDigests: [`${ref.split(":")[0]}@sha256:test`],
+    }),
+  };
+};
+
 const makeFakeApi = () => {
   const networks = new Map<string, object>();
   const configs = new Map<string, unknown>();
@@ -149,6 +177,7 @@ const makeFakeApi = () => {
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
   const calls: EngineHttpRequest[] = [];
+  const pulledImages = new Set<string>();
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -157,6 +186,8 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        const image = pulledImageInspect(pulledImages, request);
+        if (image !== undefined) return image;
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
@@ -266,6 +297,8 @@ const makeFakeApi = () => {
       }),
     stream: (request) => {
       calls.push(request);
+      const pulled = pulledImageReference(request);
+      if (pulled !== undefined) pulledImages.add(pulled);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
