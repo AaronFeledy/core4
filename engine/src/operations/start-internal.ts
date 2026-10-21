@@ -42,16 +42,11 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import {
-  publishedTargetsFromEndpoints,
-  rewriteCrossEngineProxyRoutes,
-} from "../lifecycle/cross-engine-routes.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes } from "../lifecycle/routes.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
-import { hostProviderId } from "../providers/host-provider.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -343,16 +338,12 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
                     Effect.map((runtime) => {
                       initialRuntime.set(String(service.name), runtime);
-                      const sourceEndpoints = runtime.endpoints ?? service.endpoints;
-                      return {
-                        ...startedServiceRow(service, runtime),
-                        published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
-                      };
+                      return startedServiceRow(service, runtime);
                     }),
                   ),
                 );
               });
-              const inspectedServices = yield* withApplyProgress({
+              yield* withApplyProgress({
                 events,
                 plan,
                 services: serviceList,
@@ -367,17 +358,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 provider,
               );
 
-              const routedPlan = {
-                ...builtPlan,
-                routes: rewriteCrossEngineProxyRoutes({
-                  hostProvider: yield* hostProviderId,
-                  sharedCrossAppNetwork: provider.capabilities.sharedCrossAppNetwork,
-                  plan: builtPlan,
-                  published: inspectedServices.flatMap((service) => service.published),
-                }),
-              };
-              const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
-              const proxyResult = yield* routedPlan.routes.length === 0
+              const applyRoutes = applyAppRoutes(proxy, builtPlan, target.landofile?.router);
+              const proxyResult = yield* builtPlan.routes.length === 0
                 ? applyRoutes
                 : withRoutesStartProgress({ events, plan, work: applyRoutes });
               const readyServices = yield* waitForServiceReadiness({
