@@ -58,9 +58,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
           api: options.api,
           capabilities: options.capabilities,
           redactDetails: options.redactDetails,
-          ...(options.prepareWitnessImage === undefined
-            ? {}
-            : { prepareWitnessImage: options.prepareWitnessImage }),
+          ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}
             : { volumeCreationLabels: options.volumeCreationLabels }),

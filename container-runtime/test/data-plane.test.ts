@@ -9,6 +9,7 @@ import {
   VolumeOperationError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { echoHelperPull } from "./helper-pull-support.ts";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
@@ -454,6 +455,7 @@ describe("provider data plane", () => {
       api,
       capabilities: { volumeSnapshot: "native" },
       redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
     });
 
     const snapshot = await Effect.runPromise(
@@ -491,9 +493,8 @@ describe("provider data plane", () => {
     ]);
   });
 
-  test("closes ephemeral attach streams after stdin is consumed", async () => {
+  test("forwards ephemeral stdin and lets the transport end it without aborting the attach", async () => {
     let attached = "";
-    let attachAborted = false;
     const api: DataPlaneApiClient = {
       request: (request) =>
         Effect.succeed(
@@ -506,7 +507,9 @@ describe("provider data plane", () => {
           ? Stream.fromAsyncIterable(
               (async function* () {
                 attached = text(await collectAsyncBytes(request.stdin));
-                attachAborted = request.signal?.aborted === true;
+                // Like the socket transport: an aborted request surfaces as AbortError.
+                if (request.signal?.aborted === true)
+                  throw new DOMException("Socket stream aborted.", "AbortError");
                 yield new Uint8Array();
               })(),
               (cause) =>
@@ -527,7 +530,7 @@ describe("provider data plane", () => {
       redactDetails: (value) => value,
     });
 
-    await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.scoped(
         provider.run({
           image: "alpine:3.20",
@@ -539,7 +542,7 @@ describe("provider data plane", () => {
     );
 
     expect(attached).toBe("streamed stdin");
-    expect(attachAborted).toBe(true);
+    expect(result.exitCode).toBe(0);
   });
 
   test("does not leave ephemeral stdin open without a forwarded stream", async () => {
@@ -1060,6 +1063,7 @@ describe("provider data plane", () => {
       api,
       capabilities: { volumeSnapshot: "none" },
       redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: a safety consumer performs an exact read-only list.
@@ -1094,6 +1098,7 @@ describe("provider data plane", () => {
       api,
       capabilities: { volumeSnapshot: "none" },
       redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: a consumer locates its exact native volume.
@@ -1143,6 +1148,7 @@ describe("provider data plane", () => {
       api,
       capabilities: { volumeSnapshot: "none" },
       redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: removal rechecks the matching witness.
@@ -1219,6 +1225,7 @@ describe("provider data plane", () => {
       api,
       capabilities: { volumeSnapshot: "native" },
       redactDetails: (value) => value,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: restore rechecks the matching witness before mutation.

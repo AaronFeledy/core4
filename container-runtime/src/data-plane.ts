@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { tryParseJson } from "./engine-json.ts";
+import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+import type { PulledImage } from "./image-pull.ts";
 import {
   APP_LABEL,
   PROVIDER_LABEL,
@@ -27,7 +29,7 @@ import {
   observeMountedVolume,
   resolveNativeVolumeIdentity,
 } from "./volume-observation.ts";
-import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
+import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
 export {
   VOLUME_OWNER_LABEL,
   VOLUME_SELECTOR_LABEL,
@@ -36,7 +38,7 @@ export {
 } from "./volume-ownership.ts";
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
-export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
+export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
 
@@ -89,7 +91,12 @@ export interface DataPlaneApiClient {
 export interface ProviderDataPlaneOptions {
   readonly providerId: string;
   readonly endpointNamespace?: string;
-  readonly prepareWitnessImage?: Effect.Effect<unknown, ProviderError>;
+  /**
+   * Acquires a pinned helper image with the `missing` pull policy and reports
+   * the digest it observed locally. The data plane refuses to create a helper
+   * container unless that digest equals the pin.
+   */
+  readonly pullHelperImage?: (ref: string) => Effect.Effect<PulledImage, ProviderError>;
   readonly api: DataPlaneApiClient;
   readonly capabilities: Pick<ProviderCapabilities, "volumeSnapshot">;
   readonly redactDetails: (value: unknown) => unknown;
@@ -254,7 +261,6 @@ const dataStoreMounts = (spec: EphemeralRunSpec): ReadonlyArray<DataStoreMountPl
 const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> | undefined =>
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
 
-const snapshotHelperImage = "alpine:3.20";
 const preserveWitness = `! -name '${VOLUME_WITNESS_FILE}' ! -name '.lando-witness-stage-*'`;
 const snapshotDataMountTarget = PortablePath.make("/lando-data");
 const nativeSnapshotRepo = "localhost/lando-volume-snapshot";
@@ -464,6 +470,56 @@ const ensure2xx = (
         ),
       );
 
+/**
+ * Acquire a pinned helper image and prove it is the pinned content before any
+ * container is created from it. The provider's `missing` pull reuses a cached
+ * image without a registry request; every other failure, and any digest other
+ * than the pin, fails closed. There is no mutable-tag fallback.
+ */
+const ensureHelperImage = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  helper: PinnedHelperImage,
+  store?: string,
+): Effect.Effect<void, VolumeOperationError> => {
+  const pull = options.pullHelperImage;
+  const remediation =
+    "Check network and registry access, then retry. Lando only runs data-plane helpers from pinned image digests; run `lando doctor` if the problem persists.";
+  const fail = (message: string, details: Readonly<Record<string, unknown>>, cause?: unknown) =>
+    new VolumeOperationError({
+      providerId: options.providerId,
+      operation,
+      message,
+      remediation,
+      details: options.redactDetails(details),
+      ...(cause === undefined ? {} : { cause }),
+      ...(store === undefined ? {} : { store }),
+    });
+  if (pull === undefined) {
+    return Effect.fail(
+      fail("Provider cannot acquire the pinned data-plane helper image.", {
+        reference: helper.ref,
+      }),
+    );
+  }
+  return pull(helper.ref).pipe(
+    Effect.mapError((cause) =>
+      fail("Pinned data-plane helper image could not be acquired.", { reference: helper.ref }, cause),
+    ),
+    Effect.flatMap((pulled) =>
+      pulled.digest === helper.digest
+        ? Effect.void
+        : Effect.fail(
+            fail("Pinned data-plane helper image digest did not match the pin.", {
+              reference: helper.ref,
+              expectedDigest: helper.digest,
+              ...(pulled.digest === undefined ? {} : { actualDigest: pulled.digest }),
+            }),
+          ),
+    ),
+  );
+};
+
 const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
   const mounts = dataStoreMounts(spec);
   if (mounts.length === 0) return Effect.void;
@@ -602,25 +658,14 @@ const attachEphemeralStdin = (options: ProviderDataPlaneOptions, name: string, s
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/attach?stream=true&stdin=true&stdout=false&stderr=false`,
           signal: controller.signal,
-          stdin: closeAfterStdin(stdin, controller),
+          // The transport half-closes the upgraded connection once stdin is exhausted, which is
+          // the container's EOF. Aborting here instead would race that flush and fail the attach.
+          stdin,
         }),
       ).pipe(Effect.asVoid),
     (controller) => Effect.sync(() => controller.abort()),
   );
 };
-
-const closeAfterStdin = (
-  stdin: AsyncIterable<Uint8Array>,
-  controller: AbortController,
-): AsyncIterable<Uint8Array> => ({
-  async *[Symbol.asyncIterator]() {
-    try {
-      yield* stdin;
-    } finally {
-      controller.abort();
-    }
-  },
-});
 
 const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
   request(options, "run.wait", {
@@ -768,13 +813,13 @@ const commitNativeSnapshot = (
   );
 };
 
-const snapshotVolumeWithCommit = (
+const snapshotCommitHelper = (
   options: ProviderDataPlaneOptions,
   spec: { readonly store: string; readonly id: string; readonly labels: Readonly<Record<string, string>> },
 ) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
-      image: snapshotHelperImage,
+      image: dataHelperImage.ref,
       command: [
         "sh",
         "-c",
@@ -813,6 +858,14 @@ const snapshotVolumeWithCommit = (
     (name) => removeEphemeralContainer(options, name, true),
   );
 
+const snapshotVolumeWithCommit = (
+  options: ProviderDataPlaneOptions,
+  spec: { readonly store: string; readonly id: string; readonly labels: Readonly<Record<string, string>> },
+) =>
+  ensureHelperImage(options, "snapshotVolume", dataHelperImage, spec.store).pipe(
+    Effect.andThen(() => snapshotCommitHelper(options, spec)),
+  );
+
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
   const unsupportedSnapshot = (operation: string, format?: VolumeSnapshotRef["format"]) =>
     new ProviderCapabilityError({
@@ -827,16 +880,8 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         "Use a provider with native snapshot support and a native snapshot reference, or use DataMover host archives.",
     });
   const executeWitness = (spec: EphemeralRunSpec, witnessSource?: WitnessMountSource) =>
-    request(options, "witness.image", {
-      method: "GET",
-      path: `/images/${encodeURIComponent(VOLUME_WITNESS_IMAGE)}/json`,
-    }).pipe(
-      Effect.flatMap((image) =>
-        image.status === 404 && options.prepareWitnessImage !== undefined
-          ? options.prepareWitnessImage
-          : ensure2xx(options, "witness.image", image),
-      ),
-      Effect.andThen(Effect.scoped(runBytes(options, spec, witnessSource))),
+    ensureHelperImage(options, "witness.image", volumeWitnessImage).pipe(
+      Effect.andThen(() => Effect.scoped(runBytes(options, spec, witnessSource))),
       Effect.map((result) => ({
         exitCode: result.exitCode,
         stdout: textDecoder.decode(result.stdout),
@@ -847,12 +892,12 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     ...options,
     runWitness: (target: MountedVolumeTarget, command: readonly string[], readOnly: boolean) =>
       executeWitness(
-        { image: VOLUME_WITNESS_IMAGE, command, captureStdout: true, remove: true },
+        { image: volumeWitnessImage.ref, command, captureStdout: true, remove: true },
         { containerId: target.containerId, readOnly },
       ),
     runVolumeWitness: (nativeName: string, command: readonly string[]) =>
       executeWitness({
-        image: VOLUME_WITNESS_IMAGE,
+        image: volumeWitnessImage.ref,
         command,
         captureStdout: true,
         mounts: [

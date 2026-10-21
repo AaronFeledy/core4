@@ -80,7 +80,7 @@ const expectedCatalogRows = [
     "derived",
     "build-bundled-plugins.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -101,7 +101,7 @@ const expectedCatalogRows = [
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
@@ -212,7 +212,8 @@ describe("codegen catalog", () => {
   });
 
   test("generates pins before every generator that imports bundled plugins", async () => {
-    // Given: bundled plugins statically import the mutagen and PHP msmtp pins,
+    // Given: bundled plugins statically import the mutagen and PHP msmtp pins
+    // (and the provider-image pins through `@lando/container-runtime`),
     // so any generator that imports the bundled plugin list transitively reads
     // those pins. Derive those generators from source instead of hard-coding ids,
     // so a newly added one is covered automatically.
@@ -229,12 +230,16 @@ describe("codegen catalog", () => {
       waves.findIndex((wave) => wave.some((entry) => entry.id === id));
 
     // When: each pin generator is placed in a wave.
-    const pinWaves = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"].map(
-      (id) => ({
-        id,
-        wave: waveIndexOf(id),
-      }),
-    );
+    const pinWaves = [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "provider-images",
+    ].map((id) => ({
+      id,
+      wave: waveIndexOf(id),
+    }));
 
     // Then: the pin is fully written before any importer reads it. Sharing a wave
     // lets the import observe the file mid-truncation, because `Bun.write`

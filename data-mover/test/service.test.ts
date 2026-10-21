@@ -22,7 +22,7 @@ import { TestClock } from "effect/testing";
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
-import { providerImages } from "@lando/data-mover/provider-images";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import * as BunDataMover from "@lando/data-mover/service";
 import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";

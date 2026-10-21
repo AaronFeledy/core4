@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import {
@@ -69,7 +70,6 @@ import {
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { execStdoutStream } from "./exec-stream.ts";
-import { providerImages } from "./generated/provider-images.ts";
 import { orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import { requireSnapshotSeedTarget } from "./snapshot-seed.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";

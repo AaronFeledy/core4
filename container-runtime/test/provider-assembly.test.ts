@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanSanitizer, ContainerHelperAssets, EventService, PathsService } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { dataHelperImage } from "../src/data-plane.ts";
 import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
@@ -200,6 +201,40 @@ describe("provider assembly", () => {
     expect(Object.hasOwn(state, "dataPlane")).toBe(false);
     expect(state.appliedPlans.plans.size).toBe(0);
   });
+  test("hands the provider's helper acquisition hook to the data plane", async () => {
+    // Given: a provider that supplies an API and a pinned-helper acquisition hook.
+    const pulled: string[] = [];
+    const requests: string[] = [];
+    const state = makeProviderPlanState({
+      ...stateOptions,
+      api: {
+        request: (request) => {
+          requests.push(request.path);
+          return Effect.succeed({ status: 201, body: "{}" });
+        },
+      },
+      pullHelperImage: (ref) =>
+        Effect.sync(() => {
+          pulled.push(ref);
+          return { ref };
+        }),
+    });
+
+    // When: a native snapshot needs its commit helper.
+    const dataPlane = state.dataPlane;
+    if (dataPlane === undefined) return expect(dataPlane).toBeDefined();
+    const result = await Effect.runPromise(
+      Effect.scoped(dataPlane.snapshotVolume({ volume: { app: plan.id, store: "data" } })).pipe(
+        Effect.result,
+      ),
+    );
+
+    // Then: the hook is asked for the digest ref, and its unverified answer blocks the helper.
+    expect(pulled).toEqual([dataHelperImage.ref]);
+    expect(result._tag).toBe("Failure");
+    expect(requests.some((path) => path.startsWith("/containers/create"))).toBe(false);
+  });
+
   test("binds execution-specific before callbacks to shared plan state", async () => {
     const state = makeProviderPlanState(stateOptions);
     await Effect.runPromise(rememberAppliedPlan(state.appliedPlans, plan, { reconcile: true }));

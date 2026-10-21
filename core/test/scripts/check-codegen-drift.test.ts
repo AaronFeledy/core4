@@ -28,7 +28,7 @@ const EXPECTED_CATALOG_PATHS = [
 
 const GITIGNORED_DERIVED_PATHS = [
   "core/src/cli/generated",
-  "data-mover/src/generated/provider-images.ts",
+  "container-runtime/src/generated/provider-images.ts",
   "core/src/plugins/generated",
   "core/src/recipes/bundled.ts",
   "core/src/runtime/generated/layers",

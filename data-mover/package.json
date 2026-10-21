@@ -20,8 +20,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
-    "./testing": "./src/testing.ts",
-    "./provider-images": "./src/generated/provider-images.ts"
+    "./testing": "./src/testing.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "data-mover", "volume-snapshot"],
