@@ -1,10 +1,10 @@
 import { dirname, join } from "node:path";
 
-import { Effect, Scope } from "effect";
+import { Effect, Schema, Scope } from "effect";
 
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
+import { type AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
@@ -23,6 +23,7 @@ import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-stat
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
@@ -80,9 +81,13 @@ const planFromShape = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const sourcePath = join(appRoot, ".lando.yml");
   const stateStore = yield* StateStore;
-  const loadScope = yield* buildLandofileLoadScope([{ file: sourcePath, value: shape }]);
+  const authored = copyLandofileProvenance(
+    shape,
+    yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" }),
+  );
+  const loadScope = yield* buildLandofileLoadScope([{ file: sourcePath, value: authored }]);
   const landofile = yield* resolveLandofileIncludes({
-    landofile: shape,
+    landofile: authored,
     appRoot,
     sourcePath,
     stateStore,

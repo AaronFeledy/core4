@@ -6,7 +6,12 @@ import { Effect } from "effect";
 import { getSourceDocuments } from "../../src/pipeline/source-table.ts";
 import { loadLandofileLayers } from "../../src/service.ts";
 import * as validation from "../../src/validation.ts";
-import { evaluateVersionConstraints, getVersionConstraintEntries } from "../../src/version-constraint.ts";
+import {
+  evaluateVersionConstraints,
+  getVersionConstraintEntries,
+  rememberVersionConstraintEntries,
+} from "../../src/version-constraint.ts";
+import { resolveAuthoredIncludes } from "../include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "../support.ts";
 
 const withApp = async <T>(files: Readonly<Record<string, string>>, use: (root: string) => Promise<T>) => {
@@ -178,6 +183,48 @@ test("rejects a non-string resolved range without throwing an untyped error", as
       const error = await Effect.runPromise(load(root, { RANGE: "4" }).pipe(Effect.flip));
       // Then
       expect(error).toMatchObject({ _tag: "LandofileParseError", filePath: join(root, ".lando.base.yml") });
+    },
+  );
+});
+
+test("keeps remembered source constraints while acquiring nested includes", async () => {
+  // Given a decoded root whose visible wildcard shadows two remembered sources.
+  await withApp(
+    {
+      "outer.yml": 'lando: ">=1.2.0"\nincludes:\n  - inner.yml\n',
+      "inner.yml": 'lando: "<9.0.0"\n',
+    },
+    async (root) => {
+      const base = join(root, ".lando.base.yml");
+      const user = join(root, ".lando.user.yml");
+      const landofile = rememberVersionConstraintEntries(
+        { name: "provenance", lando: "*", includes: ["outer.yml"] },
+        [
+          { range: ">=99", source: base, layer: "base", order: 0 },
+          { range: "*", source: user, layer: "user", order: 5 },
+        ],
+      );
+
+      // When includes are acquired under that same object.
+      const loaded = await Effect.runPromise(
+        resolveAuthoredIncludes({
+          landofile,
+          appRoot: root,
+          sourcePath: join(root, ".lando.yml"),
+          stateStore: makeTestLandofileStateStore(),
+          ports: makeTestLandofilePorts(root),
+          cacheRoot: root,
+        }),
+      );
+
+      // Then neither source is retargeted, dropped, or replayed, and nested ranges stay.
+      expect(loaded.lando).toBe("*");
+      expect(getVersionConstraintEntries(loaded, "unused")).toEqual([
+        { range: "<9.0.0", source: join(root, "inner.yml"), layer: "canonical", order: 3 },
+        { range: ">=1.2.0", source: join(root, "outer.yml"), layer: "canonical", order: 3 },
+        { range: ">=99", source: base, layer: "base", order: 0 },
+        { range: "*", source: user, layer: "user", order: 5 },
+      ]);
     },
   );
 });
