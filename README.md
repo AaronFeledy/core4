@@ -125,6 +125,10 @@ bun install
 # Materialize generated sources from the codegen catalog
 bun run codegen
 
+# Configure a working provider, then build the helper (no host Go needed)
+bun core/bin/lando.ts setup
+bun run --filter='@lando/core' build:container-helper
+
 # Type check the whole workspace
 bun run typecheck
 
@@ -137,6 +141,8 @@ bun run format
 # Run the full test suite
 bun test
 ```
+
+On Linux, the full test suite needs the built helper; compiling `lando` needs it on every host. Rebuild after editing `core/container-helper/` sources or `.lando.yml`; compilation refuses stale helpers. See [the helper build instructions](./docs/contributing/ci.md#in-container-helper) for provider prerequisites and verification.
 
 > The combined CI gate is `bun run typecheck` **and** `bun test` — root `tsc -b`
 > typechecks source and non-docs test trees, while Astro owns `docs/**` through `docs:check` and `docs:test`.
