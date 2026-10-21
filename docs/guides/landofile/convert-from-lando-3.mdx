@@ -68,7 +68,7 @@ A Lando 3 `recipe:` with its `config:` map becomes the matching bundled Lando 4 
 
 `config` keys the Lando 4 recipe has no option for are reported as `dropped`, once each, with a remediation telling you where to set the value by hand. Values the option does not accept, such as a PHP version the recipe no longer ships or a `webroot` with spaces, stop the conversion with a `ConfigTranslateError` that names the accepted shape.
 
-Relative Lando 3 webroots carry over unchanged: `webroot: web` stays `web`. Lando 4 resolves that path against the service's app mount, `/app` unless `appMount.target` moves it, when planning the service. Omit `webroot` or use `.` for the app root. Absolute container paths remain available for a specific layout; relative paths that escape the app mount are rejected during planning.
+Relative Lando 3 webroots carry over unchanged: `webroot: web` stays `web`. Lando 4 resolves that path against the service's app mount, `/app` unless an authored `appMount` path such as `appMount: /site` moves it, when planning the service. Omit `webroot` or use `.` for the app root. Absolute container paths remain available for a specific layout; relative paths that escape the app mount are rejected during planning.
 
 For Tomcat, conversion sets Lando 4 `webroot` to `<webroot>/webapps/ROOT` (`webapps/ROOT` when Lando 3 used the default), matching the path Lando 3 served at `/`. It reports that other webapps or WAR files under `webapps/` are not deployed.
 

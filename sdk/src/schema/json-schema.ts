@@ -239,6 +239,7 @@ import {
 } from "./landofile-authoring.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
+  AppMountInput,
   CommandAliasesShape,
   EndpointInput,
   HealthcheckInput,
@@ -525,6 +526,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   AppPlan,
   ProviderSetupPlan,
   ServicePlan,
+  AppMountInput,
   AppMountPlan,
   MountPlan,
   DataStorePlan,
@@ -993,6 +995,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AppPlan: "Public Lando schema contract for App Plan.",
   ProviderSetupPlan: "Inspectable provider setup plan authorized by core before host mutation.",
   ServicePlan: "Public Lando schema contract for Service Plan.",
+  AppMountInput: "Application source mount destination, options, or false to disable it.",
   AppMountPlan: "Public Lando schema contract for App Mount Plan.",
   MountPlan: "Public Lando schema contract for Mount Plan.",
   DataStorePlan: "Public Lando schema contract for Data Store Plan.",
@@ -2457,7 +2460,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.envFile",
   "ServiceConfigInput.expose",
   "ServiceConfigInput.framework",
-  "ServiceConfigInput.healthcheck",
   "ServiceConfigInput.hostnames",
   "ServiceConfigInput.image",
   "ServiceConfigInput.labels",

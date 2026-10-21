@@ -19,7 +19,17 @@ services:
 
 Add `framework:` when you want FastAPI, Django, or Flask defaults for port and env. Keep-alive still runs until you set `command:` or serve with `lando exec`.
 
-Python publishes its port endpoint but has no default healthcheck, including for authored worker commands. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+Python publishes its port endpoint but has no default healthcheck, including for authored worker commands. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. The slim image has no `curl`, so probe with Python itself in argv form. This example serves the app directory with Python's built-in HTTP server:
+
+```yaml
+services:
+  app:
+    type: "python:3.12"
+    primary: true
+    port: 8000
+    command: [python, -m, http.server, "8000"]
+    healthcheck: [python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+```
 
 ```yaml
 name: python-fastapi

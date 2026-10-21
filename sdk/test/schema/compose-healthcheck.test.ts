@@ -2,14 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Result, Schema, SchemaIssue } from "effect";
 import * as AST from "effect/SchemaAST";
 
-import { HealthcheckField } from "../../src/schema/compose-healthcheck.ts";
 import { HealthcheckInput, ServiceConfig } from "../../src/schema/landofile.ts";
 
 // allow: SIZE_OK — this is a pure fixture-table test file kept together for contract readability.
 type AcceptedFixture = Readonly<{
   name: string;
   input: unknown;
-  expected: Readonly<Record<string, unknown>>;
+  expected: false | Readonly<Record<string, unknown>>;
 }>;
 type RejectedFixture = Readonly<{ name: string; input: unknown; expectedErrorFragment: string }>;
 
@@ -22,6 +21,31 @@ const ignoredComposeKeys = {
 } as const;
 
 const composeHealthcheckFixtures = [
+  { name: "false disables the probe", input: false, expected: false },
+  {
+    name: "string is a shell command",
+    input: "pg_isready",
+    expected: { kind: "command", command: "pg_isready" },
+  },
+  {
+    name: "bare argv keeps Compose markers literal",
+    input: ["CMD", "true"],
+    expected: { kind: "command", command: ["CMD", "true"] },
+  },
+  { name: "bare NONE is an executable", input: ["NONE"], expected: { kind: "command", command: ["NONE"] } },
+  {
+    name: "none drops probe targets and timings",
+    input: { kind: "none", command: "x", url: "http://x", port: 80, intervalSeconds: 2, startInterval: "5s" },
+    expected: false,
+  },
+  {
+    name: "disable ignores test and timings",
+    input: { disable: true, test: "x", interval: "5s", start_interval: "1s" },
+    expected: false,
+  },
+  { name: "empty shorthand string", input: "", expectedErrorFragment: "must not be empty" },
+  { name: "empty shorthand argv", input: [], expectedErrorFragment: "must not be empty" },
+  { name: "true shorthand", input: true, expectedErrorFragment: "Expected false, a command string" },
   {
     name: "shell test normalizes without materializing the planner's 10/5/5 defaults",
     input: { test: "curl -f localhost" },
@@ -37,7 +61,7 @@ const composeHealthcheckFixtures = [
     input: { test: ["CMD-SHELL", "echo ready"] },
     expected: { kind: "command", command: "echo ready" },
   },
-  { name: "NONE test has no command key", input: { test: ["NONE"] }, expected: { kind: "none" } },
+  { name: "NONE test disables the probe", input: { test: ["NONE"], interval: "5s" }, expected: false },
   { name: "empty test array is rejected", input: { test: [] }, expectedErrorFragment: "CMD" },
   {
     name: "NONE test rejects extra arguments",
@@ -92,9 +116,9 @@ const composeHealthcheckFixtures = [
     expected: { startInterval: "5s" },
   },
   {
-    name: "kind selects Lando precedence while retries and start_interval remain shared",
+    name: "none discards shared fields and ignored Compose keys",
     input: { ...ignoredComposeKeys, kind: "none", retries: "3", start_interval: "5s" },
-    expected: { kind: "none", retries: 3, startInterval: "5s" },
+    expected: false,
   },
   {
     name: "command selects Lando precedence over disable",
@@ -126,10 +150,10 @@ const composeHealthcheckFixtures = [
     input: { ...ignoredComposeKeys, startPeriodSeconds: 9 },
     expected: { startPeriodSeconds: 9 },
   },
-  { name: "boolean true disables the check", input: { disable: true }, expected: { kind: "none" } },
-  { name: "string true disables the check", input: { disable: "true" }, expected: { kind: "none" } },
-  { name: "uppercase TRUE disables the check", input: { disable: "TRUE" }, expected: { kind: "none" } },
-  { name: "trimmed true disables the check", input: { disable: " true " }, expected: { kind: "none" } },
+  { name: "boolean true disables the check", input: { disable: true }, expected: false },
+  { name: "string true disables the check", input: { disable: "true" }, expected: false },
+  { name: "uppercase TRUE disables the check", input: { disable: "TRUE" }, expected: false },
+  { name: "trimmed true disables the check", input: { disable: " true " }, expected: false },
   { name: "boolean false has no effect", input: { disable: false }, expected: {} },
   { name: "string false has no effect", input: { disable: "false" }, expected: {} },
   {
@@ -150,12 +174,12 @@ const composeHealthcheckFixtures = [
 const acceptedFixtures = composeHealthcheckFixtures.filter((fixture) => "expected" in fixture);
 const rejectedFixtures = composeHealthcheckFixtures.filter((fixture) => "expectedErrorFragment" in fixture);
 
-describe("HealthcheckField", () => {
+describe("HealthcheckInput", () => {
   test.each(acceptedFixtures)("normalizes and wires ServiceConfig: $name", ({ input, expected }) => {
     // Given / When
     const decoded = [
-      Schema.decodeUnknownSync(HealthcheckField)(input),
-      Schema.decodeUnknownSync(HealthcheckField)(input, { onExcessProperty: "error" }),
+      Schema.decodeUnknownSync(HealthcheckInput)(input),
+      Schema.decodeUnknownSync(HealthcheckInput)(input, { onExcessProperty: "error" }),
       Schema.decodeUnknownSync(ServiceConfig)({ healthcheck: input }).healthcheck,
       Schema.decodeUnknownSync(ServiceConfig)({ healthcheck: input }, { onExcessProperty: "error" })
         .healthcheck,
@@ -167,9 +191,9 @@ describe("HealthcheckField", () => {
 
   test.each(rejectedFixtures)("rejects through the field and ServiceConfig: $name", (fixture) => {
     // Given / When
-    const results = [
-      Schema.decodeUnknownResult(HealthcheckField)(fixture.input),
-      Schema.decodeUnknownResult(HealthcheckField)(fixture.input, { onExcessProperty: "error" }),
+    const results: readonly Result.Result<unknown, Schema.SchemaError>[] = [
+      Schema.decodeUnknownResult(HealthcheckInput)(fixture.input),
+      Schema.decodeUnknownResult(HealthcheckInput)(fixture.input, { onExcessProperty: "error" }),
       Schema.decodeUnknownResult(ServiceConfig)({ healthcheck: fixture.input }),
       Schema.decodeUnknownResult(ServiceConfig)(
         { healthcheck: fixture.input },
@@ -186,20 +210,20 @@ describe("HealthcheckField", () => {
 
   test.each(acceptedFixtures)("is idempotent and encode-lawful: $name", ({ input }) => {
     // Given
-    const defaultDecoded = Schema.decodeUnknownSync(HealthcheckField)(input);
-    const strictDecoded = Schema.decodeUnknownSync(HealthcheckField)(input, { onExcessProperty: "error" });
+    const defaultDecoded = Schema.decodeUnknownSync(HealthcheckInput)(input);
+    const strictDecoded = Schema.decodeUnknownSync(HealthcheckInput)(input, { onExcessProperty: "error" });
 
     // When
-    const defaultDecodedAgain = Schema.decodeUnknownSync(HealthcheckField)(defaultDecoded);
-    const strictDecodedAgain = Schema.decodeUnknownSync(HealthcheckField)(strictDecoded, {
+    const defaultDecodedAgain = Schema.decodeUnknownSync(HealthcheckInput)(defaultDecoded);
+    const strictDecodedAgain = Schema.decodeUnknownSync(HealthcheckInput)(strictDecoded, {
       onExcessProperty: "error",
     });
-    const encoded = Schema.encodeSync(HealthcheckField)(defaultDecoded);
+    const encoded = Schema.encodeSync(HealthcheckInput)(defaultDecoded);
 
     // Then
     expect(defaultDecodedAgain).toEqual(defaultDecoded);
     expect(strictDecodedAgain).toEqual(strictDecoded);
-    expect(Schema.decodeUnknownSync(HealthcheckField)(encoded)).toEqual(defaultDecoded);
+    expect(Schema.decodeUnknownSync(HealthcheckInput)(encoded)).toEqual(defaultDecoded);
   });
 
   test("encodes canonical Lando keys and raw start_interval only", () => {
@@ -213,9 +237,9 @@ describe("HealthcheckField", () => {
       retries: 3,
       startPeriodSeconds: 2,
       startInterval: "5s",
-    } as const satisfies typeof HealthcheckField.Type;
+    } as const satisfies typeof HealthcheckInput.Type;
 
-    const encoded = Schema.encodeSync(HealthcheckField)(canonical);
+    const encoded = Schema.encodeSync(HealthcheckInput)(canonical);
 
     expect(encoded).toEqual({
       kind: "command",
@@ -265,7 +289,7 @@ describe("HealthcheckField", () => {
 });
 
 describe("public healthcheck contracts", () => {
-  test("HealthcheckInput remains the unchanged eight-field Lando schema", () => {
+  test("HealthcheckInput is the ServiceConfig authoring codec with canonical output", () => {
     const value = {
       kind: "http",
       command: "curl localhost",
@@ -276,23 +300,8 @@ describe("public healthcheck contracts", () => {
       retries: 3,
       startPeriodSeconds: 2,
     } as const;
-    expect(AST.isObjects(HealthcheckInput.ast)).toBe(true);
-    if (!AST.isObjects(HealthcheckInput.ast)) return;
-    const names = HealthcheckInput.ast.propertySignatures.map(({ name }) => String(name)).toSorted();
-
     expect(Schema.decodeUnknownSync(HealthcheckInput)(value)).toEqual(value);
-    expect(names).toEqual(
-      [
-        "command",
-        "intervalSeconds",
-        "kind",
-        "port",
-        "retries",
-        "startPeriodSeconds",
-        "timeoutSeconds",
-        "url",
-      ].toSorted(),
-    );
+    expect(ServiceConfig.fields.healthcheck.schema).toBe(HealthcheckInput);
   });
 
   test("ServiceConfig stays a Struct and encodes a healthcheck-bearing value lawfully", () => {

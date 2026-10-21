@@ -79,7 +79,7 @@ lando logs -s appserver --tail 50
 lando info
 ```
 
-Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: { disable: true }` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
+Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: false` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
 
 With authored `restart: always` or `unless-stopped`, an exit or observed restart delegates recovery to the container engine. `on-failure` does that only for a non-zero exit; exit 0 remains a readiness failure. Start warns with the reason, available exit code, a short redacted log tail, and app-specific logs remediation, then reports `restarting`. Exhausted healthchecks still fail, and completion jobs must exit 0 regardless of restart policy. Pressing Ctrl-C during user-app readiness leaves the applied app running while the command exits as interrupted.
 

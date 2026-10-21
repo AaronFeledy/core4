@@ -1055,6 +1055,7 @@
       "AppIdentity",
       "AppLabelDefaults",
       "AppLifecycleEventName",
+      "AppMountInput",
       "AppMountPlan",
       "AppPlan",
       "AppRef",
