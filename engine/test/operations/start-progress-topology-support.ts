@@ -124,6 +124,7 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly appliedPlans?: ReadonlyArray<AppPlan>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
@@ -279,7 +280,7 @@ export const makeHarness = (
     logs: options.logs ?? (() => Stream.empty),
   };
   const runtimeProviderRegistry = {
-    appliedPlansFor: () => Effect.succeed([]),
+    appliedPlansFor: () => Effect.succeed(options.appliedPlans ?? []),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),

@@ -30,6 +30,7 @@ import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { TeardownProvider } from "./app-placement.ts";
 import {
   type AppliedStateProvider,
   observeProviderRuntime,
@@ -206,42 +207,46 @@ export const makeRuntimeProviderRegistry = (
 
       const appliedStateProviders = Effect.gen(function* () {
         const ids = yield* providerIds;
-        return yield* Effect.forEach(ids, (id) =>
-          Effect.gen(function* () {
-            const descriptor = yield* contributionFor(id);
-            const { contribution, context } = descriptor;
-            const resourceOwnership = contribution.resourceOwnership;
-            const runtime = yield* Effect.cached(makeProvider(descriptor));
-            return {
-              id,
-              ...(resourceOwnership === undefined
-                ? {}
-                : {
-                    resourceOwnership: (root: AbsolutePath) => resourceOwnership(context, root),
-                  }),
-              canCleanupOwnedResources: runtime.pipe(
-                Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
-              ),
-              appliedPlans: contribution
-                .appliedPlans(context)
-                .pipe(Effect.provideService(PathsService, paths)),
-              isAvailable: runtime.pipe(
-                Effect.flatMap((provider) =>
-                  provider.isAvailable.pipe(
-                    Effect.flatMap((available) =>
-                      available
-                        ? Effect.map(provider.getStatus, (status) => status.running)
-                        : Effect.succeed(false),
+        const selected = yield* TeardownProvider;
+        if (selected !== undefined) yield* contributionFor(selected);
+        return yield* Effect.forEach(
+          ids.filter((id) => selected === undefined || id === selected),
+          (id) =>
+            Effect.gen(function* () {
+              const descriptor = yield* contributionFor(id);
+              const { contribution, context } = descriptor;
+              const resourceOwnership = contribution.resourceOwnership;
+              const runtime = yield* Effect.cached(makeProvider(descriptor));
+              return {
+                id,
+                ...(resourceOwnership === undefined
+                  ? {}
+                  : {
+                      resourceOwnership: (root: AbsolutePath) => resourceOwnership(context, root),
+                    }),
+                canCleanupOwnedResources: runtime.pipe(
+                  Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
+                ),
+                appliedPlans: contribution
+                  .appliedPlans(context)
+                  .pipe(Effect.provideService(PathsService, paths)),
+                isAvailable: runtime.pipe(
+                  Effect.flatMap((provider) =>
+                    provider.isAvailable.pipe(
+                      Effect.flatMap((available) =>
+                        available
+                          ? Effect.map(provider.getStatus, (status) => status.running)
+                          : Effect.succeed(false),
+                      ),
                     ),
                   ),
+                  Effect.catch(() => Effect.succeed(false)),
                 ),
-                Effect.catch(() => Effect.succeed(false)),
-              ),
-              list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
-              listVolumes: (filter) =>
-                runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),
-            } satisfies AppliedStateProvider;
-          }),
+                list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
+                listVolumes: (filter) =>
+                  runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),
+              } satisfies AppliedStateProvider;
+            }),
         );
       });
 

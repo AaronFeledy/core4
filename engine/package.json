@@ -125,6 +125,7 @@
     "./plugins/registry": "./src/plugins/registry.ts",
     "./plugins/setup-flags": "./src/plugins/setup-flags.ts",
     "./plugins/trust-store": "./src/plugins/trust-store.ts",
+    "./providers/app-placement": "./src/providers/app-placement.ts",
     "./providers/host-provider": "./src/providers/host-provider.ts",
     "./providers/managed": "./src/providers/managed.ts",
     "./providers/precedence": "./src/providers/precedence.ts",

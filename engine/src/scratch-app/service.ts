@@ -60,6 +60,7 @@ import {
 } from "../lifecycle/cross-engine-routes.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -740,6 +741,15 @@ const makeScratchAppService = (
     landofileRouter?: RouterConfig,
   ) {
     const markedPlan = markScratchPlan(plan, scratchId);
+    yield* ensureAppPlacement(
+      { kind: "scratch", id: scratchId, root: markedPlan.root },
+      markedPlan.provider,
+    ).pipe(
+      Effect.provideService(RuntimeProviderRegistry, providerRegistry),
+      Effect.mapError((cause) =>
+        scratchAppError("start", `Unable to place scratch app ${scratchId}.`, cause),
+      ),
+    );
     const provider = yield* providerRegistry
       .select(markedPlan)
       .pipe(

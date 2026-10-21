@@ -1,3 +1,4 @@
+import { ProviderId } from "@lando/sdk/schema";
 import { yesFlag } from "../../../spec/confirmation-flag";
 import { Flags } from "../../../spec/metadata";
 
@@ -14,7 +15,11 @@ import { specFlagsOf } from "../../../spec/input-coercion";
 export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = specFlagsOf(input);
-  return { yes: flags.yes === true, purge: flags.purge === true };
+  return {
+    yes: flags.yes === true,
+    purge: flags.purge === true,
+    ...(typeof flags.provider === "string" ? { providerId: ProviderId.make(flags.provider) } : {}),
+  };
 };
 
 export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
@@ -26,6 +31,7 @@ export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
   topLevelAlias: "global:destroy",
   bootstrap: "global",
   flags: {
+    provider: Flags.string({ description: "Destroy the global app only on this provider." }),
     yes: yesFlag("Confirm destruction of global app provider resources."),
     purge: Flags.boolean({
       description: "Also remove global service data volumes.",

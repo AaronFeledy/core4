@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
-import { FileNotFoundError, GlobalAppError, GlobalAppPlacementError } from "@lando/sdk/errors";
+import { AppPlacementError, FileNotFoundError, GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
@@ -210,7 +210,8 @@ describe("Traefik RouterService", () => {
   test.each(["prepare", "setup"] as const)(
     "%s rejects placement mismatch before acquiring ports on Linux",
     async (method) => {
-      const error = new GlobalAppPlacementError({
+      const error = new AppPlacementError({
+        app: { kind: "global", id: "global", root: AbsolutePath.make("/tmp/global") },
         desiredProviderId: "docker",
         realizedProviderId: "lando",
         message: "Placement mismatch",

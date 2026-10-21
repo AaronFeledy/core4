@@ -1,25 +1,5 @@
 import { Schema } from "effect";
 
-/**
- * The global app is realized on a provider other than the host provider. Creation and apply
- * fail closed instead of relocating it.
- */
-export class GlobalAppPlacementError extends Schema.TaggedError<GlobalAppPlacementError>()(
-  "GlobalAppPlacementError",
-  {
-    desiredProviderId: Schema.String.annotate({
-      description: "Host provider the global app would be created on.",
-    }),
-    realizedProviderId: Schema.String.annotate({
-      description: "Installed provider holding the applied global plan.",
-    }),
-    message: Schema.String.annotate({ description: "Human-readable placement mismatch." }),
-    remediation: Schema.String.annotate({
-      description: "Action that removes the old realization or aligns the host provider with it.",
-    }),
-  },
-) {}
-
 export class GlobalServiceCapabilityError extends Schema.TaggedError<GlobalServiceCapabilityError>()(
   "GlobalServiceCapabilityError",
   {

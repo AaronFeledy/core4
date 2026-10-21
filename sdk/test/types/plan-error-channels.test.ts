@@ -444,7 +444,15 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("StartAppError retains its pre-refactor members", () => {
-    assertType<Equal<StartAppError, LegacyStartAppError | ServiceNotReadyError>>(true);
+    assertType<
+      Equal<
+        StartAppError,
+        | LegacyStartAppError
+        | ServiceNotReadyError
+        | import("@lando/sdk/errors").AppPlacementError
+        | import("@lando/sdk/errors").AppResolveError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
@@ -454,7 +462,14 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("InfoAppError retains its pre-refactor members", () => {
-    assertType<Equal<InfoAppError, LegacyInfoAppError>>(true);
+    assertType<
+      Equal<
+        InfoAppError,
+        | LegacyInfoAppError
+        | import("@lando/sdk/errors").AppResolveError
+        | import("@lando/sdk/errors").StateStoreError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
@@ -469,7 +484,14 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("LogsAppError retains its pre-refactor members", () => {
-    assertType<Equal<LogsAppError, LegacyLogsAppError>>(true);
+    assertType<
+      Equal<
+        LogsAppError,
+        | LegacyLogsAppError
+        | import("@lando/sdk/errors").AppResolveError
+        | import("@lando/sdk/errors").StateStoreError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 });

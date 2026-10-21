@@ -72,6 +72,8 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 #### 5.3.1 Teardown resolution and orphaned resources
 
+All app kinds use one placement rule. Desired placement is the selected provider; realized placement is the installed provider holding an applied plan for the exact canonical root. Before start, rebuild, or restart mutates resources, a different realized provider MUST fail with `AppPlacementError` carrying `AppRef`, desired and realized provider ids, and working remediation commands. Observation and teardown MUST follow applied placement, not a changed default. Ownership inventories alone MUST NOT claim placement. Multiple applied claims MUST fail as ambiguous. `destroy --provider=<id> --yes` MUST restrict evidence and cleanup to that provider, allowing duplicate realizations to be retired explicitly without reading another provider's inventory. Plain destroy MUST retain volumes.
+
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
 
 1. No applied plan, no owned runtime resources, and no nonempty cleanup inventory: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. A nonempty inventory requires provider verification even when every recorded resource returns absent. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
@@ -90,7 +92,7 @@ Before any provider `apply` mutates app containers, private networks, or volumes
 
 `RuntimeProviderContribution.resourceOwnership(ctx, root)` is a filesystem-only query and MUST NOT construct, initialize, or contact a runtime. It reads the provider-private `ctx.stateStore` `resource-ownership` namespace, keyed by canonical owner (§12.4.2). `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is the optional per-provider form of the same query, with the same filesystem-only restriction.
 
-`RuntimeProviderRegistry.appliedPlansFor(root)` returns the applied plans of every installed contribution whose `identity.appRoot` exactly equals `root`. Callers pass a canonical root. It is filesystem-only and MUST NOT construct, initialize, or contact a runtime. Global placement (§20.1) uses it.
+`RuntimeProviderRegistry.appliedPlansFor(root)` returns the applied plans of every installed contribution whose `identity.appRoot` exactly equals `root`. Callers pass a canonical root. It is filesystem-only and MUST NOT construct, initialize, or contact a runtime. Shared app placement uses it.
 
 Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown is the exception to the every-contribution inventory query: it consults only the realized global provider's inventory, or the host provider's when no applied global plan exists, through `RuntimeProviderRegistry.resourceOwnership`, and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
 

@@ -203,7 +203,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         message: `Multiple providers claim applied state for ${selectedRoot}.`,
         reason: "ambiguous",
         detail: "applied-state",
-        remediation: "Remove the conflicting provider state before retrying teardown.",
+        remediation: `From ${selectedRoot}, remove unwanted realizations with ${[...new Set(matches.map((plan) => plan.provider))].map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
       }),
     );
   }

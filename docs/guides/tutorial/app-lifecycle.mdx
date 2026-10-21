@@ -116,6 +116,14 @@ lando destroy -y
 
 Snapshots survive plain `destroy` and `--volumes`. `lando destroy --purge -y` also deletes this folder's snapshots, including provider-stored snapshot data. Snapshots from other app folders stay untouched.
 
+Changing providers doesn't move an applied app. Start, restart, and rebuild fail with `AppPlacementError` if another provider holds its applied plan. Stop, destroy, info, and logs still target the existing provider. To retire an unwanted copy when applied state is ambiguous, select that provider explicitly:
+
+```sh
+lando destroy --provider=lando --yes
+```
+
+Only the selected provider's state and resources are touched. Data volumes stay there; starting on another provider does not copy them.
+
 `stop` and `destroy` use the provider's last applied plan when the Landofile is
 missing or invalid. That means you can still tear down an app after deleting its
 directory or breaking its config. Lando verifies the stored app root, owner, and

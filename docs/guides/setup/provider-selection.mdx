@@ -72,11 +72,13 @@ Or for one shell:
 LANDO_PROVIDER=docker lando start
 ```
 
-A Landofile `provider:` or a one-off `--provider` moves only that app. The router and the other global services stay on the host provider: `LANDO_PROVIDER`, else `defaultProviderId`, else `lando`. An app on another provider still gets its routes through host-published ports, but it cannot use same-runtime features such as global Mailpit SMTP over `mailpit.global.internal` or the ssh-agent runtime volume.
+A Landofile `provider:` or a one-off `--provider` selects only that app's desired provider. It never moves an existing app. If another provider already holds the app's applied plan, start, rebuild, and restart fail with `AppPlacementError` before changing resources. Stop, destroy, info, and logs follow the existing realization even after the default changes. From the app directory, run `lando destroy --provider=lando --yes` before starting on Docker. Data volumes stay on the old provider; they are not copied.
+
+If older starts left copies on two providers, retire the unwanted copy with `lando destroy --provider=<id> --yes`. Without that explicit selection, ambiguous cleanup fails closed. The router and other global services stay on the host provider: `LANDO_PROVIDER`, else `defaultProviderId`, else `lando`.
 
 ## Switch providers while the global app is running
 
-Lando never moves the global app on its own. If the router already runs on one provider and you change the host provider (for example `lando setup --provider=docker` after it started on `lando`), `lando global:install`, `global:start`, `global:restart`, `global:rebuild`, and any `lando start` that publishes routes fail with `GlobalAppPlacementError`.
+Lando never moves the global app on its own. If the router already runs on one provider and you change the host provider (for example `lando setup --provider=docker` after it started on `lando`), `lando global:install`, `global:start`, `global:restart`, `global:rebuild`, and any `lando start` that publishes routes fail with `AppPlacementError`.
 
 1. Stop the apps that use the router:
 

@@ -99,7 +99,7 @@ test("creation refuses a different realized provider with placement remediation"
     _tag: "Failure",
     failure: {
       _tag: "GlobalAppError",
-      cause: { _tag: "GlobalAppPlacementError", desiredProviderId: "docker", realizedProviderId: "lando" },
+      cause: { _tag: "AppPlacementError", desiredProviderId: "docker", realizedProviderId: "lando" },
     },
   });
 });
@@ -146,7 +146,7 @@ test.each([
       );
       // Then
       expect(result.remediation?.includes("LANDO_PROVIDER")).toBe(named);
-      expect(result.remediation).toContain("lando global:destroy --yes");
+      expect(result.remediation).toContain("lando global:destroy --provider=lando --yes");
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       else process.env.LANDO_PROVIDER = previous;

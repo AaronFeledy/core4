@@ -2,6 +2,8 @@ import { Effect, Schema } from "effect";
 
 import { GlobalDestroyConfirmationError, type ProxyError } from "@lando/sdk/errors";
 
+import { TeardownProvider } from "@lando/engine/providers/app-placement";
+import type { ProviderId } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
 
 import {
@@ -12,6 +14,7 @@ import {
 import { teardownLine, volumesTrailer } from "../service-summary";
 
 export interface GlobalDestroyOptions {
+  readonly providerId?: ProviderId;
   readonly yes?: boolean;
   readonly purge?: boolean;
 }
@@ -57,7 +60,9 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 ): Effect.fn.Return<GlobalDestroyResult, GlobalDestroyError, GlobalDestroyServices> {
   if (options.yes !== true) return yield* Effect.fail(confirmationError());
 
-  const loaded = yield* resolveGlobalTeardown();
+  const loaded = yield* resolveGlobalTeardown().pipe(
+    Effect.provideService(TeardownProvider, options.providerId),
+  );
   const volumes = options.purge ?? false;
   if (loaded.evidence.kind === "absent") {
     return {

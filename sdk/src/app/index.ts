@@ -14,6 +14,7 @@ import type { Effect, Scope, Stream } from "effect";
 import type {
   AppIdReservedError,
   AppLockTimeoutError,
+  AppPlacementError,
   AppResolveError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
@@ -90,6 +91,7 @@ import type {
   ConfigLintResult,
   DatasetKind,
   LandofileShape,
+  ProviderId,
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
@@ -213,6 +215,8 @@ export interface StartAppResult {
 export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
 
 export type StartAppError =
+  | AppPlacementError
+  | AppResolveError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError
@@ -317,6 +321,7 @@ export interface RebuildAppResult {
 export type RebuildAppError = StartAppError | AppResolveError;
 
 export interface DestroyAppOptions {
+  readonly providerId?: ProviderId;
   readonly volumes?: boolean;
   readonly purgeCaches?: boolean;
   readonly purgeSnapshots?: boolean;
@@ -390,6 +395,8 @@ export interface InfoAppResult {
 }
 
 export type InfoAppError =
+  | StateStoreError
+  | AppResolveError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
@@ -475,6 +482,8 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | StateStoreError
+  | AppResolveError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | AppPlannerError

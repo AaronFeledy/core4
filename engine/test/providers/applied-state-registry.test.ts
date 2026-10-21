@@ -29,6 +29,7 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -79,7 +80,12 @@ const moduleFor = (
   return { name: manifest.name, manifest, runtimeProviders: new Map([[providerId, contribution]]) };
 };
 
-const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false, exactRoot?: AbsolutePath) => {
+const run = (
+  modules: ReadonlyArray<LandoPluginModule>,
+  observe = false,
+  exactRoot?: AbsolutePath,
+  selected?: ProviderId,
+) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
@@ -139,9 +145,24 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false, exactRo
         }).pipe(Layer.provide(dependencies)),
       ),
       Effect.result,
+      Effect.provideService(TeardownProvider, selected),
     ),
   );
 };
+
+test("provider-scoped resolution disambiguates two applied owners without reading the other provider", async () => {
+  const dockerPlan = { ...plan, provider: ProviderId.make("docker") };
+  const modules = [
+    moduleFor(
+      "lando",
+      Effect.die("must not read excluded provider"),
+      Effect.die("must not initialize excluded provider"),
+    ),
+    moduleFor("docker", Effect.succeed([dockerPlan]), Effect.succeed(TestRuntimeProvider)),
+  ];
+  const result = await run(modules, false, undefined, dockerPlan.provider);
+  expect(result).toMatchObject({ _tag: "Success", success: { plan: dockerPlan, providerId: "docker" } });
+});
 
 test("recovers the persisted owner when an unrelated provider cannot initialize", async () => {
   // Given: the default is Podman, but Lando owns the saved app; Podman has no saved claim.
