@@ -14,7 +14,9 @@ export const renderConfigWriteResult = (input: {
       if (input.changed !== true) return `${file}: ${key} was not present (no change).`;
       return input.dryRun === true ? `${file}: would unset ${key} (dry run).` : `${file}: unset ${key}.`;
     case "edit":
-      return `${file}: saved edited ${input.editSavedLabel}.`;
+      return input.dryRun === true
+        ? `${file}: would save edited ${input.editSavedLabel} (dry run).`
+        : `${file}: saved edited ${input.editSavedLabel}.`;
     case "validate":
       return `${file}: valid.`;
     default:

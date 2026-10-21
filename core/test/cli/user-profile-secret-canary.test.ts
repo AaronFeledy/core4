@@ -237,7 +237,7 @@ test.each([
       expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
       expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
       expect(result.cachedPlan).toEqual(result.plan);
-      expect(result.get.value).toBe(reference);
+      expect("value" in result.get ? result.get.value : undefined).toBe(reference);
       expect(appSteps(result.cachedPlan)).toEqual(result.buildIdentity);
       expect(result.buildIdentity).toHaveLength(1);
       expect(executions).toBe(1);

@@ -69,7 +69,12 @@ test("reports an array-position expression failure with a numeric path segment",
     );
     expect(result.valid).toBe(false);
     expect(result.violations).toEqual([
-      { path: ["tooling", "seed", "cmds", 1], message: expect.any(String) },
+      {
+        path: ["tooling", "seed", "cmds", 1],
+        message: expect.any(String),
+        scope: "effective",
+        source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["tooling", "seed", "cmds", 1] },
+      },
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });

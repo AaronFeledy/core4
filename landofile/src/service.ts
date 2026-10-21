@@ -11,6 +11,7 @@ import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 
 export { LandofileService } from "@lando/sdk/services";
+export { validateLandofileReplacement } from "./replacement.ts";
 export {
   acquireLandofileRootLayers,
   composeLandofileRootLayers,

@@ -124,6 +124,17 @@
       "digest": "1127a50af76baa9f02f9199b7e6b164b5a39d2a9171e997d6fd510e6686fcd78"
     },
     {
+      "fixture": "docs/guides/config-views/fixtures/invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-views/fixtures/layered",
+      "digest": "96db7063b2419a64caeef3043bf951d647d23d7a42f01da0fe3148bb365796f9"
+    },
+    {
       "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-blocked",
       "invalid": {
         "status": "invalid",

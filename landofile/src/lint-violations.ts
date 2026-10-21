@@ -119,8 +119,16 @@ export const violationsFor = (
   if (Result.isSuccess(decoded)) {
     return routeViolations(decoded.success, { deferExpressions: true });
   }
-  const suggestions = closestKeySuggestions(decoded.failure.issue);
-  return schemaIssueLeaves(decoded.failure.issue)
+  return violationsFromSchema(decoded.failure.issue, parsed, rejections);
+};
+
+export const violationsFromSchema = (
+  issue: SchemaIssue.Issue,
+  parsed: unknown,
+  rejections: readonly ComposeRejectionMatch[] = [],
+): readonly ConfigLintViolation[] => {
+  const suggestions = closestKeySuggestions(issue);
+  return schemaIssueLeaves(issue)
     .map((issue) => {
       const violation = violationFromIssue(issue, suggestions);
       const suggestion = issue._tag === "Type" ? plannerScopeSuggestion(parsed, violation.path) : undefined;

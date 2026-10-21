@@ -54,6 +54,10 @@ export const schemaIssueLeaves = (
 };
 
 const SERVICE_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
+export const getLandofileValueSource = (value: object, path: ValidationIssuePath) => {
+  const origins = getOrigins(value);
+  return origins === undefined ? undefined : valueOriginAt(origins, path).source;
+};
 const COMPOSE_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 

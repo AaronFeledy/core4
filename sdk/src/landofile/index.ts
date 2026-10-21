@@ -95,3 +95,4 @@ export {
   type LegacyTree,
   parseLegacyLandofile,
 } from "./legacy/index.ts";
+export { encodeLandofileSourceValue } from "../schema/landofile-directive-codec.ts";

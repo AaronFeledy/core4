@@ -1,5 +1,4 @@
-import { dirname } from "node:path";
-import { loadLandofileLayers } from "@lando/landofile/service";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveKnownEventSet } from "../planner/event-set.ts";
@@ -16,7 +15,7 @@ import type {
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import { type LintLandofileOptions, routeViolations } from "@lando/landofile/lint";
-import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
+import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
@@ -35,22 +34,16 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   | NotImplementedError,
   PluginRegistry
 > {
-  const result = yield* lintLandofile(options);
-  if (!result.valid) return result;
-  const runtimeInputs = yield* scopedLandofileRuntimeInputs;
-  const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
-    ...runtimeInputs,
-    ...(options.templates === undefined ? {} : { templates: options.templates }),
-  }).pipe(Effect.result);
-  if (Result.isFailure(loaded)) {
-    return { ...result, valid: false, violations: [{ path: [], message: loaded.failure.message }] };
-  }
+  const snapshot = yield* lintLandofileSnapshot(options);
+  const { result } = snapshot;
+  if (snapshot.resolved === undefined) return result;
+  const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
   const resolved = yield* resolveKnownEventSet({
-    landofile: loaded.success,
+    landofile,
     pluginRegistry,
     configService,
     fileSystem,
@@ -59,16 +52,34 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   }).pipe(Effect.result);
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
+      const path = configExpressionIssuePath(resolved.failure);
+      const source = getLandofileValueSource(landofile, path);
       return {
         ...result,
         valid: false,
         violations: [
-          { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
+          ...result.violations,
+          {
+            path,
+            message: resolved.failure.message,
+            scope: "effective" as const,
+            ...(source === undefined ? {} : { source }),
+          },
         ],
       };
     }
     return yield* Effect.fail(resolved.failure);
   }
-  const violations = routeViolations(resolved.success.landofile, { deferExpressions: false });
-  return violations.length === 0 ? result : { ...result, valid: false, violations };
+  const key = (violation: { readonly path: ReadonlyArray<string | number>; readonly message: string }) =>
+    JSON.stringify([violation.path, violation.message]);
+  const reported = new Set(result.violations.map(key));
+  const evaluated = routeViolations(resolved.success.landofile, { deferExpressions: false })
+    .filter((violation) => !reported.has(key(violation)))
+    .map((violation) => {
+      const source = getLandofileValueSource(landofile, violation.path);
+      return { ...violation, scope: "effective" as const, ...(source === undefined ? {} : { source }) };
+    });
+  return evaluated.length === 0
+    ? result
+    : { ...result, valid: false, violations: [...result.violations, ...evaluated] };
 });
