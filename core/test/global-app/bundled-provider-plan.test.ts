@@ -9,7 +9,13 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { dockerCapabilitiesForPlatform } from "@lando/provider-docker";
 import { providerLandoCapabilitiesForPlatform } from "@lando/provider-lando";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
-import { type HostPlatform, LandofileShape, type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import {
+  type HostPlatform,
+  LandofileShape,
+  type ProviderCapabilities,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 const bundledProviders: ReadonlyArray<readonly [string, (platform: HostPlatform) => ProviderCapabilities]> = [
@@ -48,16 +54,24 @@ describe("bundled global services on bundled providers", () => {
         );
         // When
         const plan = yield* (yield* AppPlanner).plan(landofile, capabilities);
-        return { contributed, planned: Object.keys(plan.services) };
+        return { contributed, planned: Object.keys(plan.services), plan };
       }).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
 
-      const { contributed, planned } = await Effect.runPromise(program);
+      const { contributed, planned, plan } = await Effect.runPromise(program);
 
       // Then
       expect(contributed).toEqual(
         expect.arrayContaining(["traefik", "traefik-diagnostics", "ssh-agent", "mailpit"]),
       );
       expect([...planned].sort()).toEqual([...contributed].sort());
+      expect(plan.networking?.perAppBridge).toBeNull();
+      expect(plan.networks).toEqual([]);
+      expect(plan.networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
+      for (const name of planned) {
+        expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make(name)]).toContain(
+          `${name}.global.internal`,
+        );
+      }
     },
   );
 });

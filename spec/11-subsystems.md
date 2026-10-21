@@ -15,6 +15,8 @@ Each subsystem exposes a focused Effect service or fixed core primitive. Remote 
 
 Core defines network intent; `RuntimeProvider` realizes it.
 
+`NetworkingPlan.perAppBridge` names the private bridge to create, or is explicitly `null` when none is intended. The global planner emits `null` plus shared membership on `lando_bridge_network`, with `<service>.global.internal` aliases. User apps retain their per-app bridge and, when supported, shared membership. Providers MUST derive creation, attachment, recreation checks, and teardown from this intent, never from an app-id special case. Shared-only plans MUST NOT invent a private bridge during teardown or physical network-name translation.
+
 - Services resolve peers by service name when app networking is supported. Cross-app names use `<service>.<app>.internal` only when `sharedCrossAppNetwork` is supported.
 - `host.lando.internal` resolves to the host gateway when `hostReachability` is `native` or `emulated`; `LANDO_HOST_IP` contains that resolvable name.
 - Providers without shared networking MUST report `sharedCrossAppNetwork: false`; dependent features fail with actionable errors.

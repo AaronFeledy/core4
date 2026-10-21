@@ -42,6 +42,7 @@ import type {
   EmitComposeResult,
   EmitComposeOptions as RuntimeEmitComposeOptions,
 } from "@lando/container-runtime/podman/compose";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
@@ -232,7 +233,7 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
-    composeKnobs: { supported: ["restart", "cap_add", "cap_drop", "extra_hosts"] },
+    composeKnobs: { supported: composeKnobsForDialect("docker") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],

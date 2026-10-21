@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, landoNetworkingPlan } from "@lando/sdk/schema";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 import { savePublishedContainerReceipt } from "../src/windows-nft-receipt.ts";
@@ -67,33 +67,45 @@ test("refreshes published ownership after start and restart but not stop", async
     expect(events).toEqual(action === "stop" ? ["stop"] : [action, "reconcile"]);
   }
 });
-test("limits optional recovery to managed global loopback TCP publications", () => {
+test("limits optional recovery to shared-only loopback TCP publications", () => {
+  const networking = landoNetworkingPlan({
+    slug: "any-app-id",
+    serviceNames: [],
+    perAppBridge: false,
+    sharedCrossAppNetwork: true,
+  });
   const endpoint = {
     _tag: "published",
     protocol: "http",
     publication: { bindAddress: "127.0.0.1" },
   };
-  expect(supportsWindowsPublishedRecovery({ appId: "global", endpoints: [endpoint] })).toBe(true);
+  expect(supportsWindowsPublishedRecovery({ networking, endpoints: [endpoint] })).toBe(true);
   expect(
     supportsWindowsPublishedRecovery({
-      appId: "global",
+      networking,
       endpoints: [{ ...endpoint, publication: { bindAddress: "0.0.0.0" } }],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
-      appId: "global",
+      networking,
       endpoints: [{ ...endpoint, protocol: "udp" }],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
-      appId: "global",
+      networking,
       networks: { one: {}, two: {} },
       endpoints: [endpoint],
     }),
   ).toBe(false);
-  expect(supportsWindowsPublishedRecovery({ appId: "user-app", endpoints: [endpoint] })).toBe(false);
+  expect(
+    supportsWindowsPublishedRecovery({
+      networking: { ...networking, perAppBridge: { name: "private" } },
+      endpoints: [endpoint],
+    }),
+  ).toBe(false);
+  expect(supportsWindowsPublishedRecovery({ networking: undefined, endpoints: [endpoint] })).toBe(false);
 });
 test("uses strict Docker-compatible network responses from the production endpoint", () => {
   expect(WINDOWS_COMPAT_NETWORK_LIST_PATH).toBe("/networks");

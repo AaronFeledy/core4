@@ -291,6 +291,7 @@ const createContainerRequest = (
   endpoints: ReadonlyArray<EndpointPlan>,
 ) => {
   const knobs = realizePodmanComposeKnobs(service, {
+    dialect: (deps.options.dialect ?? libpodLifecycleDialect).engine,
     onInvalid: (message, details) => {
       throw podmanFailure(deps, { service, operation: "bringUp.knobs", message, details });
     },
