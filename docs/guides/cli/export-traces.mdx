@@ -36,10 +36,10 @@ tracing:
 | `tracing.otlp.endpoint` | OTLP/HTTP base URL. Lando appends `/v1/traces`. |
 | `tracing.otlp.headers` | Extra request headers, for auth tokens and tenant ids. |
 
-Set headers with `--type=json`:
+Set headers as a JSON map:
 
 ```sh
-lando config set tracing.otlp.headers '{"Authorization":"Bearer abc123"}' --type=json
+lando config set tracing.otlp.headers '{"Authorization":"Bearer abc123"}'
 ```
 
 Header values are secrets. `lando config` prints them redacted, and so does `--format=json`.

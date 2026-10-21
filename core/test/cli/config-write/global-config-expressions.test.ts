@@ -38,6 +38,22 @@ afterEach(async () => {
 });
 
 describe("global config content-layer compilation", () => {
+  test("infers a numeric edit without baking existing expressions", async () => {
+    // Given
+    await writeFile(join(root, ".lando.dist.yml"), recipe);
+    await writeFile(file(), typedService);
+    // When
+    const result = await Effect.runPromise(
+      globalConfigSet({ key: "router.httpPort", value: "8080" }, file()),
+    );
+    // Then
+    expect(result.value).toBe(8080);
+    expect(Bun.YAML.parse(await readFile(file(), "utf8"))).toEqual({
+      services: { web: { primary: "{{ recipe.flag }}" } },
+      router: { httpPort: 8080 },
+    });
+  });
+
   test.each([".lando.base.yml", ".lando.yml", ".lando.user.yml"])(
     "validates typed whole-value sites with recipe scope from %s",
     async (recipeLayer) => {
