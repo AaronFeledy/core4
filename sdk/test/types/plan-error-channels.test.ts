@@ -137,6 +137,7 @@ type LegacyBuildAppChannel =
   | ProviderUnavailableError;
 
 type LegacyDiscoverChannel =
+  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | LandofileNotFoundError

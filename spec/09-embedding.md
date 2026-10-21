@@ -52,7 +52,7 @@ The removed `@lando/core/oclif` adapter is not public. Anything not listed above
 
 Required behavior:
 
-- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage.
+- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage. A domain failure raised while building a layer, such as a global-config `ConfigError` (§7.5), keeps its own tag instead.
 - Each call MUST create an independent cache, plugin registry, and event bus.
 - Construction MUST NOT mutate environment variables, current working directory, or signal handlers unless `installSignalHandlers` is true.
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.

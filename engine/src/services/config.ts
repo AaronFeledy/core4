@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { type Context, Effect, Layer, Schema } from "effect";
+import { type Context, Effect, Layer, Predicate, Result, Schema } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   GlobalConfig,
   GlobalConfigView,
+  type ValidationIssue,
   formatValidationIssueLine,
   formatValidationIssuePath,
   hostEventsConfigIssues,
@@ -20,7 +21,6 @@ import { DateTime, Option } from "effect";
 import { resolveLandoRoots } from "@lando/paths";
 import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "@lando/paths/overlay";
 import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
-import { getAtPath } from "../config-write/dot-path";
 import { resolveUserConfRoot } from "../config/roots.ts";
 
 const NETWORK_BOOLEAN_ENV_ALIASES = [
@@ -68,7 +68,7 @@ export const validateFileHostEvents = (fileConfig: Record<string, unknown>, path
     path,
     message: issues[0].message,
     issues,
-    remediation: "Edit hostEvents in config.yml directly or use `lando config edit`.",
+    remediation: HOST_EVENTS_REMEDIATION,
   });
 };
 
@@ -123,46 +123,68 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
     }
   }
 
-  validateFileHostEvents(fileConfig, path);
+  const hostIssues = Object.hasOwn(fileConfig, "hostEvents")
+    ? hostEventsConfigIssues(fileConfig.hostEvents)
+    : [];
   const warnings = [
     ...typoWarningsFromFileConfig(fileConfig),
     ...pathEscapeWarningsFromFileConfig(fileConfig),
   ];
 
-  const merged = mergeConfig(fileConfig, overlay);
-  try {
-    const decoded = Schema.decodeUnknownSync(GlobalConfig)(merged, { errors: "all" });
-    typoWarningsByConfig.set(decoded, warnings);
-    return decoded;
-  } catch (cause) {
-    throw globalConfigDecodeError(path, cause, deepMerge(rootEnvOverlay(), overlay));
+  const schemaConfig =
+    hostIssues.length === 0
+      ? fileConfig
+      : Object.fromEntries(Object.entries(fileConfig).filter(([key]) => key !== "hostEvents"));
+  const merged = mergeConfig(schemaConfig, overlay);
+  const decoded = Schema.decodeUnknownResult(GlobalConfig)(merged, { errors: "all" });
+  const environment = deepMerge(rootEnvOverlay(), overlay);
+  if (Result.isFailure(decoded)) {
+    throw globalConfigDecodeError(
+      path,
+      [...hostIssues, ...validationIssuesFromCause(decoded.failure)],
+      environment,
+    );
   }
+  if (hostIssues.length > 0) throw globalConfigDecodeError(path, hostIssues, environment);
+  typoWarningsByConfig.set(decoded.success, warnings);
+  return decoded.success;
 };
 
 const FILE_REPAIR_REMEDIATION =
   "Run `lando config validate` for file issues, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.";
+const HOST_EVENTS_REMEDIATION = "Edit hostEvents in config.yml directly or use `lando config edit`.";
 
 // `lando config validate` decodes only config.yml, so an issue whose value an
 // env override supplies must point the user at that override instead.
 const globalConfigDecodeError = (
   path: string,
-  cause: unknown,
+  issues: readonly ValidationIssue[],
   environment: Record<string, unknown>,
 ): ConfigError => {
-  const issues = validationIssuesFromCause(cause);
   const first = issues[0];
   const detail = `${first === undefined ? "Invalid value." : formatValidationIssueLine(first)}${
     issues.length > 1 ? ` (and ${issues.length - 1} more issues)` : ""
   }`;
-  const envPaths = issues
-    .map((issue) => formatValidationIssuePath(issue.path))
-    .filter((issuePath) => getAtPath(environment, issuePath) !== undefined);
+  const envIssues = issues.filter((issue) => {
+    let value: unknown = environment;
+    for (const segment of issue.path) {
+      if (!Predicate.isObject(value)) return false;
+      value = value[segment];
+    }
+    return value !== undefined;
+  });
+  const envPaths = envIssues.map((issue) => formatValidationIssuePath(issue.path));
+  const fileIssues = issues.filter((issue) => !envIssues.includes(issue));
+  const fileRemediation = [
+    ...(fileIssues.some((issue) => issue.path[0] === "hostEvents") ? [HOST_EVENTS_REMEDIATION] : []),
+    ...(fileIssues.some((issue) => issue.path[0] !== "hostEvents") ? [FILE_REPAIR_REMEDIATION] : []),
+  ].join(" ");
   if (envPaths.length === 0) {
     return new ConfigError({
       path,
       message: `Invalid config file ${path}: ${detail}`,
       issues,
-      remediation: FILE_REPAIR_REMEDIATION,
+      remediation: fileRemediation,
     });
   }
 
@@ -178,7 +200,7 @@ const globalConfigDecodeError = (
     `Unset or fix the environment override for ${envPaths.join(", ")}.`,
     ...(malformedAlias === undefined ? [] : [`Set ${malformedAlias} to "true" or "false", or unset it.`]),
     "`lando config validate` checks only the file tree.",
-    ...(fileIssuesToo ? [FILE_REPAIR_REMEDIATION] : []),
+    ...(fileIssuesToo ? [fileRemediation] : []),
   ].join(" ");
   return new ConfigError({
     path,

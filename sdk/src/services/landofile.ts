@@ -3,6 +3,7 @@ import { Context, type Effect } from "effect";
 import type {
   AppIdReservedError,
   ComposeKeyRejectedError,
+  ConfigError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileFormConflictError,
@@ -25,6 +26,7 @@ import type {
 import type { LandofileShape } from "../schema/index.ts";
 
 export type LandofileServiceError =
+  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | LandofileNotFoundError

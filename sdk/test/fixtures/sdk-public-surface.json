@@ -1,4 +1,25 @@
 {
+  "landofileServiceErrorTags": [
+    "ComposeKeyRejectedError",
+    "ConfigError",
+    "Lando3LandofileDetected",
+    "LandofileDialectMixError",
+    "LandofileFormConflictError",
+    "LandofileImportRefMisuseError",
+    "LandofileIncludeError",
+    "LandofileLoadLimitError",
+    "LandofileLoadOutsideRootError",
+    "LandofileLockMismatchError",
+    "LandofileNotFoundError",
+    "LandofileParseError",
+    "LandofileSandboxError",
+    "LandofileTimeoutError",
+    "LandofileValidationError",
+    "ManagedFileTransactionError",
+    "NotImplementedError",
+    "RouteInputError",
+    "ToolingIncludeCycleError"
+  ],
   "configErrorFields": ["_tag", "cause", "issues", "message", "path", "remediation"],
   "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
   "publicDefaultCredentialExports": [

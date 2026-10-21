@@ -96,7 +96,7 @@ lando config edit
 
 ## Repair an invalid config.yml
 
-Every command that reads global config fails the same way when `config.yml` or an env override doesn't decode: one `ConfigError` at exit `1`. That covers `lando config`, `lando info`, `lando start`, `lando doctor`, and the planner. Nothing deletes or rewrites the file for you.
+Every command that reads global config fails the same way when `config.yml` or an env override doesn't decode: one `ConfigError` at exit `1`. That covers `lando config`, `lando info`, `lando start`, and `lando app:config:lint`. Nothing deletes or rewrites the file for you.
 
 The text output names the file, prints one `<dotted path>: <message>` line per issue, and says how to fix it:
 
@@ -130,7 +130,7 @@ When an env override supplies the bad value, such as `LANDO_CONFIG__ROUTER__HTTP
 
 Broken YAML syntax is the one case `set` and `unset` cannot repair, since there is no tree to write into. Fix the syntax with `lando config edit` or your own editor.
 
-`lando doctor` still runs when config is broken. Its provider-bootstrap self check reports the `ConfigError` with the first issue, and its suggested command is `lando config validate`.
+`lando doctor` still runs when config is broken and exits `1`. Its provider-bootstrap self check reports the `ConfigError` with the first issue and lists the same repair steps first.
 
   <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError from an invalid env override">
     <Step name="load-with-bad-override">

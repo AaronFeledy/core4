@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 
 import {
   type ComposeKeyRejectedError,
+  type ConfigError,
   type Lando3LandofileDetected,
   type LandofileDialectMixError,
   LandofileFormConflictError,
@@ -78,6 +79,7 @@ export interface AppIncludesVerifyOptions {
 }
 
 export type AppIncludesVerifyError =
+  | ConfigError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | LandofileFormConflictError

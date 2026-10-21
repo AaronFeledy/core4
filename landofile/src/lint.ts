@@ -1,5 +1,5 @@
 import { basename, dirname } from "node:path";
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+import { type ConfigError, LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import { valueOriginAt } from "@lando/sdk/landofile";
 import {
   type ConfigLintResult,
@@ -56,7 +56,7 @@ const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] 
 export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(function* (
   options: LintLandofileOptions = {},
   inputs?: LandofileRuntimeInputs,
-): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
+): Effect.fn.Return<LandofileLintSnapshot, ConfigError | LandofileNotFoundError | LandofileFormConflictError> {
   const cwd = options.cwd ?? process.cwd();
   const templates = options.templates ?? inputs?.templates;
   const discovered = yield* Effect.tryPromise({
@@ -149,6 +149,8 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   }).pipe(Effect.result);
   if (Result.isFailure(finalized)) {
     const error = finalized.failure;
+    // Invalid global config is not a Landofile problem; report it as itself.
+    if (error._tag === "ConfigError") return yield* Effect.fail(error);
     if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);
     if (error._tag === "LandofileValidationError")
       violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));

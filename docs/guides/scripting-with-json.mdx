@@ -347,7 +347,10 @@ result, which suits editors that want the list without a failing exit.
 
 A global `config.yml` or `LANDO_CONFIG__*` override that fails validation
 produces a `ConfigError` envelope at exit `1` from every command that reads
-config, including `lando config`, `lando info`, and `lando start`. It carries
+config, including `lando config`, `lando info`, and `lando start`.
+`lando config validate` checks only the file and reports its problems as
+`LandofileWriteValidationError` with the same `error.issues`; `lando doctor`
+reports the `ConfigError` inside its report instead. It carries
 the same `error.issues` shape, plus `error.path` (the `config.yml` location)
 and `error.remediation`. When an env override caused the failure,
 `error.message` starts with `Invalid global configuration (environment
