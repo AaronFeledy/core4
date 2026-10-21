@@ -106,8 +106,16 @@ const sha256Digest = (value: unknown): string | undefined =>
     ? value
     : undefined;
 
+const normalizeImageRepo = (repo: string): string => {
+  const slash = repo.indexOf("/");
+  if (slash === -1) return `docker.io/library/${repo}`;
+  const first = repo.slice(0, slash);
+  if (first.includes(".") || first.includes(":") || first === "localhost") return repo;
+  return `docker.io/${repo}`;
+};
+
 const reposMatch = (requested: string, candidate: string): boolean =>
-  requested === candidate || requested.endsWith(`/${candidate}`) || candidate.endsWith(`/${requested}`);
+  normalizeImageRepo(requested) === normalizeImageRepo(candidate);
 
 const digestForRequestedRepo = (entries: readonly unknown[], reference: string): string | undefined => {
   const requested = parseImageReference(reference).fromImage;

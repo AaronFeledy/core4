@@ -126,6 +126,12 @@ describe("container engine dialects", () => {
       ),
     ).toBe("sha256:right");
     expect(
+      dockerPullDialect.inspect?.decodeDigest(
+        { RepoDigests: ["myreg:5000/php@sha256:a", "docker.io/library/php@sha256:b"] },
+        "php",
+      ),
+    ).toBe("sha256:b");
+    expect(
       dockerPullDialect.inspect?.decodeDigest({ RepoDigests: ["invalid"] }, "team/app:v1"),
     ).toBeUndefined();
     expect(
