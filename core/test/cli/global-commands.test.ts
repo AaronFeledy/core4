@@ -686,8 +686,12 @@ describe("meta:global command effects", () => {
               removeState: command === "destroy",
             });
             expect(harness.calls.routesRemoved).toEqual(["global"]);
-            expect(harness.events.map((event) => event._tag)).toEqual(
-              command === "stop" ? ["pre-global-stop", "post-global-stop"] : [],
+            expect(
+              harness.events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag),
+            ).toEqual(
+              command === "stop"
+                ? ["pre-global-stop", "post-global-stop"]
+                : ["pre-global-destroy", "post-global-destroy"],
             );
           });
         });

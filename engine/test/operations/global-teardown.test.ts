@@ -17,13 +17,15 @@ import {
 import {
   GlobalAppService,
   PathsService,
+  RouterService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const providerId = ProviderId.make("lando");
@@ -111,9 +113,21 @@ const harnessAt = (
       }),
   };
   const layer = Layer.mergeAll(
+    LandoEventService.layer,
+    Layer.succeed(RouterService, makeTestRouterService()),
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: dataRoot,
+        userCacheRoot: join(dataRoot, "cache"),
+        userConfRoot: join(dataRoot, "conf"),
+        systemPluginRoot: join(dataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(
       GlobalAppService,
       GlobalAppService.of({
@@ -203,7 +217,7 @@ for (const volumes of [false, true]) {
       const receipt = await Effect.runPromise(
         Effect.gen(function* () {
           const resolved = yield* resolveGlobalTeardown();
-          return yield* executeGlobalTeardown(resolved, { volumes, removeState: volumes });
+          return yield* executeGlobalTeardown(resolved, { intent: "stop", volumes, removeState: volumes });
         }).pipe(Effect.provide(harness.layer)),
       );
       // Then only owned containers and requested app-scoped data are removed.

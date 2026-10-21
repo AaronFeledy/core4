@@ -1,7 +1,7 @@
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/core/paths";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ProxyError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -12,7 +12,9 @@ import {
   type VolumeInfo,
   appIdentityKey,
 } from "@lando/sdk/schema";
+import type { LandoEvent } from "@lando/sdk/services";
 import {
+  type DestroyOptions,
   type DestroyOutcome,
   EventService,
   FileSystem,
@@ -77,11 +79,21 @@ export const globalTeardownHarness = async (
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError>;
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly stopFailure?: boolean;
+    readonly routeFailure?: boolean;
   } = {},
 ) => {
-  const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" });
+  const paths = makeLandoPaths({
+    userDataRoot: dataRoot,
+    userCacheRoot: join(dataRoot, "cache"),
+    userConfRoot: join(dataRoot, "conf"),
+    systemPluginRoot: join(dataRoot, "sys"),
+    env: {},
+    platform: "linux",
+  });
   const root = AbsolutePath.make(paths.globalAppRoot);
   const calls: string[] = [];
+  const events: LandoEvent[] = [];
+  const destroyOptions: DestroyOptions[] = [];
   const destroyed: AppPlan[] = [];
   const removed: ServiceRuntimeInfo[] = [];
   const eventRoots: string[] = [];
@@ -119,9 +131,10 @@ export const globalTeardownHarness = async (
         calls.push("listVolumes");
         return input.volumes ?? [];
       }),
-    destroy: (target: { readonly plan?: AppPlan }) =>
+    destroy: (target: { readonly plan?: AppPlan }, options: DestroyOptions) =>
       Effect.sync(() => {
         calls.push("destroy");
+        destroyOptions.push(options);
         if (target.plan !== undefined) destroyed.push(target.plan);
         return input.destroyOutcome ?? { kind: "destroyed" as const };
       }),
@@ -182,8 +195,10 @@ export const globalTeardownHarness = async (
       RouterService.of({
         ...makeTestRouterService(),
         removeRoutes: () =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             calls.push("removeRoutes");
+            if (input.routeFailure)
+              return yield* Effect.fail(new ProxyError({ proxyId: "test", message: "route removal failed" }));
           }),
       }),
     ),
@@ -193,6 +208,7 @@ export const globalTeardownHarness = async (
         publish: (event) =>
           Effect.sync(() => {
             calls.push(event._tag);
+            events.push(event);
             if (event._tag === "pre-global-stop" || event._tag === "post-global-stop")
               eventRoots.push(Schema.decodeUnknownSync(AppRef)(event.app).root);
           }),
@@ -204,5 +220,5 @@ export const globalTeardownHarness = async (
       }),
     ),
   );
-  return { layer, calls, destroyed, removed, eventRoots, selectedRoots };
+  return { layer, calls, events, destroyOptions, destroyed, removed, eventRoots, selectedRoots };
 };

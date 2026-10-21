@@ -11,12 +11,13 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { GlobalAppService, PathsService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const withHarness = async (
@@ -96,9 +97,21 @@ const harnessAt = (
       }),
   };
   const layer = Layer.mergeAll(
+    LandoEventService.layer,
+    Layer.succeed(RouterService, makeTestRouterService()),
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: dataRoot,
+        userCacheRoot: join(dataRoot, "cache"),
+        userConfRoot: join(dataRoot, "conf"),
+        systemPluginRoot: join(dataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(
       GlobalAppService,
       GlobalAppService.of({
@@ -134,7 +147,7 @@ const harnessAt = (
   );
   const teardown = Effect.gen(function* () {
     const resolved = yield* resolveGlobalTeardown();
-    return yield* executeGlobalTeardown(resolved, { volumes: true, removeState: true });
+    return yield* executeGlobalTeardown(resolved, { intent: "stop", volumes: true, removeState: true });
   }).pipe(Effect.provide(layer));
   return { root, layer, teardown, actions, inventoryReads };
 };

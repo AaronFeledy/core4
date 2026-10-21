@@ -1,14 +1,8 @@
 import { Effect, Schema } from "effect";
 
-import { GlobalDestroyConfirmationError, type ProxyError } from "@lando/sdk/errors";
+import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 
-import { RouterService } from "@lando/sdk/services";
-
-import {
-  executeGlobalTeardown,
-  globalTeardownAppRef,
-  resolveGlobalTeardown,
-} from "@lando/engine/operations/global-teardown";
+import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/operations/global-teardown";
 import { teardownLine, volumesTrailer } from "../service-summary";
 
 export interface GlobalDestroyOptions {
@@ -29,13 +23,11 @@ export type GlobalDestroyResult = typeof GlobalDestroyResultSchema.Type;
 type GlobalDestroyError =
   | Effect.Error<ReturnType<typeof resolveGlobalTeardown>>
   | Effect.Error<ReturnType<typeof executeGlobalTeardown>>
-  | GlobalDestroyConfirmationError
-  | ProxyError;
+  | GlobalDestroyConfirmationError;
 
 type GlobalDestroyServices =
   | Effect.Services<ReturnType<typeof resolveGlobalTeardown>>
-  | Effect.Services<ReturnType<typeof executeGlobalTeardown>>
-  | RouterService;
+  | Effect.Services<ReturnType<typeof executeGlobalTeardown>>;
 
 const confirmationError = (): GlobalDestroyConfirmationError =>
   new GlobalDestroyConfirmationError({
@@ -69,9 +61,7 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
     };
   }
 
-  const receipt = yield* executeGlobalTeardown(loaded, { volumes, removeState: true });
-  const router = yield* RouterService;
-  yield* router.removeRoutes(globalTeardownAppRef(loaded).id);
+  const receipt = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
 
   return {
     app: "global",
