@@ -54,25 +54,26 @@ Setup (`lando setup`, including `--yes`) uses:
 
 The router, ssh-agent sidecar, and other global services run on the provider setup selected, and every later command keeps them there.
 
-App commands (`lando start`, `lando doctor`) use:
+App creation (`lando start`) uses:
 
 ```
---provider > Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
+Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
 ```
 
-Force Docker for one command:
-
-```sh
-lando start --provider=docker
-```
-
-Or for one shell:
+Select Docker for one command:
 
 ```sh
 LANDO_PROVIDER=docker lando start
 ```
 
-A Landofile `provider:` or a one-off `--provider` selects only that app's desired provider. It never moves an existing app. If another provider already holds the app's applied plan, start, rebuild, and restart fail with `AppPlacementError` before changing resources. Stop, destroy, info, and logs follow the existing realization even after the default changes. From the app directory, run `lando destroy --provider=lando --yes` before starting on Docker. Data volumes stay on the old provider; they are not copied.
+Or for one shell:
+
+```sh
+export LANDO_PROVIDER=docker
+lando start
+```
+
+A Landofile `provider:` pins that app's desired provider, ahead of the environment and host default. It never moves an existing app. If another provider already holds the app's applied plan, start, rebuild, and restart fail with `AppPlacementError` before changing resources. Stop, destroy, info, and logs follow the existing realization even after the default changes. From the app directory, run `lando destroy --provider=lando --yes` before starting on Docker. Data volumes stay on the old provider; they are not copied.
 
 If older starts left copies on two providers, retire the unwanted copy with `lando destroy --provider=<id> --yes`. Without that explicit selection, ambiguous cleanup fails closed. The router and other global services stay on the host provider: `LANDO_PROVIDER`, else `defaultProviderId`, else `lando`.
 
@@ -100,11 +101,11 @@ Setup refuses with `AppPlacementError` and lists running apps that use routes or
 
 ```sh
 lando destroy --provider=lando --yes
-lando start --provider=docker
+lando start
 lando info --format=json
 ```
 
-Data volumes stay on the old provider. Setup does not copy their contents. Export data before switching if the new realization needs it.
+Plain `lando start` uses the new persisted provider unless the Landofile has a `provider:` pin. Update or remove that pin to move the app. Data volumes stay on the old provider. Setup does not copy their contents. Export data before switching if the new realization needs it.
 
 Or switch back to the provider that still holds it. If `LANDO_PROVIDER` picked the new provider, unset it first, or every later command picks it again:
 

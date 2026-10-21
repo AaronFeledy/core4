@@ -281,7 +281,7 @@ export const setupSpec: LandoCommandSpec<
       );
       for (const app of switched.remainingApps)
         notes.push(
-          `${app.id} remains on ${switched.fromProviderId}. In ${app.root}, run \`lando destroy --provider=${switched.fromProviderId} --yes\`, then \`lando start --provider=${switched.toProviderId}\`. Data volumes are not copied.`,
+          `${app.id} remains on ${switched.fromProviderId}. In ${app.root}, run \`lando destroy --provider=${switched.fromProviderId} --yes\`, then \`lando start\`. A Landofile \`provider:\` still pins the app. Data volumes are not copied.`,
         );
     }
     if (process.platform === "win32") {

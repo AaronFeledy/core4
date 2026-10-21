@@ -31,7 +31,7 @@ LANDO_CONFIG__default_provider_id=podman
 Highest-precedence source wins. An env overlay overrides the on-disk config value. A command flag overrides an env-resolved value:
 
 ```sh
-lando start --provider=docker
+lando setup --provider=docker
 ```
 
 That flag wins over `LANDO_PROVIDER=podman` for that command. `LANDO_PROVIDER` does not persist. After a successful `lando setup --provider=docker`, later commands stay on Docker without repeating the flag.

@@ -72,6 +72,7 @@ import {
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
 import { readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
+import { validateUnknownCliFlags } from "../../src/cli/flag-value-validation.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
@@ -1246,6 +1247,30 @@ describe("meta:setup command", () => {
       });
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("switch report suggests only supported command flags", () => {
+    const output =
+      setupSpec.render?.({
+        providerId: "docker",
+        installDir: "/opt/lando",
+        networkCaInjectionConfigured: false,
+        providerSwitch: {
+          fromProviderId: "lando",
+          toProviderId: "docker",
+          remainingApps: [{ kind: "user", id: "demo", root: "/apps/demo" }],
+        },
+      }) ?? "";
+    const commands = [...output.matchAll(/`lando ([^`]+)`/gu)].map((match) => match[1] ?? "");
+    expect(commands.length).toBe(2);
+    for (const command of commands) {
+      const [name, ...argv] = command.split(" ");
+      const spec = Object.values(COMMAND_REGISTRY_MANIFEST.commands).find(
+        (entry) => entry.spec.id === `app:${name}`,
+      )?.spec;
+      expect(spec).toBeDefined();
+      expect(validateUnknownCliFlags(argv, spec !== undefined && "flags" in spec ? spec.flags : {})).toBeUndefined();
     }
   });
 
