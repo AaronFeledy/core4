@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -44,6 +45,8 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
+const isolatedDataRoot = mkdtempSync(join(tmpdir(), "lando-applied-teardown-data-"));
+afterAll(() => rm(isolatedDataRoot, { recursive: true, force: true }));
 
 for (const kind of ["applied", "orphans", "absent"] as const) {
   test(`dispatches only the ${kind} handler when teardown evidence is ${kind}`, async () => {
@@ -321,7 +324,10 @@ const makeLayer = (input: {
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({ userDataRoot: isolatedDataRoot, env: {}, platform: "linux" }),
+    ),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -612,7 +618,7 @@ describe("applied-state teardown", () => {
       expect(result.outcome).toBe("destroyed");
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.desiredLoads).toEqual([]);
-      expect(harness.evidenceRoots).toEqual([root, root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root]);
     });
   });
 
@@ -680,7 +686,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: ["leftover"],
         volumesRemoved: true,
       });
-      expect(harness.evidenceRoots).toEqual([root, root, root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
   });
 
@@ -695,7 +701,7 @@ describe("applied-state teardown", () => {
         destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
       );
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root, root]);
+      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
@@ -714,7 +720,7 @@ describe("applied-state teardown", () => {
 
       // Then the recorded path wins over the symlink's current destination.
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([recorded, recorded, recorded]);
+      expect(harness.evidenceRoots).toEqual([recorded, recorded]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
