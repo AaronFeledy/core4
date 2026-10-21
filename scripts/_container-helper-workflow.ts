@@ -5,6 +5,7 @@
  */
 
 export const CONTAINER_HELPER_JOB_ID = "container-helper";
+export const CONTAINER_HELPER_ARM64_JOB_ID = "container-helper-arm64";
 export const CONTAINER_HELPER_ARTIFACT = "container-helper";
 
 export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_ID}:
@@ -45,3 +46,28 @@ export const containerHelperDownloadStep = `      - name: Download container hel
         with:
           name: ${CONTAINER_HELPER_ARTIFACT}
           path: core/container-helper/dist`;
+
+export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER_ARM64_JOB_ID}:
+    needs: ${CONTAINER_HELPER_JOB_ID}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+${containerHelperDownloadStep}
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Test the arm64 container helper
+        run: |
+          chmod +x core/container-helper/dist/linux-arm64/lando-container-helper
+          bun test core/test/container-helper/helper.integration.test.ts`;

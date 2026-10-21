@@ -67,7 +67,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(25);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -486,7 +486,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain(
       "::notice title=ci-timing::static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
     );
-    expect(staticChecks).toContain("    needs: [static-checks-platform]");
+    expect(staticChecks).toContain("    needs: [static-checks-platform, container-helper-arm64]");
     expect(staticChecks).toContain("    if: always()");
     expect(staticChecks).toContain(
       '          if [[ "${{ needs.static-checks-platform.result }}" != "success" ]]; then',
@@ -495,6 +495,9 @@ describe("ci workflow", () => {
       '            echo "static-checks platform matrix result: ${{ needs.static-checks-platform.result }}"',
     );
     expect(staticChecks).toContain("            exit 1");
+    expect(staticChecks).toContain(
+      '          if [[ "${{ needs.container-helper-arm64.result }}" != "success" ]]; then',
+    );
     expect(staticChecks).toContain('          echo "static-checks platform matrix passed"');
 
     const unitTestShards = findIndentedBlock(jobs, "unit-tests-linux-x64-shard", 2);
@@ -653,6 +656,28 @@ describe("ci workflow", () => {
         build.indexOf(`Build ${platform.id} binary`),
       );
     }
+  });
+
+  test("executes the downloaded helper natively on arm64 without a provider", async () => {
+    // Given / When
+    const jobs = findIndentedBlock(await readWorkflow(), "jobs");
+    const helper = findIndentedBlock(jobs, "container-helper-arm64", 2);
+
+    // Then
+    expect(helper).toContain("    needs: container-helper");
+    expect(helper).toContain("    runs-on: ubuntu-24.04-arm");
+    expect(helper).toContain("        run: bun install --frozen-lockfile");
+    expect(helper).toContain("        uses: actions/download-artifact@v7");
+    expect(helper).toContain("          name: container-helper");
+    expect(helper).toContain("          path: core/container-helper/dist");
+    expect(helper).toContain(
+      "          chmod +x core/container-helper/dist/linux-arm64/lando-container-helper",
+    );
+    expect(helper).toContain("          bun test core/test/container-helper/helper.integration.test.ts");
+    expect(helper.indexOf("Download container helper")).toBeLessThan(helper.indexOf("bun test "));
+    expect(helper).not.toContain("setup-go");
+    expect(helper).not.toContain("lando.ts setup");
+    expect(helper).not.toContain("build-container-helper.ts");
   });
 
   test("builds and uploads the Linux x64 binary after static and codegen checks", async () => {

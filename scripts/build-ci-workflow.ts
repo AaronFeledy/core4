@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
 
 import {
+  CONTAINER_HELPER_ARM64_JOB_ID,
   CONTAINER_HELPER_JOB_ID,
   containerHelperDownloadStep,
+  renderContainerHelperArm64Job,
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 import {
@@ -124,7 +126,7 @@ ${setupBunSteps}
 ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}", 35)}
 
   static-checks:
-    needs: [static-checks-platform]
+    needs: [static-checks-platform, ${CONTAINER_HELPER_ARM64_JOB_ID}]
     if: always()
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 5
@@ -133,6 +135,10 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
         run: |
           if [[ "\${{ needs.static-checks-platform.result }}" != "success" ]]; then
             echo "static-checks platform matrix result: \${{ needs.static-checks-platform.result }}"
+            exit 1
+          fi
+          if [[ "\${{ needs.${CONTAINER_HELPER_ARM64_JOB_ID}.result }}" != "success" ]]; then
+            echo "arm64 container helper result: \${{ needs.${CONTAINER_HELPER_ARM64_JOB_ID}.result }}"
             exit 1
           fi
           echo "static-checks platform matrix passed"
@@ -874,6 +880,7 @@ ${renderUnitTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}
 ${renderContainerHelperJob()}
+${renderContainerHelperArm64Job()}
   schema-snapshot:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
