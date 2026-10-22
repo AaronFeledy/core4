@@ -9,7 +9,6 @@ import {
   globalServiceGroupError,
   waitForGlobalServiceGroups,
 } from "@lando/engine/operations/global-service-groups";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
   GlobalAppError,
@@ -142,7 +141,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
   }
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(loaded.plan.provider);
 
   return yield* withGlobalLifecycleEvents(
     {

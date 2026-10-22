@@ -26,7 +26,6 @@ import {
 } from "@lando/sdk/services";
 
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { waitForServiceReadiness } from "./service-readiness.ts";
@@ -158,7 +157,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
         };
 
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(plan.provider);
   const builds = yield* BuildOrchestrator;
   // Managed global service configuration is generated locally and has no sync session lifecycle.
   const realizedPlan = withOrdinaryMounts(planToApply);

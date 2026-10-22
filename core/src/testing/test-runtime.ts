@@ -776,10 +776,12 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   });
 
   const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
     select: () => Effect.succeed(runtimeProvider),
     resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {
@@ -789,6 +791,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
   const globalAppService = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(providerId),
     root: Effect.succeed(globalPaths.root),
     ensureRoot: Effect.void,
     paths: Effect.succeed(globalPaths),

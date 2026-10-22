@@ -150,6 +150,9 @@ test.each(["direct", "fallback"] as const)(
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             list: Effect.die("unused"),
             capabilities: Effect.die("unused"),
             select: () => Effect.die("unused"),

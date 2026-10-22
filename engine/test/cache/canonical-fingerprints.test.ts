@@ -76,6 +76,7 @@ test("preserves command entry order when fingerprinting a semantic array", () =>
 test("shares native date and bigint normalization across app-plan and command caches", () => {
   const input = {
     appRoot: "/app",
+    hostProvider: "lando",
     landofile: { name: "app" },
     pluginManifests: [],
     planningRuntime: "fixed",
@@ -103,6 +104,7 @@ test("shares native date and bigint normalization across app-plan and command ca
 test("sorts referenced-file sets by UTF-16 while omitting their modification times", () => {
   const input = {
     appRoot: "/app",
+    hostProvider: "lando",
     landofile: { name: "app" },
     pluginManifests: [],
     planningRuntime: "fixed",
@@ -120,7 +122,7 @@ test("sorts referenced-file sets by UTF-16 while omitting their modification tim
   const fingerprint = deriveAppPlanCacheKey(input);
   expect(fingerprint).toBe(
     sha256Hex(
-      `{"appFeatureEnv":{},"appRoot":"/app","cache":"app-plan","config":null,"hostHome":"/home/fixed","includedFragmentShas":[],"landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":${Number(APP_PLAN_CACHE_SCHEMA_VERSION)},"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
+      `{"appFeatureEnv":{},"appRoot":"/app","cache":"app-plan","config":null,"hostHome":"/home/fixed","hostProvider":"lando","includedFragmentShas":[],"landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":${Number(APP_PLAN_CACHE_SCHEMA_VERSION)},"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
     ),
   );
 });

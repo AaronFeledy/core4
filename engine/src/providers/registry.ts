@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Result, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { GlobalConfigSources } from "../services/config.ts";
 
@@ -31,17 +31,14 @@ import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { TeardownProvider } from "./app-placement.ts";
 import {
   type AppliedStateProvider,
   observeProviderRuntime,
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "./applied-state-resolution.ts";
-import {
-  CAPABILITY_DEFAULT_PROVIDER_ID,
-  readProviderEnvVar,
-  resolveProviderSelection,
-} from "./precedence.ts";
+import { hostProviderId } from "./host-provider.ts";
 
 const manifestProviderIds = (manifest: PluginManifest): ReadonlyArray<ProviderId> =>
   (manifest.contributes?.providers ?? []).map((entry) =>
@@ -89,11 +86,6 @@ export const makeRuntimeProviderRegistry = (
     Effect.gen(function* () {
       const configService = yield* ConfigService;
       const captured = yield* Effect.serviceOption(GlobalConfigSources);
-      const providerEnv = Option.isNone(captured)
-        ? process.env
-        : captured.value.sources.env
-          ? captured.value.env
-          : {};
       const pluginRegistry = yield* PluginRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const downloader = yield* Downloader;
@@ -110,17 +102,12 @@ export const makeRuntimeProviderRegistry = (
         Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
       );
 
-      const configuredProviderId = Effect.gen(function* () {
-        const defaultProviderId = yield* configService.get("defaultProviderId");
-        const envProviderId = readProviderEnvVar(providerEnv);
-        return resolveProviderSelection({
-          ...(envProviderId === undefined ? {} : { env: envProviderId }),
-          ...(defaultProviderId === undefined || defaultProviderId === null
-            ? {}
-            : { config: defaultProviderId }),
-          capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-        }).providerId;
-      });
+      const configuredProviderId = hostProviderId.pipe(
+        Effect.provideService(ConfigService, configService),
+        Effect.provide(
+          captured._tag === "Some" ? Context.make(GlobalConfigSources, captured.value) : Context.empty(),
+        ),
+      );
 
       const contributionFor = Effect.fnUntraced(function* (providerId: ProviderId) {
         const manifests = yield* providerManifests;
@@ -227,42 +214,46 @@ export const makeRuntimeProviderRegistry = (
 
       const appliedStateProviders = Effect.gen(function* () {
         const ids = yield* providerIds;
-        return yield* Effect.forEach(ids, (id) =>
-          Effect.gen(function* () {
-            const descriptor = yield* contributionFor(id);
-            const { contribution, context } = descriptor;
-            const resourceOwnership = contribution.resourceOwnership;
-            const runtime = yield* Effect.cached(makeProvider(descriptor));
-            return {
-              id,
-              ...(resourceOwnership === undefined
-                ? {}
-                : {
-                    resourceOwnership: (root: AbsolutePath) => resourceOwnership(context, root),
-                  }),
-              canCleanupOwnedResources: runtime.pipe(
-                Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
-              ),
-              appliedPlans: contribution
-                .appliedPlans(context)
-                .pipe(Effect.provideService(PathsService, paths)),
-              isAvailable: runtime.pipe(
-                Effect.flatMap((provider) =>
-                  provider.isAvailable.pipe(
-                    Effect.flatMap((available) =>
-                      available
-                        ? Effect.map(provider.getStatus, (status) => status.running)
-                        : Effect.succeed(false),
+        const selected = yield* TeardownProvider;
+        if (selected !== undefined) yield* contributionFor(selected);
+        return yield* Effect.forEach(
+          ids.filter((id) => selected === undefined || id === selected),
+          (id) =>
+            Effect.gen(function* () {
+              const descriptor = yield* contributionFor(id);
+              const { contribution, context } = descriptor;
+              const resourceOwnership = contribution.resourceOwnership;
+              const runtime = yield* Effect.cached(makeProvider(descriptor));
+              return {
+                id,
+                ...(resourceOwnership === undefined
+                  ? {}
+                  : {
+                      resourceOwnership: (root: AbsolutePath) => resourceOwnership(context, root),
+                    }),
+                canCleanupOwnedResources: runtime.pipe(
+                  Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
+                ),
+                appliedPlans: contribution
+                  .appliedPlans(context)
+                  .pipe(Effect.provideService(PathsService, paths)),
+                isAvailable: runtime.pipe(
+                  Effect.flatMap((provider) =>
+                    provider.isAvailable.pipe(
+                      Effect.flatMap((available) =>
+                        available
+                          ? Effect.map(provider.getStatus, (status) => status.running)
+                          : Effect.succeed(false),
+                      ),
                     ),
                   ),
+                  Effect.catch(() => Effect.succeed(false)),
                 ),
-                Effect.catch(() => Effect.succeed(false)),
-              ),
-              list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
-              listVolumes: (filter) =>
-                runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),
-            } satisfies AppliedStateProvider;
-          }),
+                list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
+                listVolumes: (filter) =>
+                  runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),
+              } satisfies AppliedStateProvider;
+            }),
         );
       });
 
@@ -280,6 +271,16 @@ export const makeRuntimeProviderRegistry = (
 
       return RuntimeProviderRegistry.of({
         list: providerIds,
+        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
+          const ids = yield* providerIds;
+          const plans = yield* Effect.forEach(ids, (id) =>
+            contributionFor(id).pipe(
+              Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),
+              Effect.provideService(PathsService, paths),
+            ),
+          );
+          return plans.flat().filter((plan) => plan.identity?.appRoot === root);
+        }),
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: Effect.fn("RuntimeProviderRegistry.select")(function* (target?: AppPlan | ProviderId) {
           return yield* target === undefined

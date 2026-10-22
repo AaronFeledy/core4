@@ -1,6 +1,7 @@
 import { Context, type Effect, type Scope } from "effect";
 
 import type {
+  AppPlacementError,
   LandofileVersionConstraintError,
   ScratchAppError,
   ScratchAppNotFoundError,
@@ -159,6 +160,7 @@ export class ScratchAppService extends Context.Service<
       | ScratchSourceUnresolvedError
       | ScratchIsolationConflictError
       | ScratchAppError
+      | AppPlacementError
       | LandofileVersionConstraintError,
       Scope.Scope
     >;

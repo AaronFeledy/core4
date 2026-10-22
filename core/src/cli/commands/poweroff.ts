@@ -5,7 +5,7 @@ import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
 
-import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "@lando/engine/providers/managed";
+import { taggedErrorRemediation } from "@lando/engine/providers/managed";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
 import { ScratchResourceScanner, isCanonicalScratchId } from "@lando/engine/scratch-app/scanner";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
@@ -79,11 +79,7 @@ const stopDiscoveredApp = Effect.fnUntraced(function* (entry: AppsListEntry) {
     return;
   }
   const registry = yield* RuntimeProviderRegistry;
-  const selection =
-    entry.appId === GLOBAL_APP_ID
-      ? MANAGED_PROVIDER_SELECT_PLAN
-      : { ...MANAGED_PROVIDER_SELECT_PLAN, provider: ProviderId.make(entry.providerId) };
-  const provider = yield* registry.select(selection);
+  const provider = yield* registry.select(ProviderId.make(entry.providerId));
   const globalApp =
     entry.appId === GLOBAL_APP_ID
       ? { kind: "global" as const, id: AppId.make(entry.appId), root: AbsolutePath.make(entry.appRoot) }
@@ -212,8 +208,7 @@ const poweroffOperation = Effect.fn("AppsPoweroff.poweroff")(function* (
           : new PoweroffStopError({
               message: `Failed to power off ${app.appId}.`,
               appId: app.appId,
-              providerId:
-                app.appId === GLOBAL_APP_ID ? String(MANAGED_PROVIDER_SELECT_PLAN.provider) : app.providerId,
+              providerId: app.providerId,
               cause,
               remediation: isScratch(app)
                 ? `${taggedErrorRemediation(cause) ?? "Resolve the scratch cleanup failure."} Run \`lando scratch gc --prune\`, then retry poweroff; the managed runtime has been left available.`

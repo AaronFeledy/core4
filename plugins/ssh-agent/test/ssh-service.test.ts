@@ -11,6 +11,7 @@ import { layer as sshService } from "../src/ssh-service.ts";
 
 const globalApp = {
   id: "global" as const,
+  providerId: Effect.die("global provider resolution is unused"),
   root: Effect.succeed(AbsolutePath.make("/unused")),
   ensureRoot: Effect.void,
   paths: Effect.succeed({
