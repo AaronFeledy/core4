@@ -104,7 +104,7 @@ export const replaceLiteralMatchesBounded = (
     ) {
       end = Math.max(end, intersecting + replacement.length);
     }
-    if (unionStart !== -1 && start < unionEnd) {
+    if (start < unionEnd) {
       unionEnd = Math.max(unionEnd, end);
       continue;
     }

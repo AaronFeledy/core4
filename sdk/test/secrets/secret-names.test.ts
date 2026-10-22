@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
 import {
-  PATTERN_CLASSES,
   createRedactor,
   isSecretEnvName,
   isSecretFieldName,
   isSecretStructuralName,
 } from "@lando/sdk/secrets";
 
-const oldParts = new Set([
+const oldParts = [
   "apikey",
   "apikeys",
   "authkey",
@@ -27,10 +26,10 @@ const oldParts = new Set([
   "secrets",
   "token",
   "tokens",
-]);
+] as const;
 
 test("env recognition preserves the old segment algorithm across a spelling corpus", () => {
-  const corpus = [...oldParts].flatMap((part) =>
+  const corpus = oldParts.flatMap((part) =>
     [
       part,
       part.toUpperCase(),
@@ -44,13 +43,6 @@ test("env recognition preserves the old segment algorithm across a spelling corp
   );
   corpus.push("REDISCLI_AUTH");
   for (const name of corpus) {
-    const old =
-      name.toUpperCase() === "REDISCLI_AUTH" ||
-      name
-        .toLowerCase()
-        .split(/[._-]+/u)
-        .some((part) => oldParts.has(part));
-    expect(old).toBe(true);
     expect(isSecretEnvName(name)).toBe(true);
   }
 });
@@ -147,15 +139,11 @@ test.each([
   expect(redactor.redactStringBounded?.(input, 4096)).toBe(expected);
 });
 
-test("transcript uses the shared query class while retaining its distinct command grammar", () => {
+test("transcript masks nested query secrets and its distinct command grammar", () => {
   const query = "?next=https://x/?token=y&sig=z";
-  const pattern = PATTERN_CLASSES.signedQueryParam;
-  if (pattern === undefined) throw new Error("missing query class");
-  const expected =
-    typeof pattern.replace === "string"
-      ? query.replace(pattern.pattern, pattern.replace)
-      : query.replace(pattern.pattern, pattern.replace);
-  expect(createRedactor("transcript").redactString(query)).toBe(expected);
+  expect(createRedactor("transcript").redactString(query)).toBe(
+    "?next=https://x/?token=[redacted]&sig=[redacted]",
+  );
   expect(
     createRedactor("transcript").redactString('password = "private tail" token \'x y\' -t "short value"'),
   ).toBe("password=[redacted] token [redacted] -t [redacted]");

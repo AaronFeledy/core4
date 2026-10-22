@@ -39,11 +39,8 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
     const pieces: Uint8Array[] = [];
     let start = coveredUntil;
     let index = 0;
-    while (index < input.length) {
-      if (!matcher.canStart(input[index])) {
-        index += 1;
-        continue;
-      }
+    for (; index < input.length; index += 1) {
+      if (!matcher.canStart(input[index])) continue;
       const match = matcher.matchAt(input, index);
       if (!final && match.partial) {
         // Covered bytes must remain raw here: an overlapping occurrence may
@@ -56,7 +53,6 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
         coveredUntil = Math.max(coveredUntil, match.end);
         start = coveredUntil;
       }
-      index += 1;
     }
     const tail = input.subarray(start, index);
     coveredUntil = Math.max(0, coveredUntil - index);

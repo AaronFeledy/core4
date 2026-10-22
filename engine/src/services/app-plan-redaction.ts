@@ -124,11 +124,11 @@ export const collectAuthoredRedactionTokens = (document: unknown): readonly stri
   const collect = (node: unknown, path: readonly string[]): readonly string[] => {
     if (isLandofileReset(node)) return [];
     if (isLandofileOverride(node)) return collect(node.value, path);
-    const collectValues = isEnvMap(path.slice(0, -1))
-      ? collectSecretEnvValues
-      : collectSecretStructuralValues;
     if (typeof node === "string") {
       const key = path.at(-1);
+      const collectValues = isEnvMap(path.slice(0, -1))
+        ? collectSecretEnvValues
+        : collectSecretStructuralValues;
       return key === undefined ? [] : collectValues({ [key]: node }, publicValues);
     }
     if (Array.isArray(node))

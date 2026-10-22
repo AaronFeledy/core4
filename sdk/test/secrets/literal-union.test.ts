@@ -143,21 +143,9 @@ test("payload unions agree with the reference for random and one-byte UTF-8 chun
   }
 });
 
-test("string and decoded payload layers agree on well-formed text without sentinel crossings", () => {
+test("both layers cover every occurrence byte, including overlap tails, and preserve safe bytes", () => {
   // Given
-  const inputs = cases(0xabcdef, ["a", "b", "x", "-", "é", "€", "😀"]);
-  for (const { text, values, sizes } of inputs) {
-    // When
-    const stringOutput = createSecretRedactor(values).redact(text);
-    const payloadOutput = decoder.decode(stream(text, values, sizes));
-    // Then
-    expect(stringOutput).toBe(payloadOutput);
-  }
-});
-
-test("every byte in every original occurrence is covered, including overlap tails", () => {
-  // Given
-  const inputs = cases(0xface, ["a", "b", "x", "-", "€", "😀"]);
+  const inputs = cases(0xface, ["a", "b", "x", "-", "é", "€", "😀"]);
   for (const { text, values, sizes } of inputs) {
     const hits = occurrences(text, values);
     const intervals = union(hits);

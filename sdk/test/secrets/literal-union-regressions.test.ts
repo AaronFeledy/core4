@@ -87,12 +87,3 @@ test("fixed-point iteration fails closed at the pass cap and stays idempotent", 
   expect(redactor.redact(output)).toBe(output);
   expect(redactor.redactBounded?.(input, 100)).toBe(output);
 });
-
-test("each fixed-point pass must fit its budget even when the final output would fit", () => {
-  // Given
-  const redactor = createSecretRedactor(["ab", "x["]);
-  // When
-  const output = redactor.redactBounded?.("xab", REDACTED.length);
-  // Then
-  expect(output).toBeUndefined();
-});

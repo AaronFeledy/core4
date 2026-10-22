@@ -75,7 +75,7 @@ export const createSecretRedactor = (
   // Only sentinel-crossing values can create new occurrences in emitted output.
   const redactWithin = (text: string, maxBytes: number): string | undefined => {
     let result = text;
-    for (let pass = 0; pass < (canCrossSentinel ? 8 : 1); pass += 1) {
+    for (let pass = 0; pass < 8; pass += 1) {
       const replaced = replaceLiteralMatchesBounded(result, matcher, { replacement: REDACTED, maxBytes });
       if (replaced === undefined) return undefined;
       if (!canCrossSentinel || replaced === result) return replaced;

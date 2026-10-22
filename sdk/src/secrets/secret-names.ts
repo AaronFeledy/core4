@@ -21,7 +21,7 @@ export const SECRET_WORD_SOURCE = STRONG_WORDS.map((word) => (word === "apikey" 
 export const SIGNED_QUERY_WORD_SOURCE = [SECRET_WORD_SOURCE, "signature", "sig"].join("|");
 export const SECRET_FIELD_PATTERN = new RegExp(`${SECRET_WORD_SOURCE}|^auth(?:token|orization)?$`, "iu");
 
-const strongEndings = [...STRONG_WORDS, "authkey", "authtoken"].flatMap((word) => [word, `${word}s`]);
+const strongEndings = [...STRONG_WORDS, "authkey"].flatMap((word) => [word, `${word}s`]);
 const hasStrongEnding = (segment: string): boolean => strongEndings.some((word) => segment.endsWith(word));
 const segments = (name: string): readonly string[] =>
   name
