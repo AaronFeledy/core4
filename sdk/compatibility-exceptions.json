@@ -2035,6 +2035,12 @@
   },
   {
     "surface": "schema:LandoEvent",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Pre-release LandoEvent adds the pre/post-global-destroy and pre/post-scratch-destroy lifecycle events; existing members are unchanged."
+  },
+  {
+    "surface": "schema:LandoEvent",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
     "justification": "Pre-release LandoEvent members require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
