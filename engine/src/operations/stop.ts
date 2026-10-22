@@ -22,6 +22,7 @@ import {
   verifyActiveVolumeCoordination,
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
+import { compiledEventsForPlan } from "../planner/effective-events.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -39,6 +40,7 @@ import {
   tearDownOwnedResources,
 } from "./owned-resource-teardown.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
+import { withTeardownAuthoredEvents } from "./teardown-authored-events.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -146,7 +148,11 @@ const stopAppWithResolvedPlan = (
         body: Effect.fnUntraced(function* () {
           yield* verifyActiveVolumeCoordination(provider);
           const preflight = yield* preflightStopApp(resolvedTarget);
-          if (execution.runInitEvents !== false && validatedTarget.landofile !== undefined)
+          if (
+            execution.runInitEvents !== false &&
+            (validatedTarget.landofile !== undefined ||
+              compiledEventsForPlan(resolvedTarget.plan) !== undefined)
+          )
             yield* runAppInitEvents(resolvedTarget.plan);
           return yield* stopAppWithPlanUnlocked(options ?? {}, resolvedTarget, false, preflight);
         }, Effect.provide(context)),
@@ -296,7 +302,8 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
               requireAppliedEvidence: false,
             })).result;
           }
-          return yield* stopAppWithResolvedPlan(options, resolved, {
+          const authored = yield* withTeardownAuthoredEvents(resolved, resolveDesiredAppTarget);
+          return yield* stopAppWithResolvedPlan(options, authored, {
             revalidate: false,
             requireAppliedEvidence: false,
           }).pipe(Effect.map(({ result }) => result));

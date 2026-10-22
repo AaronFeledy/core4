@@ -10,6 +10,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
+import { withTeardownAuthoredEvents } from "./teardown-authored-events.ts";
 
 /** Read-only evidence for one invocation, never a fabricated desired/applied plan. */
 export type TeardownPlan = {
@@ -126,6 +127,8 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     }
     yield* pendingStartDisposal(retained.app, retained.plan);
   }
+  if (applied !== undefined && retained === undefined && request.missingRoot !== true)
+    applied = yield* withTeardownAuthoredEvents(applied, request.desired);
   const registry = yield* RuntimeProviderRegistry;
   const disposal = retained ?? applied;
   const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);

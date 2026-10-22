@@ -59,6 +59,7 @@ const layerFor = (root: string) => {
     userDataRoot: join(root, "data"),
     userCacheRoot: join(root, "cache"),
     userConfRoot: join(root, "conf"),
+    systemPluginRoot: join(root, "sys"),
     platform: "linux",
     env: {},
   });

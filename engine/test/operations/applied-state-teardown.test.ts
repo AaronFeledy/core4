@@ -327,7 +327,14 @@ const makeLayer = (input: {
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(
       PathsService,
-      makeLandoPaths({ userDataRoot: isolatedDataRoot, env: {}, platform: "linux" }),
+      makeLandoPaths({
+        userDataRoot: isolatedDataRoot,
+        userCacheRoot: join(isolatedDataRoot, "cache"),
+        userConfRoot: join(isolatedDataRoot, "conf"),
+        systemPluginRoot: join(isolatedDataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
     ),
     Layer.succeed(
       LandofileService,
@@ -827,7 +834,7 @@ describe("applied-state teardown", () => {
   );
 
   test.each(["stop", "destroy"] as const)(
-    "%s consults applied state before it loads the desired config",
+    "%s preserves the applied plan while loading desired config for authored events",
     async (operation) => {
       await withTempRoot(async (root) => {
         const appliedPlan = planAt(root);
@@ -839,7 +846,7 @@ describe("applied-state teardown", () => {
           await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
         }
 
-        expect(harness.desiredLoads).toEqual([]);
+        expect(harness.desiredLoads).toEqual(["discover"]);
         expect(harness.destroyCalls).toEqual([appliedPlan]);
       });
     },
