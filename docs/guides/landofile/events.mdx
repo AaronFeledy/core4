@@ -27,9 +27,11 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation before it starts. `post-start` and `post-stop` failures warn; other `post-*` failures fail the operation with a tagged `LandofileEventStepFailedError` and a redacted output tail. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
+`pre-*` failures stop the lifecycle operation before it starts. `post-start` and `post-stop` failures warn, and the warning carries the step's redacted output so you can see why it failed; other `post-*` failures fail the operation with a tagged `LandofileEventStepFailedError` and a redacted output tail. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
 
 A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"`. Use `pre-stop` for work inside a running service. `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
+
+Every command reads `events:` from the Landofile in the app folder when you run it. Add a `pre-destroy` step after `lando start` and it runs on the next `lando destroy`; no restart needed. `lando stop` and `lando destroy` tear down what is actually running, so if the folder has no Landofile (including `lando destroy --root`), the Landofile fails to load, or it now names a different app or provider than the one that is running, Lando prints one notice saying why, skips the Landofile steps, and still stops or destroys the app.
 
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>

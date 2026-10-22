@@ -31,7 +31,7 @@ import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
@@ -75,7 +75,7 @@ const harness = (input: {
   const executed: string[] = [];
   const frames: StreamFrameSinkFrame[] = [];
   const selections: string[] = [];
-  const plan: AppPlan = {
+  const basePlan: AppPlan = {
     id: AppId.make("tooling-events"),
     name: "tooling-events",
     slug: "tooling-events",
@@ -89,8 +89,8 @@ const harness = (input: {
     metadata,
     extensions: {},
   };
+  const plan = input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events);
   attachEffectiveTooling(plan, input.tooling);
-  if (input.events !== undefined) attachEffectiveEvents(plan, input.events);
 
   const record = (label: string) => {
     executed.push(label);

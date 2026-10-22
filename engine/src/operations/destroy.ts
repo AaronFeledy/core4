@@ -61,6 +61,7 @@ import { purgeAppSnapshots, snapshotOnlyDestroy } from "./destroy-snapshots.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
+import { resolveLandofileEventPlan } from "./landofile-events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 import {
   ownedCleanupChanged,
@@ -88,7 +89,6 @@ type DestroyAppServices =
   | PrivateFileAccessService
   | StateStore
   | RuntimeProviderRegistry;
-type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.nowUnsafe();
 
@@ -120,7 +120,7 @@ const removeStrayAppContainers = Effect.fnUntraced(function* (provider: RuntimeP
 const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
-): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> {
+): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, DestroyAppServices> {
   const retained = yield* pendingStartDisposal(target.app, target.plan);
   const resolvedOptions = options ?? {};
   const registry = yield* RuntimeProviderRegistry;
@@ -258,14 +258,15 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     );
   }
 
+  const eventPlan = yield* resolveLandofileEventPlan(target);
   if (!retainedUnapplied && durablePhase !== "disposing" && durablePhase !== "completed") {
-    yield* runAppInitEvents(plan);
+    yield* runAppInitEvents(eventPlan);
     const preDestroy = PreDestroyEvent.make({
       _tag: "pre-destroy",
       app: ref,
       timestamp: now(),
     });
-    yield* publishAndRunAppEvent(plan, "pre-destroy", preDestroy);
+    yield* publishAndRunAppEvent(eventPlan, "pre-destroy", preDestroy);
   }
 
   const snapshotsRemoved = yield* withDestroyProgress({
@@ -384,7 +385,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     app: ref,
     timestamp: now(),
   });
-  yield* publishAndRunAppEvent(plan, "post-destroy", postDestroy);
+  yield* publishAndRunAppEvent(eventPlan, "post-destroy", postDestroy);
   yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
 
   return {
@@ -402,11 +403,11 @@ const destroyAppWithResolvedTarget = (
   target: ResolvedAppTarget,
   revalidate: boolean,
   requireAppliedEvidence: boolean,
-): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
+): Effect.Effect<DestroyAppResult, SdkDestroyAppError, DestroyAppServices> =>
   withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
-      const context = yield* Effect.context<BoundDestroyAppServices>();
+      const context = yield* Effect.context<DestroyAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const validatedTarget = revalidate ? yield* validateResolvedAppTarget(target) : target;
@@ -479,7 +480,7 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
   afterSuccess?: Effect.Effect<void>,
-): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> {
+): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, DestroyAppServices> {
   return yield* destroyAppWithResolvedTarget(options, target, true, target.landofile !== undefined).pipe(
     Effect.tap(() => afterSuccess ?? Effect.void),
   );
@@ -488,7 +489,7 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
 const destroyOrphans = Effect.fnUntraced(function* (
   options: DestroyAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
-): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> {
+): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, DestroyAppServices> {
   const snapshotsRemoved = yield* purgeAppSnapshots(resolution.root, options);
   return yield* tearDownOrphans({
     root: resolution.root,

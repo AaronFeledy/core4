@@ -31,7 +31,6 @@ import {
   validateResolvedAppTarget,
   withTeardownResolution,
 } from "./applied-state-target.ts";
-import { runAppInitEvents } from "./events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 import {
   ownedCleanupChanged,
@@ -57,7 +56,6 @@ type StopAppServices =
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | StateStore;
-type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 type StopExecution = {
   readonly revalidate: boolean;
   readonly requireAppliedEvidence: boolean;
@@ -78,12 +76,12 @@ const stopAppWithResolvedPlan = (
 ): Effect.Effect<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   SdkStopAppError,
-  BoundStopAppServices
+  StopAppServices
 > =>
   withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
-      const context = yield* Effect.context<BoundStopAppServices>();
+      const context = yield* Effect.context<StopAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const validatedTarget = execution.revalidate ? yield* validateResolvedAppTarget(target) : target;
@@ -146,9 +144,12 @@ const stopAppWithResolvedPlan = (
         body: Effect.fnUntraced(function* () {
           yield* verifyActiveVolumeCoordination(provider);
           const preflight = yield* preflightStopApp(resolvedTarget);
-          if (execution.runInitEvents !== false && validatedTarget.landofile !== undefined)
-            yield* runAppInitEvents(resolvedTarget.plan);
-          return yield* stopAppWithPlanUnlocked(options ?? {}, resolvedTarget, false, preflight);
+          return yield* stopAppWithPlanUnlocked(
+            options ?? {},
+            resolvedTarget,
+            execution.runInitEvents !== false,
+            preflight,
+          );
         }, Effect.provide(context)),
       });
       const removed = yield* cleanup;
@@ -198,7 +199,7 @@ export const stopAppForTarget = Effect.fn("AppOperation.stopForTarget")(function
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
   afterSuccess?: Effect.Effect<void>,
-): Effect.fn.Return<StopAppResult, SdkStopAppError, BoundStopAppServices> {
+): Effect.fn.Return<StopAppResult, SdkStopAppError, StopAppServices> {
   return yield* stopAppWithResolvedPlan(options, target, {
     revalidate: true,
     requireAppliedEvidence: target.landofile !== undefined,
@@ -210,7 +211,7 @@ export const stopAppForTarget = Effect.fn("AppOperation.stopForTarget")(function
 
 const stopOrphans = (
   resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
-): Effect.Effect<StopAppResult, SdkStopAppError, BoundStopAppServices> =>
+): Effect.Effect<StopAppResult, SdkStopAppError, StopAppServices> =>
   tearDownOrphans({
     root: resolution.root,
     groups: resolution.groups,

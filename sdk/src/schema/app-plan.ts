@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
 import {
@@ -216,6 +217,13 @@ export const AppPlan = Schema.Struct({
    * accelerated mounts on a slow provider).
    */
   fileSync: Schema.Array(FileSyncPlan),
+  /**
+   * Effective Landofile `events:` and `config.yml hostEvents` steps compiled
+   * by the planner. Omitted on hand-built plans. Provider applied state never
+   * records it: lifecycle operations resolve Landofile events from the current
+   * Landofile, not from what was applied.
+   */
+  events: Schema.optionalKey(EventsPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
   router: Schema.optionalKey(

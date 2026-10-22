@@ -40,6 +40,7 @@ import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { recordedSessionInventory } from "./accelerated-start-resume.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent, runAppInitEvents } from "./events.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
+import { resolveLandofileEventPlan } from "./landofile-events.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -57,7 +58,6 @@ type StopAppServices =
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | StateStore;
-type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.nowUnsafe();
 
@@ -144,7 +144,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   SdkStopAppError,
-  BoundStopAppServices
+  StopAppServices
 > {
   const events = yield* EventService;
   const paths = yield* PathsService;
@@ -152,8 +152,9 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   const ref = target.app;
   const { provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions } =
     prepared ?? (yield* preflightStopApp(target));
+  const eventPlan = yield* resolveLandofileEventPlan(target);
 
-  if (runInitEvents) yield* runAppInitEvents(plan);
+  if (runInitEvents) yield* runAppInitEvents(eventPlan);
 
   yield* events.publish(
     PreAppStopEvent.make({
@@ -164,7 +165,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     }),
   );
   const preStop = PreStopEvent.make({ _tag: "pre-stop", scope: "app", app: ref, timestamp: now() });
-  yield* publishAndRunAppEvent(plan, "pre-stop", preStop);
+  yield* publishAndRunAppEvent(eventPlan, "pre-stop", preStop);
 
   const services = Object.values(plan.services).reverse();
   for (const service of services) {
@@ -219,7 +220,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     }),
   );
   const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
-  yield* publishAndRunPostAppEvent(plan, "post-stop", postStop);
+  yield* publishAndRunPostAppEvent(eventPlan, "post-stop", postStop);
 
   return {
     result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },

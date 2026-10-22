@@ -39,9 +39,9 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
+  withEventsPlan,
 } from "@lando/engine/planner/effective-events";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -357,7 +357,7 @@ describe("lando restart", () => {
         },
       },
     });
-    const eventPlan = attachEffectiveEvents({ ...plan }, effective);
+    const eventPlan = withEventsPlan({ ...plan }, effective);
     const harness = makeRestartLayer({ plannedApp: eventPlan });
 
     // When
