@@ -56,15 +56,9 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
-import {
-  publishedTargetsFromEndpoints,
-  rewriteCrossEngineProxyRoutes,
-  usesHostProxyNetwork,
-} from "../lifecycle/cross-engine-routes.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
-import { hostProviderId } from "../providers/host-provider.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { SCRATCH_EXTENSION_KEY } from "./identity.ts";
@@ -816,34 +810,7 @@ const makeScratchAppService = (
     );
     // Route resolution runs after apply, so an interrupt anywhere here must still reap the scratch app.
     yield* Effect.gen(function* () {
-      const hostProvider = yield* hostProviderId.pipe(
-        Effect.mapError((cause) => scratchAppError("start", "Unable to resolve host provider.", cause)),
-      );
-      const sharedCrossAppNetwork = provider.capabilities.sharedCrossAppNetwork;
-      const published =
-        builtPlan.routes.length === 0 ||
-        usesHostProxyNetwork({ provider: builtPlan.provider, hostProvider, sharedCrossAppNetwork })
-          ? []
-          : yield* Effect.forEach(
-              new Set(builtPlan.routes.map((route) => route.backend.service)),
-              (service) =>
-                provider.inspect({ app: builtPlan.id, service }).pipe(
-                  Effect.map((info) => publishedTargetsFromEndpoints(String(service), info.endpoints ?? [])),
-                  Effect.mapError((cause) =>
-                    scratchAppError("start", "Unable to inspect scratch route backends.", cause),
-                  ),
-                ),
-            );
-      const routedPlan = {
-        ...builtPlan,
-        routes: rewriteCrossEngineProxyRoutes({
-          plan: builtPlan,
-          published: published.flat(),
-          hostProvider,
-          sharedCrossAppNetwork,
-        }),
-      };
-      yield* applyScratchRoutes(routedPlan, landofileRouter).pipe(
+      yield* applyScratchRoutes(builtPlan, landofileRouter).pipe(
         Effect.andThen(
           waitForServiceReadiness({
             provider,

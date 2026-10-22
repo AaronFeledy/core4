@@ -700,6 +700,7 @@
       "RemoteUnreachableError",
       "RendererSelectionError",
       "RouteInputError",
+      "RouteProviderMismatchError",
       "RouterPortPinMismatch",
       "RouterPortsExhausted",
       "RouterWatcherError",

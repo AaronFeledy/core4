@@ -286,6 +286,6 @@ The Podman provider targets system Podman 6 or newer and is selected by app or g
 
 ### 5.9 Multi-provider apps (deferred)
 
-One provider is selected per app. Per-service provider data remains a non-portable extension hint. Multiple providers within one app, including their networking, route ownership, lifecycle ordering, failure handling, and capability negotiation, are deferred. Host-provider placement of the global app and the cross-engine consumer behavior specified in §10.2 and §10.4 are not deferred.
+One provider is selected per app. Per-service provider data remains a non-portable extension hint. Multiple providers within one app, including their networking, route ownership, lifecycle ordering, failure handling, and capability negotiation, are deferred. Host-provider placement of the global app and cross-provider SSH delivery (§10.4) are not deferred. Cross-provider routing is unsupported: an enabled router with nonempty routes MUST fail planning when the app provider differs from the host provider (§10.2).
 
 ---

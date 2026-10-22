@@ -56,8 +56,8 @@ const metadata: ServicePlan["metadata"] = {
 };
 
 describe("finalizeServices auto-generated hostnames", () => {
-  test.each(["docker", "lando"])("Docker endpoints reflect host engine %s", async (hostProvider) => {
-    const provider = ProviderId.make("docker");
+  test.each(["docker", "lando"])("keeps %s HTTP endpoints internal", async (providerId) => {
+    const provider = ProviderId.make(providerId);
     const draft = phpishDraft(undefined);
     const result = await Effect.runPromise(
       finalizeServices({
@@ -67,14 +67,13 @@ describe("finalizeServices auto-generated hostnames", () => {
         appSlug: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider,
-        hostProvider: ProviderId.make(hostProvider),
         providerCapabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
         metadata,
         fileSyncEngineId: undefined,
       }),
     );
     const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
-    expect(service.endpoints[0]?._tag).toBe(hostProvider === "docker" ? "internal" : "published");
+    expect(service.endpoints).toEqual([HTTP_ENDPOINT]);
   });
   test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
     // Given
@@ -100,7 +99,6 @@ describe("finalizeServices auto-generated hostnames", () => {
         appSlug: APP_SLUG,
         defaultDomain: "lando.test",
         provider: PROVIDER,
-        hostProvider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
         fileSyncEngineId: undefined,
@@ -127,7 +125,6 @@ describe("finalizeServices auto-generated hostnames", () => {
         appSlug: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider: PROVIDER,
-        hostProvider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
         fileSyncEngineId: undefined,

@@ -72,7 +72,9 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const withTempUserCache = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-runtime-cache-")));
   try {
-    return await withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir));
+    return await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () =>
+      withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir)),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

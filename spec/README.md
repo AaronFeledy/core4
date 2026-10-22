@@ -139,7 +139,7 @@ If you are looking for a public surface or policy:
 | `LandoPluginContext` capabilities | 10 | §9.8 |
 | Durable `lando` grants, scope-local `lando-session`, and 1Password references | 10 | §9.5.1 |
 | Plugin authoring commands | 10 | §9.10 |
-| Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
+| Networking, same-provider routes, provider mismatch rejection, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |

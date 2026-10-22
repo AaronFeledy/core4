@@ -60,6 +60,8 @@ App creation (`lando start`) uses:
 Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
 ```
 
+Routes require the app and the router to use the same provider. If they differ and the router is enabled with nonempty routes (including generated defaults), planning fails with `RouteProviderMismatchError` before resources change. For an app pinned to Docker, run `lando setup --provider=docker` so the global app and router move there, or remove `provider:` from the Landofile so the app follows the host provider. To keep the app on a different provider, set `router.enabled: false` and connect through explicitly published host ports. Setting each service's `routes: []` also suppresses its routes.
+
 Select Docker for one command:
 
 ```sh

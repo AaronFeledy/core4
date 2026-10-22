@@ -194,6 +194,8 @@ Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1). Scra
 
 The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
 
+Routed user and scratch apps MUST use the host provider. Nonempty routes with an enabled router on another provider MUST fail planning with `RouteProviderMismatchError` (§10.2), never route through host-published ports.
+
 The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published endpoints and never a generated `<service>.global.<domain>` hostname the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
 
 Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection keeps §4.3 precedence: explicit Landofile selection, global default, plugin `defaultFor`, then sole implementation.

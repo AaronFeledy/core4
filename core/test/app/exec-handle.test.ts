@@ -9,6 +9,7 @@ import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { Renderer, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 test("App handle exec passes provider stderr through the captured library Renderer", async () => {
   // Given
@@ -27,54 +28,57 @@ test("App handle exec passes provider stderr through the captured library Render
         { exitCode: 1 },
       ]),
   });
-  const runtime = Layer.merge(
-    makeLandoRuntime({
-      bootstrap: "app",
-      cwd: dir,
-      plugins: {
-        policy: "bundled-only",
-        layers: [
-          Layer.succeed(RuntimeProvider, provider),
-          Layer.succeed(
-            RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
-              list: Effect.succeed([ProviderId.make(provider.id)]),
-              capabilities: Effect.succeed(provider.capabilities),
-              select: () => Effect.succeed(provider),
-            }),
-          ),
-        ],
-      },
-    }),
-    Layer.succeed(
-      Renderer,
-      Renderer.of({
-        id: "exec-handle-test",
-        capabilities: { color: false, interactive: false, animation: false, notifications: false },
-        message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
-        output: {
-          stdout: () => Effect.void,
-          stderr: (chunk) =>
-            Effect.sync(
-              () => void stderr.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)),
-            ),
-        },
-      }),
-    ),
-  );
-
   try {
     // When
-    const result = await Effect.runPromise(
-      resolveApp({ root: AbsolutePath.make(dir) }).pipe(
-        Effect.flatMap((app) => app.exec({ command: ["false"] })),
-        Effect.scoped,
-        Effect.provide(runtime),
-      ),
-    );
+    // The runtime captures its environment when it is built, so build it under the test provider.
+    const result = await withEnvVar("LANDO_PROVIDER", provider.id, () => {
+      const runtime = Layer.merge(
+        makeLandoRuntime({
+          bootstrap: "app",
+          cwd: dir,
+          plugins: {
+            policy: "bundled-only",
+            layers: [
+              Layer.succeed(RuntimeProvider, provider),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                RuntimeProviderRegistry.of({
+                  resolveAppliedPlan: () => Effect.succeed(undefined),
+                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                  appliedPlansFor: () => Effect.succeed([]),
+                  list: Effect.succeed([ProviderId.make(provider.id)]),
+                  capabilities: Effect.succeed(provider.capabilities),
+                  select: () => Effect.succeed(provider),
+                }),
+              ),
+            ],
+          },
+        }),
+        Layer.succeed(
+          Renderer,
+          Renderer.of({
+            id: "exec-handle-test",
+            capabilities: { color: false, interactive: false, animation: false, notifications: false },
+            message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
+            output: {
+              stdout: () => Effect.void,
+              stderr: (chunk) =>
+                Effect.sync(
+                  () => void stderr.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)),
+                ),
+            },
+          }),
+        ),
+      );
+
+      return Effect.runPromise(
+        resolveApp({ root: AbsolutePath.make(dir) }).pipe(
+          Effect.flatMap((app) => app.exec({ command: ["false"] })),
+          Effect.scoped,
+          Effect.provide(runtime),
+        ),
+      );
+    });
 
     // Then
     expect(result.stderr).toBe("library boom\n");

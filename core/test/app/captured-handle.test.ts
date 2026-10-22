@@ -7,6 +7,7 @@ import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { Effect, Layer, Stream } from "effect";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 test("public captured handle reuses configuration until resolution while emergency controls remain live", async () => {
   const root = await mkdtemp(join(tmpdir(), "captured-library-"));
@@ -30,62 +31,64 @@ test("public captured handle reuses configuration until resolution while emergen
     },
   };
   try {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const layer = makeLandoRuntime({
-          bootstrap: "app",
-          cwd: root,
-          plugins: {
-            policy: "bundled-only",
-            layers: [
-              Layer.succeed(
-                RuntimeProviderRegistry,
-                RuntimeProviderRegistry.of({
-                  resolveAppliedPlan: () => Effect.succeed(undefined),
-                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                  appliedPlansFor: () => Effect.succeed([]),
-                  list: Effect.succeed([ProviderId.make("test")]),
-                  capabilities: Effect.succeed(provider.capabilities),
-                  select: () => Effect.succeed(provider),
-                }),
-              ),
-            ],
-          },
-        });
-        yield* Effect.gen(function* () {
-          const service = yield* LandofileService;
-          const counted = LandofileService.of({
-            ...service,
-            discover: service.discover.pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  discoveries++;
-                }),
-              ),
-            ),
+    await withEnvVar("LANDO_PROVIDER", provider.id, () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const layer = makeLandoRuntime({
+            bootstrap: "app",
+            cwd: root,
+            plugins: {
+              policy: "bundled-only",
+              layers: [
+                Layer.succeed(
+                  RuntimeProviderRegistry,
+                  RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                    appliedPlansFor: () => Effect.succeed([]),
+                    list: Effect.succeed([ProviderId.make("test")]),
+                    capabilities: Effect.succeed(provider.capabilities),
+                    select: () => Effect.succeed(provider),
+                  }),
+                ),
+              ],
+            },
           });
           yield* Effect.gen(function* () {
-            const selector = { root: AbsolutePath.make(root) };
-            const app = yield* resolveApp(selector);
-            expect(discoveries).toBe(1);
-            yield* Effect.promise(() => writeFile(file, document(false)));
-            yield* app.exec({ command: ["env"] });
-            yield* app.tooling("probe");
-            expect((yield* app.info({ deep: true })).agentEnv?.forwarded).toContain("CLAUDECODE");
-            yield* app.info();
-            expect(discoveries).toBe(1);
-            process.env.LANDO_AGENT_ENV = "0";
-            yield* app.exec({ command: ["env"] });
-            expect((yield* app.info({ deep: true })).agentEnv?.enabled).toBe(false);
-            Reflect.deleteProperty(process.env, "LANDO_AGENT_ENV");
-            const refreshed = yield* resolveApp(selector);
-            expect(discoveries).toBe(2);
-            yield* refreshed.exec({ command: ["env"] });
-            expect((yield* refreshed.info({ deep: true })).agentEnv?.enabled).toBe(false);
-            expect(discoveries).toBe(2);
-          }).pipe(Effect.provideService(LandofileService, counted));
-        }).pipe(Effect.provide(layer));
-      }).pipe(Effect.scoped),
+            const service = yield* LandofileService;
+            const counted = LandofileService.of({
+              ...service,
+              discover: service.discover.pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    discoveries++;
+                  }),
+                ),
+              ),
+            });
+            yield* Effect.gen(function* () {
+              const selector = { root: AbsolutePath.make(root) };
+              const app = yield* resolveApp(selector);
+              expect(discoveries).toBe(1);
+              yield* Effect.promise(() => writeFile(file, document(false)));
+              yield* app.exec({ command: ["env"] });
+              yield* app.tooling("probe");
+              expect((yield* app.info({ deep: true })).agentEnv?.forwarded).toContain("CLAUDECODE");
+              yield* app.info();
+              expect(discoveries).toBe(1);
+              process.env.LANDO_AGENT_ENV = "0";
+              yield* app.exec({ command: ["env"] });
+              expect((yield* app.info({ deep: true })).agentEnv?.enabled).toBe(false);
+              Reflect.deleteProperty(process.env, "LANDO_AGENT_ENV");
+              const refreshed = yield* resolveApp(selector);
+              expect(discoveries).toBe(2);
+              yield* refreshed.exec({ command: ["env"] });
+              expect((yield* refreshed.info({ deep: true })).agentEnv?.enabled).toBe(false);
+              expect(discoveries).toBe(2);
+            }).pipe(Effect.provideService(LandofileService, counted));
+          }).pipe(Effect.provide(layer));
+        }).pipe(Effect.scoped),
+      ),
     );
     expect(forwarded).toEqual(["1", "1", undefined, undefined]);
   } finally {
