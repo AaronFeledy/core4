@@ -1,0 +1,231 @@
+---
+id: magento
+provider: test
+timeout: 90000
+tags: [beta, docs, magento, php, mariadb, opensearch, service]
+---
+
+# Run Magento Open Source with Mage-OS
+
+Magento wants PHP extensions the stock image doesn't have, a database, and a search engine before `setup:install` will even talk to you. Put all three in one Landofile, install Mage-OS (the community distribution of Magento Open Source that doesn't need Adobe Marketplace keys), and drive it with `bin/magento`.
+
+You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Make an empty app directory and save this as `.lando.yml` in it:
+
+```yaml
+name: mageos
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    webroot: pub
+    allowOverride: true
+    build:
+      artifact:
+        - "apt-get update && apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev && rm -rf /var/lib/apt/lists/*"
+        - "docker-php-ext-install -j\"$(nproc)\" bcmath ftp soap sockets xsl"
+    mounts:
+      - source: ./php.ini
+        target: /usr/local/etc/php/conf.d/zz-magento.ini
+        readOnly: true
+  database:
+    type: mariadb
+    creds:
+      user: magento
+      password: magento-dev
+      database: magento
+  search:
+    type: opensearch
+tooling:
+  composer:
+    service: appserver
+    cmd: [composer]
+    description: Run Composer inside the appserver service.
+  magento:
+    service: appserver
+    cmd: [php, bin/magento]
+    user: www-data
+    description: Run bin/magento inside the appserver service.
+```
+
+Save this as `php.ini` next to it:
+
+```ini
+memory_limit = 2G
+```
+
+- The stock PHP image ships `gd`, `intl`, `mbstring`, `mysqli`, `opcache`, `pcntl`, `pdo_mysql`, `pdo_pgsql`, `pdo_sqlite`, and `zip`. Magento also needs `bcmath`, `ftp`, `soap`, `sockets`, and `xsl`, so the two `build.artifact` steps install their headers and compile them into the image.
+- `webroot: pub` serves Magento's `pub/` directory. `allowOverride: true` lets Apache read Magento's `.htaccess` rewrites; it's off by default.
+- `type: mariadb` is MariaDB 11.4 and `type: opensearch` is OpenSearch 2 with its security plugin off. Both are reachable by service name, so Magento talks to `database` and `search`.
+- The `magento` task runs as `www-data`, the user Apache runs PHP as. Files `bin/magento` writes (cache, generated code, static assets) stay writable for the web server.
+- `php.ini` raises `memory_limit` for both the CLI and Apache. Magento's installer and indexers need more than PHP's default.
+
+Start it:
+
+```sh
+lando start
+lando info
+```
+
+Check that `lando info` lists an HTTPS URL for `appserver` and shows `database` with the `magento` user. That proves the app is up and the router has a route for it. Nothing is installed yet, so the URL doesn't serve a store.
+
+## Install Mage-OS
+
+`composer create-project` wants an empty directory, and yours already has `.lando.yml`. Create the project in `/tmp` inside the container, keep only its `composer.json`, then install into `/app`:
+
+```sh
+lando exec appserver -- sh -c 'composer create-project --no-install --repository-url=https://repo.mage-os.org/ mage-os/project-community-edition /tmp/mageos && cp /tmp/mageos/composer.json /app/composer.json'
+lando composer install
+```
+
+Composer pulls a few hundred packages. Go refill your coffee.
+
+Hand Magento's writable directories to `www-data`. Don't chown all of `/app`: that reowns your code and `.lando.yml`, and on a Linux host your editor loses write access to them.
+
+```sh
+lando exec appserver -- chown -R www-data:www-data app/etc generated pub/media pub/static var
+```
+
+Run the installer. Replace `<appserver-url>` with the HTTPS URL `lando info` lists for `appserver`, and keep the trailing slash. Pick a real admin password if anyone else can reach this machine:
+
+```sh
+lando magento setup:install \
+  --base-url=<appserver-url>/ \
+  --base-url-secure=<appserver-url>/ \
+  --use-secure=1 --use-secure-admin=1 \
+  --db-host=database --db-name=magento --db-user=magento --db-password=magento-dev \
+  --search-engine=opensearch --opensearch-host=search --opensearch-port=9200 \
+  --admin-firstname=Admin --admin-lastname=User --admin-email=admin@example.com \
+  --admin-user=admin --admin-password=admin12345 \
+  --backend-frontname=admin \
+  --language=en_US --currency=USD --timezone=America/Chicago \
+  --use-rewrites=1
+```
+
+Check that it ends with `[SUCCESS]: Magento installation complete.` That proves Magento reached `database` and `search` by service name and wrote its schema.
+
+Open `<appserver-url>/` in a browser. Check that the store home page loads with the Luma theme's styles. Styled pages prove Apache serves `pub/`, the rewrites reach Magento's static file handler, and `www-data` can write `pub/static`.
+
+## Switch to developer mode and log in
+
+A fresh install runs in `default` mode. Switch to `developer` for local work:
+
+```sh
+lando magento deploy:mode:set developer
+lando magento deploy:mode:show
+```
+
+Check that `deploy:mode:show` reports `developer`.
+
+Magento turns on admin two-factor auth by default. Turn it off for a local install only; never on a store anyone else uses:
+
+```sh
+lando magento module:disable Magento_TwoFactorAuth
+lando magento setup:upgrade
+```
+
+Open `<appserver-url>/admin` and log in as `admin` with the password you passed to `setup:install`. Check that you land on the dashboard.
+
+## Reindex and check search
+
+Magento writes its catalog index to OpenSearch. Rebuild the indexes, then list what's in `search`:
+
+```sh
+lando magento indexer:reindex
+lando magento indexer:status
+lando exec appserver -- curl -s 'http://search:9200/_cat/indices?h=index'
+```
+
+Check that `indexer:status` shows every indexer as `Ready` and the index list includes a `magento2_product_` index. That proves the catalog search indexer reached OpenSearch. It doesn't prove the storefront search returns anything; a fresh install has no products.
+
+## Query the database
+
+The `database` service brings a `lando mariadb` task, logged in as the `creds` user on the `magento` database:
+
+```sh
+lando mariadb -e 'SELECT code FROM store'
+```
+
+Check that the result lists `admin` and `default`.
+
+## Add a module and lint it
+
+Magento loads your own code from `app/code/<Vendor>/<Module>`. A module needs two files. Save this as `app/code/Acme/Hello/registration.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Magento\Framework\Component\ComponentRegistrar;
+
+ComponentRegistrar::register(ComponentRegistrar::MODULE, "Acme_Hello", __DIR__);
+```
+
+Save this as `app/code/Acme/Hello/etc/module.xml`:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+    <module name="Acme_Hello"/>
+</config>
+```
+
+Enable it and register it:
+
+```sh
+lando magento module:enable Acme_Hello
+lando magento setup:upgrade
+lando magento module:status Acme_Hello
+```
+
+Check that `module:status` says `Module is enabled`.
+
+The project ships PHP_CodeSniffer with Magento's coding standard. Lint the module's PHP:
+
+```sh
+lando exec appserver -- vendor/bin/phpcs -q --standard=Magento2 --extensions=php app/code/Acme
+```
+
+Check that it exits `0` with no output. That proves the module's PHP passes the `Magento2` standard. It says nothing about the XML; drop `--extensions=php` to lint every file type.
+
+## Check the config
+
+`lando app:config:lint` validates the Landofile and `lando app:config` prints it resolved, without starting containers. These checks confirm the PHP build steps, the webroot and rewrite settings, the services, and the tooling user. They don't build the image or install Magento:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="mageos" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"pub\",\\s*\"allowOverride\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bcmath ftp soap sockets xsl" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zz-magento\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"search\":\\s*\\{[^}]*\"type\":\\s*\"opensearch\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"www-data\",\\s*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"php\"\\s*,\\s*\"bin/magento\"\\s*\\]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Tear down
+
+`lando destroy -y` removes the app containers and networks. The database, OpenSearch, and `vendor` volumes stay, so the next `lando start` comes back with your store.
+
+Adding `--volumes` also deletes those volumes: the database, the search index, and `vendor`. You'll run `lando composer install` and `setup:install` again.
+
+```sh
+lando destroy -y
+```
+
+## Next
+
+- [Customize PHP](./php-customization.mdx) for more on `build.artifact`, `php.ini` mounts, and database clients
+- [Add OpenSearch](./opensearch.mdx) for the search service on its own
+- [Add MariaDB](./mariadb.mdx) for `creds` and connection details
+- [Run commands inside a service](../cli/exec.mdx) for `lando exec` and `--user`
