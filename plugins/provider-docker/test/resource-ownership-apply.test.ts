@@ -18,6 +18,8 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
   await withInventory(async ({ plan, root, state, store }) => {
     // Given
     const desired = webFor(plan);
+    const privateNetwork = landoAppNetworkName(desired);
+    if (privateNetwork === undefined) throw new Error("Expected a private network in this fixture");
     const networks = new Map<
       string,
       { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
@@ -70,7 +72,7 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
     expect(Result.isFailure(failed)).toBe(true);
     // Retention: apply does not compensate/teardown on failure.
     expect(deleteAttempts).toBe(0);
-    expect(networks.has(landoAppNetworkName(desired))).toBe(true);
+    expect(networks.has(privateNetwork)).toBe(true);
     expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
     expect(await Effect.runPromise(store.summary(root))).toBeDefined();
     const cleanup = provider.cleanupOwnedResources;
@@ -80,7 +82,7 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
     const removed = await Effect.runPromise(cleanup(root, { volumes: false }));
     // Then
     expect(removed).toEqual({ servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 });
-    expect(networks.has(landoAppNetworkName(desired))).toBe(false);
+    expect(networks.has(privateNetwork)).toBe(false);
     expect(networks.size).toBe(1);
     expect(await Effect.runPromise(store.summary(root))).toBeUndefined();
   });
@@ -91,6 +93,7 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
     // Given a failed apply that recorded ownership hints but never an applied plan.
     const desired = webFor(plan);
     const privateNetwork = landoAppNetworkName(desired);
+    if (privateNetwork === undefined) throw new Error("Expected a private network in this fixture");
     const containerName = "lando-owned-web";
     const networks = new Map<
       string,
