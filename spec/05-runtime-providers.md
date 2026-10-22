@@ -24,7 +24,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 1. **Core never shells out to provider binaries.** Every provider operation goes through `RuntimeProvider`.
 2. **Core never makes provider-native files the source of truth.** Providers MAY emit native files from a plan.
-3. **Provider selection is explicit and cached.** App or global configuration overrides the bundled `lando` default; host-only commands and host tooling require no provider unless they operate on runtime resources. The host provider resolves setup's scoped override, then `LANDO_PROVIDER`, then config `defaultProviderId`, then `lando`. An app's Landofile provider MUST NOT change the host provider. Planner and registry MUST share this override-aware resolution. Plan cache identity MUST include the host provider.
+3. **Provider selection is explicit and cached.** App or global configuration overrides the bundled `lando` default; host-only commands and host tooling require no provider unless they operate on runtime resources. The CLI/default host-provider policy resolves setup's scoped override, then `LANDO_PROVIDER`, then config `defaultProviderId`, then `lando`. Embedding hosts follow §16.5: host configuration MAY outrank or exclude environment input. An app's Landofile provider MUST NOT change the host provider. Planner and registry MUST share the applicable override-aware resolution. Plan cache identity MUST include the host provider.
 4. **Capabilities are validated before planning completes and before provider action.** Missing required behavior fails with a typed capability error.
 5. **Provider-specific configuration is namespaced** under `providers.<id>`.
 6. **Escape hatches are non-portable.** Supported Compose input remains shared input; provider extensions do not become portable semantics.
@@ -92,7 +92,15 @@ Before any provider `apply` mutates app containers, private networks, or volumes
 
 `RuntimeProviderContribution.resourceOwnership(ctx, root)` is a filesystem-only query and MUST NOT construct, initialize, or contact a runtime. It reads the provider-private `ctx.stateStore` `resource-ownership` namespace, keyed by canonical owner (§12.4.2). `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is the optional per-provider form of the same query, with the same filesystem-only restriction.
 
-`RuntimeProviderRegistry.appliedPlansFor(root)` returns the applied plans of every installed contribution whose `identity.appRoot` exactly equals `root`. Callers pass a canonical root. It is filesystem-only and MUST NOT construct, initialize, or contact a runtime. Shared app placement uses it.
+`RuntimeProviderRegistry` MUST provide all three evidence members. Callers pass canonical roots; app-kind and identity matching follows the shared placement predicate above.
+
+| Required member | Result and behavior | Failure channel |
+|---|---|---|
+| `appliedPlansFor(root)` | All installed contributions' applied plans whose `identity.appRoot` exactly equals `root`. Filesystem-only; MUST NOT construct, initialize, or contact a runtime. Shared app placement uses it. | `ProviderUnavailableError \| NoProviderInstalledError` |
+| `resolveAppliedPlan(root)` | The unique nearest ancestor-matching non-scratch `AppPlan`, or `undefined` when no applied or owned evidence exists. Orphan resources or cleanup-only ownership MUST fail closed. A matching applied plan MUST NOT require runtime or ownership-inventory inspection. | `AppResolveError \| ProviderError \| NoProviderInstalledError` |
+| `resolveTeardownEvidence(root)` | Exact-root `AppliedTeardownEvidence`: `applied`, `orphans`, `owned`, or `absent`. MUST validate ownership before mutation and MUST NOT inherit an ancestor app as the teardown target. | `AppResolveError \| ProviderError \| NoProviderInstalledError` |
+
+Ambiguous applied claims and mismatched attribution MUST fail with `AppResolveError`; provider inspection failures MUST propagate through `ProviderError`. Missing registry members MUST NOT be replaced by empty or absent evidence.
 
 Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown is the exception to the every-contribution inventory query: it consults only the realized global provider's inventory, or the host provider's when no applied global plan exists, through `RuntimeProviderRegistry.resourceOwnership`, and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
 
@@ -135,6 +143,8 @@ A provider that realizes network names physically (the managed Windows machine) 
 ### 5.4 Capabilities
 
 Capabilities are schema-validated claims. Providers MUST report them truthfully, and the §13.1 provider contract suite verifies declared behavior.
+
+The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, and `resolveTeardownEvidence`) are required contracts, not optional provider capabilities.
 
 | Capability | Meaning |
 |---|---|

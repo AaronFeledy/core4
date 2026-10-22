@@ -107,7 +107,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks the index and removes them. Stopped providers are reported unavailable, never started (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `minimal` | Edit `<userDataRoot>/global/.lando.yml` and plugin enablement |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--purge` includes service/app volumes |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
 | `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
 | `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |

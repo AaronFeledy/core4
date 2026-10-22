@@ -142,7 +142,7 @@ The global app owns one route definition. `RouterService` does not expose a read
 | Canonical id | Alias | Bootstrap | Contract |
 |---|---|---|---|
 | `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map; `set`/`unset` follow the §8.2.1 format-preserving, fail-closed write contract. The generated layer is read-only. |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--purge` follows §20.9. |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--purge` follows §20.9. |
 | `meta:global:info` | `global:info` | `global` | Report service information; supports `--service` and `--format`. |
 | `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |
 | `meta:global:list` | `global:list` | `minimal` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
@@ -180,11 +180,13 @@ At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,
 
 | Written scope | Global-app behavior |
 |---|---|
-| `service` | Owned by one global service; removed by destroy and by purge. |
-| `app` | Shared across global services; preserved by normal destroy and removed by `--purge`. |
+| `service` | Data owned by one global service; preserved by normal destroy and removed by `--purge`. |
+| `app` | Data shared across global services; preserved by normal destroy and removed by `--purge`. |
 | `global` | Shared under §6.5; survives `meta:global:destroy --purge` and is removed only by `meta:uninstall` (§17.7). |
 
 Global-app resources carry the standard ownership labels plus a global-app marker so `apps:poweroff --keep-global` can exclude them.
+
+Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1). Scratch apps retain their explicit lifetime and volume-removal policy (§21).
 
 ### 20.10 Proxy and CA realization through the global app
 
@@ -235,7 +237,7 @@ All errors are tagged and include remediation where applicable:
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
 - `GlobalAppError`, the umbrella for global state-transition failures. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
-- `AppPlacementError`, with `app`, `desiredProviderId`, `realizedProviderId`, message, and remediation. Start, setup, and global lifecycle commands MUST return it as the top-level failure, never wrapped by `GlobalAppError`, `GlobalAutoStartError`, or `ProxySetupError`.
+- `AppPlacementError`, with `app`, `desiredProviderId`, `realizedProviderId`, message, and remediation. Start and setup MUST propagate it as the top-level failure for required global services and routing, never wrapped by `GlobalAppError`, `GlobalAutoStartError`, or `ProxySetupError`. Explicit global lifecycle commands MUST also preserve it at top level. Best-effort SSH sidecar acquisition (§10.4, §20.6.3) is exempt: its placement failure warns and MUST NOT abort the caller.
 - `ServiceNotReadyError`, the shared post-commit readiness verdict. It participates in group outcomes and partial-failure aggregation; if no group succeeds the first original failure remains unchanged. Remediation uses `lando global:logs -s <service>` and `lando global:start`, except `inspect-failed`, which prescribes `lando doctor`. Established resources and published routes remain available for diagnosis and convergence on retry (§20.6.5).
 - `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)
 
