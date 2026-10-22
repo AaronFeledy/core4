@@ -499,6 +499,54 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
     });
   });
 
+  test("scope close reaps a scratch whose registry entry vanished while its root remains", async () => {
+    await withTempProject(async () => {
+      // Given an attached scratch whose registry entry is lost mid-scope.
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const events: LandoEvent[] = [];
+      const instanceRoot = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const service = yield* ScratchAppService;
+            const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
+            const registry = yield* ScratchRegistry;
+            yield* registry.remove(handle.id);
+            return join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", handle.id);
+          }),
+        ).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events }))),
+      );
+      // When the scope closes, then the scope's plan still reaps provider resources and the root.
+      expect(destroyCalls).toHaveLength(2);
+      expect(await directoryExists(instanceRoot)).toBe(false);
+      expect(events.filter((event) => event._tag === "post-scratch-destroy")).toHaveLength(1);
+    });
+  });
+
+  test("scope close does not reap again after an explicit destroy", async () => {
+    await withTempProject(async () => {
+      // Given an attached scratch destroyed explicitly inside its scope.
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const events: LandoEvent[] = [];
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const service = yield* ScratchAppService;
+            const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
+            yield* service.destroy(handle.id);
+          }),
+        ).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events }))),
+      );
+      // When the scope closes, then only the explicit destroy bracket was published.
+      expect(destroyCalls).toHaveLength(2);
+      expect(events.filter((event) => event._tag === "pre-scratch-destroy")).toHaveLength(1);
+      expect(events.find((event) => event._tag === "pre-scratch-destroy")).toMatchObject({
+        reason: "explicit",
+      });
+    });
+  });
+
   test("detached (detached:true) skips the finalizer; the scratch survives scope close", async () => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];

@@ -756,14 +756,21 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     );
     if (!detached) {
       // Skip the destroy when the entry was converted to detached mid-scope
-      // (`apps:scratch:run --keep`): the registry owns the scratch from there.
+      // (`apps:scratch:run --keep`): the registry owns the scratch from there. A missing
+      // entry with no instance root means an explicit destroy already reaped it; a missing
+      // or unreadable entry with the root still present is reaped from the scope's plan.
       yield* Effect.addFinalizer(() =>
         scratchRegistry.get(scratchId).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
           Effect.flatMap((entry) =>
-            entry === undefined || entry.detached || retainedScratchIds.has(scratchId)
-              ? Effect.void
-              : destroyScratchResources("scope-close"),
+            entry !== undefined
+              ? Effect.succeed(!entry.detached)
+              : fileSystem.exists(instanceRoot).pipe(Effect.catch(() => Effect.succeed(true))),
+          ),
+          Effect.flatMap((owned) =>
+            owned && !retainedScratchIds.has(scratchId)
+              ? destroyScratchResources("scope-close")
+              : Effect.void,
           ),
         ),
       );
