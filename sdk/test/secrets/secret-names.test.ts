@@ -127,6 +127,7 @@ test("field recognition preserves the broad original pattern", () => {
 test.each([
   ['PASSWORD="private tail"', "PASSWORD=[redacted]"],
   ["PASSWORD='x y'", "PASSWORD=[redacted]"],
+  [String.raw`sh -c "echo PASSWORD=\"private tail\" >&2"`, String.raw`sh -c "echo PASSWORD=[redacted] >&2"`],
   ['PASSWORD="[redacted]"', "PASSWORD=[redacted]"],
   ["WRAP=PASSWORD=x", "WRAP=PASSWORD=[redacted]"],
   ["?next=https://x/?token=y", "?next=https://x/?token=[redacted]"],

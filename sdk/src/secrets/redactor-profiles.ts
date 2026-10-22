@@ -88,7 +88,7 @@ const ID = "[id]";
 const HOST = "[host]";
 
 const SECRET_ASSIGNMENT_PATTERN = new RegExp(
-  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|(?:\[redacted\]|[^\s,;"'\]}])+)`,
+  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(\\"[^"]*\\"|\\'[^']*\\'|"[^"]*"|'[^']*'|(?:\[redacted\]|[^\s,;"'\]}])+)`,
   "giu",
 );
 
