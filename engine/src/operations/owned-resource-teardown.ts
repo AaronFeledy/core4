@@ -35,7 +35,8 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             remediation: "Restore the owning provider before retrying teardown.",
           }),
         );
-      return cleanup;
+      return (root: AbsolutePath, options: DestroyOptions) =>
+        cleanup(root, { ...options, appIds: hints.appIds });
     }),
   );
   return Effect.gen(function* () {

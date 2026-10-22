@@ -511,6 +511,8 @@ export class RuntimeProvider extends Context.Service<
 
 export interface DestroyOptions {
   readonly volumes: boolean;
+  /** Restrict ownership-inventory cleanup to these app identities at a shared root. */
+  readonly appIds?: ReadonlyArray<AppId>;
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }

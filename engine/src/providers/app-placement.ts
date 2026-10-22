@@ -3,7 +3,7 @@ import { AbsolutePath, type AppPlan, type AppRef, type ProviderId } from "@lando
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
-import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
+import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 
 export const TeardownProvider = Context.Reference<ProviderId | undefined>("@lando/engine/TeardownProvider", {
   defaultValue: () => undefined,
@@ -29,11 +29,7 @@ export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(app.root));
   const registry = yield* RuntimeProviderRegistry;
   const plans = (yield* registry.appliedPlansFor(root)).filter(
-    (plan) =>
-      (providerId === undefined || plan.provider === providerId) &&
-      (app.kind === "scratch"
-        ? plan.id === app.id && Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY)
-        : !Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY)),
+    (plan) => (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
   );
   if (plans.length > 1)
     return yield* Effect.fail(
