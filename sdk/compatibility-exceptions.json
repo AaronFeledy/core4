@@ -1,5 +1,23 @@
 [
   {
+    "surface": "schema:PreDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.evidence",
+    "justification": "Pre-release destroy events require the primary teardown evidence."
+  },
+  {
+    "surface": "schema:PostDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.evidence",
+    "justification": "Pre-release destroy events require the primary teardown evidence."
+  },
+  {
+    "surface": "schema:PostDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.outcome",
+    "justification": "Pre-release destroy completion reports the aggregate invocation outcome."
+  },
+  {
     "surface": "schema:DatasetApplyResult",
     "changeKind": "property-added",
     "path": "$.snapshot.ownerKey",
@@ -2017,15 +2035,21 @@
   },
   {
     "surface": "schema:LandoEvent",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Pre-release LandoEvent adds the pre/post-global-destroy and pre/post-scratch-destroy lifecycle events; existing members are unchanged."
+  },
+  {
+    "surface": "schema:LandoEvent",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "LandoEvent anyOf members embed RoutePlan. Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-release LandoEvent members require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
   },
   {
     "surface": "schema:RendererPanelContext",
     "changeKind": "unsupported-construct",
     "path": "$.event.anyOf",
-    "justification": "RendererPanelContext event anyOf members embed RoutePlan. Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-release renderer event payloads require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
   },
   {
     "surface": "schema:GlobalConfig",

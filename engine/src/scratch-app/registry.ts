@@ -34,6 +34,7 @@ const RegistryEntrySchema = Schema.Struct({
   source: ScratchSourceSchema,
   isolate: Schema.Literals(["full", "baked", "cwd"]),
   detached: Schema.Boolean,
+  shareGlobalStorage: Schema.optionalKey(Schema.Boolean),
   ownerPid: Schema.optionalKey(Schema.Number),
   rootPath: Schema.String,
   status: Schema.Literals(["acquiring", "running", "stopping", "destroyed-pending-cleanup"]),

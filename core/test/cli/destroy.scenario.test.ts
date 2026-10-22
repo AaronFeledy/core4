@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
-import { FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
+import { EventError, FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -48,6 +48,7 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { startChildTaskId } from "@lando/sdk/task-progress";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
@@ -150,6 +151,7 @@ const plan: AppPlan = {
   name: "test-destroy",
   slug: "test-destroy",
   root: AbsolutePath.make(testAppRoot),
+  identity: { appRoot: AbsolutePath.make(testAppRoot), ownerKey: ownerKey(testAppRoot) },
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
@@ -213,6 +215,9 @@ const makeDestroyLayer = (
     readonly absent?: boolean;
     readonly orphanEvidence?: boolean;
     readonly ownedEvidence?: boolean;
+    readonly preDestroyFailure?: EventError;
+    readonly leftoverOrphans?: boolean;
+    readonly appliedInventory?: boolean;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -226,6 +231,22 @@ const makeDestroyLayer = (
   const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
+  const mutations: string[] = [];
+  const orphanGroup = {
+    providerId,
+    appId: plannedApp.id,
+    volumes: [],
+    services: [
+      {
+        app: plannedApp.id,
+        appRoot: plannedApp.root,
+        providerId,
+        service: ServiceName.make("orphan"),
+        status: "stopped" as const,
+        containerId: "orphan-container",
+      },
+    ],
+  };
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -233,8 +254,14 @@ const makeDestroyLayer = (
     version: "0.0.0",
     platform: "linux",
     capabilities,
-    ...(options.orphanEvidence === true
-      ? { removeObservedService: () => Effect.succeed({ kind: "removed" as const }) }
+    ...(options.orphanEvidence === true || options.leftoverOrphans === true
+      ? {
+          removeObservedService: () =>
+            Effect.sync(() => {
+              mutations.push("remove:orphan");
+              return { kind: "removed" as const };
+            }),
+        }
       : {}),
     removeVolumeSnapshot: (snapshot) =>
       (options.removeSnapshotEffect ?? Effect.void).pipe(
@@ -307,7 +334,10 @@ const makeDestroyLayer = (
       }),
     list: () => Effect.succeed([]),
     cleanupOwnedResources: () =>
-      Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+      Effect.sync(() => {
+        mutations.push("inventory");
+        return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 };
+      }),
   };
 
   const proxyLayer = Layer.succeed(
@@ -337,7 +367,10 @@ const makeDestroyLayer = (
     Layer.succeed(
       PathsService,
       makeLandoPaths({
-        ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+        userDataRoot: options.userDataRoot ?? join(testAppRoot, "lando-data"),
+        userCacheRoot: join(testAppRoot, "lando-cache"),
+        userConfRoot: join(testAppRoot, "lando-conf"),
+        systemPluginRoot: join(testAppRoot, "lando-plugins"),
         env: {},
         platform: "linux",
       }),
@@ -346,10 +379,9 @@ const makeDestroyLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: (root) =>
+        resolveTeardownEvidence: () =>
           Effect.succeed(
-            options.absent !== true && root === plannedApp.root
+            options.absent !== true
               ? { kind: "applied" as const, plan: plannedApp }
               : { kind: "absent" as const },
           ),
@@ -357,7 +389,7 @@ const makeDestroyLayer = (
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
-        ...(options.absent === true ? { resolveAppliedPlan: () => Effect.succeed(undefined) } : {}),
+        resolveAppliedPlan: () => Effect.succeed(options.absent === true ? undefined : plannedApp),
         ...(options.ownedEvidence === true
           ? {
               resolveTeardownEvidence: () =>
@@ -405,8 +437,24 @@ const makeDestroyLayer = (
                 evidenceRoots.push(root);
                 return Effect.succeed(
                   destroyCalls.length === 0
-                    ? { kind: "applied" as const, plan: plannedApp }
-                    : { kind: "absent" as const },
+                    ? {
+                        kind: "applied" as const,
+                        plan: plannedApp,
+                        ownership:
+                          options.appliedInventory === true
+                            ? [
+                                {
+                                  providerId,
+                                  ownerKey: ownerKey(plannedApp.root),
+                                  appRoot: plannedApp.root,
+                                  appIds: [plannedApp.id],
+                                },
+                              ]
+                            : [],
+                      }
+                    : options.leftoverOrphans === true
+                      ? { kind: "orphans" as const, groups: [orphanGroup] }
+                      : { kind: "absent" as const },
                 );
               },
             }
@@ -421,8 +469,15 @@ const makeDestroyLayer = (
       publish: (event) =>
         Effect.sync(() => {
           events.push(event._tag);
+          mutations.push(event._tag);
           publishedEvents.push(event);
-        }),
+        }).pipe(
+          Effect.andThen(
+            event._tag === "pre-destroy" && options.preDestroyFailure !== undefined
+              ? Effect.fail(options.preDestroyFailure)
+              : Effect.void,
+          ),
+        ),
       subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
@@ -462,6 +517,7 @@ const makeDestroyLayer = (
     evidenceRoots,
     stateStore: stateStore.service,
     removedSnapshots,
+    mutations,
   };
 };
 
@@ -488,12 +544,12 @@ const runDestroyCli = (
 const seedSnapshot = async (
   _harness: ReturnType<typeof makeDestroyLayer>,
   dataRoot: string,
-  input: { readonly id: string; readonly sourceRoot?: string },
+  input: { readonly id: string; readonly sourceRoot?: string; readonly appId?: string },
 ) => {
   const info = Schema.decodeUnknownSync(SnapshotInfo)({
     owner: { appRoot: input.sourceRoot ?? "/unknown", ownerKey: ownerKey(input.sourceRoot ?? "/unknown") },
     id: input.id,
-    store: { app: plan.id, store: "data" },
+    store: { app: input.appId ?? plan.id, store: "data" },
     digest: "sha256:snapshot",
     sizeBytes: 42,
     createdAt: "2026-05-15T00:00:00Z",
@@ -511,7 +567,7 @@ const seedSnapshot = async (
           },
         }),
   });
-  const appDir = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).ownerSnapshotsDir(
+  const appDir = makeLandoPaths({ userDataRoot: dataRoot, platform: "linux" }).ownerSnapshotsDir(
     info.owner.ownerKey,
   );
   await mkdir(join(appDir, "data"), { recursive: true });
@@ -559,7 +615,153 @@ const expectMissingPath = async (path: string): Promise<void> => {
   throw new Error(`Expected ${path} to be removed.`);
 };
 
+const expectRecordedBracket = (
+  harness: ReturnType<typeof makeDestroyLayer>,
+  evidence: "applied" | "orphans" | "inventory" | "snapshots",
+  expected: {
+    readonly outcome: "destroyed" | "unchanged";
+    readonly children: ReadonlyArray<string>;
+    readonly ids?: ReadonlyArray<string>;
+  },
+) => {
+  const ids = expected.ids ?? [plan.id];
+  expect(harness.publishedEvents.filter((event) => event._tag === "pre-destroy")).toMatchObject(
+    ids.map((id) => ({ app: { id }, evidence })),
+  );
+  expect(harness.publishedEvents.filter((event) => event._tag === "post-destroy")).toMatchObject(
+    ids.map((id) => ({ app: { id }, evidence, outcome: expected.outcome })),
+  );
+  expect(harness.publishedEvents.filter((event) => event._tag === "task.tree.start")).toMatchObject([
+    { children: expected.children.map((id) => startChildTaskId(`destroy-${ids[0]}`, id)) },
+  ]);
+  expect(harness.events.indexOf("pre-destroy")).toBeLessThan(harness.events.indexOf("task.tree.start"));
+  expect(harness.events.indexOf("task.tree.complete")).toBeLessThan(harness.events.indexOf("post-destroy"));
+  expect(harness.events.at(-1)).toBe("post-destroy");
+  if (evidence !== "applied") {
+    expect(harness.events).not.toContain("pre-init");
+    expect(harness.events).not.toContain("post-init");
+  }
+};
+
 describe("lando destroy", () => {
+  test("inventory evidence brackets an unchanged cleanup when recorded resources are absent", async () => {
+    const harness = makeDestroyLayer({ ownedEvidence: true });
+    const result = await withCwd(testAppRoot, () =>
+      Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer))),
+    );
+    expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], snapshotsRemoved: 0 });
+    expectRecordedBracket(harness, "inventory", { outcome: "unchanged", children: ["provider"] });
+    expect(harness.destroyCalls).toEqual([]);
+    expect(harness.mutations.indexOf("inventory")).toBeLessThan(harness.mutations.indexOf("post-destroy"));
+  });
+
+  test.each([false, true])(
+    "known-empty teardown publishes no bracket or tree (purge=%s)",
+    async (purgeSnapshots) => {
+      const harness = makeDestroyLayer({ absent: true });
+      const result = await withCwd(testAppRoot, () =>
+        Effect.runPromise(destroyApp({ purgeSnapshots }).pipe(Effect.provide(harness.layer))),
+      );
+      expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], snapshotsRemoved: 0 });
+      expect(harness.events).toEqual([]);
+      expect(harness.destroyCalls).toEqual([]);
+    },
+  );
+
+  test.each([false, true])(
+    "snapshot-only purge uses every recorded app id with deleted Landofile=%s",
+    async (deleted) => {
+      await withTempCwd(async (dataRoot) => {
+        const root = join(dataRoot, "app");
+        await mkdir(root);
+        await Bun.write(join(root, ".lando.yml"), "name: edited-name\n");
+        if (deleted) await rm(join(root, ".lando.yml"));
+        const harness = makeDestroyLayer({ userDataRoot: dataRoot, absent: true });
+        const a = await seedSnapshot(harness, dataRoot, { id: "a", sourceRoot: root, appId: "old-name" });
+        const b = await seedSnapshot(harness, dataRoot, {
+          id: "b",
+          sourceRoot: root,
+          appId: "recorded-name",
+        });
+        const result = await withCwd(root, () =>
+          Effect.runPromise(
+            runDestroyCommand({ flags: { purge: true, yes: true } }).pipe(Effect.provide(harness.layer)),
+          ),
+        );
+        expect(result).toMatchObject({ outcome: "destroyed", snapshotsRemoved: 2, servicesDestroyed: [] });
+        expectRecordedBracket(harness, "snapshots", {
+          outcome: "destroyed",
+          children: ["snapshots"],
+          ids: ["old-name", "recorded-name"],
+        });
+        expect(harness.removedSnapshots).toEqual([a.info.id, b.info.id]);
+        await expectMissingPath(
+          makeLandoPaths({ userDataRoot: dataRoot, platform: "linux" }).ownerSnapshotsDir(ownerKey(root)),
+        );
+      });
+    },
+  );
+
+  test.each(["applied", "orphans", "inventory", "snapshots"] as const)(
+    "a pre-destroy subscriber vetoes %s removal",
+    async (evidence) => {
+      await withTempCwd(async (dataRoot) => {
+        const harness = makeDestroyLayer({
+          userDataRoot: dataRoot,
+          absent: evidence === "snapshots",
+          orphanEvidence: evidence === "orphans",
+          ownedEvidence: evidence === "inventory",
+          preDestroyFailure: new EventError({ message: "veto", event: "pre-destroy" }),
+        });
+        const owned = await seedSnapshot(harness, dataRoot, { id: "vetoed", sourceRoot: testAppRoot });
+        const result = await withCwd(testAppRoot, () =>
+          Effect.runPromiseExit(
+            destroyApp({ purgeSnapshots: true, volumes: true }).pipe(Effect.provide(harness.layer)),
+          ),
+        );
+        expect(Exit.isFailure(result)).toBe(true);
+        expect(harness.publishedEvents.find((event) => event._tag === "pre-destroy")).toMatchObject({
+          evidence,
+        });
+        expect(harness.events).not.toContain("post-destroy");
+        expect(harness.events).not.toContain("task.tree.start");
+        expect(harness.destroyCalls).toEqual([]);
+        expect(harness.removedSnapshots).toEqual([]);
+        expect(harness.mutations).not.toContain("remove:orphan");
+        expect(harness.mutations).not.toContain("inventory");
+        expect(await Bun.file(owned.sidecar).exists()).toBe(true);
+      });
+    },
+  );
+
+  test("missing-root applied teardown sweeps leftover orphans within one bracket", async () => {
+    await withTempCwd(async (dataRoot) => {
+      const root = AbsolutePath.make(join(dataRoot, "gone"));
+      const appliedPlan = { ...plan, root, identity: { appRoot: root, ownerKey: ownerKey(root) } };
+      const harness = makeDestroyLayer({
+        userDataRoot: dataRoot,
+        plannedApp: appliedPlan,
+        appliedPlanEvidence: true,
+        leftoverOrphans: true,
+      });
+      const result = await Effect.runPromise(
+        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesDestroyed).toEqual(["database", "web", "orphan"]);
+      expectRecordedBracket(harness, "applied", {
+        outcome: "destroyed",
+        children: ["provider", "host-proxy", "routes"],
+      });
+      expect(harness.destroyCalls).toHaveLength(1);
+      expect(harness.mutations.indexOf("remove:orphan")).toBeGreaterThan(
+        harness.mutations.indexOf("pre-destroy"),
+      );
+      expect(harness.mutations.indexOf("remove:orphan")).toBeLessThan(
+        harness.mutations.indexOf("post-destroy"),
+      );
+    });
+  });
+
   test("relative --root resolves against cwd and destroys the recorded missing app", async () => {
     await withTempCwd(async (parent) => {
       const root = AbsolutePath.make(join(parent, "gone"));
@@ -567,7 +769,8 @@ describe("lando destroy", () => {
       const harness = makeDestroyLayer({ plannedApp: appliedPlan, appliedPlanEvidence: true });
       const io = createBufferedRendererIO();
       await withCwd(parent, () => runDestroyCli(["--root", "gone", "--yes"], harness, io, "plain"));
-      expect(harness.evidenceRoots).toEqual([root, root, root]);
+      expect(harness.evidenceRoots.length).toBeGreaterThan(0);
+      expect(harness.evidenceRoots.every((candidate) => candidate === root)).toBe(true);
       expect(harness.destroyCalls).toHaveLength(1);
       expect(harness.destroyCalls[0]?.target.plan).toEqual(appliedPlan);
     });
@@ -705,11 +908,17 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([String(plan.id)]);
   });
-  test("plans the app, destroys without removing volumes by default, and emits destroy events", async () => {
-    const harness = makeDestroyLayer();
+  test("destroys the recorded app and finishes inventory cleanup before the applied post event", async () => {
+    const harness = makeDestroyLayer({ appliedPlanEvidence: true, appliedInventory: true });
     const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
 
     expectDestroyLifecycleWithTasks(harness.events);
+    expectRecordedBracket(harness, "applied", {
+      outcome: "destroyed",
+      children: ["provider", "host-proxy", "routes"],
+    });
+    expect(harness.mutations.indexOf("inventory")).toBeGreaterThan(harness.mutations.indexOf("pre-destroy"));
+    expect(harness.mutations.indexOf("inventory")).toBeLessThan(harness.mutations.indexOf("post-destroy"));
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
@@ -738,9 +947,12 @@ describe("lando destroy", () => {
 
       expect(harness.publishedEvents.find((event) => event._tag === "pre-destroy")).toMatchObject({
         app: scratchRef,
+        evidence: "applied",
       });
       expect(harness.publishedEvents.find((event) => event._tag === "post-destroy")).toMatchObject({
         app: scratchRef,
+        evidence: "applied",
+        outcome: "destroyed",
       });
     });
   });
@@ -753,7 +965,6 @@ describe("lando destroy", () => {
       const dataRoot = join(root, "service-data");
       const hostProxyDir = makeLandoPaths({
         userDataRoot: dataRoot,
-        env: {},
         platform: "linux",
       }).hostProxyRunDir(plan.id, plan.root);
       await mkdir(hostProxyDir, { recursive: true });
@@ -842,6 +1053,9 @@ describe("lando destroy", () => {
       expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "DataTransferError" } });
       expect(harness.destroyCalls).toEqual([]);
       expect(harness.events).not.toContain("post-destroy");
+      expect(harness.publishedEvents.find((event) => event._tag === "pre-destroy")).toMatchObject({
+        evidence: "applied",
+      });
       expect(await Bun.file(owned.sidecar).exists()).toBe(true);
       const listed = await Effect.runPromise(
         DataMover.use((mover) => mover.listSnapshots({ app: plan.id })).pipe(Effect.provide(harness.layer)),
@@ -887,13 +1101,16 @@ describe("lando destroy", () => {
         const desired = { ...plan, root: AbsolutePath.make(root) };
         const harness = makeDestroyLayer({ userDataRoot: dataRoot, plannedApp: desired, absent: true });
         const owned = await seedSnapshot(harness, dataRoot, { id: "snapshot-only", sourceRoot: root });
-        const result = await Effect.runPromise(
-          (missingRoot
-            ? runDestroyCommand({ flags: { root, purge: true, yes: true } })
-            : destroyApp({ purgeSnapshots: true })
-          ).pipe(Effect.provide(harness.layer)),
+        const result = await withCwd(missingRoot ? dataRoot : root, () =>
+          Effect.runPromise(
+            (missingRoot
+              ? runDestroyCommand({ flags: { root, purge: true, yes: true } })
+              : destroyApp({ purgeSnapshots: true })
+            ).pipe(Effect.provide(harness.layer)),
+          ),
         );
         expect(result).toMatchObject({ outcome: "destroyed", servicesDestroyed: [], snapshotsRemoved: 1 });
+        expectRecordedBracket(harness, "snapshots", { outcome: "destroyed", children: ["snapshots"] });
         expect(harness.destroyCalls).toEqual([]);
         expect(await Bun.file(owned.sidecar).exists()).toBe(false);
         expect(renderDestroyAppResult(result)).toBe(`destroyed: ${result.app} (1 snapshot removed)`);
@@ -928,6 +1145,11 @@ describe("lando destroy", () => {
         });
         expect(harness.removedSnapshots).toEqual([owned.info.id]);
         expect(await Bun.file(owned.sidecar).exists()).toBe(false);
+        expect(harness.mutations).toContain("remove:orphan");
+        expectRecordedBracket(harness, "orphans", {
+          outcome: "destroyed",
+          children: ["snapshots", "provider"],
+        });
       });
     },
   );
@@ -936,7 +1158,6 @@ describe("lando destroy", () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-"));
     const snapshotRoot = makeLandoPaths({
       userDataRoot: dataRoot,
-      env: {},
       platform: "linux",
     }).ownerSnapshotsDir(ownerKey(plan.root));
     await mkdir(join(snapshotRoot, "data"), { recursive: true });

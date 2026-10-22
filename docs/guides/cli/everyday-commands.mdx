@@ -122,6 +122,8 @@ lando destroy -y
 
 `-y` skips the confirmation prompt.
 
+`pre-destroy` fires before anything is removed, and `post-destroy` only after everything, leftovers included, is gone. When Lando finds no trace of the app, destroy reports `unchanged` and fires neither.
+
 If you've deleted or moved an app folder before tearing it down, use its old path to
 remove the leftovers. `lando doctor` lists app folders that no longer exist.
 `--root` refuses folders that still exist; run `lando destroy` from inside those

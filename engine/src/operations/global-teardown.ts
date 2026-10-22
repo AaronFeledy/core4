@@ -1,8 +1,10 @@
 import { AppResolveError } from "@lando/sdk/errors";
-import { Effect } from "effect";
+import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
+import { DateTime, Effect } from "effect";
 
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import {
+  EventService,
   FileSystem,
   GlobalAppService,
   RouterService,
@@ -15,8 +17,8 @@ import { TeardownProvider } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
-import { tearDownOrphans } from "./orphan-teardown.ts";
-import { ownedCleanupChanged, prepareOwnedResourceCleanupFrom } from "./owned-resource-teardown.ts";
+import { withDestroyProgress } from "./destroy-progress.ts";
+import { removeGlobalResources } from "./global-teardown-resources.ts";
 import { unknownPlanServiceError } from "./unknown-service.ts";
 
 const runtimeOnline = (provider: Pick<RuntimeProviderShape, "isAvailable" | "getStatus">) =>
@@ -50,7 +52,7 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   return { paths: { ...paths, root }, provider, evidence, materialized };
 });
 
-type GlobalTeardown = Effect.Success<ReturnType<typeof resolveGlobalTeardown>>;
+export type GlobalTeardown = Effect.Success<ReturnType<typeof resolveGlobalTeardown>>;
 
 export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelection")(function* (
   resolved: GlobalTeardown,
@@ -183,62 +185,47 @@ export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({
 
 export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   resolved: GlobalTeardown,
-  options: { readonly volumes: boolean; readonly removeState: boolean },
+  options: { readonly intent: "stop" | "destroy"; readonly volumes: boolean; readonly removeState: boolean },
 ) {
-  const cleanup = yield* prepareOwnedResourceCleanupFrom(
-    resolved.evidence.kind === "absent" ? [] : (resolved.evidence.ownership ?? []),
-    resolved.paths.root,
-    options,
-  );
-  const result = yield* Effect.gen(function* () {
-    switch (resolved.evidence.kind) {
-      case "applied": {
-        const plan = resolved.evidence.plan;
-        const result = yield* resolved.provider.destroy({ app: plan.id, plan }, options);
-        switch (result.kind) {
-          case "no-op":
-            return { changed: false, services: [], volumesRemoved: false };
-          case "destroyed":
-            return {
-              changed: true,
-              services: Object.values(plan.services)
-                .reverse()
-                .map((service) => String(service.name)),
-              volumesRemoved: options.volumes,
-            };
-          default: {
-            const unreachable: never = result;
-            return unreachable;
-          }
-        }
-      }
-      case "orphans": {
-        const result = yield* tearDownOrphans({
-          root: resolved.paths.root,
-          groups: resolved.evidence.groups,
-          options: { volumes: options.volumes, purgeCaches: false },
-          ownedCleanup: cleanup,
-        });
-        return {
-          changed: result.services.length > 0 || result.volumesRemoved || result.ownedChanged,
-          services: result.services,
-          volumesRemoved: result.volumesRemoved,
-        };
-      }
-      case "owned":
-      case "absent":
-        return { changed: false, services: [], volumesRemoved: false };
-      default: {
-        const unreachable: never = resolved.evidence;
-        return unreachable;
-      }
-    }
+  const evidence = resolved.evidence.kind;
+  if (evidence === "absent") return { changed: false, services: [], volumesRemoved: false };
+  const work = removeGlobalResources(resolved, {
+    volumes: options.volumes,
+    removeState: options.removeState,
   });
-  if (resolved.evidence.kind === "orphans") return result;
-  const removed = yield* cleanup;
-  return {
-    changed: result.changed || ownedCleanupChanged(removed),
-    services: [...new Set([...result.services, ...removed.servicesRemoved])],
-    volumesRemoved: result.volumesRemoved || removed.volumesRemoved > 0,
-  };
+  switch (options.intent) {
+    case "stop":
+      return yield* work;
+    case "destroy":
+      break;
+    default:
+      return options.intent satisfies never;
+  }
+  const events = yield* EventService;
+  const router = yield* RouterService;
+  const app = globalTeardownAppRef(resolved);
+  const payload = { scope: "global" as const, app, evidence, purge: options.volumes };
+  yield* events.publish(PreGlobalDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
+  const result = yield* withDestroyProgress({
+    events,
+    plan: { id: app.id, name: "global" },
+    children: { fileSync: false, snapshots: false, provider: true, hostProxy: false, proxy: true },
+    work: Effect.fnUntraced(function* (tree) {
+      yield* tree.startTask("provider");
+      const result = yield* work.pipe(Effect.tapError(() => tree.failTask("provider")));
+      yield* tree.completeTask("provider");
+      yield* tree.startTask("routes");
+      yield* router.removeRoutes(app.id).pipe(Effect.tapError(() => tree.failTask("routes")));
+      yield* tree.completeTask("routes");
+      return result;
+    }),
+  });
+  yield* events.publish(
+    PostGlobalDestroyEvent.make({
+      ...payload,
+      outcome: result.changed ? "destroyed" : "unchanged",
+      timestamp: DateTime.nowUnsafe(),
+    }),
+  );
+  return result;
 });

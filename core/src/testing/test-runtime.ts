@@ -923,6 +923,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchResourceScannerService = ScratchResourceScanner.of({
     listScratchIds: Effect.succeed([]),
     pruneScratch: () => Effect.void,
+    prepareScratch: () => Effect.succeed({ stop: Effect.succeed(false), destroy: Effect.succeed(false) }),
   });
 
   const toolingEngineService = ToolingEngine.of({
