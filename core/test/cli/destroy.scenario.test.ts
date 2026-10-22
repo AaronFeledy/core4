@@ -567,7 +567,7 @@ const seedSnapshot = async (
           },
         }),
   });
-  const appDir = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).ownerSnapshotsDir(
+  const appDir = makeLandoPaths({ userDataRoot: dataRoot, platform: "linux" }).ownerSnapshotsDir(
     info.owner.ownerKey,
   );
   await mkdir(join(appDir, "data"), { recursive: true });
@@ -696,9 +696,7 @@ describe("lando destroy", () => {
         });
         expect(harness.removedSnapshots).toEqual([a.info.id, b.info.id]);
         await expectMissingPath(
-          makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).ownerSnapshotsDir(
-            ownerKey(root),
-          ),
+          makeLandoPaths({ userDataRoot: dataRoot, platform: "linux" }).ownerSnapshotsDir(ownerKey(root)),
         );
       });
     },
@@ -967,7 +965,6 @@ describe("lando destroy", () => {
       const dataRoot = join(root, "service-data");
       const hostProxyDir = makeLandoPaths({
         userDataRoot: dataRoot,
-        env: {},
         platform: "linux",
       }).hostProxyRunDir(plan.id, plan.root);
       await mkdir(hostProxyDir, { recursive: true });
@@ -1161,7 +1158,6 @@ describe("lando destroy", () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-"));
     const snapshotRoot = makeLandoPaths({
       userDataRoot: dataRoot,
-      env: {},
       platform: "linux",
     }).ownerSnapshotsDir(ownerKey(plan.root));
     await mkdir(join(snapshotRoot, "data"), { recursive: true });

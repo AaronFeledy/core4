@@ -137,6 +137,9 @@ export const makeHarness = (
         env: {},
         platform: "linux",
         userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
+        userCacheRoot: join(testAppRoot, "cache"),
+        userConfRoot: join(testAppRoot, "conf"),
+        systemPluginRoot: join(testAppRoot, "sys"),
       }),
     ),
     Layer.succeed(
