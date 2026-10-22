@@ -203,6 +203,9 @@ test("reports failed removal without counting it when the runtime stops after re
     removeOrphanedSnapshot: () => Effect.fail(failure),
   };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
