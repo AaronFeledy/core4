@@ -256,10 +256,12 @@ describe("db command machine output", () => {
       sizeBytes: 1_572_864,
       createdAt: DateTime.makeUnsafe("2026-09-11T10:00:00Z"),
       label: "before-upgrade",
-      metadata: {
-        sourceRoot: AbsolutePath.make("/workspace/sql-app"),
+      owner: {
+        appRoot: AbsolutePath.make("/workspace/sql-app"),
         ownerKey: "owner:sql-app",
         repoGroupKey: "repository:sql-app",
+      },
+      metadata: {
         service: ServiceName.make("database"),
         volumeInstanceId: "volume-instance:database",
         family: "mysql",
@@ -287,10 +289,12 @@ describe("db command machine output", () => {
           id: "snap-before-upgrade",
           sizeBytes: 1_572_864,
           label: "before-upgrade",
-          metadata: {
-            sourceRoot: "/workspace/sql-app",
+          owner: {
+            appRoot: "/workspace/sql-app",
             ownerKey: "owner:sql-app",
             repoGroupKey: "repository:sql-app",
+          },
+          metadata: {
             version: "8.4",
             recoveryReason: "manual",
           },

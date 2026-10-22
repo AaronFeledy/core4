@@ -156,7 +156,7 @@ export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatfor
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
     globalAppRoot: globalAppRootPath(userDataRoot, platform),
     snapshotsDir: j(userDataRoot, "snapshots"),
-    appSnapshotsDir: (appId: string) => j(userDataRoot, "snapshots", appId),
+    ownerSnapshotsDir: (ownerKey: string) => j(userDataRoot, "snapshots", ownerKey),
     managedFileLedger: (appId: string) => managedFileLedgerPath(userDataRoot, appId, platform),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),

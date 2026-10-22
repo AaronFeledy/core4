@@ -114,13 +114,15 @@ A mutating command that shells out to another `lando` mutate on the same app reu
 Run it again with `--volumes` when you want those volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
 
-Snapshots stay with plain `destroy` and `--volumes`. `--purge` also deletes this folder's snapshots and their provider-stored data, even after the app is already destroyed, without touching another worktree's snapshots.
+Snapshots stay with plain `destroy` and `--volumes`. **`--purge` also deletes this folder's catalogued snapshots and their provider-stored data**, even when an earlier destroy left only ownership inventory. Selection uses the volume owner's canonical app root, not the app name, so another worktree's snapshots stay untouched. Native data is removed through the provider that recorded each snapshot; a failed deletion leaves its catalog entry available for retry.
 
 ```sh
 lando destroy -y
 ```
 
 `-y` skips the confirmation prompt.
+
+`pre-destroy` fires before anything is removed, and `post-destroy` only after everything, leftovers included, is gone. When Lando finds no trace of the app, destroy reports `unchanged` and fires neither.
 
 If you've deleted or moved an app folder before tearing it down, use its old path to
 remove the leftovers. `lando doctor` lists app folders that no longer exist.

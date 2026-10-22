@@ -276,8 +276,8 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
       return yield* contractFailure("native snapshot providers implement removeVolumeSnapshot", provider.id);
     }
     yield* provider
-      .removeVolumeSnapshot(snapshot)
-      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds")));
+      .removeVolumeSnapshot(snapshot, { startRuntime: false })
+      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds without runtime startup")));
     yield* provider
       .removeVolumeSnapshot(snapshot)
       .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot is idempotent")));

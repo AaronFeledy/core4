@@ -8,13 +8,13 @@ import {
   ProviderId,
   ResourceOwnership,
   ServiceName,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { isSharedNetwork } from "./native-ownership.ts";
 import { serviceContainerName } from "./plan.ts";
 import { podmanNetworkNames } from "./podman/networks.ts";
 import { volumeClassForStore } from "./volume-classes.ts";
-import { planVolumeOwnership } from "./volume-ownership.ts";
 
 const ResourceOwner = Schema.Struct({
   nativeName: Schema.String,
@@ -62,7 +62,7 @@ const identify = (resource: typeof ResourceIdentity.Type): OwnedResource => ({
 const keyFor = (resource: OwnedResource) => resource.identityDigest;
 
 const validate = (inventory: ResourceInventory, root: AbsolutePath, providerId: string) => {
-  const owner = planVolumeOwnership({ root });
+  const owner = planAppIdentity({ root });
   if (
     inventory.appRoot !== root ||
     inventory.ownerKey !== owner.ownerKey ||
@@ -94,7 +94,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
       : state
           .open({
             namespace: "resource-ownership",
-            key: `${planVolumeOwnership({ root }).ownerKey}.json`,
+            key: `${planAppIdentity({ root }).ownerKey}.json`,
             schema: Inventory,
             version: 1,
             codec: "json",
@@ -119,17 +119,17 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
     });
   });
   const prepare = Effect.fn("ResourceOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
-    const owner = planVolumeOwnership(plan);
+    const owner = planAppIdentity(plan);
     const root = owner.appRoot;
     if (
       plan.root !== root ||
-      owner.ownerKey !== planVolumeOwnership({ root }).ownerKey ||
+      owner.ownerKey !== planAppIdentity({ root }).ownerKey ||
       plan.provider !== providerId
     )
       return yield* Effect.fail(ownershipFailure(providerId));
     const resources: OwnedResource[] = [];
     for (const attempt of previous === undefined ? [plan] : [previous, plan]) {
-      const attemptOwner = planVolumeOwnership(attempt);
+      const attemptOwner = planAppIdentity(attempt);
       if (
         attempt.root !== root ||
         attempt.provider !== providerId ||

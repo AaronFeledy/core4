@@ -67,7 +67,7 @@ const paths = PathsService.of({
   providerPidPath: "",
   globalAppRoot: "",
   snapshotsDir: "",
-  appSnapshotsDir: () => "",
+  ownerSnapshotsDir: () => "",
   managedFileLedger: () => "",
   toolDownloadsDir: () => "",
   logsDir: "",

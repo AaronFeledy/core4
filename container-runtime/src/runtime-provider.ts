@@ -229,10 +229,12 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       requireDataPlane("snapshotVolume").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.snapshotVolume(spec)))),
       ),
-    removeVolumeSnapshot: (snapshot) =>
+    removeVolumeSnapshot: (snapshot, options) =>
       requireDataPlane("removeVolumeSnapshot").pipe(
         Effect.flatMap((dataPlane) =>
-          before.pipe(Effect.flatMap(() => dataPlane.removeVolumeSnapshot(snapshot))),
+          (options?.startRuntime === false ? Effect.void : before).pipe(
+            Effect.flatMap(() => dataPlane.removeVolumeSnapshot(snapshot, options)),
+          ),
         ),
       ),
     listVolumeSnapshots: () =>

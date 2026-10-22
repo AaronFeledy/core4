@@ -33,14 +33,13 @@ import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_MOUNT } from "./volume-witness-help
 export {
   VOLUME_OWNER_LABEL,
   VOLUME_SELECTOR_LABEL,
-  planVolumeOwnership,
   volumeOwnershipLabels,
 } from "./volume-ownership.ts";
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
-import { Effect, Fiber, type Scope, Stream } from "effect";
+import { Effect, Exit, Fiber, type Scope, Stream } from "effect";
 
 import {
   ArtifactTransferError,
@@ -813,10 +812,14 @@ const commitNativeSnapshot = (
   );
 };
 
-const snapshotCommitHelper = (
-  options: ProviderDataPlaneOptions,
-  spec: { readonly store: string; readonly id: string; readonly labels: Readonly<Record<string, string>> },
-) =>
+interface NativeSnapshotCommit {
+  readonly store: string;
+  readonly id: string;
+  readonly labels: Readonly<Record<string, string>>;
+  readonly rollbackOnFailure: boolean;
+}
+
+const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
       image: dataHelperImage.ref,
@@ -853,15 +856,32 @@ const snapshotCommitHelper = (
             ),
           );
         }
+        if (spec.rollbackOnFailure) {
+          // Register before issuing commit: interruption can hide a successful daemon-side commit.
+          yield* Effect.addFinalizer((exit) =>
+            Exit.match(exit, {
+              onSuccess: () => Effect.void,
+              onFailure: () =>
+                request(options, "snapshotVolume.rollback", {
+                  method: "DELETE",
+                  path: `/images/${encodeURIComponent(nativeSnapshotImage(spec.id))}`,
+                }).pipe(
+                  Effect.flatMap((response) =>
+                    response.status === 404
+                      ? Effect.void
+                      : ensure2xx(options, "snapshotVolume.rollback", response, spec.store),
+                  ),
+                  Effect.ignoreCause,
+                ),
+            }),
+          );
+        }
         return yield* commitNativeSnapshot(options, name, spec.id, spec);
       }),
     (name) => removeEphemeralContainer(options, name, true),
   );
 
-const snapshotVolumeWithCommit = (
-  options: ProviderDataPlaneOptions,
-  spec: { readonly store: string; readonly id: string; readonly labels: Readonly<Record<string, string>> },
-) =>
+const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>
   ensureHelperImage(options, "snapshotVolume", dataHelperImage, spec.store).pipe(
     Effect.andThen(() => snapshotCommitHelper(options, spec)),
   );
@@ -987,6 +1007,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       return snapshotVolumeWithCommit(options, {
         store,
         id,
+        rollbackOnFailure: spec.snapshotId !== undefined,
         labels: {
           // Volume ownership labels prove a live volume's owner; they must never appear on an image.
           ...Object.fromEntries(
@@ -1043,11 +1064,13 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.mapError((cause) =>
           volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
         ),
+        Effect.scoped,
       );
     }) satisfies RuntimeProviderShape["snapshotVolume"],
     listVolumeSnapshots: () => listNativeSnapshots(options),
     removeVolumeSnapshot: Effect.fn("ProviderDataPlane.removeVolumeSnapshot")(function* (
       snapshot: VolumeSnapshotRef,
+      _options?: Parameters<RuntimeProviderShape["removeVolumeSnapshot"]>[1],
     ): Effect.fn.Return<void, ProviderError, Scope.Scope> {
       if (options.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(unsupportedSnapshot("removeVolumeSnapshot"));

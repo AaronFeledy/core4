@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./orphaned-snapshots": "./src/orphaned-snapshots.ts",
     "./service": "./src/service.ts",
     "./testing": "./src/testing.ts"
   },

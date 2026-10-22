@@ -114,7 +114,7 @@ lando rebuild
 lando destroy -y
 ```
 
-Snapshots survive plain `destroy` and `--volumes`. `lando destroy --purge -y` also deletes this folder's snapshots, including provider-stored snapshot data. Snapshots from other app folders stay untouched.
+Snapshots survive plain `destroy` and `--volumes`. **`lando destroy --purge -y` also deletes this folder's catalogued snapshots**, including native data through the provider that recorded each snapshot. It works when an earlier destroy left only ownership inventory. Snapshots belong to the source volume's canonical owner root, so other app folders keep theirs even if they share this app's name. See [Import and export app databases](../tooling/db-import-export.mdx) before moving a database between apps or providers.
 
 Changing providers doesn't move an applied app. Start, restart, and rebuild fail with `AppPlacementError` if another provider holds its applied plan. Stop, destroy, info, and logs still target the existing provider. To retire an unwanted copy when applied state is ambiguous, select that provider explicitly:
 
@@ -156,7 +156,7 @@ it stopped. Results stay on stdout; progress goes to stderr:
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
     </Step>
     <Step name="inspect">
-      <Verify command="lando info" expect={{ stdout: { regex: "(^|\\n)app\\trunning\\t[\\s\\S]*\\ndb\\trunning\\t" }, stderr: "" }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"[^}]*\"status\":\\s*\"running\"[\\s\\S]*\"service\":\\s*\"db\"[^}]*\"status\":\\s*\"running\"" }, stderr: "" }} />
     </Step>
     <Step name="stop">
       <Verify command="lando stop" expect={{ stdout: { regex: "stopped: app-lifecycle-demo" }, stderr: "" }} />

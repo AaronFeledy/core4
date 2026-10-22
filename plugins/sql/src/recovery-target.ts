@@ -2,7 +2,7 @@ import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
 import { Effect } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
+import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
 import type {
   SnapshotMetadata,
   VolumeIdentity,
@@ -23,7 +23,7 @@ import {
   requireRuntimeIdentity,
   verifyRuntimeState,
 } from "./runtime-observation.ts";
-import type { SqlPlan, SqlPlanService } from "./views.ts";
+import { type SqlPlan, type SqlPlanService, sqlPlanIdentity } from "./views.ts";
 import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlRecoveryDeps = SqlMover &
@@ -47,6 +47,7 @@ export type SqlRecoveryDeps = SqlMover &
   };
 
 export type SqlRecoveryContext = {
+  readonly owner: AppIdentity;
   readonly running: boolean;
   readonly metadata: SnapshotMetadata;
   readonly volumeIdentity: VolumeIdentity;
@@ -228,17 +229,13 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
     );
   return {
     running: target.runtime.running,
+    owner: sqlPlanIdentity(input.plan),
     volume: target.volume.ref,
     resume: exactTransition(true, input.deps.resume(input.serviceName, target.runtime)),
     suspend: exactTransition(false, input.deps.suspend(input.serviceName, target.runtime)),
     verifyVolume,
     volumeIdentity: identity,
     metadata: {
-      sourceRoot: AbsolutePath.make(canonicalAppRoot(input.plan)),
-      ...(input.plan.identity?.ownerKey === undefined ? {} : { ownerKey: input.plan.identity.ownerKey }),
-      ...(input.plan.identity?.repoGroupKey === undefined
-        ? {}
-        : { repoGroupKey: input.plan.identity.repoGroupKey }),
       service: ServiceName.make(input.serviceName),
       volumeInstanceId: identity.generation,
       family: input.family,
