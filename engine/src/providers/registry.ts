@@ -1,5 +1,6 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
+import { GlobalConfigSources } from "../services/config.ts";
 
 import {
   NoProviderInstalledError,
@@ -84,6 +85,7 @@ export const makeRuntimeProviderRegistry = (
     RuntimeProviderRegistry,
     Effect.gen(function* () {
       const configService = yield* ConfigService;
+      const captured = yield* Effect.serviceOption(GlobalConfigSources);
       const pluginRegistry = yield* PluginRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const downloader = yield* Downloader;
@@ -100,7 +102,12 @@ export const makeRuntimeProviderRegistry = (
         Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
       );
 
-      const configuredProviderId = hostProviderId.pipe(Effect.provideService(ConfigService, configService));
+      const configuredProviderId = hostProviderId.pipe(
+        Effect.provideService(ConfigService, configService),
+        Effect.provide(
+          captured._tag === "Some" ? Context.make(GlobalConfigSources, captured.value) : Context.empty(),
+        ),
+      );
 
       const contributionFor = Effect.fnUntraced(function* (providerId: ProviderId) {
         const manifests = yield* providerManifests;

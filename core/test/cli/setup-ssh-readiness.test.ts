@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import * as LandoHttpClient from "@lando/http-client";
 import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
@@ -89,6 +90,7 @@ test.each([
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
               Layer.succeed(ConfigService, {
                 load: Effect.succeed(config),
                 get: (key) => Effect.succeed(config[key]),

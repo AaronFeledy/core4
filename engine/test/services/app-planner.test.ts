@@ -41,6 +41,7 @@ import * as AppCacheService from "../../src/cache/service.ts";
 import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
+import { GlobalConfigSources } from "../../src/services/config.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
@@ -129,6 +130,10 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provideService(GlobalConfigSources, {
+        env: { ...process.env },
+        sources: { user: false, env: true },
+      }),
     ),
   );
 

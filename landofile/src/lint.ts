@@ -212,7 +212,8 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   const app = Result.isSuccess(finalized)
     ? (finalized.success.name ?? "")
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
-  const primary = unique[0]?.source?.file ?? file;
+  const primarySource = unique[0]?.source;
+  const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;
   return {
     landofilePath: file,
     result: {

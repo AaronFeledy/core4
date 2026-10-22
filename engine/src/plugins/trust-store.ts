@@ -5,9 +5,8 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { Effect, Layer } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
-import { type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
+import { PathsService, type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "@lando/paths";
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 
 const emptyState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
@@ -118,5 +117,5 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
 
 export const layer = Layer.effect(
   PluginTrustStore,
-  Effect.succeed(makePluginTrustStore(makeLandoPaths().pluginTrustFile)),
+  Effect.map(PathsService, (paths) => makePluginTrustStore(paths.pluginTrustFile)),
 );

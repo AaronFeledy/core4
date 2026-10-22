@@ -45,6 +45,6 @@ export const renderConfigResult = (result: ConfigResult): string => {
         }
       : result.value !== undefined
         ? result.value
-        : (result.config ?? {});
+        : (result.raw ?? result.config ?? {});
   return formatTable(target);
 };

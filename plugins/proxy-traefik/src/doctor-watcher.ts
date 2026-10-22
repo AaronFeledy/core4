@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { makeLandoPaths } from "@lando/paths";
+import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import { Effect, Schema } from "effect";
 
@@ -52,8 +52,10 @@ export const makeRouterFileWatcherCheck = (
   id: "router-file-watcher",
   run: Effect.fnUntraced(function* (input) {
     if (input.userDataRoot === undefined) return [];
-    const resolved = makeLandoPaths({ userDataRoot: input.userDataRoot, platform: input.platform });
-    const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
+    const paths: ProxyPaths = {
+      platform: input.platform,
+      globalAppRoot: globalAppRootPath(input.userDataRoot, input.platform),
+    };
     const record = yield* readRecord ? readRecord(input) : readStoredRecord(paths);
     if (record === undefined) return [];
     return [watcherReport(record)];

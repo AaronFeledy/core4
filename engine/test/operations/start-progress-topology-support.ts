@@ -316,7 +316,6 @@ export const makeHarness = (
       LandofileService,
       LandofileService.of({ discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
     ),
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(
@@ -401,6 +400,8 @@ export const makeHarness = (
     ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
+    // After LandoConfigService.layer: that snapshot also provides PathsService, and the later layer wins.
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
   );
   return { layer, events, applyTreeStarted, stateStore, runtimeProviderRegistry, userDataRoot };
 };

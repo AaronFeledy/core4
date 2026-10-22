@@ -28,6 +28,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { formatSummary } from "@lando/renderer/summary";
@@ -72,7 +73,12 @@ export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSy
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
-  ConfigService | RuntimeProviderRegistry | HttpClient.HttpClient | Downloader | InteractionService
+  | ConfigService
+  | GlobalConfigSources
+  | RuntimeProviderRegistry
+  | HttpClient.HttpClient
+  | Downloader
+  | InteractionService
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -89,7 +95,10 @@ export const setupSpec: LandoCommandSpec<
     const globalConfig = yield* configService.load;
 
     const flag = inputProviderFlag(input);
-    const env = readProviderEnvVar(process.env);
+    const captured = yield* Effect.serviceOption(GlobalConfigSources);
+    const env = readProviderEnvVar(
+      captured._tag === "None" ? process.env : captured.value.sources.env ? captured.value.env : {},
+    );
     const configRaw = globalConfig.defaultProviderId;
     const config = configRaw ?? undefined;
 

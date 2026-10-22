@@ -1,6 +1,6 @@
 import { type Context, DateTime, Effect, Option, Schema } from "effect";
 
-import type { CacheError, ConfigError, LandoCommandError } from "@lando/sdk/errors";
+import type { CacheError, LandoCommandError } from "@lando/sdk/errors";
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
@@ -59,7 +59,7 @@ export type PoweroffServices =
   | RuntimeProviderRegistry
   | ScratchAppService
   | ScratchResourceScanner;
-export type PoweroffError = CacheError | ConfigError | LandoCommandError | PoweroffStopError;
+export type PoweroffError = CacheError | LandoCommandError | PoweroffStopError;
 
 const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
 

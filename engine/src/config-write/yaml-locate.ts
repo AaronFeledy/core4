@@ -81,6 +81,8 @@ export interface LocatedEdit {
   readonly remaining: readonly PathSegment[];
   readonly entries: readonly LocatedEntry[];
   readonly indent: number;
+  /** The parent is an empty `{}` mapping (e.g. left by an unset); a set must rewrite it as a block mapping. */
+  readonly emptyFlowParent?: boolean;
 }
 
 const entriesIn = (lines: readonly YamlLine[], segment: PathSegment) => {
@@ -144,6 +146,14 @@ export const locateYamlEdit = (
     if (/^[!&*]|^<<:/.test(entry.value))
       return unsupported("Tags, anchors, aliases or merge keys on the edited path.");
     const final = i === segments.length - 1;
+    if (!final && entry.value === "{}" && segments[i + 1]?.kind === "key" && entry.children.length === 0)
+      return Result.succeed({
+        parent: entry,
+        remaining: segments.slice(i + 1),
+        entries: [],
+        indent: entry.line.indent + 2,
+        emptyFlowParent: true,
+      });
     const wholeFlowValue = /^\[.*\]$|^\{.*\}$/.test(entry.value);
     if (/^[\[{]/.test(entry.value) && !(final && wholeFlowValue))
       return unsupported("Flow collections on the edited path.");

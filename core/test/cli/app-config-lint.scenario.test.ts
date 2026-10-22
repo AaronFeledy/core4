@@ -173,7 +173,14 @@ describe("lando app:config:lint (source dispatch)", () => {
         ["services", "web", "routes", 1, "pathPrefix"],
         ["services", "web", "hostnames", 0],
       ]);
-      expect(parsed.violations.every((issue) => issue.source?.file === join(dir, ".lando.yml"))).toBe(true);
+      expect(
+        parsed.violations.every(
+          (issue) =>
+            issue.source !== undefined &&
+            "file" in issue.source &&
+            issue.source.file === join(dir, ".lando.yml"),
+        ),
+      ).toBe(true);
     });
   });
   test("warning-only lint renders its stable rule and exits successfully", async () => {

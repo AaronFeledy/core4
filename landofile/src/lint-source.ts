@@ -40,7 +40,9 @@ export const attributeLintIssue = (
   const retained =
     source === undefined
       ? undefined
-      : documents.find((document) => document.file === source.file && document.layer === source.layer);
+      : documents.find(
+          (document) => "file" in source && document.file === source.file && document.layer === source.layer,
+        );
   return {
     ...issue,
     rule: issue.rule ?? "landofile.validation",

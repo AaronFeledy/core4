@@ -101,7 +101,12 @@ describe("retained lint snapshot", () => {
     const snapshot = await lint();
     const issues = snapshot.result.violations.filter((issue) => issue.path[0] === "runtime");
     expect(issues).toHaveLength(3);
-    expect(issues.map(({ source, scopes }) => ({ file: source?.file, scopes }))).toEqual([
+    expect(
+      issues.map(({ source, scopes }) => ({
+        file: source !== undefined && "file" in source ? source.file : undefined,
+        scopes,
+      })),
+    ).toEqual([
       { file: join(root, ".lando.base.yml"), scopes: ["fragment"] },
       { file: join(root, ".lando.yml"), scopes: ["fragment"] },
       { file: join(root, ".lando.yml"), scopes: ["effective"] },
@@ -109,7 +114,12 @@ describe("retained lint snapshot", () => {
     expect(
       new Set(
         issues
-          .filter((issue) => issue.source?.file === join(root, ".lando.yml"))
+          .filter(
+            (issue) =>
+              issue.source !== undefined &&
+              "file" in issue.source &&
+              issue.source.file === join(root, ".lando.yml"),
+          )
           .map((issue) => issue.message),
       ).size,
     ).toBe(2);

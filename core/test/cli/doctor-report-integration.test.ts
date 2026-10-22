@@ -16,9 +16,10 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { ConfigError } from "@lando/sdk/errors";
 import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
+import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
+import { makeLandoRuntime } from "../../src/runtime/layer";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -36,7 +37,7 @@ import { CORE_VERSION } from "../../src/version.ts";
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
 
 const configService = (
-  load: Effect.Effect<GlobalConfig, ConfigError>,
+  load: Effect.Effect<GlobalConfig>,
   fallback: GlobalConfig,
 ): Context.Service.Shape<typeof ConfigService> =>
   ConfigService.of({
@@ -182,33 +183,22 @@ describe("combined doctor certificate and network-trust wiring", () => {
     expect(() => Schema.decodeUnknownSync(DoctorReportSchema)(encoded)).not.toThrow();
   });
 
-  test("isolates ConfigService failure to network trust while retaining six base subsystem checks", async () => {
+  test("skips config-dependent subsystem checks when config construction fails", async () => {
     // Given
-    const config = makeConfig({});
-    const failure = new ConfigError({ message: "network config unavailable", path: "/config.yml" });
-    const layer = Layer.succeed(ConfigService, configService(Effect.fail(failure), config));
+    const layer = makeLandoRuntime({
+      bootstrap: "none",
+      configSources: { user: false, env: false },
+      config: { router: { httpPort: 99999 } },
+    });
 
     // When
-    const report = await Effect.runPromise(
-      collectDoctorReport({
-        options: {},
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-      }).pipe(Effect.provide(layer)),
-    );
+    const report = await Effect.runPromise(resilientDoctorReport().pipe(Effect.provide(layer)));
 
     // Then
-    expect(report.subsystems.checks.map((check) => check.name)).toEqual([
-      "router",
-      "certs",
-      "ssh",
-      "healthcheck",
-      "scanner",
-      "host-proxy",
-      "filesystem-watch",
-    ]);
+    expect(report.subsystems.checks.some((check) => check.name === "filesystem-watch")).toBe(true);
+    expect(report.skipped?.map((entry) => entry.section)).toContain("network-trust");
     expect(report.self?.checks).toContainEqual(
-      expect.objectContaining({ section: "network-trust", reason: "failure" }),
+      expect.objectContaining({ section: "global-config", reason: "failure" }),
     );
   });
 });
