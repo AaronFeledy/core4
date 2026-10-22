@@ -151,9 +151,16 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/provider-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: PLUGIN_TEST_TARGETS,
-    // The exec-env integration test composes the bundled service plugin against the managed runtime.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, ...PLUGIN_TEST_TARGETS, "@lando/service-lando"],
+    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/data-mover", "@lando/redaction"],
+    // The exec-env integration test composes the bundled service plugin against the managed runtime;
+    // the volume-snapshot round trip drives the real DataMover against it.
+    testTargets: [
+      ...PLUGIN_RUNTIME_TARGETS,
+      ...PLUGIN_TEST_TARGETS,
+      "@lando/service-lando",
+      "@lando/data-mover",
+      "@lando/redaction",
+    ],
   },
   "@lando/provider-podman": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

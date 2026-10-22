@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId, type SnapshotInfo, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type SnapshotInfo,
+  type VolumeSnapshotArtifact,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Clock, DateTime, Effect } from "effect";
@@ -32,6 +38,7 @@ test("finds only old unindexed snapshots owned by this store or unmarked legacy 
   const index: SnapshotInfo[] = [
     {
       id: "indexed",
+      owner: planAppIdentity({ root: AbsolutePath.make("/app") }),
       store: { app: AppId.make("app"), store: "data" },
       createdAt: indexed.createdAt,
       sizeBytes: 10,
@@ -72,6 +79,7 @@ test("rechecks the current index before removing a previously discovered orphan"
   const discovered = await Effect.runPromise(mover.findOrphanedSnapshots);
   index.push({
     id: "race",
+    owner: planAppIdentity({ root: AbsolutePath.make("/app") }),
     store: { app: AppId.make("app"), store: "data" },
     createdAt: image.createdAt,
     sizeBytes: 10,
@@ -89,6 +97,7 @@ test("rechecks the current index before removing a previously discovered orphan"
 });
 
 test("removes an eligible image but refuses young and foreign images", async () => {
+  const removalOptions: Array<{ readonly startRuntime?: boolean } | undefined> = [];
   const removed: string[] = [];
   const now = await Effect.runPromise(Clock.currentTimeMillis);
   const images = [
@@ -100,9 +109,10 @@ test("removes an eligible image but refuses young and foreign images", async () 
     provider: {
       ...TestRuntimeProvider,
       listVolumeSnapshots: () => Effect.succeed(images),
-      removeVolumeSnapshot: (ref) =>
+      removeVolumeSnapshot: (ref, options) =>
         Effect.sync(() => {
           removed.push(ref.id);
+          removalOptions.push(options);
         }),
     },
     storeIdentity: Effect.succeed("ours"),
@@ -112,6 +122,7 @@ test("removes an eligible image but refuses young and foreign images", async () 
     Effect.forEach(images, (image) => Effect.result(mover.removeOrphanedSnapshot(image))),
   );
   expect(removed).toEqual(["old"]);
+  expect(removalOptions).toEqual([{ startRuntime: false }]);
   expect(results.map((result) => result._tag)).toEqual(["Success", "Failure", "Failure"]);
 });
 
@@ -153,4 +164,46 @@ test("refuses removal when the tag now names another image or the runtime stoppe
   );
   expect([retagged._tag, stopped._tag]).toEqual(["Failure", "Failure"]);
   expect(removed).toEqual([]);
+});
+
+test("fails without restarting when the runtime stops after the removal recheck", async () => {
+  // Given an eligible image whose runtime stops immediately after the recheck lists it.
+  const image = artifact("stopped", 2 * SNAPSHOT_ORPHAN_GRACE_MS, owned);
+  let running = true;
+  const mover = orphanedSnapshotMethods({
+    provider: {
+      ...TestRuntimeProvider,
+      listVolumeSnapshots: () =>
+        Effect.sync(() => {
+          running = false;
+          return [image];
+        }),
+      removeVolumeSnapshot: (_snapshot, options) =>
+        Effect.suspend(() => {
+          if (options?.startRuntime !== false) running = true;
+          return running
+            ? Effect.void
+            : Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: "test",
+                  operation: "removeVolumeSnapshot",
+                  message: "Runtime stopped after recheck.",
+                }),
+              );
+        }),
+    },
+    storeIdentity: Effect.succeed("ours"),
+    index: Effect.succeed([]),
+  });
+  // When removal reaches the stopped provider's data plane.
+  const result = await Effect.runPromise(mover.removeOrphanedSnapshot(image).pipe(Effect.result));
+  // Then failure propagates without starting the runtime.
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "DataTransferError",
+      cause: { _tag: "ProviderUnavailableError", operation: "removeVolumeSnapshot" },
+    },
+  });
+  expect(running).toBe(false);
 });

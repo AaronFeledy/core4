@@ -151,7 +151,7 @@ If you are looking for a public surface or policy:
 | Host-proxy protocol and errors | 11 | §10.10 |
 | In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
 | Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
-| `DataMover`, endpoints, snapshots, and errors | 11 | §10.11 |
+| `DataMover`, endpoints, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
 | Service tunnels, tethered sessions, and environment operations | 11 | §10.12.5 + §10.12.6 |

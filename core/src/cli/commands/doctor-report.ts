@@ -29,6 +29,7 @@ import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
+import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
@@ -328,6 +329,14 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (orphanedSnapshots.self !== undefined) selfChecks.push(orphanedSnapshots.self);
+  const legacyCatalogs = yield* isolateDoctorSection({
+    section: "legacy-snapshot-catalogs",
+    effect: legacySnapshotCatalogsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (legacyCatalogs.self !== undefined) selfChecks.push(legacyCatalogs.self);
   const filesystemWatch = yield* isolateDoctorSection({
     section: "filesystem-watch",
     effect: filesystemWatchDoctor(redact, options.platform),
@@ -345,6 +354,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         ...accelerated.value,
         ...missingRoots.value,
         ...orphanedSnapshots.value,
+        ...legacyCatalogs.value,
         ...filesystemWatch.value,
       ],
     },

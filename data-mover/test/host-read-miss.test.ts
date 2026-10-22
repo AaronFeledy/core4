@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect";
 
-import * as BunDataMover from "@lando/data-mover/service";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -13,6 +12,7 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import * as BunDataMover from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);

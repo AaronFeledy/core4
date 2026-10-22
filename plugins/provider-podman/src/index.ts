@@ -20,7 +20,6 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -680,10 +679,12 @@ const assembleRuntimeProvider = (
       ctx: PODMAN_CTX,
       providerId: providerIdBranded,
       endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
-      prepareWitnessImage: pullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
-        ctx: PODMAN_CTX,
-        dialect: libpodPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(podmanApi, ref, {
+          ctx: PODMAN_CTX,
+          dialect: libpodPullDialect,
+          policy: "missing",
+        }),
       api: podmanApi,
       capabilities: resolvedCapabilities,
       redactDetails,

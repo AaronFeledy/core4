@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -45,6 +46,8 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
+const isolatedDataRoot = mkdtempSync(join(tmpdir(), "lando-applied-teardown-data-"));
+afterAll(() => rm(isolatedDataRoot, { recursive: true, force: true }));
 
 for (const kind of ["applied", "orphans", "absent"] as const) {
   test(`dispatches only the ${kind} handler when teardown evidence is ${kind}`, async () => {
@@ -232,6 +235,7 @@ const makeLayer = (input: {
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const desiredLoads: string[] = [];
   const evidenceRoots: string[] = [];
+  const published: string[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
@@ -335,7 +339,17 @@ const makeLayer = (input: {
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: isolatedDataRoot,
+        userCacheRoot: join(isolatedDataRoot, "cache"),
+        userConfRoot: join(isolatedDataRoot, "conf"),
+        systemPluginRoot: join(isolatedDataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -360,7 +374,7 @@ const makeLayer = (input: {
     Layer.succeed(
       EventService,
       EventService.of({
-        publish: () => Effect.void,
+        publish: (event) => Effect.sync(() => void published.push(event._tag)),
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
@@ -379,6 +393,7 @@ const makeLayer = (input: {
     removalAttempts,
     desiredLoads,
     evidenceRoots,
+    published,
     appliedPlan: () => appliedPlan,
   };
 };
@@ -640,7 +655,7 @@ describe("applied-state teardown", () => {
       expect(result.outcome).toBe("destroyed");
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.desiredLoads).toEqual([]);
-      expect(harness.evidenceRoots).toEqual([root, root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root]);
     });
   });
 
@@ -708,7 +723,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: ["leftover"],
         volumesRemoved: true,
       });
-      expect(harness.evidenceRoots).toEqual([root, root, root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
   });
 
@@ -723,7 +738,7 @@ describe("applied-state teardown", () => {
         destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
       );
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root, root]);
+      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
@@ -742,7 +757,7 @@ describe("applied-state teardown", () => {
 
       // Then the recorded path wins over the symlink's current destination.
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([recorded, recorded, recorded]);
+      expect(harness.evidenceRoots).toEqual([recorded, recorded]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
@@ -847,7 +862,7 @@ describe("applied-state teardown", () => {
   );
 
   test.each(["stop", "destroy"] as const)(
-    "%s consults applied state before it loads the desired config",
+    "%s preserves the applied plan while loading desired config for authored events",
     async (operation) => {
       await withTempRoot(async (root) => {
         const appliedPlan = planAt(root);
@@ -859,7 +874,7 @@ describe("applied-state teardown", () => {
           await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
         }
 
-        expect(harness.desiredLoads).toEqual([]);
+        expect(harness.desiredLoads).toEqual(["discover"]);
         expect(harness.destroyCalls).toEqual([appliedPlan]);
       });
     },
@@ -1010,6 +1025,42 @@ describe("applied-state teardown", () => {
       expect(harness.mutationOrder).toEqual([]);
       expect(harness.removalAttempts).toEqual([]);
       expect(harness.desiredLoads).toContain("discover");
+    });
+  });
+
+  test("CLI destroy reads the root journal once across recorded orphan identities", async () => {
+    await withTempRoot(async (root) => {
+      const base = planAt(root);
+      const retainedPlan = retainedPlanAt(root);
+      const other = orphanGroup({ root, services: ["db"] });
+      const otherId = AppId.make("aaa-other-app");
+      const harness = makeLayer({
+        desiredPlan: retainedPlan,
+        orphans: [
+          {
+            ...other,
+            appId: otherId,
+            services: other.services.map((service) => ({ ...service, app: otherId })),
+          },
+          orphanGroup({ root, services: ["web"] }),
+        ],
+      });
+      await Effect.runPromise(
+        beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.provide(harness.layer),
+        ),
+      );
+      const result = await Effect.runPromiseExit(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+      // Both identities share the root's journal, so destroy takes the retained path once
+      // and reaches session disposal instead of refusing an ambiguous match.
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(JSON.stringify(result)).toContain("An accelerated mount has no matching file sync engine.");
+      expect(harness.mutationOrder).toEqual([]);
+      expect(harness.removalAttempts).toEqual([]);
+      expect(harness.published).not.toContain("pre-destroy");
     });
   });
 
