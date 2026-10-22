@@ -11,6 +11,7 @@ import { outputRegisteredTestProvider } from "../../src/testing/output-provider.
 
 import {
   collectAppPlanRedactionTokens,
+  collectAuthoredRedactionTokens,
   collectLandofileRedactionTokens,
 } from "../../src/services/app-plan-redaction.ts";
 
@@ -61,6 +62,104 @@ test("retained invocations read current containers again instead of caching regi
 });
 
 describe("app-plan redaction tokens", () => {
+  test("exempts public credentials across all projected service maps", () => {
+    const plan = {
+      services: {
+        database: {
+          environment: { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "magento" },
+        },
+        phpmyadmin: { environment: { PMA_PASSWORD: "magento" } },
+        appserver: {
+          environment: { DB_PASSWORD: "magento", API_TOKEN: "private-token" },
+          extensions: { compose: { labels: { "db.password": "magento" } } },
+        },
+      },
+    };
+    expect(collectAppPlanRedactionTokens(plan)).toEqual(["private-token"]);
+  });
+
+  test("does not exempt values in an unrelated plan without a matching tuple", () => {
+    expect(
+      collectAppPlanRedactionTokens({
+        services: {
+          appserver: { environment: { DB_PASSWORD: "magento" } },
+        },
+      }),
+    ).toEqual(["magento"]);
+  });
+
+  test.each([collectAppPlanRedactionTokens, collectLandofileRedactionTokens])(
+    "%p uses authored credentials across services",
+    (collect) => {
+      expect(
+        collect({
+          services: {
+            database: {
+              creds: { user: "magento", password: "magento", database: "shop", rootPassword: "magento" },
+            },
+            appserver: { environment: { DB_PASSWORD: "magento", API_TOKEN: "private-token" } },
+          },
+        }),
+      ).toEqual(["private-token"]);
+    },
+  );
+
+  test("exempts authored credentials across the whole document without losing duplicate occurrences", () => {
+    const document = {
+      services: {
+        database: {
+          creds: { user: "magento", password: "magento", database: "magento", rootPassword: "magento" },
+        },
+        appserver: {
+          environment: [
+            "DB_PASSWORD=magento",
+            "API_TOKEN=first-private",
+            "API_TOKEN=second-private",
+            "API_TOKEN=first-private",
+          ],
+        },
+      },
+      tooling: { task: { env: { PMA_PASSWORD: "magento" } } },
+    };
+    expect(collectAuthoredRedactionTokens(document)).toEqual([
+      "first-private",
+      "second-private",
+      "first-private",
+    ]);
+  });
+
+  test("recognizes env tuples in authored arrays before collecting individual occurrences", () => {
+    expect(
+      collectAuthoredRedactionTokens({
+        services: {
+          database: {
+            environment: ["POSTGRES_USER=magento", "POSTGRES_PASSWORD=magento", "POSTGRES_DB=shop"],
+          },
+          appserver: { environment: { DB_PASSWORD: "magento" } },
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  test("does not treat arbitrary authored user/password objects as credential tuples", () => {
+    expect(collectAuthoredRedactionTokens({ owner: { user: "magento", password: "magento" } })).toEqual([
+      "magento",
+    ]);
+  });
+
+  test.each([collectLandofileRedactionTokens, collectAuthoredRedactionTokens])(
+    "%p retains distinct authored credential passwords",
+    (collect) => {
+      expect(
+        collect({
+          services: {
+            database: { creds: { user: "magento", password: "magento-dev", database: "magento" } },
+          },
+        }),
+      ).toEqual(["magento-dev"]);
+    },
+  );
+
   test("excludes published default credentials while collecting custom plan passwords", () => {
     // Given
     const plan = {

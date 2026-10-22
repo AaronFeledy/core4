@@ -1,3 +1,4 @@
+import { LANDO_DB_ENV_KEYS } from "@lando/sdk/database-creds";
 import { Effect, Schema } from "effect";
 
 import type {
@@ -127,10 +128,10 @@ const endpointText = (
 };
 
 const credsFromEnvironment = (environment: ServicePlan["environment"]): InfoAppService["creds"] => {
-  const user = environment.LANDO_DB_USER;
-  const password = environment.LANDO_DB_PASSWORD;
-  const database = environment.LANDO_DB_NAME;
-  const rootPassword = environment.LANDO_DB_ROOT_PASSWORD;
+  const user = environment[LANDO_DB_ENV_KEYS.user];
+  const password = environment[LANDO_DB_ENV_KEYS.password];
+  const database = environment[LANDO_DB_ENV_KEYS.database];
+  const rootPassword = environment[LANDO_DB_ENV_KEYS.rootPassword];
   if (user === undefined && password === undefined && database === undefined) {
     return undefined;
   }

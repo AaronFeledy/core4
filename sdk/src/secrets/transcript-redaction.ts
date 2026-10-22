@@ -24,13 +24,12 @@ const SHORT_EQUALS_SECRET =
 const SHORT_SPACE_SECRET =
   /(^|[\s"'`(])(-[tk])\s+(?:\\"[^"]*\\"|\\'[^']*\\'|\\`[^`]*\\`|"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=)]+)/giu;
 const KEY_EQUALS_SECRET =
-  /\b([A-Za-z0-9_]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu;
+  /(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_.-]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|(?:\[redacted\]|[^\s"'`&?\]}])+)/giu;
 const KEY_SPACE_SECRET =
   /\b(token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)\s+(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=]+)/giu;
 const TOKEN_SECRET_LITERAL = /\btoken\s+secret\b/gi;
 const QUERY_SECRET =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)([^&\s"']+)/giu;
-const DOUBLE_MARKER = /\[\s*redacted\s*\]\s*\]/giu;
+  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)((?:\[redacted\]|[^&\s"'\]}])+)/giu;
 const GENERIC_PATHS: readonly RegExp[] = [
   /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
   /\/Users\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
@@ -93,7 +92,7 @@ export const redactTranscriptString = (
     .replace(KEY_SPACE_SECRET, (_match, key: string) => `${key} ${REDACTED}`)
     .replace(TOKEN_SECRET_LITERAL, `token ${REDACTED}`)
     .replace(QUERY_SECRET, (_match, prefix: string) => `${prefix}${REDACTED}`);
-  return redactSecrets(output).replace(DOUBLE_MARKER, REDACTED);
+  return redactSecrets(output);
 };
 
 export const TRANSCRIPT_PATTERN_CLASSES = {

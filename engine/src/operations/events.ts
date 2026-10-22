@@ -12,7 +12,10 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanPublicCredentialValues,
+  collectAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
@@ -36,6 +39,7 @@ const authoredStepKind = (step: EventStep): "cmd" | "task" | "command" => {
 const redactionValuesForStep = (
   step: EventStep,
   tooling: ReturnType<typeof effectiveToolingForPlan>,
+  publicValues: ReadonlySet<string>,
 ): ReadonlyArray<string> => {
   if (typeof step === "string") return [];
   const env =
@@ -48,6 +52,7 @@ const redactionValuesForStep = (
     ? []
     : collectSecretEnvValues(
         Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
+        publicValues,
       );
 };
 
@@ -201,11 +206,12 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       }
       const tooling = effectiveToolingForPlan(plan);
       const appPlanRedactionTokens = collectAppPlanRedactionTokens(plan);
+      const publicValues = collectAppPlanPublicCredentialValues(plan);
       const redactor = yield* redactionOption.value.forProfile("secrets", {
         sourceEnv: process.env,
         redactionTokens: [
           ...appPlanRedactionTokens,
-          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling)),
+          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling, publicValues)),
         ],
       });
       const redactorFor = (
@@ -219,7 +225,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
             if (record === undefined) return [];
             return Object.entries(record).flatMap(([name, value]) =>
               (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-                collectSecretEnvValues({ [name]: String(occurrence) }),
+                collectSecretEnvValues({ [name]: String(occurrence) }, publicValues),
               ),
             );
           }),

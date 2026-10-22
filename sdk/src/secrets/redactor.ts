@@ -11,7 +11,11 @@
  */
 
 import { LOG_LINE_TRUNCATED_MARKER } from "../log-follow/marker.ts";
-import { replaceLiteralBounded, retainWithinBytes } from "./bounded-redaction.ts";
+import {
+  replaceLiteralBounded,
+  replaceTruncatedPrefixesBounded,
+  retainWithinBytes,
+} from "./bounded-redaction.ts";
 import { redactedInspection } from "./inspection.ts";
 
 /** Sentinel written in place of a redacted secret value. */
@@ -65,44 +69,30 @@ export const createSecretRedactor = (
     };
   }
 
+  // Absent values skip the rebuild, so text with no match is never copied or byte-counted.
+  const redactWithin = (text: string, maxBytes: number): string | undefined => {
+    let result = text;
+    for (const value of unique) {
+      if (!result.includes(value)) continue;
+      const replaced = replaceLiteralBounded(result, value, REDACTED, maxBytes);
+      if (replaced === undefined) return undefined;
+      result = replaced;
+    }
+    return result.includes(LOG_LINE_TRUNCATED_MARKER)
+      ? replaceTruncatedPrefixesBounded(result, unique, REDACTED, maxBytes)
+      : result;
+  };
+  // Suppress the entire detail rather than corrupt an ANSI sequence with a numeric replacement.
+  const containsUnsafe = (text: string): boolean => unsafe.some((value) => text.includes(value));
+
   return {
     ...redactedInspection,
-    redact: (text) => {
-      // Suppress the entire detail rather than corrupt an ANSI sequence with a numeric replacement.
-      if (unsafe.some((value) => text.includes(value))) return REDACTED;
-      let result = text;
-      for (const value of unique) {
-        if (result.includes(value)) {
-          result = result.split(value).join(REDACTED);
-        }
-      }
-      let marker = result.indexOf(LOG_LINE_TRUNCATED_MARKER);
-      while (marker !== -1) {
-        let longest = 0;
-        for (const value of unique) {
-          for (let length = Math.min(value.length - 1, marker); length > longest; length -= 1) {
-            if (result.endsWith(value.slice(0, length), marker)) {
-              longest = length;
-              break;
-            }
-          }
-        }
-        if (longest > 0) {
-          result = result.slice(0, marker - longest) + REDACTED + result.slice(marker);
-          marker += REDACTED.length - longest;
-        }
-        marker = result.indexOf(LOG_LINE_TRUNCATED_MARKER, marker + LOG_LINE_TRUNCATED_MARKER.length);
-      }
-      return result;
-    },
+    redact: (text) =>
+      containsUnsafe(text) ? REDACTED : (redactWithin(text, Number.MAX_SAFE_INTEGER) ?? REDACTED),
     redactBounded: (text, maxBytes) => {
-      if (unsafe.some((value) => text.includes(value))) return retainWithinBytes(REDACTED, maxBytes);
-      let result: string | undefined = text;
-      for (const value of unique) {
-        result = replaceLiteralBounded(result, value, REDACTED, maxBytes);
-        if (result === undefined) return undefined;
-      }
-      return result;
+      if (containsUnsafe(text)) return retainWithinBytes(REDACTED, maxBytes);
+      const result = redactWithin(text, maxBytes);
+      return result === undefined ? undefined : retainWithinBytes(result, maxBytes);
     },
   };
 };

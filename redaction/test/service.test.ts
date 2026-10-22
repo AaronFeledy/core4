@@ -28,6 +28,24 @@ const runWithStore = <A, E>(effect: Effect.Effect<A, E, RedactionService>, value
   );
 
 describe("RedactionService.layer", () => {
+  test("standalone masking preserves signed URL parameters across repeated passes", () => {
+    // Given
+    const redactor = createStandaloneRedactor("secrets");
+    const input =
+      'Get "https://cdn01.quay.io/x?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLE%2F20261022%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261022T070000Z&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789": EOF';
+    const expected =
+      'Get "https://cdn01.quay.io/x?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=[redacted]&X-Amz-Date=20261022T070000Z&X-Amz-Signature=[redacted]": EOF';
+    // When
+    const once = redactor.redactString(input);
+    const twice = redactor.redactString(once);
+    const thrice = redactor.redactString(twice);
+    // Then
+    expect(once).toBe(expected);
+    expect(twice).toBe(expected);
+    expect(thrice).toBe(expected);
+    expect(redactor.redactStringBounded?.(input, 1_024)).toBe(expected);
+  });
+
   test("tag is importable and forProfile yields a Redactor", async () => {
     const redactor = await runWithStore(
       Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")),

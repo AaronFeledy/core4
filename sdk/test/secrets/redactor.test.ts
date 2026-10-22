@@ -1,8 +1,63 @@
 import { describe, expect, test } from "bun:test";
 
 import { REDACTED, createSecretRedactor, isUsableExactRedactionValue } from "@lando/sdk/secrets";
+import { LOG_LINE_TRUNCATED_MARKER } from "../../src/log-follow/marker.ts";
 
 describe("createSecretRedactor", () => {
+  for (const value of ["a", "red", "acted]", "[", "]", "x[redacted]y"]) {
+    test(`treats existing sentinels as opaque when masking ${value}`, () => {
+      // Given
+      const redactor = createSecretRedactor([value]);
+      const input = `x[redacted]y ${value} [redacted]`;
+      const expected = value.includes(REDACTED) ? input : "x[redacted]y [redacted] [redacted]";
+      // When
+      const output = redactor.redact(input);
+      const bounded = redactor.redactBounded?.(input, 1_024);
+      // Then
+      expect(output).toBe(expected);
+      expect(bounded).toBe(expected);
+      expect(redactor.redact(output)).toBe(output);
+    });
+  }
+
+  test("keeps newly inserted sentinels opaque to shorter known values", () => {
+    // Given
+    const redactor = createSecretRedactor(["long-value", "a", "red"]);
+    // When
+    const output = redactor.redact("long-value a red [redacted]");
+    // Then
+    expect(output).toBe("[redacted] [redacted] [redacted] [redacted]");
+    expect(redactor.redactBounded?.("long-value a red [redacted]", 1_024)).toBe(output);
+  });
+
+  test("masks proper prefixes before every truncation marker in both paths", () => {
+    // Given
+    const redactor = createSecretRedactor(["private-credential", "[redacted]suffix"]);
+    const input = `private${LOG_LINE_TRUNCATED_MARKER} and priv${LOG_LINE_TRUNCATED_MARKER} [redacted]${LOG_LINE_TRUNCATED_MARKER}`;
+    const expected = `[redacted]${LOG_LINE_TRUNCATED_MARKER} and [redacted]${LOG_LINE_TRUNCATED_MARKER} [redacted]${LOG_LINE_TRUNCATED_MARKER}`;
+    // When
+    const output = redactor.redact(input);
+    const bounded = redactor.redactBounded?.(input, 1_024);
+    // Then
+    expect(output).toBe(expected);
+    expect(bounded).toBe(expected);
+    expect(redactor.redact(output)).toBe(output);
+  });
+
+  test("rejects truncation-prefix expansion when its UTF-8 output exceeds the budget", () => {
+    // Given
+    const redactor = createSecretRedactor(["private-credential"]);
+    const input = `private${LOG_LINE_TRUNCATED_MARKER}`;
+    const expected = `[redacted]${LOG_LINE_TRUNCATED_MARKER}`;
+    const bytes = new TextEncoder().encode(expected).byteLength;
+    // When
+    const exact = redactor.redactBounded?.(input, bytes);
+    const overBudget = redactor.redactBounded?.(input, bytes - 1);
+    // Then
+    expect(exact).toBe(expected);
+    expect(overBudget).toBeUndefined();
+  });
+
   test("masks a single occurrence of a secret value", () => {
     const redactor = createSecretRedactor(["s3cr3t"]);
     expect(redactor.redact("token=s3cr3t")).toBe(`token=${REDACTED}`);

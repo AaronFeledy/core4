@@ -85,36 +85,32 @@ const SECRET_KEY_PATTERN =
   /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
 
 const SECRET_ASSIGNMENT_PATTERN =
-  /(?<![?&])\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_]*)=(?!\[redacted\])([^\s,;"'\]}]+)/giu;
+  /(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_.-]*)=((?:\[redacted\]|[^\s,;"'\]}])+)/giu;
 
-const URL_USERINFO_PATTERN = /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
+const URL_USERINFO_PATTERN =
+  /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)(?:\[redacted\]|[^/\s:@])+:(?:\[redacted\]|[^/\s@])+@/gu;
 
 const ENCODED_URL_USERINFO_PATTERN =
-  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
+  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)(?:\[redacted\]|[^&\s"'\]}{])*?%3A(?:\[redacted\]|[^&\s"'\]}{])*?%40/giu;
 
-const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+[\w.~+/=-]+/giu;
+const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+(?:\[redacted\]|[\w.~+/=-])+/giu;
 
 const SIGNED_QUERY_PARAM_PATTERN =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)([^&\s"'\]}]+)/giu;
-
-const redactSecretsString = (text: string): string =>
-  text
-    .replace(SECRET_ASSIGNMENT_PATTERN, (_m, name: string) => `${name}=${REDACTED}`)
-    .replace(URL_USERINFO_PATTERN, (_m, scheme: string) => `${scheme}${REDACTED}@`)
-    .replace(ENCODED_URL_USERINFO_PATTERN, (_m, scheme: string) => `${scheme}${REDACTED}%40`)
-    .replace(BEARER_TOKEN_PATTERN, (_m, scheme: string) => `${scheme} ${REDACTED}`)
-    .replace(SIGNED_QUERY_PARAM_PATTERN, (_m, prefix: string) => `${prefix}${REDACTED}`);
+  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)((?:\[redacted\]|[^&\s"'\]}])+)/giu;
 
 const SECRETS_REPLACEMENTS = [
-  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: (_m: string, name: string) => `${name}=${REDACTED}` },
   { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },
   {
     pattern: ENCODED_URL_USERINFO_PATTERN,
     replace: (_m: string, scheme: string) => `${scheme}${REDACTED}%40`,
   },
+  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: (_m: string, name: string) => `${name}=${REDACTED}` },
   { pattern: BEARER_TOKEN_PATTERN, replace: (_m: string, scheme: string) => `${scheme} ${REDACTED}` },
   { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: (_m: string, prefix: string) => `${prefix}${REDACTED}` },
 ] as const;
+
+const redactSecretsString = (text: string): string =>
+  SECRETS_REPLACEMENTS.reduce((result, { pattern, replace }) => result.replace(pattern, replace), text);
 
 const TELEMETRY_URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/giu;
 const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._$-]+(?:\\[^\s\\'"]+)*/gu;

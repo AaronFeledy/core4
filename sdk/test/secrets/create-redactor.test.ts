@@ -1,6 +1,134 @@
 import { describe, expect, test } from "bun:test";
 
 import { PATTERN_CLASSES, REDACTED, REDACTION_PROFILES, createRedactor } from "@lando/sdk/secrets";
+import { LOG_LINE_TRUNCATED_MARKER } from "../../src/log-follow/marker.ts";
+
+const signedUrlCases = [
+  {
+    name: "issue #1677 AWS S3 URL",
+    input:
+      'Get "https://cdn01.quay.io/x?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLE%2F20261022%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261022T070000Z&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789": EOF',
+    expected:
+      'Get "https://cdn01.quay.io/x?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=[redacted]&X-Amz-Date=20261022T070000Z&X-Amz-Signature=[redacted]": EOF',
+  },
+  {
+    name: "AWS session credentials",
+    input:
+      "https://s3.example/x?X-Amz-Credential=key&X-Amz-Security-Token=session&X-Amz-Signature=signature&n=1",
+    expected:
+      "https://s3.example/x?X-Amz-Credential=[redacted]&X-Amz-Security-Token=[redacted]&X-Amz-Signature=[redacted]&n=1",
+  },
+  {
+    name: "GCS signed URL",
+    input:
+      "https://storage.googleapis.com/x?X-Goog-Credential=key%2Fdate&X-Goog-Date=20261022T070000Z&X-Goog-Signature=signature",
+    expected:
+      "https://storage.googleapis.com/x?X-Goog-Credential=[redacted]&X-Goog-Date=20261022T070000Z&X-Goog-Signature=[redacted]",
+  },
+  {
+    name: "Azure SAS URL",
+    input: "https://blob.example/x?sv=2026-01-01&sig=signature%2Bvalue&sp=r",
+    expected: "https://blob.example/x?sv=2026-01-01&sig=[redacted]&sp=r",
+  },
+] as const;
+
+describe("sequential secret pattern regressions", () => {
+  const cases = [
+    ...signedUrlCases,
+    {
+      name: "overlapping assignment and bearer",
+      input: "Bearer TOKEN=abc!tail",
+      expected: "Bearer [redacted]",
+    },
+    {
+      name: "ampersand in an assignment",
+      input: "PASSWORD=abc&private-tail",
+      expected: "PASSWORD=[redacted]",
+    },
+    { name: "assignment in userinfo", input: "https://u:PASSWORD=x@h", expected: "https://[redacted]@h" },
+    {
+      name: "qualified keys",
+      input: "--db-password=x config.db.password=x MY_API_KEY=x",
+      expected: "--db-password=[redacted] config.db.password=[redacted] MY_API_KEY=[redacted]",
+    },
+    { name: "partially masked assignment", input: "PASSWORD=[redacted]XYZ", expected: "PASSWORD=[redacted]" },
+    { name: "partially masked bearer", input: "Bearer abc[redacted]def", expected: "Bearer [redacted]" },
+    {
+      name: "partially masked encoded userinfo",
+      input: "https%3A%2F%2Fu%3Aabc[redacted]def%40h",
+      expected: "https%3A%2F%2F[redacted]%40h",
+    },
+    {
+      name: "value-layer masked query",
+      input: "?api_key=s3cr3tvalue&n=1",
+      expected: "?api_key=[redacted]&n=1",
+    },
+    { name: "bare query", input: "?token=abc", expected: "?token=[redacted]" },
+    {
+      name: "legitimate closing bracket",
+      input: "Env=[A_PASSWORD=x]",
+      expected: "Env=[A_PASSWORD=[redacted]]",
+    },
+  ];
+
+  for (const { name, input, expected } of cases) {
+    test(`masks ${name} without losing surrounding syntax`, () => {
+      // Given
+      const redactor = createRedactor("secrets", { values: ["s3cr3tvalue"] });
+      // When
+      const output = redactor.redactString(input);
+      const bounded = redactor.redactStringBounded?.(input, 4_096);
+      // Then
+      expect(output).toBe(expected);
+      expect(bounded).toBe(expected);
+    });
+  }
+
+  for (const profile of ["secrets", "telemetry"] as const) {
+    for (const { name, input } of cases) {
+      test(`${profile} is a fixed point for ${name}`, () => {
+        // Given
+        const redactor = createRedactor(profile, { values: ["s3cr3tvalue"] });
+        // When
+        const once = redactor.redactString(input);
+        const twice = redactor.redactString(once);
+        const thrice = redactor.redactString(twice);
+        const boundedOnce = redactor.redactStringBounded?.(input, 4_096);
+        // Then
+        expect(twice).toBe(once);
+        expect(thrice).toBe(once);
+        if (profile === "secrets") expect(boundedOnce).toBe(once);
+        if (redactor.redactStringBounded !== undefined) {
+          const boundedTwice = redactor.redactStringBounded(once, 4_096);
+          expect(boundedTwice).toBe(once);
+          expect(redactor.redactStringBounded(twice, 4_096)).toBe(once);
+        }
+      });
+    }
+  }
+
+  for (const input of [signedUrlCases[0].input, "token=x", "password=x", "?api_key=x&n=1"]) {
+    test(`transcript masking does not manufacture closing brackets for ${input}`, () => {
+      // Given
+      const redactor = createRedactor("transcript");
+      // When
+      const output = redactor.redactString(input);
+      // Then
+      expect(output).toContain("[redacted]");
+      expect(output).not.toContain("[redacted]]");
+      expect(redactor.redactString(output)).toBe(output);
+    });
+  }
+
+  test("transcript masking preserves a legitimate closing bracket", () => {
+    // Given
+    const redactor = createRedactor("transcript");
+    // When
+    const output = redactor.redactString("Env=[A_PASSWORD=x]");
+    // Then
+    expect(output).toBe("Env=[A_PASSWORD=[redacted]]");
+  });
+});
 
 describe("createRedactor surface", () => {
   test("REDACTED is the canonical [redacted] sentinel", () => {
@@ -92,6 +220,19 @@ describe("secrets profile (pattern layer)", () => {
 });
 
 describe("value layer applied before pattern layer", () => {
+  test("bounded composition masks a trailing known-value prefix before truncation", () => {
+    // Given
+    const redactor = createRedactor("secrets", { values: ["private-credential"] });
+    const input = `private${LOG_LINE_TRUNCATED_MARKER}`;
+    const expected = `[redacted]${LOG_LINE_TRUNCATED_MARKER}`;
+    // When
+    const output = redactor.redactString(input);
+    const bounded = redactor.redactStringBounded?.(input, 1_024);
+    // Then
+    expect(output).toBe(expected);
+    expect(bounded).toBe(expected);
+  });
+
   test("a registered secret split across a pattern boundary never survives", () => {
     const r = createRedactor("secrets", { values: ["pa:ss@wo.rd"] });
     const out = r.redactString("https://pa:ss@wo.rd/path");
