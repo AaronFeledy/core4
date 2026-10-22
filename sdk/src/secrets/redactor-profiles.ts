@@ -5,9 +5,10 @@
  * `createRedactor(profile, options)` composes two layers:
  *
  * 1. The **value layer** ({@link createSecretRedactor}): every known secret
- *    value, matched literally and longest-first, is masked first. Applying the
- *    value layer before the pattern layer guarantees a registered secret never
- *    survives by being split across a pattern boundary.
+ *    value is matched literally, and each run of overlapping occurrences is
+ *    masked as one union. Applying the value layer before the pattern layer
+ *    guarantees a registered secret never survives by being split across a
+ *    pattern boundary.
  * 2. The **pattern layer**: a fixed catalog of pattern classes, selected by
  *    profile, that normalizes secrets and PII to deterministic sentinels and
  *    placeholders.
@@ -88,7 +89,7 @@ const ID = "[id]";
 const HOST = "[host]";
 
 const SECRET_ASSIGNMENT_PATTERN = new RegExp(
-  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(\\"[^"]*\\"|\\'[^']*\\'|"[^"]*"|'[^']*'|(?:\[redacted\]|[^\s,;"'\]}])+)`,
+  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(\\+"[^"]*\\+"|\\+'[^']*\\+'|"[^"]*"|'[^']*'|(?:\[redacted\]|[^\s,;"'\]}])+)`,
   "giu",
 );
 
