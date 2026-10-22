@@ -57,6 +57,8 @@ Task-local values win first. Values from included tooling fragments come next. A
 
 Use `commandAliases.custom` to give a canonical command an app-specific shortcut. The canonical id stays put, so scripts can keep using it.
 
+A remap can't free `run`, `scratch`, or a `scratch:*` name for a tooling task. Those belong to scratch apps, and `lando app:config:lint` and `lando start` reject a task named after one.
+
 ```yaml
 tooling:
   greet:

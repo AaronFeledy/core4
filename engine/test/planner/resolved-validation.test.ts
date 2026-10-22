@@ -146,7 +146,7 @@ test("lint and planning aggregate service, hostname and materialized route field
         "landofile.hostname",
       ]);
       for (const issue of lint.violations)
-        expect(issue).toMatchObject({ line: expect.any(Number), scope: "effective" });
+        expect(issue).toMatchObject({ line: expect.any(Number), scopes: ["effective"] });
     },
   );
 });

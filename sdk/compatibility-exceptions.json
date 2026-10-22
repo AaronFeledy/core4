@@ -1,5 +1,29 @@
 [
   {
+    "surface": "command:app:config:lint",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.scope",
+    "justification": "Pre-release lint output now emits one record per defect with a scopes array instead of separate records per scope. Findings merge only when every other field matches, preserving source attribution and distinct defects. No singular-scope compatibility path is retained."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig.violations.items.scope",
+    "justification": "Doctor embeds the shared pre-release lint result: one record per defect with ordered scopes replaces separate singular-scope records. Doctor text and JSON consume the same merged findings without collapsing distinct sources or messages."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.scope",
+    "justification": "The pre-release lint contract replaces singular scope with scopes so a defect found in fragment and effective validation occupies one record. Identity includes every other field, retaining distinct physical sources and messages."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-removed",
+    "path": "$.scope",
+    "justification": "The pre-release finding contract intentionally replaces scope with ordered unique scopes. One record per defect removes duplicate machine findings while preserving every non-scope diagnostic field; no legacy alias is shipped."
+  },
+  {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-keyword",
     "path": "$.user.pattern",

@@ -5,7 +5,6 @@ import type {
   LandofileParseError,
   LandofileValidationError,
   NotImplementedError,
-  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -147,5 +146,4 @@ export type ResolveIncludesError =
   | LandofileParseError
   | LandofileValidationError
   | ResolveLandofileLoadExpressionError
-  | NotImplementedError
-  | ToolingIncludeCycleError;
+  | NotImplementedError;

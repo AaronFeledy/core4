@@ -114,7 +114,6 @@ describe("SDK public-surface snapshot", () => {
       ManagedFileTransactionError: true,
       NotImplementedError: true,
       RouteInputError: true,
-      ToolingIncludeCycleError: true,
     } satisfies Record<LandofileServiceError["_tag"], true>;
     expect(Object.keys(tags).sort()).toEqual(publicSurface.landofileServiceErrorTags);
   });
