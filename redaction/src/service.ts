@@ -14,7 +14,11 @@ import { SecretStore } from "@lando/sdk/services";
 import { expandRedactionValues } from "./exact-values.ts";
 import { collectSecretEnvValues, nonEmpty } from "./heuristic-values.ts";
 
-export { collectPublicCredentialValues, collectSecretEnvValues } from "./heuristic-values.ts";
+export {
+  collectPublicCredentialValues,
+  collectSecretEnvValues,
+  collectSecretStructuralValues,
+} from "./heuristic-values.ts";
 
 export interface RedactionForProfileOptions {
   readonly redactionTokens?: Iterable<string> | undefined;

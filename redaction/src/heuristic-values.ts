@@ -1,31 +1,14 @@
 /** Values collected from secret-looking keys, minus published defaults and public credential identities. */
 import { DATABASE_FAMILY_ENV_KEYS, LANDO_DB_ENV_KEYS } from "@lando/sdk/database-creds";
-import { isPublicDefaultCredential, isUsableExactRedactionValue } from "@lando/sdk/secrets";
+import {
+  isPublicDefaultCredential,
+  isSecretEnvName,
+  isSecretStructuralName,
+  isUsableExactRedactionValue,
+} from "@lando/sdk/secrets";
 
 export const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;
-
-const SECRET_ENV_KEY_PARTS = new Set([
-  "apikey",
-  "apikeys",
-  "authkey",
-  "authkeys",
-  "authtoken",
-  "authtokens",
-  "credential",
-  "credentials",
-  "key",
-  "keys",
-  "pass",
-  "passwd",
-  "passwds",
-  "password",
-  "passwords",
-  "secret",
-  "secrets",
-  "token",
-  "tokens",
-]);
 
 type CredentialFields<T> = {
   readonly user?: T | undefined;
@@ -81,22 +64,17 @@ export const collectPublicCredentialValues = (
   return values;
 };
 
-export const collectSecretEnvValues = (
+const collectHeuristicValues = (
   sourceEnv: Record<string, string | undefined> | undefined,
-  publicValues?: ReadonlySet<string>,
+  publicValues: ReadonlySet<string> | undefined,
+  recognizes: (name: string) => boolean,
 ): string[] => {
   if (sourceEnv === undefined) return [];
   const localPublicValues = collectPublicCredentialValues(sourceEnv);
   const values: string[] = [];
   for (const [key, value] of Object.entries(sourceEnv)) {
-    const normalizedParts = key
-      .toLowerCase()
-      .split(/[._-]+/u)
-      .filter(nonEmpty);
-    const carriesSecret =
-      key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
     if (
-      carriesSecret &&
+      recognizes(key) &&
       nonEmpty(value) &&
       !isPublicDefaultCredential(value) &&
       !localPublicValues.has(value) &&
@@ -108,3 +86,13 @@ export const collectSecretEnvValues = (
   }
   return values;
 };
+
+export const collectSecretEnvValues = (
+  sourceEnv: Record<string, string | undefined> | undefined,
+  publicValues?: ReadonlySet<string>,
+): string[] => collectHeuristicValues(sourceEnv, publicValues, isSecretEnvName);
+
+export const collectSecretStructuralValues = (
+  fields: Record<string, string | undefined> | undefined,
+  publicValues?: ReadonlySet<string>,
+): string[] => collectHeuristicValues(fields, publicValues, isSecretStructuralName);

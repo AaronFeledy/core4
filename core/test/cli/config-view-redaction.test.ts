@@ -35,6 +35,44 @@ const runtime = Layer.succeed(GlobalConfigSources, {
   sources: { user: false, env: false },
 });
 
+test("config collection distinguishes env maps from structural metadata and scalar set results", () => {
+  const config = {
+    defaultSecretStore: "env",
+    tokenFile: "./token.txt",
+    storage: { key: "storage-name" },
+    certs: { key: "./certs/server.key" },
+    appEnv: {
+      stripeSecretKey: "sk_test_canary",
+      PGPASSWORD: "pg-private",
+      MYSQL_PWD: "mysql-private",
+      TOKENIZERS_PARALLELISM: "false",
+    },
+    appLabels: { cacheKey: "label-private" },
+    plugin: {
+      clientSecret: "client-private",
+      rootPassword: "root-private",
+      cacheKey: "cache-name",
+      apiKey: "api-private",
+    },
+  };
+  expect(configRedactionTokens({ config })).toEqual([
+    "sk_test_canary",
+    "pg-private",
+    "mysql-private",
+    "label-private",
+    "client-private",
+    "root-private",
+    "api-private",
+  ]);
+  expect(configRedactionTokens({ key: "defaultSecretStore", value: "env" })).toEqual([]);
+  expect(configRedactionTokens({ key: "appEnv.stripeSecretKey", value: "set-private" })).toContain(
+    "set-private",
+  );
+  expect(configRedactionTokens({ key: "plugin.clientSecret", value: "set-private" })).toContain(
+    "set-private",
+  );
+});
+
 test("marks arbitrary OTLP header names as secrets in scalar set and map get shapes", () => {
   expect(
     configRedactionTokens({ key: "tracing.otlp.headers.x-team", value: "opaque-set-header-669" }),

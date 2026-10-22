@@ -7,7 +7,11 @@ import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } fr
 import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectSecretEnvValues,
+  collectSecretStructuralValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
@@ -225,7 +229,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
             if (record === undefined) return [];
             return Object.entries(record).flatMap(([name, value]) =>
               (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-                collectSecretEnvValues({ [name]: String(occurrence) }, publicValues),
+                collectSecretStructuralValues({ [name]: String(occurrence) }, publicValues),
               ),
             );
           }),

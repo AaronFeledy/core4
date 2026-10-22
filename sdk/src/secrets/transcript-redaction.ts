@@ -1,4 +1,5 @@
 import { REDACTED } from "./redactor.ts";
+import { SECRET_WORD_SOURCE } from "./secret-names.ts";
 
 export interface TranscriptRedactionEnv {
   readonly home?: string;
@@ -23,13 +24,15 @@ const SHORT_EQUALS_SECRET =
   /(^|[\s"'`(])(-[tk])\s*=\s*(?:\\"[^"]*\\"|\\'[^']*\\'|\\`[^`]*\\`|"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=)]+)/giu;
 const SHORT_SPACE_SECRET =
   /(^|[\s"'`(])(-[tk])\s+(?:\\"[^"]*\\"|\\'[^']*\\'|\\`[^`]*\\`|"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=)]+)/giu;
-const KEY_EQUALS_SECRET =
-  /(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_.-]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|(?:\[redacted\]|[^\s"'`&?\]}])+)/giu;
-const KEY_SPACE_SECRET =
-  /\b(token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)\s+(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=]+)/giu;
+const KEY_EQUALS_SECRET = new RegExp(
+  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)\s*=\s*(?:"[^"]*"|'[^']*'|\x60[^\x60]*\x60|(?:\[redacted\]|[^\s"'\x60&?\]}])+)`,
+  "giu",
+);
+const KEY_SPACE_SECRET = new RegExp(
+  String.raw`\b(${SECRET_WORD_SOURCE})\s+(?:"[^"]*"|'[^']*'|\x60[^\x60]*\x60|[^\s"'\x60&?=]+)`,
+  "giu",
+);
 const TOKEN_SECRET_LITERAL = /\btoken\s+secret\b/gi;
-const QUERY_SECRET =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)((?:\[redacted\]|[^&\s"'\]}])+)/giu;
 const GENERIC_PATHS: readonly RegExp[] = [
   /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
   /\/Users\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
@@ -90,8 +93,8 @@ export const redactTranscriptString = (
     .replace(SHORT_SPACE_SECRET, (_match, prefix: string, key: string) => `${prefix}${key} ${REDACTED}`)
     .replace(KEY_EQUALS_SECRET, (_match, key: string) => `${key}=${REDACTED}`)
     .replace(KEY_SPACE_SECRET, (_match, key: string) => `${key} ${REDACTED}`)
-    .replace(TOKEN_SECRET_LITERAL, `token ${REDACTED}`)
-    .replace(QUERY_SECRET, (_match, prefix: string) => `${prefix}${REDACTED}`);
+    .replace(TOKEN_SECRET_LITERAL, `token ${REDACTED}`);
+  // Query masking belongs to the shared secrets pass, not a transcript copy.
   return redactSecrets(output);
 };
 

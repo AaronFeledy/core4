@@ -33,6 +33,12 @@ import { replacePatternsBounded } from "./bounded-redaction.ts";
 import { redactedInspection } from "./inspection.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
 import {
+  SECRET_FIELD_PATTERN,
+  SECRET_WORD_SOURCE,
+  SIGNED_QUERY_WORD_SOURCE,
+  isSecretFieldName,
+} from "./secret-names.ts";
+import {
   TRANSCRIPT_PATTERN_CLASSES,
   type TranscriptRedactionEnv,
   redactTranscriptString,
@@ -81,11 +87,10 @@ const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
 
-const SECRET_KEY_PATTERN =
-  /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
-
-const SECRET_ASSIGNMENT_PATTERN =
-  /(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_.-]*)=((?:\[redacted\]|[^\s,;"'\]}])+)/giu;
+const SECRET_ASSIGNMENT_PATTERN = new RegExp(
+  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|(?:\[redacted\]|[^\s,;"'\]}])+)`,
+  "giu",
+);
 
 const URL_USERINFO_PATTERN =
   /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)(?:\[redacted\]|[^/\s:@])+:(?:\[redacted\]|[^/\s@])+@/gu;
@@ -95,8 +100,10 @@ const ENCODED_URL_USERINFO_PATTERN =
 
 const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+(?:\[redacted\]|[\w.~+/=-])+/giu;
 
-const SIGNED_QUERY_PARAM_PATTERN =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)((?:\[redacted\]|[^&\s"'\]}])+)/giu;
+const SIGNED_QUERY_PARAM_PATTERN = new RegExp(
+  String.raw`([?&](?:[\w-]*[-_])?(?:${SIGNED_QUERY_WORD_SOURCE})=)((?:\[redacted\]|[^&\s"'\]}])+)`,
+  "giu",
+);
 
 const SECRETS_REPLACEMENTS = [
   { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },
@@ -153,7 +160,7 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
     pattern: SIGNED_QUERY_PARAM_PATTERN,
     replace: (_m, prefix: string) => `${prefix}${REDACTED}`,
   },
-  secretKeyedField: { pattern: SECRET_KEY_PATTERN, replace: REDACTED },
+  secretKeyedField: { pattern: SECRET_FIELD_PATTERN, replace: REDACTED },
   url: { pattern: TELEMETRY_URL_PATTERN, replace: URL },
   posixPath: { pattern: POSIX_PATH_PATTERN, replace: PATH },
   windowsPath: { pattern: WINDOWS_PATH_PATTERN, replace: PATH },
@@ -209,6 +216,6 @@ export const createRedactor = (
     ...redactedInspection,
     redactString,
     ...(redactStringBounded === undefined ? {} : { redactStringBounded }),
-    redactValue: (value) => redactValueWith(redactString, (key) => SECRET_KEY_PATTERN.test(key), value),
+    redactValue: (value) => redactValueWith(redactString, isSecretFieldName, value),
   };
 };

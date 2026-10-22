@@ -1,7 +1,11 @@
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
-import { collectPublicCredentialValues, collectSecretEnvValues } from "@lando/redaction/service";
+import {
+  collectPublicCredentialValues,
+  collectSecretEnvValues,
+  collectSecretStructuralValues,
+} from "@lando/redaction/service";
 import { isLandofileOverride, isLandofileReset } from "@lando/sdk/landofile";
 
 type EnvMap = Readonly<Record<string, unknown>> | undefined;
@@ -63,8 +67,8 @@ export const collectLandofileRedactionTokens = (
       Predicate.isObject(compose) && Predicate.isObject(compose.labels) ? compose.labels : undefined;
     return [
       ...collectSecretEnvValues(stringEnv(service?.environment), publicValues),
-      ...collectSecretEnvValues(stringEnv(service?.creds), publicValues),
-      ...collectSecretEnvValues(
+      ...collectSecretStructuralValues(stringEnv(service?.creds), publicValues),
+      ...collectSecretStructuralValues(
         service?.password === undefined ? undefined : { password: service.password },
         publicValues,
       ),
@@ -110,22 +114,33 @@ export const collectAuthoredRedactionTokens = (document: unknown): readonly stri
     for (const value of Object.values(node)) discover(value);
   };
   discover(document);
-  const collect = (node: unknown): readonly string[] => {
+  const isEnvMap = (path: readonly string[]): boolean =>
+    (path.length === 1 && (path[0] === "appEnv" || path[0] === "appLabels")) ||
+    (path.length === 2 && path[0] === "toolingDefaults" && path[1] === "env") ||
+    (path.length === 3 && path[0] === "tooling" && path[2] === "env") ||
+    (path[0] === "services" &&
+      ((path.length === 3 && (path[2] === "environment" || path[2] === "labels")) ||
+        (path.length === 5 && path[2] === "extensions" && path[3] === "compose" && path[4] === "labels")));
+  const collect = (node: unknown, path: readonly string[]): readonly string[] => {
     if (isLandofileReset(node)) return [];
-    if (isLandofileOverride(node)) return collect(node.value);
+    if (isLandofileOverride(node)) return collect(node.value, path);
+    const collectValues = isEnvMap(path.slice(0, -1))
+      ? collectSecretEnvValues
+      : collectSecretStructuralValues;
+    if (typeof node === "string") {
+      const key = path.at(-1);
+      return key === undefined ? [] : collectValues({ [key]: node }, publicValues);
+    }
     if (Array.isArray(node))
       return node.flatMap((entry) => {
-        if (typeof entry !== "string") return collect(entry);
+        if (!isEnvMap(path) || typeof entry !== "string") return collect(entry, [...path, ""]);
         const equals = entry.indexOf("=");
         return equals < 0
           ? []
           : collectSecretEnvValues({ [entry.slice(0, equals)]: entry.slice(equals + 1) }, publicValues);
       });
     if (!Predicate.isObject(node)) return [];
-    return Object.entries(node).flatMap(([key, value]) => [
-      ...(typeof value === "string" ? collectSecretEnvValues({ [key]: value }, publicValues) : []),
-      ...collect(value),
-    ]);
+    return Object.entries(node).flatMap(([key, value]) => collect(value, [...path, key]));
   };
-  return collect(document);
+  return collect(document, []);
 };

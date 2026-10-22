@@ -4,6 +4,7 @@ import {
   makeRedactionService,
   resetRegisteredRedactionValuesForTesting,
 } from "@lando/redaction/service";
+import { override, reset } from "@lando/sdk/landofile";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Redacted, Schema } from "effect";
@@ -16,6 +17,78 @@ import {
 } from "../../src/services/app-plan-redaction.ts";
 
 afterEach(resetRegisteredRedactionValuesForTesting);
+
+test("authored collection separates env maps, sensitive leaves and non-secret metadata", () => {
+  const document = {
+    appEnv: { stripeSecretKey: "app-env-private" },
+    appLabels: { cacheKey: "app-label-private" },
+    tooling: { task: { env: { stripeSecretKey: "tool-private" } } },
+    toolingDefaults: { env: override({ MYSQL_PWD: "default-private" }) },
+    services: {
+      app: {
+        environment: override([
+          "stripeSecretKey=list-private",
+          "stripeSecretKey=list-private",
+          "PGPASSWORD=pg-private",
+          "TOKENIZERS_PARALLELISM=false",
+        ]),
+        labels: { buildKey: "label-private" },
+        extensions: { compose: { labels: { stripeSecretKey: "compose-private" } } },
+        password: override("service-private"),
+        creds: { password: "credential-private", rootPassword: "root-private" },
+        certs: { key: "./certs/server.key" },
+        storage: [{ key: "source-code" }],
+        cacheKey: "cache-id",
+        buildKey: "build-id",
+        defaultSecretStore: "env",
+        tokenFile: "./token.txt",
+        rootPassword: "structural-private",
+        apiToken: "api-private",
+        clientSecret: "client-private",
+        removedSecret: reset(),
+        commands: ["PASSWORD=not-an-env-entry"],
+      },
+    },
+  };
+  expect(collectAuthoredRedactionTokens(document)).toEqual([
+    "app-env-private",
+    "app-label-private",
+    "tool-private",
+    "default-private",
+    "list-private",
+    "list-private",
+    "pg-private",
+    "label-private",
+    "compose-private",
+    "service-private",
+    "credential-private",
+    "root-private",
+    "structural-private",
+    "api-private",
+    "client-private",
+  ]);
+});
+
+test.each([collectLandofileRedactionTokens, collectAppPlanRedactionTokens])(
+  "%p recognizes camelCase and suffix names in projected env and compose labels",
+  (collect) => {
+    expect(
+      collect({
+        services: {
+          app: {
+            environment: {
+              stripeSecretKey: "sk_test_canary",
+              PGPASSWORD: "pg-private",
+              MYSQL_PWD: "mysql-private",
+              TOKENIZERS_PARALLELISM: "false",
+            },
+            extensions: { compose: { labels: { stripeSecretKey: "label-private" } } },
+          },
+        },
+      }),
+    ).toEqual(["sk_test_canary", "pg-private", "mysql-private", "label-private"]);
+  },
+);
 
 test("retained invocations read current containers again instead of caching registration", async () => {
   resetRegisteredRedactionValuesForTesting();

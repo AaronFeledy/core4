@@ -1754,6 +1754,9 @@
       "createRedactor",
       "createSecretRedactor",
       "isPublicDefaultCredential",
+      "isSecretEnvName",
+      "isSecretFieldName",
+      "isSecretStructuralName",
       "isUsableExactRedactionValue",
       "parseSecretReference"
     ],

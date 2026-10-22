@@ -635,7 +635,17 @@ describe("runAppEvent tooling-step kernel", () => {
     const canonical: EventCommandExecutorInput[] = [];
     const secrets = ["canonical-event-secret-one", "canonical-event-secret-two"] as const;
     const plan = attachEffectiveEvents(eventPlan(), {
-      "pre-start": [{ command: "info", flags: { API_TOKENS: [...secrets] } }],
+      "pre-start": [
+        {
+          command: "info",
+          flags: {
+            API_TOKENS: [...secrets],
+            key: "public-storage-name",
+            API_KEY: "private-event-api-key",
+            apiToken: "private-camel-event-token",
+          },
+        },
+      ],
     });
 
     // When
@@ -647,6 +657,8 @@ describe("runAppEvent tooling-step kernel", () => {
     const input = canonical[0];
     expect(input !== undefined && "redactionTokens" in input ? input.redactionTokens : undefined).toEqual([
       ...secrets,
+      "private-event-api-key",
+      "private-camel-event-token",
     ]);
   });
 
