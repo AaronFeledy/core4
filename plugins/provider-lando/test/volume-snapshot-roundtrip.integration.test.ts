@@ -344,6 +344,9 @@ describe("live volume snapshot round trip", () => {
                       Layer.succeed(PathsService, PathsService.of(paths)),
                       Layer.succeed(RuntimeProvider, fx.provider),
                       Layer.succeed(RuntimeProviderRegistry, {
+                        appliedPlansFor: () => Effect.succeed([]),
+                        resolveAppliedPlan: () => Effect.succeed(undefined),
+                        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                         list: Effect.succeed([ProviderId.make(fx.provider.id)]),
                         capabilities: Effect.succeed(fx.provider.capabilities),
                         select: () => Effect.succeed(fx.provider),

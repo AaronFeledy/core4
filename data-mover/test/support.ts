@@ -47,6 +47,9 @@ export const fixtureVolume = (ref: VolumeRef = { app: AppId.make("data-app"), st
 });
 
 export const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
+  appliedPlansFor: () => Effect.succeed([]),
+  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   list: Effect.succeed([ProviderId.make("test")]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: (target) =>
