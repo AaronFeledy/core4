@@ -416,21 +416,8 @@ const destroyAppWithResolvedTarget = (
         purgeCaches: options?.purgeCaches === true,
       });
       const { pending } = yield* readDiscardableStart(validatedTarget.app);
-      if (
-        (pending === null || pending.phase === "completed") &&
-        requireAppliedEvidence &&
-        registry.resolveAppliedPlan !== undefined
-      ) {
-        const evidence =
-          registry.resolveTeardownEvidence === undefined
-            ? yield* registry
-                .resolveAppliedPlan(validatedTarget.plan.root)
-                .pipe(
-                  Effect.map((plan) =>
-                    plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
-                  ),
-                )
-            : yield* registry.resolveTeardownEvidence(validatedTarget.plan.root);
+      if ((pending === null || pending.phase === "completed") && requireAppliedEvidence) {
+        const evidence = yield* registry.resolveTeardownEvidence(validatedTarget.plan.root);
         switch (evidence.kind) {
           case "applied":
             break;

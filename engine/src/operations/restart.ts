@@ -94,7 +94,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const registry = yield* RuntimeProviderRegistry;
   const proxy = yield* RouterService;
   const provider = yield* registry.select(target.plan);
-  const appliedPlan = yield* registry.resolveAppliedPlan?.(target.plan.root) ?? Effect.succeed(undefined);
+  const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
   if (
     appliedPlan === undefined ||
     appliedPlan.root !== target.plan.root ||
