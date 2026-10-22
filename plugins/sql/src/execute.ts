@@ -4,6 +4,7 @@ import { DateTime, Effect, absurd } from "effect";
 
 import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
+import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
@@ -22,6 +23,7 @@ import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
+import { sqlPlanIdentity } from "./views.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 
 export { dbCommandRedactionTokens, dbInputFromCommand } from "./command-input.ts";
@@ -33,6 +35,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   const resolved = resolveSqlTarget(deps.plan, input.service);
   if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
   const target = resolved.success;
+  const owner = sqlPlanIdentity(deps.plan);
   const service = deps.plan.services[target.name];
   if (service === undefined) {
     return yield* Effect.fail(
@@ -134,7 +137,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     const scope = yield* resolveSnapshotSource({
       app: deps.plan.id,
       ...(store === undefined ? {} : { store: store.store }),
-      ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+      ownerKey: owner.ownerKey,
       service: target.name,
       hostCwd: input.hostCwd ?? process.cwd(),
       canonicalizePath: deps.canonicalizeSourcePath,
@@ -148,7 +151,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     const filter = yield* resolveSnapshotSource({
       app: deps.plan.id,
       ...(store === undefined ? {} : { store: store.store }),
-      ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+      ownerKey: owner.ownerKey,
       ...(deps.plan.identity?.repoGroupKey === undefined
         ? {}
         : { repoGroupKey: deps.plan.identity.repoGroupKey }),
@@ -246,7 +249,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       const filter = yield* resolveSnapshotSource({
         app: deps.plan.id,
         ...(store === undefined ? {} : { store: store.store }),
-        ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+        ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
           ? {}
           : { repoGroupKey: deps.plan.identity.repoGroupKey }),
@@ -270,24 +273,25 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       retentionApplied = true;
       break;
     }
-    case "restore":
-      snapshotId = restoreSource?.id ?? "";
-      {
-        yield* runPhysical(
-          "restore",
-          (context) =>
-            Effect.gen(function* () {
-              yield* context.verifyVolume;
-              yield* deps.restore(snapshotId ?? "", context.volume);
-              if (context.running) yield* context.resume;
-            }),
-          false,
-          (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
-          // The snapshot just restored from may itself be an automatic recovery snapshot.
-          restoreSource === undefined ? [] : [restoreSource.id],
-        );
-      }
+    case "restore": {
+      if (restoreSource === undefined) return yield* Effect.die(new Error("Restore source was not resolved"));
+      snapshotId = restoreSource.id;
+      const handle = snapshotHandle(restoreSource);
+      yield* runPhysical(
+        "restore",
+        (context) =>
+          Effect.gen(function* () {
+            yield* context.verifyVolume;
+            yield* deps.restore(handle, context.volume);
+            if (context.running) yield* context.resume;
+          }),
+        false,
+        (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
+        // The snapshot just restored from may itself be an automatic recovery snapshot.
+        [restoreSource.id],
+      );
       break;
+    }
     case "seed":
       transfer = yield* withPhysicalVolumeLock({
         deps,

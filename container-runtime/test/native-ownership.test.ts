@@ -1,12 +1,18 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { DateTime, Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { privateNetworkLabels } from "../src/resource-cleanup.ts";
-import { planVolumeOwnership } from "../src/volume-ownership.ts";
 
 const metadata = { source: "ownership-test", runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0) };
 const web = ServiceName.make("web");
@@ -49,7 +55,7 @@ const service = plan.services[web];
 if (service === undefined) throw new TypeError("Missing fixture service");
 const ownedLabels = commonContainerLabels(plan, service);
 const networkLabels = privateNetworkLabels({
-  ...planVolumeOwnership(plan),
+  ...planAppIdentity(plan),
   appId: plan.id,
   providerId: plan.provider,
 });

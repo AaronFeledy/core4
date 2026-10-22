@@ -73,9 +73,13 @@ describe("ci workflow", () => {
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
     const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
     const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
+    const providerImages = bundledCodegen.indexOf("run: bun run codegen:provider-images");
     const plugins = bundledCodegen.indexOf("run: bun run codegen:bundled-plugins");
     expect(catalog).toBeGreaterThanOrEqual(0);
     expect(plugins).toBeGreaterThan(catalog);
+    // Bundled plugins import container-runtime, which imports the gitignored provider-images output.
+    expect(providerImages).toBeGreaterThanOrEqual(0);
+    expect(plugins).toBeGreaterThan(providerImages);
   });
 
   test("keeps generated workflows as the only active workflows", async () => {

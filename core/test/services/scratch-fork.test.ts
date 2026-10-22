@@ -359,6 +359,7 @@ const makeScratchForkLayer = (
     );
   })();
   const dataMoverLive = BunDataMover.layer.pipe(
+    Layer.provide(registryLive),
     Layer.provide(
       Layer.mergeAll(
         stateStoreLayer,
@@ -397,6 +398,7 @@ const makeScratchForkLayer = (
           ),
         ];
   const scratchDeps = Layer.mergeAll(
+    LandoEventService.layer,
     BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
@@ -633,7 +635,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       // Then: interruption is not converted to a successful detached acquisition.
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(applied).toHaveLength(1);
-      expect(destroyed).toHaveLength(keepOnFailure ? 0 : 1);
+      // Reaping stops with volumes kept, then destroys with volumes removed.
+      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true]);
       expect(routes.removed).toHaveLength(keepOnFailure ? 0 : 1);
     });
   });
@@ -830,7 +833,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(result.stopped).toEqual(result.handle);
       expect(result.destroyed).toEqual(result.keepHandle);
       expect(destroyCalls).toEqual([
+        { app: result.handle.id, volumes: false, removeState: false },
         { app: result.handle.id, volumes: true, removeState: true },
+        { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: true },
       ]);
     });
@@ -854,6 +859,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(outcome._tag).toBe("Failure");
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
+        { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: false },
         { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
       ]);
     });
