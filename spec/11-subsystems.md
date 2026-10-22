@@ -21,7 +21,7 @@ Core defines network intent; `RuntimeProvider` realizes it.
 - `host.lando.internal` resolves to the host gateway when `hostReachability` is `native` or `emulated`; `LANDO_HOST_IP` contains that resolvable name.
 - Providers without shared networking MUST report `sharedCrossAppNetwork: false`; dependent features fail with actionable errors.
 - Host endpoints bind to `127.0.0.1` by default; `bindAddress` is the opt-in LAN exposure surface.
-- Core has no shared-bridge abstraction. Provider-created networks, including Docker's `lando_bridge_network`, are implementation details.
+- Core owns logical network intent (`NetworkingPlan`); providers own physical realization, including engine network objects, drivers, and platform-specific physical names.
 
 ### 10.2 Router and routes
 
