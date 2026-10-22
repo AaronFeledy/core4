@@ -3,10 +3,10 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { ConfigService, FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 
 test.each([false, true])(
@@ -25,7 +25,12 @@ test.each([false, true])(
           mutations += 1;
         }),
     };
+    const config = Schema.decodeUnknownSync(GlobalConfig)({});
     const runtime = Layer.mergeAll(
+      Layer.succeed(
+        ConfigService,
+        ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+      ),
       PluginRegistryLayer.layer,
       Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
       Layer.effect(

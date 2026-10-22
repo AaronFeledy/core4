@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { makeLandoPaths } from "@lando/paths";
+import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import type { HostPlatform } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -87,8 +87,10 @@ const resolveClaim = (input: {
   readonly platform: HostPlatform;
 }): Effect.Effect<AcquisitionClaim | undefined> => {
   if (input.userDataRoot === undefined) return Effect.succeed(undefined);
-  const resolved = makeLandoPaths({ userDataRoot: input.userDataRoot, platform: input.platform });
-  const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
+  const paths: ProxyPaths = {
+    platform: input.platform,
+    globalAppRoot: globalAppRootPath(input.userDataRoot, input.platform),
+  };
   return Effect.tryPromise(async () =>
     claimFromUnknown(JSON.parse(await readFile(acquisitionStateFile(paths), "utf8"))),
   ).pipe(Effect.catch(() => Effect.succeed(undefined)));

@@ -27,6 +27,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
@@ -109,7 +110,10 @@ export const setupSpec: LandoCommandSpec<
     const globalConfig = yield* configService.load;
 
     const flag = inputProviderFlag(input);
-    const env = readProviderEnvVar(process.env);
+    const captured = yield* Effect.serviceOption(GlobalConfigSources);
+    const env = readProviderEnvVar(
+      captured._tag === "None" ? process.env : captured.value.sources.env ? captured.value.env : {},
+    );
     const configRaw = globalConfig.defaultProviderId;
     const config = configRaw ?? undefined;
 

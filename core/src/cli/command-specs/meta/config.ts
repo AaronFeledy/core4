@@ -1,4 +1,5 @@
-import { Args } from "../../spec/metadata";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Args, Flags } from "../../spec/metadata";
 
 import {
   type ConfigOptions,
@@ -17,8 +18,10 @@ import { configWriteOptionsFromInput } from "../config-write-input";
 export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
   if (typeof input !== "object" || input === null) return {};
   const parsed = configWriteOptionsFromInput(input, { formats: ["json", "yaml", "table"] });
+  const source = stringFlag(specFlagsOf(input), "source");
   const opts = {
     ...parsed,
+    ...(source === "raw" || source === "resolved" ? { source } : {}),
     editorRunner:
       parsed.editor === undefined
         ? createDefaultEditorRunner()
@@ -38,7 +41,7 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   description: "Read or write the global Lando config.",
   namespace: "meta",
   topLevelAlias: "config",
-  bootstrap: "minimal",
+  bootstrap: "none",
   strict: false,
   args: {
     subcommand: Args.string({
@@ -49,6 +52,10 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {
+    source: Flags.string({
+      description: "Inspect raw config.yml or resolved config.",
+      options: ["raw", "resolved"],
+    }),
     format: formatFlag,
     type: typeFlag,
     path: pathFlag,

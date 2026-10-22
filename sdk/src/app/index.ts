@@ -19,7 +19,6 @@ import type {
   BunShellScriptFrontMatterError,
   CacheError,
   CommandAliasConflictError,
-  ConfigError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -42,7 +41,6 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
@@ -75,7 +73,6 @@ import type {
   ToolingCompileError,
   ToolingDisabledError,
   ToolingExecError,
-  ToolingIncludeCycleError,
   ToolingInputError,
   TunnelProviderUnavailableError,
   VolumeOperationError,
@@ -276,7 +273,6 @@ export type StopAppError =
   | LandofileTimeoutError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | LandoCommandError
   | AppLockTimeoutError
@@ -394,7 +390,6 @@ export type InfoAppError =
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError
-  | ConfigError
   | LandoCommandError
   | ProxyError;
 
@@ -422,7 +417,6 @@ export type ExecAppError =
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError
-  | ConfigError
   | ToolingExecError;
 
 /**
@@ -448,6 +442,7 @@ export interface ToolingResult {
 }
 
 export type ToolingError =
+  | CommandAliasConflictError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
@@ -457,7 +452,6 @@ export type ToolingError =
   | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
-  | ConfigError
   | ShellExecError
   | ShellScriptOutsideRootError
   | ToolingCompileError
@@ -488,7 +482,6 @@ export type LogsAppError =
   | LandofileTimeoutError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | LandoCommandError
   | ToolingExecError;
@@ -540,10 +533,8 @@ export type RemoteSyncError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | RemoteSourceError
   | DatasetServiceError
@@ -615,11 +606,7 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
-    | LandofileNotFoundError
-    | LandofileUnknownEventError
-    | LandofileValidationError
-    | CommandAliasConflictError
-    | NotImplementedError
+    LandofileNotFoundError | LandofileValidationError | NotImplementedError
   >;
 }
 

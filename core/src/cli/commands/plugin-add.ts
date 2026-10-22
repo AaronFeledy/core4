@@ -24,6 +24,7 @@ import {
 import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
+import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
 import { resolvePluginsRoot } from "./plugin-roots";
 
@@ -310,7 +311,7 @@ const ensureTrust = async (
 };
 
 export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
-  options: PluginAddOptions,
+  inputOptions: PluginAddOptions,
 ): Effect.fn.Return<
   PluginAddResult,
   | ConfigError
@@ -322,6 +323,12 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
   | RecipeSourceError,
   ConfigService | PersistentPluginTrustStore | Scope.Scope
 > {
+  const sources = yield* retainedRecipeSources(inputOptions.registryUrl);
+  const options = {
+    ...inputOptions,
+    registryClient: inputOptions.registryClient ?? sources.npmRegistryClient,
+    fetcher: inputOptions.fetcher ?? sources.tarballRecipeFetcher,
+  };
   if (typeof options.spec !== "string" || options.spec.trim().length === 0) {
     return yield* Effect.fail(
       new NotImplementedError({

@@ -68,4 +68,23 @@ Only the full resolved view emits a bare Landofile. Raw, merged, selected values
 
 The read-only MCP `app:config:view` and `app:config:get` tools accept `source` and `path`; get also accepts an optional `key`. The fixed `lando://app/config` resource remains resolved.
 
+## Repair one key without fixing the whole file
+
+```sh
+# Fix one service's type while other problems remain in .lando.yml
+lando app:config set services.web.type node:22 --format=json
+# Drop a misspelled key
+lando app:config unset services.web.typ --format=json
+lando app:config validate --format=json
+```
+
+`set` and `unset` reject a write with `LandofileWriteValidationError` only if
+it introduces a problem or leaves the written key or a descendant invalid.
+Problems already present elsewhere, identified by the same path and message,
+don't block the write. The command reports the remaining issues and their fixes
+once, as a text warning or a `LANDO_CONFIG_PREEXISTING_ISSUES` warning in the
+JSON envelope. Comments stay in the file. Inferred values use the first
+interpretation that meets this rule. `edit` still validates the whole edited
+configuration before saving.
+
 Next: [lint every source](./config-lint.mdx) or [change a layer](./your-landofile.mdx#override-a-list-in-a-local-layer).

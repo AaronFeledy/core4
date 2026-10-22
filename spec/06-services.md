@@ -233,7 +233,7 @@ A type MAY extend one parent, inheriting normalized config, features, tooling, a
 
 `ServiceTypeResolution.tooling` merges below resolved Landofile `tooling:`. Conflicts replace whole tasks by name. Between service contributions, the lexicographically first service name wins. A surviving contribution defaults its target to its contributor; `toolingDefaults` fills only unset fields.
 
-Reserved names `run`, `scratch`, and `scratch:*` fail with `CommandAliasConflictError`. Service types MUST NOT use `topLevelAlias` while the unsupported tooling-task key list (`UNSUPPORTED_TOOLING_TASK_KEYS` in `@lando/landofile`) rejects it (§8.5).
+Reserved tooling names `run`, `scratch`, and `scratch:*` produce `landofile.tooling` issues in lint and planning; planning aggregates them in one `LandofileValidationError` (§7.8). Service types MUST NOT use `topLevelAlias` while the unsupported tooling-task key list (`UNSUPPORTED_TOOLING_TASK_KEYS` in `@lando/landofile`) rejects it (§8.5).
 
 #### 6.11.4 App-scoped features (`AppFeature`)
 

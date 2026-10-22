@@ -151,7 +151,7 @@ const removeNetwork = Effect.fnUntraced(function* (
   plan: AppPlan,
 ): Effect.fn.Return<boolean, BringDownError> {
   const name = networkName(plan);
-  if (isSharedNetwork(plan, name)) return false;
+  if (name === undefined || isSharedNetwork(plan, name)) return false;
   const id = yield* inspectOwnedNativeId(
     deps.api,
     { kind: "network", name, labels: networkOwnershipLabels(plan) },

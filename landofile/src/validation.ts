@@ -90,8 +90,9 @@ export const landofileValidationError = (
   },
 ): LandofileValidationError => {
   const lines = issues.map((issue) => formatValidationIssueLine(issue).replace(/\.$/, "")).join("; ");
+  const source = issues[0]?.source;
   return new LandofileValidationError({
-    file: issues[0]?.source?.file ?? file,
+    file: source !== undefined && "file" in source ? source.file : file,
     issues,
     remediation: framing.remediation,
     message: `${framing.headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."} ${framing.remediation}`,

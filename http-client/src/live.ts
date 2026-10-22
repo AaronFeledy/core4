@@ -26,6 +26,7 @@ import { failureDetail, observeResponse } from "./response-events.ts";
 export { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 
 export interface ClientOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly fetch?: typeof fetch;
   readonly systemCaPems?: SystemCaProvider;
   readonly direct?: DirectHttpTransport;
@@ -47,13 +48,14 @@ const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unk
 const resolveTrust = Effect.fnUntraced(function* (
   context: Context.Context<never>,
   injected: ResolvedNetworkTrust | undefined,
+  env: Readonly<Record<string, string | undefined>>,
 ) {
   if (injected !== undefined) return injected;
   const config = Context.getOption(context, ConfigService);
   if (Option.isNone(config)) return undefined;
-  const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
+  const globalConfig = yield* config.value.load;
   const plan = yield* Effect.try({
-    try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
+    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }, env),
     catch: (cause) =>
       new HttpTrustError({
         message: cause instanceof Error ? cause.message : "Could not resolve network trust",
@@ -79,6 +81,7 @@ const resolveTrust = Effect.fnUntraced(function* (
 });
 
 export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.HttpClient> => {
+  const env = { ...(options.env ?? process.env) };
   const transports = {
     fetch: options.fetch ?? globalThis.fetch,
     direct: options.direct ?? directHttpRequest,
@@ -87,6 +90,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
   return Layer.effect(
     HttpClient.HttpClient,
     Effect.gen(function* () {
+      const layerContext = yield* Effect.context<never>();
       const layerEvents = yield* Effect.serviceOption(EventService);
       const client = HttpClient.make((request, url, signal, fiber) => {
         const policy = fiber.getRef(RequestPolicy);
@@ -168,9 +172,11 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
             }
             if (url.protocol !== "http:" && url.protocol !== "https:")
               return yield* Effect.fail(transportError(safeRequest, "unsupported scheme"));
-            const resolved = yield* resolveTrust(fiber.context, fiber.getRef(NetworkTrust)).pipe(
-              Effect.mapError((cause) => transportError(safeRequest, cause)),
-            );
+            const resolved = yield* resolveTrust(
+              Context.merge(layerContext, fiber.context),
+              fiber.getRef(NetworkTrust),
+              env,
+            ).pipe(Effect.mapError((cause) => transportError(safeRequest, cause)));
             const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];
             const trust = withWindowsHostTrust(resolved, hostCaPems);
             const body = yield* requestBody(request);

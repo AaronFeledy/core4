@@ -4,10 +4,10 @@ import { basename, dirname, join } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { causeMessage } from "@lando/sdk/errors";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
@@ -649,7 +649,13 @@ export const update = Effect.fn("Update.update")(function* (
   options: UpdateOptions = {},
 ): Effect.fn.Return<UpdateResult, UpdateError, Telemetry | ProcessRunner> {
   const telemetry = yield* Telemetry;
-  const required = resolvedOptions(options);
+  const downloader = yield* Effect.serviceOption(Downloader);
+  const required = resolvedOptions({
+    ...options,
+    fetchManifestBytes:
+      options.fetchManifestBytes ??
+      ((url) => defaultFetchManifestBytes(url, Option.getOrUndefined(downloader))),
+  });
   if (!required.dryRun && options.handoff?.token !== undefined) {
     const receipt = yield* options.handoff.consume(options.handoff.token);
     if (receipt !== undefined) {
