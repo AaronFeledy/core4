@@ -19,7 +19,6 @@ import type {
   LandofileIncludeError,
   LandofileLockMismatchError,
   ManagedFileTransactionError,
-  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { StateStore } from "@lando/sdk/services";
 
@@ -78,7 +77,6 @@ export type AppIncludesUpdateError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 

@@ -27,9 +27,9 @@ export const ConfigLintViolation = Schema.Struct({
   line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */
   column: Schema.optionalKey(Schema.Number),
-  scope: Schema.optionalKey(
-    Schema.Literals(["fragment", "effective"]).annotate({
-      description: "Whether the finding concerns an authored fragment or the effective configuration.",
+  scopes: Schema.optionalKey(
+    Schema.Array(Schema.Literals(["fragment", "effective"])).annotate({
+      description: "Scopes containing this defect, ordered fragment then effective without duplicates.",
     }),
   ),
   source: ValidationIssue.fields.source,

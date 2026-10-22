@@ -237,7 +237,7 @@ describe("Traefik RouterService", () => {
 
     expect(rendered).toContain("https://api.demo.internal:9443");
     expect(rendered).toContain("http://web.demo.internal:8088");
-    expect(rendered).toContain("PathPrefix(`/v1`)");
+    expect(rendered).toContain('PathPrefix(\\"/v1\\")');
     expect(rendered).toContain("tls: {}");
   });
 
@@ -297,7 +297,7 @@ describe("Traefik RouterService", () => {
     expect(fallback).toContain("entryPoints: [websecure]");
     expect(fallback.match(/priority: 1/g)).toHaveLength(2);
     expect(fallback.match(/tls: \{\}/g)).toHaveLength(1);
-    expect(fallback).toContain('rule: "PathPrefix(`/`)"');
+    expect(fallback).toContain('rule: "PathPrefix(\\"/\\")"');
   });
 
   test("diagnostic page is private and offers actionable recovery commands", async () => {

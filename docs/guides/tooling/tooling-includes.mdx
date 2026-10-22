@@ -56,7 +56,7 @@ tooling:
 
 Included tasks register as `app:<namespace>:<task>`. `flatten: true` drops the namespace prefix. `internal: true` hides tasks from command listings while leaving them callable. `aliases: [documentation]` aliases the include namespace. `excludes: [publish]` removes tasks before flattening or namespace registration.
 
-Include-level `vars:` apply to every included task unless the task defines the same var. `optional: true` suppresses missing-fragment errors. Fragments that include each other fail closed with tagged `ToolingIncludeCycleError`.
+Include-level `vars:` apply to every included task unless the task defines the same var. `optional: true` suppresses missing-fragment errors. Fragments that include each other fail closed with `LandofileIncludeError` (`kind: "cycle"`), the same error a Landofile include cycle raises. Every tooling include failure names the entry that declared it: `path` is `["includes", <index>]` or `["toolingIncludes", <namespace>]`, next to the file and layer that hold it, so `lando app:config:lint` reports the problem at that entry.
 
 `{{ recipe.<option> }}` and `{{ env.* }}` expressions inside a tooling fragment resolve against the including app's merged recipe options and the host environment, the same way they do in the app's own Landofile. A fragment has no `recipe:` of its own.
 

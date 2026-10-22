@@ -6,7 +6,7 @@ import { copyLandofileProvenance } from "./copy-provenance.ts";
 import type { ResolveContext, ResolveIncludesError } from "./include-context.ts";
 import { ownVersionConstraintEntries, parseFragment, withoutIncludeArrays } from "./include-fragment.ts";
 import { hasIncludeCycle } from "./include-graph.ts";
-import { includeError } from "./include-guard.ts";
+import { attributeIncludeError, includeError } from "./include-guard.ts";
 import {
   getIncludeOverlays,
   includeAcquisitionView,
@@ -27,6 +27,7 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
+import { rememberOrigins } from "./pipeline/origins.ts";
 import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import {
   assertCompatibleIncludeFields,
@@ -69,7 +70,10 @@ export const resolveTree = Effect.fnUntraced(function* (
     catch: (cause) => validationErrorFromCause(source, sourced, cause),
   });
   const incompatible = assertCompatibleIncludeFields(acquisition);
-  if (incompatible !== undefined) return yield* Effect.fail(incompatible);
+  if (incompatible !== undefined)
+    return yield* Effect.fail(
+      attributeIncludeError(incompatible, { file: getSourceDocuments(sourced)[0]?.file ?? source, layer }),
+    );
   const includes = authoredIncludeEntriesWithPaths(acquisition);
   if (includes.length === 0)
     return rememberIncludeOverlays(
@@ -92,17 +96,7 @@ export const resolveTree = Effect.fnUntraced(function* (
   for (const { entry: rawEntry, path } of includes) {
     const entry = normalizeInclude(rawEntry);
     const attributeError = (error: ResolveIncludesError): ResolveIncludesError =>
-      error instanceof LandofileIncludeError
-        ? new LandofileIncludeError({
-            message: error.message,
-            source: error.source,
-            kind: error.kind,
-            remediation: error.remediation,
-            path: error.path ?? path,
-            file: error.file ?? getSourceDocuments(sourced)[0]?.file ?? source,
-            layer: error.layer ?? layer,
-          })
-        : error;
+      attributeIncludeError(error, { path, file: getSourceDocuments(sourced)[0]?.file ?? source, layer });
     const fragment = yield* Effect.tryPromise({
       try: async () => {
         const kind = classify(entry.source);
@@ -167,16 +161,34 @@ export const resolveTree = Effect.fnUntraced(function* (
     if (!fragment.locked) localIncludePaths.push(fragment.filePath);
   }
   const toolingSources = [...fragmentRecords, sourced];
-  const toolingIncludes = composeToolingIncludeEntries(toolingSources);
+  const toolingEntries = composeToolingIncludeEntries(toolingSources);
+  const toolingIncludes = toolingEntries.map((entry) => entry.value);
   const replacesTooling = toolingSources.some((value) => isMergeDirective(value.includes));
+  const toolingOverlay = rememberOrigins(
+    { includes: replacesTooling ? override(toolingIncludes) : toolingIncludes },
+    {
+      source: { file: source, layer, path: [] },
+      deleted: false,
+      children: new Map([
+        [
+          "includes",
+          {
+            source: { file: source, layer, path: ["includes"] },
+            deleted: false,
+            children: new Map(
+              toolingEntries.flatMap((entry, index) =>
+                entry.origins === undefined ? [] : [[index, entry.origins] as const],
+              ),
+            ),
+          },
+        ],
+      ]),
+    },
+  );
   const overlays = [
     ...fragmentRecords.map(withoutIncludeArrays),
     withoutIncludeArrays(sourced),
-    ...(replacesTooling
-      ? [{ includes: override(toolingIncludes) }]
-      : toolingIncludes.length === 0
-        ? []
-        : [{ includes: toolingIncludes }]),
+    ...(replacesTooling || toolingIncludes.length > 0 ? [toolingOverlay] : []),
   ];
   const decoded = rememberSourceDocuments(
     { ...acquisition, ...(toolingIncludes.length === 0 ? {} : { includes: toolingIncludes }) },
