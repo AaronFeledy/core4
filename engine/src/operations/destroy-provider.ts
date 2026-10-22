@@ -25,14 +25,13 @@ const removeStrayAppContainers = Effect.fnUntraced(function* (provider: RuntimeP
 });
 
 export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProvider")(function* (
-  teardown: TeardownPlan,
+  teardown: TeardownPlan & { readonly target: NonNullable<TeardownPlan["target"]> },
   provider: RuntimeProviderShape,
 ) {
   const target = teardown.target;
-  if (target === undefined) return;
   yield* verifyActiveVolumeCoordination(provider);
   yield* removeStrayAppContainers(provider, target.plan);
-  yield* provider.destroy(
+  return yield* provider.destroy(
     { app: target.plan.id, plan: target.plan },
     {
       volumes: teardown.options.volumes === true,
