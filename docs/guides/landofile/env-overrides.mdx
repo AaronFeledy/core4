@@ -34,7 +34,7 @@ Highest-precedence source wins. An env overlay overrides the on-disk config valu
 lando setup --provider=docker
 ```
 
-That flag wins over `LANDO_PROVIDER=podman` for that command. `LANDO_PROVIDER` does not persist. After a successful `lando setup --provider=docker`, later commands stay on Docker without repeating the flag.
+That flag wins over `LANDO_PROVIDER=podman` for that command. The flag persists; the env var does not. See [What persists](../setup/provider-selection.mdx#what-persists).
 
 A local Landofile overrides the main Landofile during merge.
 

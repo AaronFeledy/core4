@@ -24,7 +24,7 @@ Then verify:
 lando doctor
 ```
 
-`lando setup` and `lando setup --yes` keep the `defaultProviderId` already in your config. `--yes` consents to confirmation and privileged host changes. It does not switch providers. To go back to the default, run `lando setup --provider=lando`.
+`--yes` consents to confirmation and privileged host changes. It does not switch providers. See [What persists](./provider-selection.mdx#what-persists).
 
 Host prerequisites can block the managed runtime. If setup names one, fix it and rerun `lando setup`.
 
@@ -36,11 +36,7 @@ You need working system Docker.
 lando setup --provider=docker
 ```
 
-After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. You do not need to repeat the flag.
-
-`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
-
-`--provider=docker` and `--provider=podman` require that system runtime to already be present. Setup fails with remediation when it is missing. It does not install Docker or Podman for you.
+Later commands stay on Docker without repeating the flag. Setup does not install Docker or Podman for you. See [Pick a container provider](./provider-selection.mdx#what-persists) for what persists and how to switch back.
 
 ## Skip prompts
 

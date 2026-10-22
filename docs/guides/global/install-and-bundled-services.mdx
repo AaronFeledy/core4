@@ -26,13 +26,7 @@ Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `global
 
 ## Where the global app runs
 
-The global app runs on the host provider: `LANDO_PROVIDER`, else `defaultProviderId` from your config, else `lando`. After `lando setup --provider=docker`, Traefik, Mailpit, and the ssh-agent sidecar run on Docker. A Landofile `provider:` selects only that app's provider. Routed apps must share the host provider. If they differ, planning fails with `RouteProviderMismatchError` when the router is enabled and routes are nonempty, including generated defaults. Lando never publishes internal endpoints to bridge providers.
-
-Run `lando setup --provider=<app provider>` to move the global app and router there, or remove `provider:` from the Landofile so the app follows the host provider. If you only need published host ports, set `router.enabled: false` instead. Cross-provider apps cannot reach same-runtime features such as Mailpit SMTP over `mailpit.global.internal` or the ssh-agent runtime volume. SSH forwarding still uses its host relay across providers.
-
-Only `lando setup --provider=<new>` switches an existing global app. It refuses while routed apps or apps requiring global services are running on the old provider. Run `lando poweroff --yes`, then retry setup. The switch removes old global containers and applied state, keeps volumes and router dynamic configuration, and reports user apps still applied on the old provider. It never copies data volumes.
-
-Other creation commands fail with `AppPlacementError` when desired and applied placement differ. If multiple providers hold applied global plans, use `lando global:destroy --provider=<old> --yes` to retire one copy explicitly. Observation and teardown follow the existing provider.
+Traefik, Mailpit, and the ssh-agent sidecar run on the host provider that `lando setup` selected. A Landofile `provider:` never moves them, and routed apps must share that provider. Only `lando setup --provider=<new>` switches an existing global app. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs), [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider), and [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
 ## Override a bundled service
 
