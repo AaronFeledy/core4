@@ -247,7 +247,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
         message: "Container engine API returned malformed JSON.",
         details: redactResponseDetails(response),
       });
-      const digest = inspect.decodeDigest(decoded);
+      const digest = inspect.decodeDigest(decoded, reference);
       return { ref: reference, ...(digest === undefined ? {} : { digest }) };
     }
     if (response.status !== 404) {
@@ -345,15 +345,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
   const inspect = options.dialect.inspect;
   if (inspect === undefined) return { ref: reference };
   const request = api.request;
-  if (request === undefined) {
-    return yield* Effect.fail(
-      missingApi(
-        options.ctx,
-        "pullArtifact",
-        `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
-      ),
-    );
-  }
+  if (request === undefined) return { ref: reference };
   const response = yield* request(inspect.request(reference));
   if (response.status !== 200) {
     return yield* Effect.fail(
@@ -369,6 +361,6 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
     message: "Container engine API returned malformed JSON.",
     details: redactResponseDetails(response),
   });
-  const digest = inspect.decodeDigest(decoded);
+  const digest = inspect.decodeDigest(decoded, reference);
   return { ref: reference, ...(digest === undefined ? {} : { digest }) };
 });

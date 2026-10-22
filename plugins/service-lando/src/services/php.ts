@@ -56,6 +56,8 @@ export {
   PHP_COMPOSER_RELEASES,
   PHP_COMPOSER_STEP_ID,
   PHP_PREREQUISITES_COMMAND,
+  PHP_PREREQUISITES_STEP_ID,
+  phpPrerequisitesBuildKeyInputs,
 } from "./php-prerequisites.ts";
 
 export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";

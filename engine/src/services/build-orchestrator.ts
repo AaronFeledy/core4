@@ -127,6 +127,14 @@ const resolveSourceArtifact = (
   );
 };
 
+const serviceWithResolvedDigest = (
+  service: ServicePlan,
+  sourceArtifact: ArtifactRef | undefined,
+): ServicePlan => {
+  if (service.artifact?.kind !== "ref" || sourceArtifact?.digest === undefined) return service;
+  return { ...service, artifact: { ...service.artifact, digest: sourceArtifact.digest } };
+};
+
 const sourceIdentityMatches = (
   complete: {
     readonly sourceArtifactRef?: string | undefined;
@@ -166,19 +174,13 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         })
       : identityRedactor;
   const context = redactedBuildContext(redactor, plan, service);
-  const step = yield* buildStepFor(provider, service);
   const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
     refresh: input.refresh,
     events,
     redactor,
   });
-  const resolvedService =
-    service.artifact?.kind === "ref" && sourceArtifact?.digest !== undefined
-      ? {
-          ...service,
-          artifact: { ...service.artifact, digest: sourceArtifact.digest },
-        }
-      : service;
+  const resolvedService = serviceWithResolvedDigest(service, sourceArtifact);
+  const step = yield* buildStepFor(provider, resolvedService);
   const resolvedPlan =
     resolvedService === service
       ? plan

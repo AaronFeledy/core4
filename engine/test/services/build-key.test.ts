@@ -200,6 +200,17 @@ describe("buildKeyForService", () => {
     expect(await key(base, provider({ id: "other" }))).not.toBe(await key(base));
     expect(await key(base, provider({ version: "2.0.0" }))).not.toBe(await key(base));
     expect(await key(base, provider({ platform: "darwin" }))).not.toBe(await key(base));
+    expect(
+      await key({
+        ...base,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm", digest: "sha256:first" },
+      }),
+    ).not.toBe(
+      await key({
+        ...base,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm", digest: "sha256:second" },
+      }),
+    );
     expect(await key({ ...base, environment: { NODE_ENV: "development" } })).not.toBe(await key(base));
     expect(
       await key({ ...base, environment: { ...base.environment, LANDO_APP_ROOT: "/tmp/scratch-b" } }),

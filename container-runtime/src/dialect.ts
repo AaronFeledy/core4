@@ -20,7 +20,7 @@ export interface PullDialect {
   readonly frameError: (frame: unknown) => string | undefined;
   readonly inspect?: {
     readonly request: (reference: string) => EngineHttpRequest;
-    readonly decodeDigest: (json: unknown) => string | undefined;
+    readonly decodeDigest: (json: unknown, reference: string) => string | undefined;
   };
 }
 
@@ -101,6 +101,45 @@ const objectString = (value: unknown, key: "error" | "message"): string | undefi
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 };
 
+const sha256Digest = (value: unknown): string | undefined =>
+  typeof value === "string" && value.startsWith("sha256:") && value.length > "sha256:".length
+    ? value
+    : undefined;
+
+const normalizeImageRepo = (repo: string): string => {
+  const slash = repo.indexOf("/");
+  if (slash === -1) return `docker.io/library/${repo}`;
+  const first = repo.slice(0, slash);
+  if (first.includes(".") || first.includes(":") || first === "localhost") return repo;
+  return `docker.io/${repo}`;
+};
+
+const reposMatch = (requested: string, candidate: string): boolean =>
+  normalizeImageRepo(requested) === normalizeImageRepo(candidate);
+
+const digestForRequestedRepo = (entries: readonly unknown[], reference: string): string | undefined => {
+  const requested = parseImageReference(reference).fromImage;
+  for (const entry of entries) {
+    if (typeof entry !== "string") continue;
+    const separator = entry.indexOf("@");
+    if (separator === -1) continue;
+    const candidate = parseImageReference(entry.slice(0, separator)).fromImage;
+    if (reposMatch(requested, candidate)) return sha256Digest(entry.slice(separator + 1));
+  }
+  return undefined;
+};
+
+/** Registry digest for the requested repo. Local image ids are not registry digests. */
+export const decodeImageInspectDigest = (json: unknown, reference: string): string | undefined => {
+  if (typeof json !== "object" || json === null) return undefined;
+  if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
+    const fromRepo = digestForRequestedRepo(json.RepoDigests, reference);
+    if (fromRepo !== undefined) return fromRepo;
+    if (json.RepoDigests.length > 0 && "Digest" in json) return sha256Digest(json.Digest);
+  }
+  return undefined;
+};
+
 export const dockerWaitDialect: WaitDialect = {
   request: (containerName, signal) => ({
     method: "POST",
@@ -155,14 +194,7 @@ export const dockerPullDialect: PullDialect = {
       method: "GET",
       path: `/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest: (json) => {
-      if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
-      if (!Array.isArray(json.RepoDigests)) return undefined;
-      const first = json.RepoDigests[0];
-      if (typeof first !== "string") return undefined;
-      const separator = first.indexOf("@");
-      return separator === -1 ? undefined : first.slice(separator + 1);
-    },
+    decodeDigest: decodeImageInspectDigest,
   },
 };
 
@@ -175,4 +207,11 @@ export const libpodPullDialect: PullDialect = {
     ),
   }),
   frameError: (frame) => objectString(frame, "error"),
+  inspect: {
+    request: (reference) => ({
+      method: "GET",
+      path: `/libpod/images/${encodeURIComponent(reference)}/json`,
+    }),
+    decodeDigest: decodeImageInspectDigest,
+  },
 };

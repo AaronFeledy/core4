@@ -76,6 +76,11 @@ describe("provider pullArtifact", () => {
             podmanApi: {
               info: Effect.succeed({ host: { arch: "x64" } }),
               ping: Effect.succeed(undefined),
+              request: () =>
+                Effect.succeed({
+                  status: 200,
+                  body: JSON.stringify({ RepoDigests: ["docker.io/library/alpine@sha256:test"] }),
+                }),
               stream: () =>
                 Stream.fromIterable([
                   bytes('{"stream":"Trying to pull docker.io/library/alpine:3.20.3..."}\n'),
@@ -116,6 +121,11 @@ describe("provider pullArtifact", () => {
             podmanApi: {
               info: Effect.succeed({ host: { arch: "x64" } }),
               ping: Effect.succeed(undefined),
+              request: () =>
+                Effect.succeed({
+                  status: 200,
+                  body: JSON.stringify({ RepoDigests: [`${reference}@sha256:test`] }),
+                }),
               stream: () => Stream.fromIterable([bytes(`{"stream":"Trying to pull ${reference}..."}\n`)]),
             },
             eventService: {
@@ -218,6 +228,7 @@ const makeApplyPlan = (service: ServicePlan): AppPlan => ({
 const makeApplyApi = (inspectStatus = 404) => {
   const requests: string[] = [];
   const existing = new Set<string>();
+  let pulled = false;
   const api = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.void,
@@ -228,9 +239,10 @@ const makeApplyApi = (inspectStatus = 404) => {
           return { status: 404, body: "" };
         if (request.path === "/networks/create") return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
-          return { status: inspectStatus, body: "{}" };
+          return { status: pulled ? 200 : inspectStatus, body: "{}" };
         }
         if (request.method === "POST" && request.path.startsWith("/libpod/images/pull")) {
+          pulled = true;
           return { status: 200, body: '{"status":"Pull complete"}\n' };
         }
         if (
