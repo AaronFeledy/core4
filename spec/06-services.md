@@ -341,7 +341,7 @@ Catalog membership is frozen by this specification; additions or removals requir
 
 `ServiceCreds` contains `user`, `password`, `database`, and optional `rootPassword`. `mariadb`, `mysql`, `postgres`, `mongodb`, and opted-in plugin types share this contract.
 
-Types provide deterministic defaults resolved at planning; authored `creds:` fields win. Values appear in `service.creds.*`, `services.<name>.creds.*`, `LANDO_DB_*`, and `ServiceInfo.creds`. Structured output redacts password fields by default; a type MAY mark additional fields secret. Free-text output follows §3.7, which prints published default credentials, and a password equal to its own user or database name, as-is.
+Types provide deterministic defaults resolved at planning; authored `creds:` fields win. Values appear in `service.creds.*`, `services.<name>.creds.*`, `LANDO_DB_*`, and `ServiceInfo.creds`. Structured output redacts password fields by default; a type MAY mark additional fields secret. Free-text output follows §3.7, which prints published default credentials, and a password or root password equal to its own credential's user or database name, as-is.
 
 #### 6.12.5 PHP service depth
 
