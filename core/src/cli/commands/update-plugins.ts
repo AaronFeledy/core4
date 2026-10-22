@@ -22,8 +22,8 @@ import {
   DEFAULT_NPM_REGISTRY_URL,
   type NpmPackument,
   type NpmRegistryClient,
-  defaultNpmRegistryClient,
 } from "../../recipes/npm-source";
+import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
 import type { BunSelfSpawner } from "./bun-self-runner";
 import { pluginAdd } from "./plugin-add";
@@ -111,7 +111,8 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
   const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
   const pluginsRoot = options.pluginsRoot ?? paths.pluginsDir;
   const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-  const registryClient = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
+  const sources = yield* retainedRecipeSources(registryUrl);
+  const registryClient = options.registryClient ?? sources.npmRegistryClient;
 
   return (input) =>
     Effect.gen(function* () {
@@ -159,7 +160,7 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
             ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
             registryUrl,
             registryClient,
-            ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
+            fetcher: options.fetcher ?? sources.tarballRecipeFetcher,
             ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
             ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
             trustStore: new Set(),

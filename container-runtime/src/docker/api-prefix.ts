@@ -146,6 +146,10 @@ export const resolveInitialDockerApiPrefix = (input: {
   if (cached !== undefined) return cached;
   if (input.explicitPrefix !== undefined && input.explicitPrefix !== "") {
     const resolved = resolvedPrefix(input.explicitPrefix, "explicit");
+    if (resolved.version !== undefined) {
+      const parsed = parseDockerApiVersionOverride(resolved.version);
+      if (!parsed.ok) return parsed;
+    }
     rememberDockerApiPrefix(input.endpointKey, resolved);
     return resolved;
   }

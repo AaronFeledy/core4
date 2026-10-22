@@ -66,5 +66,5 @@ test("data preparation bounds cyclic programmatic exports before expression trav
     checkDocumentData(cycle, { file: "/app/.lando.ts", layer: "canonical" }).pipe(Effect.flip),
   );
   expect(error._tag).toBe("LandofileValidationError");
-  expect(error.issues[0]?.source?.file).toBe("/app/.lando.ts");
+  expect(error.issues[0]?.source).toMatchObject({ file: "/app/.lando.ts", layer: "canonical" });
 });

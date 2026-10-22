@@ -1,5 +1,5 @@
 import { basename, dirname } from "node:path";
-import { makeLandoPaths } from "@lando/paths";
+import { managedFileLedgerPath } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { syncDirectory } from "@lando/state-store/atomic";
@@ -59,7 +59,8 @@ const blockable = new Set<Journal["state"]>(["prepared", "committing"]);
 
 export const journalDirectory = (root: string, userDataRoot: string): string =>
   dirname(
-    makeLandoPaths({ userDataRoot }).managedFileLedger(
+    managedFileLedgerPath(
+      userDataRoot,
       `${basename(root).replace(/[^A-Za-z0-9._-]/gu, "-")}-${sha256Hex(root)}`,
     ),
   );

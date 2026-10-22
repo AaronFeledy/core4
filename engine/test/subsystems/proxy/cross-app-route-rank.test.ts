@@ -91,8 +91,8 @@ test("an exact host in a one-route app outranks a wildcard in a many-route app",
 
   // Then
   const routers = readRouters(files);
-  const wildcardPriority = priorityForRule(routers, "HostRegexp(`^[a-z0-9-]+\\.shared\\.test$`)");
-  const exactPriority = priorityForRule(routers, "Host(`www.shared.test`)");
+  const wildcardPriority = priorityForRule(routers, 'HostRegexp("^[a-z0-9-]+\\\\.shared\\\\.test$")');
+  const exactPriority = priorityForRule(routers, 'Host("www.shared.test")');
   expect(exactPriority).toBeGreaterThan(wildcardPriority);
 });
 
@@ -112,7 +112,7 @@ test("a longer path prefix outranks a shorter one across apps", async () => {
 
   // Then
   const routers = readRouters(files);
-  const barePriority = priorityForRule(routers, "Host(`www.shared.test`)");
-  const deepPriority = priorityForRule(routers, "Host(`www.shared.test`) && PathPrefix(`/api`)");
+  const barePriority = priorityForRule(routers, 'Host("www.shared.test")');
+  const deepPriority = priorityForRule(routers, 'Host("www.shared.test") && PathPrefix("/api")');
   expect(deepPriority).toBeGreaterThan(barePriority);
 });

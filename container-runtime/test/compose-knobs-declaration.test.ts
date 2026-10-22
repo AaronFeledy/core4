@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 
-import { podmanComposeKnobs } from "../src/podman/compose-knobs.ts";
+import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 
 const fixtureKeys = new Set(Object.keys(KNOB_FIXTURES));
@@ -11,7 +11,7 @@ const expectedKnobs = ComposeServiceKnobKey.literals.filter((key) => fixtureKeys
 describe("Podman-backed Compose knob declarations", () => {
   test("Given the published knob list, When compared to the realization fixtures, Then it matches exactly", () => {
     // Given / When
-    const published = podmanComposeKnobs();
+    const published = composeKnobsForDialect("libpod");
 
     // Then: providers publish this list verbatim, so any drift here is a capability lie.
     expect(published).toEqual(expectedKnobs);
@@ -19,8 +19,8 @@ describe("Podman-backed Compose knob declarations", () => {
 
   test("Given the published knob list, When read twice, Then callers get independent copies in canonical order", () => {
     // Given / When
-    const first = podmanComposeKnobs();
-    const second = podmanComposeKnobs();
+    const first = composeKnobsForDialect("libpod");
+    const second = composeKnobsForDialect("libpod");
 
     // Then
     expect(first).not.toBe(second);
@@ -29,7 +29,7 @@ describe("Podman-backed Compose knob declarations", () => {
 
   test("Given a knob the realizer cannot map, When the declaration is read, Then it is absent", () => {
     // Given / When
-    const published = new Set<string>(podmanComposeKnobs());
+    const published = new Set<string>(composeKnobsForDialect("libpod"));
 
     // Then: the fail-closed planner gate depends on these staying undeclared.
     expect(published.has("pull_policy")).toBe(false);

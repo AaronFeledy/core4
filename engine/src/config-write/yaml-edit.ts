@@ -35,7 +35,7 @@ export const spliceYamlEdit = (input: YamlEdit): Result.Result<string, Unsupport
   if (segments === undefined) return unsupported("Malformed edit path.");
   const located = locateYamlEdit(scanned.success, segments);
   if (Result.isFailure(located)) return Result.fail(located.failure);
-  const { entry, parent, remaining, entries, indent } = located.success;
+  const { entry, parent, remaining, entries, indent, emptyFlowParent } = located.success;
   const ending = input.source.match(/\r\n|\n|\r/)?.[0] ?? "\n";
   const splice = (start: number, end: number, text: string) => {
     const next = input.source.slice(0, start) + text + input.source.slice(end);
@@ -55,6 +55,17 @@ export const spliceYamlEdit = (input: YamlEdit): Result.Result<string, Unsupport
       .join(".");
     const emitted = fragment(first.key, getAtPath(input.next, prefix), indent, ending);
     if (Result.isFailure(emitted)) return Result.fail(emitted.failure);
+    if (emptyFlowParent === true && parent !== undefined) {
+      let start = parent.valueStart;
+      while (start > 0 && input.source[start - 1] === " ") start -= 1;
+      const comment = input.source.slice(parent.valueEnd, parent.line.contentEnd).trim();
+      const newline = parent.line.end > parent.line.contentEnd ? ending : "";
+      return splice(
+        start,
+        parent.line.end,
+        `${comment === "" ? "" : ` ${comment}`}${ending}${emitted.success}${newline}`,
+      );
+    }
     const offset = entries.at(-1)?.regionEnd ?? parent?.line.end ?? input.source.length;
     const lead = offset > 0 && !/[\r\n]$/.test(input.source.slice(0, offset)) ? ending : "";
     const tail =

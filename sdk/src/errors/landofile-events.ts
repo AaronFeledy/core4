@@ -1,16 +1,5 @@
 import { Schema } from "effect";
 
-export class LandofileUnknownEventError extends Schema.TaggedError<LandofileUnknownEventError>()(
-  "LandofileUnknownEventError",
-  {
-    message: Schema.String,
-    event: Schema.String,
-    validEvents: Schema.Array(Schema.String),
-    file: Schema.String,
-    remediation: Schema.String,
-  },
-) {}
-
 export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileEventStepFailedError>()(
   "LandofileEventStepFailedError",
   {

@@ -38,7 +38,7 @@ import {
   podmanVolumeCreationLabels,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
 import {
   discoverLabeledContainers,
@@ -337,7 +337,7 @@ export const podmanCapabilitiesForPlatform = (
     tlsCertificates: "none",
     rootless: true,
     composeSpec: "native",
-    composeKnobs: { supported: podmanComposeKnobs() },
+    composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],

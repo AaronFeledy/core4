@@ -1,11 +1,11 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, Layer, Option, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
+import { GlobalConfigSources } from "../services/config.ts";
 
 import {
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
   ProviderCapabilityError,
-  ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -56,14 +56,6 @@ const toProviderUnavailable = (cause: unknown) =>
     cause,
   });
 
-const toProviderConfig = (cause: unknown) =>
-  new ProviderConfigError({
-    providerId: "unknown",
-    operation: "select",
-    message: "Unable to read the default runtime provider configuration.",
-    cause,
-  });
-
 const toProviderUnavailableFromCapability = (
   cause: ProviderCapabilityError | ProviderUnavailableError,
 ): ProviderUnavailableError => {
@@ -96,6 +88,12 @@ export const makeRuntimeProviderRegistry = (
     RuntimeProviderRegistry,
     Effect.gen(function* () {
       const configService = yield* ConfigService;
+      const captured = yield* Effect.serviceOption(GlobalConfigSources);
+      const providerEnv = Option.isNone(captured)
+        ? process.env
+        : captured.value.sources.env
+          ? captured.value.env
+          : {};
       const pluginRegistry = yield* PluginRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const downloader = yield* Downloader;
@@ -113,10 +111,8 @@ export const makeRuntimeProviderRegistry = (
       );
 
       const configuredProviderId = Effect.gen(function* () {
-        const defaultProviderId = yield* configService
-          .get("defaultProviderId")
-          .pipe(Effect.mapError(toProviderConfig));
-        const envProviderId = readProviderEnvVar(process.env);
+        const defaultProviderId = yield* configService.get("defaultProviderId");
+        const envProviderId = readProviderEnvVar(providerEnv);
         return resolveProviderSelection({
           ...(envProviderId === undefined ? {} : { env: envProviderId }),
           ...(defaultProviderId === undefined || defaultProviderId === null

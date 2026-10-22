@@ -5,7 +5,6 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk
 
 import { bundledPluginModules } from "@lando/engine/composition";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
-import { makeLandoPaths } from "@lando/paths";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
@@ -37,12 +36,7 @@ import {
   runtimeServiceStatusFor,
   runtimeServiceStatusFromProviderStatus,
 } from "./doctor-runtime-service";
-import {
-  buildSelectionRecord,
-  gatherSelectionInputs,
-  resolveStateDir,
-  selectionConfigFailureCheck,
-} from "./doctor-selection";
+import { buildSelectionRecord, gatherSelectionInputs, resolveStateDir } from "./doctor-selection";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 import { buildSetupReadinessDoctorCheck } from "./doctor-setup-readiness";
 import { resolveSecretsRedactor } from "./secrets-redactor";
@@ -79,29 +73,18 @@ export const doctor = Effect.fn("Doctor.collect")(
     const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
     const probeBudget = probeBudgetMs(doctorSectionBudgetMs(sourceEnv));
     const selfChecks: DoctorSelfCheck[] = [];
-    const recordConfigFailure = (section: string, cause: unknown): void => {
-      selfChecks.push(selectionConfigFailureCheck(section, cause, redact));
-    };
 
     const gathered = yield* gatherSelectionInputs(options);
-    if (gathered.configFailure !== undefined) {
-      recordConfigFailure("provider-selection-config", gathered.configFailure);
-    }
     const resolution = resolveProviderSelection(gathered.inputs);
     const selection = buildSelectionRecord(resolution);
-    const stateDirEither = yield* Effect.result(resolveStateDir(configService));
-    if (Result.isFailure(stateDirEither)) recordConfigFailure("provider-state-dir", stateDirEither.failure);
-    const userDataRootEither = yield* Effect.result(configService.get("userDataRoot"));
-    if (Result.isFailure(userDataRootEither)) {
-      recordConfigFailure("provider-user-data-root", userDataRootEither.failure);
-    }
-    const userDataRootRaw = Result.isSuccess(userDataRootEither) ? userDataRootEither.success : undefined;
+    const stateDir = yield* resolveStateDir(configService);
+    const userDataRootRaw = yield* configService.get("userDataRoot");
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     if (userDataRoot !== undefined) {
       const metadataOutcome = yield* isolateDoctorSection({
         section: "plugin-metadata",
-        effect: installedPluginMetadataSelfChecks(userDataRoot, redact),
+        effect: installedPluginMetadataSelfChecks(paths.pluginsDir, redact),
         fallback: [],
         budgetMs: probeBudget,
         redact,
@@ -136,10 +119,10 @@ export const doctor = Effect.fn("Doctor.collect")(
         resources,
         executables,
         platform,
-        stateDir: Result.isSuccess(stateDirEither) ? stateDirEither.success : undefined,
+        stateDir,
         env: options.env ?? process.env,
         userDataRoot,
-        binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
+        binDir: userDataRoot === undefined ? undefined : paths.binDir,
       },
       redactor,
       probeBudget,
