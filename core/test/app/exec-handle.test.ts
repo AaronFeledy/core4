@@ -9,6 +9,7 @@ import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { Renderer, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 test("App handle exec passes provider stderr through the captured library Renderer", async () => {
   // Given
@@ -68,11 +69,13 @@ test("App handle exec passes provider stderr through the captured library Render
 
   try {
     // When
-    const result = await Effect.runPromise(
-      resolveApp({ root: AbsolutePath.make(dir) }).pipe(
-        Effect.flatMap((app) => app.exec({ command: ["false"] })),
-        Effect.scoped,
-        Effect.provide(runtime),
+    const result = await withEnvVar("LANDO_PROVIDER", provider.id, () =>
+      Effect.runPromise(
+        resolveApp({ root: AbsolutePath.make(dir) }).pipe(
+          Effect.flatMap((app) => app.exec({ command: ["false"] })),
+          Effect.scoped,
+          Effect.provide(runtime),
+        ),
       ),
     );
 

@@ -15,6 +15,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
@@ -40,7 +41,7 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const original = process.cwd();
   process.chdir(dir);
   try {
-    return await run(dir);
+    return await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () => run(dir));
   } finally {
     process.chdir(original);
     await rm(dir, { recursive: true, force: true });

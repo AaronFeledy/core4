@@ -10,6 +10,7 @@ import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const serviceTarget: TunnelTarget = {
   _tag: "service",
@@ -33,7 +34,7 @@ const withTempShareApp = async <T>(run: (dir: string) => Promise<T>): Promise<T>
   process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   process.chdir(dir);
   try {
-    return await run(dir);
+    return await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () => run(dir));
   } finally {
     process.chdir(original);
     if (oldDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");

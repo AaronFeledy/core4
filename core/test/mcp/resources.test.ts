@@ -12,6 +12,7 @@ import { Context, Effect, Fiber, Layer, Schema } from "effect";
 import { serviceLayer } from "../../src/mcp-command-executor";
 import { resources } from "../../src/mcp-resources";
 import { makeLandoRuntime } from "../../src/runtime/layer";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 type Client = Effect.Success<ReturnType<typeof startStdioClient>>;
 const secret = "mcp-resource-config-planted-secret";
@@ -71,32 +72,34 @@ const withResourceSession = async <A, E>(
         ],
       },
     });
-    const observed = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const runtime = yield* Layer.build(runtimeLayer);
-          const retained = Context.add(
-            runtime,
-            RuntimeLayerFactory,
-            RuntimeLayerFactory.of({ make: () => Layer.succeedContext(runtime) }),
-          );
-          const config = McpRuntimeConfig.of({
-            commandEntries: [],
-            defaultAllowlist: [],
-            resources,
-            runtimeLayer: Layer.succeedContext(retained),
-          });
-          const host = serviceLayer.pipe(
-            Layer.provide(Layer.succeedContext(retained)),
-            Layer.provide(Layer.succeed(McpRuntimeConfig, config)),
-          );
-          const service = yield* McpService.pipe(Effect.provide(host));
-          const client = yield* startStdioClient(service.serve({ transport: "stdio", cwd: root }));
-          const result = yield* run(client);
-          yield* client.close;
-          yield* Fiber.join(client.fiber);
-          return result;
-        }),
+    const observed = await withEnvVar("LANDO_PROVIDER", provider.id, () =>
+      Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const runtime = yield* Layer.build(runtimeLayer);
+            const retained = Context.add(
+              runtime,
+              RuntimeLayerFactory,
+              RuntimeLayerFactory.of({ make: () => Layer.succeedContext(runtime) }),
+            );
+            const config = McpRuntimeConfig.of({
+              commandEntries: [],
+              defaultAllowlist: [],
+              resources,
+              runtimeLayer: Layer.succeedContext(retained),
+            });
+            const host = serviceLayer.pipe(
+              Layer.provide(Layer.succeedContext(retained)),
+              Layer.provide(Layer.succeed(McpRuntimeConfig, config)),
+            );
+            const service = yield* McpService.pipe(Effect.provide(host));
+            const client = yield* startStdioClient(service.serve({ transport: "stdio", cwd: root }));
+            const result = yield* run(client);
+            yield* client.close;
+            yield* Fiber.join(client.fiber);
+            return result;
+          }),
+        ),
       ),
     );
     expect(mutations).toBe(0);
