@@ -367,6 +367,9 @@ describe("lando stop", () => {
       process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
       const pathsService = makeLandoPaths({
         userDataRoot: join(root, "service-data"),
+        userCacheRoot: join(root, "service-cache"),
+        userConfRoot: join(root, "service-conf"),
+        systemPluginRoot: join(root, "service-sys"),
         env: {},
         platform: "linux",
       });

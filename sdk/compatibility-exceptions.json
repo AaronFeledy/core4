@@ -1,5 +1,77 @@
 [
   {
+    "surface": "schema:PreDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.evidence",
+    "justification": "Pre-release destroy events require the primary teardown evidence."
+  },
+  {
+    "surface": "schema:PostDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.evidence",
+    "justification": "Pre-release destroy events require the primary teardown evidence."
+  },
+  {
+    "surface": "schema:PostDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.outcome",
+    "justification": "Pre-release destroy completion reports the aggregate invocation outcome."
+  },
+  {
+    "surface": "schema:DatasetApplyResult",
+    "changeKind": "property-added",
+    "path": "$.snapshot.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "schema:PrunePolicy",
+    "changeKind": "property-removed",
+    "path": "$.filter.sourceRoot",
+    "justification": "Pre-release snapshot selection uses ownerKey instead of sourceRoot."
+  },
+  {
+    "surface": "schema:SnapshotFilter",
+    "changeKind": "property-removed",
+    "path": "$.sourceRoot",
+    "justification": "Pre-release snapshot selection uses ownerKey instead of sourceRoot."
+  },
+  {
+    "surface": "schema:SnapshotHandle",
+    "changeKind": "property-added",
+    "path": "$.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.ownerKey",
+    "justification": "Pre-release snapshot ownership moves to the required owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.repoGroupKey",
+    "justification": "Pre-release repository grouping moves to the snapshot owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.sourceRoot",
+    "justification": "Pre-release snapshot ownership moves to the required owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.owner",
+    "justification": "Pre-release snapshots require canonical ownership independently of SQL metadata."
+  },
+  {
+    "surface": "schema:SyncResult",
+    "changeKind": "property-added",
+    "path": "$.snapshots.items.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
     "surface": "command:app:config:lint",
     "changeKind": "property-removed",
     "path": "$.violations.items.scope",
@@ -1963,15 +2035,21 @@
   },
   {
     "surface": "schema:LandoEvent",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Pre-release LandoEvent adds the pre/post-global-destroy and pre/post-scratch-destroy lifecycle events; existing members are unchanged."
+  },
+  {
+    "surface": "schema:LandoEvent",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "LandoEvent anyOf members embed RoutePlan. Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-release LandoEvent members require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
   },
   {
     "surface": "schema:RendererPanelContext",
     "changeKind": "unsupported-construct",
     "path": "$.event.anyOf",
-    "justification": "RendererPanelContext event anyOf members embed RoutePlan. Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-release renderer event payloads require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
   },
   {
     "surface": "schema:GlobalConfig",

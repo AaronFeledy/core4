@@ -43,9 +43,11 @@ export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin",
  * lifecycle method types, fixture apply/inspect/destroy round-trips, provider
  * identity, status, version fields, capability completeness, ApplyResult
  * shape, re-apply idempotency, list shape, and volume-preserving destroy.
+ * Supply a digest-qualified fixture reference to also verify artifact pull integrity.
  */
 export const runProviderContract = Effect.fnUntraced(function* (
   provider: RuntimeProviderShape,
+  digestQualifiedRef?: string,
 ): Effect.fn.Return<void, ContractFailure> {
   const providerId = ProviderId.make(provider.id);
   const testAppPlan = {
@@ -308,6 +310,18 @@ export const runProviderContract = Effect.fnUntraced(function* (
     "getVersions runtime is a string when present",
     versions,
   );
+
+  if (provider.capabilities.artifactPull && digestQualifiedRef !== undefined) {
+    const digest = /^[^@\s]+@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(digestQualifiedRef)?.[1];
+    yield* requireContract(digest !== undefined, "pull fixture is digest-qualified", digestQualifiedRef);
+    const artifact = yield* provider
+      .pullArtifact({ ref: digestQualifiedRef })
+      .pipe(Effect.mapError(mapProviderFailure("pullArtifact succeeds for the digest-qualified fixture")));
+    yield* requireContract(artifact.digest === digest, "pullArtifact reports the requested digest", {
+      reference: digestQualifiedRef,
+      artifact,
+    });
+  }
 
   const applyResult = yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
     Effect.mapError(mapProviderFailure("apply succeeds for the contract fixture")),

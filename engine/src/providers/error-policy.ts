@@ -27,7 +27,6 @@ export const withProviderErrorRedaction = (
     resume,
     suspend,
     quiesceForFileSync,
-    removeVolumeSnapshot,
     listVolumeSnapshots,
     inspectResourceNames,
     observeVolume,
@@ -102,9 +101,7 @@ export const withProviderErrorRedaction = (
     inspect: (target) => effect(runtime.inspect(target)),
     list: (filter) => effect(runtime.list(filter)),
     snapshotVolume: (spec) => effect(runtime.snapshotVolume(spec)),
-    ...(removeVolumeSnapshot === undefined
-      ? {}
-      : { removeVolumeSnapshot: (snapshot) => effect(removeVolumeSnapshot.call(runtime, snapshot)) }),
+    removeVolumeSnapshot: (snapshot, options) => effect(runtime.removeVolumeSnapshot(snapshot, options)),
     ...(listVolumeSnapshots === undefined
       ? {}
       : { listVolumeSnapshots: () => effect(listVolumeSnapshots.call(runtime)) }),

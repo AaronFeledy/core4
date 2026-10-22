@@ -1,6 +1,6 @@
 import { snapshotGc } from "@lando/engine/operations/snapshot-gc";
 import { DataMover, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 import { snapshotBytes } from "./snapshots-gc";
@@ -9,10 +9,30 @@ export const orphanedSnapshotsDoctor = Effect.fnUntraced(function* (redact: (tex
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   const mover = yield* Effect.serviceOption(DataMover);
   if (Option.isNone(registry) || Option.isNone(mover)) return [];
-  const report = yield* snapshotGc().pipe(
+  const result = yield* snapshotGc().pipe(
     Effect.provideService(RuntimeProviderRegistry, registry.value),
     Effect.provideService(DataMover, mover.value),
+    Effect.result,
   );
+  if (Result.isFailure(result)) {
+    const message = result.failure.message;
+    return [
+      warnCheck({
+        name: "orphaned-volume-snapshots",
+        recovery: "manual",
+        context: { error: redact(message) },
+        solutions: [
+          {
+            kind: "manual",
+            description: redact(
+              `Lando could not read snapshot state to look for unreferenced snapshot images: ${message} Fix that problem, then rerun lando doctor.`,
+            ),
+          },
+        ],
+      }),
+    ];
+  }
+  const report = result.success;
   const failed = report.providers.filter((provider) => provider.status === "failed");
   const context = {
     count: String(report.totalCount),

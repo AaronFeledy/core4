@@ -29,7 +29,7 @@ import type {
   ServiceName,
   VolumeRef,
 } from "@lando/sdk/schema";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, planAppIdentity } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import type {
   DataMoverShape,
@@ -469,7 +469,12 @@ export const makeTestDataset = () =>
           return progress;
         });
       },
-      snapshot: (store) => Effect.succeed({ id: "remote-sync-contract-snapshot", store }),
+      snapshot: (store) =>
+        Effect.succeed({
+          id: "remote-sync-contract-snapshot",
+          store,
+          ownerKey: planAppIdentity(plan).ownerKey,
+        }),
       restore: () => Effect.void,
       listSnapshots: () => Effect.succeed([]),
       resolveSnapshot: (reference, _scope) =>
@@ -481,7 +486,7 @@ export const makeTestDataset = () =>
               "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
           }),
         ),
-      removeSnapshot: (_id, _store?) => Effect.void,
+      removeSnapshot: (_handle) => Effect.void,
       pruneSnapshots: () => Effect.succeed([]),
       findOrphanedSnapshots: Effect.succeed([]),
       removeOrphanedSnapshot: () => Effect.void,

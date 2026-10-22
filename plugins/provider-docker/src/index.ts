@@ -16,7 +16,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE, volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -444,10 +444,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
-      prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
-        ctx: DOCKER_CTX,
-        dialect: dockerPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(dockerApi, ref, {
+          ctx: DOCKER_CTX,
+          dialect: dockerPullDialect,
+          policy: "missing",
+        }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
       redactDetails,

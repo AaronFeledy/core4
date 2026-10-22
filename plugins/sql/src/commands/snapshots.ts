@@ -23,7 +23,7 @@ export const renderDbSnapshots = (result: DbCommandResult, nowMs: number): strin
     `Snapshots for ${result.service}:`,
     ...snapshots.flatMap((snapshot) => {
       const metadata = snapshot.metadata;
-      const ownership = [metadata?.ownerKey ?? "unproven", metadata?.repoGroupKey, metadata?.sourceRoot]
+      const ownership = [snapshot.owner.ownerKey, snapshot.owner.repoGroupKey, snapshot.owner.appRoot]
         .filter((value) => value !== undefined)
         .join(" | ");
       return [

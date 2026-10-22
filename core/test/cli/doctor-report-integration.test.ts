@@ -87,6 +87,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
       "scanner",
       "host-proxy",
       "network-trust",
+      "legacy-snapshot-catalogs",
       "filesystem-watch",
     ]);
     expect(report.subsystems.checks[1]).toMatchObject({
