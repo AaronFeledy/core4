@@ -104,7 +104,7 @@ The `Scratch` scope extends §3.5 with every event below:
 
 Payloads carry the scratch `AppRef`, source, plan where applicable, isolation and global-storage policy, detached state, trigger or destroy reason, retained artifacts, and timestamp. Standard App-scope events still fire inside Scratch-scope events with `app.kind === "scratch"`.
 
-Destroy payloads carry `reason` (`explicit`, `scope-close`, `poweroff`, `gc`, or `acquire-failure`) and `retainedArtifacts` (`volumes`, and `snapshots` as `none`, `kept`, or `unknown-owner`). Source, isolation, global-storage policy, and detached state are recorded registry values and are omitted for an unregistered orphan rather than inferred; a minimal orphan event carries only scope, app, reason, retained artifacts, and timestamp. Without a plan or registry entry, the `AppRef` root is the instance directory.
+Destroy payloads carry the teardown plan when one is available, `reason` (`explicit`, `scope-close`, `poweroff`, `gc`, or `acquire-failure`) and `retainedArtifacts` (`volumes`, and `snapshots` as `none`, `kept`, or `unknown-owner`). Source, isolation, global-storage policy, and detached state are recorded registry values and are omitted for an unregistered orphan rather than inferred; a minimal orphan event carries only scope, app, reason, retained artifacts, and timestamp. Without a plan or registry entry, the `AppRef` root is the instance directory.
 
 #### 21.6.3 Standard event sequence
 
@@ -188,7 +188,7 @@ Arguments after `--` pass verbatim to provider exec. Stdin and PTY follow the §
 
 ### 21.11 Cleanup, registry, and orphan reaping
 
-The `scratch-registry` at `<userCacheRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry.
+The `scratch-registry` at `<userCacheRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry: a destroy that fails after `pre-scratch-destroy` records `destroyed-pending-cleanup` best effort, without replacing the original failure, and GC treats that entry as a candidate whatever its owner liveness or detached state.
 
 Registry updates MUST use the canonical atomic, lockable `StateStore` contract (§12.7). `apps:scratch:gc` combines two authorities:
 
