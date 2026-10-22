@@ -6,17 +6,13 @@
  * formatters) feed it the set of secret values resolved by the active
  * `SecretStore` and get back a `redact(text)` that replaces every occurrence
  * with the `REDACTED` sentinel. Values are matched literally (no regex
- * interpretation) and longest-first so a shorter secret that is a substring of
- * a longer one cannot leave the remainder of the longer value exposed.
+ * interpretation); overlapping occurrences are masked as a single union so no
+ * portion of any occurrence survives.
  */
 
-import { LOG_LINE_TRUNCATED_MARKER } from "../log-follow/marker.ts";
-import {
-  replaceLiteralBounded,
-  replaceTruncatedPrefixesBounded,
-  retainWithinBytes,
-} from "./bounded-redaction.ts";
+import { replaceLiteralMatchesBounded, retainWithinBytes } from "./bounded-redaction.ts";
 import { redactedInspection } from "./inspection.ts";
+import { LiteralMatcher, stringUnits } from "./literal-matcher.ts";
 
 /** Sentinel written in place of a redacted secret value. */
 export const REDACTED = "[redacted]" as const;
@@ -57,9 +53,16 @@ export const createSecretRedactor = (
   const authoritative = [...authoritativeValues].filter((value) => value.length > 0);
   const unsafe = authoritative.filter((value) => !isUsableExactRedactionValue(value));
   const unique = Array.from(new Set([...values, ...authoritative])).filter(isUsableExactRedactionValue);
-  // Longest-first: prevents a substring secret from partially masking a longer
-  // secret and leaking its tail.
-  unique.sort((a, b) => b.length - a.length);
+  const matcher = new LiteralMatcher(unique.map(stringUnits));
+  const canCrossSentinel = unique.some((value) => {
+    if (value.includes(REDACTED)) return true;
+    for (let length = 1; length < Math.min(value.length, REDACTED.length + 1); length += 1) {
+      if (value.endsWith(REDACTED.slice(0, length)) || value.startsWith(REDACTED.slice(-length))) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   if (unique.length === 0 && unsafe.length === 0) {
     return {
@@ -69,18 +72,16 @@ export const createSecretRedactor = (
     };
   }
 
-  // Absent values skip the rebuild, so text with no match is never copied or byte-counted.
+  // Only sentinel-crossing values can create new occurrences in emitted output.
   const redactWithin = (text: string, maxBytes: number): string | undefined => {
     let result = text;
-    for (const value of unique) {
-      if (!result.includes(value)) continue;
-      const replaced = replaceLiteralBounded(result, value, REDACTED, maxBytes);
+    for (let pass = 0; pass < (canCrossSentinel ? 8 : 1); pass += 1) {
+      const replaced = replaceLiteralMatchesBounded(result, matcher, { replacement: REDACTED, maxBytes });
       if (replaced === undefined) return undefined;
+      if (!canCrossSentinel || replaced === result) return replaced;
       result = replaced;
     }
-    return result.includes(LOG_LINE_TRUNCATED_MARKER)
-      ? replaceTruncatedPrefixesBounded(result, unique, REDACTED, maxBytes)
-      : result;
+    return retainWithinBytes(REDACTED, maxBytes);
   };
   // Suppress the entire detail rather than corrupt an ANSI sequence with a numeric replacement.
   const containsUnsafe = (text: string): boolean => unsafe.some((value) => text.includes(value));
@@ -91,8 +92,7 @@ export const createSecretRedactor = (
       containsUnsafe(text) ? REDACTED : (redactWithin(text, Number.MAX_SAFE_INTEGER) ?? REDACTED),
     redactBounded: (text, maxBytes) => {
       if (containsUnsafe(text)) return retainWithinBytes(REDACTED, maxBytes);
-      const result = redactWithin(text, maxBytes);
-      return result === undefined ? undefined : retainWithinBytes(result, maxBytes);
+      return redactWithin(text, maxBytes);
     },
   };
 };

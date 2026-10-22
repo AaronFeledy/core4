@@ -5,11 +5,13 @@ import { LOG_LINE_TRUNCATED_MARKER } from "../../src/log-follow/marker.ts";
 
 describe("createSecretRedactor", () => {
   for (const value of ["a", "red", "acted]", "[", "]", "x[redacted]y"]) {
-    test(`treats existing sentinels as opaque when masking ${value}`, () => {
+    test(`preserves contained sentinels and widens crossing matches when masking ${value}`, () => {
       // Given
       const redactor = createSecretRedactor([value]);
       const input = `x[redacted]y ${value} [redacted]`;
-      const expected = value.includes(REDACTED) ? input : "x[redacted]y [redacted] [redacted]";
+      const expected = value.includes(REDACTED)
+        ? "[redacted] [redacted] [redacted]"
+        : "x[redacted]y [redacted] [redacted]";
       // When
       const output = redactor.redact(input);
       const bounded = redactor.redactBounded?.(input, 1_024);

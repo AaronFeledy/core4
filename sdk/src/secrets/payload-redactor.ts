@@ -1,4 +1,5 @@
 import { redactedInspection } from "./inspection.ts";
+import { LiteralMatcher } from "./literal-matcher.ts";
 import { REDACTED } from "./redactor.ts";
 
 /** Value-only byte redaction. Each instance owns one ordered payload stream. */
@@ -6,8 +7,6 @@ export interface PayloadRedactor {
   readonly write: (chunk: Uint8Array) => Uint8Array;
   readonly flush: () => Uint8Array;
 }
-
-type Node = { readonly children: Map<number, Node>; terminal: boolean };
 
 /**
  * Read the live value set before every write. The getter should return the same
@@ -19,29 +18,18 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
   const encoder = new TextEncoder();
   const replacement = encoder.encode(REDACTED);
   let previous: Iterable<string> | undefined;
-  let root: Node = { children: new Map(), terminal: false };
+  let matcher = new LiteralMatcher([]);
   let pending: Uint8Array = new Uint8Array(0);
+  // End of the union whose sentinel was already emitted, relative to pending.
+  let coveredUntil = 0;
 
   const redact = (chunk: Uint8Array, final: boolean): Uint8Array => {
     const values = getValues();
     if (values !== previous) {
-      root = { children: new Map(), terminal: false };
-      for (const value of values) {
-        if (value.length === 0) continue;
-        let node = root;
-        for (const byte of encoder.encode(value)) {
-          let next = node.children.get(byte);
-          if (next === undefined) {
-            next = { children: new Map(), terminal: false };
-            node.children.set(byte, next);
-          }
-          node = next;
-        }
-        node.terminal = true;
-      }
+      matcher = new LiteralMatcher(Array.from(values, (value) => encoder.encode(value)));
       previous = values;
     }
-    if (root.children.size === 0 && pending.length === 0) return chunk;
+    if (matcher.empty && pending.length === 0) return chunk;
     const input = pending.length === 0 ? chunk : new Uint8Array(pending.length + chunk.length);
     if (pending.length > 0) {
       input.set(pending);
@@ -49,33 +37,29 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
     }
     pending = new Uint8Array(0);
     const pieces: Uint8Array[] = [];
-    let start = 0;
+    let start = coveredUntil;
     let index = 0;
     while (index < input.length) {
-      let node = root;
-      let end = index;
-      let matchedEnd = index;
-      while (end < input.length) {
-        const byte = input[end];
-        const next = byte === undefined ? undefined : node.children.get(byte);
-        if (next === undefined) break;
-        node = next;
-        end += 1;
-        if (node.terminal) matchedEnd = end;
+      if (!matcher.canStart(input[index])) {
+        index += 1;
+        continue;
       }
-      if (!final && end === input.length && node.children.size > 0 && end > index) {
+      const match = matcher.matchAt(input, index);
+      if (!final && match.partial) {
+        // Covered bytes must remain raw here: an overlapping occurrence may
+        // start inside them and extend the union in a subsequent chunk.
         pending = input.slice(index);
         break;
       }
-      if (matchedEnd > index) {
-        pieces.push(input.subarray(start, index), replacement);
-        index = matchedEnd;
-        start = index;
-      } else {
-        index += 1;
+      if (match.end > index) {
+        if (index >= coveredUntil) pieces.push(input.subarray(start, index), replacement);
+        coveredUntil = Math.max(coveredUntil, match.end);
+        start = coveredUntil;
       }
+      index += 1;
     }
     const tail = input.subarray(start, index);
+    coveredUntil = Math.max(0, coveredUntil - index);
     if (pieces.length === 0) return tail;
     pieces.push(tail);
     const output = new Uint8Array(pieces.reduce((size, piece) => size + piece.length, 0));
