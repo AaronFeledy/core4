@@ -5,7 +5,8 @@ import { Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppAtRoot } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
-import { compiledEventsForPlan } from "../../src/planner/effective-events.ts";
+import { attachEffectiveEvents, compiledEventsForPlan } from "../../src/planner/effective-events.ts";
+import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import {
   authoredPlan,
   authoredTeardownHarness,
@@ -47,6 +48,36 @@ test.each(["stop", "destroy"] as const)(
       expect(harness.stepPlans.every((plan) => plan === applied)).toBe(true);
       expect(harness.order.filter((item) => item === "load")).toHaveLength(1);
       expect(harness.order.indexOf("evidence")).toBeLessThan(harness.order.indexOf("load"));
+    });
+  },
+);
+
+test.each(["stop", "destroy"] as const)(
+  "cwd %s runs current authored tooling tasks against the recorded plan",
+  async (operation) => {
+    await withTeardownRoot(async (root) => {
+      // Given a recorded plan without attachments and current task-backed teardown steps.
+      const applied = recordedPlan(root);
+      const desired = attachEffectiveTooling(
+        attachEffectiveEvents(recordedPlan(root), { [`pre-${operation}`]: [{ task: "cleanup" }] }),
+        { cleanup: { cmd: "echo teardown" } },
+      );
+      const harness = authoredTeardownHarness({ applied, desired });
+      // When
+      await Effect.runPromise(
+        withResolvedCwd(
+          root,
+          operation === "stop" ? stopApp().pipe(Effect.asVoid) : destroyApp().pipe(Effect.asVoid),
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      // Then the task executes before teardown using the applied, not the desired, plan.
+      expect(harness.toolInvocations.map(({ commands }) => commands)).toEqual([
+        [["sh", "-c", 'echo teardown "$@"', "lando-tooling"]],
+      ]);
+      expect(harness.stepPlans).toEqual([applied]);
+      expect(harness.stepPlans[0]).toBe(applied);
+      expect(harness.order.indexOf("tool:cleanup")).toBeLessThan(harness.order.indexOf("provider"));
+      expect(harness.destroyed[0]).toBe(applied);
     });
   },
 );

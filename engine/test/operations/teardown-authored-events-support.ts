@@ -24,6 +24,8 @@ import {
   PathsService,
   RuntimeProviderRegistry,
   StateStore,
+  ToolingEngine,
+  type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -103,6 +105,7 @@ export const authoredTeardownHarness = (input: {
   const events: LandoEvent[] = [];
   const destroyed: AppPlan[] = [];
   const stepPlans: Array<AppPlan | undefined> = [];
+  const toolInvocations: ToolingInvocation[] = [];
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -114,6 +117,19 @@ export const authoredTeardownHarness = (input: {
       }),
   };
   const layer = Layer.mergeAll(
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "test",
+        run: (invocation, plan) =>
+          Effect.sync(() => {
+            order.push(`tool:${invocation.tool}`);
+            toolInvocations.push(invocation);
+            stepPlans.push(plan);
+            return { tool: invocation.tool, service: ":lando", exitCode: 0, stdout: "", stderr: "" };
+          }),
+      }),
+    ),
     emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -203,5 +219,5 @@ export const authoredTeardownHarness = (input: {
       }),
     ),
   );
-  return { layer, order, events, destroyed, stepPlans };
+  return { layer, order, events, destroyed, stepPlans, toolInvocations };
 };

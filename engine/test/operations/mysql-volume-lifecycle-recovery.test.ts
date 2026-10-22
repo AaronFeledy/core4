@@ -12,6 +12,8 @@ import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { attachEffectiveEvents, compiledEventsForPlan } from "../../src/planner/effective-events.ts";
+import { attachEffectiveTooling, effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
+import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import { resolveMysqlVolumeTarget } from "../../src/planner/mysql-volume.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -44,9 +46,14 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
   test("Given legacy storage, when resolving the MySQL target, then authored events follow the rewritten plan", async () => {
     // Given a plan with authored steps whose MySQL store resolves to the legacy volume
     const harness = makeHarness({ plannedApp: mysqlPlan, listVolumes: recoveredVolumes });
-    const authored = attachEffectiveEvents(
-      { ...mysqlPlan },
-      { "pre-stop": [{ cmd: "echo stopping", service: ":host" }] },
+    const tooling = { cleanup: { cmd: "echo stopping", service: ":host" } };
+    const credsScope = { db: { creds: { user: "cleanup-user" } } };
+    const authored = attachServiceCredsScope(
+      attachEffectiveTooling(
+        attachEffectiveEvents({ ...mysqlPlan }, { "pre-stop": [{ task: "cleanup" }] }),
+        tooling,
+      ),
+      credsScope,
     );
 
     // When
@@ -61,6 +68,8 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
     expect(resolved.plan).not.toBe(authored);
     expect(resolved.plan.stores[0]?.name).toBe(legacy);
     expect(compiledEventsForPlan(resolved.plan)).toEqual(compiledEventsForPlan(authored));
+    expect(effectiveToolingForPlan(resolved.plan)).toBe(tooling);
+    expect(serviceCredsScopeForPlan(resolved.plan)).toBe(credsScope);
   });
 
   test("Given a recovered provider and legacy storage, when restarting a supplied target, then it locks the legacy volume before stopping", async () => {

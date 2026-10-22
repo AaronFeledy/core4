@@ -2,7 +2,8 @@ import { MessageInfoEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 import { DateTime, Effect, Predicate, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { attachEffectiveEvents, compiledEventsForPlan } from "../planner/effective-events.ts";
+import { compiledEventsForPlan } from "../planner/effective-events.ts";
+import { carryPlanAttachments } from "../planner/plan-attachments.ts";
 
 export const withTeardownAuthoredEvents = Effect.fn("AppOperation.teardownAuthoredEvents")(function* <E, R>(
   applied: ResolvedAppTarget,
@@ -38,7 +39,6 @@ export const withTeardownAuthoredEvents = Effect.fn("AppOperation.teardownAuthor
   )
     return yield* skip("desired app identity differs from applied state");
 
-  const compiled = compiledEventsForPlan(target.plan);
-  if (compiled !== undefined) attachEffectiveEvents(applied.plan, compiled);
+  carryPlanAttachments(target.plan, applied.plan);
   return applied;
 });

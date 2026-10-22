@@ -5,7 +5,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { attachEffectiveEvents, compiledEventsForPlan } from "./effective-events.ts";
+import { carryPlanAttachments } from "./plan-attachments.ts";
 
 /** Select an unambiguous existing identity; never mutate provider storage. */
 export const resolveMysqlVolume = (
@@ -45,9 +45,7 @@ export const resolveMysqlVolume = (
         },
         stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
       };
-      // Authored events are keyed by plan object, so carry them to the rewritten plan.
-      const events = compiledEventsForPlan(plan);
-      return events === undefined ? legacyPlan : attachEffectiveEvents(legacyPlan, events);
+      return carryPlanAttachments(plan, legacyPlan);
     },
     Effect.mapError((cause): LandofileValidationError | ProviderUnavailableError =>
       cause._tag === "ProviderUnavailableError"
