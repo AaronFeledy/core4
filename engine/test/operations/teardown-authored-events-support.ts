@@ -173,6 +173,7 @@ export const authoredTeardownHarness = (input: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([input.applied]),
         list: Effect.succeed([input.applied.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
