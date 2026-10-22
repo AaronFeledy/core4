@@ -107,9 +107,6 @@ describe("app-plan redaction tokens", () => {
   test("exempts authored credentials across the whole document without losing duplicate occurrences", () => {
     const document = {
       services: {
-        database: {
-          creds: { user: "magento", password: "magento", database: "magento", rootPassword: "magento" },
-        },
         appserver: {
           environment: [
             "DB_PASSWORD=magento",
@@ -117,6 +114,9 @@ describe("app-plan redaction tokens", () => {
             "API_TOKEN=second-private",
             "API_TOKEN=first-private",
           ],
+        },
+        database: {
+          creds: { user: "magento", password: "magento", database: "magento", rootPassword: "magento" },
         },
       },
       tooling: { task: { env: { PMA_PASSWORD: "magento" } } },

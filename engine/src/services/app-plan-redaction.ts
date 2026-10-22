@@ -48,7 +48,6 @@ export const collectAppPlanRedactionTokens = (
       Predicate.isObject(compose) && Predicate.isObject(compose.labels) ? compose.labels : undefined;
     return [
       ...collectSecretEnvValues(stringEnv(service?.environment), publicValues),
-      ...collectSecretEnvValues(stringEnv(service?.creds), publicValues),
       ...collectSecretEnvValues(stringEnv(labels), publicValues),
     ];
   });
@@ -101,13 +100,14 @@ export const collectAuthoredRedactionTokens = (document: unknown): readonly stri
       );
       for (const value of collectPublicCredentialValues(env)) publicValues.add(value);
       for (const entry of node) discover(entry);
-    } else if (Predicate.isObject(node)) {
-      // A service node carries its authored `creds` block beside its environment.
-      const authoredCreds = isLandofileOverride(node.creds) ? node.creds.value : node.creds;
-      const creds = Predicate.isObject(authoredCreds) ? authoredCreds : undefined;
-      for (const value of collectPublicCredentialValues(node, creds)) publicValues.add(value);
-      for (const value of Object.values(node)) discover(value);
+      return;
     }
+    if (!Predicate.isObject(node)) return;
+    // A service node carries its authored `creds` block beside its environment.
+    const authoredCreds = isLandofileOverride(node.creds) ? node.creds.value : node.creds;
+    const creds = Predicate.isObject(authoredCreds) ? authoredCreds : undefined;
+    for (const value of collectPublicCredentialValues(node, creds)) publicValues.add(value);
+    for (const value of Object.values(node)) discover(value);
   };
   discover(document);
   const collect = (node: unknown): readonly string[] => {

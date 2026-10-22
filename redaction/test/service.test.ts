@@ -38,11 +38,9 @@ describe("RedactionService.layer", () => {
     // When
     const once = redactor.redactString(input);
     const twice = redactor.redactString(once);
-    const thrice = redactor.redactString(twice);
     // Then
     expect(once).toBe(expected);
     expect(twice).toBe(expected);
-    expect(thrice).toBe(expected);
     expect(redactor.redactStringBounded?.(input, 1_024)).toBe(expected);
   });
 

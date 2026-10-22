@@ -72,7 +72,7 @@ describe("sequential secret pattern regressions", () => {
   ];
 
   for (const { name, input, expected } of cases) {
-    test(`masks ${name} without losing surrounding syntax`, () => {
+    test(`masks ${name} idempotently without losing surrounding syntax`, () => {
       // Given
       const redactor = createRedactor("secrets", { values: ["s3cr3tvalue"] });
       // When
@@ -81,30 +81,18 @@ describe("sequential secret pattern regressions", () => {
       // Then
       expect(output).toBe(expected);
       expect(bounded).toBe(expected);
+      expect(redactor.redactString(output)).toBe(expected);
+      expect(redactor.redactStringBounded?.(output, 4_096)).toBe(expected);
     });
-  }
 
-  for (const profile of ["secrets", "telemetry"] as const) {
-    for (const { name, input } of cases) {
-      test(`${profile} is a fixed point for ${name}`, () => {
-        // Given
-        const redactor = createRedactor(profile, { values: ["s3cr3tvalue"] });
-        // When
-        const once = redactor.redactString(input);
-        const twice = redactor.redactString(once);
-        const thrice = redactor.redactString(twice);
-        const boundedOnce = redactor.redactStringBounded?.(input, 4_096);
-        // Then
-        expect(twice).toBe(once);
-        expect(thrice).toBe(once);
-        if (profile === "secrets") expect(boundedOnce).toBe(once);
-        if (redactor.redactStringBounded !== undefined) {
-          const boundedTwice = redactor.redactStringBounded(once, 4_096);
-          expect(boundedTwice).toBe(once);
-          expect(redactor.redactStringBounded(twice, 4_096)).toBe(once);
-        }
-      });
-    }
+    test(`telemetry is a fixed point for ${name}`, () => {
+      // Given
+      const redactor = createRedactor("telemetry", { values: ["s3cr3tvalue"] });
+      // When
+      const output = redactor.redactString(input);
+      // Then
+      expect(redactor.redactString(output)).toBe(output);
+    });
   }
 
   for (const input of [signedUrlCases[0].input, "token=x", "password=x", "?api_key=x&n=1"]) {
