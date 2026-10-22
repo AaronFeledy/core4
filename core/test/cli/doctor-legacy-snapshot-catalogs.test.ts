@@ -38,6 +38,33 @@ test.each([false, true])(
   },
 );
 
+test("doctor warns instead of failing when the snapshot folder cannot be read", async () => {
+  // Given a data root that is a file, so the snapshot folder cannot be listed.
+  const root = await mkdtemp(join(tmpdir(), "lando-legacy-doctor-"));
+  const dataFile = join(root, "data-file");
+  await writeFile(dataFile, "not a directory");
+  const paths = makeLandoPaths({ userDataRoot: dataFile });
+  try {
+    const redact = (text: string) => text.replaceAll(root, "<private>");
+    // When doctor looks for legacy catalogs.
+    const checks = await Effect.runPromise(
+      legacySnapshotCatalogsDoctor(redact).pipe(Effect.provideService(PathsService, paths)),
+    );
+    // Then the read failure is a manual warning with a redacted reason, not a failed doctor section.
+    expect(checks).toMatchObject([
+      {
+        name: "legacy-snapshot-catalogs",
+        status: "warn",
+        recovery: "manual",
+        solutions: [{ kind: "manual" }],
+      },
+    ]);
+    expect(JSON.stringify(checks)).not.toContain(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("doctor warns with redacted paths even when legacy catalog contents cannot be read", async () => {
   // Given invalid JSON and a dangling catalog symlink, both of which still protect images from GC.
   const root = await mkdtemp(join(tmpdir(), "lando-legacy-doctor-"));
