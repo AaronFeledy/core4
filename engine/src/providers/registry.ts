@@ -55,7 +55,6 @@ const toProviderUnavailable = (cause: unknown) =>
     cause,
   });
 
-
 export const makeRuntimeProviderRegistry = (
   modules: ReadonlyArray<LandoPluginModule>,
   privateFileAccess: PrivateFileAccess,
