@@ -2,6 +2,7 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import {
   Cause,
@@ -779,7 +780,10 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
-    select: () => Effect.succeed(runtimeProvider),
+    select: (target) =>
+      Effect.succeed(
+        outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
+      ),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });

@@ -11,3 +11,9 @@ export * from "./redactor-profiles.ts";
 export * from "./payload-redactor.ts";
 export * from "./public-default-credentials.ts";
 export { parseSecretReference, type ParsedSecretReference } from "./reference.ts";
+
+/** Container transport credentials recovered only for app output redaction. */
+export const HOST_PROXY_CREDENTIAL_ENV_NAMES = [
+  "LANDO_HOST_PROXY_TOKEN",
+  "LANDO_HOST_PROXY_SESSION",
+] as const;

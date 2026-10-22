@@ -245,6 +245,7 @@ const fakeWorker = (stateDir: string, terminated: { count: number }) => (spec: D
   let configDigest = "";
   return {
     pid: 4242,
+    logPath: join(stateDir, "agent-relay-worker.log"),
     argv: spec.argv,
     writeStdin: async (text: string) => {
       configDigest = JSON.parse(text).configDigest;

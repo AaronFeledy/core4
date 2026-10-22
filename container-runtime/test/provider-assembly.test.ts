@@ -215,6 +215,7 @@ describe("provider assembly", () => {
       inspect: () => Effect.die("unused"),
     };
     const first = bindResolvedProviderOps(state, {
+      readAppEnvironment: () => Effect.succeed([]),
       ctx,
       service,
       noPlanError: (_app, op) => notImplementedError("lando", op),
@@ -223,6 +224,7 @@ describe("provider assembly", () => {
       }),
     });
     const second = bindResolvedProviderOps(state, {
+      readAppEnvironment: () => Effect.succeed([]),
       ctx,
       service,
       noPlanError: (_app, op) => notImplementedError("lando", op),

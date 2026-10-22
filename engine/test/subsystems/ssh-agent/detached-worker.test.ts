@@ -51,6 +51,7 @@ test("writes the worker record from the ready frame", async () => {
           argv = spec.argv;
           return {
             pid: ready.pid,
+            logPath: join(root, "worker.log"),
             argv,
             writeStdin: async (value) => {
               payload = value;
@@ -113,6 +114,7 @@ test.each(["readiness", "identity"] as const)("terminates a worker when %s fails
           privateFileAccess: { enforce: async (path) => chmod(path, 0o600), verify: async () => undefined },
           spawnWorker: (spec) => ({
             pid: 876543,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: async () => {
@@ -175,6 +177,7 @@ test("keeps a published worker owned when cancellation lands at publication", as
           }),
         spawnWorker: (spec) => ({
           pid: 876543,
+          logPath: join(root, "worker.log"),
           argv: spec.argv,
           writeStdin: async (value) => {
             payload = value;
@@ -255,6 +258,7 @@ test.each(["interruption", "failure"] as const)(
             }),
           spawnWorker: (spec) => ({
             pid: 876543,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async (value) => {
               payload = value;

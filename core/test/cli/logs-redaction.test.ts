@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
+import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 
 import { followLogsApp } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -18,6 +19,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
@@ -135,6 +137,7 @@ const makeLayer = (rawLine: string) => {
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([Redacted.make(SECRET_VALUE)]),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -180,7 +183,7 @@ const makeLayer = (rawLine: string) => {
         resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
-        select: () => Effect.succeed(provider),
+        select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
       }),
     ),
   );
@@ -254,6 +257,32 @@ describe("lando logs redaction boundary", () => {
       expect(onDisk).toContain(SECRET_VALUE);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fresh-process logs mask a provider value with no secret-store environment", async () => {
+    resetRegisteredRedactionValuesForTesting();
+    Reflect.deleteProperty(process.env, "LANDO_SECRET_LOG_PASSWORD");
+    const io = createBufferedRendererIO({ isTTY: false });
+    try {
+      await runWithRendererHandling(
+        followLogsApp({ follow: true, service: "database", source: "slow-query" }),
+        {
+          runtime: makeLayer(`value ${SECRET_VALUE}`),
+          io,
+          rendererMode: "plain",
+          resultFormat: "text",
+          command: "app:logs",
+          resultSchema: EmptyResultSchema,
+          streaming: StreamFrame,
+          streamingMode: "live",
+          formatError: ({ error }) => String(error),
+        },
+      );
+      expect(io.stdout()).toContain("value [redacted]");
+      expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
+    } finally {
+      resetRegisteredRedactionValuesForTesting();
     }
   });
 });

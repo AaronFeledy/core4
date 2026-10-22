@@ -215,6 +215,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         return { kind: "destroyed" as const };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {
       const record = Effect.sync(() => {

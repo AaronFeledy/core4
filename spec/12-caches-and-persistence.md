@@ -62,6 +62,7 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userConfRoot>/config.yml`, `config.d/*.yml` | Global configuration layers. |
 | `<userConfRoot>/global.config.yml` | Global-service enablement map (§20.3.1). |
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
+| `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
 | `<userCacheRoot>/cwd-app-map.bin` | Router-phase CWD index. |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |

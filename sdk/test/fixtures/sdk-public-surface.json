@@ -340,6 +340,7 @@
       "pullArtifact:(spec:ArtifactPullSpec) => Effect.Effect<ArtifactRef,ProviderError>",
       "quiesceForFileSync?:(target:AppSelector) => Effect.Effect<void,ProviderError>",
       "quiesceRetainedFileSync?:(plan:AppPlan) => Effect.Effect<RetainedFileSyncQuiescence,ProviderError>",
+      "readAppEnvironment:(target:AppSelector,names:Readonly<Record<string,ReadonlyArray<string>>>) => Effect.Effect<ReadonlyArray<Redacted.Redacted<string>>,ProviderError>",
       "removeArtifact:(ref:ArtifactRef) => Effect.Effect<void,ProviderError>",
       "removeObservedService:(observed:ServiceRuntimeInfo) => Effect.Effect<ObservedServiceRemoval,ProviderError>",
       "removeVolume:(ref:VolumeRef,expectedGeneration:VolumeIdentity[\"generation\"]) => Effect.Effect<void,ProviderError>",
@@ -1736,6 +1737,7 @@
     ],
     "./secrets": [
       "DEFAULT_PASSWORD",
+      "HOST_PROXY_CREDENTIAL_ENV_NAMES",
       "MINIO_DEFAULT_PASSWORD",
       "PATTERN_CLASSES",
       "PUBLIC_DEFAULT_CREDENTIALS",

@@ -1,11 +1,14 @@
-import { closeSync, mkdirSync, openSync } from "node:fs";
+import { closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Schema } from "effect";
+import { openWorkerLog, stderrTailFromLog } from "./log.ts";
 
 export interface DetachedWorkerProcess<Ready> {
   readonly pid: number;
   readonly argv: ReadonlyArray<string>;
+  readonly logPath: string;
   readonly writeStdin: (value: string) => Promise<void>;
   readonly readReady: () => Promise<Ready>;
   readonly terminate: () => Promise<void>;
@@ -15,6 +18,7 @@ export interface DetachedWorkerSpawnSpec {
   readonly argv: ReadonlyArray<string>;
   readonly logsDir?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly privateFileAccess?: PrivateFileAccess;
 }
 
 export class DetachedWorkerExitedBeforeReadyError extends Error {
@@ -25,11 +29,23 @@ export class DetachedWorkerExitedBeforeReadyError extends Error {
   constructor(input: WorkerExitDetails, label = "detached") {
     const exitPart = input.exitCode === null ? "exitCode=unknown" : `exitCode=${input.exitCode}`;
     const stderrPart = input.stderrTail.length === 0 ? "" : ` stderr: ${input.stderrTail}`;
-    super(`Detached ${label} worker exited before readiness. ${exitPart}.${stderrPart}`);
+    super(
+      `Detached ${label} worker exited before readiness. ${exitPart}.${stderrPart} Log: ${input.logPath}`,
+    );
     this.name = "DetachedWorkerExitedBeforeReadyError";
     this.exitCode = input.exitCode;
     this.stderrTail = input.stderrTail;
     this.logPath = input.logPath;
+  }
+}
+
+export class DetachedWorkerStartupError extends Error {
+  constructor(
+    readonly logPath: string,
+    message: string,
+  ) {
+    super(`${message} Log: ${logPath}`);
+    this.name = "DetachedWorkerStartupError";
   }
 }
 
@@ -76,9 +92,6 @@ const awaitWorkerInput = async (
   }
 };
 
-const STDERR_TAIL_MAX_BYTES = 4 * 1024;
-const STDERR_TAIL_MAX_LINES = 8;
-
 const textFromStreamUntilLine = async (
   stream: ReadableStream<Uint8Array>,
   timeoutMs: number,
@@ -118,29 +131,18 @@ const workerLogLabel = (argv: ReadonlyArray<string>): string => {
   return String(process.pid);
 };
 
-const stderrTailFromLog = async (logPath: string): Promise<string> => {
-  const file = Bun.file(logPath);
-  if ((await file.exists()) !== true) return "";
-  const text = await file.text();
-  if (text.length === 0) return "";
-  const clipped = text.slice(-STDERR_TAIL_MAX_BYTES);
-  const lines = clipped.split("\n").filter((line) => line.length > 0);
-  return lines.slice(-STDERR_TAIL_MAX_LINES).join("\n");
-};
-
-export const spawnDetachedWorker = <Ready, Encoded>(
+export const spawnDetachedWorker = async <Ready, Encoded>(
   spec: DetachedWorkerSpawnSpec,
   options: DetachedWorkerOptions<Ready, Encoded>,
-): DetachedWorkerProcess<Ready> => {
+): Promise<DetachedWorkerProcess<Ready>> => {
   // File-backed stderr: detached workers outlive the parent, so a pipe SIGPIPEs
   // after start. Keep writing to logsDir for the worker lifetime.
   const logsDir = spec.logsDir || join(tmpdir(), `lando-${options.logLabel}-worker-logs`);
-  mkdirSync(logsDir, { recursive: true });
   const logPath = join(
     logsDir,
     `${options.logLabel}-worker-${workerLogLabel(spec.argv).replace(/[^\w.-]/g, "_")}.log`,
   );
-  const stderrFd = openSync(logPath, "a");
+  const stderrFd = await openWorkerLog(logsDir, logPath, spec.privateFileAccess);
   const proc = (() => {
     try {
       return Bun.spawn([...spec.argv], {
@@ -163,14 +165,28 @@ export const spawnDetachedWorker = <Ready, Encoded>(
       new DetachedWorkerExitedBeforeReadyError(details, options.logLabel)
     );
   };
+  const startupFailure = async (message: string): Promise<Error> => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const exited = await Promise.race([
+      proc.exited.then(() => true),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), WRITE_FAILURE_EXIT_WAIT_MS);
+      }),
+    ]).finally(() => {
+      if (timeout !== undefined) clearTimeout(timeout);
+    });
+    return exited ? exitedBeforeReady() : new DetachedWorkerStartupError(logPath, message);
+  };
   return {
     pid: proc.pid,
     argv: spec.argv,
+    logPath,
     writeStdin: async (value) => {
       if (proc.exitCode !== null) throw await exitedBeforeReady();
       const payload = new TextEncoder().encode(value);
       if (payload.byteLength > WORKER_PAYLOAD_MAX_BYTES)
-        throw new Error(
+        throw new DetachedWorkerStartupError(
+          logPath,
           `${options.payloadLabel ?? options.logLabel} worker startup payload exceeds the 16 MiB limit.`,
         );
       const payloadTimeoutMs = options.payloadTimeoutMs ?? WORKER_PAYLOAD_TIMEOUT_MS;
@@ -187,26 +203,25 @@ export const spawnDetachedWorker = <Ready, Encoded>(
           await awaitWorkerInput(proc.stdin.flush(), deadline, options.payloadLabel ?? options.logLabel);
         }
         await awaitWorkerInput(proc.stdin.end(), deadline, options.payloadLabel ?? options.logLabel);
-      } catch (cause) {
-        // A crashed worker closes its stdin before the exit is observable; wait briefly for it.
-        let timeout: ReturnType<typeof setTimeout> | undefined;
-        const exited = await Promise.race([
-          proc.exited.then(() => true),
-          new Promise<false>((resolve) => {
-            timeout = setTimeout(() => resolve(false), WRITE_FAILURE_EXIT_WAIT_MS);
-          }),
-        ]).finally(() => {
-          if (timeout !== undefined) clearTimeout(timeout);
-        });
-        if (exited) throw await exitedBeforeReady();
-        throw cause;
+      } catch {
+        throw await startupFailure("Unable to deliver detached worker startup payload.");
       }
       if (proc.exitCode !== null) throw await exitedBeforeReady();
     },
     readReady: async () => {
-      const line = await textFromStreamUntilLine(proc.stdout, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
-      if (line.length > 0) return Schema.decodeUnknownSync(options.readySchema)(JSON.parse(line));
-      throw await exitedBeforeReady();
+      let line: string;
+      try {
+        line = await textFromStreamUntilLine(proc.stdout, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
+      } catch {
+        throw await startupFailure("Detached worker readiness timed out or could not be read.");
+      }
+      if (line.length === 0) throw await startupFailure("Detached worker stdout closed before readiness.");
+      try {
+        return Schema.decodeUnknownSync(options.readySchema)(JSON.parse(line));
+      } catch {
+        // The ready frame contains credentials. Neither parser errors nor the frame may escape.
+        throw await startupFailure("Detached worker returned an invalid readiness frame.");
+      }
     },
     terminate: async () => {
       proc.kill("SIGTERM");

@@ -174,6 +174,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       servers.push(server);
       return {
         pid,
+        logPath: join(paths.logsDir, "host-proxy-worker.log"),
         argv: spec.argv,
         writeStdin: async (value) => {
           configDigest = Schema.decodeUnknownSync(Schema.Struct({ configDigest: Schema.String }))(

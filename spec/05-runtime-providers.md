@@ -52,6 +52,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `cleanupOwnedResources` (optional) | Removes verified owned containers, private networks, and volumes selected by `DestroyOptions` for one root. Returns `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`). All bundled providers implement it. Shared networks are never owned or deleted. |
 | `removeObservedService` | Stops and removes the container behind one observed `ServiceRuntimeInfo`, by observed identity, without resolving an applied plan; returns `removed` or `absent`. |
 | `exec` | Executes a short command and returns a collected `ExecResult`. |
+| `readAppEnvironment` | Required, read-only `(AppSelector, Readonly<Record<string, ReadonlyArray<string>>>)` to `ReadonlyArray<Redacted<string>>`; reads only requested names from existing containers identified by service. Missing containers, names, and empty values contribute nothing; MUST NOT start runtimes or mutate resources. Transport, permission, and malformed-response failures are sanitized typed `ProviderError`s without response bodies. |
 | `execStream` | Streams stdout/stderr and a terminal exit result for a command. |
 | `run` | Runs a scoped ephemeral workload, including declared mounts and input. |
 | `runStream` | Streaming sibling of `run`, used by generic data movement. |
@@ -255,6 +256,8 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `ArtifactTransferError` | Artifact export or import failed. |
 
 Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details` when present, optional `remediation`, and an optional original `cause` for debug logs. `message` and `details` MUST already be redacted with the live value set when the error is returned, so library callers see the same masking as CLI output.
+
+The runtime provider registry MUST enforce redaction on failures from every Effect and Stream member, provider construction, and contribution callback, including applied-plan and resource-ownership reads. It MUST reconstruct canonical error classes with redacted `message`, deep-redacted `details`, `remediation`, and other exposed text fields while preserving tags, schema encoding, yieldability, and the original debug-only `cause`. Defects and interruption are unchanged. Providers MUST still redact errors at construction as defense in depth.
 
 ### 5.8 Bundled providers
 
