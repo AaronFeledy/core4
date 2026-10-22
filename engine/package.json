@@ -39,6 +39,8 @@
     "./config-write/write-core": "./src/config-write/write-core.ts",
     "./config/agent-env": "./src/config/agent-env.ts",
     "./config/agent-env-policy": "./src/config/agent-env-policy.ts",
+    "./config/config-warnings": "./src/config/config-warnings.ts",
+    "./config/global-config": "./src/config/global-config.ts",
     "./config/proxy-default-domain": "./src/config/proxy-default-domain.ts",
     "./config/roots": "./src/config/roots.ts",
     "./config/router-config": "./src/config/router-config.ts",

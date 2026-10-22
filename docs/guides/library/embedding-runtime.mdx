@@ -31,7 +31,7 @@ even if the host later changes its process working directory.
 
 The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
 
-That is a privacy boundary: an existing handle does not observe a later app `agentEnv: false` edit. Invocation-time `ConfigService.get("agentEnv")` and the current `LANDO_AGENT_ENV=0` emergency veto still disable automatic forwarding. The config service keeps its existing loading semantics; this does not promise automatic global-config disk reload. Vetoes do not remove explicit service or command env and do not revoke commands already running. Provider status remains live, including shallow `info`, which does not load a Landofile for a supplied target.
+That is a privacy boundary: an existing handle does not observe a later app `agentEnv: false` edit. Invocation-time `ConfigService.get("agentEnv")` and the current `LANDO_AGENT_ENV=0` emergency veto still disable automatic forwarding. Global config is a snapshot taken when the runtime was built, so a later `config.yml` edit is not seen until you build a new runtime. Vetoes do not remove explicit service or command env and do not revoke commands already running. Provider status remains live, including shallow `info`, which does not load a Landofile for a supplied target.
 
 ```ts
 import { Effect } from "effect";
@@ -88,6 +88,54 @@ runtime can import `resolveLandoRoots()`, `makeLandoPaths()`, and
 `normalizeHostPlatform()` from `@lando/core/paths`. That subpath is the stable,
 Effect-free, OCLIF-free path primitive for pre-bootstrap code such as editor
 integrations, installers, and test harness setup.
+
+## Supply global config
+
+Global config resolves once, while the runtime layer builds. The layers are the
+same as the CLI's, plus one for you: built-in defaults, then `config.yml`, then
+`config.d/*.yml`, then environment (`LANDO_CONFIG__*`, aliases, root vars), then
+the host `config` option. `config` accepts any `GlobalConfig` field, not only
+roots:
+
+```ts
+import { makeLandoRuntime } from "@lando/core";
+
+const runtime = makeLandoRuntime({
+  bootstrap: "minimal",
+  config: {
+    userDataRoot: "/srv/lando/data",
+    router: { httpPort: 8123 },
+    appEnv: { TEAM: "platform" },
+  },
+});
+```
+
+`configSources` turns the user and environment layers off for hermetic hosts.
+`{ user: false }` skips `config.yml` and `config.d`; `{ env: false }` skips
+`LANDO_CONFIG__*`, aliases, `LANDO_USER_*` root vars, `LANDO_PROVIDER`, and the
+proxy and CA variables (`HTTPS_PROXY`, `NO_PROXY`, `LANDO_NETWORK_CA_CERTS`)
+the HTTP client would otherwise read. Platform defaults still come from `HOME`
+or `APPDATA`, so set the roots in `config` when you want full isolation:
+
+```ts
+const hermetic = makeLandoRuntime({
+  bootstrap: "minimal",
+  configSources: { user: false, env: false },
+  config: { userConfRoot: "/tmp/host/conf", userDataRoot: "/tmp/host/data", userCacheRoot: "/tmp/host/cache" },
+});
+```
+
+The merged result is validated once. An invalid value from any layer fails the
+layer build with a `ConfigError` whose `issues[]` carry `path`, `message`,
+`suggestion`, and `source`. A bad host value reports `source: { layer: "host", path }`
+and a suggestion naming the option to fix. The error keeps its own tag; it is not
+wrapped in `LandoRuntimeBootstrapError`.
+
+Once built, `ConfigService.load` and `ConfigService.get` never fail. They return
+the snapshot the runtime was built with, and the runtime's `StateStore`, plugin
+trust store, and HTTP egress use that snapshot's roots and environment rather
+than `process.env`. Two runtimes in one process never share a snapshot. To pick
+up a changed `config.yml` or environment, build a new runtime.
 
 ## Running arbitrary effects and command operations
 
@@ -272,6 +320,40 @@ const secondValue = await Effect.runPromise(
 );
 
 console.log(secondValue);`}
+      />
+    </Step>
+  </Scenario>
+  <Scenario id="invalid-host-config">
+    <Step name="build-with-bad-host-value">
+      <Run
+        runtime="library"
+        code={`const runtime = LandoCore.makeLandoRuntime({
+  bootstrap: "minimal",
+  configSources: { user: false, env: false },
+  config: { router: { httpPort: 99999 } },
+});
+const failure = yield* Effect.flip(
+  Effect.flatMap(LandoCore.ConfigService, (config) => config.load).pipe(Effect.provide(runtime)),
+);
+expect(failure._tag).toBe("ConfigError");
+if (failure._tag !== "ConfigError") throw new Error("Expected ConfigError");
+expect(failure.issues).toHaveLength(1);
+expect(failure.issues?.[0]?.path).toEqual(["router", "httpPort"]);
+expect(failure.issues?.[0]?.source).toEqual({ layer: "host", path: ["router", "httpPort"] });
+expect(failure.issues?.[0]?.suggestion).toMatch(/router\.httpPort.*host config option/);`}
+        displayCode={`import { Effect } from "effect";
+import { ConfigService, makeLandoRuntime } from "@lando/core";
+
+const runtime = makeLandoRuntime({
+  bootstrap: "minimal",
+  configSources: { user: false, env: false },
+  config: { router: { httpPort: 99999 } },
+});
+
+const failure = await Effect.runPromise(
+  Effect.flip(Effect.flatMap(ConfigService, (config) => config.load).pipe(Effect.provide(runtime))),
+);
+console.log(failure._tag, failure.issues?.[0]?.source, failure.issues?.[0]?.suggestion);`}
       />
     </Step>
   </Scenario>

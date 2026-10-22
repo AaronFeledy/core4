@@ -4,6 +4,7 @@ import { EventService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { retainedRecipeSources } from "../recipes/runtime-sources";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { runSetup } from "./cli-adapters/app-lifecycle";
@@ -28,10 +29,13 @@ export const runNativeOnlyBuiltIn = async (
             const events = yield* EventService;
             const privateFileAccess = yield* PrivateFileAccessService;
             const postInitIO = yield* makeInitOutput(activeResultFormat);
+            const options = initOptionsFromInput(input);
+            const sources = yield* retainedRecipeSources(options.registryUrl);
             return yield* Effect.tryPromise({
               try: () =>
                 initApp({
-                  ...initOptionsFromInput(input),
+                  ...sources,
+                  ...options,
                   signal,
                   onWarn: postInitIO.err,
                   postInitIO,

@@ -11,7 +11,12 @@ import {
 } from "@lando/engine/planner/effective-events";
 import { makeLandoPaths } from "@lando/paths";
 
-import { hostEventStatusesForPlan } from "../../src/cli/commands/host-event-status.ts";
+import * as ConfigLayer from "@lando/engine/services/config";
+import { Effect } from "effect";
+import { hostEventStatusesForPlan as statusesEffect } from "../../src/cli/commands/host-event-status.ts";
+
+const hostEventStatusesForPlan = (plan: Parameters<typeof statusesEffect>[0]) =>
+  Effect.runSync(statusesEffect(plan).pipe(Effect.provide(ConfigLayer.layer)));
 
 const previous = new Map<string, string>();
 

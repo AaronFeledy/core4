@@ -47,9 +47,7 @@ export const compileGlobalConfigDocument = Effect.fnUntraced(function* (filePath
       file: filePath,
       forced: {
         name: "global",
-        provider: yield* hostProviderId.pipe(
-          Effect.mapError((cause) => new ConfigError({ message: cause.message, path: filePath, cause })),
-        ),
+        provider: yield* hostProviderId,
       },
     },
   ).pipe(

@@ -19,6 +19,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
@@ -112,6 +113,8 @@ const makeConfigServiceLayer = () => {
       load,
       get: (key) => Effect.map(load, (c) => c[key]),
     }),
+  ).pipe(
+    Layer.provideMerge(Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } })),
   );
 };
 

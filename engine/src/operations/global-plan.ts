@@ -97,11 +97,7 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   const globalApp = yield* GlobalAppService;
   const fileSystem = yield* FileSystem;
   const paths = yield* globalApp.paths;
-  const providerId = yield* hostProviderId.pipe(
-    Effect.mapError(
-      (cause) => new GlobalAppError({ message: cause.message, operation: "readLandofile", cause }),
-    ),
-  );
+  const providerId = yield* hostProviderId;
   const exists = yield* fileSystem.exists(paths.distLandofile);
   if (!exists) return { materialized: false, paths };
 

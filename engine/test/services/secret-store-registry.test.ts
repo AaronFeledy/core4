@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
-import { ConfigError, SecretReferenceInvalidError } from "@lando/sdk/errors";
+import { ConfigError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PathsService, SecretStore } from "@lando/sdk/services";
 import { Effect, Layer, Result, Schema } from "effect";
+import * as ConfigLayer from "../../src/services/config";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
@@ -38,7 +39,6 @@ const run = async <A, E>(
   options: {
     readonly modules?: readonly LandoPluginModule[];
     readonly defaultSecretStore?: string;
-    readonly configError?: boolean;
   } = {},
 ) => {
   const RoutedSecretStore = await import("../../src/services/secret-store-registry.ts");
@@ -53,15 +53,7 @@ const run = async <A, E>(
           ConfigService,
           ConfigService.of({
             load: Effect.succeed(config),
-            get: (key) =>
-              options.configError === true && key === "defaultSecretStore"
-                ? Effect.fail(
-                    new ConfigError({
-                      message: "Lando config could not be read.",
-                      path: "defaultSecretStore",
-                    }),
-                  )
-                : Effect.succeed(config[key]),
+            get: (key) => Effect.succeed(config[key]),
           }),
         ),
         Layer.succeed(PathsService, makeLandoPaths()),
@@ -145,27 +137,26 @@ test("list returns the union of member lists", async () => {
   expect(result).toContain("other://Vault/Item/field");
 });
 
-test("ConfigService failure reading defaultSecretStore is SecretReferenceInvalidError", async () => {
-  // Tag choice: SecretReferenceInvalidError. ConfigError is outside SecretStoreError;
-  // SecretNotFoundError would claim the secret is missing; SecretStoreUnavailableError's
-  // reason enum cannot name a Lando config read failure. Routed has() already collapses
-  // SecretReferenceInvalidError to false.
-  // Given / When
-  const result = await run(
-    Effect.flatMap(SecretStore, (store) => Effect.result(store.get("TOKEN"))),
-    { configError: true },
+test("invalid defaultSecretStore fails config construction before secret routing", async () => {
+  const result = await Effect.runPromise(
+    Effect.result(
+      Effect.scoped(
+        Layer.build(
+          ConfigLayer.layerWith({
+            env: {},
+            sources: { user: false, env: false },
+            host: { defaultSecretStore: 42 },
+          }),
+        ),
+      ),
+    ),
   );
-  // Then
   expect(Result.isFailure(result)).toBe(true);
-  if (Result.isFailure(result) && result.failure._tag === "SecretReferenceInvalidError") {
-    expect(result.failure).toBeInstanceOf(SecretReferenceInvalidError);
-    expect(result.failure.message).toContain("defaultSecretStore");
-    expect(result.failure.message).toContain("Lando config");
-    expect(result.failure.remediation).toContain("defaultSecretStore");
-    expect(result.failure.remediation).not.toContain("owning this scheme");
-    return;
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(ConfigError);
+    expect(result.failure.issues?.[0]?.path).toEqual(["defaultSecretStore"]);
+    expect(result.failure.issues?.[0]?.source?.layer).toBe("host");
   }
-  expect.unreachable("expected a SecretReferenceInvalidError failure");
 });
 
 test("bare ids fail when defaultSecretStore only accepts scheme references", async () => {
