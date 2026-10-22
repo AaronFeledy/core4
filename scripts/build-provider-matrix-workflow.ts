@@ -109,12 +109,14 @@ const dockerFallbackSmoke = `  docker-fallback-smoke:
     needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      LANDO_USER_CONF_ROOT: \${{ runner.temp }}/docker-fallback/conf
-      LANDO_USER_DATA_ROOT: \${{ runner.temp }}/docker-fallback/data
-      LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/docker-fallback/cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/docker-fallback/conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/docker-fallback/data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/docker-fallback/cache" >> "$GITHUB_ENV"
 
 ${setupBunSteps}
 
