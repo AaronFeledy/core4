@@ -14,9 +14,8 @@ import {
 import { GlobalAppService, PathsService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
@@ -50,7 +49,21 @@ const harnessAt = (
   const actions: string[] = [];
   const inventoryReads: Array<{ readonly id: ProviderId; readonly root: AbsolutePath }> = [];
   const plan = {
-    ...MANAGED_PROVIDER_SELECT_PLAN,
+    id: app,
+    name: "global",
+    slug: "global",
+    provider: providerId,
+    services: {},
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    extensions: {},
+    metadata: {
+      resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00Z"),
+      source: "test",
+      runtime: 4 as const,
+    },
     root,
     identity: { appRoot: root, ownerKey: hint.ownerKey },
   };
@@ -116,6 +129,7 @@ const harnessAt = (
       GlobalAppService,
       GlobalAppService.of({
         id: "global",
+        providerId: Effect.succeed(providerId),
         root: Effect.succeed(root),
         ensureRoot: Effect.die("no desired root mutation"),
         paths: Effect.succeed({
@@ -131,6 +145,8 @@ const harnessAt = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed(input.applied ? [plan] : []),
+        resolveAppliedPlan: () => Effect.succeed(input.applied ? plan : undefined),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {

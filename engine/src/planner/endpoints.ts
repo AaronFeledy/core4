@@ -24,7 +24,7 @@ import {
 import { validationIssue } from "@lando/sdk/schema";
 import {
   promoteRoutableEndpointsForHostProxy,
-  usesManagedProxyNetwork,
+  usesHostProxyNetwork,
 } from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
@@ -139,6 +139,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appSlug: string;
   readonly defaultDomain: string;
   readonly provider: ProviderId;
+  readonly hostProvider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
   readonly fileSyncEngineId: string | undefined;
@@ -381,7 +382,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       routes: routeRefs.filter(
         (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
       ),
-      endpoints: usesManagedProxyNetwork(input.provider)
+      endpoints: usesHostProxyNetwork({
+        provider: input.provider,
+        hostProvider: input.hostProvider,
+        sharedCrossAppNetwork: input.providerCapabilities.sharedCrossAppNetwork,
+      })
         ? servicePlanWithHome.endpoints
         : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
     };

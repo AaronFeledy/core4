@@ -140,7 +140,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       if (fileSync !== undefined) yield* fileSync.complete;
       if (target !== undefined)
         yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
-      if (plan.followUpOrphans && registry.resolveTeardownEvidence !== undefined) {
+      if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {
           const removed = yield* tearDownOrphans({

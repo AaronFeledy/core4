@@ -3,15 +3,21 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, ProviderId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import { EventService, PathsService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { AppliedTeardownEvidence } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 import { executeGlobalTeardown } from "../../src/operations/global-teardown.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
 
 test.each(["applied", "orphans", "owned", "absent"] as const)(
   "global executor brackets %s evidence and completes routes before post",
@@ -23,8 +29,22 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
     const appId = AppId.make("global");
     const calls: string[] = [];
     const events: LandoEvent[] = [];
-    const plan = {
-      ...MANAGED_PROVIDER_SELECT_PLAN,
+    const plan: AppPlan = {
+      id: appId,
+      name: "global",
+      slug: "global",
+      provider: providerId,
+      services: {},
+      routes: [],
+      networks: [],
+      stores: [],
+      fileSync: [],
+      metadata: {
+        resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00.000Z"),
+        source: "global-app",
+        runtime: 4,
+      },
+      extensions: {},
       root,
       identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
     };

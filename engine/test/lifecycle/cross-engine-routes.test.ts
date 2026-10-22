@@ -15,7 +15,6 @@ import {
   publishedTargetsFromEndpoints,
   rewriteCrossEngineProxyRoutes,
 } from "../../src/lifecycle/cross-engine-routes.ts";
-import { MANAGED_PROVIDER_ID } from "../../src/providers/managed.ts";
 
 const plan = (provider: string): AppPlan => ({
   id: AppId.make("shop"),
@@ -54,6 +53,8 @@ describe("rewriteCrossEngineProxyRoutes", () => {
     const original = plan("docker");
     // When
     const rewritten = rewriteCrossEngineProxyRoutes({
+      hostProvider: ProviderId.make("lando"),
+      sharedCrossAppNetwork: true,
       plan: { ...original, routes: original.routes.map((route) => ({ ...route, filters })) },
       published: [{ service: "web", containerPort: 80, hostPort: 32768 }],
     });
@@ -62,9 +63,11 @@ describe("rewriteCrossEngineProxyRoutes", () => {
     expect(rewritten[0]?.filters).toBe(filters);
   });
 
-  test("keeps .internal backends when the app shares the managed Traefik engine", () => {
+  test("keeps .internal backends when the app shares the Docker host engine", () => {
     const rewritten = rewriteCrossEngineProxyRoutes({
-      plan: plan(String(MANAGED_PROVIDER_ID)),
+      hostProvider: ProviderId.make("docker"),
+      sharedCrossAppNetwork: true,
+      plan: plan("docker"),
       published: [{ service: "web", containerPort: 80, hostPort: 32768 }],
     });
 
@@ -77,6 +80,8 @@ describe("rewriteCrossEngineProxyRoutes", () => {
 
   test("points docker-app routes at the host gateway published port", () => {
     const rewritten = rewriteCrossEngineProxyRoutes({
+      hostProvider: ProviderId.make("lando"),
+      sharedCrossAppNetwork: true,
       plan: plan("docker"),
       published: [{ service: "web", containerPort: 80, hostPort: 32768 }],
     });
@@ -87,7 +92,6 @@ describe("rewriteCrossEngineProxyRoutes", () => {
       port: 32768,
       host: HOST_INTERNAL_ALIAS,
     });
-    expect(String(MANAGED_PROVIDER_ID)).toBe("lando");
   });
 });
 
@@ -106,6 +110,8 @@ describe("publishedTargetsFromEndpoints", () => {
 
     // When
     const rewritten = rewriteCrossEngineProxyRoutes({
+      hostProvider: ProviderId.make("lando"),
+      sharedCrossAppNetwork: true,
       plan: plan("docker"),
       published: publishedTargetsFromEndpoints("web", inspected),
     });

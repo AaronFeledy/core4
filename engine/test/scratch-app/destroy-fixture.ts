@@ -24,7 +24,6 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
@@ -60,9 +59,21 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   const instanceRoot = AbsolutePath.make(join(root, "scratch", id));
   const planRoot = AbsolutePath.make(options.cwd ? join(root, "source-app") : join(instanceRoot, "root"));
   const plan: AppPlan = {
-    ...MANAGED_PROVIDER_SELECT_PLAN,
     id,
     name: id,
+    slug: id,
+    provider: ProviderId.make("lando"),
+    services: {},
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    metadata: {
+      resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00.000Z"),
+      source: "scratch",
+      runtime: 4,
+    },
+    extensions: {},
     root: planRoot,
     identity: planAppIdentity({ root: planRoot }),
   };

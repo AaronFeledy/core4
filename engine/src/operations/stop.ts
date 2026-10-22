@@ -95,13 +95,9 @@ const stopAppWithResolvedPlan = (
               purgeCaches: false,
             })
           : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 });
-      if (
-        (pending === null || pending.phase === "completed") &&
-        execution.requireAppliedEvidence &&
-        registry.resolveAppliedPlan !== undefined
-      ) {
+      if ((pending === null || pending.phase === "completed") && execution.requireAppliedEvidence) {
         const evidence =
-          execution.cleanupOwnership === false || registry.resolveTeardownEvidence === undefined
+          execution.cleanupOwnership === false
             ? yield* registry
                 .resolveAppliedPlan(validatedTarget.plan.root)
                 .pipe(
