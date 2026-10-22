@@ -28,7 +28,7 @@ const cases = bundledProviders.flatMap(([id, capabilitiesFor]) =>
   platforms.map((platform) => [id, platform, capabilitiesFor(platform)] as const),
 );
 
-// The global app can run on any bundled provider, so every bundled global service must plan on each of them.
+// The global app follows the host provider, so every bundled global service must plan on every bundled provider.
 describe("bundled global services on bundled providers", () => {
   test.each(cases)(
     "plan every contributed global service on %s (%s)",

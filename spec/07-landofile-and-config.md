@@ -217,7 +217,7 @@ The stack is read and decoded against `GlobalConfig` with `errors: "all"` exactl
 | Group | Global keys |
 |---|---|
 | Files/roots | `envPrefix`, `landoFile`, `landoLockFile`, `preLandoFiles`, `postLandoFiles`, `userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot` |
-| Providers/apps | `defaultProvider`, `providers`, `appEnv`, `appLabels`, `globalServices` |
+| Providers/apps | `defaultProviderId`, `providers`, `appEnv`, `appLabels`, `globalServices` |
 | Plugins | `plugins`, `pluginDirs`, `disablePlugins`, `pluginConfig` |
 | Network/router | `bindAddress`, `router`, `proxy.defaultDomain`, `network.proxy`, `network.ca`, `checks`, `healthcheck` |
 | Experience | `logger`, `renderer`, `notify`, `toolingEngine`, `commandAliases`, `agentEnv`, `keys`, `maxKeyWarning`, `logLevelConsole` |

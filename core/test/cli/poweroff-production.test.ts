@@ -39,6 +39,9 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
   const providerLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: (plan) =>
@@ -145,14 +148,14 @@ test("stops owning providers before host teardown when no stop seam is injected"
     // When: the same default operation used by command execution runs.
     const result = await Effect.runPromise(poweroff(options).pipe(Effect.provide(layer)));
     // Then: actual provider stops, scratch cleanup, and host teardown are ordered.
-    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "lando:global", "runtime"]);
+    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "docker:global", "runtime"]);
     expect(result.appsPoweredOff).toEqual(["user", "scratch-one", "global"]);
   });
 });
 
 test.each([
   [true, false, ["docker:user", "scratch:scratch-one", "runtime"], 0],
-  [false, true, ["docker:user", "lando:global", "runtime"], 1],
+  [false, true, ["docker:user", "docker:global", "runtime"], 1],
   [true, true, ["docker:user", "runtime"], 1],
 ] as const)(
   "honors keep-global=%s and keep-scratch=%s in the production default",

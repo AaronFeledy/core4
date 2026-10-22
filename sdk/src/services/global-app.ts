@@ -1,11 +1,12 @@
 import { Context, type Effect, type Scope } from "effect";
 
 import type {
+  AppPlacementError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
 } from "../errors/index.ts";
-import type { AbsolutePath, PortNumber, ServiceConfig, ServiceName } from "../schema/index.ts";
+import type { AbsolutePath, PortNumber, ProviderId, ServiceConfig, ServiceName } from "../schema/index.ts";
 
 export interface GlobalAppPaths {
   readonly root: AbsolutePath;
@@ -26,7 +27,12 @@ export class GlobalAppService extends Context.Service<
     readonly root: Effect.Effect<AbsolutePath, GlobalAppError>;
     readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
     /** Make the global service provider reachable before probing provider-host ports. */
-    readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError>;
+    readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError | AppPlacementError>;
+    /**
+     * Provider holding the applied global plan for the canonical global root, else the host provider.
+     * Reads applied state only; never constructs or initializes a runtime.
+     */
+    readonly providerId: Effect.Effect<ProviderId, GlobalAppError>;
     readonly paths: Effect.Effect<GlobalAppPaths, GlobalAppError>;
     readonly ensureUserLandofile: Effect.Effect<
       { readonly path: AbsolutePath; readonly created: boolean },
@@ -40,12 +46,12 @@ export class GlobalAppService extends Context.Service<
         readonly state: string;
         readonly endpoints: ReadonlyArray<string>;
       }>,
-      GlobalAppError
+      GlobalAppError | AppPlacementError
     >;
     /** Read-only provider-host TCP occupancy for published port candidates. */
     readonly occupiedPublishPorts?: (
       ports: ReadonlyArray<PortNumber>,
-    ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError | AppPlacementError>;
     /** Published TCP ports held by running Lando global services. */
     readonly ownedPublishPorts?: (
       service: ServiceName,

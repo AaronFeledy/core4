@@ -330,9 +330,7 @@ const createContainerRequest = (
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
-      labels: {
-        ...commonContainerLabels(plan, service),
-      },
+      labels: commonContainerLabels(plan, service),
       hostConfig: {
         ...baseHostConfig,
         ...knobs.hostConfig,

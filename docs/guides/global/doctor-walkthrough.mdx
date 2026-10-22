@@ -14,7 +14,7 @@ lando doctor
 
 Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run.
 
-The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, later `lando doctor` stays on Docker because that explicit flag writes `defaultProviderId`. `LANDO_PROVIDER` does not persist.
+The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, later `lando doctor` and bare `lando setup` stay on Docker because the flag writes `defaultProviderId`. `LANDO_PROVIDER` does not persist. The global app runs on that same host provider.
 
 ## When it is not installed
 
@@ -32,7 +32,7 @@ If the dist file exists but cannot be read, the check fails and tells you to fix
 
 ## Read the router file-watcher check
 
-The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record even when doctor selected a different app provider, because Traefik always runs on the Lando-managed provider.
+The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record even when doctor selected a different app provider, because Traefik runs on the host provider, not on whatever the app pinned.
 
 It is a record, not a live probe. The check shows what the last router startup observed, and it stays reported until the next `lando global:restart` or `lando global:rebuild` observes a clean start and refreshes it. If the check still fails after you fixed the host, restart the global router and run doctor again.
 
@@ -43,6 +43,7 @@ The watcher runs on the provider runtime host, which is not always the operating
 | Linux | the local host |
 | WSL | the WSL distribution |
 | macOS or Windows with the default `lando` provider | the Lando-managed Podman machine |
+| Docker or system Podman as the host provider | that runtime's host or VM |
 
 The check sorts failures into `inotify-limit`, `permission`, `disk`, and `other`. One of those is misleading, courtesy of the kernel: an inotify watch that fails with "no space left on device" usually means the watch budget ran out, not that the disk is full. Doctor reports that as `inotify-limit`. It is a kernel resource, though, and the same error can come from a related limit, so treat it as "watches or a kernel resource", not a verdict on one number. To read the current watch limit on a Linux runtime host:
 

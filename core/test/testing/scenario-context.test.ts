@@ -147,7 +147,7 @@ describe("withScenarioContext", () => {
               "services:",
               "  web:",
               "    type: static",
-              "    root: .",
+              "    webroot: .",
             ]);
 
             yield* context.runCli(["version"]);

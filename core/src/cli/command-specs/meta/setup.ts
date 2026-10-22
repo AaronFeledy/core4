@@ -1,27 +1,28 @@
 /**
  * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
- * Setup ignores leftover `defaultProviderId` in user config so a last-used
- * system runtime cannot poison `lando setup` / `lando setup --yes`. Effective
- * setup precedence is `--provider > LANDO_PROVIDER > capability default (lando)`.
- * App commands may still honor leftover config as a last-used hint.
+ * Provider precedence is flag, environment, configuration, interactive choice, default.
  */
-import { Effect, Result } from "effect";
+import { Effect, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
+import { AppPlacementError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type Downloader,
+  GlobalAppService,
   InteractionService,
   PrivilegeService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { emitConfigYaml } from "@lando/engine/config-write/write-core";
-import { resolveUserConfRoot } from "@lando/engine/config/roots";
+import { config as writeConfig } from "@lando/engine/operations/config";
+import {
+  SetupProviderSwitchResultSchema,
+  switchGlobalProviderForSetup,
+} from "@lando/engine/operations/setup-provider-switch";
+import { ensureAppPlacement } from "@lando/engine/providers/app-placement";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -30,7 +31,6 @@ import {
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
-import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { formatSummary } from "@lando/renderer/summary";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
@@ -70,30 +70,15 @@ export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-input
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
 export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
-const writeConfigDefaultProvider = Effect.fnUntraced(
-  function* (providerId: string): Effect.fn.Return<void, never> {
-    const confRoot = resolveUserConfRoot();
-    const configPath = join(confRoot, "config.yml");
-
-    try {
-      const existing = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "";
-      const tree = existing.length > 0 ? (parseMinimalYaml(existing) as Record<string, unknown>) : {};
-      tree.defaultProviderId = providerId;
-      const emitted = emitConfigYaml({ file: configPath, value: tree, path: "defaultProviderId" });
-      if (Result.isFailure(emitted)) return;
-      mkdirSync(confRoot, { recursive: true });
-      yield* Effect.promise(() => writeFileAtomicViaRename(configPath, emitted.success));
-    } catch {
-      // Silently fail - config persistence is optional
-    }
-  },
-  Effect.catch(() => Effect.void),
-);
-
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
-  ConfigService | RuntimeProviderRegistry | HttpClient.HttpClient | Downloader | InteractionService
+  | ConfigService
+  | GlobalConfigSources
+  | RuntimeProviderRegistry
+  | HttpClient.HttpClient
+  | Downloader
+  | InteractionService
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -120,13 +105,14 @@ export const setupSpec: LandoCommandSpec<
     const resolution = resolveProviderSelection({
       ...(flag === undefined ? {} : { flag }),
       ...(env === undefined ? {} : { env }),
+      ...(config === undefined ? {} : { config }),
       capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
     });
 
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
 
-    const selectedProvider = yield* maybeSelectSetupProvider({
+    const selection = yield* maybeSelectSetupProvider({
       resolution,
       yes: inputBooleanFlag(input, "yes"),
       nonInteractive: inputBooleanFlag(input, "no-interactive"),
@@ -134,6 +120,30 @@ export const setupSpec: LandoCommandSpec<
       ...(interaction === undefined ? {} : { interaction }),
     });
 
+    const selectedProvider = selection.providerId;
+    const persistsSelection =
+      !inputBooleanFlag(input, "skip-provider") &&
+      (selection.source === "flag" || selection.source === "prompt");
+    if (!persistsSelection) {
+      const globalApp = yield* Effect.serviceOption(GlobalAppService);
+      if (globalApp._tag === "Some") {
+        const { root } = yield* globalApp.value.paths;
+        yield* ensureAppPlacement({ kind: "global", id: "global", root }, selectedProvider).pipe(
+          Effect.mapError((error) =>
+            error instanceof AppPlacementError
+              ? new AppPlacementError({
+                  app: error.app,
+                  message: error.message,
+                  desiredProviderId: error.desiredProviderId,
+                  realizedProviderId: error.realizedProviderId,
+                  remediation: `Run \`lando setup --provider=${selectedProvider}\` to switch persistently, or unset \`LANDO_PROVIDER\` to keep the existing provider.`,
+                })
+              : error,
+          ),
+        );
+      }
+    }
+    const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
     const networkProbe = inputNetworkProbe(input);
     const privilege = yield* Effect.serviceOption(PrivilegeService);
@@ -148,10 +158,8 @@ export const setupSpec: LandoCommandSpec<
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
 
-    // Persist an explicit --provider as a last-used hint for doctor / start /
-    // planner / app commands. Setup itself still ignores leftover
-    // defaultProviderId so a later `lando setup --yes` stays on lando.
-    const shouldPersistProvider = flag !== undefined && flag !== config;
+    const shouldPersistProvider =
+      (selection.source === "flag" || selection.source === "prompt") && selectedProvider !== config;
 
     if (!inputBooleanFlag(input, "skip-provider")) {
       if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
@@ -197,10 +205,6 @@ export const setupSpec: LandoCommandSpec<
         status: "satisfied",
         evidence: `Provider ${selectedProviderId} setup completed.`,
       });
-
-      if (shouldPersistProvider) {
-        yield* writeConfigDefaultProvider(selectedProviderId);
-      }
     } else {
       yield* recorder.record({
         id: "provider",
@@ -209,9 +213,17 @@ export const setupSpec: LandoCommandSpec<
       });
     }
 
-    yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId);
-    yield* runProxySetupStep(input, recorder, selectedProviderId);
-    yield* runShellServiceSetupStep(input, recorder, selectedProviderId);
+    const providerSwitch = yield* switchGlobalProviderForSetup(selectedProvider).pipe(
+      Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
+    );
+    if (!inputBooleanFlag(input, "skip-provider") && shouldPersistProvider) {
+      yield* writeConfig({ subcommand: "set", key: "defaultProviderId", value: selectedProviderId }).pipe(
+        Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
+      );
+    }
+    yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(withHostProvider);
+    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
+    yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
     if (shouldDisableHostProxyForSetup(input)) {
       yield* HostProxyServiceDisabled.setup({ mode: "none" });
@@ -254,7 +266,7 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       network,
       recorder,
-    });
+    }).pipe(withHostProvider);
 
     const failedStep = recorder.firstFailedStep();
     if (failedStep !== undefined) {
@@ -278,6 +290,7 @@ export const setupSpec: LandoCommandSpec<
       installDir: inputInstallDir(input) ?? sourceInstallDir(),
       fileSyncStatus,
       networkCaInjectionConfigured,
+      ...(providerSwitch === undefined ? {} : { providerSwitch }),
     };
   }),
   render: (result, _input, ctx) => {
@@ -295,6 +308,16 @@ export const setupSpec: LandoCommandSpec<
     const providerId = String(result.providerId);
     const installDir = String(result.installDir);
     const notes = result.networkCaInjectionConfigured ? [caInjectionNote] : [];
+    if ("providerSwitch" in result && Schema.is(SetupProviderSwitchResultSchema)(result.providerSwitch)) {
+      const switched = result.providerSwitch;
+      notes.push(
+        `Global services switched from ${switched.fromProviderId} to ${switched.toProviderId}; old volumes and router configuration were kept.`,
+      );
+      for (const app of switched.remainingApps)
+        notes.push(
+          `${app.id} remains on ${switched.fromProviderId}. In ${app.root}, run \`lando destroy --provider=${switched.fromProviderId} --yes\`, then \`lando start\`. A Landofile \`provider:\` still pins the app. Data volumes are not copied.`,
+        );
+    }
     if (process.platform === "win32") {
       notes.push(
         "To keep Lando on PATH in new PowerShell sessions, create `$PROFILE` if needed, then append the output of `lando shellenv --shell=powershell` to it. Keep any existing profile content.",
