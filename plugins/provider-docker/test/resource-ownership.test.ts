@@ -208,7 +208,12 @@ test("shared networks are never claimed or selected for cleanup", async () => {
     const global = {
       ...plan,
       id: AppId.make("global"),
-      networking: landoNetworkingPlan({ slug: "global", serviceNames: [], sharedCrossAppNetwork: true }),
+      networking: landoNetworkingPlan({
+        slug: "global",
+        serviceNames: [],
+        sharedCrossAppNetwork: true,
+        perAppBridge: false,
+      }),
     };
     await Effect.runPromise(store.prepare(global));
     // When

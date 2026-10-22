@@ -444,12 +444,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
   const serviceNames = Object.keys(finalized.services);
   const hasServices = serviceNames.length > 0;
-  const networks: ReadonlyArray<NetworkPlan> = hasServices
-    ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }]
-    : [];
+  const perAppBridge = appId !== "global";
+  const networks: ReadonlyArray<NetworkPlan> =
+    hasServices && perAppBridge ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }] : [];
   const networking: NetworkingPlan | undefined = hasServices
     ? landoNetworkingPlan({
         slug: appSlug,
+        perAppBridge,
         serviceNames,
         sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
         serviceHostnames: finalized.serviceHostnames,

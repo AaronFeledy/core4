@@ -171,6 +171,8 @@ Missing required capabilities fail before provider action with `CapabilityError`
 
 `composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
 
+Bundled container providers MUST derive `composeKnobs.supported` from the shared realization table. Each realization declares the engine dialects for which its request fields implement the accepted forms with identical semantics. Docker uses the verified Docker Engine mappings; Lando-managed and system Podman use the libpod dialect's compatible create API. Independent request fixtures MUST cover every declared knob for each dialect, including query parameters and the Config versus HostConfig boundary. Docker's supported API range MUST preserve these mappings, including the container-create `platform` query parameter introduced in API 1.41.
+
 #### 5.4.1 Agent-socket delivery (`agentSocket`, `openAgentSocketBridge`)
 
 `openAgentSocketBridge(input)` takes `AgentSocketBridgeInput` (`appId`, `sessionId`, `kind: "ssh" | "gpg"`, an `upstream` that is a host Unix socket path or an authenticated host-loopback TCP endpoint, and `socketName`) and returns `AgentSocketBridgeResult`: either `bind-directory` naming a host directory the provider can bind, or `volume` naming a provider volume; in both cases the directory contains `socketName` once the bridge is live. The result is Scope-owned. Closing the scope tears down any guest listener, relay process, or volume and MUST reap them on interrupt. A failed or interrupted start MUST NOT close a bridge it has acquired and recorded; stop and destroy close it (§10.4). The provider MUST declare `agentSocket` only when its bridge works on the current host, so capability failure happens before planning rather than at apply.
@@ -209,6 +211,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `services` | Planned services keyed by service name. |
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
 | `networks`, `stores` | Provider-neutral network and storage intent. |
+| `networking` | Explicit per-app bridge (or `null`) and optional shared-network membership with service aliases. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 

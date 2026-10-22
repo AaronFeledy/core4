@@ -17,7 +17,6 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
-  landoAppNetworkName,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
@@ -74,7 +73,6 @@ import { exec } from "./exec.ts";
 import { logs } from "./logs.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
-const appNetworkName = landoAppNetworkName;
 const networkNames = podmanNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 const sharedNetworkName = landoSharedNetworkName;
@@ -293,6 +291,7 @@ const createContainerRequest = (
   endpoints: ReadonlyArray<EndpointPlan>,
 ) => {
   const knobs = realizePodmanComposeKnobs(service, {
+    dialect: (deps.options.dialect ?? libpodLifecycleDialect).engine,
     onInvalid: (message, details) => {
       throw podmanFailure(deps, { service, operation: "bringUp.knobs", message, details });
     },
@@ -339,17 +338,14 @@ const createContainerRequest = (
         ...knobs.hostConfig,
       },
       networkingConfig: {
-        EndpointsConfig:
-          (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
-            ? { [appNetworkName(plan)]: { Aliases: [service.name] } }
-            : Object.fromEntries(
-                networkNames(plan).map((name) => [
-                  name,
-                  name === sharedNetworkName(plan)
-                    ? { Aliases: serviceNetworkAliases(plan, service) }
-                    : { Aliases: [service.name] },
-                ]),
-              ),
+        EndpointsConfig: Object.fromEntries(
+          createBodyNetworkNames(deps, plan).map((name) => [
+            name,
+            name === sharedNetworkName(plan)
+              ? { Aliases: serviceNetworkAliases(plan, service) }
+              : { Aliases: [service.name] },
+          ]),
+        ),
       },
       onMissingArtifact: (artifact) => {
         throw podmanFailure(deps, {
@@ -568,6 +564,23 @@ const createContainer = Effect.fnUntraced(function* (
 const isAlreadyConnectedResponse = (response: EngineHttpResponse): boolean =>
   response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
 
+/** Docker accepts one network in the create body; the rest are connected after create. */
+const createBodyNetworkNames = (deps: BringUpDeps, plan: AppPlan): ReadonlyArray<string> =>
+  (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+    ? networkNames(plan).slice(0, 1)
+    : networkNames(plan);
+
+/** Existing Docker containers need an idempotent connect even when create would attach the shared network. */
+const sharedNetworkAfterCreate = (deps: BringUpDeps, plan: AppPlan, created: boolean): string | undefined => {
+  const shared = sharedNetworkName(plan);
+  if (
+    !created &&
+    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+  )
+    return shared;
+  return shared === undefined || createBodyNetworkNames(deps, plan).includes(shared) ? undefined : shared;
+};
+
 const connectSharedNetwork = (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -756,11 +769,8 @@ const startService = Effect.fnUntraced(function* (
     createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
     changed = true;
   }
-  const sharedNetwork = sharedNetworkName(plan);
-  if (
-    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
-    sharedNetwork !== undefined
-  ) {
+  const sharedNetwork = sharedNetworkAfterCreate(deps, plan, !before.exists);
+  if (sharedNetwork !== undefined) {
     yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
   }
   if (!before.running) {
@@ -795,12 +805,9 @@ const startService = Effect.fnUntraced(function* (
         }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
-        if (
-          (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment ===
-            "connect-after-create" &&
-          sharedNetwork !== undefined
-        ) {
-          yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+        const retrySharedNetwork = sharedNetworkAfterCreate(deps, plan, true);
+        if (retrySharedNetwork !== undefined) {
+          yield* connectSharedNetwork(deps, plan, service, name, retrySharedNetwork);
         }
         retry = yield* startContainer(deps, name);
       }

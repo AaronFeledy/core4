@@ -819,7 +819,7 @@ describe("Podman publish-port recreate", () => {
       name: "Global",
       slug: "global",
       networking: {
-        perAppBridge: { name: "lando-global", driver: "bridge" },
+        perAppBridge: null,
         sharedNetworkMembership: {
           name: "lando_bridge_network",
           aliases: { [ServiceName.make("web")]: ["web.global.internal"] },
