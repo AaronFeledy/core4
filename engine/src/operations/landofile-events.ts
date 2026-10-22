@@ -1,25 +1,42 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Option, Result } from "effect";
 
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { AppPlan } from "@lando/sdk/schema";
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { findAppRoot } from "@lando/landofile/discovery";
+import { presentLandofileLayers, representativeLandofileLayer } from "@lando/landofile/layers";
+import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
+import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 
 type LandofileEventSource =
   | { readonly kind: "plan"; readonly plan: AppPlan }
-  | { readonly kind: "skip"; readonly level: "info" | "warn"; readonly reason: string };
+  | {
+      readonly kind: "skip";
+      readonly level: "info" | "warn";
+      readonly reason: string;
+      /** Loader or planner text; it may quote authored values, so it is published only redacted. */
+      readonly detail?: string;
+    };
 
-const skip = (level: "info" | "warn", reason: string): LandofileEventSource => ({
+const skip = (level: "info" | "warn", reason: string, detail?: string): LandofileEventSource => ({
   kind: "skip",
   level,
   reason,
+  ...(detail === undefined ? {} : { detail }),
 });
 
-const landofileAt = (root: string) =>
-  Effect.promise(() => findAppRoot(root).catch(() => undefined)).pipe(
-    Effect.map((discovered) => discovered === root),
+const errorText = (error: unknown): string =>
+  (error instanceof Error ? error.message : String(error)).replace(/\.$/u, "");
+
+/** Whether the applied root itself holds a Landofile; a Landofile in a parent folder is another app's. */
+const landofilePresentAt = (root: string): Effect.Effect<Result.Result<boolean, string>> =>
+  Effect.tryPromise({
+    try: () => presentLandofileLayers(root),
+    catch: errorText,
+  }).pipe(
+    Effect.map((layers) => representativeLandofileLayer(layers) !== undefined),
+    Effect.result,
   );
 
 /**
@@ -31,7 +48,10 @@ const planLandofileEvents = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
 ): Effect.fn.Return<LandofileEventSource, never, AppPlanner | LandofileService | RuntimeProviderRegistry> {
   const root = target.root;
-  if (!(yield* landofileAt(root))) return skip("info", `no Landofile in ${root}`);
+  const loadFailure = `the Landofile in ${root} could not be loaded`;
+  const present = yield* landofilePresentAt(root);
+  if (Result.isFailure(present)) return skip("warn", loadFailure, present.failure);
+  if (!present.success) return skip("info", `no Landofile in ${root}`);
   const planner = yield* AppPlanner;
   const landofileService = yield* LandofileService;
   const registry = yield* RuntimeProviderRegistry;
@@ -40,11 +60,7 @@ const planLandofileEvents = Effect.fnUntraced(function* (
       registry.capabilities.pipe(Effect.flatMap((capabilities) => planner.plan(landofile, capabilities))),
     ),
     Effect.map((plan): LandofileEventSource => ({ kind: "plan", plan })),
-    Effect.catch((error) =>
-      Effect.succeed(
-        skip("warn", `the Landofile in ${root} could not be loaded. ${error.message.replace(/\.$/u, "")}`),
-      ),
-    ),
+    Effect.catch((error) => Effect.succeed(skip("warn", loadFailure, errorText(error)))),
   );
   if (planned.kind === "skip") return planned;
   const desired = planned.plan;
@@ -83,7 +99,18 @@ export const resolveLandofileEventPlan = Effect.fnUntraced(function* (
   const source = yield* planLandofileEvents(target);
   if (source.kind === "plan") return source.plan;
   const events = yield* EventService;
-  const body = `Skipping Landofile events for ${target.plan.name}: ${source.reason}.`;
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  // Without a redactor the loader text stays out of the notice rather than risk leaking a value.
+  const detail =
+    source.detail === undefined || Option.isNone(redaction)
+      ? ""
+      : `. ${(
+          yield* redaction.value.forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens: collectAppPlanRedactionTokens(target.plan),
+          })
+        ).redactString(source.detail)}`;
+  const body = `Skipping Landofile events for ${target.plan.name}: ${source.reason}${detail}.`;
   const timestamp = DateTime.nowUnsafe();
   yield* events
     .publish(
