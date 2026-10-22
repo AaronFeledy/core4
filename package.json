@@ -104,6 +104,7 @@
     "codegen:tomcat-bump-workflow": "bun run scripts/build-tomcat-bump-workflow.ts",
     "update:tomcat": "bun run scripts/update-tomcat.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",
+    "codegen:provider-matrix-workflow": "bun run scripts/build-provider-matrix-workflow.ts",
     "codegen:compose-vendor": "bun run scripts/build-compose-vendor.ts",
     "codegen:compose-fixtures": "bun run scripts/build-compose-fixtures.ts",
     "codegen:compose-fixture-manifest": "bun run scripts/build-compose-fixture-manifest.ts",

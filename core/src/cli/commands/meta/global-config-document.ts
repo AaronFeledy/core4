@@ -3,7 +3,7 @@ import { Effect, Result } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { emitConfigYaml, writeValidationErrorFromIssues } from "@lando/engine/config-write/write-core";
-import { MANAGED_PROVIDER_ID } from "@lando/engine/providers/managed";
+import { hostProviderId } from "@lando/engine/providers/host-provider";
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
 import { parseLandofile } from "@lando/landofile/parser";
@@ -43,7 +43,13 @@ export const compileGlobalConfigDocument = Effect.fnUntraced(function* (filePath
       appRoot: root,
       policy: DEFAULT_LANDOFILE_LOAD_POLICY,
     },
-    { file: filePath, forced: { name: "global", provider: MANAGED_PROVIDER_ID } },
+    {
+      file: filePath,
+      forced: {
+        name: "global",
+        provider: yield* hostProviderId,
+      },
+    },
   ).pipe(
     Effect.mapError((error) =>
       writeValidationErrorFromIssues({

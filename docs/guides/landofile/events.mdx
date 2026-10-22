@@ -50,6 +50,7 @@ A bare or plain-string step defaults to provider exec, which needs a running ser
   <Scenario id="failing-pre-event" render={false} reason="Regression coverage for failing lifecycle event tasks">
     <Step name="fail">
       <UseFixture name="events-failure" />
+      <Run command="lando start" />
       <Run command="lando stop --format=json" expectExit={1} />
       <Verify errorTag="LandofileEventStepFailedError" expect={{ regex: "pre-stop" }} />
     </Step>

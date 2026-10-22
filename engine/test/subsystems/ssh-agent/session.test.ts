@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
@@ -9,6 +9,25 @@ import {
   awaitRuntimeSshAgent,
   runtimeSshAgentState,
 } from "../../../src/subsystems/ssh-agent/session.ts";
+
+const globalRoot = AbsolutePath.make("/lando/global");
+const globalApp = GlobalAppService.of({
+  id: "global",
+  root: Effect.succeed(globalRoot),
+  paths: Effect.succeed({
+    root: globalRoot,
+    distLandofile: AbsolutePath.make("/lando/global/.lando.dist.yml"),
+    userLandofile: AbsolutePath.make("/lando/global/.lando.yml"),
+  }),
+  providerId: Effect.succeed(ProviderId.make("lando")),
+  ensureRoot: Effect.void,
+  ensureRunning: () => Effect.succeed([]),
+  ensureUserLandofile: Effect.succeed({
+    path: AbsolutePath.make("/lando/global/.lando.yml"),
+    created: false,
+  }),
+  regenerateDist: () => Effect.die("unused"),
+});
 
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given
@@ -43,7 +62,11 @@ test.each([0, 2])("running agent exec exit %s distinguishes ready from starting"
   // When
   const state = await Effect.runPromise(
     runtimeSshAgentState.pipe(
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -78,7 +101,11 @@ test.each([
   // When
   const state = await Effect.runPromise(
     runtimeSshAgentState.pipe(
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -114,7 +141,11 @@ test.each([false, true])(
         yield* TestClock.adjust("5 seconds");
         return yield* Fiber.join(fiber);
       }).pipe(
+        Effect.provideService(GlobalAppService, globalApp),
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([ProviderId.make(provider.id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -152,7 +183,11 @@ test("wait exhausts its budget when a running agent never answers", async () => 
       yield* TestClock.adjust("30 seconds");
       return yield* Fiber.join(fiber);
     }).pipe(
+      Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

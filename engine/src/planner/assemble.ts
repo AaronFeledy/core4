@@ -112,6 +112,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     globalConfig,
     appDefaults,
     provider,
+    hostProvider,
     manifests,
     topLevelEnvFiles,
     serviceCredsScope,
@@ -336,6 +337,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const appFeatureEnv = snapshotAppFeatureEnv(appFeatures);
   const cacheKey = deriveAppPlanCacheKey({
+    hostProvider,
     appRoot,
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
@@ -420,6 +422,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
 
   const finalized = yield* finalizeServices({
+    hostProvider,
     plannedServiceDrafts,
     appId,
     appRoot,

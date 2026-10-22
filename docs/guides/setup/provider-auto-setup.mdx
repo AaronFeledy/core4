@@ -24,7 +24,7 @@ Then verify:
 lando doctor
 ```
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+`lando setup` and `lando setup --yes` keep the `defaultProviderId` already in your config. `--yes` consents to confirmation and privileged host changes. It does not switch providers. To go back to the default, run `lando setup --provider=lando`.
 
 Host prerequisites can block the managed runtime. If setup names one, fix it and rerun `lando setup`.
 

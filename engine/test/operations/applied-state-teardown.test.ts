@@ -40,6 +40,7 @@ import {
 } from "../../src/operations/applied-state-target.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
+import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
@@ -212,6 +213,7 @@ const makeLayer = (input: {
   readonly desiredPlan?: AppPlan;
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly providerId?: string;
+  readonly ambiguous?: boolean;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
   readonly observed?: ReadonlyArray<ServiceRuntimeInfo>;
   readonly listFailure?: ProviderUnavailableError;
@@ -294,6 +296,10 @@ const makeLayer = (input: {
       ),
   };
   const registry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed(
+        appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
+      ),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
@@ -302,6 +308,14 @@ const makeLayer = (input: {
     // malformed plan still reaches the ownership validators under test.
     resolveTeardownEvidence: (root: AbsolutePath) => {
       evidenceRoots.push(root);
+      if (input.ambiguous === true)
+        return Effect.flatMap(TeardownProvider, (selected) =>
+          selected === appliedPlan?.provider && appliedPlan !== undefined
+            ? Effect.succeed({ kind: "applied" as const, plan: appliedPlan })
+            : Effect.fail(
+                new AppResolveError({ message: "Two providers claim this root", reason: "ambiguous" }),
+              ),
+        );
       if (input.ownershipFailure !== undefined) return Effect.fail(input.ownershipFailure);
       if (
         appliedPlan !== undefined &&
@@ -419,6 +433,20 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test("destroy with an explicit provider resolves ambiguous applied state and retains volumes", async () => {
+    await withTempRoot(async (root) => {
+      const applied = planAt(root);
+      const harness = makeLayer({ appliedPlan: applied, ambiguous: true });
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ providerId: applied.provider })).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.destroyCalls).toEqual([applied]);
+      expect(harness.destroyTargets[0]?.volumes).toBe(false);
+    });
+  });
   test.each(["stop", "destroy"] as const)(
     "explicit-target %s preflights other-provider inventory before mutation",
     async (operation) => {
