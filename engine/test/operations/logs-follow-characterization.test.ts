@@ -76,6 +76,9 @@ describe("log-follow completion", () => {
         ),
     };
     const registry = RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -132,6 +135,9 @@ describe("log-follow completion", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),

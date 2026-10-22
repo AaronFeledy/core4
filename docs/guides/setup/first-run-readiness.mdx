@@ -35,7 +35,7 @@ On Linux, if the managed runtime still cannot install and you have working syste
 
 After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. `LANDO_PROVIDER` does not persist.
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
+`lando setup` and `lando setup --yes` keep the `defaultProviderId` already in your config. Switch back with `lando setup --provider=lando`.
 
 ## What doctor checks
 

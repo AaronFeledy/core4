@@ -103,6 +103,9 @@ const infoOf = (plan: AppPlan, endpoints: ServiceRuntimeInfo["endpoints"] = [pub
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),

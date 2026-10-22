@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import type {
+  AppPlacementError,
   ProxyApplyError,
   ProxySetupError,
   RouterPortPinMismatch,
@@ -20,7 +21,12 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   landofileRouter?: RouterConfig,
 ): Effect.fn.Return<
   ProxyApplyResult,
-  ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError | ProxyApplyError
+  | AppPlacementError
+  | ProxySetupError
+  | RouterPortsExhausted
+  | RouterPortPinMismatch
+  | RouterWatcherError
+  | ProxyApplyError
 > {
   if (!routerEnabled(plan) || plan.routes.length === 0) {
     // Best-effort: a disabled or route-free plan must withdraw previously published hostnames.

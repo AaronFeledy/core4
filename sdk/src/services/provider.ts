@@ -318,6 +318,14 @@ export class RuntimeProviderRegistry extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
     readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
+    /**
+     * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
+     * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
+     * or contacts a runtime.
+     */
+    readonly appliedPlansFor: (
+      root: AbsolutePath,
+    ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
@@ -325,10 +333,10 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
-    readonly resolveAppliedPlan?: (
+    readonly resolveAppliedPlan: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
-    readonly resolveTeardownEvidence?: (
+    readonly resolveTeardownEvidence: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly observeRuntime?: Effect.Effect<
@@ -503,6 +511,8 @@ export class RuntimeProvider extends Context.Service<
 
 export interface DestroyOptions {
   readonly volumes: boolean;
+  /** Restrict ownership-inventory cleanup to these app identities at a shared root. */
+  readonly appIds?: ReadonlyArray<AppId>;
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }

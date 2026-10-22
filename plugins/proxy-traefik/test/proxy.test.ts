@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
-import { FileNotFoundError } from "@lando/sdk/errors";
+import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
@@ -52,6 +52,7 @@ const unusedPrivilege = {
 };
 
 type WatcherDependencies = {
+  readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError | AppPlacementError>;
   readonly readTraefikLogs?: () => Effect.Effect<
     { readonly providerId: string; readonly text: string },
     unknown
@@ -144,6 +145,7 @@ const makeHarness = (
     },
     paths: { platform, globalAppRoot: "/lando/global" },
     globalApp: {
+      ensureProviderReady: watcherDependencies.ensureProviderReady ?? Effect.void,
       restartRunningService: Effect.fnUntraced(function* (service) {
         if (!running) return false;
         if (failRestart) return yield* Effect.fail(new Error("injected Traefik restart failure"));
@@ -205,6 +207,31 @@ const makeHarness = (
 };
 
 describe("Traefik RouterService", () => {
+  test.each(["prepare", "setup"] as const)(
+    "%s rejects placement mismatch before acquiring ports on Linux",
+    async (method) => {
+      const error = new AppPlacementError({
+        app: { kind: "global", id: "global", root: AbsolutePath.make("/tmp/global") },
+        desiredProviderId: "docker",
+        realizedProviderId: "lando",
+        message: "Placement mismatch",
+        remediation: "Destroy the old global app before retrying.",
+      });
+      const harness = makeHarness(undefined, {
+        ensureProviderReady: Effect.fail(error),
+      });
+      const operation = harness.service[method];
+      if (operation === undefined) throw new Error("router operation missing");
+      const result = await Effect.runPromise(
+        Effect.scoped(operation({ defaultDomain: "lndo.site" })).pipe(Effect.result),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", remediation: error.remediation },
+      });
+      expect(harness.files.size).toBe(0);
+    },
+  );
   test("renders resolved HTTPS and named non-80 backends", () => {
     const rendered = renderTraefikDynamicConfig(routes, app);
 

@@ -71,9 +71,7 @@ export const readGlobalConfigSources = (inputs: ConfigSourceInputs): readonly Co
   const envConf =
     typeof environment.tree.userConfRoot === "string" ? nonEmpty(environment.tree.userConfRoot) : undefined;
   const userConfRoot = hostConf ?? envConf ?? defaults.userConfRoot;
-  const layers: ConfigLayer[] = [
-    { layer: "default", tree: { ...defaults, userConfRoot, defaultProviderId: "lando" } },
-  ];
+  const layers: ConfigLayer[] = [{ layer: "default", tree: { ...defaults, userConfRoot } }];
   if (inputs.sources.user) {
     const fileLayer = readLayer(join(userConfRoot, "config.yml"), "config-file");
     layers.push(fileLayer);

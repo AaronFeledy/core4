@@ -23,6 +23,7 @@ const globalAppLayer = Layer.succeed(
   GlobalAppService,
   GlobalAppService.of({
     id: "global",
+    providerId: Effect.die("global provider resolution is unused"),
     root: Effect.succeed(AbsolutePath.make("/tmp/lando-global")),
     ensureRoot: Effect.void,
     paths: Effect.succeed({
