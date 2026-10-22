@@ -20,7 +20,6 @@ import type {
   ManagedFileTransactionError,
   NotImplementedError,
   RouteInputError,
-  ToolingIncludeCycleError,
 } from "../errors/index.ts";
 import type { LandofileShape } from "../schema/index.ts";
 
@@ -39,7 +38,6 @@ export type LandofileServiceError =
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError
   | LandofileLoadOutsideRootError
-  | ToolingIncludeCycleError
   | NotImplementedError
   | ComposeKeyRejectedError
   | ManagedFileTransactionError;

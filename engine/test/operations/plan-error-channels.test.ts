@@ -8,7 +8,6 @@ import type {
   AppPlacementError,
   AppResolveError,
   CapabilityError,
-  CommandAliasConflictError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -21,7 +20,6 @@ import type {
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -66,14 +64,12 @@ type ExpectedLoadGlobalPlanError =
   | AppPlacementError
   | LandofileCompileError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
-  | LandofileUnknownEventError
   | LandofileValidationError
   | RouteInputError
   | NoProviderInstalledError
@@ -90,9 +86,7 @@ type LegacyPlanAppChannel =
   | DataTreeOwnershipCapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | ConfigExpressionError;
 
 type LegacyOrphanTeardownError =
   | AppResolveError
@@ -118,7 +112,6 @@ type ExpectedEnsureGlobalServicesError =
   | AppPlacementError
   | LandofileCompileError
   | ServiceNotReadyError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -132,7 +125,6 @@ type ExpectedEnsureGlobalServicesError =
   | GlobalServiceCollisionError
   | GlobalServiceMissingError
   | LandofileParseError
-  | LandofileUnknownEventError
   | LandofileValidationError
   | RouteInputError
   | NoProviderInstalledError
@@ -149,9 +141,7 @@ type ExpectedEnsureGlobalServicesError =
 type LegacyRemoteSyncCommandError =
   | RemoteSyncError
   | UserLandofileError
-  | LandofileUnknownEventError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -162,9 +152,7 @@ type LegacyRemoteSyncCommandError =
 
 type LegacyShareListCommandError =
   | UserLandofileError
-  | LandofileUnknownEventError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError

@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
   CacheError,
+  CommandAliasConflictError,
   CommandAliasTargetError,
   LandoCommandError,
   PluginManifestError,
@@ -53,6 +54,7 @@ type AppCacheRefreshError =
   | ProviderError
   | ToolingCompileError
   | PluginManifestError
+  | CommandAliasConflictError
   | CommandAliasTargetError
   | CacheError
   | LandoCommandError;

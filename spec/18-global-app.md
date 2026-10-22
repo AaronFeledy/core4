@@ -160,7 +160,7 @@ The global app owns one route definition. `RouterService` does not expose a read
 
 #### 20.7.1 Top-level alias reservation
 
-The `global:` prefix is reserved under §8.1.2. Plugin aliases using it fail with `CommandAliasConflictError`. User `commandAliases.custom:` MAY remap an alias; canonical `meta:global:*` ids remain callable.
+The `global:` prefix is reserved under §8.1.2. Plugin aliases using it fail with `CommandAliasConflictError`. User `commandAliases.custom:` MAY remap a plugin alias claim; canonical `meta:global:*` ids remain callable.
 
 ### 20.8 Networking and discovery
 
