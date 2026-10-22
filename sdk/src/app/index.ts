@@ -99,6 +99,7 @@ import type {
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
 import type {
+  AppOutputRedaction,
   AppPlanner,
   CacheService,
   CommandRegistry,
@@ -140,6 +141,7 @@ import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts"
  * requirement channel because the retained runtime already satisfies them.
  */
 export type LandoRuntimeServices =
+  | AppOutputRedaction
   | import("../services/host-assets.ts").ContainerHelperAssets
   | Logger
   | Renderer

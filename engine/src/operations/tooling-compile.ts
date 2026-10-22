@@ -24,6 +24,7 @@ import {
 } from "@lando/sdk/services";
 
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
+import { registerAppOutputRedaction } from "../services/app-output-redaction.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
 import { withToolingOutput } from "./tooling-output.ts";
@@ -192,6 +193,7 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
   const provider = input.requiresProvider
     ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
     : runtimeProviderService;
+  if (input.requiresProvider) yield* registerAppOutputRedaction({ plan: input.plan, provider });
   let combined: ToolingEngineResult = {
     tool: input.tool,
     service: "",

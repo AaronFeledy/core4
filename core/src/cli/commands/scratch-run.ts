@@ -13,6 +13,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type ConfigService,
   type FileSystem,
+  type ProviderError,
   RuntimeProviderRegistry,
   type ScratchAppService,
 } from "@lando/sdk/services";
@@ -27,6 +28,7 @@ import {
   findPrimaryServiceName,
   readScratchLandofile,
 } from "@lando/engine/scratch-app/service";
+import { registerAppOutputRedaction } from "@lando/engine/services/app-output-redaction";
 import { RedactionService } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -66,6 +68,7 @@ export const ScratchRunResultSchema = Schema.Struct({
 });
 
 export type ScratchRunError =
+  | ProviderError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError
@@ -178,6 +181,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         ),
       );
       const landofile = yield* deps.readLandofile(handle.id);
+      yield* registerAppOutputRedaction({ plan, provider });
       const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
       const env = withAgentContextEnv(undefined, process.env, {
         allowlist,

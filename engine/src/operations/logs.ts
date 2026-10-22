@@ -18,7 +18,7 @@ import {
 } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
-import { registerAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { registerAppOutputRedaction } from "../services/app-output-redaction.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -271,7 +271,7 @@ const collectLogLines = Effect.fnUntraced(function* (
   logOptions: LogOptions,
   requestedSource: string | undefined,
 ): Effect.fn.Return<LogsAppResult, SdkLogsAppError, never> {
-  yield* registerAppPlanRedactionTokens(plan);
+  yield* registerAppOutputRedaction({ plan, provider });
   const perService = yield* Effect.forEach(services, (service) =>
     provider
       .logs(
@@ -305,7 +305,7 @@ const drainLogFollow = Effect.fnUntraced(function* (
   requestedSource: string | undefined,
   signal: AbortSignal | undefined,
 ): Effect.fn.Return<LogsAppResult, SdkLogsAppError> {
-  yield* registerAppPlanRedactionTokens(plan);
+  yield* registerAppOutputRedaction({ plan, provider });
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const lines: LogsAppLine[] = [];
   const streams = services.map((service) =>

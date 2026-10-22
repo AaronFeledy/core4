@@ -142,6 +142,7 @@ const makeInput = (
     ctx,
     resolvePlan,
     noPlanError,
+    readAppSecrets: () => Effect.succeed([]),
     before: Effect.sync(() => calls.push({ name: "before", args: [] })),
     service: makeService(calls),
     ...(dataPlane === undefined ? {} : { dataPlane }),
@@ -149,6 +150,12 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  test("secret read-back never invokes the runtime-starting before hook", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    expect(await Effect.runPromise(ops.readAppSecrets({ app }))).toEqual([]);
+    expect(calls).toEqual([]);
+  });
   // destroy --purge removes snapshot images before teardown, so removal must start a stopped runtime.
   test("removes snapshot images after the runtime-starting before hook", async () => {
     const calls: Call[] = [];

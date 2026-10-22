@@ -23,11 +23,13 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
   RedactionService,
+  createPayloadValues,
   createStandaloneRedactor,
   registerRedactionValues,
+  resetRegisteredRedactionValuesForTesting,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -71,6 +73,8 @@ const harness = (input: {
   readonly failOn?: string;
   readonly omitEventRuntime?: boolean;
   readonly live?: boolean;
+  readonly failureOutput?: ReadonlyArray<string | Uint8Array>;
+  readonly appSecrets?: (executed: ReadonlyArray<string>) => ReadonlyArray<string>;
 }) => {
   const executed: string[] = [];
   const frames: StreamFrameSinkFrame[] = [];
@@ -100,6 +104,8 @@ const harness = (input: {
     ...TestRuntimeProvider,
     execStream: (_target: ExecTarget, spec: CommandSpec) =>
       Stream.make({ exitCode: record(executedLabel(spec.command, "exec")) }),
+    readAppSecrets: () =>
+      Effect.sync(() => (input.appSecrets?.(executed) ?? []).map((value) => Redacted.make(value))),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const eventRuntime =
@@ -111,7 +117,7 @@ const harness = (input: {
             RedactionService,
             RedactionService.of({
               registerValues: registerRedactionValues,
-              payloadValues: () => Effect.succeed(() => []),
+              payloadValues: () => Effect.succeed(createPayloadValues([])),
               forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
             }),
           ),
@@ -130,7 +136,9 @@ const harness = (input: {
             // A live sink receives provider output directly, so the result carries none of it.
             const sink = yield* Effect.serviceOption(StreamFrameSink);
             if (Option.isSome(sink) && output.length > 0) {
-              yield* sink.value.emit({ _tag: "stdout", chunk: output, raw: true });
+              for (const chunk of input.failureOutput ?? [output]) {
+                yield* sink.value.emit({ _tag: "stdout", chunk, raw: true });
+              }
             }
             return {
               tool: invocation.tool,
@@ -304,6 +312,55 @@ test("a failing post bracket keeps the output tail when its output streamed live
   }
   expect(result.failure.outputTail).toContain("[redacted]");
   expect(result.failure.outputTail).not.toContain(secret);
+});
+
+test("redacts a split registered secret before clipping a live failure tail", async () => {
+  // Given: raw output whose 4,000-character tail would start inside a registered secret.
+  const secret = "live-tail-private-value";
+  const padding = "x".repeat(4_000 - secret.length + 1);
+  const h = harness({
+    tooling: { build: { service: "web", cmd: "echo body" } },
+    events: { "post-build": [{ cmd: "echo after", service: "web", env: { SECRET: secret } }] },
+    failOn: "echo after",
+    live: true,
+    failureOutput: [new TextEncoder().encode(secret.slice(0, 8)), `${secret.slice(8)}${padding}`],
+  });
+  await Effect.runPromise(registerRedactionValues([secret]));
+  try {
+    // When: the post bracket streams its output and fails.
+    const result = await h.run("build");
+    // Then: clipping retains the mask, not an unmatched raw secret suffix.
+    if (result._tag !== "Failure" || result.failure._tag !== "LandofileEventStepFailedError") {
+      throw new Error("expected LandofileEventStepFailedError");
+    }
+    expect(result.failure.outputTail).toBe(`[redacted]${padding}`);
+    expect(result.failure.outputTail).not.toContain(secret.slice(1));
+    expect(h.frames.map((frame) => frame.chunk)).toEqual([
+      new TextEncoder().encode(secret.slice(0, 8)),
+      `${secret.slice(8)}${padding}`,
+    ]);
+  } finally {
+    resetRegisteredRedactionValuesForTesting();
+  }
+});
+
+test("registers container secrets for the task body after its pre bracket runs", async () => {
+  // Given: a pre step after which the container holds a rotated secret.
+  const rotated = "rotated-after-pre-private";
+  const h = harness({
+    tooling: { build: { service: "web", cmd: "echo body" } },
+    events: { "pre-build": [{ cmd: "echo before", service: "web" }] },
+    appSecrets: (executed) => (executed.includes("echo before") ? [rotated] : ["stale-before-pre-private"]),
+  });
+  try {
+    // When: the task runs.
+    const result = await h.run("build");
+    // Then: the body's read happened after the pre bracket, so the rotated value is masked.
+    expect(result._tag).toBe("Success");
+    expect(createStandaloneRedactor("secrets").redactString(rotated)).toBe("[redacted]");
+  } finally {
+    resetRegisteredRedactionValuesForTesting();
+  }
 });
 
 test("runs an unbracketed task without requiring the event runtime", async () => {

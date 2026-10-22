@@ -10,8 +10,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
-import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
-import { AGENT_SESSION_LABEL } from "../src/labels.ts";
+import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "../src/create-fingerprint.ts";
+import { AGENT_SESSION_LABEL, SECRET_ENVIRONMENT_LABEL } from "../src/labels.ts";
 import { commonContainerLabels, containerCreateBodyFragment } from "../src/plan.ts";
 import { renderCompose } from "../src/podman/compose.ts";
 
@@ -125,6 +125,15 @@ describe("desired immutable create config", () => {
     // Then equivalent create arguments match and reordered arguments do not.
     expect(actual).toBe(fingerprint(normalized));
     expect(actual).not.toBe(fingerprint({ ...normalized, command: ["sleep 60", "-lc", "sh"] }));
+  });
+
+  test("read-back key metadata does not change desired container identity", () => {
+    const labels = commonContainerLabels(plan, service);
+    const actual = createConfigFingerprint(plan, service, {
+      ...labels,
+      [SECRET_ENVIRONMENT_LABEL]: "PASSWORD",
+    });
+    expect(actual).toBe(createConfigFingerprint(plan, service, labels));
   });
 
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {

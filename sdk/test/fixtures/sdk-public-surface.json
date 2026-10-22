@@ -20,6 +20,9 @@
       "plan:(landofile:LandofileShape,providerCapabilities:ProviderCapabilities) => Effect.Effect<AppPlan,AppPlannerError>"
     ],
     "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
+    "AppOutputRedaction": [
+      "register:(plan:AppPlan,provider:RuntimeProviderShape) => Effect.Effect<void,ProviderError>"
+    ],
     "BuildOrchestrator": [
       "build:(plan:AppPlan,options?:BuildOptions) => Effect.Effect<AppPlan,BuildError>",
       "buildApp:(plan:AppPlan,options?:BuildAppOptions) => Effect.Effect<void,BuildAppError>"
@@ -319,6 +322,7 @@
       "pullArtifact:(spec:ArtifactPullSpec) => Effect.Effect<ArtifactRef,ProviderError>",
       "quiesceForFileSync?:(target:AppSelector) => Effect.Effect<void,ProviderError>",
       "quiesceRetainedFileSync?:(plan:AppPlan) => Effect.Effect<RetainedFileSyncQuiescence,ProviderError>",
+      "readAppSecrets:(target:AppSelector) => Effect.Effect<ReadonlyArray<Redacted.Redacted<string>>,ProviderError>",
       "removeArtifact:(ref:ArtifactRef) => Effect.Effect<void,ProviderError>",
       "removeObservedService:(observed:ServiceRuntimeInfo) => Effect.Effect<ObservedServiceRemoval,ProviderError>",
       "removeVolume:(ref:VolumeRef,expectedGeneration:VolumeIdentity[\"generation\"]) => Effect.Effect<void,ProviderError>",
@@ -1711,6 +1715,7 @@
     ],
     "./secrets": [
       "DEFAULT_PASSWORD",
+      "HOST_PROXY_CREDENTIAL_ENV_NAMES",
       "MINIO_DEFAULT_PASSWORD",
       "PATTERN_CLASSES",
       "PUBLIC_DEFAULT_CREDENTIALS",
@@ -1724,6 +1729,7 @@
       "parseSecretReference"
     ],
     "./services": [
+      "AppOutputRedaction",
       "AppPlanSanitizer",
       "AppPlanner",
       "BuildOrchestrator",

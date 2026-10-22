@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Duration, Effect, Result, Schema, Stream } from "effect";
+import { Duration, Effect, Redacted, Result, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -119,6 +119,10 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(Effect.isEffect(provider.isAvailable), "isAvailable is Effect-typed");
   yield* requireContract(Effect.isEffect(provider.getStatus), "getStatus is Effect-typed");
   yield* requireContract(Effect.isEffect(provider.getVersions), "getVersions is Effect-typed");
+  const secrets = yield* provider
+    .readAppSecrets({ app: TEST_APP_ID })
+    .pipe(Effect.mapError(mapProviderFailure("readAppSecrets resolves without creating resources")));
+  yield* requireContract(secrets.every(Redacted.isRedacted), "readAppSecrets returns only Redacted values");
   yield* requireContract(
     Effect.isEffect(provider.apply(testAppPlan, { reconcile: true })),
     "apply is Effect-typed",

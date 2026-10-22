@@ -43,6 +43,12 @@ const expectContractFailure = async (
 };
 
 describe("RuntimeProvider contract", () => {
+  test("reads no secrets when the app has no containers", async () => {
+    const target = { app: AppId.make("absent-secret-app") };
+    const values = await Effect.runPromise(TestRuntimeProvider.readAppSecrets(target));
+    expect(values).toEqual([]);
+  });
+
   test.each([
     [["lando-contract-split-", "line", "L".repeat(20_000)], "logs reassemble a line written in pieces"],
     [

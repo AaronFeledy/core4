@@ -7,6 +7,7 @@ import type * as HttpClient from "effect/http/HttpClient";
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { LogLevel } from "@lando/sdk/schema";
 import type {
+  AppOutputRedaction,
   AppPlanSanitizer,
   AppPlanner,
   BuildOrchestrator,
@@ -151,6 +152,7 @@ type ScratchRuntimeServices =
   | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =
+  | AppOutputRedaction
   | ProviderRuntimeServices
   | BuildOrchestrator
   | LandofileService

@@ -1,21 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 
 import {
   RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
+  makeRedactionService,
   resetRegisteredRedactionValuesForTesting,
 } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   ConfigService,
   type ExecChunk,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ToolingEngine,
@@ -25,6 +31,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { execApp } from "../../src/operations/exec.ts";
 import { followLogsForPlan } from "../../src/operations/logs.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
+import { workerStatePath } from "../../src/subsystems/host-proxy/worker-state-file.ts";
 
 const password = "lando-1bd5b0ac12d8296a";
 const slashPassword = "s3cr/et-pa55word";
@@ -51,7 +58,7 @@ const plan: AppPlan = {
         type: "postgres",
         provider: providerId,
         primary: true,
-        environment: { POSTGRES_PASSWORD: password, MYSQL_PASSWORD: slashPassword },
+        environment: { DISPLAY_VALUE: "${secret:X}", DISPLAY_URL: "${secret:Y}" },
         mounts: [],
         storage: [],
         endpoints: [],
@@ -72,9 +79,11 @@ const plan: AppPlan = {
 };
 const provider: RuntimeProviderShape = {
   ...TestRuntimeProvider,
+  readAppSecrets: () => Effect.succeed([Redacted.make(password), Redacted.make(slashPassword)]),
   execStream: () =>
     Stream.fromIterable<ExecChunk>([
-      { kind: "stdout", chunk: new TextEncoder().encode(bareLine) },
+      { kind: "stdout", chunk: new TextEncoder().encode(bareLine.slice(0, 8)) },
+      { kind: "stdout", chunk: new TextEncoder().encode(bareLine.slice(8)) },
       { kind: "stderr", chunk: new TextEncoder().encode(urlLine) },
       { exitCode: 0 },
     ]),
@@ -86,10 +95,11 @@ const provider: RuntimeProviderShape = {
 };
 const redactionLayer = Layer.succeed(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => [password, slashPassword]),
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+  makeRedactionService({
+    id: "empty",
+    list: Effect.succeed([]),
+    get: () => Effect.die("Output registration must not resolve a secret reference."),
+    has: () => Effect.succeed(false),
   }),
 );
 const registryLayer = Layer.succeed(
@@ -112,6 +122,109 @@ beforeEach(resetRegisteredRedactionValuesForTesting);
 afterEach(resetRegisteredRedactionValuesForTesting);
 
 describe("live plan-secret redaction", () => {
+  test.each([
+    [0o600, false, "[redacted]"],
+    [0o640, false, "worker-transport-private-value"],
+    [0o600, true, "worker-transport-private-value"],
+  ] as const)(
+    "worker credentials are trusted only for an owner-only matching app (%#)",
+    async (mode, foreign, expected) => {
+      const root = await mkdtemp(join(tmpdir(), "lando-output-worker-"));
+      const paths = makeLandoPaths({ userDataRoot: root });
+      const recordPath = workerStatePath(plan, paths.roots);
+      const token = "worker-transport-private-value";
+      const { io, layer } = makeSink();
+      await mkdir(dirname(recordPath), { recursive: true });
+      await writeFile(
+        recordPath,
+        JSON.stringify({
+          appId: foreign ? "another-app" : plan.id,
+          appRoot: plan.root,
+          providerId: provider.id,
+          protocolVersion: 2,
+          pid: 123,
+          transport: "unix-socket",
+          socketPath: "/unused/socket",
+          shimPath: "/unused/shim",
+          startedAt: "2026-10-21T00:00:00Z",
+          sessionId: "worker-session-private",
+          token,
+          controlToken: "worker-control-private",
+          configDigest: "digest",
+        }),
+        { mode },
+      );
+      const workerProvider = {
+        ...provider,
+        readAppSecrets: () => Effect.succeed([]),
+        execStream: () =>
+          Stream.make(
+            { kind: "stdout" as const, chunk: new TextEncoder().encode(`${token}\n`) },
+            { exitCode: 0 },
+          ),
+      };
+      const config = Schema.decodeUnknownSync(GlobalConfig)({});
+      const runtime = Layer.mergeAll(
+        layer,
+        PrivateFileAccessService.layer,
+        Layer.succeed(PathsService, paths),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(workerProvider),
+        }),
+        Layer.succeed(
+          LandofileService,
+          LandofileService.of({ discover: Effect.succeed({ name: plan.name }) }),
+        ),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(
+          ConfigService,
+          ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+        ),
+      );
+      try {
+        await Effect.runPromise(
+          execApp({ service: "database", command: ["printenv", "LANDO_HOST_PROXY_TOKEN"] }).pipe(
+            Effect.provide(runtime),
+          ),
+        );
+        expect(io.stdout()).toBe(`${expected}\n`);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+  test("provider read failure fails closed before log output", async () => {
+    const { io, layer } = makeSink();
+    const failure = new ProviderUnavailableError({
+      providerId: provider.id,
+      operation: "readAppSecrets",
+      message: "Read denied.",
+    });
+    const failedProvider = { ...provider, readAppSecrets: () => Effect.fail(failure) };
+    const result = await Effect.runPromise(
+      Effect.result(
+        followLogsForPlan(plan).pipe(
+          Effect.provide(
+            Layer.merge(
+              layer,
+              Layer.succeed(RuntimeProviderRegistry, {
+                list: Effect.succeed([providerId]),
+                capabilities: Effect.succeed(provider.capabilities),
+                select: () => Effect.succeed(failedProvider),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ProviderUnavailableError", operation: "readAppSecrets" },
+    });
+    expect(io.stdout() + io.stderr()).toBe("");
+  });
   test("exec redacts plan passwords in the real stream sink", async () => {
     // Given: a sink built before exec resolves a plan whose passwords are absent from the host environment.
     const { io, layer } = makeSink();

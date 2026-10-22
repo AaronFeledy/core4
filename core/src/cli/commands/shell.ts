@@ -1,10 +1,13 @@
+import { registerAppOutputRedaction } from "@lando/engine/services/app-output-redaction";
+import { RedactionService, createPayloadValues } from "@lando/redaction/service";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 /**
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
  * Service mode runs `sh -l` in the requested service via provider execStream.
  * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
  */
-import { DateTime, Effect, Queue, Stream } from "effect";
+import { DateTime, Effect, Option, Queue, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
@@ -57,8 +60,8 @@ export interface ShellTerminalSize {
 }
 
 export interface ShellIO {
-  readonly writeStdout: (chunk: string) => void;
-  readonly writeStderr: (chunk: string) => void;
+  readonly writeStdout: (chunk: string | Uint8Array) => void;
+  readonly writeStderr: (chunk: string | Uint8Array) => void;
   readonly stdin?: AsyncIterable<Uint8Array>;
   readonly stdinIsTTY?: () => boolean;
   readonly stdinIsRaw?: () => boolean;
@@ -193,10 +196,10 @@ const resolveService = (
     : Effect.succeed(match);
 };
 
-const writeStdout = (io: ShellIO | undefined, chunk: string): Effect.Effect<void> =>
+const writeStdout = (io: ShellIO | undefined, chunk: string | Uint8Array): Effect.Effect<void> =>
   io === undefined ? emitOptionalStdout(chunk) : Effect.sync(() => io.writeStdout(chunk));
 
-const writeStderr = (io: ShellIO | undefined, chunk: string): Effect.Effect<void> =>
+const writeStderr = (io: ShellIO | undefined, chunk: string | Uint8Array): Effect.Effect<void> =>
   io === undefined ? emitOptionalStderr(chunk) : Effect.sync(() => io.writeStderr(chunk));
 
 const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize> => {
@@ -260,6 +263,12 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
     const io = options.io ?? processShellIO;
     const service = yield* resolveService(options.service, plan);
     const provider = yield* registry.select(plan);
+    yield* registerAppOutputRedaction({ plan, provider });
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const values = Option.isSome(redaction)
+      ? yield* redaction.value.payloadValues()
+      : createPayloadValues([]);
+    const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
     const target: ExecTarget = {
       app: plan.id,
       service: service.name,
@@ -284,8 +293,6 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       terminalResize: resizeStream(io),
     };
     let exitCode = 0;
-    const stdoutDecoder = new TextDecoder();
-    const stderrDecoder = new TextDecoder();
     yield* withInteractiveStdinRawMode(
       io,
       Effect.scoped(
@@ -295,17 +302,20 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
               exitCode = chunk.exitCode;
               return Effect.void;
             }
-            const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
-            const text = decoder.decode(chunk.chunk, { stream: true });
-            return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
+            const bytes = payloads[chunk.kind].write(chunk.chunk);
+            return chunk.kind === "stdout" ? writeStdout(options.io, bytes) : writeStderr(options.io, bytes);
           }),
+          Effect.ensuring(
+            Effect.suspend(() =>
+              Effect.all([
+                writeStdout(options.io, payloads.stdout.flush()),
+                writeStderr(options.io, payloads.stderr.flush()),
+              ]),
+            ),
+          ),
         ),
       ),
     );
-    yield* Effect.all([
-      writeStdout(options.io, stdoutDecoder.decode()),
-      writeStderr(options.io, stderrDecoder.decode()),
-    ]);
     return {
       mode: "service" as const,
       app: plan.name,

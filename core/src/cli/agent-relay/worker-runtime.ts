@@ -21,6 +21,7 @@ import {
   createAgentRelayWorkerControl,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import type { RootOverrides } from "@lando/paths";
+import { registerRedactionValues } from "@lando/redaction/service";
 import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AgentSocketUpstream, type AppPlan } from "@lando/sdk/schema";
@@ -53,6 +54,9 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
   };
   const paths = sshAgentSessionPaths(input.app, roots, input.kind);
   const token = input.delivery === "volume-relay" ? (input.token ?? makeAgentRelayToken()) : undefined;
+  yield* registerRedactionValues(token === undefined ? [] : [token]);
+  if (input.upstream._tag === "loopback-tcp" && input.upstream.token !== undefined)
+    yield* registerRedactionValues([input.upstream.token]);
   const listen: AgentRelayOptions["listen"] = Match.value(input.delivery).pipe(
     Match.when("volume-relay", () => ({
       _tag: "loopback-tcp" as const,
@@ -154,6 +158,7 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
     Match.exhaustive,
   );
   const controlToken = makeAgentRelayToken();
+  yield* registerRedactionValues([controlToken]);
   const control = yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: () => createAgentRelayWorkerControl(identity, controlToken),
@@ -224,6 +229,7 @@ export const runAgentRelayWorkerProcess = async (
         Effect.mapError(workerError("worker")),
       ),
     );
+    await Effect.runPromise(registerRedactionValues(input.token === undefined ? [] : [input.token]));
     const runtime =
       options.runtime ??
       (input.delivery === "bind-directory"

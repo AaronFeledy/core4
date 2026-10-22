@@ -498,6 +498,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       return { kind: "removed" };
     }),
 
+  readAppSecrets: (_target) => Effect.succeed([]),
   exec: (_target, command) =>
     Effect.succeed({
       exitCode: 0,

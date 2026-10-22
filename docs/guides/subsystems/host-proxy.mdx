@@ -32,4 +32,8 @@ lando doctor
 
 Doctor probes `lando-doctor-probe.<domain>` using your configured `proxy.defaultDomain` (default `lndo.site`). If it fails, add a local DNS rule for that domain and run `lando doctor` again. This DNS pass does not cover container-to-host callbacks. Starting an app still needs a host-proxy transport session; if that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. Doctor checks that transport separately.
 
+If the detached worker cannot start, the error names its log at `<userCacheRoot>/logs/host-proxy-worker-<appId>.log`. An observed worker exit includes its exit code and a redacted stderr tail. Payload delivery failures, readiness timeouts, closed stdout, and invalid readiness frames also name the log; a worker still alive after the bounded wait has no reported exit code. Logs are owner-only (`0600` on POSIX, a private ACL on Windows), and Lando creates the logs directory with mode `0700`. Worker outer-failure output is redacted before it reaches the log, and tails are redacted before entering errors.
+
+The host-proxy bearer token and session id are masked as `[redacted]` in `exec` and `logs` output, including commands run after `start` exits. Later commands read current container credentials and matching owner-only worker records without contacting the worker.
+
 To open a URL or reveal an app file in your host's file manager from a service, use [`xdg-open` or `open` through the host proxy](./host-open.mdx). Those callbacks are separate from DNS resolution.
