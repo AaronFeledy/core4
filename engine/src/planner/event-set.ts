@@ -59,7 +59,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
   const captured = yield* Effect.serviceOption(GlobalConfigSources);
   const envProvider = readProviderEnvVar(
-    Option.isSome(captured) && captured.value.sources.env ? captured.value.env : {},
+    Option.isNone(captured) ? process.env : captured.value.sources.env ? captured.value.env : {},
   );
   const configProvider = globalConfig?.defaultProviderId;
   const provider = resolveProviderSelection({

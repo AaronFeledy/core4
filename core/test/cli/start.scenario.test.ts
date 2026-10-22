@@ -552,7 +552,6 @@ const makeStartLayer = (
       }),
     ),
     makeTestStateStore().layer,
-    Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
     Layer.succeed(
       RuntimeProviderRegistry,
@@ -639,6 +638,8 @@ const makeStartLayer = (
           ),
       }),
     ),
+    // After unusedGlobalServicesLayer: its config snapshot also provides PathsService, and the later layer wins.
+    Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
   );
 
   return { layer, events, applyPlans, buildOrder, destroyCalls, taskEvents };

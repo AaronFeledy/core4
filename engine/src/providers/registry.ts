@@ -89,7 +89,11 @@ export const makeRuntimeProviderRegistry = (
     Effect.gen(function* () {
       const configService = yield* ConfigService;
       const captured = yield* Effect.serviceOption(GlobalConfigSources);
-      const providerEnv = Option.isSome(captured) && captured.value.sources.env ? captured.value.env : {};
+      const providerEnv = Option.isNone(captured)
+        ? process.env
+        : captured.value.sources.env
+          ? captured.value.env
+          : {};
       const pluginRegistry = yield* PluginRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const downloader = yield* Downloader;
