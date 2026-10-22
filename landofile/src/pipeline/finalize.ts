@@ -78,16 +78,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     sourceRoot: context.appRoot,
     ...(context.loadPolicy === undefined ? {} : { loadPolicy: context.loadPolicy }),
     ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
-    layerForSource: (source) => {
-      for (const [namespace, entry] of Object.entries(acquisition.toolingIncludes ?? {})) {
-        if (entry.file === source)
-          return valueOriginAt(ownOrigins, ["toolingIncludes", namespace]).source.layer;
-      }
-      const index = (acquisition.includes ?? []).findIndex(
-        (entry) => typeof entry !== "string" && entry.source === source,
-      );
-      return valueOriginAt(ownOrigins, index < 0 ? [] : ["includes", index]).source.layer;
-    },
+    origins: ownOrigins,
   });
   rememberSourceDocuments(document, [...getSourceDocuments(document), ...tooling.sources]);
   rememberSourceDocuments(value, getSourceDocuments(document));

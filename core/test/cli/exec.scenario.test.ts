@@ -144,6 +144,7 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
       const record = {
         service: String(target.service),
@@ -231,6 +232,9 @@ const makeLayer = (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(options.provider),
@@ -606,6 +610,9 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const failingRegistry = Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>

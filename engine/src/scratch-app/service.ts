@@ -6,6 +6,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { Cause, Context, DateTime, Effect, Layer, Option, Schema, type Scope } from "effect";
 
 import {
+  AppPlacementError,
   LandofileVersionConstraintError,
   ScratchAppError,
   ScratchAppNotFoundError,
@@ -31,6 +32,7 @@ import {
   BuildOrchestrator,
   DataMover,
   FileSystem,
+  GlobalAppService,
   LandofileService,
   RouterService,
   RuntimeProviderRegistry,
@@ -52,11 +54,14 @@ import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
+import { globalCreateProviderId } from "../global-app/placement.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
+import { SCRATCH_EXTENSION_KEY } from "./identity.ts";
 import { decodeScratchLandofile } from "./landofile.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
@@ -222,7 +227,6 @@ const sanitizeBase = (base: string): string => {
 export const isUnsafeScratchId = (id: string): boolean =>
   id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);
 
-const SCRATCH_EXTENSION_KEY = "@lando/core/scratch";
 const DEFAULT_SCRATCH_EXCLUDES = [".git/", "node_modules/", "vendor/", ".lando/cache/", ".DS_Store"] as const;
 
 const scratchExtension = (plan: AppPlan): Record<string, unknown> => {
@@ -497,6 +501,7 @@ const makeScratchAppService = (
   proxy: Option.Option<Context.Service.Shape<typeof RouterService>>,
   initAppPort: Context.Service.Shape<typeof ScratchInitAppPort>,
   loadCurrentLandofile: UserAppResolution["loadUserLandofile"],
+  preflightGlobalPlacement: Effect.Effect<void, AppPlacementError | ScratchAppError>,
 ): Context.Service.Shape<typeof ScratchAppService> => {
   const root = Effect.sync(() => AbsolutePath.make(makeLandoPaths().scratchDir));
 
@@ -582,7 +587,10 @@ const makeScratchAppService = (
       Effect.catch(() => Effect.succeed(undefined)),
     );
 
-  const applyScratchRoutes = (plan: AppPlan, landofileRouter?: RouterConfig): Effect.Effect<void, never> =>
+  const applyScratchRoutes = (
+    plan: AppPlan,
+    landofileRouter?: RouterConfig,
+  ): Effect.Effect<void, AppPlacementError> =>
     plan.routes.length === 0 || !routerEnabled(plan)
       ? Effect.void
       : Option.match(proxy, {
@@ -597,11 +605,15 @@ const makeScratchAppService = (
             },
             Effect.asVoid,
             // Ephemeral scratch acquisition must survive an unavailable proxy; routes still apply when it is reachable.
-            Effect.catchCause((cause) =>
-              Effect.logWarning(
-                `Unable to apply routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
-              ),
-            ),
+            Effect.catchCause((cause) => {
+              if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt;
+              const error = Cause.findErrorOption(cause);
+              return error._tag === "Some" && error.value instanceof AppPlacementError
+                ? Effect.fail(error.value)
+                : Effect.logWarning(
+                    `Unable to apply routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
+                  );
+            }),
           ),
         });
 
@@ -732,6 +744,22 @@ const makeScratchAppService = (
     landofileRouter?: RouterConfig,
   ) {
     const markedPlan = markScratchPlan(plan, scratchId);
+    yield* ensureAppPlacement(
+      { kind: "scratch", id: scratchId, root: markedPlan.root },
+      markedPlan.provider,
+    ).pipe(
+      Effect.provideService(RuntimeProviderRegistry, providerRegistry),
+      Effect.mapError((cause) =>
+        cause instanceof AppPlacementError
+          ? cause
+          : scratchAppError("start", `Unable to place scratch app ${scratchId}.`, cause),
+      ),
+    );
+    if (
+      (markedPlan.routes.length > 0 && routerEnabled(markedPlan)) ||
+      (markedPlan.requires?.globalServices.length ?? 0) > 0
+    )
+      yield* preflightGlobalPlacement;
     const provider = yield* providerRegistry
       .select(markedPlan)
       .pipe(
@@ -780,19 +808,23 @@ const makeScratchAppService = (
         scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
       ),
     );
-    yield* applyScratchRoutes(builtPlan, landofileRouter).pipe(
-      Effect.andThen(
-        waitForServiceReadiness({
-          provider,
-          plan: builtPlan,
-          services: Object.values(builtPlan.services).map((service) => service.name),
-        }),
-      ),
-      Effect.onInterrupt(() => (keepOnFailure ? Effect.void : destroyScratchResources)),
-      Effect.mapError((cause) =>
-        scratchAppError("start", `Unable to ready scratch app ${scratchId}.`, cause),
-      ),
-    );
+    // Route resolution runs after apply, so an interrupt anywhere here must still reap the scratch app.
+    yield* Effect.gen(function* () {
+      yield* applyScratchRoutes(builtPlan, landofileRouter).pipe(
+        Effect.andThen(
+          waitForServiceReadiness({
+            provider,
+            plan: builtPlan,
+            services: Object.values(builtPlan.services).map((service) => service.name),
+          }),
+        ),
+        Effect.mapError((cause) =>
+          cause instanceof AppPlacementError
+            ? cause
+            : scratchAppError("start", `Unable to ready scratch app ${scratchId}.`, cause),
+        ),
+      );
+    }).pipe(Effect.onInterrupt(() => (keepOnFailure ? Effect.void : destroyScratchResources)));
     if (!detached) {
       // Skip the destroy when the entry was converted to detached mid-scope
       // (`apps:scratch:run --keep`): the registry owns the scratch from there.
@@ -1199,6 +1231,22 @@ const makeScratchAppServiceLayer = (loadCurrentLandofile: UserAppResolution["loa
       const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
       const proxy = yield* Effect.serviceOption(RouterService);
       const initAppPort = yield* ScratchInitAppPort;
+      const globalApp = yield* Effect.serviceOption(GlobalAppService);
+      const context = yield* Effect.context<never>();
+      const preflightGlobalPlacement =
+        globalApp._tag === "None"
+          ? Effect.void
+          : globalCreateProviderId().pipe(
+              Effect.provideService(GlobalAppService, globalApp.value),
+              Effect.provideService(RuntimeProviderRegistry, providerRegistry),
+              Effect.provide(context),
+              Effect.asVoid,
+              Effect.mapError((cause) =>
+                cause instanceof AppPlacementError
+                  ? cause
+                  : scratchAppError("start", "Unable to resolve global app placement.", cause),
+              ),
+            );
       return makeScratchAppService(
         fileSystem,
         landofileService,
@@ -1211,6 +1259,7 @@ const makeScratchAppServiceLayer = (loadCurrentLandofile: UserAppResolution["loa
         proxy,
         initAppPort,
         loadCurrentLandofile,
+        preflightGlobalPlacement,
       );
     }),
   );
@@ -1251,6 +1300,7 @@ export const acquireScratchAppWithPlan = Effect.fn("ScratchAppService.acquireScr
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError
+  | AppPlacementError
   | LandofileVersionConstraintError,
   ScratchAppService | FileSystem | Scope.Scope
 > {

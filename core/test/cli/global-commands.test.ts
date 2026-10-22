@@ -59,6 +59,7 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -116,10 +117,12 @@ type HarnessLayer = Layer.Layer<
   | PrivateFileAccessService
   | RouterService
   | RuntimeProviderRegistry
-  | SecretStore
+  | SecretStore,
+  import("@lando/sdk/errors").ConfigError
 >;
 
 interface HarnessOptions {
+  readonly providerId?: ProviderId;
   readonly failDestroy?: boolean;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
@@ -243,7 +246,7 @@ const makeHarness = async (
   const events: Array<LandoEvent> = [];
   let appliedPlan: AppPlan | undefined;
   const runningServices = new Set<ServiceName>();
-  const providerId = ProviderId.make("lando");
+  const providerId = options.providerId ?? ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -448,6 +451,9 @@ const makeHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -586,6 +592,77 @@ const expectPartialFailure = (exit: Exit.Exit<unknown, unknown>, operation: "sta
 };
 
 describe("meta:global command effects", () => {
+  test("starts and applies the global plan on the Docker host", async () => {
+    await withHarness(
+      async (harness) => {
+        await Effect.runPromise(
+          globalStart({}).pipe(
+            Effect.provide(harness.layer),
+            Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+          ),
+        );
+        expect(harness.calls.apply.length).toBeGreaterThan(0);
+        expect(harness.calls.apply.every(({ plan }) => plan.provider === "docker")).toBe(true);
+      },
+      { providerId: ProviderId.make("docker") },
+    );
+  });
+  test("changed host refuses apply while observation and teardown follow realized placement", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
+      const before = harness.calls.apply.length;
+      const result = await Effect.runPromise(
+        globalStart({}).pipe(
+          Effect.provide(harness.layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+          Effect.result,
+        ),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "AppPlacementError",
+          desiredProviderId: "docker",
+          realizedProviderId: "lando",
+        },
+      });
+      expect(harness.calls.apply).toHaveLength(before);
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* globalStatus({});
+          yield* globalLogs({});
+          yield* globalStop({});
+          yield* globalDestroy({ yes: true });
+        }).pipe(
+          Effect.provide(harness.layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        ),
+      );
+      expect(harness.calls.destroy.at(-1)?.target.plan?.provider).toBe(ProviderId.make("lando"));
+    });
+  });
+  test("restart refuses a placement mismatch before stopping the realized global app", async () => {
+    await withHarness(async (harness) => {
+      // Given: the global app is realized on lando.
+      await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
+      const stopsBefore = harness.calls.destroy.length;
+      // When: the host provider changed to docker.
+      const result = await Effect.runPromise(
+        globalRestart().pipe(
+          Effect.provide(harness.layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+          Effect.result,
+        ),
+      );
+      // Then: placement fails and nothing was torn down.
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", realizedProviderId: "lando" },
+      });
+      expect(harness.calls.destroy).toHaveLength(stopsBefore);
+      expect(harness.calls.routesRemoved).toEqual([]);
+    });
+  });
   test.each(["start", "rebuild", "restart"] as const)(
     "%s aggregates readiness failure without publishing routes",
     async (command) => {
@@ -1855,6 +1932,9 @@ describe("meta:global command effects", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.fail(missingProvider),
             select: () => Effect.fail(missingProvider),

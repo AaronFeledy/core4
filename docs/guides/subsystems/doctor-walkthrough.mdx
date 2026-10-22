@@ -14,7 +14,7 @@ lando doctor
 
 Doctor reports whether setup, the provider, the proxy, certs, and related checks are healthy. A failing section does not abort the rest of the report.
 
-Run it after `lando setup`. The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, bare `lando doctor` stays on Docker. `LANDO_PROVIDER` does not persist.
+Run it after `lando setup`. Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names for this command. See [Pick a container provider](../setup/provider-selection.mdx#what-persists).
 
 ## Read the report
 
@@ -28,6 +28,7 @@ lando doctor --all
 
 | Check | What to do |
 | --- | --- |
+| global-config | Your global config does not decode. Doctor prints the `ConfigError` and its fix, marks `provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, and `mcp` as `SKIPPED` (plus `app-config`, `app-version-constraints`, and `deprecations` under `--app` or `--deprecations`), still runs config-independent checks such as `filesystem-watch`, and exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |
@@ -38,9 +39,7 @@ lando doctor --all
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 | orphaned-volume-snapshots | Inspect leftover snapshot images with `lando snapshots:gc`, then remove them with `lando snapshots:gc --prune`. Stopped runtimes are skipped. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
-
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
+Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Finish an interrupted accelerated start
 

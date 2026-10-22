@@ -33,7 +33,7 @@ import {
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
 import { presentLogicalCreateConfig } from "@lando/container-runtime/podman/bring-up-recreate";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
   parseContainerEventPayloads,
@@ -81,6 +81,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -247,7 +248,7 @@ export {
   buildVolumePruneRequest,
   isManagedNftMissingMessage,
   parseVolumePruneResult,
-  podmanComposeKnobs,
+  composeKnobsForDialect,
   scratchLabelsForPlan,
   startFailureRemediation,
   volumeMatchesFilters,
@@ -915,6 +916,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,
       noPlanError: makeNoPlanError,
       before: ensureEffect,
@@ -1013,7 +1016,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           if (runtime.networkNames === undefined) return logicalRuntime;
           const logicalNames = new Map<string, string>();
           if (physical.networking !== undefined && plan.networking !== undefined) {
-            logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            if (physical.networking.perAppBridge !== null && plan.networking.perAppBridge !== null) {
+              logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            }
             const shared = physical.networking.sharedNetworkMembership;
             const logicalShared = plan.networking.sharedNetworkMembership;
             if (shared !== undefined && logicalShared !== undefined) {
@@ -1118,7 +1123,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         if (onlyService !== undefined && service.name !== onlyService) continue;
         if (
           !supportsWindowsPublishedRecovery({
-            appId: physicalPlan.id,
+            networking: physicalPlan.networking,
             networks:
               typeof service.extensions.compose === "object" &&
               service.extensions.compose !== null &&

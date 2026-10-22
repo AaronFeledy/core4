@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 import { Cause, Effect, Result, Schema, Stream } from "effect";
 
@@ -43,6 +43,18 @@ const expectContractFailure = async (
 };
 
 describe("RuntimeProvider contract", () => {
+  beforeEach(async () => {
+    await Effect.runPromise(TestRuntimeProvider.destroy({ app: TEST_APP_ID }, { volumes: false }));
+  });
+
+  test("reads no secrets when the app has no containers", async () => {
+    const target = { app: AppId.make("absent-secret-app") };
+    const values = await Effect.runPromise(
+      TestRuntimeProvider.readAppEnvironment(target, { appserver: ["VALUE"] }),
+    );
+    expect(values).toEqual([]);
+  });
+
   test.each([
     [["lando-contract-split-", "line", "L".repeat(20_000)], "logs reassemble a line written in pieces"],
     [
@@ -72,6 +84,31 @@ describe("RuntimeProvider contract", () => {
 
     expect(Effect.isEffect(contract)).toBe(true);
     await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
+  });
+
+  test("rejects an environment reader that returns no applied values", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      readAppEnvironment: () => Effect.succeed([]),
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(
+      provider,
+      "readAppEnvironment returns exactly one Redacted requested value after apply",
+    );
+  });
+
+  test("rejects an environment reader that includes unrequested applied names", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      readAppEnvironment: (target) =>
+        TestRuntimeProvider.readAppEnvironment(target, { web: ["REQUESTED", "UNREQUESTED"] }),
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(
+      provider,
+      "readAppEnvironment returns exactly one Redacted requested value after apply",
+    );
   });
 
   test("rejects compose knob support when composeSpec is not native", async () => {

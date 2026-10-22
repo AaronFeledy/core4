@@ -5,9 +5,9 @@ import type { Effect } from "effect";
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  AppPlacementError,
   AppResolveError,
   CapabilityError,
-  CommandAliasConflictError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -20,7 +20,6 @@ import type {
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -29,6 +28,7 @@ import type {
   ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouteProviderMismatchError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
@@ -62,16 +62,16 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | RouteProviderMismatchError
+  | AppPlacementError
   | LandofileCompileError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
-  | LandofileUnknownEventError
   | LandofileValidationError
   | RouteInputError
   | NoProviderInstalledError
@@ -81,6 +81,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
@@ -88,9 +89,7 @@ type LegacyPlanAppChannel =
   | DataTreeOwnershipCapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | ConfigExpressionError;
 
 type LegacyOrphanTeardownError =
   | AppResolveError
@@ -102,6 +101,7 @@ type LegacyOrphanTeardownError =
   | StateStoreError;
 
 type LegacyGlobalInstallChannel =
+  | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
@@ -112,9 +112,10 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | RouteProviderMismatchError
+  | AppPlacementError
   | LandofileCompileError
   | ServiceNotReadyError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -128,7 +129,6 @@ type ExpectedEnsureGlobalServicesError =
   | GlobalServiceCollisionError
   | GlobalServiceMissingError
   | LandofileParseError
-  | LandofileUnknownEventError
   | LandofileValidationError
   | RouteInputError
   | NoProviderInstalledError
@@ -143,11 +143,10 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | RouteProviderMismatchError
   | RemoteSyncError
   | UserLandofileError
-  | LandofileUnknownEventError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -157,10 +156,9 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | RouteProviderMismatchError
   | UserLandofileError
-  | LandofileUnknownEventError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -195,6 +193,7 @@ describe("Engine plan-carrying error channels", () => {
         | ProviderSelectionError
         | FileSystemError
         | GlobalAppError
+        | AppPlacementError
         | LandofileParseError
       >
     >(true);

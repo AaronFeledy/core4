@@ -13,6 +13,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const slowBindCapabilities = {
@@ -47,6 +48,9 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     await Effect.runPromise(
       validateResolvedAppTarget(target).pipe(
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),
@@ -86,6 +90,7 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, slowBindCapabilities)).pipe(
         Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
+        Effect.provideService(HostProviderOverride, ProviderId.make(TestRuntimeProvider.id)),
       ),
     );
 

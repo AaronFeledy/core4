@@ -144,6 +144,9 @@ test.each([
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -230,7 +233,7 @@ test.each([
               events: [...(yield* Queue.clear(queue))],
             };
           }),
-        ).pipe(Effect.provide(layer)),
+        ).pipe(Effect.provide(layer), Effect.provide(LandoConfigService.layer)),
       );
 
       // Then: provider action sees the value; durable identities and every observed surface do not.

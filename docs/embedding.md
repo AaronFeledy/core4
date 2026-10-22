@@ -44,4 +44,18 @@ Requesting bundled discovery without first importing `@lando/core/bundled-plugin
 
 The default entry and every published subpath above are OCLIF-free. OCLIF is development-only; the private CLI directories `core/src/cli/spec/` and `core/src/cli/command-specs/` hold native metadata, adapters, and manifest tooling, and no published package specifier exposes them to embedding hosts.
 
+## Global config
+
+`makeLandoRuntime` resolves global config once while its layer builds and keeps that snapshot for the life of the runtime. The layers are built-in defaults, `<userConfRoot>/config.yml`, `<userConfRoot>/config.d/*.yml`, environment (`LANDO_CONFIG__*`, aliases, `LANDO_USER_*` roots), then the host `config` option, which accepts any `GlobalConfig` field:
+
+```ts
+const runtime = makeLandoRuntime({
+  bootstrap: "minimal",
+  config: { userDataRoot: "/srv/lando/data", router: { httpPort: 8123 } },
+  configSources: { user: false, env: false },
+});
+```
+
+`configSources.user: false` skips the user files; `configSources.env: false` skips environment input: `LANDO_CONFIG__*`, aliases, `LANDO_USER_*` roots, `LANDO_PROVIDER`, and the proxy and CA variables the HTTP client would otherwise honor. Both default to `true`. The runtime's `StateStore`, plugin trust store, and HTTP client use the roots and environment the snapshot captured, and a runtime never inherits another runtime's snapshot. An invalid value in any layer fails the layer build with `ConfigError` (its own tag, not `LandoRuntimeBootstrapError`); each entry in `issues[]` carries `path`, `message`, `suggestion`, and a `source` such as `{ layer: "host", path }`. After construction `ConfigService.load` and `ConfigService.get` cannot fail. Build a new runtime to pick up a changed file or environment. See [Embed the runtime](./guides/library/embedding-runtime.mdx#supply-global-config).
+
 `invokeOperation` from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when the projected primary is a typed failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries for the remaining failures and defects in cause order. Roles are `rollback` for undoing partial work, `cleanup` for release or bookkeeping, and `peer` for sibling failures. Interruptions are excluded. The primary is the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect. This matches CLI and MCP projection, but the values stay yours: the helper does not serialize or automatically redact them. `renderError` receives only the primary failure. A projected defect or interruption propagates as a defect with the original cause attached rather than returning this result.

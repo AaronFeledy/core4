@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { spawnDetachedWorker } from "@lando/engine/subsystems/detached-worker/process";
 import { startDetachedAgentRelayWorker } from "@lando/engine/subsystems/ssh-agent/detached-worker";
 import { type AgentRelaySession, sshAgentSessionPaths } from "@lando/engine/subsystems/ssh-agent/session";
 import {
@@ -10,7 +11,68 @@ import {
   identifyAgentRelayWorker,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
+
+test.each(["exit", "invalid-ready", "stdout-eof", "timeout"] as const)(
+  "relay startup %s names its private log",
+  async (failure) => {
+    const root = await mkdtemp(join(tmpdir(), "relay-startup-failure-"));
+    const app = { kind: "user" as const, id: "failure", root: AbsolutePath.make(root) };
+    const source =
+      failure === "exit"
+        ? 'console.error("relay crashed"); process.exit(9);'
+        : failure === "invalid-ready"
+          ? 'console.log("ready-frame-credential"); setInterval(() => {}, 60000);'
+          : failure === "stdout-eof"
+            ? 'require("node:fs").closeSync(1); setInterval(() => {}, 60000);'
+            : "setInterval(() => {}, 60000);";
+    try {
+      const exit = await Effect.runPromiseExit(
+        startDetachedAgentRelayWorker({
+          app,
+          plan: { id: AppId.make(app.id), provider: ProviderId.make("docker") },
+          upstream: { _tag: "unix", path: join(root, "upstream.sock") },
+          kind: "ssh",
+          delivery: "bind-directory",
+          socketName: "agent.sock",
+          paths: { userCacheRoot: root, userDataRoot: root },
+          privateFileAccess: { enforce: async (path) => chmod(path, 0o600), verify: async () => undefined },
+          spawnWorker: (spec) =>
+            spawnDetachedWorker(
+              { ...spec, argv: [process.execPath, "-e", source, "--app-id", app.id] },
+              {
+                readySchema: AgentRelayWorkerReady,
+                logLabel: "agent-relay",
+                readyTimeoutMs: failure === "timeout" ? 25 : 5000,
+              },
+            ),
+        }),
+      );
+      if (exit._tag === "Success") {
+        await exit.value.close();
+        throw new Error("Expected startup failure");
+      }
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toMatchObject({
+        _tag: "SshAgentTransportError",
+        stage: "worker",
+        remediation: `Inspect ${join(root, "logs", "agent-relay-worker-failure.log")} for the worker crash.`,
+      });
+      expect(error.message).not.toContain("ready-frame-credential");
+      if (failure === "exit") {
+        expect(error.message).toContain("exitCode=9");
+        expect(error.message).toContain("relay crashed");
+      } else {
+        expect(error.message).not.toContain("exitCode");
+        if (failure === "invalid-ready") expect(error.message).toContain("invalid readiness frame");
+        if (failure === "stdout-eof") expect(error.message).toContain("stdout closed");
+        if (failure === "timeout") expect(error.message).toContain("readiness timed out");
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   test(`source dispatcher publishes authenticated readiness and shuts down on ${signal}`, async () => {

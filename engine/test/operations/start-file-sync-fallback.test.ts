@@ -88,6 +88,20 @@ const acceleratedPlan: AppPlan = {
   ],
 };
 
+const routedAcceleratedPlan: AppPlan = {
+  ...acceleratedPlan,
+  routes: [
+    {
+      hostname: "web.test-start.lndo.site",
+      priority: 2,
+      scheme: "https",
+      service: web.name,
+      endpoint: 3000,
+      backend: { service: web.name, protocol: "http", port: 3000 },
+    },
+  ],
+};
+
 const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, cause: Cause.Cause<unknown>) => {
   const failures = Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
   expect(failures.length).toBeGreaterThan(0);
@@ -2099,7 +2113,7 @@ describe("pre-apply accelerated mount preparation", () => {
   test("a later post-start publish failure retains routes and persistent sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
-      plannedApp: acceleratedPlan,
+      plannedApp: routedAcceleratedPlan,
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
       onPublish: (event) =>
@@ -2116,14 +2130,14 @@ describe("pre-apply accelerated mount preparation", () => {
         pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
-    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow("post-start failed");
+    await expect(runStart(harness, routedAcceleratedPlan)).rejects.toThrow("post-start failed");
     expect(order).toEqual([]);
   });
 
   test("interruption after routes retains writers and sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
-      plannedApp: acceleratedPlan,
+      plannedApp: routedAcceleratedPlan,
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
       onPublish: (event) => (event._tag === "post-start" ? Effect.interrupt : Effect.void),
@@ -2137,7 +2151,7 @@ describe("pre-apply accelerated mount preparation", () => {
         pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
-    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
+    await expect(runStart(harness, routedAcceleratedPlan)).rejects.toThrow();
     expect(order).toEqual([]);
   });
 
@@ -2148,7 +2162,7 @@ describe("pre-apply accelerated mount preparation", () => {
       routeEntered = resolve;
     });
     const harness = makeHarness({
-      plannedApp: acceleratedPlan,
+      plannedApp: routedAcceleratedPlan,
       afterApplyRoutes: Effect.sync(() => {
         order.push("route-applied");
         routeEntered();
@@ -2169,9 +2183,9 @@ describe("pre-apply accelerated mount preparation", () => {
       startApp(
         {},
         {
-          plan: acceleratedPlan,
-          root: acceleratedPlan.root,
-          app: { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root },
+          plan: routedAcceleratedPlan,
+          root: routedAcceleratedPlan.root,
+          app: { kind: "user", id: routedAcceleratedPlan.id, root: routedAcceleratedPlan.root },
         },
       ).pipe(Effect.provide(harness.layer)),
     );

@@ -215,6 +215,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         return { kind: "destroyed" as const };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {
       const record = Effect.sync(() => {
@@ -273,6 +274,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

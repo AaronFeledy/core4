@@ -257,7 +257,7 @@ export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Typ
 
 /**
  * Networking plan — the per-app networking *intent*. Core defines the intent;
- * the `RuntimeProvider` realizes it: a per-app bridge network plus
+ * the `RuntimeProvider` realizes it: a nullable per-app bridge network plus
  * optional membership in the provider-owned shared cross-app network.
  *
  * `sharedNetworkMembership` is present when the selected provider advertises
@@ -265,8 +265,8 @@ export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Typ
  * networking, which keeps cross-app features from silently depending on it.
  */
 export const NetworkingPlan = Schema.Struct({
-  /** The per-app bridge network the provider must create for intra-app DNS. */
-  perAppBridge: PerAppBridgePlan,
+  /** The per-app bridge to create, or null for shared-only services such as the global app. */
+  perAppBridge: Schema.NullOr(PerAppBridgePlan),
   /** Shared cross-app network membership, present when the app joins it. */
   sharedNetworkMembership: Schema.optionalKey(SharedNetworkMembershipPlan),
 });

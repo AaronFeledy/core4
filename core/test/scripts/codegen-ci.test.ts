@@ -210,6 +210,12 @@ describe("ci workflow codegen", () => {
       const firstWorkflow = await readFile(providerMatrixWorkflowPath, "utf8");
       expect(firstWorkflow.startsWith(`${generatedProviderMatrixHeader}\n`)).toBe(true);
       expect(firstWorkflow).toContain("name: provider-matrix");
+      expect(firstWorkflow).toContain("  docker-fallback-smoke:");
+      expect(firstWorkflow).toContain("bun core/bin/lando.ts setup --provider=docker --yes --no-interactive");
+      expect(firstWorkflow).toContain('info --format=json > "$RUNNER_TEMP/docker-fallback-info.json"');
+      expect(firstWorkflow).toContain('--resolve "docker-fallback.lndo.site:$PORT:127.0.0.1" "$URL"');
+      expect(firstWorkflow).toContain("destroy --provider=docker --yes");
+      expect(firstWorkflow).toContain("global:destroy --provider=docker --yes");
       expect(firstWorkflow).toContain("- cron: '0 8 * * 1'");
       expect(firstWorkflow).toContain("workflow_dispatch:");
       expect(firstWorkflow).toContain("contents: read");
@@ -311,7 +317,7 @@ describe("ci workflow codegen", () => {
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
-      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
+      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
       expect(runtimeBundleWorkflow).not.toContain("bun-version: ");

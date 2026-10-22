@@ -12,20 +12,17 @@
  *   explicit `RootOverrides` field
  *     → `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT`
  *       / `LANDO_SYSTEM_PLUGIN_ROOT`
- *     → value from `config.yml`
+ *     → value from `config.yml`, then lexical `config.d/*.yml` overlays
  *     → platform default.
  *
  * The `userConfRoot` self-reference rule holds: `config.yml` is located from the
  * conf root that was fixed by option/env/default, and a `userConfRoot` value
- * inside `config.yml` never relocates that same load. The other three roots read
- * `config.yml` only after the conf root is fixed, and the env short-circuit
- * keeps the conf/data/cache fast path IO-free when the matching `LANDO_*` env
- * var is set.
+ * inside user files never relocates that same load. Host config shares the
+ * explicit-override tier; disabling sources.env also disables LANDO root env
+ * variables. Platform identity variables still determine platform defaults.
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join as hostJoin } from "node:path";
 
 // Type-only: keeps `effect` off the level-`none` cold-start fast path. The
 // canonical shapes live in `@lando/sdk/services`; this module owns only the
@@ -33,9 +30,13 @@ import { join as hostJoin } from "node:path";
 import type { HostPlatform } from "@lando/sdk/schema";
 import type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 
-import { envOverlay, resolveConfigFileRoot } from "./overlay.ts";
-import { joinFor, nonEmpty, normalizeHostPlatform, platformDefaults } from "./paths-platform.ts";
-import { parseMinimalYaml } from "./yaml-min.ts";
+import {
+  type ConfigLayer,
+  type ConfigSourceInputs,
+  mergeGlobalConfigSources,
+  readGlobalConfigSources,
+} from "./config-sources.ts";
+import { joinFor, normalizeHostPlatform } from "./paths-platform.ts";
 
 export type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 export { isPathWithin } from "./containment.ts";
@@ -43,97 +44,38 @@ export { sameRealpath } from "./realpath-equivalence.ts";
 export { normalizeHostPlatform } from "./paths-platform.ts";
 export { resolveHostHome } from "./paths-platform.ts";
 
-// --- config.yml read (lazy, cached per resolve) ------------------------------
-
-/**
- * Read a top-level string key from `<confRoot>/config.yml` without constructing
- * Effect or `ConfigService`. Uses the same YAML subset parser the config layer
- * uses. Any missing/unreadable/malformed file (or non-string value) yields
- * `undefined`, exactly like the merged config layer would. The file is read at
- * most once per `resolveLandoRoots` call via the supplied lazy reader.
- */
-const makeConfigReader = (confRoot: string): ((key: string) => string | undefined) => {
-  let loaded = false;
-  let parsed: Record<string, unknown> = {};
-  const load = (): void => {
-    if (loaded) return;
-    loaded = true;
-    let text: string;
-    try {
-      // The file is read on the HOST OS, so join with the host-bound separator.
-      text = readFileSync(hostJoin(confRoot, "config.yml"), "utf8");
-    } catch {
-      return;
-    }
-    try {
-      parsed = parseMinimalYaml(text);
-    } catch {
-      parsed = {};
-    }
-  };
-  return (key: string): string | undefined => {
-    load();
-    const value = parsed[key];
-    return typeof value === "string" && value !== "" ? value : undefined;
-  };
-};
-
 // --- root resolution ---------------------------------------------------------
 
-/**
- * Resolve the four roots in order per root: explicit override →
- * `LANDO_*` env → `config.yml` → platform default. The conf root is fixed first
- * (option → env → default); `config.yml` is then located from it, and a
- * `userConfRoot` value inside `config.yml` never relocates that load.
- */
-const resolveLandoRootsForPlatform = (overrides: RootOverrides, platform: HostPlatform): LandoRoots => {
-  const env = overrides.env ?? process.env;
-  const defaults = platformDefaults(platform, overrides);
+const resolveLandoRootsForPlatform = (overrides: PathInputs, platform: HostPlatform): LandoRoots => {
+  const layers = readGlobalConfigSources({
+    env: overrides.env ?? process.env,
+    sources: overrides.sources ?? { user: true, env: true },
+    host: overrides.host,
+    rootOverrides: { ...overrides, platform },
+    platform,
+  });
+  return resolveLandoRootsFromSources(layers);
+};
 
-  const envConfRoot = nonEmpty(env.LANDO_USER_CONF_ROOT);
-  const baseConfRoot = envConfRoot ?? defaults.userConfRoot;
-  const userConfRoot =
-    overrides.userConfRoot ??
-    resolveConfigFileRoot(baseConfRoot, envOverlay(env), { ...env, LANDO_USER_CONF_ROOT: envConfRoot });
-
-  const readConfig = makeConfigReader(userConfRoot);
-
-  const resolveOther = (
-    overrideValue: string | undefined,
-    envValue: string | undefined,
-    configKey: keyof LandoRoots,
-    defaultValue: string,
-  ): string => {
-    if (overrideValue !== undefined) return overrideValue;
-    const fromEnv = nonEmpty(envValue);
-    if (fromEnv !== undefined) return fromEnv; // env short-circuit: no config.yml read
-    return readConfig(configKey) ?? defaultValue;
+export const resolveLandoRootsFromSources = (layers: readonly ConfigLayer[]): LandoRoots => {
+  const merged = mergeGlobalConfigSources(layers).tree;
+  const defaults = layers[0]?.tree ?? {};
+  const root = (key: keyof LandoRoots): string => {
+    const value = merged[key];
+    const fallback = defaults[key];
+    return typeof value === "string" && value !== "" ? value : typeof fallback === "string" ? fallback : "";
   };
-
   return {
-    userConfRoot,
-    userCacheRoot: resolveOther(
-      overrides.userCacheRoot,
-      env.LANDO_USER_CACHE_ROOT,
-      "userCacheRoot",
-      defaults.userCacheRoot,
-    ),
-    userDataRoot: resolveOther(
-      overrides.userDataRoot,
-      env.LANDO_USER_DATA_ROOT,
-      "userDataRoot",
-      defaults.userDataRoot,
-    ),
-    systemPluginRoot: resolveOther(
-      overrides.systemPluginRoot,
-      env.LANDO_SYSTEM_PLUGIN_ROOT,
-      "systemPluginRoot",
-      defaults.systemPluginRoot,
-    ),
+    userConfRoot: root("userConfRoot"),
+    userCacheRoot: root("userCacheRoot"),
+    userDataRoot: root("userDataRoot"),
+    systemPluginRoot: root("systemPluginRoot"),
   };
 };
 
-export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => {
+export type PathInputs = RootOverrides & Pick<Partial<ConfigSourceInputs>, "host" | "sources">;
+
+export const resolveLandoRoots = (overrides: PathInputs = {}): LandoRoots => {
   const env = overrides.env ?? process.env;
   const platform = normalizeHostPlatform({ platform: overrides.platform, env });
   return resolveLandoRootsForPlatform(overrides, platform);
@@ -158,15 +100,29 @@ const appRootFingerprint = (appRoot: string): string =>
 
 // --- derived path factory ----------------------------------------------------
 
+export const managedFileLedgerPath = (
+  userDataRoot: string,
+  appId: string,
+  platform = normalizeHostPlatform(),
+): string => joinFor(platform)(userDataRoot, "managed-files", appId, "ledger.json");
+
+export const globalAppRootPath = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
+  joinFor(platform)(userDataRoot, "global");
+
 /**
  * Resolve every root and return builders for every derived path in the catalog.
  * App-scoped builders sanitize app names and fingerprint the app root so two
  * apps sharing a `name:` never collide.
  */
-export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
+export const makeLandoPaths = (overrides: PathInputs = {}): LandoPaths => {
   const env = overrides.env ?? process.env;
   const platform = normalizeHostPlatform({ platform: overrides.platform, env });
   const roots = resolveLandoRootsForPlatform(overrides, platform);
+  return makeLandoPathsFromRoots(roots, platform);
+};
+
+/** Build derived paths from an already resolved runtime snapshot without reading sources. */
+export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatform): LandoPaths => {
   const j = joinFor(platform);
 
   const { userConfRoot, userCacheRoot, userDataRoot, systemPluginRoot } = roots;
@@ -198,10 +154,10 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
       j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}-${kind}-agent`),
     providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
-    globalAppRoot: j(userDataRoot, "global"),
+    globalAppRoot: globalAppRootPath(userDataRoot, platform),
     snapshotsDir: j(userDataRoot, "snapshots"),
     appSnapshotsDir: (appId: string) => j(userDataRoot, "snapshots", appId),
-    managedFileLedger: (appId: string) => j(userDataRoot, "managed-files", appId, "ledger.json"),
+    managedFileLedger: (appId: string) => managedFileLedgerPath(userDataRoot, appId, platform),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),
     toolDownloadsDir: (toolId: string) => j(userCacheRoot, "tool-downloads", toolId),

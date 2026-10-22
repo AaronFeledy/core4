@@ -203,6 +203,7 @@ const makeLogsLayer = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -246,6 +247,9 @@ const makeLogsLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(defaultProviderCapabilities),
         select: () => Effect.succeed(provider),

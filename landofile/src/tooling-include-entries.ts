@@ -1,13 +1,22 @@
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 
-import { isMergeDirective, mergeValues } from "@lando/sdk/landofile";
+import {
+  type ValueOrigins,
+  isMergeDirective,
+  mergeValues,
+  mergeValuesWithOrigins,
+  valueOriginAt,
+} from "@lando/sdk/landofile";
 import { includeError } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
+import { getOrigins } from "./pipeline/origins.ts";
+import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 
 type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 
 export interface NormalizedToolingInclude {
+  readonly origin?: AuthoredOrigin | undefined;
   readonly source: string;
   readonly namespace: string | undefined;
   readonly flatten: boolean;
@@ -51,22 +60,27 @@ const isRemoteSource = (source: string): boolean =>
 
 export { resolveToolingIncludeSourceRoots } from "./tooling-include-source-roots.ts";
 
-const canonicalToolingEntries = (
-  landofile: Pick<LandofileShape, "includes">,
-): ReadonlyArray<ObjectIncludeEntry> =>
-  (landofile.includes ?? []).filter(
-    (entry): entry is ObjectIncludeEntry => typeof entry !== "string" && entry.kind === "tooling",
-  );
+interface ComposedToolingInclude {
+  readonly value: ObjectIncludeEntry;
+  readonly origins?: ValueOrigins<AuthoredOrigin> | undefined;
+}
 
 const groupByNamespace = (
-  source: Pick<LandofileShape, "includes">,
-): ReadonlyMap<string, ReadonlyArray<ObjectIncludeEntry>> => {
-  const declared = new Map<string, ObjectIncludeEntry[]>();
-  for (const entry of canonicalToolingEntries(source)) {
+  source: Record<string, unknown>,
+): ReadonlyMap<string, ReadonlyArray<ComposedToolingInclude>> => {
+  const declared = new Map<string, ComposedToolingInclude[]>();
+  const origins = getOrigins(source);
+  for (const [index, entry] of (includeAcquisitionView(source).includes ?? []).entries()) {
+    if (typeof entry === "string" || entry.kind !== "tooling") continue;
+    const child = origins?.children.get("includes")?.children.get(index);
+    const composed = {
+      value: entry,
+      ...(child === undefined ? {} : { origins: child }),
+    };
     const key = entry.namespace ?? entry.source;
     const group = declared.get(key);
-    if (group === undefined) declared.set(key, [entry]);
-    else group.push(entry);
+    if (group === undefined) declared.set(key, [composed]);
+    else group.push(composed);
   }
   return declared;
 };
@@ -91,20 +105,30 @@ const groupByNamespace = (
  */
 export const composeToolingIncludeEntries = (
   sources: ReadonlyArray<Record<string, unknown>>,
-): ReadonlyArray<ObjectIncludeEntry> => {
-  const composed = new Map<string, ReadonlyArray<ObjectIncludeEntry>>();
+): ReadonlyArray<ComposedToolingInclude> => {
+  const composed = new Map<string, ReadonlyArray<ComposedToolingInclude>>();
   for (const source of sources) {
     if (isMergeDirective(source.includes)) composed.clear();
-    for (const [key, declared] of groupByNamespace(includeAcquisitionView(source))) {
+    for (const [key, declared] of groupByNamespace(source)) {
       const existing = composed.get(key);
       const overridden = existing?.length === 1 && declared.length === 1 ? existing[0] : undefined;
       const override = declared[0];
-      composed.set(
-        key,
-        overridden === undefined || override === undefined
-          ? declared
-          : [mergeValues(IncludeEntry, overridden, override) as ObjectIncludeEntry],
-      );
+      if (overridden === undefined || override === undefined) {
+        composed.set(key, declared);
+        continue;
+      }
+      const merged =
+        overridden.origins === undefined || override.origins === undefined
+          ? {
+              value: mergeValues(IncludeEntry, overridden.value, override.value),
+              origins: override.origins ?? overridden.origins,
+            }
+          : mergeValuesWithOrigins(
+              IncludeEntry,
+              { value: overridden.value, origins: overridden.origins },
+              { value: override.value, origins: override.origins },
+            );
+      composed.set(key, [{ value: merged.value as ObjectIncludeEntry, origins: merged.origins }]);
     }
   }
   return [...composed.values()].flat();
@@ -117,7 +141,7 @@ export const hasToolingIncludes = (landofile: ToolingIncludeSurface): boolean =>
 export const assertCompatibleIncludeFields = (
   landofile: ToolingIncludeSurface,
 ): LandofileIncludeError | undefined => {
-  for (const entry of landofile.includes ?? []) {
+  for (const [index, entry] of (landofile.includes ?? []).entries()) {
     if (typeof entry === "string") continue;
     if (entry.kind === "tooling") {
       const offending = TOOLING_TRANSPORT_FIELDS.find((field) => entry[field] !== undefined);
@@ -126,6 +150,7 @@ export const assertCompatibleIncludeFields = (
           message: `Tooling include ${entry.source} sets unsupported transport field "${offending}".`,
           source: entry.source,
           kind: "forbidden-field",
+          path: ["includes", index],
           remediation: LOCAL_SOURCE_REMEDIATION,
         });
       }
@@ -134,6 +159,7 @@ export const assertCompatibleIncludeFields = (
           message: `Tooling include ${entry.source} uses an unsupported remote source.`,
           source: entry.source,
           kind: "forbidden-field",
+          path: ["includes", index],
           remediation: LOCAL_SOURCE_REMEDIATION,
         });
       }
@@ -145,6 +171,7 @@ export const assertCompatibleIncludeFields = (
       message: `Include ${entry.source} sets tooling-only field "${offending}" on a kind: "${entry.kind ?? "landofile"}" include.`,
       source: entry.source,
       kind: "forbidden-field",
+      path: ["includes", index],
       remediation: KIND_REMEDIATION,
     });
   }
@@ -154,6 +181,7 @@ export const assertCompatibleIncludeFields = (
       message: `Tooling include ${namespace} uses an unsupported remote source ${entry.file}.`,
       source: entry.file,
       kind: "forbidden-field",
+      path: ["toolingIncludes", namespace],
       remediation: LOCAL_SOURCE_REMEDIATION,
     });
   }
@@ -161,6 +189,7 @@ export const assertCompatibleIncludeFields = (
 };
 
 const normalizeEntry = (input: {
+  readonly origin?: AuthoredOrigin | undefined;
   readonly source: string;
   readonly namespace: string | undefined;
   readonly flatten: boolean | undefined;
@@ -170,6 +199,7 @@ const normalizeEntry = (input: {
   readonly excludes: ReadonlyArray<string> | undefined;
   readonly vars: Readonly<Record<string, ToolingVarLiteral>> | undefined;
 }): NormalizedToolingInclude => ({
+  origin: input.origin,
   source: input.source,
   namespace: input.namespace,
   flatten: input.flatten === true,
@@ -180,12 +210,16 @@ const normalizeEntry = (input: {
   vars: input.vars ?? {},
 });
 
-const fromIncludesArray = (entries: ReadonlyArray<IncludeEntry>): ReadonlyArray<NormalizedToolingInclude> =>
-  entries.flatMap((entry) =>
+const fromIncludesArray = (
+  entries: ReadonlyArray<IncludeEntry>,
+  origins?: ValueOrigins<AuthoredOrigin>,
+): ReadonlyArray<NormalizedToolingInclude> =>
+  entries.flatMap((entry, index) =>
     typeof entry === "string" || entry.kind !== "tooling"
       ? []
       : [
           normalizeEntry({
+            origin: origins === undefined ? undefined : valueOriginAt(origins, ["includes", index]).source,
             source: entry.source,
             namespace: entry.namespace,
             flatten: entry.flatten,
@@ -200,9 +234,12 @@ const fromIncludesArray = (entries: ReadonlyArray<IncludeEntry>): ReadonlyArray<
 
 const fromShorthandMap = (
   map: NonNullable<LandofileShape["toolingIncludes"]>,
+  origins?: ValueOrigins<AuthoredOrigin>,
 ): ReadonlyArray<NormalizedToolingInclude> =>
   Object.entries(map).map(([namespace, entry]) =>
     normalizeEntry({
+      origin:
+        origins === undefined ? undefined : valueOriginAt(origins, ["toolingIncludes", namespace]).source,
       source: entry.file,
       namespace,
       flatten: entry.flatten,
@@ -216,9 +253,10 @@ const fromShorthandMap = (
 
 export const normalizeToolingIncludes = (
   landofile: ToolingIncludeSurface,
+  origins?: ValueOrigins<AuthoredOrigin>,
 ): ReadonlyArray<NormalizedToolingInclude> => [
-  ...fromIncludesArray(landofile.includes ?? []),
-  ...fromShorthandMap(landofile.toolingIncludes ?? {}),
+  ...fromIncludesArray(landofile.includes ?? [], origins),
+  ...fromShorthandMap(landofile.toolingIncludes ?? {}, origins),
 ];
 
 /**

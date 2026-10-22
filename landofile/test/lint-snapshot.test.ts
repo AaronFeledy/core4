@@ -45,7 +45,7 @@ describe("retained lint snapshot", () => {
     expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(true);
     expect(snapshot.result.violations).toEqual([
       expect.objectContaining({
-        scope: "fragment",
+        scopes: ["fragment"],
         path: ["services", "web", "primary"],
         source: {
           file: join(root, "fragment.yml"),
@@ -70,7 +70,7 @@ describe("retained lint snapshot", () => {
     expect(snapshot.result.violations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          scope: "fragment",
+          scopes: ["fragment"],
           path: ["services", "web", "working_dir"],
           source: {
             file: join(root, ".lando.base.yml"),
@@ -81,7 +81,7 @@ describe("retained lint snapshot", () => {
           column: 5,
         }),
         expect.objectContaining({
-          scope: "effective",
+          scopes: ["effective"],
           path: ["services", "web", "workingDirectory"],
           source: {
             file: join(root, ".lando.base.yml"),
@@ -95,13 +95,34 @@ describe("retained lint snapshot", () => {
     );
   });
 
-  test("does not collapse identical findings from distinct physical layers or scopes", async () => {
+  test("retains findings from distinct physical layers and with distinct messages", async () => {
     await write(".lando.base.yml", "runtime: wrong\n");
     await write(".lando.yml", "name: snapshot\nruntime: wrong\n");
     const snapshot = await lint();
     const issues = snapshot.result.violations.filter((issue) => issue.path[0] === "runtime");
-    expect(issues.filter((issue) => issue.scope === "fragment")).toHaveLength(2);
-    expect(issues.filter((issue) => issue.scope === "effective")).toHaveLength(1);
+    expect(issues).toHaveLength(3);
+    expect(
+      issues.map(({ source, scopes }) => ({
+        file: source !== undefined && "file" in source ? source.file : undefined,
+        scopes,
+      })),
+    ).toEqual([
+      { file: join(root, ".lando.base.yml"), scopes: ["fragment"] },
+      { file: join(root, ".lando.yml"), scopes: ["fragment"] },
+      { file: join(root, ".lando.yml"), scopes: ["effective"] },
+    ]);
+    expect(
+      new Set(
+        issues
+          .filter(
+            (issue) =>
+              issue.source !== undefined &&
+              "file" in issue.source &&
+              issue.source.file === join(root, ".lando.yml"),
+          )
+          .map((issue) => issue.message),
+      ).size,
+    ).toBe(2);
   });
 
   test("evaluates TypeScript and strictly finalizes only once", async () => {

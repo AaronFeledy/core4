@@ -33,7 +33,7 @@ import {
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
-import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
+import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -171,12 +171,10 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
   const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
   const task = tooling[toolingLookupKey];
-  const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
+  const reservedConflict = reservedToolingNameConflict(toolingLookupKey);
 
-  if (task !== undefined && reservedOwner !== undefined) {
-    return yield* Effect.fail(
-      commandAliasConflictError(toolingLookupKey, `tooling task ${toolingLookupKey}`),
-    );
+  if (task !== undefined && reservedConflict !== undefined) {
+    return yield* Effect.fail(reservedConflict);
   }
 
   if (task === undefined) {

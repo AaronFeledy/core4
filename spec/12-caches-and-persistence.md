@@ -62,6 +62,7 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userConfRoot>/config.yml`, `config.d/*.yml` | Global configuration layers. |
 | `<userConfRoot>/global.config.yml` | Global-service enablement map (§20.3.1). |
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
+| `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
 | `<userCacheRoot>/cwd-app-map.bin` | Router-phase CWD index. |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |
@@ -122,7 +123,7 @@ This durable provider-private identity record lets stop, destroy, and a convergi
 | Corruption or version mismatch | Fail closed. Do not treat the hint as absent. |
 | Payload | Container, private-network, and volume identities and digests only, with expected app, provider, root, and owner, and the actual physical name. No raw config, no per-value hashes, no resolved secret values. |
 
-`ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the Lando-managed provider (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
+`ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the realized global provider, or the host provider when no applied global plan exists (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
 
 ### 12.5 Hot-path read budgets
 

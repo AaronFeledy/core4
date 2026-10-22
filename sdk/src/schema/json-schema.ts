@@ -40,6 +40,7 @@ import {
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
 import {
+  AppPlacementError,
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
   LandofileExpressionParseError,
@@ -47,6 +48,7 @@ import {
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
   RouteInputError,
+  RouteProviderMismatchError,
   SubscriberLevelMismatchError,
 } from "../errors/index.ts";
 import { KeymapConflictError } from "../errors/keymap.ts";
@@ -566,6 +568,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteFilterType,
   RouteFilter,
   RouteInputError,
+  RouteProviderMismatchError,
+  AppPlacementError,
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
@@ -1051,6 +1055,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouteFilterType: "Supported provider-neutral route filter types.",
   RouteFilter: "Provider-neutral route filter options discriminated by type.",
   RouteInputError: "Invalid authored route with its key path and remediation.",
+  RouteProviderMismatchError: "Routed app provider differs from the host router provider.",
+  AppPlacementError: "App realized on a provider other than the selected provider.",
   RouteObjectInput: "Expanded authored route with optional ordered filters.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
@@ -2459,6 +2465,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RecipeRegistryResponse.resolution",
   "RoutePlan.endpoint",
   "RouteInputError._tag",
+  "RouteProviderMismatchError._tag",
+  "AppPlacementError._tag",
   "RoutePlan.hostname",
   "RoutePlan.pathPrefix",
   "RoutePlan.scheme",

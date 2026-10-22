@@ -74,7 +74,7 @@ test("reports an array-position expression failure with a numeric path segment",
         rule: "landofile.expression",
         severity: "error",
         message: expect.any(String),
-        scope: "effective",
+        scopes: ["effective"],
         source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["tooling", "seed", "cmds", 1] },
       },
     ]);

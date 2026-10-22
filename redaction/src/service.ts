@@ -12,6 +12,8 @@ import {
 } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
 
+import { expandRedactionValues } from "./exact-values.ts";
+
 export interface RedactionForProfileOptions {
   readonly redactionTokens?: Iterable<string> | undefined;
   /** Exact values masked like resolved secrets; an unusable one suppresses any text that contains it. */
@@ -164,14 +166,6 @@ const collectOptionValues = (options: RedactionForProfileOptions | undefined): s
   ...(options?.redactionTokens ?? []),
 ];
 
-const dedupeValues = (values: Iterable<string>): string[] => {
-  const deduped = new Set<string>();
-  for (const value of values) {
-    if (nonEmpty(value) && isUsableExactRedactionValue(value)) deduped.add(value);
-  }
-  return [...deduped];
-};
-
 /**
  * Explicit values (secret store, registrations, authoritative tokens) are authoritative: an
  * unusable one suppresses any string that contains it. Heuristic sources drop public defaults
@@ -180,11 +174,14 @@ const dedupeValues = (values: Iterable<string>): string[] => {
 const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
-): CreateRedactorOptions => ({
-  values: dedupeValues(collectOptionValues(options)),
-  authoritativeValues: [...secretValues, ...registeredValues, ...(options?.authoritativeTokens ?? [])],
-  ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
-});
+): CreateRedactorOptions => {
+  const authoritativeValues = [...secretValues, ...registeredValues, ...(options?.authoritativeTokens ?? [])];
+  return {
+    values: expandRedactionValues([...collectOptionValues(options), ...authoritativeValues]),
+    authoritativeValues,
+    ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
+  };
+};
 
 const registeredValues = new RedactionValues();
 let registeredGeneration = 0;
@@ -252,7 +249,7 @@ export const createPayloadValues = (
   let values = new RedactionValues();
   return () => {
     if (generation !== registeredGeneration) {
-      values = new RedactionValues(dedupeValues([...initial, ...registeredValues]));
+      values = new RedactionValues(expandRedactionValues([...initial, ...registeredValues]));
       generation = registeredGeneration;
     }
     return values;
