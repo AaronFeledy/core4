@@ -23,15 +23,6 @@ export class ToolingDisabledError extends Schema.TaggedError<ToolingDisabledErro
   remediation: Schema.String,
 }) {}
 
-export class ToolingIncludeCycleError extends Schema.TaggedError<ToolingIncludeCycleError>()(
-  "ToolingIncludeCycleError",
-  {
-    message: Schema.String,
-    source: Schema.String,
-    remediation: Schema.String,
-  },
-) {}
-
 export class ToolingExecError extends Schema.TaggedError<ToolingExecError>()("ToolingExecError", {
   message: Schema.String,
   tool: Schema.String,

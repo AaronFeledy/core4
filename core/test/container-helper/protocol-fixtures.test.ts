@@ -11,6 +11,14 @@ const fixtures = resolve(import.meta.dirname, "../../container-helper/testdata")
 const readFrames = async (name: string) =>
   (await Bun.file(resolve(fixtures, name)).text()).trimEnd().split("\n");
 
+test.each([
+  ["open-url-request.jsonl", { _tag: "openUrl" as const, url: "https://example.com/x?a=1&b=two" }],
+  ["open-path-request.jsonl", { _tag: "openPath" as const, path: AbsolutePath.make("/app/README") }],
+])("the host decoder accepts the Go client's %s", async (name, expected) => {
+  const wire = await Bun.file(resolve(fixtures, name)).text();
+  expect(Schema.decodeUnknownSync(Schema.fromJsonString(HostProxyRequest))(wire)).toEqual(expected);
+});
+
 test("the host decoder accepts the Go client's canonical runLando request", async () => {
   const wire = await Bun.file(resolve(fixtures, "run-lando-request.jsonl")).text();
   const expected = buildRunLandoRequest({

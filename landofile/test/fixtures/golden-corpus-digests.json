@@ -102,6 +102,10 @@
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-event-tooling",
+      "digest": "67f450cca3d98d73e3758805c3935025bc40ce9407d4b6b6480ac89f788d8a47"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-invalid",
       "invalid": {
         "status": "invalid",
@@ -111,6 +115,13 @@
     {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-pgport",
       "digest": "9af58cc2876625db8d252f8d3e0135ff558c57f81bd7bdc5d8189b911f9e3a14"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-include",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileIncludeError"
+      }
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/marker-warning",
@@ -539,7 +550,7 @@
     },
     {
       "fixture": "docs/guides/output-streaming/fixtures/stream-container",
-      "digest": "b8e2a251576a526c9c5de65258ac4ee7208397b1af40b0993103fc2e118e2a8d"
+      "digest": "9185bfe3f0ad6878eed4924a4157fe63bca16fa652f941560b83d8bf328931e9"
     },
     {
       "fixture": "docs/guides/php-build-failures/fixtures/failing-build",

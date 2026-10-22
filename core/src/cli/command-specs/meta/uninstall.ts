@@ -605,7 +605,7 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, Priva
   description: "Remove Lando-owned installed files after confirmation.",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "minimal",
+  bootstrap: "none",
   flags: {
     "dry-run": Flags.boolean({
       description: "Print the uninstall plan without changing the system.",

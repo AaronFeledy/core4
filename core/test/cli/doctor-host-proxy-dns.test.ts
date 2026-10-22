@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 
@@ -47,29 +47,25 @@ test.each(["lndo.test", "LNDO.Test"])(
   },
 );
 
-test("falls back to the default domain when config reads fail", async () => {
+test("does not run host-proxy checks when config construction fails", async () => {
   // Given
   const failure = new ConfigError({ message: "config unavailable", path: "/config.yml" });
-  const config = ConfigService.of({
-    load: Effect.fail(failure),
-    get: () => Effect.fail(failure),
-  });
+  const config = Layer.effect(ConfigService, Effect.fail(failure));
 
   // When
   const result = await Effect.runPromise(
-    subsystemDoctor().pipe(
-      Effect.provideService(ConfigService, config),
-      Effect.provideService(
-        HostDnsResolver,
-        HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
-      ),
-      Effect.provide(DefaultSubsystemDoctorLayer),
-    ),
+    subsystemDoctor()
+      .pipe(
+        Effect.provide(config),
+        Effect.provideService(
+          HostDnsResolver,
+          HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
+        ),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      )
+      .pipe(Effect.result),
   );
 
   // Then
-  expect(result.checks.find((entry) => entry.name === "host-proxy")).toMatchObject({
-    status: "pass",
-    context: { baseDomain: "lndo.site", dnsHostname: "lando-doctor-probe.lndo.site" },
-  });
+  expect(result).toMatchObject({ _tag: "Failure", failure });
 });

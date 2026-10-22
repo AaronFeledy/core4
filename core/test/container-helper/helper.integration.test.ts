@@ -36,8 +36,8 @@ const tempRoot = async (): Promise<string> => {
 };
 
 /** The client role is selected by the invoked name, as in a container's /usr/local/bin/lando. */
-const landoClient = async (): Promise<string> => {
-  const link = join(await tempRoot(), "lando");
+const landoClient = async (role = "lando"): Promise<string> => {
+  const link = join(await tempRoot(), role);
   await symlink(await helperPath(), link);
   return link;
 };
@@ -97,6 +97,54 @@ const captureRunLando = async (
 };
 
 describe.skipIf(process.platform !== "linux")("host-proxy client role", () => {
+  test.each([
+    [
+      "xdg-open",
+      "https://example.com/x?a=1&b=two",
+      { _tag: "openUrl", url: "https://example.com/x?a=1&b=two" },
+    ],
+    ["open", "mailto:dev@example.com", { _tag: "openUrl", url: "mailto:dev@example.com" }],
+    ["xdg-open", "./README", { _tag: "openPath", path: "/tmp/README" }],
+  ])("%s sends the authenticated opener request for %s", async (role, target, expected) => {
+    const captured = Promise.withResolvers<unknown>();
+    const server = createServer((req, res) => {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        captured.resolve({ path: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
+        res.end('{"_tag":"ok"}');
+      });
+    });
+    try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new TypeError("Expected TCP address");
+      const child = Bun.spawn([await landoClient(role), target], {
+        cwd: "/tmp",
+        env: {
+          LANDO_HOST_PROXY_URL: `http://127.0.0.1:${address.port}`,
+          LANDO_HOST_PROXY_TOKEN: "secret-token",
+          LANDO_HOST_PROXY_SESSION: "session",
+          LANDO_HOST_PROXY_APP: "demo",
+          SECRET: "never-forwarded",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+        signal: AbortSignal.timeout(10_000),
+      });
+      expect(await child.exited).toBe(0);
+      expect(await captured.promise).toEqual({
+        path: `/${expected._tag}`,
+        auth: "Bearer secret-token",
+        body: expected,
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   test("sends runLando with argv and cwd and exits with the host exit code", async () => {
     const { body, exitCode } = await captureRunLando({}, 3);
     expect(exitCode).toBe(3);

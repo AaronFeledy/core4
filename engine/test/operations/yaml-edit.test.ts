@@ -30,6 +30,9 @@ const fixtures = [
   { source: "a: 1\n# tail\n", key: "b", value: 2, expected: "a: 1\nb: 2\n# tail\n" },
   { source: "a: 1", key: "b.c.d", value: 2, expected: "a: 1\nb:\n  c:\n    d: 2" },
   { source: "", key: "a", value: 2, expected: "a: 2\n" },
+  // An empty `{}` left by unsetting the last child becomes a block mapping again.
+  { source: "# c\na: {} # keep\nc: 2\n", key: "a.b", value: 3, expected: "# c\na: # keep\n  b: 3\nc: 2\n" },
+  { source: "a: {}", key: "a.b.c", value: 3, expected: "a:\n  b:\n    c: 3" },
   { source: "# only\n", key: "a", value: 2, expected: "# only\na: 2\n" },
   {
     source: "a:\n  - one # keep\n  - two\n",

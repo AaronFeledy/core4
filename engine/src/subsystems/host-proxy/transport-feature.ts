@@ -49,19 +49,22 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
     service.addEnv("LANDO_HOST_PROXY_SESSION", session.sessionId);
     service.addEnv("LANDO_HOST_PROXY_APP", session.appId);
     service.addEnv("LANDO_HOST_PROXY_DEPTH", "0");
-    service.addMount({
-      type: "bind",
-      source: session.shimPath,
-      target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
-      readOnly: true,
-      realization: "passthrough",
-    });
+    for (const target of [HOST_PROXY_CONTAINER_LANDO, "/usr/local/bin/xdg-open", "/usr/local/bin/open"])
+      service.addMount({
+        type: "bind",
+        source: session.shimPath,
+        target: PortablePath.make(target),
+        readOnly: true,
+        realization: "passthrough",
+      });
   },
 });
 
 const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_CONTAINER_LANDO,
+  "/usr/local/bin/xdg-open",
+  "/usr/local/bin/open",
 ]);
 
 const stripHostProxyService = (service: ServicePlan): ServicePlan => ({

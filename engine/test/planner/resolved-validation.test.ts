@@ -91,7 +91,10 @@ const compareIssues = async (root: string, paths: readonly (readonly (string | n
       .sort(),
   ).toEqual(expectedPaths);
   expect(planned.failure.issues.map((issue) => key(issue.path)).sort()).toEqual(expectedPaths);
-  for (const issue of planned.failure.issues) expect(issue.source?.file).toBe(join(root, ".lando.yml"));
+  for (const issue of planned.failure.issues)
+    expect(issue.source !== undefined && "file" in issue.source ? issue.source.file : undefined).toBe(
+      join(root, ".lando.yml"),
+    );
   return { lint };
 };
 
@@ -143,7 +146,7 @@ test("lint and planning aggregate service, hostname and materialized route field
         "landofile.hostname",
       ]);
       for (const issue of lint.violations)
-        expect(issue).toMatchObject({ line: expect.any(Number), scope: "effective" });
+        expect(issue).toMatchObject({ line: expect.any(Number), scopes: ["effective"] });
     },
   );
 });

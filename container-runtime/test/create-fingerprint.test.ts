@@ -186,6 +186,8 @@ describe("desired immutable create config", () => {
       },
       mounts: [
         "/usr/local/bin/lando",
+        "/usr/local/bin/xdg-open",
+        "/usr/local/bin/open",
         "/run/lando/ssh-agent",
         "/run/lando/gpg-agent",
         "/run/lando/gpg-agent-keys",

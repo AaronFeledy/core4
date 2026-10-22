@@ -3,12 +3,10 @@ import { Context, type Effect } from "effect";
 import type {
   BuildPhaseFailedError,
   CapabilityError,
-  CommandAliasConflictError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
   HomePathCapabilityError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   NotImplementedError,
   PublicationUnsupportedError,
@@ -23,11 +21,9 @@ export type AppPlannerError =
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | ConfigExpressionError;
 
 export type BuildError = EventError | ProviderSelectionError | ProviderError;
 export type BuildAppError = BuildError | BuildPhaseFailedError;

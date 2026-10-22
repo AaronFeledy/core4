@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { Effect, Exit } from "effect";
 
@@ -40,6 +41,14 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test.each(["linux", "darwin", "win32"] as const)(
+    "%s declares only its dialect realizations",
+    (platform) => {
+      expect(mvpProviderCapabilities(platform).composeKnobs?.supported).toEqual(
+        composeKnobsForDialect("libpod"),
+      );
+    },
+  );
   test("advertises agentSocket bind-directory on linux and guest-bridge on darwin and win32", () => {
     // Given: native and managed-machine host platforms.
     const platforms = ["linux", "darwin", "win32", "wsl"] as const;

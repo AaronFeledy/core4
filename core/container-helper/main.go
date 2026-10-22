@@ -28,8 +28,11 @@ func main() {
 }
 
 func dispatch(argv0 string, args []string, streams helperIO) int {
-	if filepath.Base(argv0) == "lando" {
+	switch filepath.Base(argv0) {
+	case "lando":
 		return runHostProxy(context.Background(), args, streams)
+	case "xdg-open", "open":
+		return runHostOpen(context.Background(), args, streams)
 	}
 	if len(args) > 0 {
 		switch args[0] {
