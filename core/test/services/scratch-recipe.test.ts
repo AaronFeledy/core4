@@ -223,6 +223,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
           }),
         );
   const scratchDeps = Layer.mergeAll(
+    LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     landofileServiceLayer,

@@ -20,40 +20,45 @@ const legacyCatalog = Schema.Struct({
   ),
 });
 
-// Remove this shield once no supported development build writes app-id catalogs. Never quarantine them:
-// unreadable ownership evidence must prevent GC rather than release its images for deletion.
+const legacyCatalogFailure = (file: string, cause: unknown) =>
+  new DataTransferError({
+    operation: "legacy-snapshot-catalog",
+    message: `Cannot read legacy snapshot catalog ${file}.`,
+    cause,
+    remediation: `Recover ${file} before retrying GC. Deleting it releases protection of its native images.`,
+  });
+
+export const findLegacySnapshotCatalogs = Effect.fn("DataMover.findLegacySnapshotCatalogs")(function* (
+  paths: LandoPaths,
+) {
+  const catalogs: string[] = [];
+  for (const entry of yield* readSnapshotDirectory(paths.snapshotsDir)) {
+    if (ownerDirectoryPattern.test(entry.name) || (!entry.isDirectory() && !entry.isSymbolicLink())) continue;
+    const file = join(paths.snapshotsDir, entry.name, "index.bin");
+    const exists = yield* Effect.tryPromise({
+      try: () => lstat(file),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.as(true),
+      Effect.catch((cause) =>
+        errnoCode(cause) === "ENOENT"
+          ? Effect.succeed(false)
+          : Effect.fail(legacyCatalogFailure(file, cause)),
+      ),
+    );
+    if (exists) catalogs.push(file);
+  }
+  return catalogs.sort();
+});
+
+// Never quarantine legacy ownership evidence: unreadable catalogs must block GC, not release images.
 export const legacySnapshotReferences = Effect.fn("DataMover.legacySnapshotReferences")(function* (
   paths: LandoPaths,
 ) {
   const refs: Array<{ readonly provider: string; readonly id: string }> = [];
-  for (const entry of yield* readSnapshotDirectory(paths.snapshotsDir)) {
-    if (ownerDirectoryPattern.test(entry.name) || (!entry.isDirectory() && !entry.isSymbolicLink())) continue;
-    const file = join(paths.snapshotsDir, entry.name, "index.bin");
-    const failure = (cause: unknown) =>
-      new DataTransferError({
-        operation: "legacy-snapshot-catalog",
-        message: `Cannot read legacy snapshot catalog ${file}.`,
-        cause,
-        remediation: `Recover ${file} before retrying GC. Deleting it releases protection of its native images.`,
-      });
-    const text = yield* Effect.tryPromise({
-      try: () => readFile(file, "utf8"),
-      catch: (cause) => cause,
-    }).pipe(
-      Effect.catch((cause) => {
-        if (errnoCode(cause) !== "ENOENT") return Effect.fail(failure(cause));
-        return Effect.tryPromise({
-          try: () => lstat(file),
-          catch: (error) => error,
-        }).pipe(
-          Effect.flatMap(() => Effect.fail(failure(cause))),
-          Effect.catch((error) =>
-            errnoCode(error) === "ENOENT" ? Effect.succeed(undefined) : Effect.fail(failure(error)),
-          ),
-        );
-      }),
-    );
-    if (text === undefined) continue;
+  for (const file of yield* findLegacySnapshotCatalogs(paths)) {
+    const failure = (cause: unknown) => legacyCatalogFailure(file, cause);
+    const text = yield* Effect.tryPromise({ try: () => readFile(file, "utf8"), catch: failure });
     const raw = yield* Effect.try({ try: (): unknown => JSON.parse(text), catch: failure });
     const catalog = yield* Schema.decodeUnknownEffect(legacyCatalog)(raw).pipe(Effect.mapError(failure));
     for (const info of catalog.data) if (info.native !== undefined) refs.push(info.native);
@@ -128,7 +133,7 @@ export const orphanedSnapshotMethods = (options: {
           }),
         );
       }
-      yield* Effect.scoped(options.provider.removeVolumeSnapshot(artifact.ref)).pipe(
+      yield* Effect.scoped(options.provider.removeVolumeSnapshot(artifact.ref, { startRuntime: false })).pipe(
         Effect.mapError(failure),
       );
     }),

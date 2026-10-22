@@ -470,9 +470,10 @@ export class RuntimeProvider extends Context.Service<
     readonly snapshotVolume: (
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
-    /** Idempotently remove this provider's snapshot, dispatching on its stored format. */
+    /** Idempotently remove a snapshot. GC disables runtime startup/repair; purge allows it by default. */
     readonly removeVolumeSnapshot: (
       snapshot: VolumeSnapshotRef,
+      options?: { readonly startRuntime?: boolean },
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
     /** List native snapshot images without consulting a host snapshot index. */
     readonly listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>;

@@ -58,6 +58,47 @@ export const PostGlobalStopEvent = Schema.TaggedStruct("post-global-stop", {
 });
 export type PostGlobalStopEvent = typeof PostGlobalStopEvent.Type;
 
+// ============================================================================
+// Global destroy brackets cover provider teardown and route cleanup.
+// ============================================================================
+
+export const PreGlobalDestroyEvent = Schema.Struct({
+  _tag: Schema.tag("pre-global-destroy").annotate({
+    description: "Global destroy opening event discriminator.",
+  }),
+  scope: Schema.Literal("global").annotate({ description: "Global lifecycle scope." }),
+  app: AppRef.annotate({ description: "Global app identity being destroyed." }),
+  evidence: Schema.Literals(["applied", "orphans", "owned"]).annotate({
+    description:
+      "Teardown evidence: an applied plan, observed orphans, or ownership inventory. Absent evidence emits no bracket.",
+  }),
+  purge: Schema.Boolean.annotate({
+    description: "Whether app-owned volumes are removed. Global purge does not remove snapshots or caches.",
+  }),
+  timestamp: Timestamp.annotate({
+    description: "Time the global destroy bracket opened, before destructive work.",
+  }),
+});
+export type PreGlobalDestroyEvent = typeof PreGlobalDestroyEvent.Type;
+
+export const PostGlobalDestroyEvent = Schema.Struct({
+  _tag: Schema.tag("post-global-destroy").annotate({
+    description: "Global destroy completion event discriminator.",
+  }),
+  scope: PreGlobalDestroyEvent.fields.scope,
+  app: AppRef.annotate({ description: "Global app identity whose teardown completed." }),
+  evidence: PreGlobalDestroyEvent.fields.evidence,
+  purge: PreGlobalDestroyEvent.fields.purge,
+  outcome: Schema.Literals(["destroyed", "unchanged"]).annotate({
+    description:
+      "Whether provider teardown removed resources. Published only after teardown and route cleanup both succeed.",
+  }),
+  timestamp: Timestamp.annotate({
+    description: "Time global teardown and route cleanup completed successfully.",
+  }),
+});
+export type PostGlobalDestroyEvent = typeof PostGlobalDestroyEvent.Type;
+
 export const PreGlobalRebuildEvent = Schema.TaggedStruct("pre-global-rebuild", {
   scope: Schema.Literal("global"),
   app: AppRef,

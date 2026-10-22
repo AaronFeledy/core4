@@ -1,7 +1,13 @@
 import { Effect } from "effect";
 
-import type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
-import { type AbsolutePath, type SnapshotInfo, appIdentityKey, snapshotHandle } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type SnapshotInfo,
+  appIdentityKey,
+  planAppIdentity,
+  snapshotHandle,
+} from "@lando/sdk/schema";
 import { DataMover } from "@lando/sdk/services";
 
 export const ownedSnapshots = Effect.fn("AppOperation.ownedSnapshots")(function* (
@@ -33,25 +39,10 @@ export const removeSnapshots = Effect.fn("AppOperation.removeSnapshots")(functio
   return removed;
 });
 
-export const purgeAppSnapshots = Effect.fn("AppOperation.purgeSnapshots")(function* (
-  sourceRoot: AbsolutePath,
-  options: DestroyAppOptions | undefined,
+export const scratchOwnedSnapshots = Effect.fn("AppOperation.scratchOwnedSnapshots")(function* (
+  plan: AppPlan,
 ) {
-  if (options?.purgeSnapshots !== true) return 0;
-  return yield* removeSnapshots(yield* ownedSnapshots([sourceRoot]));
-});
-
-export const snapshotOnlyDestroy = Effect.fn("AppOperation.snapshotOnlyDestroy")(function* (
-  app: string,
-  root: AbsolutePath,
-  options: DestroyAppOptions | undefined,
-): Effect.fn.Return<DestroyAppResult, Effect.Error<ReturnType<typeof purgeAppSnapshots>>, DataMover> {
-  const snapshotsRemoved = yield* purgeAppSnapshots(root, options);
-  return {
-    app,
-    outcome: snapshotsRemoved > 0 ? "destroyed" : "unchanged",
-    servicesDestroyed: [],
-    volumesRemoved: false,
-    snapshotsRemoved,
-  };
+  const mover = yield* DataMover;
+  const snapshots = yield* mover.listSnapshots({ ownerKey: planAppIdentity(plan).ownerKey });
+  return snapshots.filter((info) => info.store.app === plan.id);
 });
