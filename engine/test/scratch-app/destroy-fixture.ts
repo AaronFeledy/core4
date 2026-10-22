@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProviderUnavailableError, ProxyError, ScratchAppError } from "@lando/sdk/errors";
+import { DataTransferError, ProviderUnavailableError, ProxyError, ScratchAppError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -23,7 +23,7 @@ import {
   ScratchAppService,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
@@ -189,8 +189,14 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
           Effect.sync(() => {
             calls.push(event._tag);
             events.push(event);
-            if ("app" in event && event.app?.kind === "scratch")
-              rootObservations.push({ tag: event._tag, exists: existsSync(event.app.root) });
+            const app = Predicate.hasProperty(event, "app") ? event.app : undefined;
+            if (
+              Predicate.hasProperty(app, "kind") &&
+              app.kind === "scratch" &&
+              Predicate.hasProperty(app, "root") &&
+              typeof app.root === "string"
+            )
+              rootObservations.push({ tag: event._tag, exists: existsSync(app.root) });
           }),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused queue"),
@@ -204,7 +210,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       DataMover.of({
         transfer: () =>
           options.copyFail
-            ? Effect.fail(new ScratchAppError({ operation: "materialize", message: "injected copy failure" }))
+            ? Effect.fail(new DataTransferError({ operation: "copy", message: "injected copy failure" }))
             : Effect.die("unused transfer"),
         transferStream: () => Stream.empty,
         snapshot: () => Effect.die("unused snapshot"),
