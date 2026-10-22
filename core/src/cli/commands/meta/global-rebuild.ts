@@ -39,7 +39,6 @@ import { globalAppRef, renderGlobalServiceRow, withGlobalLifecycleEvents } from 
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -109,7 +108,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
   if (services.length === 0) return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
 
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(loaded.plan.provider);
   const events = yield* EventService;
   const builder = yield* BuildOrchestrator;
 

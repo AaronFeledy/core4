@@ -100,6 +100,9 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([service.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () =>

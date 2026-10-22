@@ -22,6 +22,7 @@ import {
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
+  GlobalAppService,
   LandofileService,
   PathsService,
   PluginRegistry,
@@ -124,6 +125,7 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly appliedPlans?: ReadonlyArray<AppPlan>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
@@ -279,14 +281,21 @@ export const makeHarness = (
     logs: options.logs ?? (() => Stream.empty),
   };
   const runtimeProviderRegistry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed((options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root)),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
     select: options.selectProvider ?? (() => Effect.succeed(provider)),
     resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)),
-    ...(options.resolveTeardownEvidence === undefined
-      ? {}
-      : { resolveTeardownEvidence: options.resolveTeardownEvidence }),
+    resolveTeardownEvidence:
+      options.resolveTeardownEvidence ??
+      ((root: AbsolutePath) =>
+        (options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)))(root).pipe(
+          Effect.map((plan) =>
+            plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+          ),
+        )),
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
@@ -352,8 +361,15 @@ export const makeHarness = (
     ),
     LandoConfigService.layer,
     BunFileSystem.layer,
-    GlobalAppServiceLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    Layer.effect(
+      GlobalAppService,
+      Effect.map(GlobalAppService, (service) => ({ ...service, providerId: Effect.succeed(providerId) })),
+    ).pipe(
+      Layer.provide(
+        GlobalAppServiceLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+        ),
+      ),
     ),
     Layer.succeed(
       RouterService,

@@ -150,6 +150,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RouteFilterType: "sdk/test/schema/route-filter.test.ts",
   RouteFilter: "sdk/test/schema/route-filter.test.ts",
   RouteInputError: "sdk/test/schema/route-filter.test.ts",
+  AppPlacementError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProxyConfig: "sdk/test/contract/router-service.test.ts",
   RouterConfig: "sdk/test/schema/router-config.test.ts",
   ProxyAuthority: "sdk/test/contract/router-service.test.ts",

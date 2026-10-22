@@ -11,8 +11,8 @@ export const prepareOwnedResourceCleanup = Effect.fnUntraced(function* (
   options: DestroyOptions,
 ) {
   const registry = yield* RuntimeProviderRegistry;
-  const evidence = yield* registry.resolveTeardownEvidence?.(root) ?? Effect.succeed(undefined);
-  const ownership = evidence !== undefined && evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
+  const evidence = yield* registry.resolveTeardownEvidence(root);
+  const ownership = evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
   return yield* prepareOwnedResourceCleanupFrom(ownership, root, options);
 });
 
@@ -35,7 +35,8 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             remediation: "Restore the owning provider before retrying teardown.",
           }),
         );
-      return cleanup;
+      return (root: AbsolutePath, options: DestroyOptions) =>
+        cleanup(root, { ...options, appIds: hints.appIds });
     }),
   );
   return Effect.gen(function* () {
@@ -68,8 +69,8 @@ export const tearDownOwnedResources = Effect.fnUntraced(function* (
   options: DestroyOptions,
 ) {
   const registry = yield* RuntimeProviderRegistry;
-  const evidence = yield* registry.resolveTeardownEvidence?.(root) ?? Effect.succeed(undefined);
-  const ownership = evidence !== undefined && evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
+  const evidence = yield* registry.resolveTeardownEvidence(root);
+  const ownership = evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
   return yield* withAppMutationLock(
     { id: ownership[0]?.appIds[0] ?? basename(root), root },
     Effect.gen(function* () {

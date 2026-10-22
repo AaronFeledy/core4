@@ -1,6 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 
 import {
+  type AppPlacementError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -65,6 +66,7 @@ export const ScratchRunResultSchema = Schema.Struct({
 });
 
 export type ScratchRunError =
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError

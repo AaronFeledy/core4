@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
-import { AppId, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { AppId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
@@ -56,6 +56,26 @@ const metadata: ServicePlan["metadata"] = {
 };
 
 describe("finalizeServices auto-generated hostnames", () => {
+  test.each(["docker", "lando"])("Docker endpoints reflect host engine %s", async (hostProvider) => {
+    const provider = ProviderId.make("docker");
+    const draft = phpishDraft(undefined);
+    const result = await Effect.runPromise(
+      finalizeServices({
+        plannedServiceDrafts: [{ ...draft, draft: { ...draft.draft, provider } }],
+        appId: AppId.make(APP_SLUG),
+        appRoot: APP_ROOT,
+        appSlug: APP_SLUG,
+        defaultDomain: DEFAULT_DOMAIN,
+        provider,
+        hostProvider: ProviderId.make(hostProvider),
+        providerCapabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+        metadata,
+        fileSyncEngineId: undefined,
+      }),
+    );
+    const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
+    expect(service.endpoints[0]?._tag).toBe(hostProvider === "docker" ? "internal" : "published");
+  });
   test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
     // Given
     const draft = phpishDraft(undefined);
@@ -80,6 +100,7 @@ describe("finalizeServices auto-generated hostnames", () => {
         appSlug: APP_SLUG,
         defaultDomain: "lando.test",
         provider: PROVIDER,
+        hostProvider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
         fileSyncEngineId: undefined,
@@ -106,6 +127,7 @@ describe("finalizeServices auto-generated hostnames", () => {
         appSlug: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider: PROVIDER,
+        hostProvider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
         fileSyncEngineId: undefined,
