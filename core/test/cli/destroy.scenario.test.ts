@@ -379,10 +379,9 @@ const makeDestroyLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: (root) =>
+        resolveTeardownEvidence: () =>
           Effect.succeed(
-            options.absent !== true && root === plannedApp.root
+            options.absent !== true
               ? { kind: "applied" as const, plan: plannedApp }
               : { kind: "absent" as const },
           ),
