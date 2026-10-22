@@ -107,6 +107,8 @@ The `Global` scope extends §3.5 with every event below:
 
 Start payloads carry the global `AppRef`, plan, trigger, requested service ids, cache status, and timestamp. `pre-global-start` and `post-global-start` MUST fire for every successful `ensureRunning`, including warm no-op checks. Warm checks set `cached: true` and MUST NOT regenerate, contact the provider, or emit a global build block. Explicit `meta:global:start` is never marked cached. On failure, `post-global-start` does not fire.
 
+Destroy payloads carry the global `AppRef`, `evidence` (`applied`, `orphans`, or `owned`), `purge`, and timestamp; `post-global-destroy` adds `outcome` (`destroyed` or `unchanged`). Only `meta:global:destroy` publishes them: global stop shares the teardown path but publishes no destroy events. `pre-global-destroy` fires before any destructive step; `post-global-destroy` fires after resource teardown and route withdrawal succeed, and a failure skips it. A destroy with no teardown evidence publishes neither. Global `--purge` removes volumes only.
+
 Generated-layer events carry the trigger, contribution identities, enablement, capability verdicts, and timestamp. Standard Build-scope events and transcript contracts apply when global services build (§6.13, §12.4).
 
 #### 20.6.3 Auto-start integration with user apps
