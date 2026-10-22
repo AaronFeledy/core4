@@ -3232,5 +3232,77 @@
     "changeKind": "type-changed",
     "path": "$.port",
     "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:NetworkingPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
   }
 ]
