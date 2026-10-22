@@ -14,7 +14,7 @@ test("fork copy failure keeps the instance until the bracket's standard destroy 
           s.acquire({ source: { kind: "fork" }, isolate: "full", detached: false }),
         ).pipe(Effect.scoped, Effect.provide(f.layer)),
       ),
-    ).rejects.toThrow("injected copy failure");
+    ).rejects.toThrow("Unable to copy the source app root");
     // Then filesystem cleanup happens after the standard stop/destroy events.
     expect(f.rootObservations).toEqual([
       { tag: "pre-scratch-destroy", exists: true },
@@ -40,7 +40,7 @@ test("fork copy failure retains the instance without a destroy bracket when keep
           s.acquire({ source: { kind: "fork" }, isolate: "full", detached: false, keepOnFailure: true }),
         ).pipe(Effect.scoped, Effect.provide(f.layer)),
       ),
-    ).rejects.toThrow("injected copy failure");
+    ).rejects.toThrow("Unable to copy the source app root");
     // Then no teardown occurs and the registered instance remains available.
     expect(f.events).toEqual([]);
     expect(f.entries.size).toBe(1);
