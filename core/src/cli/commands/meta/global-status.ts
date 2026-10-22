@@ -12,7 +12,10 @@ import {
 } from "@lando/sdk/services";
 import { selectGlobalServices } from "./global-common";
 
-import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import {
+  type LoadObservedGlobalPlanError,
+  loadObservedGlobalPlan,
+} from "@lando/engine/operations/global-plan";
 import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "../service-summary";
@@ -58,7 +61,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
   services: Schema.Array(GlobalStatusServiceSchema),
 });
 
-type GlobalStatusError = LoadGlobalPlanError | ProviderError | ToolingExecError;
+type GlobalStatusError = LoadObservedGlobalPlanError | ProviderError | ToolingExecError;
 
 type GlobalStatusServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
@@ -135,7 +138,7 @@ export const renderGlobalStatusResult = (
 export const globalStatus = Effect.fn("GlobalStatus.status")(function* (
   options: GlobalStatusOptions = {},
 ): Effect.fn.Return<GlobalStatusResult, GlobalStatusError, GlobalStatusServices> {
-  const loaded = yield* loadGlobalPlan();
+  const loaded = yield* loadObservedGlobalPlan();
   if (!loaded.materialized) return { app: "global", materialized: false, services: [] };
 
   const registry = yield* RuntimeProviderRegistry;

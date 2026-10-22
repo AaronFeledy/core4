@@ -22,6 +22,7 @@ import { cacheInput } from "../../src/planner/app-defaults.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const runtimeLandofileInput = {
+  hostProvider: "lando",
   appRoot: "/workspace/runtime-key",
   landofile: { name: "runtime-key", runtime: 4 as const },
   pluginManifests: [],
@@ -43,6 +44,12 @@ for (const config of [
     expect(changed).not.toBe(original);
   });
 }
+
+test("changes the cache key when the host provider changes", () => {
+  const original = deriveAppPlanCacheKey(runtimeLandofileInput);
+  const changed = deriveAppPlanCacheKey({ ...runtimeLandofileInput, hostProvider: "docker" });
+  expect(changed).not.toBe(original);
+});
 
 test("changes the cache key when only the resolved proxy default domain changes", () => {
   // Given
@@ -167,6 +174,7 @@ test("ignores a valid revision-6 app plan without pinned PHP prerequisite identi
 test("includes the canonical fingerprint revision in the app-plan cache key", () => {
   // Given
   const input = {
+    hostProvider: "lando",
     appRoot: "/workspace/revision-key",
     landofile: { name: "revision-key", runtime: 4 as const },
     pluginManifests: [],
@@ -176,7 +184,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(25n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(26n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });
@@ -184,6 +192,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
 test("changes the app-plan cache key when env-file content or resolved path changes", () => {
   // Given
   const input = {
+    hostProvider: "lando",
     appRoot: "/workspace/env-key",
     landofile: { name: "env-key", runtime: 4 as const },
     pluginManifests: [],

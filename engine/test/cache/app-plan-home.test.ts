@@ -12,6 +12,7 @@ for (const hostHome of ["/home/first", "/home/second"]) {
     // Given
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-home-key-"));
     const input = {
+      hostProvider: "lando",
       appRoot: "/workspace/home-key",
       landofile: { name: "home-key" },
       pluginManifests: [],

@@ -1,6 +1,18 @@
 import { expect, test } from "bun:test";
+import { AppId } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
+
+test("identity-scoped cleanup preserves a colocated scratch inventory", async () => {
+  await withInventory(async ({ store, plan, root, cleanup, calls }) => {
+    const scratch = { ...plan, id: AppId.make("scratch-colocated"), slug: "scratch-colocated" };
+    await Effect.runPromise(store.prepare(webFor(plan)));
+    await Effect.runPromise(store.prepare(webFor(scratch)));
+    await Effect.runPromise(cleanup(root, { volumes: true, appIds: [plan.id] }));
+    expect(calls.some((call) => call.path.includes("scratch-colocated"))).toBe(false);
+    expect((await Effect.runPromise(store.summary(root)))?.appIds).toEqual([scratch.id]);
+  });
+});
 
 for (const selection of [
   { volumes: false, purgeCaches: false, removed: [] },

@@ -172,7 +172,8 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
       const config = await loadConfig();
       expect(config.userConfRoot === dir).toBe(true);
       expect(config.telemetry.enabled).toBe(true);
-      expect(config.defaultProviderId).toBe(ProviderId.make("lando"));
+      // An unauthored provider stays absent so selection can tell it from an authored `lando`.
+      expect(config.defaultProviderId).toBeUndefined();
     });
   });
 
