@@ -1,4 +1,3 @@
-import { LandofileParseError } from "@lando/sdk/errors";
 import type { LandofileLayer } from "@lando/sdk/schema";
 import { ConfigService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
@@ -27,7 +26,7 @@ export const ensureConsistentRoot = Effect.fnUntraced(function* (
 
 export const loadContext = Effect.fnUntraced(function* (
   appRoot: string,
-): Effect.fn.Return<Omit<LandofileLoadContext, "layer">, LandofileParseError> {
+): Effect.fn.Return<Omit<LandofileLoadContext, "layer">> {
   const config = yield* Effect.serviceOption(ConfigService);
   const logger = yield* Effect.serviceOption(Logger);
   const policy =
@@ -40,16 +39,6 @@ export const loadContext = Effect.fnUntraced(function* (
             maxFilesPerExpression: value.loadMaxFilesPerExpression,
             maxRecursionDepth: value.loadMaxRecursionDepth,
           })),
-          Effect.mapError(
-            (cause) =>
-              new LandofileParseError({
-                message: "Global configuration could not be loaded for Landofile expressions.",
-                filePath: appRoot,
-                line: undefined,
-                column: undefined,
-                cause,
-              }),
-          ),
         );
   return { appRoot, policy, ...(logger._tag === "Some" ? { logger: logger.value } : {}) };
 });

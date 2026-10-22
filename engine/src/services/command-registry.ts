@@ -28,6 +28,7 @@ import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import {
   CommandRegistry,
   LandofileService,
+  PathsService,
   PluginRegistry,
   type RegisteredCommand,
 } from "@lando/sdk/services";
@@ -65,11 +66,15 @@ const writeCachesForLandofile = (
   landofile: LandofileShape,
   entries: ReadonlyArray<CommandIndexEntry>,
   pluginManifests?: ReadonlyArray<PluginManifest>,
+  cacheRoot?: string,
 ): Effect.Effect<void, never> =>
   Effect.all(
     [
-      writeAppCommandCache({ landofile, entries }),
-      writePluginCommandCache(pluginManifests === undefined ? {} : { manifests: pluginManifests }),
+      writeAppCommandCache({ landofile, entries, ...(cacheRoot === undefined ? {} : { cacheRoot }) }),
+      writePluginCommandCache({
+        ...(pluginManifests === undefined ? {} : { manifests: pluginManifests }),
+        ...(cacheRoot === undefined ? {} : { cacheRoot }),
+      }),
     ],
     {
       concurrency: 2,
@@ -87,12 +92,15 @@ export const layerWith = (
     CommandRegistry,
     Effect.gen(function* () {
       const landofileService = yield* LandofileService;
+      const paths = yield* Effect.serviceOption(PathsService);
+      const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
       return CommandRegistry.of({
         list: Effect.gen(function* () {
-          const cached = yield* readFreshAppCommandCacheForCwd({ includeScriptInventory: true }).pipe(
-            Effect.catch(() => Effect.succeed(null)),
-          );
+          const cached = yield* readFreshAppCommandCacheForCwd({
+            ...cacheOptions,
+            includeScriptInventory: true,
+          }).pipe(Effect.catch(() => Effect.succeed(null)));
           if (cached !== null) {
             const error = registrationError(cached.aliasPolicy, cached.entries);
             if (error !== undefined) return yield* Effect.fail(error);
@@ -107,19 +115,20 @@ export const layerWith = (
               : undefined;
           const hasServices = Object.keys(landofile.services ?? {}).length > 0;
           if (hasServices) {
-            yield* writePluginCommandCache(
-              pluginManifests === undefined ? {} : { manifests: pluginManifests },
-            );
+            yield* writePluginCommandCache({
+              ...cacheOptions,
+              ...(pluginManifests === undefined ? {} : { manifests: pluginManifests }),
+            });
             return [];
           }
           const entries = compileAppCommands(landofile, scripts);
           const error = registrationError(landofile.commandAliases, entries);
           if (error !== undefined) return yield* Effect.fail(error);
-          yield* writeCachesForLandofile(landofile, entries, pluginManifests);
+          yield* writeCachesForLandofile(landofile, entries, pluginManifests, cacheOptions.cacheRoot);
           return toRegisteredCommands(entries);
         }).pipe(
           Effect.catchCause(() =>
-            writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
+            writePluginCommandCache(cacheOptions).pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
           ),
         ),
       });

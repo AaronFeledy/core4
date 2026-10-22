@@ -17,7 +17,6 @@ import { Downloader } from "@lando/sdk/services";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
-import * as LandoConfigService from "../services/config";
 import * as LandoEventService from "../services/event-service";
 import {
   UpdateDowngradeError,
@@ -91,7 +90,10 @@ export const isPlaceholderBinary = (
   binary: UpdateManifest["binaries"][keyof UpdateManifest["binaries"]],
 ): boolean => binary.size === 0 || binary.sha256 === "" || /^0+$/u.test(binary.sha256);
 
-export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
+export const defaultFetchManifestBytes = (
+  url: string,
+  retainedDownloader?: typeof Downloader.Service,
+): Promise<Uint8Array> =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -108,10 +110,11 @@ export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
         return new Uint8Array(bytes);
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer)))),
-            LandoConfigService.layer,
-          ),
+          retainedDownloader === undefined
+            ? downloaderLayer.pipe(
+                Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
+              )
+            : Layer.succeed(Downloader, retainedDownloader),
         ),
       ),
     ),

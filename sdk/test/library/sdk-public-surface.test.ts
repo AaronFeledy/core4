@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
+import { ConfigError } from "@lando/sdk/errors";
 import * as sdkServices from "@lando/sdk/services";
+import type { LandofileServiceError } from "@lando/sdk/services";
 
 import sdkPackage from "../../package.json";
 import publicSurface from "../fixtures/sdk-public-surface.json";
@@ -93,6 +95,31 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches every Landofile service failure tag", () => {
+    const tags = {
+      ComposeKeyRejectedError: true,
+      Lando3LandofileDetected: true,
+      LandofileDialectMixError: true,
+      LandofileFormConflictError: true,
+      LandofileImportRefMisuseError: true,
+      LandofileIncludeError: true,
+      LandofileLoadLimitError: true,
+      LandofileLoadOutsideRootError: true,
+      LandofileLockMismatchError: true,
+      LandofileNotFoundError: true,
+      LandofileParseError: true,
+      LandofileSandboxError: true,
+      LandofileTimeoutError: true,
+      LandofileValidationError: true,
+      ManagedFileTransactionError: true,
+      NotImplementedError: true,
+      RouteInputError: true,
+    } satisfies Record<LandofileServiceError["_tag"], true>;
+    expect(Object.keys(tags).sort()).toEqual(publicSurface.landofileServiceErrorTags);
+  });
+  test("matches the structured global config error fields", () => {
+    expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
   test("matches every package export subpath", () => {
     expect(Object.keys(publicSurface.subpathExports).sort()).toEqual(Object.keys(sdkPackage.exports).sort());
   });

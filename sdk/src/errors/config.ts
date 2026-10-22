@@ -1,8 +1,11 @@
 import { Schema } from "effect";
+import { ValidationIssue } from "../schema/validation-issue";
 
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
   path: Schema.optional(Schema.String),
+  remediation: Schema.optional(Schema.String),
+  issues: Schema.optional(Schema.Array(ValidationIssue)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 

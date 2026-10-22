@@ -116,15 +116,17 @@ Because `command:` re-enters, a `pre-build` step that runs `command: app:build` 
 
 ## Unknown event names
 
-Lando checks every key under `events:` against the full valid set: the twelve lifecycle names (`pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`) plus `pre-<task>` and `post-<task>` for each non-internal tooling task. A key outside that set fails with `LandofileUnknownEventError`, and the error lists every name you could have used.
+Lando checks every key under `events:` against the full valid set: the twelve lifecycle names (`pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`), the four remote sync hooks (`post-pull`, `post-push`, `post-switch`, `post-code-sync`), plus `pre-<task>` and `post-<task>` for each non-internal tooling task. A key outside that set fails `lando start` with a `LandofileValidationError` that names every unknown key, alongside anything else wrong in the Landofile.
 
-`lando app:config:lint`, `lando doctor --app`, and `lando start` build that set the same way, from the same tasks: your Landofile, every config layer, every include, and every service type. Lint and doctor get there without touching a container runtime, so a name that lints clean is a name `lando start` will run. If Lando cannot resolve your services at all, lint and doctor say so with the resolution error instead of blaming your event key.
+The remote sync hooks are reserved whether or not you have a remote connector installed, so a hook you write now keeps working once you add one. Until then, nothing fires them. A tooling task can't take a name whose brackets would land on a reserved event: a task called `start` would bind `pre-start`, and one called `pull` would bind `post-pull`. Lint and `lando start` reject it as a `landofile.tooling` issue and tell you to rename it.
+
+`lando app:config:lint`, `lando doctor --app`, and `lando start` build that set the same way, from the same tasks: your Landofile, every config layer, every include, and every service type. Lint and doctor get there without touching a container runtime, so a name that lints clean is a name `lando start` will run. Lint reports each bad key as a `landofile.event` finding at `events.<name>`, the same issue `lando start` fails on. If a service type can't resolve, lint and doctor report that failure and skip the event check instead of blaming your event key.
 
 ```sh
 lando app:config:lint
 ```
 
-Typo'd `pre-buidl`? The error tells you `pre-build` exists. Read the list, fix the key, lint again.
+Typo'd `pre-buidl`? Lint and `lando start` both ask `Did you mean "pre-build"?`. A key nowhere near a valid name gets the full list instead.
 
 <Guide>
   <Scenario id="bracketed-run" render>
@@ -180,11 +182,18 @@ Typo'd `pre-buidl`? The error tells you `pre-build` exists. Read the list, fix t
     </Step>
   </Scenario>
 
-  <Scenario id="unknown-event-lists-valid-set" render={false} reason="Regression coverage: an unknown event key is rejected and the error names the valid set">
+  <Scenario id="unknown-event-lists-valid-set" render={false} reason="Regression coverage: lint reports an unknown event key as a finding and planning rejects it, both naming the valid set">
     <Step name="lint-unknown-event">
       <UseFixture name="unknown-event" />
-      <Run command="lando app:config:lint --format=json" expectExit={1} />
-      <Verify errorTag="LandofileUnknownEventError" expect={{ regex: "pre-build" }} />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.event\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-deploy\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "pre-build" } }} />
+    </Step>
+    <Step name="refresh-unknown-event">
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "events\\.pre-deploy" }} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "pre-build" }} />
     </Step>
     <Step name="cleanup-unknown-event">
       <Cleanup />

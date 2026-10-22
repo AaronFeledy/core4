@@ -1,4 +1,5 @@
 import { basename, dirname } from "node:path";
+import { canonicalJson } from "@lando/sdk/digest";
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   type ConfigLintResult,
@@ -12,7 +13,7 @@ import { analyzeComposeRejections } from "./compose/rejections.ts";
 import { findLandofilePath } from "./discovery.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
-import { attributeLintIssue } from "./lint-source.ts";
+import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
 import { appNameOf, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
@@ -23,11 +24,29 @@ import { prepareLandofileValue } from "./source.ts";
 
 import { getLandofileValueSource } from "./validation.ts";
 
+export const mergeLintFindings = (
+  findings: ReadonlyArray<ConfigLintViolation>,
+): ReadonlyArray<ConfigLintViolation> => {
+  const merged = new Map<string, ConfigLintViolation>();
+  for (const { scopes, ...finding } of findings) {
+    const key = canonicalJson(finding);
+    const previous = merged.get(key);
+    const combined = new Set([...(previous?.scopes ?? []), ...(scopes ?? [])]);
+    merged.set(key, {
+      ...finding,
+      ...(previous?.scopes === undefined && scopes === undefined
+        ? {}
+        : { scopes: (["fragment", "effective"] as const).filter((scope) => combined.has(scope)) }),
+    });
+  }
+  return [...merged.values()];
+};
+
 export const attributeEffectiveLintIssue = (
   landofile: LandofileShape,
   issue: ValidationIssue & { readonly rule: string },
 ): ConfigLintViolation => {
-  const source = getLandofileValueSource(landofile, issue.path) ?? issue.source;
+  const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
   return attributeLintIssue(
     { ...issue, severity: "error", ...(source === undefined ? {} : { source }) },
     "effective",
@@ -89,7 +108,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
             rule: "landofile.discovery",
             severity: "error",
             path: [],
-            scope: "fragment",
+            scopes: ["fragment"],
             message:
               discovered.failure instanceof Error
                 ? discovered.failure.message
@@ -161,9 +180,10 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       } else if ("sourceFile" in error) {
         errorFile = error.sourceFile;
       }
+      const retained = documents.find((document) => document.file === errorFile);
       const layer =
         (error._tag === "LandofileIncludeError" ? error.layer : undefined) ??
-        documents.find((document) => document.file === errorFile)?.layer ??
+        retained?.layer ??
         LANDOFILE_LAYER_POSITIONS.find((position) => basename(errorFile).startsWith(`${position.basename}.`))
           ?.layer ??
         "canonical";
@@ -171,24 +191,29 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         rule: "landofile.load",
         severity: "error",
         path,
-        scope,
+        scopes: [scope],
         source: { file: errorFile, layer, path },
         message: error.message,
-        ...(error._tag === "LandofileParseError" && error.line !== undefined ? { line: error.line } : {}),
-        ...(error._tag === "LandofileParseError" && error.column !== undefined
-          ? { column: error.column }
-          : {}),
+        ...(error._tag === "LandofileParseError"
+          ? {
+              ...(error.line === undefined ? {} : { line: error.line }),
+              ...(error.column === undefined ? {} : { column: error.column }),
+            }
+          : retained === undefined || path.length === 0
+            ? {}
+            : sourceCoordinates(retained, path)),
         ...("remediation" in error && error.remediation !== undefined
           ? { suggestion: error.remediation }
           : {}),
       });
     }
   }
-  const unique = [...new Map(violations.map((issue) => [JSON.stringify(issue), issue])).values()];
+  const unique = mergeLintFindings(violations);
   const app = Result.isSuccess(finalized)
     ? (finalized.success.name ?? "")
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
-  const primary = unique[0]?.source?.file ?? file;
+  const primarySource = unique[0]?.source;
+  const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;
   return {
     landofilePath: file,
     result: {

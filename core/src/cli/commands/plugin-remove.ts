@@ -4,12 +4,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type ConfigError,
-  type LandoCommandError,
-  NotImplementedError,
-  PluginManifestError,
-} from "@lando/sdk/errors";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
@@ -209,7 +204,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
   options: PluginRemoveOptions,
 ): Effect.fn.Return<
   PluginRemoveResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError,
+  LandoCommandError | NotImplementedError | PluginManifestError,
   ConfigService
 > {
   if (options.name === "") {

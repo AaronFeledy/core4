@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
@@ -96,6 +97,7 @@ const buildSetupLayers = (
   httpFetch: typeof fetch = okProbeFetch,
 ) =>
   Layer.mergeAll(
+    Layer.succeed(GlobalConfigSources, { env: { ...process.env }, sources: { user: false, env: true } }),
     Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
     Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
     Layer.succeed(Downloader, Downloader.of(testDownloader.service)),

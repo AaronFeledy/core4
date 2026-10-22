@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import * as ConfigLayer from "@lando/engine/services/config";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { appConfigMcpSpecs } from "../../src/cli/command-specs/app/config/index.ts";
@@ -84,7 +85,7 @@ test.each(["app:config:view", "app:config:get"])(
       Effect.runPromise(
         spec
           .run({ args: { subcommand: "set" }, flags: { source: "raw", path: "x-echo" } })
-          .pipe(Effect.provide(layer)),
+          .pipe(Effect.provide(layer), Effect.provide(ConfigLayer.layer)),
       ),
     );
     expect(result).toMatchObject(

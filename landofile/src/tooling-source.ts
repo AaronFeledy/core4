@@ -6,7 +6,6 @@ import {
   type LandofileParseError,
   type LandofileValidationError,
   type NotImplementedError,
-  type ToolingIncludeCycleError,
   causeMessage,
 } from "@lando/sdk/errors";
 import { type ValueOrigins, isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
@@ -39,8 +38,7 @@ export type ToolingIncludeError =
   | LandofileParseError
   | LandofileValidationError
   | ResolveLandofileLoadExpressionError
-  | NotImplementedError
-  | ToolingIncludeCycleError;
+  | NotImplementedError;
 interface ToolingFragment {
   readonly filePath: string;
   readonly tooling: unknown;

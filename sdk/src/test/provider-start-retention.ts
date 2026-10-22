@@ -150,7 +150,7 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
     failedWeb,
   );
   yield* requireContract(
-    hooks.hasNetwork(networkName),
+    networkName !== undefined && hooks.hasNetwork(networkName),
     "start failure retains the private app network",
     networkName,
   );
@@ -191,7 +191,7 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
     volumeName,
   );
   yield* requireContract(
-    !hooks.hasNetwork(networkName),
+    networkName !== undefined && !hooks.hasNetwork(networkName),
     "destroy removes the private app network",
     networkName,
   );
@@ -235,7 +235,7 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
     interruptedDb,
   );
   yield* requireContract(
-    hooks.hasNetwork(interruptNetwork),
+    interruptNetwork !== undefined && hooks.hasNetwork(interruptNetwork),
     "mid-start interruption retains the private app network",
     interruptNetwork,
   );

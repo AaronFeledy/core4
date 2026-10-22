@@ -22,7 +22,7 @@ describe("NetworkingPlan schema", () => {
         aliases: { web: ["web.shop.internal"] },
       },
     });
-    expect(decoded.perAppBridge.name).toBe("lando-shop");
+    expect(decoded.perAppBridge?.name).toBe("lando-shop");
     expect(decoded.sharedNetworkMembership?.name).toBe("lando_bridge_network");
     expect(decoded.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual(["web.shop.internal"]);
   });
@@ -31,7 +31,7 @@ describe("NetworkingPlan schema", () => {
     const decoded = Schema.decodeUnknownSync(NetworkingPlan)({
       perAppBridge: { name: "lando-shop" },
     });
-    expect(decoded.perAppBridge.name).toBe("lando-shop");
+    expect(decoded.perAppBridge?.name).toBe("lando-shop");
     expect(decoded.sharedNetworkMembership).toBeUndefined();
   });
 
@@ -87,11 +87,28 @@ describe("landoNetworkingPlan builder", () => {
       serviceNames: [],
       sharedCrossAppNetwork: true,
     });
-    expect(plan.perAppBridge.name).toBe("lando-my-app-2");
+    expect(plan.perAppBridge?.name).toBe("lando-my-app-2");
   });
 });
 
 describe("network resolver helpers consume the typed NetworkingPlan", () => {
+  test("explicit shared-only membership never invents a private network from the slug", () => {
+    const networking = Schema.decodeUnknownSync(NetworkingPlan)(
+      landoNetworkingPlan({
+        slug: "global",
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: true,
+        perAppBridge: false,
+      }),
+    );
+    const plan = { slug: "global", networking };
+    expect(networking.perAppBridge).toBeNull();
+    expect(landoAppNetworkName(plan)).toBeUndefined();
+    expect(landoNetworkNames(plan)).toEqual([LANDO_SHARED_CROSS_APP_NETWORK]);
+    expect(landoServiceNetworkAliases(plan, { name: ServiceName.make("web") })).toEqual([
+      "web.global.internal",
+    ]);
+  });
   const customPlan = {
     slug: "shop",
     networking: {
