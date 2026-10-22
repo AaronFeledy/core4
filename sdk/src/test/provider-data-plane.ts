@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Schema, type Scope, Stream } from "effect";
+import { Effect, Redacted, Schema, type Scope, Stream } from "effect";
 
 import { CapabilityError, DataEndpointUnsupportedError, ProviderCapabilityError } from "../errors/index.ts";
 import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
@@ -421,6 +421,7 @@ const runTestEphemeral = Effect.fnUntraced(function* (spec: Parameters<RuntimePr
  */
 /** Observed containers this double has already removed, so a second removal is honestly absent. */
 const testRemovedObservations = new Set<string>();
+const testAppliedEnvironments = new Map<string, ReadonlyMap<string, Readonly<Record<string, string>>>>();
 
 export const TestRuntimeProvider: RuntimeProviderShape = {
   id: TEST_PROVIDER_ID,
@@ -439,11 +440,20 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   pullArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: spec.ref }),
   removeArtifact: (_ref) => Effect.void,
 
-  apply: (plan) =>
+  apply: (plan, options) =>
     Effect.sync(() => {
       if (plan == null || plan.extensions == null || plan.services == null) {
         return { changed: false };
       }
+      testAppliedEnvironments.set(
+        plan.id,
+        new Map(
+          Object.values(plan.services).map((service) => [
+            service.name,
+            { ...service.environment, ...options.serviceEnvironment?.[service.name] },
+          ]),
+        ),
+      );
       let changed = false;
       const projectConfigs = Reflect.get(plan.extensions.compose ?? {}, "configs");
       const definitions =
@@ -486,9 +496,12 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   restart: (_target) => Effect.void,
   waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
   destroy: (target, _options) =>
-    Effect.succeed(
-      target.plan === undefined ? { kind: "no-op", reason: "no-applied-plan" } : { kind: "destroyed" },
-    ),
+    Effect.sync(() => {
+      const removed = testAppliedEnvironments.delete(target.app);
+      return removed || target.plan !== undefined
+        ? { kind: "destroyed" }
+        : { kind: "no-op", reason: "no-applied-plan" };
+    }),
   removeObservedService: (observed) =>
     Effect.sync(() => {
       if (observed.containerId === undefined) return { kind: "absent" };
@@ -498,7 +511,19 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       return { kind: "removed" };
     }),
 
-  readAppSecrets: (_target) => Effect.succeed([]),
+  readAppEnvironment: (target, names) =>
+    Effect.sync(() => {
+      const applied = testAppliedEnvironments.get(target.app);
+      const values = new Set<string>();
+      for (const [service, keys] of Object.entries(names)) {
+        const environment = applied?.get(service);
+        for (const key of keys) {
+          const value = environment?.[key];
+          if (value !== undefined && value.length > 0) values.add(value);
+        }
+      }
+      return [...values].map((value) => Redacted.make(value));
+    }),
   exec: (_target, command) =>
     Effect.succeed({
       exitCode: 0,

@@ -36,6 +36,7 @@ import { runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
+import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const metadata = {
@@ -104,8 +105,13 @@ const harness = (input: {
     ...TestRuntimeProvider,
     execStream: (_target: ExecTarget, spec: CommandSpec) =>
       Stream.make({ exitCode: record(executedLabel(spec.command, "exec")) }),
-    readAppSecrets: () =>
+    readAppEnvironment: () =>
       Effect.sync(() => (input.appSecrets?.(executed) ?? []).map((value) => Redacted.make(value))),
+    exec: (_target: ExecTarget, spec: CommandSpec) =>
+      Effect.sync(() => {
+        const exitCode = record(executedLabel(spec.command, "exec"));
+        return { exitCode, stdout: exitCode === 0 ? "" : Object.values(spec.env ?? {}).join(""), stderr: "" };
+      }),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const eventRuntime =
@@ -129,10 +135,15 @@ const harness = (input: {
       ToolingEngine,
       ToolingEngine.of({
         id: "recording",
-        run: (invocation) =>
+        run: (invocation, _plan, selected) =>
           Effect.gen(function* () {
-            const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
-            const output = exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join("");
+            const { exitCode, stdout: output } = yield* selected.exec(
+              { app: plan.id, service: service.name, plan },
+              {
+                command: invocation.commands[0] ?? [invocation.tool],
+                ...(invocation.env === undefined ? {} : { env: invocation.env }),
+              },
+            );
             // A live sink receives provider output directly, so the result carries none of it.
             const sink = yield* Effect.serviceOption(StreamFrameSink);
             if (Option.isSome(sink) && output.length > 0) {
@@ -173,7 +184,7 @@ const harness = (input: {
         select: () =>
           Effect.sync(() => {
             selections.push("select");
-            return provider;
+            return outputRegisteredTestProvider(provider, plan);
           }),
       }),
     ),

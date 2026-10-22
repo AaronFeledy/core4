@@ -4,7 +4,6 @@ import * as HttpClient from "effect/http/HttpClient";
 import {
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
-  ProviderCapabilityError,
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
@@ -23,25 +22,25 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import {
-  type AppliedStateProvider,
   observeProviderRuntime,
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "./applied-state-resolution.ts";
+import { redactProviderError } from "./error-redaction.ts";
+import { makeProviderFactory } from "./make-provider.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "./precedence.ts";
+import { makeAppliedStateProvider } from "./registry-evidence.ts";
 
 const manifestProviderIds = (manifest: PluginManifest): ReadonlyArray<ProviderId> =>
   (manifest.contributes?.providers ?? []).map((entry) =>
@@ -64,28 +63,6 @@ const toProviderConfig = (cause: unknown) =>
     cause,
   });
 
-const toProviderUnavailableFromCapability = (
-  cause: ProviderCapabilityError | ProviderUnavailableError,
-): ProviderUnavailableError => {
-  if (cause instanceof ProviderUnavailableError) return cause;
-  if (cause instanceof ProviderCapabilityError) {
-    return new ProviderUnavailableError({
-      providerId: cause.providerId,
-      operation: cause.operation,
-      message: cause.message,
-      ...(cause.details === undefined ? {} : { details: cause.details }),
-      ...(cause.remediation === undefined ? {} : { remediation: cause.remediation }),
-      cause,
-    });
-  }
-  return new ProviderUnavailableError({
-    providerId: "unknown",
-    operation: "capabilities",
-    message: "Unable to initialize runtime provider capabilities.",
-    cause,
-  });
-};
-
 export const makeRuntimeProviderRegistry = (
   modules: ReadonlyArray<LandoPluginModule>,
   privateFileAccess: PrivateFileAccess,
@@ -103,11 +80,18 @@ export const makeRuntimeProviderRegistry = (
       const managedFileService = yield* ManagedFileService;
       const paths = yield* PathsService;
       const redaction = yield* Effect.serviceOption(RedactionService);
+      const errorRedactor =
+        redaction._tag === "Some"
+          ? yield* redaction.value.forProfile("secrets")
+          : createStandaloneRedactor("secrets");
+      const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
       const httpClient = yield* HttpClient.HttpClient;
 
-      const providerManifests = pluginRegistry.list.pipe(Effect.mapError(toProviderUnavailable));
+      const providerManifests = pluginRegistry.list.pipe(
+        Effect.mapError((cause) => redactFailure(toProviderUnavailable(cause))),
+      );
       const providerIds = providerManifests.pipe(
         Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
       );
@@ -115,7 +99,7 @@ export const makeRuntimeProviderRegistry = (
       const configuredProviderId = Effect.gen(function* () {
         const defaultProviderId = yield* configService
           .get("defaultProviderId")
-          .pipe(Effect.mapError(toProviderConfig));
+          .pipe(Effect.mapError((cause) => redactProviderError(toProviderConfig(cause), errorRedactor)));
         const envProviderId = readProviderEnvVar(process.env);
         return resolveProviderSelection({
           ...(envProviderId === undefined ? {} : { env: envProviderId }),
@@ -172,6 +156,7 @@ export const makeRuntimeProviderRegistry = (
                 cause,
               }),
           ),
+          Effect.mapError(redactFailure),
         );
         const publishRender =
           eventService._tag === "Some" && redaction._tag === "Some"
@@ -186,89 +171,49 @@ export const makeRuntimeProviderRegistry = (
           httpClient,
           ...(publishRender === undefined ? {} : { publishRender }),
         });
-        return { contribution, context };
+        const resourceOwnership = contribution.resourceOwnership;
+        return {
+          contribution: {
+            ...contribution,
+            appliedPlans: (ctx) => contribution.appliedPlans(ctx).pipe(Effect.mapError(redactFailure)),
+            ...(resourceOwnership === undefined
+              ? {}
+              : {
+                  resourceOwnership: (ctx, root) =>
+                    resourceOwnership.call(contribution, ctx, root).pipe(Effect.mapError(redactFailure)),
+                }),
+          } satisfies typeof contribution,
+          context,
+        };
       });
 
-      const makeProvider = (descriptor: Effect.Success<ReturnType<typeof contributionFor>>) => {
-        const { contribution, context } = descriptor;
-        const provider = contribution.make(context).pipe(
-          Effect.provideService(PathsService, paths),
-          Effect.provideService(Downloader, downloader),
-          Effect.provideService(ContainerHelperAssets, containerHelperAssets),
-          Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
-          Effect.map(
-            (runtime) =>
-              ({
-                ...runtime,
-                apply: Effect.fnUntraced(function* (plan, options) {
-                  const tokens = [
-                    ...collectAppPlanRedactionTokens(plan),
-                    ...Object.values(options?.serviceEnvironment ?? {}).flatMap(collectSecretEnvValues),
-                  ];
-                  const redactor =
-                    redaction._tag === "Some"
-                      ? yield* redaction.value
-                          .registerValues(tokens)
-                          .pipe(Effect.andThen(redaction.value.forProfile("secrets")))
-                      : createStandaloneRedactor("secrets", { redactionTokens: tokens });
-                  return yield* runtime
-                    .apply(plan, options)
-                    .pipe(Effect.provideService(StartFailureLogRedactor, redactor));
-                }),
-              }) satisfies typeof runtime,
-          ),
-          Effect.mapError(toProviderUnavailableFromCapability),
-        );
-        return eventService._tag === "Some"
-          ? provider.pipe(Effect.provideService(EventService, eventService.value))
-          : provider;
-      };
+      const makeProvider = makeProviderFactory({
+        paths,
+        downloader,
+        containerHelperAssets,
+        appPlanSanitizer,
+        eventService,
+        redaction,
+        privateFileAccess,
+        errorRedactor,
+      });
 
-      const providerFor = (providerId: ProviderId) =>
-        contributionFor(providerId).pipe(Effect.flatMap(makeProvider));
+      const providerFor = (providerId: ProviderId, desired?: AppPlan) =>
+        contributionFor(providerId).pipe(Effect.flatMap((descriptor) => makeProvider(descriptor, desired)));
 
       const activeProvider = Effect.flatMap(configuredProviderId, providerFor);
 
-      const appliedStateProviders = Effect.gen(function* () {
-        const ids = yield* providerIds;
-        return yield* Effect.forEach(ids, (id) =>
-          Effect.gen(function* () {
-            const descriptor = yield* contributionFor(id);
-            const { contribution, context } = descriptor;
-            const resourceOwnership = contribution.resourceOwnership;
-            const runtime = yield* Effect.cached(makeProvider(descriptor));
-            return {
-              id,
-              ...(resourceOwnership === undefined
-                ? {}
-                : {
-                    resourceOwnership: (root: AbsolutePath) => resourceOwnership(context, root),
-                  }),
-              canCleanupOwnedResources: runtime.pipe(
-                Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
+      const appliedStateProviders = providerIds.pipe(
+        Effect.flatMap((ids) =>
+          Effect.forEach(ids, (id) =>
+            contributionFor(id).pipe(
+              Effect.flatMap((descriptor) =>
+                makeAppliedStateProvider(id, descriptor, { makeProvider, paths }),
               ),
-              appliedPlans: contribution
-                .appliedPlans(context)
-                .pipe(Effect.provideService(PathsService, paths)),
-              isAvailable: runtime.pipe(
-                Effect.flatMap((provider) =>
-                  provider.isAvailable.pipe(
-                    Effect.flatMap((available) =>
-                      available
-                        ? Effect.map(provider.getStatus, (status) => status.running)
-                        : Effect.succeed(false),
-                    ),
-                  ),
-                ),
-                Effect.catch(() => Effect.succeed(false)),
-              ),
-              list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
-              listVolumes: (filter) =>
-                runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),
-            } satisfies AppliedStateProvider;
-          }),
-        );
-      });
+            ),
+          ),
+        ),
+      );
 
       const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
         (root: AbsolutePath) =>
@@ -286,9 +231,9 @@ export const makeRuntimeProviderRegistry = (
         list: providerIds,
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: Effect.fn("RuntimeProviderRegistry.select")(function* (target?: AppPlan | ProviderId) {
-          return yield* target === undefined
-            ? activeProvider
-            : providerFor(typeof target === "string" ? target : target.provider);
+          if (target === undefined) return yield* activeProvider;
+          if (typeof target === "string") return yield* providerFor(target);
+          return yield* providerFor(target.provider, target);
         }),
         resourceOwnership: Effect.fn("RuntimeProviderRegistry.resourceOwnership")(
           (providerId: ProviderId, root: AbsolutePath) =>

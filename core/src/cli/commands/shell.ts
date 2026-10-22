@@ -1,4 +1,3 @@
-import { registerAppOutputRedaction } from "@lando/engine/services/app-output-redaction";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 /**
@@ -263,7 +262,6 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
     const io = options.io ?? processShellIO;
     const service = yield* resolveService(options.service, plan);
     const provider = yield* registry.select(plan);
-    yield* registerAppOutputRedaction({ plan, provider });
     const redaction = yield* Effect.serviceOption(RedactionService);
     const values = Option.isSome(redaction)
       ? yield* redaction.value.payloadValues()

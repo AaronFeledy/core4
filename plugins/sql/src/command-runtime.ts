@@ -5,7 +5,6 @@ import { Effect } from "effect";
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import {
-  AppOutputRedaction,
   AppPlanner,
   DataMover,
   EventService,
@@ -37,8 +36,6 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const capabilities = yield* registry.capabilities;
   const planned = yield* planner.plan(landofile, capabilities);
   const provider = yield* registry.select(planned);
-  const outputRedaction = yield* AppOutputRedaction;
-  yield* outputRedaction.register(planned, provider);
   const plan = toSqlPlan(planned);
   return yield* executeDbCommand(
     {

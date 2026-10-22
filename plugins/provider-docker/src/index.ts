@@ -56,7 +56,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString, withApiReason } from "@lando/container-runtime/redact";
-import { readAppSecrets } from "@lando/container-runtime/runtime-provider";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -469,7 +469,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
-      readAppSecrets: (target) => readAppSecrets(target, { api: dockerApi, ctx: DOCKER_CTX }),
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
         lifecycle: (plan, target, action) =>

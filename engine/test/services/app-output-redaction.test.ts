@@ -8,19 +8,24 @@ import {
   makeRedactionService,
   resetRegisteredRedactionValuesForTesting,
 } from "@lando/redaction/service";
-import { AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
-import { registerAppOutputRedaction } from "../../src/services/app-output-redaction.ts";
+import { registerProviderOutput } from "../../src/providers/output-redaction.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
 
 afterEach(resetRegisteredRedactionValuesForTesting);
 
-test.each(["ssh", "gpg"] as const)(
-  "registers only trusted %s relay credentials without worker contact",
-  async (kind) => {
+test.each([
+  ["ssh", false],
+  ["ssh", true],
+  ["gpg", false],
+  ["gpg", true],
+] as const)(
+  "registers trusted %s relay credentials with a synthetic selection root: %s",
+  async (kind, synthetic) => {
     const root = await mkdtemp(join(tmpdir(), "lando-output-relay-"));
     const paths = makeLandoPaths({ userDataRoot: root });
     const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -66,7 +71,11 @@ test.each(["ssh", "gpg"] as const)(
     try {
       const output = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* registerAppOutputRedaction({ plan, provider: TestRuntimeProvider });
+          yield* registerProviderOutput({
+            target: { app: plan.id, plan: synthetic ? { ...plan, root: AbsolutePath.make("/") } : plan },
+            provider: TestRuntimeProvider,
+            appliedPlans: [plan],
+          });
           return (yield* redaction.forProfile("secrets")).redactString(token);
         }).pipe(
           Effect.provideService(PathsService, paths),

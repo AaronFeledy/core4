@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 
 import { followLogsApp } from "@lando/core/cli/operations";
@@ -136,7 +137,7 @@ const makeLayer = (rawLine: string) => {
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
-    readAppSecrets: () => Effect.succeed([Redacted.make(SECRET_VALUE)]),
+    readAppEnvironment: () => Effect.succeed([Redacted.make(SECRET_VALUE)]),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -179,7 +180,7 @@ const makeLayer = (rawLine: string) => {
       RuntimeProviderRegistry.of({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
-        select: () => Effect.succeed(provider),
+        select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
       }),
     ),
   );

@@ -449,13 +449,13 @@ export class RuntimeProvider extends Context.Service<
     readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
     /**
-     * For redaction only: read override values delivered through serviceEnvironment at create,
-     * plus host-proxy transport credentials, from existing app containers. Record key names,
-     * never values. Absent containers contribute nothing; never start a stopped runtime or
-     * mutate resources. Failures must be typed, sanitized ProviderErrors without inspect bodies.
+     * Read only requested environment names from existing service containers. Absent containers,
+     * missing names and empty values contribute nothing. Never start a runtime or mutate resources.
+     * Failures must be typed, sanitized ProviderErrors without response bodies.
      */
-    readonly readAppSecrets: (
+    readonly readAppEnvironment: (
       target: AppSelector,
+      names: Readonly<Record<string, ReadonlyArray<string>>>,
     ) => Effect.Effect<ReadonlyArray<Redacted.Redacted<string>>, ProviderError>;
     readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
     readonly execStream: (

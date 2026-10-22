@@ -196,11 +196,11 @@ describe("provider-lando runtime status", () => {
       }),
     );
     const result = await Effect.runPromise(
-      Effect.result(provider.readAppSecrets({ app: AppId.make("stopped-app") })),
+      Effect.result(provider.readAppEnvironment({ app: AppId.make("stopped-app") }, {})),
     );
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "ProviderUnavailableError", operation: "readAppSecrets" },
+      failure: { _tag: "ProviderUnavailableError", operation: "readAppEnvironment" },
     });
     expect(starts).toBe(0);
   });

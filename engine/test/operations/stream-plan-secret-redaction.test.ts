@@ -32,6 +32,7 @@ import { execApp } from "../../src/operations/exec.ts";
 import { followLogsForPlan } from "../../src/operations/logs.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 import { workerStatePath } from "../../src/subsystems/host-proxy/worker-state-file.ts";
+import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 
 const password = "lando-1bd5b0ac12d8296a";
 const slashPassword = "s3cr/et-pa55word";
@@ -79,7 +80,7 @@ const plan: AppPlan = {
 };
 const provider: RuntimeProviderShape = {
   ...TestRuntimeProvider,
-  readAppSecrets: () => Effect.succeed([Redacted.make(password), Redacted.make(slashPassword)]),
+  readAppEnvironment: () => Effect.succeed([Redacted.make(password), Redacted.make(slashPassword)]),
   execStream: () =>
     Stream.fromIterable<ExecChunk>([
       { kind: "stdout", chunk: new TextEncoder().encode(bareLine.slice(0, 8)) },
@@ -107,7 +108,7 @@ const registryLayer = Layer.succeed(
   RuntimeProviderRegistry.of({
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
+    select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
   }),
 );
 const makeSink = () => {
@@ -156,7 +157,7 @@ describe("live plan-secret redaction", () => {
       );
       const workerProvider = {
         ...provider,
-        readAppSecrets: () => Effect.succeed([]),
+        readAppEnvironment: () => Effect.succeed([]),
         execStream: () =>
           Stream.make(
             { kind: "stdout" as const, chunk: new TextEncoder().encode(`${token}\n`) },
@@ -171,7 +172,7 @@ describe("live plan-secret redaction", () => {
         Layer.succeed(RuntimeProviderRegistry, {
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(workerProvider),
+          select: () => Effect.succeed(outputRegisteredTestProvider(workerProvider, plan)),
         }),
         Layer.succeed(
           LandofileService,
@@ -199,10 +200,10 @@ describe("live plan-secret redaction", () => {
     const { io, layer } = makeSink();
     const failure = new ProviderUnavailableError({
       providerId: provider.id,
-      operation: "readAppSecrets",
+      operation: "readAppEnvironment",
       message: "Read denied.",
     });
-    const failedProvider = { ...provider, readAppSecrets: () => Effect.fail(failure) };
+    const failedProvider = { ...provider, readAppEnvironment: () => Effect.fail(failure) };
     const result = await Effect.runPromise(
       Effect.result(
         followLogsForPlan(plan).pipe(
@@ -212,7 +213,7 @@ describe("live plan-secret redaction", () => {
               Layer.succeed(RuntimeProviderRegistry, {
                 list: Effect.succeed([providerId]),
                 capabilities: Effect.succeed(provider.capabilities),
-                select: () => Effect.succeed(failedProvider),
+                select: () => Effect.succeed(outputRegisteredTestProvider(failedProvider, plan)),
               }),
             ),
           ),
@@ -221,7 +222,7 @@ describe("live plan-secret redaction", () => {
     );
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "ProviderUnavailableError", operation: "readAppSecrets" },
+      failure: { _tag: "ProviderUnavailableError", operation: "readAppEnvironment" },
     });
     expect(io.stdout() + io.stderr()).toBe("");
   });
@@ -275,7 +276,11 @@ describe("live plan-secret redaction", () => {
     // When: container tooling streams provider output through the sink.
     await Effect.runPromise(
       Effect.flatMap(ToolingEngine, (engine) =>
-        engine.run({ tool: "password", commands: [["printenv", "POSTGRES_PASSWORD"]] }, plan, provider),
+        engine.run(
+          { tool: "password", commands: [["printenv", "POSTGRES_PASSWORD"]] },
+          plan,
+          outputRegisteredTestProvider(provider, plan),
+        ),
       ).pipe(Effect.provide(ProviderExecToolingEngine.layer), Effect.provide(layer)),
     );
 

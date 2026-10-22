@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import {
   RedactionService,
   makeRedactionService,
@@ -186,7 +187,7 @@ const layer = (
       RuntimeProviderRegistry.of({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
-        select: () => Effect.succeed(provider),
+        select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
       }),
     ),
     shellRunner,
@@ -214,7 +215,7 @@ const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
       RuntimeProviderRegistry.of({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
-        select: () => Effect.succeed(provider),
+        select: () => Effect.succeed(outputRegisteredTestProvider(provider, appPlan)),
       }),
     ),
     shellRunnerLayer(),
@@ -432,7 +433,7 @@ describe("shellApp — shell modes", () => {
     let stdout = "";
     let stderr = "";
     const provider = fakeProvider({
-      readAppSecrets: () => Effect.succeed([Redacted.make(secret)]),
+      readAppEnvironment: () => Effect.succeed([Redacted.make(secret)]),
       execStream: () =>
         Stream.fromIterable([
           { kind: "stdout" as const, chunk: new TextEncoder().encode(secret.slice(0, 7)) },
@@ -479,7 +480,7 @@ describe("shellApp — shell modes", () => {
     const output = { stdout: [] as number[], stderr: [] as number[] };
     const encoder = new TextEncoder();
     const provider = fakeProvider({
-      readAppSecrets: () => Effect.succeed([Redacted.make(secret)]),
+      readAppEnvironment: () => Effect.succeed([Redacted.make(secret)]),
       execStream: () =>
         Stream.fromIterable([
           { kind: "stdout" as const, chunk: new Uint8Array([0xff, 0xc3, 0x28]) },

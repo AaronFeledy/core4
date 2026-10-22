@@ -440,7 +440,8 @@ const makeFakeApi = () => {
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const key = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = existing.has(key) ? key : key.replace(/-id$/u, "");
           if (!existing.has(name)) {
             return { status: 404, body: "" };
           }

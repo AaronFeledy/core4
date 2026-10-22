@@ -1,5 +1,5 @@
 import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
-import { PROVIDER_LABEL, secretEnvironmentLabels } from "../labels.ts";
+import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
   ProviderInternalError,
@@ -333,7 +333,6 @@ const createContainerRequest = (
       name,
       labels: {
         ...commonContainerLabels(plan, service),
-        ...secretEnvironmentLabels(deps.options.serviceEnvironment?.[service.name]),
       },
       hostConfig: {
         ...baseHostConfig,

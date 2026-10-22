@@ -132,7 +132,7 @@ const makeRecordingProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
-    readAppSecrets: () => Effect.succeed([]),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (_target, command) => {
       const index = calls.length;
       calls.push(command.command);

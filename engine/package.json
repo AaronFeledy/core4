@@ -141,7 +141,6 @@
     "./scratch-app/registry": "./src/scratch-app/registry.ts",
     "./scratch-app/scanner": "./src/scratch-app/scanner.ts",
     "./scratch-app/service": "./src/scratch-app/service.ts",
-    "./services/app-output-redaction": "./src/services/app-output-redaction.ts",
     "./services/app-plan-redaction": "./src/services/app-plan-redaction.ts",
     "./services/base/l337": "./src/services/base/l337.ts",
     "./services/base/lando": "./src/services/base/lando.ts",
@@ -218,6 +217,7 @@
     "./testing/container-helper": "./src/testing/container-helper.ts",
     "./testing/downloader": "./src/testing/downloader.ts",
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
+    "./testing/output-provider": "./src/testing/output-provider.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
     "./version": "./src/version.ts"
   },

@@ -2,7 +2,7 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
-import { registerAppOutputRedaction } from "@lando/engine/services/app-output-redaction";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import {
   Cause,
@@ -43,7 +43,6 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
-  AppOutputRedaction,
   AppPlanner,
   CacheService,
   CommandRegistry,
@@ -189,7 +188,6 @@ type ScratchTestRuntimeServices =
   | ScratchRegistry
   | ScratchResourceScanner;
 type AppTestRuntimeServices =
-  | AppOutputRedaction
   | ProviderTestRuntimeServices
   | AppPlanner
   | LandofileService
@@ -781,7 +779,10 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
-    select: () => Effect.succeed(runtimeProvider),
+    select: (target) =>
+      Effect.succeed(
+        outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
+      ),
     resolveAppliedPlan: () => Effect.succeed(undefined),
   });
 
@@ -1036,9 +1037,6 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   );
 
   const appLayer: Layer.Layer<AppTestRuntimeServices> = Layer.mergeAll(
-    Layer.succeed(AppOutputRedaction, {
-      register: (plan, provider) => registerAppOutputRedaction({ plan, provider }),
-    }),
     providerLayer,
     Layer.succeed(AppPlanner, appPlannerService),
     Layer.succeed(LandofileService, landofileService),

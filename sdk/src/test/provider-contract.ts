@@ -48,7 +48,15 @@ export const runProviderContract = Effect.fnUntraced(function* (
   provider: RuntimeProviderShape,
 ): Effect.fn.Return<void, ContractFailure> {
   const providerId = ProviderId.make(provider.id);
-  const testAppPlan = makeTestAppPlan(providerId);
+  const testAppPlan = {
+    ...makeTestAppPlan(providerId),
+    services: {
+      [TEST_SERVICE_NAME]: {
+        ...makeTestServicePlan(providerId),
+        environment: { REQUESTED: "contract=requested", UNREQUESTED: "contract-unrequested" },
+      },
+    },
+  };
   const capabilities = Schema.decodeUnknownResult(ProviderCapabilities)(provider.capabilities);
 
   yield* requireContract(isNonEmptyString(provider.id), "provider exposes a non-empty id", provider.id);
@@ -119,10 +127,10 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(Effect.isEffect(provider.isAvailable), "isAvailable is Effect-typed");
   yield* requireContract(Effect.isEffect(provider.getStatus), "getStatus is Effect-typed");
   yield* requireContract(Effect.isEffect(provider.getVersions), "getVersions is Effect-typed");
-  const secrets = yield* provider
-    .readAppSecrets({ app: TEST_APP_ID })
-    .pipe(Effect.mapError(mapProviderFailure("readAppSecrets resolves without creating resources")));
-  yield* requireContract(secrets.every(Redacted.isRedacted), "readAppSecrets returns only Redacted values");
+  const beforeApply = yield* provider
+    .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["REQUESTED"] })
+    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves without creating resources")));
+  yield* requireContract(beforeApply.length === 0, "readAppEnvironment returns no values before apply");
   yield* requireContract(
     Effect.isEffect(provider.apply(testAppPlan, { reconcile: true })),
     "apply is Effect-typed",
@@ -308,6 +316,25 @@ export const runProviderContract = Effect.fnUntraced(function* (
     typeof applyResult.changed === "boolean",
     "apply returns ApplyResult with a boolean changed field",
     applyResult,
+  );
+
+  const environment = yield* provider
+    .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["REQUESTED"] })
+    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves after apply")));
+  yield* requireContract(
+    environment.length === 1 && environment.every(Redacted.isRedacted),
+    "readAppEnvironment returns exactly one Redacted requested value after apply",
+  );
+  yield* requireContract(
+    environment.map(Redacted.value).join() === "contract=requested",
+    "readAppEnvironment returns the applied value without unrequested values",
+  );
+  const missingEnvironment = yield* provider
+    .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["MISSING"] })
+    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves for missing names")));
+  yield* requireContract(
+    missingEnvironment.length === 0,
+    "readAppEnvironment excludes unrequested applied names",
   );
 
   yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(

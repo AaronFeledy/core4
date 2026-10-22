@@ -22,12 +22,6 @@ export const SCRATCH_LABEL = "dev.lando.scratch" as const;
 export const SCRATCH_ID_LABEL = "dev.lando.scratch-id" as const;
 export const AGENT_SESSION_LABEL = "dev.lando.agent-session" as const;
 export const HOST_PROXY_SESSION_LABEL = "dev.lando.host-proxy-session" as const;
-export const SECRET_ENVIRONMENT_LABEL = "dev.lando.secret-environment" as const;
-
-export const secretEnvironmentLabels = (overrides: Readonly<Record<string, string>> | undefined) => {
-  const keys = Object.keys(overrides ?? {}).sort();
-  return keys.length === 0 ? {} : { [SECRET_ENVIRONMENT_LABEL]: keys.join(",") };
-};
 
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"];

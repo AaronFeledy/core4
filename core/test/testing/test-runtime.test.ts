@@ -62,7 +62,6 @@ type ScratchOrAppBootstrap = "scratch" | "app";
 const makeScratchOrAppRuntime = (bootstrap: ScratchOrAppBootstrap) => makeTestRuntime({ bootstrap });
 type ScratchOrAppRuntime = ReturnType<typeof makeScratchOrAppRuntime>;
 type ExpectedScratchOrAppServices =
-  | import("@lando/sdk/services").AppOutputRedaction
   | import("@lando/sdk/services").ContainerHelperAssets
   | Logger
   | Renderer

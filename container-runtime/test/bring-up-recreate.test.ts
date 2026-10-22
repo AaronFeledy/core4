@@ -330,7 +330,6 @@ describe("Podman publish-port recreate", () => {
       Env: ["PASSWORD=resolved-before"],
       Labels: {
         [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
-        "dev.lando.secret-environment": "PASSWORD",
       },
     });
     expect(createCalls(fake.calls)[0]?.body).toHaveProperty(

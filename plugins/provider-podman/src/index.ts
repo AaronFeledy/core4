@@ -63,7 +63,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
-import { readAppSecrets } from "@lando/container-runtime/runtime-provider";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -702,7 +702,8 @@ const assembleRuntimeProvider = (
     const resolvePlan = appliedPlans.resolvePlan;
 
     const resolvedOps = bindResolvedProviderOps(planState, {
-      readAppSecrets: (target) => readAppSecrets(target, { api: podmanApi, ctx: PODMAN_CTX }),
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: PODMAN_CTX }),
       ctx: PODMAN_CTX,
       noPlanError: makeNoPlanError,
       service: {

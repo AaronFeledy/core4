@@ -67,7 +67,7 @@ test.each([false, true])(
     };
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
-      readAppSecrets: () => Effect.succeed(applied.map((value) => Redacted.make(value))),
+      readAppEnvironment: () => Effect.succeed(applied.map((value) => Redacted.make(value))),
       execStream: () =>
         Stream.make(
           { kind: "stdout" as const, chunk: new TextEncoder().encode(value.slice(0, 9)) },

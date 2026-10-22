@@ -95,7 +95,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   waitForExit: () => Effect.fail(unsupportedProviderOperation("waitForExit")),
   destroy: () => Effect.succeed({ kind: "no-op", reason: "no-applied-plan" }),
   removeObservedService: () => Effect.succeed({ kind: "absent" }),
-  readAppSecrets: () => Effect.succeed([]),
+  readAppEnvironment: () => Effect.succeed([]),
   exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
   execStream: () => Stream.empty,
   run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot run" }),
