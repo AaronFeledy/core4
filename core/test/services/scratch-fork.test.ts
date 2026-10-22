@@ -635,7 +635,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       // Then: interruption is not converted to a successful detached acquisition.
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(applied).toHaveLength(1);
-      expect(destroyed).toHaveLength(keepOnFailure ? 0 : 1);
+      // Reaping stops with volumes kept, then destroys with volumes removed.
+      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true]);
       expect(routes.removed).toHaveLength(keepOnFailure ? 0 : 1);
     });
   });
