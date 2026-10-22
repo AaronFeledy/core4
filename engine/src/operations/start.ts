@@ -6,6 +6,7 @@ import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/s
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
@@ -35,6 +36,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
   return yield* withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
+      yield* ensureAppPlacement(target.app, target.plan.provider);
       const context = yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;

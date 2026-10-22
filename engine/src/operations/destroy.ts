@@ -42,6 +42,7 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { TeardownProvider } from "../providers/app-placement.ts";
 import { shellArg } from "../services/shell-quote.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
@@ -420,21 +421,8 @@ const destroyAppWithResolvedTarget = (
         purgeCaches: options?.purgeCaches === true,
       });
       const { pending } = yield* readDiscardableStart(validatedTarget.app);
-      if (
-        (pending === null || pending.phase === "completed") &&
-        requireAppliedEvidence &&
-        registry.resolveAppliedPlan !== undefined
-      ) {
-        const evidence =
-          registry.resolveTeardownEvidence === undefined
-            ? yield* registry
-                .resolveAppliedPlan(validatedTarget.plan.root)
-                .pipe(
-                  Effect.map((plan) =>
-                    plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
-                  ),
-                )
-            : yield* registry.resolveTeardownEvidence(validatedTarget.plan.root);
+      if ((pending === null || pending.phase === "completed") && requireAppliedEvidence) {
+        const evidence = yield* registry.resolveTeardownEvidence(validatedTarget.plan.root);
         switch (evidence.kind) {
           case "applied":
             break;
@@ -538,6 +526,19 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
   options: DestroyAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.fn.Return<DestroyAppResult, DestroyAppError, DestroyAppServices> {
+  if (options.providerId !== undefined) {
+    const { providerId, ...scopedOptions } = options;
+    if (target !== undefined && target.plan.provider !== providerId)
+      return yield* Effect.fail(
+        new AppResolveError({
+          message: "The explicit provider differs from the app handle's applied provider.",
+          reason: "mismatch",
+          detail: "provider",
+          remediation: `Run \`lando destroy --provider=${providerId} --yes\` from the app directory.`,
+        }),
+      );
+    return yield* destroyApp(scopedOptions, target).pipe(Effect.provideService(TeardownProvider, providerId));
+  }
   return yield* target !== undefined
     ? destroyAppForTarget(options, target)
     : withTeardownResolution({
@@ -630,7 +631,10 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
           yield* pendingStartDisposal(desired.app, desired.plan);
           return yield* destroyAppWithResolvedTarget(options, desired, true, false);
         }),
-        absent: (resolution) => destroyDesiredOrUnchanged(options, resolution),
+        absent: Effect.fnUntraced(function* (resolution) {
+          if ((yield* TeardownProvider) !== undefined) return unchangedResult(basename(resolution.root));
+          return yield* destroyDesiredOrUnchanged(options, resolution);
+        }),
       }).pipe(
         Effect.map(
           (result): DestroyAppResult =>
@@ -647,6 +651,12 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
   DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
   DestroyAppServices | FileSystem
 > {
+  if (options.providerId !== undefined) {
+    const { providerId, ...scopedOptions } = options;
+    return yield* destroyAppAtRoot(root, scopedOptions).pipe(
+      Effect.provideService(TeardownProvider, providerId),
+    );
+  }
   // Owners are recorded by the exact path the app had. Try that first, then the path the
   // current filesystem resolves it to (e.g. /tmp -> /private/tmp); a parent that was moved and
   // replaced by a symlink must not redirect the lookup away from what was recorded.

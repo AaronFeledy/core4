@@ -41,7 +41,7 @@ lando doctor --all
 
 Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
+`lando setup` and `lando setup --yes` keep the `defaultProviderId` already in your config. Switch back with `lando setup --provider=lando`.
 
 ## Inspect leftover snapshot images
 

@@ -4,13 +4,8 @@ import { landofileValidationError } from "@lando/landofile/validation";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Iterable, Option, Result } from "effect";
-import {
-  CAPABILITY_DEFAULT_PROVIDER_ID,
-  readProviderEnvVar,
-  resolveProviderSelection,
-} from "../providers/precedence.ts";
-import { GlobalConfigSources } from "../services/config.ts";
+import { type Context, DateTime, Effect, Iterable, Result } from "effect";
+import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling } from "./effective-tooling.ts";
 import { validEventNames } from "./event-names.ts";
@@ -56,17 +51,8 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
-  const captured = yield* Effect.serviceOption(GlobalConfigSources);
-  const envProvider = readProviderEnvVar(
-    Option.isNone(captured) ? process.env : captured.value.sources.env ? captured.value.env : {},
-  );
-  const configProvider = globalConfig?.defaultProviderId;
-  const provider = resolveProviderSelection({
-    ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
-    ...(envProvider === undefined ? {} : { env: envProvider }),
-    ...(configProvider === undefined || configProvider === null ? {} : { config: configProvider }),
-    capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-  }).providerId;
+  const hostProvider = yield* hostProviderIdFrom(globalConfig?.defaultProviderId);
+  const provider = landofile.provider ?? hostProvider;
   const manifests = yield* pluginRegistry.list.pipe(
     Effect.mapError(
       (error) =>
@@ -142,6 +128,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     globalConfig,
     appDefaults,
     provider,
+    hostProvider,
     manifests,
     routes: validated.routes,
     canonicalFile: input.file,

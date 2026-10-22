@@ -209,6 +209,9 @@ const makeLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -256,6 +259,7 @@ const cachedPlanKey = async (
   provider: RuntimeProviderShape,
 ): Promise<string> =>
   deriveAppPlanCacheKey({
+    hostProvider: "lando",
     appRoot,
     landofile: { ...landofile, provider: ProviderId.make(provider.id) },
     pluginManifests: [],

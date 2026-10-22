@@ -58,6 +58,9 @@ describe("agent relay worker runtime", () => {
         const registry = Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.succeed(provider.capabilities),
             select: (plan) => {
@@ -198,6 +201,9 @@ describe("agent relay worker runtime", () => {
           Effect.provideService(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([]),
               capabilities: Effect.succeed(provider.capabilities),
               select: () => Effect.succeed(provider),
@@ -253,6 +259,9 @@ describe("agent relay worker runtime", () => {
           return Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([]),
               capabilities: Effect.succeed(runtimeProviderService.capabilities),
               select: () => Effect.succeed(runtimeProviderService),
@@ -314,6 +323,9 @@ describe("agent relay worker runtime", () => {
           return Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([]),
               capabilities: Effect.succeed(runtimeProviderService.capabilities),
               select: () => Effect.succeed(runtimeProviderService),

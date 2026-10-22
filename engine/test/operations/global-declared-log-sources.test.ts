@@ -18,6 +18,7 @@ test.each(["node:22", "compose"])("merges global declared logs before decoding (
   };
   const globalApp = GlobalAppService.of({
     id: "global",
+    providerId: Effect.die("global provider resolution is unused"),
     root: Effect.succeed(paths.root),
     paths: Effect.succeed(paths),
     ensureRoot: Effect.void,

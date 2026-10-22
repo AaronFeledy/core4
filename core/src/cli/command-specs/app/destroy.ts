@@ -2,6 +2,7 @@
  * `lando app:destroy` — native command metadata adapter.
  */
 import { resolve } from "node:path";
+import { ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { yesFlag } from "../../spec/confirmation-flag";
 import { Flags } from "../../spec/metadata";
@@ -50,6 +51,9 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
     }),
   });
   const options = {
+    ...(stringFlag(flags, "provider") === undefined
+      ? {}
+      : { providerId: ProviderId.make(stringFlag(flags, "provider") ?? "") }),
     volumes,
     purgeCaches: booleanFlag(flags, "purge-caches"),
     purgeSnapshots: booleanFlag(flags, "purge"),
@@ -67,6 +71,7 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   flags: {
+    provider: Flags.string({ description: "Destroy only this provider's applied app and owned resources." }),
     root: Flags.string({
       description: "Clean up an app whose folder no longer exists, using the path lando doctor prints.",
     }),

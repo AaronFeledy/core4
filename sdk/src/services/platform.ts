@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope } from "effect";
 import type { AppId } from "../schema/primitives.ts";
 
 import type {
+  AppPlacementError,
   CaError,
   HealthcheckError,
   HealthcheckTimeoutError,
@@ -68,7 +69,10 @@ export class RouterService extends Context.Service<
     /** Resolve and persist route publication ports before starting required global services. */
     readonly prepare?: (
       config: ProxyConfig,
-    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
+    ) => Effect.Effect<
+      void,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch
+    >;
     readonly setup: (
       config: ProxyConfig,
       options?: {
@@ -78,7 +82,7 @@ export class RouterService extends Context.Service<
       },
     ) => Effect.Effect<
       void,
-      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
       Scope.Scope
     >;
     /**
