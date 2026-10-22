@@ -160,14 +160,6 @@ const makeGlobalAppService = (
   fileSystem: Context.Service.Shape<typeof FileSystem>,
 ): Context.Service.Shape<typeof GlobalAppService> => {
   const root = configService.get("userDataRoot").pipe(
-    Effect.mapError(
-      (cause) =>
-        new GlobalAppError({
-          message: "Unable to resolve the user data root for the global app.",
-          operation: "root",
-          cause,
-        }),
-    ),
     Effect.flatMap((userDataRoot) =>
       userDataRoot === undefined
         ? Effect.fail(

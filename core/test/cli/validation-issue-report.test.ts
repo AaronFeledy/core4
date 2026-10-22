@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { encodeCommandResult } from "@lando/sdk/command-result";
-import { LandofileValidationError, LandofileWriteValidationError } from "@lando/sdk/errors";
+import { ConfigError, LandofileValidationError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -15,6 +15,18 @@ const issue = {
 } as const;
 
 describe("validation issue rendering", () => {
+  test("prints config field issues and repair guidance in plain output", () => {
+    const error = new ConfigError({
+      message: "Invalid global configuration.",
+      path: "/tmp/config.yml",
+      issues: [{ path: ["router", "httpPort"], message: "Expected a valid port." }],
+      remediation: "Run `lando config validate` or `lando config edit`.",
+    });
+    const text = renderPlainBugReport(buildBugReport({ error, context: { commandId: "app:info" } }));
+    expect(text).toContain("router.httpPort: Expected a valid port.");
+    expect(text).toContain("lando config validate");
+    expect(text).toContain("lando config edit");
+  });
   test("prints one line per issue as path, message, and suggestion", () => {
     const error = new LandofileValidationError({
       message: "Landofile contains unsupported keys.",

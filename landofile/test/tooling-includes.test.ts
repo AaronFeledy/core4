@@ -532,7 +532,7 @@ describe("tooling includes — failure modes", () => {
     }
   });
 
-  test("a cyclic tooling include fails with ToolingIncludeCycleError", async () => {
+  test("a cyclic tooling include fails with LandofileIncludeError", async () => {
     // Given two fragments that include each other
     await writeFile(
       join(appRoot, "a.tasks.yml"),
@@ -549,8 +549,9 @@ describe("tooling includes — failure modes", () => {
     const error = await failure({ toolingIncludes: { a: { file: "./a.tasks.yml" } } }, appRoot);
 
     // Then
-    expect(error._tag).toBe("ToolingIncludeCycleError");
-    if (error._tag === "ToolingIncludeCycleError") {
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") {
+      expect(error.kind).toBe("cycle");
       expect(error.remediation.length).toBeGreaterThan(0);
     }
   });

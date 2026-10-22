@@ -74,7 +74,7 @@ test.each([
   const desiredService: ServicePlan = changed ? { ...service, command: ["nginx", "-t"] } : service;
   const desired: AppPlan = { ...plan, services: { [service.name]: desiredService } };
   const names = [
-    physical.networking?.perAppBridge.name,
+    physical.networking?.perAppBridge?.name,
     physical.networking?.sharedNetworkMembership?.name,
   ].filter((name): name is string => name !== undefined);
   const api: PodmanApiClient = {
