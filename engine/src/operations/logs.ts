@@ -19,7 +19,6 @@ import {
 
 import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
 import { observedAppPlan } from "../providers/app-placement.ts";
-import { registerAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 
@@ -274,7 +273,6 @@ const collectLogLines = Effect.fnUntraced(function* (
   logOptions: LogOptions,
   requestedSource: string | undefined,
 ): Effect.fn.Return<LogsAppResult, SdkLogsAppError, never> {
-  yield* registerAppPlanRedactionTokens(plan);
   const perService = yield* Effect.forEach(services, (service) =>
     provider
       .logs(
@@ -308,7 +306,6 @@ const drainLogFollow = Effect.fnUntraced(function* (
   requestedSource: string | undefined,
   signal: AbortSignal | undefined,
 ): Effect.fn.Return<LogsAppResult, SdkLogsAppError> {
-  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const lines: LogsAppLine[] = [];
   const streams = services.map((service) =>

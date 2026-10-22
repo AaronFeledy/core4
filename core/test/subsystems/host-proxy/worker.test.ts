@@ -120,8 +120,8 @@ const startDetachedHostProxyWorker = (
   startDetachedHostProxyWorkerWithPrivateFileAccess({
     ...options,
     privateFileAccess: options.privateFileAccess ?? ownerOnlyFileAccess,
-    spawnWorker: (spec) => {
-      const worker = (options.spawnWorker ?? defaultSpawnWorker)(spec);
+    spawnWorker: async (spec) => {
+      const worker = await (options.spawnWorker ?? defaultSpawnWorker)(spec);
       if (options.spawnWorker === undefined) spawnedPids.add(worker.pid);
       return worker;
     },
@@ -233,6 +233,7 @@ test.each(["interruption", "failure"] as const)(
             }),
           spawnWorker: (spec) => ({
             pid: 876543,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: async () => ({
@@ -457,6 +458,7 @@ describe("detached host-proxy worker manager", () => {
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 12345,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async (value) => {
               writes.push(value);
@@ -600,6 +602,7 @@ describe("detached host-proxy worker manager", () => {
         shimArtifactPath: join(root, "shim"),
         spawnWorker: (spec) => ({
           pid,
+          logPath: join(root, "worker.log"),
           argv: spec.argv,
           writeStdin: async () => undefined,
           readReady: async () => {
@@ -666,7 +669,10 @@ console.log(JSON.stringify({
 `,
       );
 
-      const worker = defaultSpawnWorker({ argv: [process.execPath, scriptPath] });
+      const worker = await defaultSpawnWorker({
+        argv: [process.execPath, scriptPath],
+        privateFileAccess: ownerOnlyFileAccess,
+      });
       const ready = await worker.readReady();
 
       expect(JSON.parse(ready.token)).toEqual([]);
@@ -838,6 +844,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: () => ({
             pid: 56789,
+            logPath: join(root, "worker.log"),
             argv: hostProxyWorkerArgv({ ...workerEntry, appId: "demo" }),
             writeStdin: async () => undefined,
             readReady: async () => ({
@@ -881,6 +888,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 67890,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: () => {
@@ -914,6 +922,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 67901,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => {
               throw new Error("stdin failed");
@@ -1163,6 +1172,7 @@ console.log(JSON.stringify({
       shimArtifactPath: await fakeShim(root),
       spawnWorker: () => ({
         pid: 12345,
+        logPath: join(root, "worker.log"),
         argv: [],
         writeStdin: async (value: string) => {
           digests.push(JSON.parse(value).configDigest);
@@ -1427,6 +1437,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 78901,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: async () => ({

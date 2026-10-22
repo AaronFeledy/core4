@@ -18,12 +18,14 @@ import type {
 
 import type { ProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
+export { readAppEnvironment } from "./app-environment.ts";
 
 export interface ResolvedProviderOpsInput {
   readonly ctx: ProviderErrorContext;
   readonly resolvePlan: (app: AppId) => Effect.Effect<AppPlan | undefined>;
   readonly noPlanError: (app: AppId, operation: string) => ProviderError;
   readonly before?: Effect.Effect<void, ProviderError>;
+  readonly readAppEnvironment: RuntimeProviderShape["readAppEnvironment"];
   readonly service: {
     readonly lifecycle: (
       plan: AppPlan,
@@ -64,6 +66,7 @@ export type ResolvedProviderOps = Pick<
   | "suspend"
   | "waitForExit"
   | "exec"
+  | "readAppEnvironment"
   | "execStream"
   | "inspect"
   | "run"
@@ -141,6 +144,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
   };
 
   return {
+    readAppEnvironment: input.readAppEnvironment,
     start: Effect.fn("RuntimeProvider.start")(function* (target) {
       return yield* resolveTarget(target, "start", (plan) => input.service.lifecycle(plan, target, "start"));
     }),

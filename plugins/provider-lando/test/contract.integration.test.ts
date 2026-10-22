@@ -275,7 +275,8 @@ const makeFakeApi = () => {
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const key = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = existing.has(key) ? key : key.replace(/-id$/u, "");
           if (!existing.has(name)) {
             return { status: 404, body: "" };
           }
@@ -290,6 +291,20 @@ const makeFakeApi = () => {
           };
         }
 
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return {
+            status: 200,
+            body: JSON.stringify(
+              Array.from(existing).map((name) => ({
+                Id: `${name}-id`,
+                State: running.has(name) ? "running" : "exited",
+                Labels: Schema.decodeUnknownSync(
+                  Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+                )(configs.get(name)).Labels,
+              })),
+            ),
+          };
+        }
         return {
           status: 500,
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),

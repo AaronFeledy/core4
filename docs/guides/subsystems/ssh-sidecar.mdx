@@ -18,7 +18,7 @@ sshAgent:
   sidecar: true
 ```
 
-`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. It lives on the host provider (`LANDO_PROVIDER`, else `defaultProviderId`, else `lando`) with the rest of the global app, even when a Landofile pins the app itself somewhere else. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
+`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. It lives on the host provider with the rest of the global app, even when a Landofile pins the app itself somewhere else; see [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs). `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
 
 That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:start`.
 
@@ -49,6 +49,8 @@ Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, n
 - The sidecar could not start: fix the cause, then run `lando restart`. `lando global:logs --service ssh-agent` shows the sidecar's output.
 - It stopped, or its agent did not answer within the wait: run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando restart`.
 - No SSH agent sidecar service is installed: install and select the bundled SSH agent plugin, then restart the app.
+
+For a detached SSH or gpg relay startup failure, inspect the log path named in the error: `<userCacheRoot>/logs/agent-relay-worker-<appId>.log`. Startup failures that come from the worker name that path: an exit before readiness, a failed payload write, a readiness timeout, closed stdout, or an invalid readiness frame. An observed exit includes its exit code and redacted stderr tail; a worker still alive after a bounded wait has no reported exit code. Logs are owner-only (`0600` on POSIX, a private ACL on Windows). Outer-failure output and error tails are redacted, and an invalid readiness frame is never printed.
 
 Every later start retries on its own. `lando doctor` reports `runtime-volume` delivery and the volume name when the app shares the global app's provider, using in-runtime readiness rather than host socket reachability. A failed check reports degraded with `lando setup` or `lando doctor --fix` as remediation.
 

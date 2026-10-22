@@ -14,7 +14,7 @@ lando doctor
 
 Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run.
 
-The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, later `lando doctor` and bare `lando setup` stay on Docker because the flag writes `defaultProviderId`. `LANDO_PROVIDER` does not persist. The global app runs on that same host provider.
+Doctor reads the global app on the provider setup selected. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
 
 ## When it is not installed
 

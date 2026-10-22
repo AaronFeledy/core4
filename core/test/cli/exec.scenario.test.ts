@@ -144,6 +144,7 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
       const record = {
         service: String(target.service),

@@ -1,15 +1,17 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
+import { execApp } from "@lando/engine/operations/exec";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AppPlan, CommandResultEnvelope, PluginManifest, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { StreamFrame } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -20,9 +22,12 @@ import {
 } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
+
+afterEach(resetRegisteredRedactionValuesForTesting);
 
 test.each([false, true])(
   "start --format=json redacts scheme-store values when provider failure is %s",
@@ -62,6 +67,13 @@ test.each([false, true])(
     };
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
+      readAppEnvironment: () => Effect.succeed(applied.map((value) => Redacted.make(value))),
+      execStream: () =>
+        Stream.make(
+          { kind: "stdout" as const, chunk: new TextEncoder().encode(value.slice(0, 9)) },
+          { kind: "stdout" as const, chunk: new TextEncoder().encode(`${value.slice(9)}\n`) },
+          { exitCode: 0 },
+        ),
       apply: Effect.fnUntraced(function* (_plan, options) {
         const resolved = options.serviceEnvironment?.[ServiceName.make("web")]?.DISPLAY_VALUE ?? "unresolved";
         applied.push(resolved);
@@ -182,5 +194,27 @@ test.each([false, true])(
           },
     );
     expect(exits).toEqual(failApply ? [1] : []);
+    if (!failApply) {
+      resetRegisteredRedactionValuesForTesting();
+      const execIo = createBufferedRendererIO({ isTTY: false });
+      await runWithRendererHandling(execApp({ service: "web", command: ["printenv", "DISPLAY_VALUE"] }), {
+        runtime,
+        io: execIo,
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:exec",
+        resultSchema: EmptyResultSchema,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        formatError: ({ error }) => String(error),
+        setExitCode: (code) => {
+          exits.push(code);
+        },
+      });
+      expect(execIo.stdout()).toBe("[redacted]\n");
+      expect(execIo.stderr()).not.toContain(value);
+      expect(reads).toEqual([reference]);
+      expect(exits).toEqual([]);
+    }
   },
 );

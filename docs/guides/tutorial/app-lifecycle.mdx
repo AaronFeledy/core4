@@ -116,13 +116,13 @@ lando destroy -y
 
 Snapshots survive plain `destroy` and `--volumes`. **`lando destroy --purge -y` also deletes this folder's catalogued snapshots**, including native data through the provider that recorded each snapshot. It works when an earlier destroy left only ownership inventory. Snapshots belong to the source volume's canonical owner root, so other app folders keep theirs even if they share this app's name. See [Import and export app databases](../tooling/db-import-export.mdx) before moving a database between apps or providers.
 
-Changing providers doesn't move an applied app. Start, restart, and rebuild fail with `AppPlacementError` if another provider holds its applied plan. Stop, destroy, info, and logs still target the existing provider. To retire an unwanted copy when applied state is ambiguous, select that provider explicitly:
+Changing providers doesn't move an applied app. If `lando start` fails with `AppPlacementError`, retire the old copy explicitly:
 
 ```sh
 lando destroy --provider=lando --yes
 ```
 
-Only the selected provider's state and resources are touched. Data volumes stay there; starting on another provider does not copy them.
+Only the selected provider's state and resources are touched. See [Recover an app left on another provider](../setup/provider-selection.mdx#recover-an-app-left-on-another-provider).
 
 `stop` and `destroy` use the provider's last applied plan when the Landofile is
 missing or invalid. That means you can still tear down an app after deleting its

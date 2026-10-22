@@ -114,6 +114,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
 | `RedactionService` | Canonical secret and PII masking (§3.7); never plugin-replaceable |
+| `AppOutputRedaction` | Plugin-facing app-output preparation backed by the engine's shared registration step; reads current provider and trusted worker credentials, never resolves or persists secret-store values (§3.7) |
 
 The replaceability and default Layers for all pluggable tags remain canonical in §4.2. Hosts enumerating runtime services SHOULD combine §3.4 and §4.2.
 
@@ -171,7 +172,7 @@ Both shells MUST provide the generated layer for the resolved level, run with sc
 
 Redaction is one non-replaceable security invariant shared by logs, events, runners, network and data movement, managed files, build and doctor output, telemetry, config translation, caches, and executable-guide transcripts.
 
-1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`.
+1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match, including URL-encoded, JSON-escaped, and UTF-8 base64 forms (standard and base64url, with and without padding) of each known value. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`; rejected encoded variants are dropped, never treated as authoritative suppressors.
 2. The pattern layer then masks the canonical secret classes (`secretAssignment`, `urlUserinfo`, `bearerToken`, `signedQueryParam`, `secretKeyedField`) and, where the selected profile requires it, the normalization classes `url`, `email`, `uuid`, `hostname`, `posixPath`, `windowsPath`, `uncPath`, `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, `user`, `host`, and `root`.
 
 | Profile | Contract |

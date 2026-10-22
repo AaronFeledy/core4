@@ -81,6 +81,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -917,6 +918,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,
       noPlanError: makeNoPlanError,
       before: ensureEffect,

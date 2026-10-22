@@ -61,6 +61,7 @@ import type {
   ProxySetupError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouteProviderMismatchError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   RouterWatcherError,
@@ -104,6 +105,7 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.
 type LegacyAppPlannerChannel =
+  | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
@@ -149,6 +151,7 @@ type LegacyDiscoverChannel =
 
 // The app contract's local LandofileNotFoundError alias includes LandofileFormConflictError.
 type LegacyStartAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -206,6 +209,7 @@ type LegacyStartAppError =
   | VolumeOperationError;
 
 type LegacyStopAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -245,6 +249,7 @@ type LegacyStopAppError =
   | VolumeOperationError;
 
 type LegacyInfoAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -275,6 +280,7 @@ type LegacyInfoAppError =
   | ProviderUnavailableError;
 
 type LegacyExecAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -305,6 +311,7 @@ type LegacyExecAppError =
 
 type LegacyToolingError =
   | CommandAliasConflictError
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -344,6 +351,7 @@ type LegacyToolingError =
   | ToolingExecError;
 
 type LegacyLogsAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError

@@ -28,6 +28,7 @@ import type {
   ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouteProviderMismatchError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
@@ -61,6 +62,7 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | RouteProviderMismatchError
   | AppPlacementError
   | LandofileCompileError
   | CapabilityError
@@ -79,6 +81,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
@@ -109,6 +112,7 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | RouteProviderMismatchError
   | AppPlacementError
   | LandofileCompileError
   | ServiceNotReadyError
@@ -139,6 +143,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | RouteProviderMismatchError
   | RemoteSyncError
   | UserLandofileError
   | CapabilityError
@@ -151,6 +156,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | RouteProviderMismatchError
   | UserLandofileError
   | CapabilityError
   | HomePathCapabilityError

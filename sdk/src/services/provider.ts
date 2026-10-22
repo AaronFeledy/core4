@@ -1,4 +1,4 @@
-import { Context, type Effect, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Redacted, type Scope, type Stream } from "effect";
 import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 
 import type {
@@ -456,6 +456,15 @@ export class RuntimeProvider extends Context.Service<
     /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
     readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
+    /**
+     * Read only requested environment names from existing service containers. Absent containers,
+     * missing names and empty values contribute nothing. Never start a runtime or mutate resources.
+     * Failures must be typed, sanitized ProviderErrors without response bodies.
+     */
+    readonly readAppEnvironment: (
+      target: AppSelector,
+      names: Readonly<Record<string, ReadonlyArray<string>>>,
+    ) => Effect.Effect<ReadonlyArray<Redacted.Redacted<string>>, ProviderError>;
     readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
     readonly execStream: (
       target: ExecTarget,
