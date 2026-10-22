@@ -318,7 +318,7 @@ export const layerRuntimeWithConfig = (
   Layer.unwrap(
     Effect.gen(function* () {
       const config = yield* ConfigService;
-      const eventConfig = yield* config.get("events").pipe(Effect.orElseSucceed(() => undefined));
+      const eventConfig = yield* config.get("events");
       return layerWith(
         DEFAULT_HISTORY_CAP,
         {},

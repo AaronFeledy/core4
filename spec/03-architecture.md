@@ -30,7 +30,7 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 
 | Level | Meaning | Service membership |
 |---|---|---|
-| `none` | Command-base depth with no prebuilt runtime; the fast-path subset skips dispatcher and Effect entirely | none |
+| `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
 | `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService` |
 | `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry`; lazy `PrivilegeService`; plugin implementations register here |
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |

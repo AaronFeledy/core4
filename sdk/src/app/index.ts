@@ -19,7 +19,6 @@ import type {
   BunShellScriptFrontMatterError,
   CacheError,
   CommandAliasConflictError,
-  ConfigError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -391,7 +390,6 @@ export type InfoAppError =
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError
-  | ConfigError
   | LandoCommandError
   | ProxyError;
 
@@ -419,7 +417,6 @@ export type ExecAppError =
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError
-  | ConfigError
   | ToolingExecError;
 
 /**
@@ -455,7 +452,6 @@ export type ToolingError =
   | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
-  | ConfigError
   | ShellExecError
   | ShellScriptOutsideRootError
   | ToolingCompileError

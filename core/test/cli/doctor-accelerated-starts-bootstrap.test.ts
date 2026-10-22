@@ -4,8 +4,8 @@ import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { ProviderId } from "@lando/sdk/schema";
-import { FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { ConfigService, FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
@@ -43,7 +43,12 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
       readDir: () => Effect.succeed([key]),
     })),
   ).pipe(Layer.provide(BunFileSystem.layer));
+  const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const runtime = Layer.mergeAll(
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
     store.layer,
     fsLayer,
     PluginRegistryLayer.layer,

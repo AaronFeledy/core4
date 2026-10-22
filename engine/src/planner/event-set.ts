@@ -3,14 +3,14 @@ import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
-import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Iterable, Predicate, Result } from "effect";
+import { type Context, DateTime, Effect, Iterable, Option, Result } from "effect";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../providers/precedence.ts";
+import { GlobalConfigSources } from "../services/config.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling } from "./effective-tooling.ts";
 import { validEventNames } from "./event-names.ts";
@@ -51,35 +51,15 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     source: landofilePath,
     runtime: 4 as const,
   };
-  const globalConfig =
-    configService === undefined
-      ? undefined
-      : yield* configService.load.pipe(
-          Effect.mapError((cause) => {
-            const detail = `Global configuration could not be loaded: ${cause.message}`;
-            const nested = "cause" in cause ? cause.cause : cause;
-            const recorded = Predicate.isObject(nested) && Array.isArray(nested.issues) ? nested.issues : [];
-            const recordedIssues = recorded.filter(
-              (issue): issue is ValidationIssue =>
-                Predicate.isObject(issue) && Array.isArray(issue.path) && typeof issue.message === "string",
-            );
-            const issues =
-              recordedIssues.length > 0
-                ? recordedIssues
-                : validationIssuesFromCause(nested, { fallback: detail });
-            return new LandofileValidationError({
-              message: detail,
-              remediation: "Correct the reported global configuration before planning the app.",
-              file: landofilePath,
-              issues: issues.length > 0 ? issues : [validationIssue([], detail)],
-            });
-          }),
-        );
+  const globalConfig = configService === undefined ? undefined : yield* configService.load;
   const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
-  const envProvider = readProviderEnvVar(process.env);
+  const captured = yield* Effect.serviceOption(GlobalConfigSources);
+  const envProvider = readProviderEnvVar(
+    Option.isNone(captured) ? process.env : captured.value.sources.env ? captured.value.env : {},
+  );
   const configProvider = globalConfig?.defaultProviderId;
   const provider = resolveProviderSelection({
     ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),

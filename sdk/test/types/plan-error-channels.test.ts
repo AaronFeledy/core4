@@ -20,7 +20,6 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ComposeKeyRejectedError,
-  ConfigError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -251,7 +250,6 @@ type LegacyInfoAppError =
   | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
-  | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError
@@ -286,7 +284,6 @@ type LegacyExecAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError
@@ -321,7 +318,6 @@ type LegacyToolingError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigError
   | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileFormConflictError

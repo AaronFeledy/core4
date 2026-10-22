@@ -184,6 +184,7 @@ describe("RouterService registry selection", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure).toBeInstanceOf(ProxyError);
+      if (!(result.failure instanceof ProxyError)) throw result.failure;
       expect(result.failure.proxyId).toBe("missing");
       expect(result.failure.message).toBe("Router service missing is not installed.");
     }

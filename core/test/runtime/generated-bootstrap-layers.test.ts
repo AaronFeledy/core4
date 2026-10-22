@@ -51,16 +51,16 @@ describe("generated bootstrap layers", () => {
     expect(minimal).not.toContain("PluginRegistryLayer.layerWith");
     expect(minimal).toContain('from "@lando/managed-file/transaction-guard"');
     expect(minimal).toContain(
-      "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
+      "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(\n      Layer.provide(Layer.mergeAll(privateFileAccessLayer, configLayer)),\n    ),",
     );
     expect(minimal).toContain(
-      "    StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
+      "    StateStoreLayer.layerWithPrivateFileAccess.pipe(\n      Layer.provide(Layer.mergeAll(privateFileAccessLayer, configLayer)),\n    ),",
     );
     expect(commands).toContain("EngineLandofileServiceLayer.layer");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
-    expect(commands).toContain("Effect.map(PathsService");
-    expect(commands).toContain("resolveUserIncludesDir: () => paths.userIncludesDir");
-    expect(commands).toContain("resolveUserCacheRoot: () => paths.roots.userCacheRoot");
+    expect(commands).toContain("Effect.map(EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
+    expect(commands).toContain("const landofileServiceLayer = Layer.unwrap(");
+    expect(commands).toContain(").pipe(Layer.provide(pluginsBase));");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);
@@ -132,6 +132,6 @@ describe("generated bootstrap layers", () => {
     expect(combined).not.toContain("plugins/generated/bundled");
     expect(combined).not.toContain("coreLandofileRuntimeInputs");
     expect(combined).toContain("bundledPluginModules()");
-    expect(combined).toContain("landofileRuntimeInputs()");
+    expect(combined).toContain("EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
   });
 });

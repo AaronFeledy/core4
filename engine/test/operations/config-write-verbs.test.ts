@@ -11,6 +11,7 @@ const file = "/tmp/.lando.yml";
 const decode = (input: unknown) =>
   Schema.decodeUnknownResult(Schema.Struct({ name: Schema.String, port: Schema.optionalKey(Schema.Number) }))(
     input,
+    { errors: "all" },
   ).pipe(Result.mapError((cause) => validationIssuesFromCause(cause)));
 
 const fixture = () => {
@@ -99,11 +100,10 @@ describe("config write verbs", () => {
     if (Result.isFailure(result)) {
       expect(result.failure.path).toBe("port");
       expect(result.failure.issues).toEqual([
-        validationIssue(["name"], "already present before this change: Existing invalid name"),
         validationIssue(["port"], "as text: Expected number"),
-        validationIssue(["port"], "already present before this change: Port out of range"),
+        validationIssue(["port"], "as number: Port out of range"),
       ]);
-      expect(result.failure.remediation).toContain("already present before this change first");
+      expect(result.failure.remediation).toContain("--type");
     }
   });
 
@@ -165,6 +165,7 @@ describe("config write verbs", () => {
     // Then
     expect(decodedValues).toEqual([
       { name: "app", port: "90" },
+      { name: "app", port: 80 },
       { name: "app", port: 90 },
     ]);
     expect(winners).toEqual([Result.succeed({ name: "app", port: 90, enabled: true })]);
@@ -199,8 +200,8 @@ describe("config write verbs", () => {
 
   test.each([
     ["app", true],
-    [42, false],
-  ])("repairs the target while still validating unrelated fields (%s)", async (name, succeeds) => {
+    [42, true],
+  ])("repairs the target despite pre-existing unrelated issues (%s)", async (name, succeeds) => {
     // Given
     const { io } = fixture();
     // When
@@ -314,7 +315,7 @@ describe("config write verbs", () => {
     expect(writes).toEqual([]);
   });
 
-  test("unset labels issues that were already present before the change", async () => {
+  test("unset rejects new issues without blaming unrelated pre-existing issues", async () => {
     // Given
     const { io, writes } = fixture();
     const existing = validationIssue(["name"], "Existing invalid name");
@@ -331,11 +332,7 @@ describe("config write verbs", () => {
     // Then
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
-      expect(result.failure.issues).toEqual([
-        validationIssue(["name"], "already present before this change: Existing invalid name"),
-        validationIssue(["port"], "Port is required"),
-      ]);
-      expect(result.failure.remediation).toContain("already present before this change first");
+      expect(result.failure.issues).toEqual([validationIssue(["port"], "Port is required")]);
     }
     expect(writes).toEqual([]);
   });

@@ -27,6 +27,7 @@ import { DateTime, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
+import * as ConfigLayer from "../../src/services/config";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -47,10 +48,13 @@ const plan: AppPlan = {
 };
 
 test.each([
-  { target: requested, expected: "requested", kind: "explicit ID" },
-  { target: plan, expected: "requested", kind: "real plan" },
-  { target: undefined, expected: "configured-default", kind: "no argument" },
-])("selects $expected with $kind", async ({ target, expected }) => {
+  { target: requested, expected: "requested", kind: "explicit ID", invalidConfig: false },
+  { target: plan, expected: "requested", kind: "real plan", invalidConfig: false },
+  { target: undefined, expected: "configured-default", kind: "no argument", invalidConfig: false },
+  { target: undefined, expected: "ConfigError", kind: "invalid configuration", invalidConfig: true },
+  { target: undefined, expected: "requested", kind: "captured environment", invalidConfig: false },
+  { target: undefined, expected: "configured-default", kind: "disabled environment", invalidConfig: false },
+])("selects $expected with $kind", async ({ target, expected, invalidConfig, kind }) => {
   // Given: the configured default differs from the explicit target.
   const initialized: string[] = [];
   const modules: readonly LandoPluginModule[] = ["configured-default", "requested"].map((id) => {
@@ -81,13 +85,24 @@ test.each([
     };
   });
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "configured-default" });
+  const load = Effect.succeed(config);
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
   const dependencies = Layer.mergeAll(
-    Layer.succeed(
-      ConfigService,
-      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    ),
+    Layer.succeed(ConfigLayer.GlobalConfigSources, {
+      env: { LANDO_PROVIDER: "requested" },
+      sources: { user: false, env: kind === "captured environment" },
+    }),
+    invalidConfig
+      ? ConfigLayer.layerWith({
+          env: {},
+          sources: { user: false, env: false },
+          host: { router: { httpPort: 99999 } },
+        })
+      : Layer.succeed(
+          ConfigService,
+          ConfigService.of({ load, get: (key) => Effect.map(load, (value) => value[key]) }),
+        ),
     Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
@@ -114,16 +129,30 @@ test.each([
   );
   // When
   const selected = await Effect.runPromise(
-    Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(target)).pipe(
-      Effect.provide(
-        makeRuntimeProviderRegistry(modules, {
-          enforce: async () => undefined,
-          verify: async () => undefined,
-        }).pipe(Layer.provide(dependencies)),
+    Effect.result(
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(target)).pipe(
+        Effect.provide(
+          makeRuntimeProviderRegistry(modules, {
+            enforce: async () => undefined,
+            verify: async () => undefined,
+          }).pipe(Layer.provide(dependencies)),
+        ),
       ),
     ),
   );
   // Then
-  expect(selected.id).toBe(expected);
+  if (invalidConfig) {
+    expect(selected._tag).toBe("Failure");
+    if (selected._tag === "Failure")
+      expect(selected.failure).toMatchObject({
+        _tag: "ConfigError",
+        issues: [{ path: ["router", "httpPort"] }],
+      });
+    expect(initialized).toEqual([]);
+    return;
+  }
+  expect(selected._tag).toBe("Success");
+  if (selected._tag !== "Success") throw selected.failure;
+  expect(selected.success.id).toBe(expected);
   expect(initialized).toEqual([expected]);
 });
