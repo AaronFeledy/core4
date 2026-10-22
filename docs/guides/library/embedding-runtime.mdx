@@ -127,12 +127,26 @@ reporter? See [Observe an embedded runtime](./embedding-observability.mdx).
         code={`const [{ RouterService }, { TestRouterService }] = yield* Effect.promise(() =>
   Promise.all([import("@lando/core/services"), import("@lando/sdk/test")]),
 );
+const appliedPlans = new Map<string, import("@lando/core/schema").AppPlan>();
+const provider = LandoCore.RuntimeProvider.of({
+  ...LandoTesting.TestRuntimeProvider,
+  appliedPlans: Effect.sync(() => [...appliedPlans.values()]),
+  apply: (plan, options) => LandoTesting.TestRuntimeProvider.apply(plan, options).pipe(
+    Effect.tap(() => Effect.sync(() => appliedPlans.set(plan.root, plan))),
+  ),
+});
 const providerLayers = [
-  LandoTesting.withService(LandoCore.RuntimeProvider, LandoTesting.TestRuntimeProvider),
+  LandoTesting.withService(LandoCore.RuntimeProvider, provider),
   LandoTesting.withService(LandoCore.RuntimeProviderRegistry, {
+    appliedPlansFor: (root) => Effect.sync(() => [...appliedPlans.values()].filter((plan) => plan.root === root)),
     list: Effect.succeed([]),
-    capabilities: Effect.succeed(LandoTesting.TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(LandoTesting.TestRuntimeProvider),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+    resolveAppliedPlan: (root) => Effect.sync(() => appliedPlans.get(root)),
+    resolveTeardownEvidence: (root) => Effect.sync(() => {
+      const plan = appliedPlans.get(root);
+      return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
+    }),
   }),
   LandoTesting.withService(RouterService, TestRouterService),
 ];
