@@ -2,11 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import { type RuntimeProviderShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import {
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  physicalVolumeLockKey,
+} from "@lando/sdk/services";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { stopApp } from "../../src/operations/stop.ts";
+import { attachEffectiveEvents, compiledEventsForPlan } from "../../src/planner/effective-events.ts";
+import { resolveMysqlVolumeTarget } from "../../src/planner/mysql-volume.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const service = ServiceName.make("db");
@@ -35,6 +41,28 @@ const recoveredVolumes: RuntimeProviderShape["listVolumes"] = (filter) =>
   );
 
 describe("MySQL volume identity recovery across destructive lifecycle operations", () => {
+  test("Given legacy storage, when resolving the MySQL target, then authored events follow the rewritten plan", async () => {
+    // Given a plan with authored steps whose MySQL store resolves to the legacy volume
+    const harness = makeHarness({ plannedApp: mysqlPlan, listVolumes: recoveredVolumes });
+    const authored = attachEffectiveEvents(
+      { ...mysqlPlan },
+      { "pre-stop": [{ cmd: "echo stopping", service: ":host" }] },
+    );
+
+    // When
+    const resolved = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* RuntimeProviderRegistry;
+        return yield* resolveMysqlVolumeTarget({ ...target, plan: authored }, registry);
+      }).pipe(Effect.provide(harness.layer)),
+    );
+
+    // Then
+    expect(resolved.plan).not.toBe(authored);
+    expect(resolved.plan.stores[0]?.name).toBe(legacy);
+    expect(compiledEventsForPlan(resolved.plan)).toEqual(compiledEventsForPlan(authored));
+  });
+
   test("Given a recovered provider and legacy storage, when restarting a supplied target, then it locks the legacy volume before stopping", async () => {
     // Given
     const locks: string[] = [];
