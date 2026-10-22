@@ -12,11 +12,21 @@ test("outer failures redact registered values and secret patterns", async () => 
   expect(output).toContain("[redacted]");
 });
 
-test("outer failures fail closed when redactor import fails", async () => {
-  const output = await safeOuterFailure(new Error("raw-credential"), async () => {
-    throw new Error("import-credential");
+test("outer failures print the error when the redactor cannot load, since nothing was registered", async () => {
+  const output = await safeOuterFailure(new Error("module load failed"), async () => {
+    throw new Error("import-detail");
   });
-  expect(output).not.toContain("credential");
+  expect(output).toBe("Error: module load failed");
+  expect(output).not.toContain("import-detail");
+});
+
+test("outer failures fail closed when the loaded redactor throws", async () => {
+  const output = await safeOuterFailure(new Error("raw-credential"), async () => ({
+    ...(await import("@lando/redaction/service")),
+    createStandaloneRedactor: () => {
+      throw new Error("redactor-broke");
+    },
+  }));
   expect(output).toBe("Lando failed. Failure details could not be safely redacted.");
 });
 
