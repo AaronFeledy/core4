@@ -24,7 +24,10 @@ export interface PullDialect {
   };
 }
 
+export type EngineDialect = "libpod" | "docker";
+
 export interface LifecycleDialect {
+  readonly engine: EngineDialect;
   readonly wait: WaitDialect;
   /**
    * How service containers join the shared Lando network.
@@ -123,12 +126,14 @@ export const libpodWaitDialect: WaitDialect = {
 };
 
 export const libpodLifecycleDialect: LifecycleDialect = {
+  engine: "libpod",
   wait: libpodWaitDialect,
   sharedNetworkAttachment: "create-body",
   volumePrune: { enabled: true },
 };
 
 export const dockerLifecycleDialect: LifecycleDialect = {
+  engine: "docker",
   wait: dockerWaitDialect,
   sharedNetworkAttachment: "connect-after-create",
 };

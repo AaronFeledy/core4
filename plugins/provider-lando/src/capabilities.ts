@@ -8,7 +8,7 @@ import {
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { Effect } from "effect";
 
 import {
@@ -94,7 +94,7 @@ export const providerLandoCapabilitiesForPlatform = (
     tlsCertificates: "lando",
     rootless,
     composeSpec: "native",
-    composeKnobs: { supported: podmanComposeKnobs() },
+    composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],

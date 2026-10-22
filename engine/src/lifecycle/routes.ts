@@ -22,8 +22,8 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   ProxyApplyResult,
   ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError | ProxyApplyError
 > {
-  if (!routerEnabled(plan)) {
-    // Best-effort: a disabled plan must not leave previously published hostnames live.
+  if (!routerEnabled(plan) || plan.routes.length === 0) {
+    // Best-effort: a disabled or route-free plan must withdraw previously published hostnames.
     yield* proxy.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
     return { app: plan.id, appliedRoutes: [], authorities: [] };
   }

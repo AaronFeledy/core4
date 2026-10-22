@@ -78,12 +78,12 @@ test("retains fragment findings when evaluated routes add effective findings", a
       expect.arrayContaining([
         expect.objectContaining({
           path: ["runtime"],
-          scope: "fragment",
+          scopes: ["fragment"],
           source: expect.objectContaining({ file: join(root, ".lando.base.yml"), layer: "base" }),
         }),
         expect.objectContaining({
           path: ["services", "web", "routes", 0, "hostname"],
-          scope: "effective",
+          scopes: ["effective"],
           source: expect.objectContaining({
             file: join(root, ".lando.yml"),
             layer: "canonical",

@@ -4,13 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
-import { CommandAliasConflictError, PluginLoadError } from "@lando/sdk/errors";
+import { CommandAliasConflictError, LandofileValidationError, PluginLoadError } from "@lando/sdk/errors";
 import {
+  type LandofileShape,
   PluginManifest,
   PluginName,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
+  type ToolingTaskShape,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -208,7 +210,7 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   }
 });
 
-type PhpTooling = Readonly<Record<string, { readonly cmd: string }>>;
+type PhpTooling = Readonly<Record<string, ToolingTaskShape>>;
 
 const phpServiceType = (tooling: PhpTooling): ServiceType => ({
   id: "php",
@@ -277,7 +279,7 @@ const withTempPlannerApp = async (yaml: string, run: () => Promise<void>): Promi
   }
 };
 
-const planPhp = (landofile: ReturnType<typeof phpLandofile>, layer: ReturnType<typeof phpPlannerLayer>) =>
+const planPhp = (landofile: LandofileShape, layer: ReturnType<typeof phpPlannerLayer>) =>
   Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(Effect.provide(layer));
 
 const expectAliasConflict = (
@@ -296,6 +298,18 @@ const expectAliasConflict = (
   expect(failure.value.reservedFor).toBe(fields.reservedFor);
 };
 
+const expectToolingIssues = (exit: Exit.Exit<unknown, unknown>, names: ReadonlyArray<string>): void => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) throw new Error("expected planning failure");
+  const failure = Cause.findErrorOption(exit.cause);
+  if (failure._tag !== "Some" || !(failure.value instanceof LandofileValidationError)) {
+    throw new Error("expected LandofileValidationError");
+  }
+  expect(failure.value.issues.map(({ rule, path }) => ({ rule, path }))).toEqual(
+    names.map((name) => ({ rule: "landofile.tooling", path: ["tooling", name] })),
+  );
+};
+
 test("plans successfully when php contributes unreserved inspect tooling", async () => {
   // Given
   const serviceType = phpServiceType({ inspect: { cmd: "php -v" } });
@@ -311,7 +325,7 @@ test("plans successfully when php contributes unreserved inspect tooling", async
   });
 });
 
-test("fails plan with CommandAliasConflictError when php contributes reserved run tooling", async () => {
+test("fails plan with landofile.tooling when php contributes reserved run tooling", async () => {
   // Given
   const serviceType = phpServiceType({ run: { cmd: "whoami" } });
   const plannerLayer = phpPlannerLayer(serviceType);
@@ -322,15 +336,11 @@ test("fails plan with CommandAliasConflictError when php contributes reserved ru
     const exit = await Effect.runPromiseExit(planPhp(landofile, plannerLayer));
 
     // Then
-    expectAliasConflict(exit, {
-      alias: "run",
-      claimedBy: "service type php task run",
-      reservedFor: "apps:scratch:run",
-    });
+    expectToolingIssues(exit, ["run"]);
   });
 });
 
-test("fails plan on the first ordinal reserved survivor when php contributes scratch tooling", async () => {
+test("reports every reserved survivor when php contributes scratch tooling", async () => {
   // Given
   const serviceType = phpServiceType({ scratch: { cmd: "a" }, "scratch:gc": { cmd: "b" } });
   const plannerLayer = phpPlannerLayer(serviceType);
@@ -341,24 +351,22 @@ test("fails plan on the first ordinal reserved survivor when php contributes scr
     const exit = await Effect.runPromiseExit(planPhp(landofile, plannerLayer));
 
     // Then
-    expectAliasConflict(exit, {
-      alias: "scratch",
-      claimedBy: "service type php task scratch",
-      reservedFor: "apps:scratch:start",
-    });
+    expectToolingIssues(exit, ["scratch", "scratch:gc"]);
   });
 });
 
-test("fails runTooling reserved when Landofile authors run even if php also contributes run", async () => {
+test("fails runTooling reserved when a stale plan predates authored run", async () => {
   // Given
-  const serviceType = phpServiceType({ run: { cmd: "whoami" } });
+  const serviceType = phpServiceType({ inspect: { cmd: "whoami" } });
   const plannerLayer = phpPlannerLayer(serviceType);
   const landofile = phpLandofile("reserved-tooling-authored-run", { run: { cmd: "authored" } });
 
   await withTempPlannerApp(
     phpYaml("reserved-tooling-authored-run", "tooling:\n  run:\n    cmd: authored\n"),
     async () => {
-      const plan = await Effect.runPromise(planPhp(landofile, plannerLayer));
+      const plan = await Effect.runPromise(
+        planPhp(phpLandofile("reserved-tooling-authored-run"), plannerLayer),
+      );
       const toolingLayer = Layer.mergeAll(
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
@@ -402,4 +410,56 @@ test("fails runTooling reserved when Landofile authors run even if php also cont
       });
     },
   );
+});
+
+test("rejects authored run during planning even when it overlays service-type run", async () => {
+  // Given
+  const layer = phpPlannerLayer(phpServiceType({ run: { cmd: "service" } }));
+  const landofile = phpLandofile("authored-reserved-run", { run: { cmd: "authored" } });
+  await withTempPlannerApp(phpYaml(landofile.name), async () => {
+    // When
+    const exit = await Effect.runPromiseExit(planPhp(landofile, layer));
+    // Then
+    expectToolingIssues(exit, ["run"]);
+  });
+});
+
+test("plans when a disabled authored overlay drops service-type run", async () => {
+  // Given
+  const layer = phpPlannerLayer(phpServiceType({ run: { cmd: "service" } }));
+  const landofile = phpLandofile("disabled-reserved-run", { run: { disabled: true } });
+  await withTempPlannerApp(phpYaml(landofile.name), async () => {
+    // When
+    const plan = await Effect.runPromise(planPhp(landofile, layer));
+    // Then
+    expect(effectiveToolingForPlan(plan)?.run?.disabled).toBe(true);
+  });
+});
+
+test("plans when the first service contributor disables a reserved name claimed by a later service", async () => {
+  // Given
+  const serviceType: ServiceType = {
+    ...phpServiceType({}),
+    resolve: (input) =>
+      Effect.succeed({
+        base: "l337" as const,
+        normalizedConfig: input.service,
+        features: [],
+        tooling: { run: { cmd: "service", disabled: input.name === "a" } },
+      }),
+  };
+  const layer = phpPlannerLayer(serviceType);
+  const landofile: LandofileShape = {
+    name: "disabled-first-contributor",
+    services: {
+      [ServiceName.make("b")]: { type: "php", home: false },
+      [ServiceName.make("a")]: { type: "php", home: false },
+    },
+  };
+  await withTempPlannerApp(phpYaml("disabled-first-contributor"), async () => {
+    // When
+    const plan = await Effect.runPromise(planPhp(landofile, layer));
+    // Then
+    expect(effectiveToolingForPlan(plan)?.run).toMatchObject({ service: "a", disabled: true });
+  });
 });

@@ -1,9 +1,7 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import * as LandoConfigService from "@lando/engine/services/config";
+import { makeLandoPaths } from "@lando/paths";
 import { RecipeManifestNotFoundError } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
-import { Effect } from "effect";
 
 type RecipePathFailure<Kind extends "subpath-invalid" | "subpath-missing"> = (input: {
   readonly message: string;
@@ -45,13 +43,7 @@ export const normalizeRecipeSubpath = (
 
 export const recipeUserDataRoot = async (override: string | undefined): Promise<string> => {
   if (override !== undefined) return override;
-  const resolved = await Effect.runPromise(
-    Effect.flatMap(ConfigService, (config) => config.get("userDataRoot")).pipe(
-      Effect.provide(LandoConfigService.layer),
-    ),
-  );
-  if (resolved === undefined) throw new Error("ConfigService returned no userDataRoot.");
-  return resolved;
+  return makeLandoPaths().roots.userDataRoot;
 };
 
 export const recipeFileExists = async (path: string): Promise<boolean> =>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 
 const PLATFORMS = ["linux", "darwin", "win32"] as const;
@@ -11,7 +11,7 @@ describe("provider-podman Compose knob declarations", () => {
       const capabilities = podmanCapabilitiesForPlatform(platform);
 
       expect(capabilities.composeSpec).toBe("native");
-      expect(capabilities.composeKnobs?.supported).toEqual(podmanComposeKnobs());
+      expect(capabilities.composeKnobs?.supported).toEqual(composeKnobsForDialect("libpod"));
       expect(capabilities.composeServiceFields?.supported).toEqual(["labels", "configs"]);
     });
   }

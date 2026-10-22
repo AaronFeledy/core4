@@ -7,7 +7,6 @@ import {
 import { Effect, Option } from "effect";
 
 import {
-  type NoProviderInstalledError,
   ToolingCompileError,
   ToolingDisabledError,
   type ToolingExecError,
@@ -16,6 +15,7 @@ import {
 import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
 import {
   type ProviderError,
+  type ProviderSelectionError,
   RuntimeProviderRegistry,
   ShellRunner,
   ToolingEngine,
@@ -167,8 +167,8 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
 });
 
 export type ToolingExecutionError =
+  | ProviderSelectionError
   | ToolingCompileError
-  | NoProviderInstalledError
   | ToolingExecError
   | ProviderError;
 

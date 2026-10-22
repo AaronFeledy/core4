@@ -55,9 +55,7 @@ const makePluginRegistry = (
   const discoverGlobalPlugins = Effect.gen(function* () {
     if (input.staticGlobalPlugins !== undefined) return input.staticGlobalPlugins;
     const userDataRoot =
-      configService === undefined
-        ? resolveUserDataRoot()
-        : yield* configService.get("userDataRoot").pipe(Effect.catch(() => Effect.succeed(undefined)));
+      configService === undefined ? resolveUserDataRoot() : yield* configService.get("userDataRoot");
     const userPlugins =
       discovery.user === false || userDataRoot === undefined
         ? []
