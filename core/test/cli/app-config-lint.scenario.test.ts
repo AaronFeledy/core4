@@ -113,6 +113,50 @@ describe("renderConfigLintResult", () => {
 });
 
 describe("lando app:config:lint (source dispatch)", () => {
+  test("an overlay typo is one machine record listing both scopes", async () => {
+    // Given
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: merged-scopes\n");
+      await writeFile(join(dir, ".lando.local.yml"), "services:\n  web:\n    imagee: nginx\n");
+      // When
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      // Then
+      expect(result.exitCode).toBe(0);
+      const envelope = Schema.decodeUnknownSync(
+        Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
+      )(JSON.parse(result.stdout));
+      expect(envelope.result.violations).toEqual([
+        expect.objectContaining({
+          rule: "landofile.validation",
+          path: ["services", "web", "imagee"],
+          scopes: ["fragment", "effective"],
+          source: {
+            file: join(dir, ".lando.local.yml"),
+            layer: "local",
+            path: ["services", "web", "imagee"],
+          },
+        }),
+      ]);
+    });
+  });
+
+  test("unknown events return a successful JSON envelope with a lint violation", async () => {
+    // Given
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: events\nevents:\n  pre-nope: [echo hi]\n");
+      // When
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      // Then
+      expect(result.exitCode).toBe(0);
+      const envelope = Schema.decodeUnknownSync(
+        Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
+      )(JSON.parse(result.stdout));
+      expect(envelope.result.valid).toBe(false);
+      expect(envelope.result.violations).toEqual([
+        expect.objectContaining({ rule: "landofile.event", path: ["events", "pre-nope"] }),
+      ]);
+    });
+  });
   test("resolved service and route errors are lint violations rather than a failed envelope", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -129,7 +173,14 @@ describe("lando app:config:lint (source dispatch)", () => {
         ["services", "web", "routes", 1, "pathPrefix"],
         ["services", "web", "hostnames", 0],
       ]);
-      expect(parsed.violations.every((issue) => issue.source?.file === join(dir, ".lando.yml"))).toBe(true);
+      expect(
+        parsed.violations.every(
+          (issue) =>
+            issue.source !== undefined &&
+            "file" in issue.source &&
+            issue.source.file === join(dir, ".lando.yml"),
+        ),
+      ).toBe(true);
     });
   });
   test("warning-only lint renders its stable rule and exits successfully", async () => {

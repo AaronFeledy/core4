@@ -15,11 +15,13 @@ Each subsystem exposes a focused Effect service or fixed core primitive. Remote 
 
 Core defines network intent; `RuntimeProvider` realizes it.
 
+`NetworkingPlan.perAppBridge` names the private bridge to create, or is explicitly `null` when none is intended. The global planner emits `null` plus shared membership on `lando_bridge_network`, with `<service>.global.internal` aliases. User apps retain their per-app bridge and, when supported, shared membership. Providers MUST derive creation, attachment, recreation checks, and teardown from this intent, never from an app-id special case. Shared-only plans MUST NOT invent a private bridge during teardown or physical network-name translation.
+
 - Services resolve peers by service name when app networking is supported. Cross-app names use `<service>.<app>.internal` only when `sharedCrossAppNetwork` is supported.
 - `host.lando.internal` resolves to the host gateway when `hostReachability` is `native` or `emulated`; `LANDO_HOST_IP` contains that resolvable name.
 - Providers without shared networking MUST report `sharedCrossAppNetwork: false`; dependent features fail with actionable errors.
 - Host endpoints bind to `127.0.0.1` by default; `bindAddress` is the opt-in LAN exposure surface.
-- Core has no shared-bridge abstraction. Provider-created networks, including Docker's `lando_bridge_network`, are implementation details.
+- Core owns logical network intent (`NetworkingPlan`); providers own physical realization, including engine network objects, drivers, and platform-specific physical names.
 
 ### 10.2 Router and routes
 
@@ -33,6 +35,7 @@ User surfaces say **router** and **routes**. Service `routes:` is preferred; top
 - Router plugins reconcile stale routes on rebuild and destroy. `stop` durably removes all app route definitions without stopping unrelated global services; `status` reports that durable state.
 - `RouteFilter` contributions translate provider-neutral filters. Bundled filters are `stripPrefix`, `addPrefix`, `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `auth.basic`, and `rateLimit` (§6.6). Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Path routes MUST NOT strip implicitly.
 - `router.enabled: false`, resolved by normal precedence (§7.4, §7.5), MUST prevent router startup and publication for the app. `lando info` reports only published endpoints.
+- Automatic route publication for user and scratch apps MUST NOT start the router when the plan has no routes. User-app start MUST attempt to withdraw previously published routes without requiring router startup; withdrawal failure is non-fatal. Explicit global lifecycle requests and declared global-service requirements are unaffected.
 - A router MUST set `X-Lando-Router: <reason>` (`no-route`, `upstream-unreachable`) on every error response it generates itself, and MUST NOT set it on a response proxied from a service, so `http` checks attribute router pages to Lando (§10.5.2).
 - Route priority is one shared space across every app, derived from the route alone under §6.6. A router that publishes its own routers (dashboard, diagnostics, fallback) MUST pin them outside the app bands defined there: diagnostic fallbacks at `ROUTE_PRIORITY_DIAGNOSTIC`, router-owned hostnames above `ROUTE_PRIORITY_MAX`. Otherwise an app that claims the same hostname captures them.
 - `RouterService.revalidateStartup` re-observes the running router's startup against its live state and refreshes whatever persisted startup observation the implementation keeps. It is distinct from `setup`: it acquires no ports, starts no services, and takes no `Scope`. It fails with `ProxyError` or `RouterWatcherError`. An unavailable router implements it as a no-op, so a record left by an earlier router stays reported until a selected router revalidates it.
@@ -382,7 +385,8 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 - Section deadlines are bounded and configurable by `LANDO_DOCTOR_SECTION_BUDGET_MS`; checks remain interruptible Effect programs.
 - Provider failures degrade to a non-pass `selected-provider` check with setup remediation.
 - Each plugin check is isolated, attributed, strictly decoded as `PluginDoctorReport`, and bounded. This is cooperative isolation, not a hostile-code sandbox.
-- `meta:doctor` declares base bootstrap `none`, constructs the provider runtime once inside its own scope, and degrades provider-bootstrap failure without suppressing independent sections. It still uses native dispatch, Effect, and `Renderer`; `notify.commands` MUST NOT promote it.
+- `meta:doctor` declares base bootstrap `none`, validates global config first, then supplies the retained snapshot explicitly to one scoped provider-runtime build; provider-bootstrap failures stay isolated self checks and never suppress independent sections. It still uses native dispatch, Effect, and `Renderer`; `notify.commands` MUST NOT promote it.
+- The §7.5 decode is doctor's own `global-config` section. On failure the report carries `globalConfig: { status: "fail", error }` with the full `ConfigError`, lists the config-dependent sections (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when requested) under `skipped` with a reason instead of running them against stub services, still runs config-independent diagnostics such as `filesystem-watch`, adds the `doctor-self` entry, and exits non-zero. It MUST NOT emit stub subsystem warnings or `--fix` advice for a config failure. On success the report carries `globalConfig: { status: "pass" }` and publishes the snapshot's load warnings once.
 
 ### 10.10 Host proxy
 

@@ -1,20 +1,19 @@
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
-import { findLandofilePath } from "@lando/landofile/discovery";
 import { landofileValidationError } from "@lando/landofile/validation";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
-import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Iterable, Predicate, Result } from "effect";
+import { type Context, DateTime, Effect, Iterable, Option, Result } from "effect";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../providers/precedence.ts";
+import { GlobalConfigSources } from "../services/config.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
-import { compileEffectiveTooling, validateServiceTypeReservedToolingNames } from "./effective-tooling.ts";
-import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
+import { compileEffectiveTooling } from "./effective-tooling.ts";
+import { validEventNames } from "./event-names.ts";
 import {
   deferredSiteKey,
   materializeLandofileScopes,
@@ -25,6 +24,7 @@ import {
 import { validateResolvedLandofile } from "./resolved-validation.ts";
 import { resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
+import { toolingAndEventIssues } from "./tooling-event-issues.ts";
 
 export interface KnownEventSetInput {
   readonly landofile: LandofileShape;
@@ -51,35 +51,15 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     source: landofilePath,
     runtime: 4 as const,
   };
-  const globalConfig =
-    configService === undefined
-      ? undefined
-      : yield* configService.load.pipe(
-          Effect.mapError((cause) => {
-            const detail = `Global configuration could not be loaded: ${cause.message}`;
-            const nested = "cause" in cause ? cause.cause : cause;
-            const recorded = Predicate.isObject(nested) && Array.isArray(nested.issues) ? nested.issues : [];
-            const recordedIssues = recorded.filter(
-              (issue): issue is ValidationIssue =>
-                Predicate.isObject(issue) && Array.isArray(issue.path) && typeof issue.message === "string",
-            );
-            const issues =
-              recordedIssues.length > 0
-                ? recordedIssues
-                : validationIssuesFromCause(nested, { fallback: detail });
-            return new LandofileValidationError({
-              message: detail,
-              remediation: "Correct the reported global configuration before planning the app.",
-              file: landofilePath,
-              issues: issues.length > 0 ? issues : [validationIssue([], detail)],
-            });
-          }),
-        );
+  const globalConfig = configService === undefined ? undefined : yield* configService.load;
   const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
-  const envProvider = readProviderEnvVar(process.env);
+  const captured = yield* Effect.serviceOption(GlobalConfigSources);
+  const envProvider = readProviderEnvVar(
+    Option.isNone(captured) ? process.env : captured.value.sources.env ? captured.value.env : {},
+  );
   const configProvider = globalConfig?.defaultProviderId;
   const provider = resolveProviderSelection({
     ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
@@ -149,80 +129,57 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   }
   const validated = validateResolvedLandofile({ landofile, landofilePath, blocked });
   const issues = [...seeds.issues, ...validated.issues];
-  if (issues.length > 0) return { _tag: "Invalid" as const, issues, landofile, landofilePath };
-  return {
-    _tag: "Resolved" as const,
-    resolution: {
-      ...seeds,
-      landofile,
-      appSlug,
-      defaultDomain,
-      appRoot,
-      appName,
-      landofilePath,
-      host,
-      encodedMetadata,
-      globalConfig,
-      appDefaults,
-      provider,
-      manifests,
-      routes: validated.routes,
-      canonicalFile: input.file,
-    },
+  const resolution = {
+    ...seeds,
+    landofile,
+    appSlug,
+    defaultDomain,
+    appRoot,
+    appName,
+    landofilePath,
+    host,
+    encodedMetadata,
+    globalConfig,
+    appDefaults,
+    provider,
+    manifests,
+    routes: validated.routes,
+    canonicalFile: input.file,
   };
+  if (issues.length > 0) return { _tag: "Invalid" as const, issues, resolution };
+  return { _tag: "Resolved" as const, resolution };
 });
 
-type ResolvedLandofile = Extract<
+export type ResolvedLandofile = Extract<
   Effect.Success<ReturnType<typeof resolveLandofileForPlanning>>,
   { readonly _tag: "Resolved" }
 >["resolution"];
 
-export const knownEventSetFrom = Effect.fn("AppPlanner.knownEvents")(function* (
-  resolution: ResolvedLandofile,
-) {
-  const { landofile, appRoot, landofilePath } = resolution;
+const knownEventSetFrom = (resolution: ResolvedLandofile) => {
+  const { landofile } = resolution;
   const toolingServices = resolution.services.map((entry) => ({
     name: entry.name,
     serviceTypeId: entry.serviceType.id,
     ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
   }));
   const effectiveTooling = compileEffectiveTooling({ landofile, services: toolingServices });
-  const conflict = validateServiceTypeReservedToolingNames({ landofile, services: toolingServices });
-  if (conflict !== undefined) yield* Effect.fail(conflict);
   const knownEventNames = validEventNames(effectiveTooling);
-  const unknown = unknownEventName(landofile.events, knownEventNames);
-  if (unknown !== undefined) {
-    const canonicalPath =
-      resolution.canonicalFile ??
-      (yield* Effect.tryPromise({
-        try: () => findLandofilePath(appRoot),
-        catch: (cause) =>
-          new LandofileValidationError({
-            message: cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
-            remediation: "Ensure the app root and its Landofile are readable, then retry planning.",
-            file: landofilePath,
-            issues: [
-              validationIssue(
-                ["events"],
-                cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
-              ),
-            ],
-          }),
-      }));
-    return yield* Effect.fail(unknownEventError(unknown, knownEventNames, canonicalPath ?? landofilePath));
-  }
   return {
     ...resolution,
     effectiveTooling,
     knownEventNames,
   };
-});
+};
 
 export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
   const result = yield* resolveLandofileForPlanning(input);
-  if (result._tag === "Invalid")
-    return yield* Effect.fail(landofileValidationError(result.landofilePath, result.issues));
-  return yield* knownEventSetFrom(result.resolution);
+  const issues = [
+    ...(result._tag === "Invalid" ? result.issues : []),
+    ...toolingAndEventIssues(result.resolution),
+  ];
+  if (issues.length > 0)
+    return yield* Effect.fail(landofileValidationError(result.resolution.landofilePath, issues));
+  return knownEventSetFrom(result.resolution);
 });
 
 export type KnownEventSetResolution = Effect.Success<ReturnType<typeof resolveKnownEventSet>>;

@@ -72,6 +72,30 @@
     "justification": "Pre-release snapshot handles now identify their owner catalog."
   },
   {
+    "surface": "command:app:config:lint",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.scope",
+    "justification": "Pre-release lint output now emits one record per defect with a scopes array instead of separate records per scope. Findings merge only when every other field matches, preserving source attribution and distinct defects. No singular-scope compatibility path is retained."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig.violations.items.scope",
+    "justification": "Doctor embeds the shared pre-release lint result: one record per defect with ordered scopes replaces separate singular-scope records. Doctor text and JSON consume the same merged findings without collapsing distinct sources or messages."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.scope",
+    "justification": "The pre-release lint contract replaces singular scope with scopes so a defect found in fragment and effective validation occupies one record. Identity includes every other field, retaining distinct physical sources and messages."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-removed",
+    "path": "$.scope",
+    "justification": "The pre-release finding contract intentionally replaces scope with ordered unique scopes. One record per defect removes duplicate machine findings while preserving every non-scope diagnostic field; no legacy alias is shipped."
+  },
+  {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-keyword",
     "path": "$.user.pattern",
@@ -3304,5 +3328,113 @@
     "changeKind": "type-changed",
     "path": "$.port",
     "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.source.anyOf",
+    "justification": "Reviewed Phase 1 global-config provenance extension: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.source.anyOf",
+    "justification": "Reviewed Phase 1 global-config provenance extension for additional errors: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.appConfig.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:NetworkingPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
   }
 ]

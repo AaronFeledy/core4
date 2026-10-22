@@ -65,7 +65,8 @@ interface Harness {
     | FileSystem
     | GlobalAppService
     | PluginRegistry
-    | RuntimeProviderRegistry
+    | RuntimeProviderRegistry,
+    import("@lando/sdk/errors").ConfigError
   >;
   readonly applyCalls: Array<ApplyCall>;
   readonly inspectCalls: Array<InspectCall>;

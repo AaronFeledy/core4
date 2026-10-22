@@ -9,8 +9,10 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { type LifecycleDialect, dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
+import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
@@ -65,6 +67,7 @@ const planWithCompose = (
 const captureCreateRequest = async (
   compose: Record<string, unknown>,
   hostAliases: ServicePlan["hostAliases"] = [],
+  dialect: LifecycleDialect = libpodLifecycleDialect,
 ): Promise<EngineHttpRequest> => {
   let createRequest: EngineHttpRequest | undefined;
   let running = false;
@@ -93,7 +96,7 @@ const captureCreateRequest = async (
       }),
   };
 
-  await Effect.runPromise(bringUp(planWithCompose(compose, hostAliases), { api, ctx }));
+  await Effect.runPromise(bringUp(planWithCompose(compose, hostAliases), { api, ctx, dialect }));
   if (createRequest === undefined) throw new Error("bringUp did not issue a container create request");
   return createRequest;
 };
@@ -114,21 +117,28 @@ describe("Podman Compose knob create request", () => {
     },
   );
 
-  for (const [knob, fixture] of Object.entries(KNOB_FIXTURES)) {
-    test(`Given the ${knob} knob, when bringUp creates the container, then the final request contains its mapping`, async () => {
-      const request = await captureCreateRequest(fixture.input);
-      const hostConfig = field(request.body, "HostConfig");
-      const searchParams = new URL(`http://localhost${request.path}`).searchParams;
+  for (const dialect of [libpodLifecycleDialect, dockerLifecycleDialect]) {
+    const fixtures = new Map(Object.entries(KNOB_FIXTURES));
+    for (const knob of composeKnobsForDialect(dialect.engine)) {
+      test(`${dialect.engine}: ${knob} produces its expected Engine request fields`, async () => {
+        const fixture = fixtures.get(knob);
+        expect(fixture).toBeDefined();
+        if (fixture === undefined) throw new Error(`Missing independent fixture for ${knob}`);
+        const request = await captureCreateRequest(fixture.input, [], dialect);
+        const hostConfig = field(request.body, "HostConfig");
+        const searchParams = new URL(`http://localhost${request.path}`).searchParams;
 
-      for (const [key, value] of Object.entries(fixture.expected.hostConfig)) {
-        expect(field(hostConfig, key)).toEqual(value);
-      }
-      for (const [key, value] of Object.entries(fixture.expected.topLevel)) {
-        expect(field(request.body, key)).toEqual(value);
-      }
-      for (const [key, value] of Object.entries(fixture.expected.query)) {
-        expect(searchParams.get(key)).toBe(value);
-      }
-    });
+        for (const [key, value] of Object.entries(fixture.expected.hostConfig)) {
+          expect(field(hostConfig, key)).toEqual(value);
+        }
+        for (const [key, value] of Object.entries(fixture.expected.topLevel)) {
+          expect(field(request.body, key)).toEqual(value);
+          expect(field(hostConfig, key)).toBeUndefined();
+        }
+        for (const [key, value] of Object.entries(fixture.expected.query)) {
+          expect(searchParams.get(key)).toBe(value);
+        }
+      });
+    }
   }
 });

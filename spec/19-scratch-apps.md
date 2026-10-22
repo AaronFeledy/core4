@@ -174,7 +174,7 @@ Scratch startup MUST pass the shared §6.7 readiness barrier before reporting su
 
 #### 21.10.2 Top-level alias reservation
 
-The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2. Conflicting plugin or tooling aliases raise `CommandAliasConflictError`. User alias overrides MAY remap them; canonical `apps:scratch:*` ids remain callable.
+The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2. Conflicting plugin aliases raise `CommandAliasConflictError`; user alias overrides MAY remap plugin claims. Reserved tooling names are rejected outright by lint and planning as `landofile.tooling` issues (§7.8). Canonical `apps:scratch:*` ids remain callable.
 
 #### 21.10.3 `apps:scratch:run` and the disposable tool runner
 

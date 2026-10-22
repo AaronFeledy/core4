@@ -153,13 +153,14 @@ describe("CLI lifecycle adapters", () => {
     const configured = ["meta:version", "apps:list", "meta:mcp"];
 
     // When/Then: configured commands promote, while unconfigured declarations remain cold.
-    expect(effectiveBootstrapForCommand("meta:version", "none", configured)).toBe("commands");
+    expect(effectiveBootstrapForCommand("meta:version", "none", configured)).toBe("none");
     expect(effectiveBootstrapForCommand("apps:list", "minimal", configured)).toBe("commands");
     expect(effectiveBootstrapForCommand("meta:mcp", "plugins", configured)).toBe("commands");
     expect(effectiveBootstrapForCommand("meta:version", "none", [])).toBe("none");
     // meta:doctor is exempt: promoting it would eagerly build the fallible
     // runtime it is supposed to diagnose, defeating safe mode.
     expect(effectiveBootstrapForCommand("meta:doctor", "none", ["meta:doctor"])).toBe("none");
+    expect(effectiveBootstrapForCommand("meta:uninstall", "none", ["meta:uninstall"])).toBe("none");
     expect(effectiveBootstrapForCommand("apps:list", "minimal", [])).toBe("minimal");
     expect(effectiveBootstrapForCommand("meta:mcp", "plugins", [])).toBe("plugins");
     expect(effectiveBootstrapForCommand("meta:update", "plugins", [])).toBe("commands");

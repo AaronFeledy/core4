@@ -50,14 +50,17 @@ describe("authored source replacement", () => {
   });
 
   test.each([false, true])(
-    "blocks surviving invalid higher overlays without writing (dry-run %s)",
+    "permits unrelated writes despite invalid higher overlays (dry-run %s)",
     async (dryRun) => {
+      // Given
       const original = "name: stable\n";
       await write(".lando.yml", original);
       await write(".lando.local.yml", "runtime: wrong\n");
-      const result = await exit(appConfigSet({ cwd: dir, key: "name", value: "changed", dryRun }));
-      expect(tag(result)).toBe("LandofileWriteValidationError");
-      expect(await readFile(file(), "utf8")).toBe(original);
+      // When
+      const result = await run(appConfigSet({ cwd: dir, key: "name", value: "changed", dryRun }));
+      // Then
+      expect(result.changed).toBe(true);
+      expect(await readFile(file(), "utf8")).toBe(dryRun ? original : "name: changed\n");
     },
   );
 
@@ -70,10 +73,13 @@ describe("authored source replacement", () => {
   });
 
   test("validates an unchanged unset against the effective stack without creating a target", async () => {
+    // Given
     await write(".lando.base.yml", "name: absent\n");
     await write(".lando.local.yml", "runtime: wrong\n");
-    const result = await exit(appConfigUnset({ cwd: dir, key: "recipe" }));
-    expect(tag(result)).toBe("LandofileWriteValidationError");
+    // When
+    const result = await run(appConfigUnset({ cwd: dir, key: "recipe" }));
+    // Then
+    expect(result.changed).toBe(false);
     expect(await Bun.file(file()).exists()).toBe(false);
   });
 

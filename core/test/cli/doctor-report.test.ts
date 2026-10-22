@@ -43,6 +43,7 @@ import {
 import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
+import { withCwd } from "../_support/temp-cwd.ts";
 
 const isolatedUserDataRoot = mkdtempSync(join(tmpdir(), "lando-doctor-report-"));
 
@@ -386,6 +387,33 @@ describe("meta:doctor combined report", () => {
       expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 14, failed: 1 });
     } finally {
       process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("doctor receives unknown event violations from the shared lint pass", async () => {
+    // Given
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-event-")));
+    try {
+      await writeFile(join(dir, ".lando.yml"), "name: doctor-events\nevents:\n  pre-nope: [echo hi]\n");
+      await withCwd(dir, async () => {
+        // When
+        const result = await Effect.runPromise(
+          appConfigForReport().pipe(Effect.provide(PluginRegistryLayer.layer)),
+        );
+        // Then
+        expect(result.app).toBe("doctor-events");
+        expect(result.valid).toBe(false);
+        expect(result.violations).toEqual([
+          expect.objectContaining({
+            rule: "landofile.event",
+            path: ["events", "pre-nope"],
+            scopes: ["effective"],
+            source: expect.objectContaining({ file: join(dir, ".lando.yml") }),
+          }),
+        ]);
+      });
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
