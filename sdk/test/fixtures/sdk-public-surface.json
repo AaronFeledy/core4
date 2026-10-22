@@ -349,7 +349,7 @@
     ],
     "SchemaValidator": ["id:string"],
     "ScratchAppService": [
-      "acquire:(input:ScratchAcquireInput) => Effect.Effect<ScratchHandle,ScratchSourceUnresolvedError|ScratchIsolationConflictError|ScratchAppError|LandofileVersionConstraintError,Scope.Scope>",
+      "acquire:(input:ScratchAcquireInput) => Effect.Effect<ScratchHandle,ScratchSourceUnresolvedError|ScratchIsolationConflictError|ScratchAppError|AppPlacementError|LandofileVersionConstraintError,Scope.Scope>",
       "destroy:(id:string,options?:ScratchDestroyOptions) => Effect.Effect<ScratchHandle,ScratchAppNotFoundError|ScratchAppError>",
       "ensureRoot:Effect.Effect<AbsolutePath,ScratchAppError,Scope.Scope>",
       "gc:(options?:ScratchGcOptions) => Effect.Effect<ScratchGcReport,ScratchAppError>",

@@ -684,6 +684,7 @@ export interface App {
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
   | ScratchAppError
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | LandofileVersionConstraintError;
