@@ -123,7 +123,7 @@ lando poweroff --yes
 lando setup --provider=docker --yes --no-interactive
 ```
 
-Setup refuses with `AppPlacementError` and lists running apps that use routes or require global services on the old provider. Stop those apps and retry. Once none are running, setup retires the old global containers and applied state, keeps its volumes and router dynamic configuration, and starts global services on the selected provider.
+Setup refuses with `AppPlacementError` and lists running apps, including scratch apps, that use routes or require global services on the old provider. Stop those apps (a scratch app with `lando scratch:destroy <id> --keep-volumes --yes`) and retry. Once none are running, setup retires the old global containers and applied state, keeps its volumes and router dynamic configuration, and starts global services on the selected provider.
 
 3. Read setup's list of user apps still applied on the old provider. From each app directory, retire the old realization and start on the new provider:
 
