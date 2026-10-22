@@ -1,14 +1,6 @@
 /**
- * `LANDO_CONFIG__*` env-overlay machinery and the config-file directory
- * resolver, shared by `ConfigService` and the Effect-free cold-start root resolver.
- *
- * `resolveConfigFileRoot` decides WHICH `config.yml` is read. It is the single
- * source of truth so `resolveUserDataRoot` (fast path) and `ConfigService`
- * locate the same file even when `LANDO_CONFIG__user_conf_root` redirects the
- * conf root — otherwise `lando shellenv` and `lando setup` could read different
- * files and disagree on PATH. This module imports nothing from `@lando/sdk`
- * (its error barrel pulls Effect) and takes the base conf root as a parameter
- * rather than importing `roots.ts`, so the dependency stays one-directional.
+ * Effect-free environment projection shared by layered config acquisition
+ * and cold-start readers. Root discovery and merging live in config-sources.ts.
  */
 
 export const ENV_OVERLAY_PREFIX = "LANDO_CONFIG__";
@@ -68,26 +60,40 @@ const assignDeep = (target: Record<string, unknown>, path: ReadonlyArray<string>
   cursor[path[path.length - 1] as string] = value;
 };
 
-export const deepMerge = (
-  base: Record<string, unknown>,
-  overlay: Record<string, unknown>,
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(overlay)) {
-    const existing = result[key];
-    result[key] = isNonArrayObject(existing) && isNonArrayObject(value) ? deepMerge(existing, value) : value;
-  }
-  return result;
-};
-
 /**
  * Generic `LANDO_CONFIG__path__to__value` overlays are applied first;
  * friendly env aliases take precedence.
  */
-export const envOverlay = (
-  env: Record<string, string | undefined> = process.env,
-): Record<string, unknown> => {
+export const envOverlay = (env: Record<string, string | undefined> = process.env): Record<string, unknown> =>
+  envOverlayWithVariables(env).tree;
+
+export const envOverlayWithVariables = (
+  env: Record<string, string | undefined>,
+): { readonly tree: Record<string, unknown>; readonly variables: ReadonlyMap<string, string> } => {
   const overlay: Record<string, unknown> = {};
+  const variables = new Map<string, string>();
+  const assign = (name: string, path: readonly string[], value: unknown): void => {
+    if (
+      path.length === 1 &&
+      path[0] !== undefined &&
+      Object.hasOwn(ROOT_ENV_VARIABLES, path[0]) &&
+      value === ""
+    )
+      return;
+    const key = JSON.stringify(path);
+    for (const previous of variables.keys()) {
+      const segments: unknown = JSON.parse(previous);
+      if (Array.isArray(segments) && path.every((segment, index) => segments[index] === segment)) {
+        variables.delete(previous);
+      }
+    }
+    assignDeep(overlay, path, value);
+    variables.set(key, name);
+  };
+  for (const [key, value] of Object.entries(rootEnvOverlay(env))) {
+    const name = ROOT_ENV_VARIABLES[key];
+    if (name !== undefined) assign(name, [key], value);
+  }
   for (const [name, value] of Object.entries(env)) {
     if (value === undefined || !name.startsWith(ENV_OVERLAY_PREFIX)) continue;
     const rawPath = name.slice(ENV_OVERLAY_PREFIX.length);
@@ -96,38 +102,34 @@ export const envOverlay = (
     const path = segments.map(segmentToKey);
     if (path[0] === "hostEvents") continue;
     if ((path[0] === "appEnv" || path[0] === "appLabels") && path.length !== 1) continue;
-    assignDeep(overlay, path, parseOverlayValue(value, path));
+    assign(name, path, parseOverlayValue(value, path));
   }
   for (const [name, path] of FRIENDLY_ENV_OVERLAYS) {
     const value = env[name];
     if (value === undefined) continue;
-    assignDeep(overlay, path, parseOverlayValue(value, path));
+    assign(name, path, parseOverlayValue(value, path));
   }
-  return overlay;
+  return { tree: overlay, variables };
+};
+
+export const ROOT_ENV_VARIABLES: Readonly<Record<string, string>> = {
+  userConfRoot: "LANDO_USER_CONF_ROOT",
+  userCacheRoot: "LANDO_USER_CACHE_ROOT",
+  userDataRoot: "LANDO_USER_DATA_ROOT",
+  systemPluginRoot: "LANDO_SYSTEM_PLUGIN_ROOT",
 };
 
 export const rootEnvOverlay = (
   env: Record<string, string | undefined> = process.env,
 ): Record<string, unknown> => {
   const overlay: Record<string, unknown> = {};
-  if (env.LANDO_USER_DATA_ROOT !== undefined) overlay.userDataRoot = env.LANDO_USER_DATA_ROOT;
-  if (env.LANDO_USER_CONF_ROOT !== undefined) overlay.userConfRoot = env.LANDO_USER_CONF_ROOT;
-  if (env.LANDO_USER_CACHE_ROOT !== undefined) overlay.userCacheRoot = env.LANDO_USER_CACHE_ROOT;
-  if (env.LANDO_SYSTEM_PLUGIN_ROOT !== undefined) overlay.systemPluginRoot = env.LANDO_SYSTEM_PLUGIN_ROOT;
+  if (env.LANDO_USER_DATA_ROOT !== undefined && env.LANDO_USER_DATA_ROOT !== "")
+    overlay.userDataRoot = env.LANDO_USER_DATA_ROOT;
+  if (env.LANDO_USER_CONF_ROOT !== undefined && env.LANDO_USER_CONF_ROOT !== "")
+    overlay.userConfRoot = env.LANDO_USER_CONF_ROOT;
+  if (env.LANDO_USER_CACHE_ROOT !== undefined && env.LANDO_USER_CACHE_ROOT !== "")
+    overlay.userCacheRoot = env.LANDO_USER_CACHE_ROOT;
+  if (env.LANDO_SYSTEM_PLUGIN_ROOT !== undefined && env.LANDO_SYSTEM_PLUGIN_ROOT !== "")
+    overlay.systemPluginRoot = env.LANDO_SYSTEM_PLUGIN_ROOT;
   return overlay;
-};
-
-/**
- * Resolve the directory that holds `config.yml`, honoring the
- * `LANDO_CONFIG__user_conf_root` overlay over `LANDO_USER_CONF_ROOT` over the
- * provided `baseConfRoot` default. A non-string overlay value falls back to
- * `baseConfRoot`.
- */
-export const resolveConfigFileRoot = (
-  baseConfRoot: string,
-  overlay: Record<string, unknown>,
-  env: Record<string, string | undefined> = process.env,
-): string => {
-  const roots = deepMerge({ userConfRoot: baseConfRoot }, deepMerge(rootEnvOverlay(env), overlay));
-  return typeof roots.userConfRoot === "string" ? roots.userConfRoot : baseConfRoot;
 };

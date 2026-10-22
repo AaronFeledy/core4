@@ -7,7 +7,6 @@ import {
   type InstalledPluginRegistryFailure,
   inspectInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
-import { makeLandoPaths } from "@lando/paths";
 import {
   type DoctorSelfCheck,
   type DoctorSelfSolution,
@@ -24,11 +23,10 @@ const PLUGIN_METADATA_REMEDIATION: DoctorSelfSolution = {
 };
 
 export const installedPluginMetadataSelfChecks = (
-  userDataRoot: string,
+  pluginsRoot: string,
   redact: (value: string) => string,
 ): Effect.Effect<ReadonlyArray<DoctorSelfCheck>> =>
   Effect.promise(async () => {
-    const pluginsRoot = makeLandoPaths({ userDataRoot }).pluginsDir;
     const inspection = await inspectInstalledPluginRegistry(pluginsRoot);
     const failures: InstalledPluginRegistryFailure[] = [...inspection.failures];
     for (const entry of Object.values(inspection.registry)) {

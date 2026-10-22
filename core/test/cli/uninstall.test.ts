@@ -201,9 +201,9 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("is registered as a minimal bootstrap command with a top-level alias", () => {
+  test("is registered as a none bootstrap command with a top-level alias", () => {
     expect(metaUninstallSpec.id).toBe("meta:uninstall");
-    expect(metaUninstallSpec.bootstrap).toBe("minimal");
+    expect(metaUninstallSpec.bootstrap).toBe("none");
     expect(metaUninstallSpec.topLevelAlias).toBe(true);
   });
 

@@ -20,7 +20,9 @@ const renderViolation = (violation: ConfigLintViolation): string => {
     const authored = formatPath(source.path);
     const authoredText = authored === where ? "" : `, authored as ${authored}`;
     const details = scopeText.length === 0 ? `${source.layer} layer` : `${source.layer} layer; ${scopeText}`;
-    lines.push(`    at ${escapeDiagnosticText(source.file)}${line}${column}${authoredText} (${details})`);
+    const sourceFile = "file" in source ? source.file : undefined;
+    if (sourceFile !== undefined)
+      lines.push(`    at ${escapeDiagnosticText(sourceFile)}${line}${column}${authoredText} (${details})`);
   } else if (scopeText.length > 0) {
     lines.push(`    scopes: ${scopeText}`);
   }

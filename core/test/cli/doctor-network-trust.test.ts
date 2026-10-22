@@ -26,9 +26,7 @@ const tempRoot = async (): Promise<string> => {
   return root;
 };
 
-const configService = (
-  load: Effect.Effect<GlobalConfig, ConfigError>,
-): Context.Service.Shape<typeof ConfigService> =>
+const configService = (load: Effect.Effect<GlobalConfig>): Context.Service.Shape<typeof ConfigService> =>
   ConfigService.of({
     load,
     get: (key) => Effect.map(load, (config) => config[key]),
@@ -185,7 +183,7 @@ describe("network-trust doctor status", () => {
     // Given
     const failure = new ConfigError({ message: "config unavailable", path: "/config.yml" });
     const effect = networkTrustDoctorStatus(EMPTY_ENV).pipe(
-      Effect.provide(Layer.succeed(ConfigService, configService(Effect.fail(failure)))),
+      Effect.provide(Layer.effect(ConfigService, Effect.fail(failure))),
     );
 
     // When

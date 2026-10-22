@@ -189,16 +189,13 @@ describe("resolveRendererMode", () => {
     }
   });
 
-  test("rejects unsupported config value with source=config tagged error", () => {
-    try {
-      resolveRendererMode({ configValue: "tui" });
-      expect.unreachable();
-    } catch (error) {
-      const tagged = error as RendererSelectionError;
-      expect(tagged._tag).toBe("RendererSelectionError");
-      expect(tagged.source).toBe("config");
-      expect(tagged.value).toBe("tui");
-    }
+  test("falls back when the config renderer is invalid", () => {
+    // Given an invalid config-sourced renderer.
+    const configValue = "tui";
+    // When selecting the presentation mode before config validation.
+    const result = resolveRendererMode({ configValue });
+    // Then safe-mode commands retain default presentation.
+    expect(result).toMatchObject({ mode: "lando", source: "default" });
   });
 
   test("preserves remainingArgv from flag extraction in non-flag sources", () => {

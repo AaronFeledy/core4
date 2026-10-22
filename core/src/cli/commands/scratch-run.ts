@@ -1,7 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 
 import {
-  type ConfigError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -71,7 +70,6 @@ export type ScratchRunError =
   | ScratchAppError
   | ScratchAppNotFoundError
   | ScratchRunTargetError
-  | ConfigError
   | LandofileVersionConstraintError;
 
 export type ScratchRunServices =

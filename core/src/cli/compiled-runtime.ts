@@ -105,7 +105,10 @@ export const runCompiledCommand = <A, E, R, RE>(
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const effectiveRuntime =
-    spec?.bootstrap === undefined
+    spec?.bootstrap === undefined ||
+    activeCommandId === "meta:config" ||
+    activeCommandId === "meta:doctor" ||
+    activeCommandId === "meta:uninstall"
       ? runtime
       : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
   const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
