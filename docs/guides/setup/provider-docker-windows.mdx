@@ -14,7 +14,7 @@ Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the 
 lando setup --provider=docker
 ```
 
-`--yes` consents to confirmation. It does not switch providers. `LANDO_PROVIDER=docker` does not persist.
+`--yes` consents to confirmation. It does not switch providers. See [What persists](./provider-selection.mdx#what-persists).
 
 Windows Docker Desktop uses the named pipe `npipe://./pipe/docker_engine` when `DOCKER_HOST` is unset. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
 

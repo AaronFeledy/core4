@@ -53,7 +53,7 @@ A plugin argument is not available yet. It fails with `GlobalAppError` before an
 lando global:destroy --yes
 ```
 
-Destroy, like `global:stop`, `global:status`, `global:info`, and `global:logs`, acts on the provider where the global app actually runs. If creation fails with `AppPlacementError`, stop dependent apps before removing the old realization. If multiple providers hold applied global plans, target the unwanted copy explicitly:
+Destroy acts on the provider where the global app actually runs. If multiple providers hold applied global plans, target the unwanted copy explicitly:
 
 ```sh
 lando global:destroy --provider=lando --yes
@@ -61,7 +61,7 @@ lando global:destroy --provider=lando --yes
 
 This reads and cleans up only the selected provider. Volumes stay unless you pass `--purge`.
 
-For a provider switch, prefer `lando poweroff --yes` followed by `lando setup --provider=<new>`. Setup checks running dependents before retiring the old global app, retains its volumes and router dynamic configuration, and reports user apps that still need an explicit destroy on the old provider followed by start on the new one.
+To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
 Volumes stay unless you also pass `--purge`:
 

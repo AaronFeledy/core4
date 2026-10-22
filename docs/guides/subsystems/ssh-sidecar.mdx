@@ -18,7 +18,7 @@ sshAgent:
   sidecar: true
 ```
 
-`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. It lives on the host provider (`LANDO_PROVIDER`, else `defaultProviderId`, else `lando`) with the rest of the global app, even when a Landofile pins the app itself somewhere else. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
+`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. It lives on the host provider with the rest of the global app, even when a Landofile pins the app itself somewhere else; see [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs). `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
 
 That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:start`.
 
