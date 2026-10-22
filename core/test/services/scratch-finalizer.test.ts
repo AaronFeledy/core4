@@ -7,6 +7,8 @@ import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
+  EventService,
+  type LandoEvent,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -178,6 +180,7 @@ const makeRecordingLayer = (
     readonly failApply?: boolean;
     readonly apply?: RuntimeProviderShape["apply"];
     readonly inspect?: RuntimeProviderShape["inspect"];
+    readonly events?: LandoEvent[];
   } = {},
 ) => {
   const provider: RuntimeProviderShape = RuntimeProvider.of({
@@ -252,6 +255,22 @@ const makeRecordingLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    Layer.effect(
+      EventService,
+      Effect.map(EventService, (events) =>
+        EventService.of({
+          ...events,
+          publish: (event) =>
+            events.publish(event).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  options.events?.push(event);
+                }),
+              ),
+            ),
+        }),
+      ),
+    ).pipe(Layer.provide(LandoEventService.layer)),
     BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
@@ -323,7 +342,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       );
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(appliedPlans).toHaveLength(1);
-      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 1);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -367,7 +386,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       );
       expect(retained.outcome._tag).toBe("Failure");
       expect(retained.entries).toHaveLength(keepOnFailure ? 1 : 0);
-      expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 1);
+      expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -405,7 +424,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
         ),
       );
       expect(Exit.hasInterrupts(exit)).toBe(true);
-      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 1);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -448,23 +467,35 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];
       const destroyCalls: DestroyCall[] = [];
+      const events: LandoEvent[] = [];
       const instanceRoot = await Effect.runPromise(
         Effect.scoped(
           Effect.flatMap(ScratchAppService, (service) =>
             Effect.map(service.acquire({ source: { kind: "fork" }, detached: false }), (handle) => handle.id),
           ),
         )
-          .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls)))
+          .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events })))
           .pipe(Effect.map((id) => join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id))),
       );
 
       expect(appliedPlans).toHaveLength(1);
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
-      expect(destroyCalls).toHaveLength(1);
+      expect(destroyCalls).toHaveLength(2);
       expect(destroyCalls[0]?.app).toBe(String(appliedPlan.id));
-      expect(destroyCalls[0]?.volumes).toBe(true);
+      expect(destroyCalls[0]?.volumes).toBe(false);
+      expect(destroyCalls[1]?.volumes).toBe(true);
       expect(await directoryExists(instanceRoot)).toBe(false);
+      expect(events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag)).toEqual([
+        "pre-scratch-destroy",
+        "pre-stop",
+        "post-stop",
+        "pre-destroy",
+        "post-destroy",
+        "post-scratch-destroy",
+      ]);
+      expect(events.at(0)).toMatchObject({ reason: "scope-close", app: { kind: "scratch" } });
+      expect(events.at(-1)).toMatchObject({ reason: "scope-close", app: { kind: "scratch" } });
     });
   });
 
@@ -512,7 +543,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
 
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(appliedPlans).toHaveLength(1);
-      expect(destroyCalls).toHaveLength(1);
+      expect(destroyCalls).toHaveLength(2);
       expect(destroyCalls[0]?.app).toBe(String(appliedPlans.at(0)?.id));
     });
   });
@@ -542,7 +573,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(result.detached).toBe(false);
       expect(result.rendered).toBe(true);
       expect(appliedPlans).toHaveLength(1);
-      expect(destroyCalls).toHaveLength(1);
+      expect(destroyCalls).toHaveLength(2);
       expect(io.stdout()).toContain(`started: ${result.handle.id}`);
     });
   });

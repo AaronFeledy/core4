@@ -1,6 +1,13 @@
 import { Effect } from "effect";
 
-import { type AbsolutePath, type SnapshotInfo, appIdentityKey, snapshotHandle } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type SnapshotInfo,
+  appIdentityKey,
+  planAppIdentity,
+  snapshotHandle,
+} from "@lando/sdk/schema";
 import { DataMover } from "@lando/sdk/services";
 
 export const ownedSnapshots = Effect.fn("AppOperation.ownedSnapshots")(function* (
@@ -30,4 +37,12 @@ export const removeSnapshots = Effect.fn("AppOperation.removeSnapshots")(functio
     if (outcome === "removed") removed += 1;
   }
   return removed;
+});
+
+export const scratchOwnedSnapshots = Effect.fn("AppOperation.scratchOwnedSnapshots")(function* (
+  plan: AppPlan,
+) {
+  const mover = yield* DataMover;
+  const snapshots = yield* mover.listSnapshots({ ownerKey: planAppIdentity(plan).ownerKey });
+  return snapshots.filter((info) => info.store.app === plan.id);
 });

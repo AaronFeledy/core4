@@ -357,6 +357,7 @@ const makeScratchForkLayer = (
           ),
         ];
   const scratchDeps = Layer.mergeAll(
+    LandoEventService.layer,
     BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
@@ -603,7 +604,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(result.stopped).toEqual(result.handle);
       expect(result.destroyed).toEqual(result.keepHandle);
       expect(destroyCalls).toEqual([
+        { app: result.handle.id, volumes: false, removeState: false },
         { app: result.handle.id, volumes: true, removeState: true },
+        { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: true },
       ]);
     });
@@ -627,6 +630,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(outcome._tag).toBe("Failure");
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
+        { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: false },
         { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
       ]);
     });

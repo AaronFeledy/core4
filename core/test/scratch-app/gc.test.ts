@@ -186,6 +186,11 @@ const makeLayer = (
     ScratchResourceScanner.of({
       listScratchIds: Effect.succeed(labelIds),
       pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
+      prepareScratch: (id) =>
+        Effect.succeed({
+          stop: Effect.succeed(false),
+          destroy: (pruneScratch?.(id) ?? Effect.sync(() => pruned.push(id))).pipe(Effect.as(true)),
+        }),
     }),
   );
   const scratchDeps = Layer.mergeAll(

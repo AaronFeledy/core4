@@ -98,6 +98,7 @@ import {
   PostPushEvent,
   PostRebuildEvent,
   PostRestartEvent,
+  PostScratchDestroyEvent,
   PostServiceStartEvent,
   PostServiceStopEvent,
   PostStartEvent,
@@ -130,6 +131,7 @@ import {
   PrePushEvent,
   PreRebuildEvent,
   PreRestartEvent,
+  PreScratchDestroyEvent,
   PreServiceStartEvent,
   PreServiceStopEvent,
   PreStartEvent,
@@ -770,6 +772,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   PostGlobalStopEvent,
   PreGlobalDestroyEvent,
   PostGlobalDestroyEvent,
+  PreScratchDestroyEvent,
+  PostScratchDestroyEvent,
   PreGlobalRebuildEvent,
   PostGlobalRebuildEvent,
   PreAppStartEvent,
@@ -1258,6 +1262,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PostGlobalStartEvent: "Public Lando schema contract for Post Global Start Event.",
   PreGlobalStopEvent: "Public Lando schema contract for Pre Global Stop Event.",
   PostGlobalStopEvent: "Public Lando schema contract for Post Global Stop Event.",
+  PreScratchDestroyEvent: "Scratch destroy bracket opening before standard app stop and destroy.",
+  PostScratchDestroyEvent:
+    "Scratch destroy completed, including registry/root cleanup and explicit retained-artifact status.",
   PreGlobalDestroyEvent:
     "Global destroy bracket opened before provider teardown; absent evidence emits no event.",
   PostGlobalDestroyEvent:

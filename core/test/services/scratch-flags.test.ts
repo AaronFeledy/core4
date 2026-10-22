@@ -213,6 +213,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     landofileServiceLayer,

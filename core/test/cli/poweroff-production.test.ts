@@ -133,6 +133,7 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
       ScratchResourceScanner.of({
         listScratchIds: Effect.die("unexpected scratch scan"),
         pruneScratch: () => Effect.die("registered scratch must use destroy"),
+        prepareScratch: () => Effect.die("registered scratch must use destroy"),
       }),
     ),
   );
@@ -147,6 +148,30 @@ test("stops owning providers before host teardown when no stop seam is injected"
     // Then: actual provider stops, scratch cleanup, and host teardown are ordered.
     expect(calls).toEqual(["docker:user", "scratch:scratch-one", "lando:global", "runtime"]);
     expect(result.appsPoweredOff).toEqual(["user", "scratch-one", "global"]);
+  });
+});
+
+test("poweroff destroys cached scratch entries even without observed services", async () => {
+  // Given a registered scratch represented only by cached state.
+  await withPoweroff(async ({ root, calls, options, layer }) => {
+    // When poweroff resolves that scratch through its lifecycle service.
+    await Effect.runPromise(
+      poweroff({
+        ...options,
+        discoverContainers: async () => [
+          {
+            appId: "scratch-cached",
+            appName: "scratch-cached",
+            appRoot: root,
+            providerId: "cache",
+            services: [],
+            scratch: true,
+          },
+        ],
+      }).pipe(Effect.provide(layer)),
+    );
+    // Then it is destroyed before runtime shutdown rather than skipped like an ordinary cached app.
+    expect(calls).toEqual(["scratch:scratch-cached", "runtime"]);
   });
 });
 

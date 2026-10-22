@@ -7,7 +7,6 @@ import { ConfigService, EventService, RuntimeProviderRegistry, ScratchAppService
 
 import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "@lando/engine/providers/managed";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
-import { ScratchResourceScanner, isCanonicalScratchId } from "@lando/engine/scratch-app/scanner";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { type AppsListEntry, listServices } from "./list";
 
@@ -53,12 +52,7 @@ export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("
   remediation: Schema.String,
 }) {}
 
-export type PoweroffServices =
-  | ConfigService
-  | EventService
-  | RuntimeProviderRegistry
-  | ScratchAppService
-  | ScratchResourceScanner;
+export type PoweroffServices = ConfigService | EventService | RuntimeProviderRegistry | ScratchAppService;
 export type PoweroffError = CacheError | ConfigError | LandoCommandError | PoweroffStopError;
 
 const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
@@ -66,16 +60,7 @@ const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
 const stopDiscoveredApp = Effect.fnUntraced(function* (entry: AppsListEntry) {
   if (isScratch(entry)) {
     const scratches = yield* ScratchAppService;
-    yield* scratches.destroy(entry.appId, { keepVolumes: false }).pipe(
-      Effect.asVoid,
-      Effect.catchTag("ScratchAppNotFoundError", (error) =>
-        Effect.gen(function* () {
-          if (!isCanonicalScratchId(entry.appId)) return yield* Effect.fail(error);
-          const scanner = yield* ScratchResourceScanner;
-          yield* scanner.pruneScratch(entry.appId);
-        }),
-      ),
-    );
+    yield* scratches.destroy(entry.appId, { keepVolumes: false, reason: "poweroff" });
     return;
   }
   const registry = yield* RuntimeProviderRegistry;
@@ -194,7 +179,7 @@ const poweroffOperation = Effect.fn("AppsPoweroff.poweroff")(function* (
   const stopOrder = (app: AppsListEntry): number =>
     app.appId === GLOBAL_APP_ID ? 2 : isScratch(app) ? 1 : 0;
   for (const app of [...list.apps].sort((left, right) => stopOrder(left) - stopOrder(right))) {
-    if (app.providerId === "cache") continue;
+    if (app.providerId === "cache" && !isScratch(app)) continue;
     if (options.keepGlobal === true && app.appId === GLOBAL_APP_ID) continue;
     if (options.keepScratch === true && isScratch(app)) {
       keptScratch += 1;

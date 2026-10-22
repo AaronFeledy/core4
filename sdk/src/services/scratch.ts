@@ -132,6 +132,8 @@ export interface ScratchStartOptions {
 
 export interface ScratchDestroyOptions {
   readonly keepVolumes?: boolean;
+  /** Poweroff may reap a discovered scratch whose registry entry is gone. */
+  readonly reason?: "explicit" | "poweroff";
 }
 
 export interface ScratchGcOptions {
