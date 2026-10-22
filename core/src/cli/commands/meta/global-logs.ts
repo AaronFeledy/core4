@@ -5,9 +5,9 @@ import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lan
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
-  type LoadGlobalPlanError,
   type LoadGlobalPlanServices,
-  loadGlobalPlan,
+  type LoadObservedGlobalPlanError,
+  loadObservedGlobalPlan,
 } from "@lando/engine/operations/global-plan";
 import {
   type FollowLogsAppOptions,
@@ -26,14 +26,14 @@ export type GlobalLogsResult = LogsAppResult;
 export type GlobalLogsError =
   | ComposeKeyRejectedError
   | LogsAppError
-  | LoadGlobalPlanError
+  | LoadObservedGlobalPlanError
   | LandofileLoadExpressionError;
 export type GlobalLogsServices = LoadGlobalPlanServices | RuntimeProviderRegistry;
 
 export const globalLogs = Effect.fn("GlobalLogs.logs")(function* (
   options: LogsAppOptions = {},
 ): Effect.fn.Return<GlobalLogsResult, GlobalLogsError, GlobalLogsServices> {
-  const loaded = yield* loadGlobalPlan();
+  const loaded = yield* loadObservedGlobalPlan();
   if (!loaded.materialized) {
     yield* validateSince(options.since);
     return { app: "global", lines: [] };
@@ -44,7 +44,7 @@ export const globalLogs = Effect.fn("GlobalLogs.logs")(function* (
 export const followGlobalLogs = Effect.fn("GlobalLogs.follow")(function* (
   options: FollowLogsAppOptions = {},
 ): Effect.fn.Return<GlobalLogsResult, GlobalLogsError, GlobalLogsServices | StreamFrameSink> {
-  const loaded = yield* loadGlobalPlan();
+  const loaded = yield* loadObservedGlobalPlan();
   if (!loaded.materialized) {
     yield* validateSince(options.since);
     return { app: "global", lines: [] };

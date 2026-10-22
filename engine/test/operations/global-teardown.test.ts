@@ -132,6 +132,7 @@ const harnessAt = (
       GlobalAppService,
       GlobalAppService.of({
         id: "global",
+        providerId: Effect.succeed(providerId),
         root: Effect.succeed(root),
         ensureRoot: Effect.die("no desired root mutation"),
         paths: Effect.succeed({
@@ -147,6 +148,9 @@ const harnessAt = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        appliedPlansFor: () =>
+          Effect.map(provider.appliedPlans, (plans) => plans.filter((plan) => plan.provider === providerId)),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {

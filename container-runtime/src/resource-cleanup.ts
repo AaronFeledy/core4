@@ -31,6 +31,7 @@ export const makeOwnedResourcesCleanup = (input: {
       return order[left.kind] - order[right.kind];
     });
     for (const resource of resources) {
+      if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
       if (
         resource.kind === "volume" &&
         !(resource.volumeClass === "cache"
