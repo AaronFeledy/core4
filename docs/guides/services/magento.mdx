@@ -57,6 +57,7 @@ memory_limit = 2G
 - `webroot: pub` serves Magento's `pub/` directory. `allowOverride: true` lets Apache read Magento's `.htaccess` rewrites; it's off by default.
 - `type: mariadb` is MariaDB 11.4 and `type: opensearch` is OpenSearch 2 with its security plugin off. Both are reachable by service name, so Magento talks to `database` and `search`.
 - The `magento` task runs as `www-data`, the user Apache runs PHP as. Files `bin/magento` writes (cache, generated code, static assets) stay writable for the web server.
+- `vendor` is excluded from the app mount by default, so `lando composer install` puts it inside the service and your host editor won't see it. Add `appMount: { target: /app, includes: [vendor] }` to `appserver` to keep it on disk. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 - `php.ini` raises `memory_limit` for both the CLI and Apache. Magento's installer and indexers need more than PHP's default.
 
 Start it:
