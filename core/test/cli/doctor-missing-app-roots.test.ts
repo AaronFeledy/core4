@@ -55,6 +55,8 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
 });
 const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) =>
   RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

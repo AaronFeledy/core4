@@ -126,6 +126,11 @@ const withSwitch = async (
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: (target) => Effect.succeed(globalApplied && target === root ? [global] : []),
+          resolveAppliedPlan: () => Effect.succeed(globalApplied ? global : undefined),
+          resolveTeardownEvidence: () =>
+            Effect.succeed(
+              globalApplied ? { kind: "applied" as const, plan: global } : { kind: "absent" as const },
+            ),
           select: (id) =>
             (typeof id === "string" ? id : id?.provider) === "lando"
               ? Effect.succeed(provider)

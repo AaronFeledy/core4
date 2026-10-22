@@ -133,6 +133,7 @@ const harnessAt = (
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
         appliedPlansFor: () => Effect.succeed(input.applied ? [plan] : []),
+        resolveAppliedPlan: () => Effect.succeed(input.applied ? plan : undefined),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {

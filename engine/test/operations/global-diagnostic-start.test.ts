@@ -108,6 +108,8 @@ for (const failBuild of [false, true]) {
         Effect.provideService(AppPlanner, { plan: () => Effect.succeed(globalPlan) }),
         Effect.provideService(RuntimeProviderRegistry, {
           appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

@@ -189,6 +189,8 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),

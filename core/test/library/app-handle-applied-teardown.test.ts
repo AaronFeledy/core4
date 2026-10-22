@@ -66,6 +66,12 @@ const makeHarness = (root: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () =>
+          Effect.sync(() =>
+            appliedPlan === undefined
+              ? { kind: "absent" as const }
+              : { kind: "applied" as const, plan: appliedPlan },
+          ),
         appliedPlansFor: (root) =>
           Effect.sync(() =>
             appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],

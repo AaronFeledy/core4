@@ -183,6 +183,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   let appliedPlan: AppPlan | undefined;
   return RuntimeProvider.of({
     ...provider,
+    appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
       Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
     inspectAppliedFileSync: () =>
@@ -288,6 +289,19 @@ const appLayer = (
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
+              ),
+            resolveTeardownEvidence: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => {
+                  const applied = plans.find((candidate) => candidate.root === root);
+                  return applied === undefined
+                    ? { kind: "absent" as const }
+                    : { kind: "applied" as const, plan: applied };
+                }),
+              ),
             appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
             capabilities: Effect.succeed(fixtureProvider.capabilities),
@@ -1325,6 +1339,8 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      resolveAppliedPlan: () => Effect.succeed(undefined),
+                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                       appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),

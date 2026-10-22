@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { ensureAppPlacement, resolveAppPlacement } from "../../src/providers/app-placement.ts";
-import { makeHarness, plan as basePlan } from "./start-progress-topology-support.ts";
+import { plan as basePlan, makeHarness } from "./start-progress-topology-support.ts";
 
 const plan: AppPlan = {
   ...basePlan,
@@ -32,11 +32,9 @@ test.each(["start", "destroy"] as const)(
     });
     try {
       const target = { app: user, root: plan.root, plan };
-      const result = await (
-        operation === "start"
-          ? Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)))
-          : Effect.runPromise(destroyApp({}, target).pipe(Effect.provide(harness.layer)))
-      );
+      const result = await (operation === "start"
+        ? Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)))
+        : Effect.runPromise(destroyApp({}, target).pipe(Effect.provide(harness.layer))));
       expect(result.app).toBe(plan.name);
       expect(mutations).toBeGreaterThan(0);
     } finally {

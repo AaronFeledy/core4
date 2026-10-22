@@ -333,10 +333,10 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
-    readonly resolveAppliedPlan?: (
+    readonly resolveAppliedPlan: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
-    readonly resolveTeardownEvidence?: (
+    readonly resolveTeardownEvidence: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly observeRuntime?: Effect.Effect<

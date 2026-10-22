@@ -65,6 +65,8 @@ test.each([0, 2])("running agent exec exit %s distinguishes ready from starting"
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
         appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -102,6 +104,8 @@ test.each([
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
         appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -140,6 +144,8 @@ test.each([false, true])(
         Effect.provideService(GlobalAppService, globalApp),
         Effect.provideService(RuntimeProviderRegistry, {
           appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([ProviderId.make(provider.id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -180,6 +186,8 @@ test("wait exhausts its budget when a running agent never answers", async () => 
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RuntimeProviderRegistry, {
         appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

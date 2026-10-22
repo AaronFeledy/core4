@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import * as LandoHttpClient from "@lando/http-client";
-import { AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   ConfigService,
   Downloader,
@@ -94,6 +94,8 @@ test.each([
                 get: (key) => Effect.succeed(config[key]),
               }),
               Layer.succeed(RuntimeProviderRegistry, {
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("lando")]),
                 capabilities: Effect.succeed(provider.capabilities),
@@ -104,7 +106,15 @@ test.each([
                   }),
               }),
               Layer.succeed(SshService, { ...ssh, id: "sidecar" }),
-              Layer.succeed(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+              Layer.succeed(GlobalAppService, {
+                ...globalAppForProvider(ProviderId.make("lando")),
+                root: Effect.succeed(AbsolutePath.make(join(userDataRoot, "global"))),
+                paths: Effect.succeed({
+                  root: AbsolutePath.make(join(userDataRoot, "global")),
+                  distLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.dist.yml")),
+                  userLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.yml")),
+                }),
+              }),
               Layer.succeed(EventService, events),
               Layer.succeed(Downloader, downloader.service),
               Layer.succeed(InteractionService, interaction.service),

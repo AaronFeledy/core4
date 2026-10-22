@@ -246,6 +246,7 @@ const makeLogsLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),

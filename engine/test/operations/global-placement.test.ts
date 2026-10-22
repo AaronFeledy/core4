@@ -69,6 +69,8 @@ const layers = (plans: ReadonlyArray<AppPlan>, globalRoot: AbsolutePath = root) 
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         // Exact canonical-root equality, as the production registry filters.
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: (target) =>
           Effect.succeed(plans.filter((applied) => applied.identity?.appRoot === target)),
         select: () => Effect.die("placement must not construct providers"),

@@ -112,6 +112,8 @@ const buildSetupLayers = (
   );
 
 const testRuntimeProviderRegistry = {
+  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   appliedPlansFor: () => Effect.succeed([]),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
@@ -319,6 +321,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -365,6 +369,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -395,6 +401,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -442,6 +450,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -473,6 +483,8 @@ describe("meta:setup command", () => {
       }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -542,6 +554,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -567,6 +581,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -633,6 +649,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(providerId)]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -733,6 +751,8 @@ describe("meta:setup command", () => {
         }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -808,6 +828,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -874,6 +896,8 @@ describe("meta:setup command", () => {
         getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -917,6 +941,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -971,6 +997,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1022,6 +1050,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1093,6 +1123,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1194,6 +1226,8 @@ describe("meta:setup command", () => {
       const registry = {
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed(globalApplied ? [globalPlan] : []),
         select: (target?: AppPlan | ProviderId) =>
           Effect.succeed(
@@ -1318,6 +1352,8 @@ describe("meta:setup command", () => {
       remediation: "Run `lando poweroff`, then retry setup.",
     });
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
@@ -1360,6 +1396,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1450,6 +1488,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -1498,6 +1538,8 @@ describe("meta:setup command", () => {
       setup: () => Effect.void,
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -1528,6 +1570,8 @@ describe("meta:setup command", () => {
     };
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -1564,6 +1608,8 @@ describe("meta:setup command", () => {
           setup: () => Effect.void,
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
@@ -1647,6 +1693,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1731,6 +1779,8 @@ describe("meta:setup command", () => {
           ) as Effect.Effect<void, never, never>,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1777,6 +1827,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1843,6 +1895,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -1975,6 +2029,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -2038,6 +2094,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2076,6 +2134,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2221,6 +2281,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2277,6 +2339,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -2329,6 +2393,8 @@ describe("meta:setup command", () => {
       setup: () => Effect.die("native bind-mount provider should not run file-sync setup"),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2366,6 +2432,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -2449,6 +2517,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2485,6 +2555,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2513,6 +2585,8 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
@@ -2556,6 +2630,8 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
@@ -2584,6 +2660,8 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
@@ -2614,6 +2692,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2651,6 +2731,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2704,6 +2786,8 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -2756,6 +2840,8 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -3078,6 +3164,8 @@ describe("meta:setup command", () => {
     const buildRegistryThatCapturesPlan = (provider: typeof TestRuntimeProvider) => {
       const observed: { providerId?: string | undefined } = {};
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([
           ProviderId.make("lando"),

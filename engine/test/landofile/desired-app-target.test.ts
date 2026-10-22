@@ -15,6 +15,8 @@ const failure = new NotImplementedError({
 });
 const registry = Layer.succeed(RuntimeProviderRegistry, {
   appliedPlansFor: () => Effect.succeed([]),
+  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   list: Effect.succeed([plan.provider]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.die("Provider selection is not part of planning"),
@@ -32,6 +34,8 @@ test("resolves a user target when the desired Landofile is planned", async () =>
     }),
     Layer.succeed(RuntimeProviderRegistry, {
       appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([plan.provider]),
       capabilities: Effect.sync(() => {
         calls.push("capabilities");

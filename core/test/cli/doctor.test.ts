@@ -73,6 +73,8 @@ const resultEnvelope = (ndjson: string) => {
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
@@ -717,6 +719,8 @@ describe("meta:doctor command", () => {
         const socket = "/run/user/1000/podman/podman.sock";
         await writeProviderLandoState(dataRoot, socket);
         const registry = RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("podman")]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

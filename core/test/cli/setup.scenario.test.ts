@@ -83,6 +83,8 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     }),
   );
   const registry = RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
@@ -218,6 +220,8 @@ describe("meta:setup task tree progress", () => {
         }),
       );
       const registry = RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),

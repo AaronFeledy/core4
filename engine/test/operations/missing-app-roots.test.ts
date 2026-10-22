@@ -70,6 +70,8 @@ const run = (
         Effect.provideService(FileSystem, { ...fs, exists }),
         Effect.provideService(RuntimeProviderRegistry, {
           appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),

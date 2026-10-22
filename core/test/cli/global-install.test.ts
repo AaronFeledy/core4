@@ -73,6 +73,8 @@ const layerWithFakeGlobalService = (modulePath: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
@@ -197,6 +199,8 @@ describe("global:install command operation", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed(dockerProvider.capabilities),

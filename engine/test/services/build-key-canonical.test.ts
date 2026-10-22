@@ -183,6 +183,8 @@ test("does not skip the provider when a version-1 persisted build result has the
       AppEventService.layer,
       Layer.succeed(RuntimeProviderRegistry, {
         appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([provider.id]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(runtime),

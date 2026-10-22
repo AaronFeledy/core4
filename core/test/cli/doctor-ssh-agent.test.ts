@@ -300,6 +300,8 @@ describe("SSH agent doctor posture", () => {
         return yield* Fiber.join(fiber);
       }).pipe(
         Effect.provideService(RuntimeProviderRegistry, {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([provider.id]),
           capabilities: Effect.succeed(provider.capabilities),

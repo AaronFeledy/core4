@@ -781,6 +781,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     capabilities: Effect.succeed(runtimeProvider.capabilities),
     select: () => Effect.succeed(runtimeProvider),
     resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {

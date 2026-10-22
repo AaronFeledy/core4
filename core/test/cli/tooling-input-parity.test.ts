@@ -71,6 +71,8 @@ const harnessLayer = (input: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

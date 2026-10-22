@@ -28,6 +28,8 @@ const makeLayer = (selected: string[]) => {
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
         appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([plan.provider]),
         capabilities: Effect.succeed(fallback.capabilities),
         select: () =>

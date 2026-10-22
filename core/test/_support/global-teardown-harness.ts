@@ -170,6 +170,8 @@ export const globalTeardownHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => provider.appliedPlans,
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),

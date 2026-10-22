@@ -128,7 +128,6 @@ const run = (
         if (registry.observeRuntime === undefined) return yield* Effect.die("missing observer");
         return yield* registry.observeRuntime;
       }
-      if (registry.resolveAppliedPlan === undefined) return yield* Effect.die("missing resolver");
       const selected = yield* registry.resolveAppliedPlan(root);
       return selected === undefined
         ? undefined

@@ -288,9 +288,14 @@ export const makeHarness = (
     capabilities: Effect.succeed(capabilities),
     select: options.selectProvider ?? (() => Effect.succeed(provider)),
     resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)),
-    ...(options.resolveTeardownEvidence === undefined
-      ? {}
-      : { resolveTeardownEvidence: options.resolveTeardownEvidence }),
+    resolveTeardownEvidence:
+      options.resolveTeardownEvidence ??
+      ((root: AbsolutePath) =>
+        (options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)))(root).pipe(
+          Effect.map((plan) =>
+            plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+          ),
+        )),
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
