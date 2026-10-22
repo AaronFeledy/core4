@@ -31,3 +31,5 @@ lando doctor
 ```
 
 Doctor probes `lando-doctor-probe.<domain>` using your configured `proxy.defaultDomain` (default `lndo.site`). If it fails, add a local DNS rule for that domain and run `lando doctor` again. This DNS pass does not cover container-to-host callbacks. Starting an app still needs a host-proxy transport session; if that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. Doctor checks that transport separately.
+
+To open a URL or reveal an app file in your host's file manager from a service, use [`xdg-open` or `open` through the host proxy](./host-open.mdx). Those callbacks are separate from DNS resolution.

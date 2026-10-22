@@ -181,7 +181,7 @@ test("publishes the default dashboard without setup or app routes", async () => 
 
   // Then: the infrastructure dashboard still has its own domain rule.
   expect(harness.files.get("/lando/global/proxy-traefik/dynamic/dashboard.yml")).toContain(
-    "Host(`traefik.lndo.site`)",
+    'Host(\\"traefik.lndo.site\\")',
   );
 });
 
@@ -195,7 +195,7 @@ test("setup moves the dashboard domain without waiting for route publication", a
 
   // Then: the watched file replaces the old rule without a container-authored writer.
   const dashboard = harness.files.get("/lando/global/proxy-traefik/dynamic/dashboard.yml");
-  expect(dashboard).toContain("Host(`traefik.new.test`)");
+  expect(dashboard).toContain('Host(\\"traefik.new.test\\")');
   expect(dashboard).not.toContain("traefik.old.test");
 });
 
@@ -209,6 +209,6 @@ test("fresh route publication restores a dashboard using the persisted domain", 
 
   // Then: publication restores the router-owned rule using durable domain state.
   expect(harness.files.get("/lando/global/proxy-traefik/dynamic/dashboard.yml")).toContain(
-    "Host(`traefik.custom.test`)",
+    'Host(\\"traefik.custom.test\\")',
   );
 });

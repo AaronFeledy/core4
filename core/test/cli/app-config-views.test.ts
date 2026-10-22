@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as ConfigLayer from "@lando/engine/services/config";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import {
@@ -29,7 +30,9 @@ const layer = Layer.merge(
   ),
 );
 const run = (options: AppConfigOptions) =>
-  Effect.runPromise(appConfig({ ...options, cwd: dir }).pipe(Effect.provide(layer)));
+  Effect.runPromise(
+    appConfig({ ...options, cwd: dir }).pipe(Effect.provide(layer), Effect.provide(ConfigLayer.layer)),
+  );
 
 describe("raw and merged inspection", () => {
   test("exposes final-invalid authored layers without finalizing", async () => {

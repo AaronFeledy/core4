@@ -25,6 +25,32 @@ func protocolFixture(t *testing.T, name string) []byte {
 	return data
 }
 
+func TestOpenRequestsMatchSharedFixtures(t *testing.T) {
+	for _, fixture := range []struct {
+		name   string
+		target string
+	}{
+		{"open-url-request.jsonl", "https://example.com/x?a=1&b=two"},
+		{"open-path-request.jsonl", "/app/README"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			call, err := openCall([]string{fixture.target})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var encoded bytes.Buffer
+			encoder := json.NewEncoder(&encoded)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(call.payload); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(encoded.Bytes(), protocolFixture(t, fixture.name)) {
+				t.Fatalf("request=%s", encoded.Bytes())
+			}
+		})
+	}
+}
+
 func TestRunLandoRequestMatchesSharedFixture(t *testing.T) {
 	want := bytes.TrimSpace(protocolFixture(t, "run-lando-request.jsonl"))
 	cwd, err := os.Getwd()

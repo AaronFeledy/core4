@@ -15,11 +15,13 @@ Each subsystem exposes a focused Effect service or fixed core primitive. Remote 
 
 Core defines network intent; `RuntimeProvider` realizes it.
 
+`NetworkingPlan.perAppBridge` names the private bridge to create, or is explicitly `null` when none is intended. The global planner emits `null` plus shared membership on `lando_bridge_network`, with `<service>.global.internal` aliases. User apps retain their per-app bridge and, when supported, shared membership. Providers MUST derive creation, attachment, recreation checks, and teardown from this intent, never from an app-id special case. Shared-only plans MUST NOT invent a private bridge during teardown or physical network-name translation.
+
 - Services resolve peers by service name when app networking is supported. Cross-app names use `<service>.<app>.internal` only when `sharedCrossAppNetwork` is supported.
 - `host.lando.internal` resolves to the host gateway when `hostReachability` is `native` or `emulated`; `LANDO_HOST_IP` contains that resolvable name.
 - Providers without shared networking MUST report `sharedCrossAppNetwork: false`; dependent features fail with actionable errors.
 - Host endpoints bind to `127.0.0.1` by default; `bindAddress` is the opt-in LAN exposure surface.
-- Core has no shared-bridge abstraction. Provider-created networks, including Docker's `lando_bridge_network`, are implementation details.
+- Core owns logical network intent (`NetworkingPlan`); providers own physical realization, including engine network objects, drivers, and platform-specific physical names.
 
 ### 10.2 Router and routes
 
@@ -33,6 +35,7 @@ User surfaces say **router** and **routes**. Service `routes:` is preferred; top
 - Router plugins reconcile stale routes on rebuild and destroy. `stop` durably removes all app route definitions without stopping unrelated global services; `status` reports that durable state.
 - `RouteFilter` contributions translate provider-neutral filters. Bundled filters are `stripPrefix`, `addPrefix`, `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `auth.basic`, and `rateLimit` (§6.6). Non-empty filter overlays merge by `name`, then unnamed type identity, and retain authored order; an explicitly empty overlay clears inherited filters (§7.2). Path routes MUST NOT strip implicitly.
 - `router.enabled: false`, resolved by normal precedence (§7.4, §7.5), MUST prevent router startup and publication for the app. `lando info` reports only published endpoints.
+- Automatic route publication for user and scratch apps MUST NOT start the router when the plan has no routes. User-app start MUST attempt to withdraw previously published routes without requiring router startup; withdrawal failure is non-fatal. Explicit global lifecycle requests and declared global-service requirements are unaffected.
 - A router MUST set `X-Lando-Router: <reason>` (`no-route`, `upstream-unreachable`) on every error response it generates itself, and MUST NOT set it on a response proxied from a service, so `http` checks attribute router pages to Lando (§10.5.2).
 - Route priority is one shared space across every app, derived from the route alone under §6.6. A router that publishes its own routers (dashboard, diagnostics, fallback) MUST pin them outside the app bands defined there: diagnostic fallbacks at `ROUTE_PRIORITY_DIAGNOSTIC`, router-owned hostnames above `ROUTE_PRIORITY_MAX`. Otherwise an app that claims the same hostname captures them.
 - `RouterService.revalidateStartup` re-observes the running router's startup against its live state and refreshes whatever persisted startup observation the implementation keeps. It is distinct from `setup`: it acquires no ports, starts no services, and takes no `Scope`. It fails with `ProxyError` or `RouterWatcherError`. An unavailable router implements it as a no-op, so a record left by an earlier router stays reported until a selected router revalidates it.
@@ -381,11 +384,12 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 - Section deadlines are bounded and configurable by `LANDO_DOCTOR_SECTION_BUDGET_MS`; checks remain interruptible Effect programs.
 - Provider failures degrade to a non-pass `selected-provider` check with setup remediation.
 - Each plugin check is isolated, attributed, strictly decoded as `PluginDoctorReport`, and bounded. This is cooperative isolation, not a hostile-code sandbox.
-- `meta:doctor` declares base bootstrap `none`, constructs the provider runtime once inside its own scope, and degrades provider-bootstrap failure without suppressing independent sections. It still uses native dispatch, Effect, and `Renderer`; `notify.commands` MUST NOT promote it.
+- `meta:doctor` declares base bootstrap `none`, validates global config first, then supplies the retained snapshot explicitly to one scoped provider-runtime build; provider-bootstrap failures stay isolated self checks and never suppress independent sections. It still uses native dispatch, Effect, and `Renderer`; `notify.commands` MUST NOT promote it.
+- The §7.5 decode is doctor's own `global-config` section. On failure the report carries `globalConfig: { status: "fail", error }` with the full `ConfigError`, lists the config-dependent sections (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when requested) under `skipped` with a reason instead of running them against stub services, still runs config-independent diagnostics such as `filesystem-watch`, adds the `doctor-self` entry, and exits non-zero. It MUST NOT emit stub subsystem warnings or `--fix` advice for a config failure. On success the report carries `globalConfig: { status: "pass" }` and publishes the snapshot's load warnings once.
 
 ### 10.10 Host proxy
 
-`HostProxyService` is the opt-in, per-app container-to-host RPC port installed by `lando.host-proxy` for `type: lando` services. It opens host URLs/paths and re-enters approved Lando or Bun operations. It is not a persistent agent, which is a non-goal (§14.2).
+`HostProxyService` is the opt-in, per-app container-to-host RPC port installed by `lando.host-proxy` for `type: lando` services. It opens host URLs, reveals app paths in the host file manager, and re-enters approved Lando or Bun operations. It is not a persistent agent, which is a non-goal (§14.2).
 
 #### 10.10.1 Architecture and protocol
 
@@ -397,7 +401,8 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 - The worker record holds the session id, bearer token, and control token so a later start can hand them to services. Lando registers them with `RedactionService` (§3.7) as soon as they are known; they MUST NOT appear in logs, events, transcripts, traces, errors, or machine output.
 - `HostProxyRequest` tags are `openUrl`, `openPath`, `runLando`, and `runBun`; `HostProxyResponse` tags are `ok` and `error`, classified by `HostProxyErrorCode`. Requests require bearer-token authentication. `runLando` streams NDJSON stdout, stderr, exit, or error frames.
 - Container-initiated notification and clipboard relay are outside the `HostProxyRequest` union; adding one is a protocol-schema change, not a plugin extension.
-- Default `openUrl` schemes are `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`. `file://` is always forbidden. Extensions use the service layer or global `hostProxy.allowedSchemes`.
+- Default `openUrl` schemes are `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`. `file:` is always forbidden, case-insensitively. Extensions use the service layer; global `hostProxy.allowedSchemes` remains planned, not an accepted config key.
+- `openPath` requires an existing absolute container path inside the app mount. The host remaps it through that mount, resolves the host root and target canonically, and rejects lexical or symlink escapes instead of using the `runLando` cwd fallback. Unrelated bind mounts and container-only paths are not eligible. Host opening is argv-precise through `ProcessRunner`, never shell interpolation.
 - `runLando` uses the generated `host-proxy-allowlist`. Lifecycle commands, `app:remote:tether`, `meta:bun`, and `meta:x` MUST NOT be allowed; violations fail with `HostProxyAllowlistConflictError`. Allowed remote operations MUST still enforce §10.12.8; the proxy MUST NOT synthesize typed confirmation.
 - `runBun` uses the non-plugin-extensible `host-proxy-bun-verb-allowlist`: `audit`, `outdated`, `pm`, `info`, and `why`. Mutating verbs fail with `HostProxyBunVerbNotAllowedError`.
 - Recursive re-entry is bounded by `LANDO_HOST_PROXY_DEPTH` and fails with `HostProxyRecursionLimitError`. Per-app concurrency is bounded by global `hostProxy.maxConcurrent` and fails with `HostProxyBackpressureError`.
@@ -405,6 +410,10 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 #### 10.10.2 In-container shim and required behavior
 
 One static client is installed as `xdg-open`, `open`, and `lando`; optional `lando.host-proxy.bun: true` installs `bun` only when it does not shadow an existing Bun. It dispatches by invocation name, filters forwarded environment, remaps cwd through `AppMountInfo`, never forwards `BUN_BE_BUN`, and prints deterministic fallback errors when proxy env is absent. It is a signed wire client, not the host `lando` binary.
+
+The opener roles bind the session copy read-only at `/usr/local/bin/xdg-open` and `/usr/local/bin/open`, intentionally shadowing image openers when `/usr/local/bin` precedes `/usr/bin`. They accept exactly one nonempty argument and no flags (including `--`); unsupported arguments exit 64. A leading RFC-style scheme (`[A-Za-z][A-Za-z0-9+.-]*:`) selects `openUrl`; everything else becomes an absolute path relative to the container cwd for `openPath`. Neither request forwards environment. These binds are session-only: plan persistence and create fingerprints exclude them.
+
+`openPath` MUST reveal the canonical target in the host file manager, never launch it. The app mount is writable from the container: default file openers can execute scripts, application bundles, executables, or desktop entries supplied there, bypassing the host-command restrictions. Linux runs `xdg-open <directory>` with the canonical target for directories and its parent for files. macOS runs `open -R <target>` for both files and directories, including `.app` bundles. Windows runs argv `["explorer.exe", "/select," + target]`; Explorer's exit code is not a success signal, so a nonzero exit does not fail a reveal, while process-launch errors still do. Only `openUrl` reaches the URL opener (`xdg-open`, `open`, or `rundll32.exe url.dll,FileProtocolHandler`) after scheme validation. This does not change the existing host `lando open` shell launcher.
 
 The client is the in-container helper (§17.3), a statically linked executable with no libc or runtime dependency, so it runs in glibc, musl (Alpine), distroless, and scratch images without detecting the image's libc. Having no dynamic loader, it is unaffected by the image's `LD_PRELOAD` and `LD_LIBRARY_PATH`. The start-time overlay copies it into the session directory and bind-mounts that file read-only, so replacing the session directory never alters a running container's copy.
 

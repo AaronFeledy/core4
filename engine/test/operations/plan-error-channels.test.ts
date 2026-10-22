@@ -7,7 +7,6 @@ import type {
   AppLockTimeoutError,
   AppResolveError,
   CapabilityError,
-  CommandAliasConflictError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -20,7 +19,6 @@ import type {
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -64,14 +62,12 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 type ExpectedLoadGlobalPlanError =
   | LandofileCompileError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
-  | LandofileUnknownEventError
   | LandofileValidationError
   | RouteInputError
   | NoProviderInstalledError
@@ -88,9 +84,7 @@ type LegacyPlanAppChannel =
   | DataTreeOwnershipCapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | ConfigExpressionError;
 
 type LegacyOrphanTeardownError =
   | AppResolveError
@@ -114,7 +108,6 @@ type LegacyGlobalInstallChannel =
 type ExpectedEnsureGlobalServicesError =
   | LandofileCompileError
   | ServiceNotReadyError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -128,7 +121,6 @@ type ExpectedEnsureGlobalServicesError =
   | GlobalServiceCollisionError
   | GlobalServiceMissingError
   | LandofileParseError
-  | LandofileUnknownEventError
   | LandofileValidationError
   | RouteInputError
   | NoProviderInstalledError
@@ -145,9 +137,7 @@ type ExpectedEnsureGlobalServicesError =
 type LegacyRemoteSyncCommandError =
   | RemoteSyncError
   | UserLandofileError
-  | LandofileUnknownEventError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
@@ -158,9 +148,7 @@ type LegacyRemoteSyncCommandError =
 
 type LegacyShareListCommandError =
   | UserLandofileError
-  | LandofileUnknownEventError
   | CapabilityError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError

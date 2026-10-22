@@ -39,6 +39,13 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
       LANDO_HOST_PROXY_SESSION: "session-id",
     },
     mounts: [
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+        type: "bind" as const,
+        source: "/tmp/lando-shim",
+        target: PortablePath.make(target),
+        readOnly: true,
+        realization: "passthrough" as const,
+      })),
       {
         type: "bind",
         source: "/tmp/lando-shim",
@@ -90,6 +97,15 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
 
   // Then
   expect(sanitized).toEqual(stripHostProxyRunLando(fixturePlan));
+  expect(sanitized.services[service.name]?.mounts).toEqual([
+    {
+      type: "volume",
+      source: "app-data",
+      target: PortablePath.make("/data"),
+      readOnly: false,
+      realization: "passthrough",
+    },
+  ]);
 });
 
 test("sanitizer strips ssh-agent overlay", async () => {

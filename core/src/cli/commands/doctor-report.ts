@@ -77,7 +77,15 @@ export const appConfigForReport = () =>
         app: "",
         file: "(none)",
         valid: false,
-        violations: [{ rule: "landofile.discovery", severity: "error", path: [], message: error.message }],
+        violations: [
+          {
+            rule: "landofile.discovery",
+            severity: "error",
+            path: [],
+            scopes: ["fragment"],
+            message: error.message,
+          },
+        ],
       } satisfies ConfigLintResult),
     ),
     Effect.catchTag("LandofileFormConflictError", (error) =>
@@ -85,21 +93,13 @@ export const appConfigForReport = () =>
         app: "",
         file: error.yamlPath,
         valid: false,
-        violations: [{ rule: "landofile.discovery", severity: "error", path: [], message: error.message }],
-      } satisfies ConfigLintResult),
-    ),
-    Effect.catchTag("LandofileUnknownEventError", (error) =>
-      Effect.succeed({
-        app: "",
-        file: error.file,
-        valid: false,
         violations: [
           {
-            rule: "landofile.event",
+            rule: "landofile.discovery",
             severity: "error",
-            path: ["events", error.event],
+            path: [],
+            scopes: ["fragment"],
             message: error.message,
-            suggestion: error.remediation,
           },
         ],
       } satisfies ConfigLintResult),

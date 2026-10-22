@@ -25,8 +25,7 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
       - name: Regenerate derived sources
         run: bun run codegen
 
-      # The builder publishes no routes, so it needs no router. Lando's global router always
-      # runs on the Lando-managed provider, which this job doesn't install.
+      # The builder publishes no routes, so the job skips router setup.
       - name: Set up Lando with Docker
         run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
 

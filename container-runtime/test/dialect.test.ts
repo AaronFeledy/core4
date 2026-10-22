@@ -15,11 +15,13 @@ describe("container engine dialects", () => {
   test("selects engine-specific lifecycle behavior", () => {
     // Given / When / Then
     expect(libpodLifecycleDialect).toEqual({
+      engine: "libpod",
       wait: libpodWaitDialect,
       sharedNetworkAttachment: "create-body",
       volumePrune: { enabled: true },
     });
     expect(dockerLifecycleDialect).toEqual({
+      engine: "docker",
       wait: dockerWaitDialect,
       sharedNetworkAttachment: "connect-after-create",
     });
