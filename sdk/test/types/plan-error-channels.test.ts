@@ -50,7 +50,6 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
@@ -79,7 +78,6 @@ import type {
   ToolingCompileError,
   ToolingDisabledError,
   ToolingExecError,
-  ToolingIncludeCycleError,
   ToolingInputError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -112,11 +110,9 @@ type LegacyAppPlannerChannel =
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | ConfigExpressionError;
 
 type LegacyBuildChannel =
   | EventError
@@ -148,7 +144,6 @@ type LegacyDiscoverChannel =
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError
   | LandofileLoadOutsideRootError
-  | ToolingIncludeCycleError
   | NotImplementedError
   | ComposeKeyRejectedError
   | ManagedFileTransactionError;
@@ -176,15 +171,12 @@ type LegacyStartAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -235,14 +227,11 @@ type LegacyStopAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -270,15 +259,12 @@ type LegacyInfoAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -308,22 +294,20 @@ type LegacyExecAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | ToolingExecError;
 
 type LegacyToolingError =
+  | CommandAliasConflictError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -346,11 +330,9 @@ type LegacyToolingError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
@@ -359,7 +341,6 @@ type LegacyToolingError =
   | ProviderUnavailableError
   | ShellExecError
   | ShellScriptOutsideRootError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | ToolingCompileError
   | ToolingDisabledError
@@ -378,14 +359,11 @@ type LegacyLogsAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError

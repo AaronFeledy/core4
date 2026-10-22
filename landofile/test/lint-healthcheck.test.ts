@@ -38,7 +38,7 @@ for (const marker of ["CMD", "CMD-SHELL", "NONE"]) {
       expect.objectContaining({
         rule: "healthcheck.bare-compose-marker",
         severity: "warning",
-        scope: "effective",
+        scopes: ["effective"],
         path: ["services", "web", "healthcheck"],
         source: {
           file: join(root, ".lando.yml"),

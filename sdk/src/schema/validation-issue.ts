@@ -19,6 +19,10 @@ export type ValidationIssuePath = typeof ValidationIssuePath.Type;
  * Schema consumers agree on where a problem is and what it is.
  */
 export const ValidationIssue = Schema.Struct({
+  rule: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Stable diagnostic rule identifier, using the same identifiers as config lint when available.",
+  }),
   path: ValidationIssuePath,
   message: Schema.String.annotate({ description: "Human-readable description of the problem." }),
   suggestion: Schema.optionalKey(Schema.String).annotate({
