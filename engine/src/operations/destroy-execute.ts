@@ -72,10 +72,8 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
     work: Effect.fnUntraced(function* (tree) {
       if (fileSync?.applicable === true) yield* tree.startTask("file-sync");
       if (fileSync !== undefined) {
-        yield* fileSync.quiesceRetained;
-        yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
+        yield* fileSync.quiesceRetained.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       }
-      if (fileSync?.applicable === true) yield* tree.completeTask("file-sync");
       let snapshotsRemoved = 0;
       if (plan.snapshots.length > 0) {
         yield* tree.startTask("snapshots");
@@ -84,6 +82,9 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         );
         yield* tree.completeTask("snapshots");
       }
+      if (fileSync !== undefined)
+        yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
+      if (fileSync?.applicable === true) yield* tree.completeTask("file-sync");
       const services = new Set<string>();
       let volumesRemoved = false;
       let changed = snapshotsRemoved > 0;
@@ -91,11 +92,21 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         yield* tree.startTask("provider");
         const remove = Effect.gen(function* () {
           if (target !== undefined && provider !== undefined) {
-            yield* destroyPlannedProvider(plan, provider);
-            for (const service of Object.values(target.plan.services).reverse())
-              services.add(String(service.name));
-            volumesRemoved = plan.options.volumes === true || plan.options.purgeCaches === true;
-            changed = true;
+            const outcome = yield* destroyPlannedProvider({ ...plan, target }, provider);
+            switch (outcome.kind) {
+              case "destroyed":
+                for (const service of Object.values(target.plan.services).reverse())
+                  services.add(String(service.name));
+                volumesRemoved = plan.options.volumes === true || plan.options.purgeCaches === true;
+                changed = true;
+                break;
+              case "no-op":
+                break;
+              default: {
+                const unreachable: never = outcome;
+                return unreachable;
+              }
+            }
           }
           if (plan.groups.length > 0) {
             const removed = yield* tearDownOrphans({

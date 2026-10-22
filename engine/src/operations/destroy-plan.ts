@@ -2,9 +2,15 @@ import { basename } from "node:path";
 import type { DestroyAppOptions } from "@lando/sdk/app";
 import { AppResolveError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PreDestroyEvent } from "@lando/sdk/events";
-import type { AbsolutePath, AppRef, ResourceOwnership, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  AppId,
+  type AppRef,
+  type ResourceOwnership,
+  type SnapshotInfo,
+} from "@lando/sdk/schema";
 import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
@@ -82,14 +88,16 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     ),
     ...snapshots.map((info): AppRef => ({ kind: "user", id: info.store.app, root: info.owner.appRoot })),
   ]);
-  let desired: ResolvedAppTarget | undefined;
-  if (recorded.length === 0 && request.missingRoot !== true) {
-    desired = yield* request.desired.pipe(
-      Effect.map((target): ResolvedAppTarget | undefined => target),
-      Effect.catch((error) => (landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
-    );
-  }
-  const journalRefs = uniqueDestroyRefs([...recorded, ...(desired === undefined ? [] : [desired.app])]);
+  const desiredResult =
+    recorded.length === 0 && request.missingRoot !== true
+      ? yield* request.desired.pipe(Effect.result)
+      : undefined;
+  const desired = desiredResult === undefined ? undefined : Result.getOrUndefined(desiredResult);
+  const journalRefs = uniqueDestroyRefs([
+    { kind: "user", id: AppId.make(root), root },
+    ...recorded,
+    ...(desired === undefined ? [] : [desired.app]),
+  ]);
   // The accelerated-start journal is keyed by app root, so read it once per distinct root.
   const journalRoots = [...new Map(journalRefs.map((ref) => [ref.root, ref])).values()];
   const pending = yield* Effect.forEach(journalRoots, (app) =>
@@ -99,12 +107,15 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
   let retained: ResolvedAppTarget | undefined;
   const first = unfinished[0];
   if (first !== undefined) {
-    retained = desired ?? (yield* request.desired);
+    retained =
+      desiredResult === undefined
+        ? yield* request.desired.pipe(Effect.catch(() => Effect.succeed(undefined)))
+        : desired;
     if (unfinished.length !== 1 || retained === undefined) {
       return yield* Effect.fail(
         new FileSyncStopError({
           engineId: first.pending?.engineId ?? "unavailable",
-          sessionRef: first.app.id,
+          sessionRef: first.pending?.appId ?? first.app.id,
           message: "Retained sync state cannot be matched to a readable app plan for safe destroy.",
           remediation: "Restore the matching Landofile and retry destroy.",
         }),
@@ -126,6 +137,8 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     }
     yield* pendingStartDisposal(retained.app, retained.plan);
   }
+  if (desiredResult !== undefined && Result.isFailure(desiredResult) && !landofilePresent)
+    return yield* Effect.fail(desiredResult.failure);
   const registry = yield* RuntimeProviderRegistry;
   const disposal = retained ?? applied;
   const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);
