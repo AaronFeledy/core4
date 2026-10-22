@@ -43,7 +43,6 @@ export {
   ToolingCompileError,
   ToolingDisabledError,
   ToolingExecError,
-  ToolingIncludeCycleError,
   ToolingInputError,
 } from "./tooling.ts";
 export * from "./tooling-step.ts";

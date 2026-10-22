@@ -14,11 +14,23 @@ export const foldAuthoredOverlays = (
     merged = mergeValuesWithOrigins(LandofileShape, merged, { value, origins });
   }
   const tooling = composeToolingIncludeEntries(overlays);
+  const children = new Map(merged.origins.children);
+  if (tooling.length > 0) {
+    children.set("includes", {
+      source: children.get("includes")?.source ?? fallback,
+      deleted: false,
+      children: new Map(
+        tooling.flatMap((entry, index) =>
+          entry.origins === undefined ? [] : [[index, entry.origins] as const],
+        ),
+      ),
+    });
+  }
   return rememberOrigins(
     {
       ...(isPlainRecord(merged.value) ? merged.value : {}),
-      ...(tooling.length === 0 ? {} : { includes: tooling }),
+      ...(tooling.length === 0 ? {} : { includes: tooling.map((entry) => entry.value) }),
     },
-    merged.origins,
+    { ...merged.origins, children },
   );
 };
