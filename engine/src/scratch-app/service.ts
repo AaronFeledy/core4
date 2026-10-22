@@ -58,6 +58,7 @@ import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { makeScratchReaper } from "./destroy.ts";
+import { ownerPidIsDead, scratchGcCandidates } from "./gc-candidates.ts";
 import { decodeScratchLandofile } from "./landofile.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
@@ -405,17 +406,6 @@ const makeRegistryEntry = Effect.fnUntraced(function* (input: {
   };
 });
 
-const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
-  if (entry.detached || entry.ownerPid === undefined) return false;
-  try {
-    process.kill(entry.ownerPid, 0);
-    return false;
-  } catch (cause) {
-    const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
-    return code === "ESRCH";
-  }
-};
-
 const lifetimeStatus = (entry: ScratchRegistryEntry): ScratchLifetimeStatus => {
   if (entry.detached) return "detached";
   return ownerPidIsDead(entry) ? "orphan" : "attached";
@@ -553,13 +543,6 @@ const makeScratchAppService = Effect.fnUntraced(function* (
           scratchAppError("materialize", `Unable to create the scratch app directory at ${path}.`, cause),
         ),
       );
-
-  const cleanupScratchInstance = (path: AbsolutePath) =>
-    Effect.tryPromise({
-      try: () => rm(path, { recursive: true, force: true }),
-      catch: (cause) =>
-        scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
-    });
 
   const writeCachedPlan = (planCache: AbsolutePath, plan: AppPlan) =>
     Effect.try({
@@ -830,11 +813,6 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     const planForkPlan =
       isolate === "full"
         ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root), input).pipe(
-            Effect.tapError(() =>
-              input.keepOnFailure === true
-                ? Effect.void
-                : Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot)),
-            ),
             Effect.andThen(
               withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities)),
             ),
@@ -1100,24 +1078,13 @@ const makeScratchAppService = Effect.fnUntraced(function* (
 
   const gc = Effect.fn("ScratchAppService.gc")(function* (options?: { readonly prune?: boolean }) {
     const entries = yield* scratchRegistry.list();
-    const registryIds = new Set(entries.map((entry) => entry.id));
-    const dirIds = new Set(yield* diskScratchIds);
-    const labelIds = new Set(yield* scanner.listScratchIds);
-    const allIds = [...new Set([...registryIds, ...dirIds, ...labelIds])].sort();
-    const byId = new Map(entries.map((entry) => [entry.id, entry]));
-    const candidates = allIds.filter((id) => {
-      const entry = byId.get(id);
-      const hasRegistry = entry !== undefined;
-      const hasDir = dirIds.has(id);
-      const hasLabel = labelIds.has(id);
-      const registryStale = hasRegistry && !hasDir;
-      const directoryOrphan = hasDir && !hasRegistry;
-      const providerLabelOrphan = hasLabel && !hasRegistry;
-      const deadOwner = entry !== undefined && ownerPidIsDead(entry);
-      return registryStale || directoryOrphan || providerLabelOrphan || deadOwner;
-    });
+    const { inspected, candidates } = scratchGcCandidates(
+      entries,
+      yield* diskScratchIds,
+      yield* scanner.listScratchIds,
+    );
 
-    if (options?.prune !== true) return { inspected: allIds.length, reaped: [], errors: [] };
+    if (options?.prune !== true) return { inspected, reaped: [], errors: [] };
 
     const reaped: string[] = [];
     const errors: string[] = [];
@@ -1137,7 +1104,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       if (result._tag === "Success") reaped.push(id);
       else errors.push(`${id}: ${result.failure.message}`);
     }
-    return { inspected: allIds.length, reaped, errors };
+    return { inspected, reaped, errors };
   });
 
   return ScratchAppService.of({

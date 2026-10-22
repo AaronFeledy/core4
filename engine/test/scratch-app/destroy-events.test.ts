@@ -94,14 +94,43 @@ test.each(["provider", "route"] as const)(
     await withDestroyFixture({ fail: failure === "provider", routeFail: failure === "route" }, async (f) => {
       // When teardown fails after stopping the scratch.
       await expect(runDestroy(f)).rejects.toThrow();
-      // Then the original registry entry survives and no completion event lies about cleanup.
-      expect(f.entries.get(f.id)).toEqual(f.entry);
+      // Then the entry is retryable and no completion event lies about cleanup.
+      expect(f.entries.get(f.id)).toMatchObject({
+        ...f.entry,
+        status: "destroyed-pending-cleanup",
+        updatedAt: expect.any(String),
+      });
       expect(f.calls).toContain("pre-scratch-destroy");
       expect(f.calls).not.toContain("post-scratch-destroy");
       expect(f.calls).not.toContain("registry");
+      const visible = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          return { list: yield* scratch.list(), info: yield* scratch.info(f.id) };
+        }).pipe(Effect.provide(f.layer)),
+      );
+      expect(visible.list.map((entry) => entry.id)).toContain(f.id);
+      expect(visible.info).toMatchObject({ id: f.id, status: "orphan" });
     });
   },
 );
+
+test("pending-cleanup write failure preserves the original provider failure", async () => {
+  // Given a provider teardown failure and an unavailable registry writer.
+  await withDestroyFixture({ fail: true, registryFail: true }, async (f) => {
+    // When explicit destroy attempts best-effort pending cleanup persistence.
+    const result = await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (s) => s.destroy(f.id)).pipe(Effect.result, Effect.provide(f.layer)),
+    );
+    // Then persistence is attempted without replacing the original error or completing the bracket.
+    expect(f.calls).toContain("registry:upsert");
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { cause: { _tag: "ProviderUnavailableError" } },
+    });
+    expect(f.calls).not.toContain("post-scratch-destroy");
+  });
+});
 
 test("a mismatched cached plan cannot delete another app's snapshots", async () => {
   // Given a scratch cache containing a different app id under the same owner.
@@ -116,6 +145,35 @@ test("a mismatched cached plan cannot delete another app's snapshots", async () 
     expect(f.calls).toEqual([]);
     expect(f.removed).toEqual([]);
     expect(f.entries.get(f.id)).toEqual(f.entry);
+  });
+});
+
+test("explicit scratch destroy carries the cached plan on both bracket events", async () => {
+  // Given a registered scratch with a cached plan.
+  await withDestroyFixture({}, async (f) => {
+    // When explicit destroy completes.
+    await runDestroy(f);
+    // Then both boundary payloads carry that plan.
+    for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"])
+      expect(f.events.find((event) => event._tag === _tag)).toMatchObject({ plan: f.plan });
+  });
+});
+
+test.each([false, true])("GC retries failed destroy despite a live owner, detached=%s", async (detached) => {
+  // Given a failed explicit destroy whose owner is still alive.
+  const options = { fail: true };
+  await withDestroyFixture(options, async (f) => {
+    f.entries.set(f.id, { ...f.entry, detached, ownerPid: process.pid });
+    await expect(runDestroy(f)).rejects.toThrow();
+    options.fail = false;
+    // When prune retries after the provider recovers.
+    const result = await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (s) => s.gc({ prune: true })).pipe(Effect.provide(f.layer)),
+    );
+    // Then pending cleanup is reaped regardless of lifetime policy.
+    expect(result).toMatchObject({ reaped: [f.id], errors: [] });
+    expect(f.events.at(-1)).toMatchObject({ _tag: "post-scratch-destroy", reason: "gc" });
+    expect(f.entries.size).toBe(0);
   });
 });
 

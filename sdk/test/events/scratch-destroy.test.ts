@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { LandoEvent, PostScratchDestroyEvent, PreScratchDestroyEvent } from "@lando/sdk/events";
+import type { AppPlan } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 test.each(["explicit", "scope-close", "poweroff", "gc", "acquire-failure"] as const)(
@@ -39,3 +40,37 @@ test("scratch destroy rejects a user app ref", () => {
   // Then the invalid app kind is rejected at the schema boundary.
   expect(result._tag).toBe("Failure");
 });
+
+test.each(["pre-scratch-destroy", "post-scratch-destroy"] as const)(
+  "%s preserves an available scratch plan through the public codec",
+  (_tag) => {
+    // Given a planned scratch destroy payload.
+    const plan = {
+      id: "scratch-demo-123456",
+      name: "demo",
+      slug: "demo",
+      root: "/isolated/scratch-demo-123456/root",
+      provider: "lando",
+      services: {},
+      routes: [],
+      networks: [],
+      stores: [],
+      fileSync: [],
+      metadata: { resolvedAt: "2026-10-21T00:00:00.000Z", source: "test", runtime: 4 },
+      extensions: {},
+    } satisfies typeof AppPlan.Encoded;
+    const wire = {
+      _tag,
+      scope: "scratch",
+      app: { kind: "scratch", id: plan.id, root: plan.root },
+      plan,
+      reason: "explicit",
+      retainedArtifacts: { volumes: false, snapshots: "none" },
+      timestamp: "2026-10-21T00:00:00.000Z",
+    };
+    // When the event is decoded and encoded by the public union.
+    const encoded = Schema.encodeSync(LandoEvent)(Schema.decodeUnknownSync(LandoEvent)(wire));
+    // Then consumers receive the original plan rather than silently losing it.
+    expect(encoded).toMatchObject({ plan });
+  },
+);

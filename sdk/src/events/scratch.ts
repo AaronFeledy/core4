@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AppPlan } from "../schema/app-plan.ts";
 import { AppRef } from "../schema/networking.ts";
 import { Timestamp } from "./_shared.ts";
 
@@ -14,6 +15,9 @@ const fields = {
   }).annotate({
     description:
       "Scratch identity. Without a plan or registry entry, root is the isolated instance directory, never an inferred source owner.",
+  }),
+  plan: Schema.optionalKey(AppPlan).annotate({
+    description: "Scratch app plan used for teardown; omitted when no plan is available.",
   }),
   reason: Schema.Literals(["explicit", "scope-close", "poweroff", "gc", "acquire-failure"]).annotate({
     description:
