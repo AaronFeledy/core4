@@ -1,11 +1,13 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProviderUnavailableError, ProxyError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ProxyError, ScratchAppError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   AppPlan,
+  LandofileShape,
   ProviderId,
   type SnapshotInfo,
   planAppIdentity,
@@ -28,13 +30,17 @@ import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 
+interface DestroyFixtureOptions {
+  readonly orphan?: boolean;
+  readonly cwd?: boolean;
+  readonly fail?: boolean;
+  readonly routeFail?: boolean;
+  readonly copyFail?: boolean;
+  readonly registryFail?: boolean;
+}
+
 export const withDestroyFixture = async (
-  options: {
-    readonly orphan?: boolean;
-    readonly cwd?: boolean;
-    readonly fail?: boolean;
-    readonly routeFail?: boolean;
-  },
+  options: DestroyFixtureOptions,
   use: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
 ) => {
   const root = await mkdtemp(join(tmpdir(), "scratch-destroy-"));
@@ -49,15 +55,7 @@ export const withDestroyFixture = async (
   }
 };
 
-const makeFixture = async (
-  root: string,
-  options: {
-    readonly orphan?: boolean;
-    readonly cwd?: boolean;
-    readonly fail?: boolean;
-    readonly routeFail?: boolean;
-  },
-) => {
+const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   const id = AppId.make("scratch-demo-123456");
   const instanceRoot = AbsolutePath.make(join(root, "scratch", id));
   const planRoot = AbsolutePath.make(options.cwd ? join(root, "source-app") : join(instanceRoot, "root"));
@@ -70,6 +68,7 @@ const makeFixture = async (
   };
   const calls: string[] = [];
   const events: LandoEvent[] = [];
+  const rootObservations: { readonly tag: string; readonly exists: boolean }[] = [];
   const snapshots: SnapshotInfo[] = [id, AppId.make("user-app")].map((app) => ({
     owner: planAppIdentity(plan),
     id: `${app}-snapshot`,
@@ -127,8 +126,15 @@ const makeFixture = async (
     FileSystem.layer,
     providers,
     ScratchResourceScanner.layer.pipe(Layer.provide(providers)),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("unused planning") })),
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.die("unused Landofile") })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed(
+          Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
+        ),
+      }),
+    ),
     Layer.succeed(
       Scratch.ScratchInitAppPort,
       Scratch.ScratchInitAppPort.of({ initApp: () => Promise.reject(new TypeError("unused recipe")) }),
@@ -141,8 +147,18 @@ const makeFixture = async (
         read: () => Effect.sync(() => ({ version: 1, entries: [...entries.values()] })),
         upsert: (value) =>
           Effect.sync(() => {
-            entries.set(value.id, value);
-          }),
+            calls.push("registry:upsert");
+          }).pipe(
+            Effect.andThen(() =>
+              options.registryFail
+                ? Effect.fail(
+                    new ScratchAppError({ operation: "registry.write", message: "injected write failure" }),
+                  )
+                : Effect.sync(() => {
+                    entries.set(value.id, value);
+                  }),
+            ),
+          ),
         remove: (key) =>
           Effect.sync(() => {
             calls.push("registry");
@@ -173,6 +189,8 @@ const makeFixture = async (
           Effect.sync(() => {
             calls.push(event._tag);
             events.push(event);
+            if ("app" in event && event.app?.kind === "scratch")
+              rootObservations.push({ tag: event._tag, exists: existsSync(event.app.root) });
           }),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused queue"),
@@ -184,7 +202,10 @@ const makeFixture = async (
     Layer.succeed(
       DataMover,
       DataMover.of({
-        transfer: () => Effect.die("unused transfer"),
+        transfer: () =>
+          options.copyFail
+            ? Effect.fail(new ScratchAppError({ operation: "materialize", message: "injected copy failure" }))
+            : Effect.die("unused transfer"),
         transferStream: () => Stream.empty,
         snapshot: () => Effect.die("unused snapshot"),
         restore: () => Effect.die("unused restore"),
@@ -212,6 +233,7 @@ const makeFixture = async (
     instanceRoot,
     calls,
     events,
+    rootObservations,
     removed,
     entries,
     layer: Scratch.layer.pipe(Layer.provide(dependencies)),

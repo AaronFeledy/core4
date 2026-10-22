@@ -55,6 +55,7 @@ export const makeScratchReaper = Effect.gen(function* () {
         scope: "scratch" as const,
         app,
         reason,
+        ...(plan === undefined ? {} : { plan }),
         ...(entry === undefined
           ? {}
           : { source: entry.source, isolate: entry.isolate, detached: entry.detached }),
@@ -73,55 +74,71 @@ export const makeScratchReaper = Effect.gen(function* () {
       const evidence =
         plan === undefined || entry?.status === "acquiring" ? ("orphans" as const) : ("applied" as const);
       yield* events.publish(PreScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
-      yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
-      const stopped =
-        provider !== undefined && plan !== undefined
-          ? (yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false })).kind ===
-            "destroyed"
-          : yield* orphan?.stop ?? Effect.succeed(false);
-      yield* events.publish(PostStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
-      yield* events.publish(PreDestroyEvent.make({ app, evidence, timestamp: DateTime.nowUnsafe() }));
-      const destroy = Effect.gen(function* () {
-        const snapshots =
-          keepVolumes || plan === undefined
-            ? []
-            : yield* scratchOwnedSnapshots(plan).pipe(Effect.provideService(DataMover, mover));
-        const removed = yield* removeSnapshots(snapshots).pipe(Effect.provideService(DataMover, mover));
-        const destroyed =
+      yield* Effect.gen(function* () {
+        yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
+        const stopped =
           provider !== undefined && plan !== undefined
-            ? (yield* provider.destroy({ app: plan.id, plan }, { volumes: !keepVolumes, removeState: true }))
+            ? (yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false }))
                 .kind === "destroyed"
-            : yield* orphan?.destroy ?? Effect.succeed(false);
-        if (Option.isSome(router)) yield* router.value.removeRoutes(AppId.make(app.id));
-        return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
-      });
-      const outcome = yield* reason === "gc"
-        ? destroy
-        : withDestroyProgress({
-            events,
-            plan: { id: app.id, name: app.id },
-            children: { fileSync: false, snapshots: false, proxy: false, provider: true, hostProxy: false },
-            work: Effect.fnUntraced(function* (tree) {
-              yield* tree.startTask("provider");
-              const outcome = yield* destroy.pipe(Effect.tapError(() => tree.failTask("provider")));
-              yield* tree.completeTask("provider");
-              return outcome;
+            : yield* orphan?.stop ?? Effect.succeed(false);
+        yield* events.publish(PostStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
+        yield* events.publish(PreDestroyEvent.make({ app, evidence, timestamp: DateTime.nowUnsafe() }));
+        const destroy = Effect.gen(function* () {
+          const snapshots =
+            keepVolumes || plan === undefined
+              ? []
+              : yield* scratchOwnedSnapshots(plan).pipe(Effect.provideService(DataMover, mover));
+          const removed = yield* removeSnapshots(snapshots).pipe(Effect.provideService(DataMover, mover));
+          const destroyed =
+            provider !== undefined && plan !== undefined
+              ? (yield* provider.destroy(
+                  { app: plan.id, plan },
+                  { volumes: !keepVolumes, removeState: true },
+                )).kind === "destroyed"
+              : yield* orphan?.destroy ?? Effect.succeed(false);
+          if (Option.isSome(router)) yield* router.value.removeRoutes(AppId.make(app.id));
+          return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
+        });
+        const outcome = yield* reason === "gc"
+          ? destroy
+          : withDestroyProgress({
+              events,
+              plan: { id: app.id, name: app.id },
+              children: { fileSync: false, snapshots: false, proxy: false, provider: true, hostProxy: false },
+              work: Effect.fnUntraced(function* (tree) {
+                yield* tree.startTask("provider");
+                const outcome = yield* destroy.pipe(Effect.tapError(() => tree.failTask("provider")));
+                yield* tree.completeTask("provider");
+                return outcome;
+              }),
+            });
+        yield* events.publish(
+          PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
+        );
+        yield* Effect.tryPromise({
+          try: () => rm(input.instanceRoot, { recursive: true, force: true }),
+          catch: (cause) =>
+            new ScratchAppError({
+              operation: "cleanup",
+              message: `Unable to remove scratch root ${input.instanceRoot}.`,
+              cause,
             }),
-          });
-      yield* events.publish(
-        PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
+        });
+        yield* registry.remove(input.id);
+        yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
+      }).pipe(
+        Effect.onError(() =>
+          entry === undefined
+            ? Effect.void
+            : registry
+                .upsert({
+                  ...entry,
+                  status: "destroyed-pending-cleanup",
+                  updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+                })
+                .pipe(Effect.exit, Effect.asVoid),
+        ),
       );
-      yield* Effect.tryPromise({
-        try: () => rm(input.instanceRoot, { recursive: true, force: true }),
-        catch: (cause) =>
-          new ScratchAppError({
-            operation: "cleanup",
-            message: `Unable to remove scratch root ${input.instanceRoot}.`,
-            cause,
-          }),
-      });
-      yield* registry.remove(input.id);
-      yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
     },
     Effect.mapError((cause) =>
       cause instanceof ScratchAppError
