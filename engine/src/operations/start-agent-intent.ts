@@ -46,18 +46,6 @@ export const resolveStartAgentIntent = <Extension, Intent, Error>(
     const extension = agentLandofile === undefined ? config.planExtension(plan) : undefined;
     return config.resolveIntent({
       landofile: agentLandofile ?? (extension === undefined ? {} : config.fallbackLandofile(extension)),
-      globalConfig:
-        Option.isSome(global) && eligible
-          ? yield* global.value.load.pipe(
-              Effect.mapError(
-                () =>
-                  new config.error({
-                    message: `Unable to resolve the global ${config.label} agent configuration.`,
-                    stage: "broker",
-                    remediation: "Fix the global configuration and retry lando start.",
-                  }),
-              ),
-            )
-          : undefined,
+      globalConfig: Option.isSome(global) && eligible ? yield* global.value.load : undefined,
     });
   });

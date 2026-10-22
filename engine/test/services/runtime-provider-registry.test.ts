@@ -27,6 +27,7 @@ import * as BunProcessRunner from "../../src/services/process-runner.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import * as PluginRegistryLayer from "../../src/plugins/registry";
 import * as RuntimeProviderRegistryLayer from "../../src/providers/registry";
+import { GlobalConfigSources } from "../../src/services/config.ts";
 
 const appPlan: AppPlan = {
   id: AppId.make("myapp"),
@@ -81,6 +82,9 @@ const registryLayer = (
     ),
   );
   return RuntimeProviderRegistryLayer.layer.pipe(
+    Layer.provideMerge(
+      Layer.succeed(GlobalConfigSources, { env: { ...process.env }, sources: { user: false, env: true } }),
+    ),
     Layer.provideMerge(
       Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     ),

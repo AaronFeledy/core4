@@ -1,12 +1,11 @@
-// Root resolution uses `@lando/paths` directly so the default layer requires no
-// `PathsService` dependency that would be unavailable as a sibling layer.
-
 import { rename, stat } from "node:fs/promises";
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import {
+  type LandoRoots,
+  PathsService,
   type StateBucket,
   type StateBucketSpec,
   StateStore,
@@ -70,33 +69,39 @@ const makeDiskBucketBackend = (privateFileAccess: PrivateFileAccess): StateBucke
  */
 export const makeStateStore = (options: {
   readonly privateFileAccess: PrivateFileAccess;
-}): StateStoreShape =>
-  StateStore.of({
+  readonly roots?: LandoRoots;
+}): StateStoreShape => {
+  const roots = options.roots;
+  return StateStore.of({
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
-        resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
+        resolveStatePath(spec.root, spec.namespace, spec.key, "open", roots).pipe(
           Effect.map((resolved) =>
             buildStateBucket(spec, resolved.file, makeDiskBucketBackend(options.privateFileAccess)),
           ),
         ),
     ),
     withLock: Effect.fn("StateStore.withLock")(<A, E>(key: string, body: Effect.Effect<A, E>) =>
-      resolveStatePath("userData", "operation-locks", key, "withLock").pipe(
+      resolveStatePath("userData", "operation-locks", key, "withLock", roots).pipe(
         Effect.flatMap((resolved) =>
           withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body),
         ),
       ),
     ),
   });
+};
 
 export const layerWithPrivateFileAccess: Layer.Layer<StateStore, never, PrivateFileAccessService> =
   Layer.effect(
     StateStore,
-    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
-      makeStateStore({
+    Effect.gen(function* () {
+      const privateFileAccess = yield* PrivateFileAccessService;
+      const paths = yield* Effect.serviceOption(PathsService);
+      return makeStateStore({
         privateFileAccess,
-      }),
-    ),
+        ...(Option.isSome(paths) ? { roots: paths.value.roots } : {}),
+      });
+    }),
   );
 
 export const layer: Layer.Layer<StateStore> = layerWithPrivateFileAccess.pipe(

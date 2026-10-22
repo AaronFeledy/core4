@@ -2,7 +2,8 @@ import { Effect, Result } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
-import { setAtPath } from "./dot-path";
+import { recordPreexistingConfigIssues } from "../config/config-warnings.ts";
+import { parsePathSegments, setAtPath } from "./dot-path";
 import { prepareConfigEdit } from "./prepare-edit";
 import { parseTypedValue } from "./value-parse";
 
@@ -48,6 +49,8 @@ export interface ConfigVerbIo<
   ) => Record<string, unknown> | Effect.Effect<Record<string, unknown>, EParse, R>;
   readonly editCommand: string;
   readonly decode: (next: unknown) => D | Effect.Effect<D, EAfter, R>;
+  /** Decodes the unchanged file for comparison; must not record warnings. Defaults to `decode`. */
+  readonly decodeBaseline?: ((current: unknown) => D | Effect.Effect<D, EAfter, R>) | undefined;
   readonly afterDecode?: (decoded: D) => EAfter | undefined;
   readonly writeText: (file: string, text: string) => Effect.Effect<void, EWrite, R>;
 }
@@ -68,12 +71,13 @@ const persistMutation = Effect.fnUntraced(function* <
   if (mutation.shouldWrite) {
     yield* input.writeText(input.file, mutation.text);
   }
+  if (Result.isFailure(mutation.decoded)) {
+    yield* recordPreexistingConfigIssues(input.file, mutation.decoded.failure);
+  }
 });
 
 const resolve = <A, E, R>(value: A | Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
   Effect.isEffect(value) ? value : Effect.succeed(value);
-
-const PRE_EXISTING = "already present before this change: ";
 
 interface DecodeAttempt {
   readonly label: string;
@@ -89,12 +93,23 @@ const interpretationLabel = (value: unknown): string => {
 
 const issueIdentity = (issue: ValidationIssue): string => JSON.stringify([issue.path, issue.message]);
 
-// Issues every interpretation shares stay as-is; the rest name the interpretation that produced them.
-const mergeAttemptIssues = (
-  attempts: readonly DecodeAttempt[],
+const blockingIssues = (
+  issues: readonly ValidationIssue[],
   baseline: readonly ValidationIssue[],
-): ValidationIssue[] => {
+  key: string,
+): readonly ValidationIssue[] => {
   const existing = new Set(baseline.map(issueIdentity));
+  const path = parsePathSegments(key)?.map((segment) =>
+    segment.kind === "key" ? segment.key : segment.index,
+  );
+  return issues.filter(
+    (issue) =>
+      !existing.has(issueIdentity(issue)) || path?.every((segment, index) => issue.path[index] === segment),
+  );
+};
+
+// Issues every interpretation shares stay as-is; the rest name the interpretation that produced them.
+const mergeAttemptIssues = (attempts: readonly DecodeAttempt[]): ValidationIssue[] => {
   const identities = attempts.map((attempt) => new Set(attempt.issues.map(issueIdentity)));
   const seen = new Set<string>();
   const merged: ValidationIssue[] = [];
@@ -104,9 +119,7 @@ const mergeAttemptIssues = (
       if (seen.has(identity)) continue;
       seen.add(identity);
       const shared = identities.every((set) => set.has(identity));
-      if (existing.has(identity)) {
-        merged.push({ ...issue, message: `${PRE_EXISTING}${issue.message}` });
-      } else if (shared) {
+      if (shared) {
         merged.push(issue);
       } else {
         merged.push({ ...issue, message: `as ${attempt.label}: ${issue.message}` });
@@ -116,16 +129,7 @@ const mergeAttemptIssues = (
   return merged;
 };
 
-const failureRemediation = (
-  editCommand: string,
-  issues: readonly ValidationIssue[],
-  attemptCount: number,
-): { readonly remediation?: string } => {
-  if (issues.some((issue) => issue.message.startsWith(PRE_EXISTING))) {
-    return {
-      remediation: `Fix the issues already present before this change first (unset them or use \`${editCommand}\`), then retry. The file was left unchanged.`,
-    };
-  }
+const failureRemediation = (attemptCount: number): { readonly remediation?: string } => {
   if (attemptCount > 1) {
     return {
       remediation:
@@ -168,9 +172,16 @@ export const runSetVerb = Effect.fnUntraced(function* <
     }
   }
   const attempts: DecodeAttempt[] = [];
+  let baseline: readonly ValidationIssue[] | undefined;
   for (const candidate of candidates) {
     const decoded = yield* resolve(input.decode(candidate.next));
-    if (Result.isSuccess(decoded)) {
+    const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
+    if (Result.isFailure(decoded) && baseline === undefined) {
+      const original = yield* resolve((input.decodeBaseline ?? input.decode)(tree));
+      baseline = Result.isFailure(original) ? original.failure : [];
+    }
+    const blocking = blockingIssues(remainingIssues, baseline ?? [], input.key);
+    if (blocking.length === 0) {
       const text = yield* prepareConfigEdit({
         ...input,
         source,
@@ -179,19 +190,23 @@ export const runSetVerb = Effect.fnUntraced(function* <
         operation: "set",
       });
       yield* persistMutation(input, { text, shouldWrite: !input.dryRun, decoded });
-      return { key: input.key, value: candidate.value, changed: true as const, dryRun: input.dryRun };
+      return {
+        key: input.key,
+        value: candidate.value,
+        changed: true as const,
+        dryRun: input.dryRun,
+        ...(remainingIssues.length > 0 ? { remainingIssues } : {}),
+      };
     }
-    attempts.push({ label: interpretationLabel(candidate.value), issues: decoded.failure });
+    attempts.push({ label: interpretationLabel(candidate.value), issues: blocking });
   }
-  const original = yield* resolve(input.decode(tree));
-  const baseline = Result.isFailure(original) ? original.failure : [];
-  const issues = mergeAttemptIssues(attempts, baseline);
+  const issues = mergeAttemptIssues(attempts);
   return yield* Effect.fail(
     writeValidationErrorFromIssues({
       file: input.file,
       path: input.key,
       issues,
-      ...failureRemediation(input.editCommand, issues, attempts.length),
+      ...failureRemediation(attempts.length),
     }),
   );
 });
@@ -214,16 +229,18 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
   const mutation = applyUnsetMutation({ tree, key: input.key, file: input.file });
   if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
   const decoded = yield* resolve(input.decode(mutation.success.next));
-  if (Result.isFailure(decoded)) {
-    const original = yield* resolve(input.decode(tree));
-    const baseline = Result.isFailure(original) ? original.failure : [];
-    const issues = mergeAttemptIssues([{ label: "text", issues: decoded.failure }], baseline);
+  const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
+  const original = Result.isFailure(decoded)
+    ? yield* resolve((input.decodeBaseline ?? input.decode)(tree))
+    : decoded;
+  const baseline = Result.isFailure(original) ? original.failure : [];
+  const issues = blockingIssues(remainingIssues, baseline, input.key);
+  if (issues.length > 0) {
     return yield* Effect.fail(
       writeValidationErrorFromIssues({
         file: input.file,
         issues,
         path: input.key,
-        ...failureRemediation(input.editCommand, issues, 1),
       }),
     );
   }
@@ -235,5 +252,10 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
     shouldWrite: !input.dryRun && mutation.success.changed,
     decoded,
   });
-  return { key: input.key, changed: mutation.success.changed, dryRun: input.dryRun };
+  return {
+    key: input.key,
+    changed: mutation.success.changed,
+    dryRun: input.dryRun,
+    ...(remainingIssues.length > 0 ? { remainingIssues } : {}),
+  };
 });

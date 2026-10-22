@@ -76,13 +76,7 @@ export class RouterServiceRegistry extends Context.Service<
           ...(eventService._tag === "Some" ? { eventService: eventService.value } : {}),
           ...(redaction._tag === "Some" ? { redaction: redaction.value } : {}),
         });
-        const configured = config
-          .get("defaultRouterService")
-          .pipe(
-            Effect.mapError((cause) =>
-              selectionError(`Unable to read RouterService selection: ${cause.message}`, "unknown"),
-            ),
-          );
+        const configured = config.get("defaultRouterService");
         return RouterServiceRegistry.of(
           makeRouterServiceRegistry({ registrations, configured, platform: paths.platform }),
         );

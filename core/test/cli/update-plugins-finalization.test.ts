@@ -46,8 +46,8 @@ async function fixture() {
     Layer.succeed(
       ConfigService,
       ConfigService.of({
-        load: Effect.die("unused fixture config"),
-        get: () => Effect.die("unused fixture config"),
+        load: Effect.succeed({ userDataRoot: root } as never),
+        get: (key) => Effect.succeed((key === "userDataRoot" ? root : undefined) as never),
       }),
     ),
   );

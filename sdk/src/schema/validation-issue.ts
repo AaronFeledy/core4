@@ -18,6 +18,29 @@ export type ValidationIssuePath = typeof ValidationIssuePath.Type;
  * shape, so text output, JSON envelopes, MCP results, editors, and Standard
  * Schema consumers agree on where a problem is and what it is.
  */
+export const ValidationIssueSource = Schema.Union([
+  Schema.Struct({
+    file: Schema.String.annotate({ description: "Authored Landofile or fragment containing the value." }),
+    layer: LandofileLayer.annotate({ description: "Root layer that contributed the authored value." }),
+    path: ValidationIssuePath.annotate({
+      description: "Original authored path before alias canonicalization or list relocation.",
+    }),
+  }),
+  Schema.Struct({
+    layer: Schema.Literals(["config-file", "config-drop-in"]),
+    file: Schema.String,
+    path: ValidationIssuePath,
+  }),
+  Schema.Struct({
+    layer: Schema.Literal("env"),
+    variable: Schema.String,
+    path: ValidationIssuePath,
+  }),
+  Schema.Struct({ layer: Schema.Literal("host"), path: ValidationIssuePath }),
+  Schema.Struct({ layer: Schema.Literal("default"), path: ValidationIssuePath }),
+]);
+export type ValidationIssueSource = typeof ValidationIssueSource.Type;
+
 export const ValidationIssue = Schema.Struct({
   rule: Schema.optionalKey(Schema.String).annotate({
     description:
@@ -28,15 +51,9 @@ export const ValidationIssue = Schema.Struct({
   suggestion: Schema.optionalKey(Schema.String).annotate({
     description: "Likely fix, such as the closest allowed key for an unknown key.",
   }),
-  source: Schema.optionalKey(
-    Schema.Struct({
-      file: Schema.String.annotate({ description: "Authored Landofile or fragment containing the value." }),
-      layer: LandofileLayer.annotate({ description: "Root layer that contributed the authored value." }),
-      path: ValidationIssuePath.annotate({
-        description: "Original authored path before alias canonicalization or list relocation.",
-      }),
-    }),
-  ).annotate({ description: "Physical source of the effective value, when known." }),
+  source: Schema.optionalKey(ValidationIssueSource).annotate({
+    description: "Physical source of the effective value, when known.",
+  }),
 }).annotate({ identifier: "ValidationIssue" });
 export type ValidationIssue = typeof ValidationIssue.Type;
 
@@ -99,7 +116,8 @@ export const formatValidationIssuePath = (path: ValidationIssuePath): string => 
 /** One text line: `<path>: <message>`, root path with no prefix, suggestion on the same line. */
 export const formatValidationIssueLine = (issue: ValidationIssue): string => {
   const where = formatValidationIssuePath(issue.path);
-  const suggestion = issue.suggestion === undefined ? "" : ` ${issue.suggestion}`;
+  const suggestion =
+    issue.suggestion === undefined ? "" : `${/[.?!:]$/.test(issue.message) ? "" : "."} ${issue.suggestion}`;
   return where.length === 0 ? `${issue.message}${suggestion}` : `${where}: ${issue.message}${suggestion}`;
 };
 

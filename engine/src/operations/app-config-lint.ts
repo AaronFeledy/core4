@@ -12,7 +12,7 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ConfigLintResult } from "@lando/sdk/schema";
+import type { ConfigLintResult, ValidationIssue } from "@lando/sdk/schema";
 
 import {
   type LintLandofileOptions,
@@ -22,6 +22,9 @@ import {
 import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
+
+const sourceFile = (source: ValidationIssue["source"]): string | undefined =>
+  source !== undefined && "file" in source ? source.file : undefined;
 
 /**
  * Config lint shared by `app:config:lint` and doctor: the load snapshot's
@@ -83,7 +86,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const violations = mergeLintFindings([...result.violations, ...evaluated]);
   return {
     ...result,
-    file: result.violations[0]?.source?.file ?? evaluated[0]?.source?.file ?? result.file,
+    file: sourceFile(result.violations[0]?.source) ?? sourceFile(evaluated[0]?.source) ?? result.file,
     valid: !violations.some((issue) => issue.severity === "error"),
     violations,
   };

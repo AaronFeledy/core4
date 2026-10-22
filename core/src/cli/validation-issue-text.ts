@@ -25,7 +25,7 @@ export const formatStructuredIssue = (issue: unknown): string | undefined => {
     segments.push(segment);
   }
   const where = formatIssuePath(segments);
-  const hint = typeof suggestion === "string" ? ` ${suggestion}` : "";
+  const hint = typeof suggestion === "string" ? `${/[.?!:]$/.test(message) ? "" : "."} ${suggestion}` : "";
   const source = Reflect.get(issue, "source");
   const sourceFile = typeof source === "object" && source !== null ? Reflect.get(source, "file") : undefined;
   const sourcePath = typeof source === "object" && source !== null ? Reflect.get(source, "path") : undefined;

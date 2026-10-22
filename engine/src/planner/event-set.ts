@@ -3,9 +3,8 @@ import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
-import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Iterable, Predicate, Result } from "effect";
+import { type Context, DateTime, Effect, Iterable, Result } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling } from "./effective-tooling.ts";
@@ -47,30 +46,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     source: landofilePath,
     runtime: 4 as const,
   };
-  const globalConfig =
-    configService === undefined
-      ? undefined
-      : yield* configService.load.pipe(
-          Effect.mapError((cause) => {
-            const detail = `Global configuration could not be loaded: ${cause.message}`;
-            const nested = "cause" in cause ? cause.cause : cause;
-            const recorded = Predicate.isObject(nested) && Array.isArray(nested.issues) ? nested.issues : [];
-            const recordedIssues = recorded.filter(
-              (issue): issue is ValidationIssue =>
-                Predicate.isObject(issue) && Array.isArray(issue.path) && typeof issue.message === "string",
-            );
-            const issues =
-              recordedIssues.length > 0
-                ? recordedIssues
-                : validationIssuesFromCause(nested, { fallback: detail });
-            return new LandofileValidationError({
-              message: detail,
-              remediation: "Correct the reported global configuration before planning the app.",
-              file: landofilePath,
-              issues: issues.length > 0 ? issues : [validationIssue([], detail)],
-            });
-          }),
-        );
+  const globalConfig = configService === undefined ? undefined : yield* configService.load;
   const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;

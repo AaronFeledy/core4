@@ -8,7 +8,6 @@ import { DateTime, Effect, Queue, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
-  type ConfigError,
   type DeprecatedSurfaceError,
   type ShellExecError,
   ShellRequiresTtyError,
@@ -107,7 +106,6 @@ export interface ShellAppResult {
 export type ShellAppError =
   | AppPlanResolutionError
   | ProviderError
-  | ConfigError
   | DeprecatedSurfaceError
   | ShellExecError
   | ShellRequiresTtyError
