@@ -37,7 +37,11 @@ const planAt = (root: AbsolutePath, id: string): AppPlan => ({
 });
 
 const withSwitch = async (
-  input: { readonly dependent: "route" | "service" | "none"; readonly running: boolean },
+  input: {
+    readonly dependent: "route" | "service" | "none";
+    readonly running: boolean;
+    readonly scratch?: boolean;
+  },
   use: (fixture: {
     readonly run: () => Promise<
       Result.Result<
@@ -61,6 +65,7 @@ const withSwitch = async (
     const baseUser = planAt(AbsolutePath.make(join(dataRoot, "user")), "user-app");
     const user: AppPlan = {
       ...baseUser,
+      ...(input.scratch ? { extensions: { "@lando/core/scratch": { id: baseUser.id } } } : {}),
       routes:
         input.dependent === "route"
           ? [
@@ -161,6 +166,24 @@ for (const dependent of ["route", "service"] as const) {
         _tag: "Failure",
         failure: { _tag: "AppPlacementError", runningApps: [{ id: "user-app" }] },
       });
+      expect(fixture.destroys).toEqual([]);
+      expect(fixture.globalApplied()).toBe(true);
+    });
+  });
+}
+
+for (const dependent of ["route", "service"] as const) {
+  test(`setup refuses a running scratch ${dependent} dependent with scratch recovery`, async () => {
+    await withSwitch({ dependent, running: true, scratch: true }, async (fixture) => {
+      const result = await fixture.run();
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", runningApps: [{ kind: "scratch", id: fixture.user.id }] },
+      });
+      if (result._tag === "Failure" && result.failure._tag === "AppPlacementError")
+        expect(result.failure.remediation).toContain(
+          `lando scratch:destroy ${fixture.user.id} --keep-volumes --yes`,
+        );
       expect(fixture.destroys).toEqual([]);
       expect(fixture.globalApplied()).toBe(true);
     });

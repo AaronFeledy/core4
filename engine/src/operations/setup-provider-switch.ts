@@ -3,6 +3,8 @@ import { type AppPlan, AppRef, type ProviderId } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { resolveAppPlacement } from "../providers/app-placement.ts";
+import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
+import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { prepareOwnedResourceCleanupFrom } from "./owned-resource-teardown.ts";
 
@@ -13,8 +15,8 @@ export const SetupProviderSwitchResultSchema = Schema.Struct({
 });
 export type SetupProviderSwitchResult = typeof SetupProviderSwitchResultSchema.Type;
 
-const userRef = (plan: AppPlan): AppRef => ({
-  kind: "user",
+const appRef = (plan: AppPlan): AppRef => ({
+  kind: Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY) ? "scratch" : "user",
   id: plan.id,
   root: plan.identity?.appRoot ?? plan.root,
 });
@@ -42,14 +44,14 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
         remediation: `Restore ${plan.provider}, run \`lando poweroff --yes\`, then retry setup.`,
       }),
     );
-  const userPlans = (yield* provider.appliedPlans).filter(
+  const appPlans = (yield* provider.appliedPlans).filter(
     (candidate) =>
       candidate.provider === plan.provider &&
-      (candidate.identity?.appRoot ?? candidate.root) !== (plan.identity?.appRoot ?? plan.root) &&
-      !Object.hasOwn(candidate.extensions, "@lando/core/scratch"),
+      ((candidate.identity?.appRoot ?? candidate.root) !== (plan.identity?.appRoot ?? plan.root) ||
+        !matchesAppPlanIdentity(candidate, app)),
   );
   const services = yield* provider.list({ includeUnplanned: true });
-  const runningApps = userPlans
+  const runningApps = appPlans
     .filter(
       (candidate) =>
         (candidate.routes.length > 0 || (candidate.requires?.globalServices.length ?? 0) > 0) &&
@@ -60,7 +62,7 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
             ["running", "paused", "restarting"].includes(service.state ?? service.status),
         ),
     )
-    .map(userRef);
+    .map(appRef);
   if (runningApps.length > 0)
     return yield* Effect.fail(
       new AppPlacementError({
@@ -69,8 +71,13 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
         realizedProviderId: plan.provider,
         runningApps,
         message: `Cannot switch global services from ${plan.provider} to ${selected}; dependent apps are running: ${runningApps.map((entry) => `${entry.id} (${entry.root})`).join(", ")}.`,
-        remediation:
-          "Run `lando poweroff --yes`, or run `lando stop` in each listed app directory, then retry setup.",
+        remediation: `Run \`lando poweroff --yes\`, or stop each dependent: ${runningApps
+          .map((entry) =>
+            entry.kind === "scratch"
+              ? `\`lando scratch:destroy ${entry.id} --keep-volumes --yes\``
+              : `\`lando stop\` from ${entry.root}`,
+          )
+          .join("; ")}. Then retry setup.`,
       }),
     );
 
@@ -87,6 +94,8 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
   return {
     fromProviderId: plan.provider,
     toProviderId: selected,
-    remainingApps: userPlans.map(userRef),
+    remainingApps: appPlans
+      .filter((candidate) => matchesAppPlanIdentity(candidate, { kind: "user", id: "" }))
+      .map(appRef),
   } satisfies SetupProviderSwitchResult;
 });
