@@ -226,7 +226,7 @@ describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
 describe("per-app NetworkingPlan + cross-app reachability", () => {
   test("emits a per-app bridge plus shared cross-app membership for a service app", async () => {
     const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: true }));
-    expect(plan.networking?.perAppBridge.name).toBe("lando-shop");
+    expect(plan.networking?.perAppBridge?.name).toBe("lando-shop");
     expect(plan.networking?.sharedNetworkMembership?.name).toBe(LANDO_SHARED_CROSS_APP_NETWORK);
     expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual([
       "web.shop.internal",
@@ -255,7 +255,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
         capabilities,
       ),
       planApp(
-        { name: "lando-global", services: { traefik: { image: "nginx:1.27", port: 80, home: false } } },
+        { name: "global", services: { traefik: { image: "nginx:1.27", port: 80, home: false } } },
         capabilities,
       ),
     ]);
@@ -271,12 +271,12 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
       "web.blog.internal",
     ]);
     expect(global.networking?.sharedNetworkMembership?.aliases[ServiceName.make("traefik")]).toEqual([
-      "traefik.lando-global.internal",
+      "traefik.global.internal",
     ]);
 
-    const perAppBridges = [shop, blog, global].map((plan) => plan.networking?.perAppBridge.name);
-    expect(new Set(perAppBridges).size).toBe(3);
-    expect(perAppBridges).toEqual(["lando-shop", "lando-blog", "lando-lando-global"]);
+    const perAppBridges = [shop, blog, global].map((plan) => plan.networking?.perAppBridge?.name);
+    expect(perAppBridges).toEqual(["lando-shop", "lando-blog", undefined]);
+    expect(global.networking?.perAppBridge).toBeNull();
 
     const sharedNames = new Set(
       [shop, blog, global].map((plan) => plan.networking?.sharedNetworkMembership?.name),
@@ -285,8 +285,8 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
 
     expect(canReachSharedAlias(global, [shop, blog], "web.shop.internal")).toBe(true);
     expect(canReachSharedAlias(global, [shop, blog], "web.blog.internal")).toBe(true);
-    expect(canReachSharedAlias(shop, [global], "traefik.lando-global.internal")).toBe(true);
-    expect(canReachSharedAlias(blog, [global], "traefik.lando-global.internal")).toBe(true);
+    expect(canReachSharedAlias(shop, [global], "traefik.global.internal")).toBe(true);
+    expect(canReachSharedAlias(blog, [global], "traefik.global.internal")).toBe(true);
     expect(canReachSharedAlias(shop, [blog], "web.blog.internal")).toBe(true);
   });
 

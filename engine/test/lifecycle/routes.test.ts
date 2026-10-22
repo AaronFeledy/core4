@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
@@ -36,6 +37,35 @@ const cachedPlan: AppPlan = {
 };
 
 describe("applyAppRoutes", () => {
+  test.each([false, true])(
+    "withdraws routes without setup when the plan has no routes (cleanup fails: %s)",
+    async (fails) => {
+      // Given
+      const plan: AppPlan = { ...cachedPlan, routes: [], router: { enabled: true } };
+      const calls: AppPlan["id"][] = [];
+      const proxy: RouterServiceShape = {
+        ...makeTestRouterService(),
+        setup: () => expect.unreachable("route-free app must not run setup"),
+        applyRoutes: () => expect.unreachable("route-free app must not publish routes"),
+        removeRoutes: (app) =>
+          Effect.sync(() => void calls.push(app)).pipe(
+            Effect.andThen(
+              fails
+                ? Effect.fail(new ProxyError({ message: "router unavailable", proxyId: "test" }))
+                : Effect.void,
+            ),
+          ),
+      };
+
+      // When
+      const result = await Effect.runPromise(applyAppRoutes(proxy, plan));
+
+      // Then
+      expect(calls).toEqual([plan.id]);
+      expect(result).toEqual({ app: plan.id, appliedRoutes: [], authorities: [] });
+    },
+  );
+
   test("skips setup and route publication when the plan disables the router", async () => {
     // Given: declared routes and a conflicting Landofile must not override the plan.
     const plan: AppPlan = { ...cachedPlan, router: { enabled: false } };

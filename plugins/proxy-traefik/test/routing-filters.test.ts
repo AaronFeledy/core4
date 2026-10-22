@@ -14,7 +14,7 @@ const base: RoutePlan = {
 };
 const router = {
   priority: 2,
-  rule: "Host(`api.demo.lndo.site`)",
+  rule: 'Host("api.demo.lndo.site")',
   entryPoints: ["web"],
   service: "route-demo-0",
 } as const;
@@ -116,14 +116,14 @@ describe("Traefik route filter YAML", () => {
     [
       "compiles wildcard hostnames to anchored HostRegexp",
       "*.API.*.SITE",
-      "HostRegexp(`^[a-z0-9-]+\\.api\\.[a-z0-9-]+\\.site$`)",
+      'HostRegexp("^[a-z0-9-]+\\\\.api\\\\.[a-z0-9-]+\\\\.site$")',
     ],
     [
       "escapes regex metacharacters in wildcard hostnames",
       "*.+?()[]{}^$|\\.SITE",
-      "HostRegexp(`^[a-z0-9-]+\\.\\+\\?\\(\\)\\[\\]\\{\\}\\^\\$\\|\\\\\\.site$`)",
+      'HostRegexp("^[a-z0-9-]+\\\\.\\\\+\\\\?\\\\(\\\\)\\\\[\\\\]\\\\{\\\\}\\\\^\\\\$\\\\|\\\\\\\\\\\\.site$")',
     ],
-    ["keeps Host() for non-wildcard hostnames", "API.demo.lndo.site", "Host(`API.demo.lndo.site`)"],
+    ["keeps Host() for non-wildcard hostnames", "API.demo.lndo.site", 'Host("API.demo.lndo.site")'],
   ])("%s", (_name, hostname, rule) => {
     // Given
     const route = { ...base, hostname, pathPrefix: "/v1" };
@@ -132,7 +132,7 @@ describe("Traefik route filter YAML", () => {
     // Then
     expect(parsed).toEqual({
       http: {
-        routers: { "route-demo-0-http": { ...router, rule: `${rule} && PathPrefix(\`/v1\`)` } },
+        routers: { "route-demo-0-http": { ...router, rule: `${rule} && PathPrefix("/v1")` } },
         services,
       },
     });
@@ -197,7 +197,7 @@ describe("Traefik route filter YAML", () => {
           "http:",
           "  routers:",
           "    route-demo-0-http:",
-          '      rule: "Host(`api.demo.lndo.site`)"',
+          '      rule: "Host(\\"api.demo.lndo.site\\")"',
           "      entryPoints: [web]",
           "      priority: 2",
           "      service: route-demo-0",
@@ -220,7 +220,7 @@ describe("Traefik route filter YAML", () => {
     // Then
     expect(parsed).toEqual({
       http: {
-        routers: { "route-demo-0-http": { ...router, rule: `${router.rule} && PathPrefix(\`/v1\`)` } },
+        routers: { "route-demo-0-http": { ...router, rule: `${router.rule} && PathPrefix("/v1")` } },
         services,
       },
     });

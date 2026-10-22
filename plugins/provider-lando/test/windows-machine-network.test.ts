@@ -23,9 +23,9 @@ describe("Windows managed-machine physical network names", () => {
     const repeated = windowsMachineNetworkPlan(plan, "2026-09-22T08:16:19Z");
     expect(first.networking).toEqual(repeated.networking);
     expect(windowsMachineNetworkPlan(first, "2026-09-22T08:16:19Z").networking).toEqual(first.networking);
-    expect(first.networking?.perAppBridge.name).toMatch(/^lando-vm-[0-9a-f]{12}-[0-9a-f]{12}$/u);
+    expect(first.networking?.perAppBridge?.name).toMatch(/^lando-vm-[0-9a-f]{12}-[0-9a-f]{12}$/u);
     expect(first.networking?.sharedNetworkMembership?.name).toMatch(/^lando-vm-[0-9a-f]{12}-[0-9a-f]{12}$/u);
-    expect(first.networking?.perAppBridge.name).not.toBe(first.networking?.sharedNetworkMembership?.name);
+    expect(first.networking?.perAppBridge?.name).not.toBe(first.networking?.sharedNetworkMembership?.name);
     expect(first.networking?.sharedNetworkMembership?.aliases).toEqual(
       plan.networking?.sharedNetworkMembership?.aliases,
     );
@@ -39,19 +39,20 @@ describe("Windows managed-machine physical network names", () => {
       ...plan,
       id: "global",
       slug: "global",
-      networking: { ...networking, perAppBridge: { name: "lando-global", driver: "bridge" } },
+      networking: { ...networking, perAppBridge: null },
     } as AppPlan;
     const app = windowsMachineNetworkPlan(plan, "2026-09-22T08:16:19Z");
     const globalPhysical = windowsMachineNetworkPlan(global, "2026-09-22T08:16:19Z");
     expect(app.networking?.sharedNetworkMembership?.name).toBe(
       globalPhysical.networking?.sharedNetworkMembership?.name,
     );
-    expect(app.networking?.perAppBridge.name).not.toBe(globalPhysical.networking?.perAppBridge.name);
+    expect(app.networking?.perAppBridge?.name).toBeDefined();
+    expect(globalPhysical.networking?.perAppBridge).toBeNull();
   });
   test("a replacement machine gets distinct physical networks without changing logical aliases", () => {
     const old = windowsMachineNetworkPlan(plan, "2026-09-22T08:16:19Z");
     const next = windowsMachineNetworkPlan(plan, "2026-09-23T08:16:19Z");
-    expect(next.networking?.perAppBridge.name).not.toBe(old.networking?.perAppBridge.name);
+    expect(next.networking?.perAppBridge?.name).not.toBe(old.networking?.perAppBridge?.name);
     expect(next.networking?.sharedNetworkMembership?.name).not.toBe(
       old.networking?.sharedNetworkMembership?.name,
     );
