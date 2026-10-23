@@ -1,8 +1,8 @@
 # Lando 4
 
-Lando runs your local development stack from a `.lando.yml` file. Define your
-services, development tools, local URLs, and HTTPS certificates in one place,
-then start the environment with `lando start`.
+Lando builds containerized local development environments without requiring Docker.
+Define your services, development tools, local URLs, and HTTPS certificates in
+a `.lando.yml` file, then start the environment with `lando start`.
 
 This repository is the experimental v4 rewrite of [Lando](https://lando.dev).
 **Public Alpha 1 is not an official Lando release or production-ready.** Commands,
@@ -22,20 +22,17 @@ the checksum and put `lando` on PATH. Check that `lando` resolves to the Alpha
 binary, especially if you also have Lando 3 installed:
 
 ```sh
-lando --version
+lando version
 ```
 
-Choose the setup command for your machine:
+Lando manages its own Podman runtime, so you do not need to install a container
+runtime separately.
 
-**Intel Mac:** install and start Docker Desktop first. Setup uses that existing
-installation; it does not install Docker for you.
+**Intel Mac limitation:** the managed provider is not supported on Intel Macs in
+this Alpha. Check the [platform guidance](./docs/alpha-install-and-bug-reports.md#choose-setup-for-your-platform)
+before continuing.
 
-```sh
-lando setup --provider=docker
-```
-
-**Other supported platforms:** use the default Lando-managed Podman runtime.
-You do not need a separate Docker or Podman installation.
+Run setup and follow the prompts:
 
 ```sh
 lando setup
@@ -49,51 +46,42 @@ lando doctor
 
 Resolve any reported issues first. See the
 [setup troubleshooting steps](./docs/alpha-install-and-bug-reports.md#run-lando-setup)
-if the runtime cannot start, or [choose another provider](./docs/guides/setup/provider-selection.mdx).
+if the managed runtime cannot start. Use [another provider](./docs/guides/setup/provider-selection.mdx)
+only as a fallback when the managed provider does not work on your machine.
 
-## Start a Drupal site
+## Start a Drupal project
 
-For a new local Drupal 11 site, open a terminal in the directory where you want
-Lando to create `drupal-demo/`. Use a location where that directory does not
-already exist. Prefer WordPress? Follow the [WordPress quickstart](./docs/guides/recipes/wordpress-workflow.mdx).
+For a new local project, create an empty directory and initialize it
+there. Prefer WordPress? Follow the [WordPress quickstart](./docs/guides/recipes/wordpress-workflow.mdx).
 
 ```sh
-lando init --recipe drupal --name=drupal-demo --yes
+mkdir drupal-demo
 cd drupal-demo
+lando init
+```
+
+Choose **Drupal**, use `drupal-demo` as the app name, and keep the remaining
+defaults for this example. Lando writes `.lando.yml` into the current directory.
+Start the services, download Drupal and its project-local Drush, then find the
+app URL:
+
+```sh
 lando start
-```
-
-The recipe writes `.lando.yml` and starts PHP, Apache, and MariaDB. It does not
-install Drupal yet. Download the Drupal project and its local Drush tooling:
-
-```sh
 lando drupal-scaffold
-lando drush --version
-```
-
-Install the site into the new demo database. This initializes the database;
-do not run it against an existing site you want to keep.
-
-```sh
-lando drush site:install standard --db-url='mysql://lando:lando@database/drupal-demo' --site-name='Drupal Demo' --account-name=admin --account-mail=admin@example.com -y
-```
-
-Save the admin password Drush prints. Check the installed site and its URL:
-
-```sh
-lando drush status
 lando info
 ```
 
-Open the app HTTPS URL from `lando info`, including any port it shows. You should
-see the **Drupal Demo** site. When you finish, stop it without deleting its data:
+Check that `appserver` and `database` appear in `lando info`. You now have the
+local services and Drupal project files, including project-local Drush. The
+Drupal site is not installed yet. Continue with the
+[Drupal guide](./docs/guides/recipes/drupal-workflow.mdx) to install the site or
+bring in an existing project's data.
+
+When you finish, stop the environment without deleting its data:
 
 ```sh
 lando stop
 ```
-
-Continue with the [Drupal guide](./docs/guides/recipes/drupal-workflow.mdx) for
-existing projects, stack options, database imports, Xdebug, and theme assets.
 
 ## Use Lando in your project
 

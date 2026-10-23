@@ -118,10 +118,18 @@ runtime bundle, build it with `scripts/build-runtime-bundle.ts` and use
 `LANDO_RUNTIME_BUNDLE_MANIFEST` to select that manifest. This override is a
 development tool, not a prerequisite for ordinary Alpha setup.
 
-Unsigned Alpha prereleases and the manual signed Beta pipeline are different
-release paths. Compiling six binaries is not Alpha acceptance: the
+Public Alpha 1 is the current milestone. Earlier internal phases are pre-alpha;
+Beta follows Alpha. The `dev` channel ships unsigned `4.0.0-dev.N` artifacts.
+Signing, installers, and self-update are later milestones, not Alpha delivery
+claims. The manual signed Beta pipeline is a separate release path.
+
+Compiling six binaries is not Alpha acceptance: the
 [platform criteria](./ci.md#alpha-platform-scope) require live setup, doctor,
-and canonical Drupal and Rails journeys across all six targets.
+and canonical Drupal and Rails journeys across all six targets. A roadmap
+rewrite does not satisfy these criteria.
+
+The public Rails recipe uses an executable `README.mdx` in `recipes/rails/`.
+Extend its existing built-in implementation rather than adding a duplicate recipe.
 
 TypeScript currently uses `skipLibCheck` because the Bun and Node declaration
 packages conflict on globals such as `stream/web`. The reason is recorded beside
