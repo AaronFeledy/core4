@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as LandoEventService from "@lando/engine/services/event-service";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -17,14 +13,7 @@ const frames = [
   { _tag: "stdout", chunk: "ready", service: "web" },
   { _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
 ] satisfies readonly StreamFrameSinkFrame[];
-const redaction = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
-  }),
-);
+const redaction = RedactionService.layer;
 
 describe("renderer finite stream completion", () => {
   for (const bodies of [[], ["queued-one", "queued-two"]]) {

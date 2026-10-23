@@ -1,14 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { Effect } from "effect";
-import {
-  collectSecretEnvValues,
-  createStandaloneRedactor,
-  makeRedactionService,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "../src/service.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
+import { collectSecretEnvValues, createStandaloneRedactor, makeRedactionService } from "../src/service.ts";
 
 test("excludes only exact published defaults when collecting secret environment values", () => {
   // Given
@@ -38,11 +30,12 @@ test("keeps ordinary Lando output visible when source environment uses published
   expect(redacted).toBe(output);
 });
 
-test("masks a published default when explicitly registered after standalone construction", async () => {
+test("masks a published default when explicitly registered after service redactor construction", async () => {
   // Given
-  const redactor = createStandaloneRedactor("secrets");
+  const service = makeRedactionService();
+  const redactor = await Effect.runPromise(service.forProfile("secrets"));
   // When
-  await Effect.runPromise(registerRedactionValues(["lando"]));
+  await Effect.runPromise(service.registerValues(["lando"]));
   // Then
   expect(redactor.redactString("hello lando world")).toBe("hello [redacted] world");
 });
@@ -59,14 +52,10 @@ test.each(["redactionTokens", "authoritativeTokens"] as const)(
   },
 );
 
-test("masks published defaults retrieved from a secret store", async () => {
+test("masks explicitly resolved published defaults", async () => {
   // Given
-  const service = makeRedactionService({
-    id: "defaults",
-    list: Effect.succeed(["password"]),
-    get: () => Effect.succeed("lando"),
-    has: () => Effect.succeed(true),
-  });
+  const service = makeRedactionService();
+  await Effect.runPromise(service.registerValues(["lando"]));
   // When
   const redactor = await Effect.runPromise(service.forProfile("secrets"));
   // Then

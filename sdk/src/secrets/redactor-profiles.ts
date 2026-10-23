@@ -95,7 +95,7 @@ const ENCODED_URL_USERINFO_PATTERN =
 const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+[\w.~+/=-]+/giu;
 
 const SIGNED_QUERY_PARAM_PATTERN =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)([^&\s"'\]}]+)/giu;
+  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)(\[redacted\][^&\s"'\]}]*|[^&\s"'\]}]+)/giu;
 
 const redactSecretsString = (text: string): string =>
   text
