@@ -23,6 +23,7 @@ import {
   dockerWaitDialect,
 } from "@lando/container-runtime/dialect";
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
+import { apiResponseFailure, parseEngineJson } from "@lando/container-runtime/engine-errors";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
@@ -56,7 +57,12 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
-import { redactDetails, redactString, withApiReason } from "@lando/container-runtime/redact";
+import {
+  redactDetails,
+  redactString,
+  runtimeDiagnosticContext,
+  withApiReason,
+} from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
@@ -338,6 +344,7 @@ interface DiscoveredContainer {
 const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
   api: DockerApiClient,
   labelFilter?: string,
+  ctx: ProviderErrorContext = DOCKER_CTX,
 ) {
   const filters = labelFilter === undefined ? {} : { label: [labelFilter] };
   const params = new URLSearchParams({
@@ -352,11 +359,14 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
 
   if (response.status < 200 || response.status >= 300) {
     yield* Effect.fail(
-      unavailable("list", `Docker container list failed with HTTP ${response.status}.`, response),
+      apiResponseFailure(ctx, "list", response, `Docker container list failed with HTTP ${response.status}.`),
     );
   }
 
-  const body = yield* parseJson(response, "list");
+  const body = yield* parseEngineJson(response, ctx, "list", {
+    message: "Docker API returned malformed JSON.",
+    details: redactDetails(response, ctx.redactor),
+  });
   const containers = Array.isArray(body) ? body : [];
 
   return containers
@@ -398,7 +408,12 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
 
 const makeUnavailable = (operation: string) => notImplementedError(PROVIDER_ID, operation);
 
-export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
+export const makeRuntimeProvider = Effect.fnUntraced(function* (options: ProviderLayerOptions = {}) {
+  const ctx = yield* runtimeDiagnosticContext(DOCKER_CTX);
+  return yield* makeRuntimeProviderWithContext(options, ctx);
+});
+
+const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CTX: ProviderErrorContext) => {
   if (options.platform === undefined) {
     return Effect.fail(
       unavailable("select", "provider-docker construction requires the resolved host platform."),
@@ -411,7 +426,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     ...(options.env === undefined ? {} : { env: options.env }),
   });
   const dockerApi =
-    options.dockerApi ?? (options.dockerApiFactory ?? makeDockerApiClient)(resolvedDockerHost);
+    options.dockerApi ??
+    (options.dockerApiFactory === undefined
+      ? makeRuntimeDockerApiClient(resolvedDockerHost, DOCKER_CTX)
+      : options.dockerApiFactory(resolvedDockerHost));
   const defaultFactoryConstruction =
     options.dockerApi === undefined && options.dockerApiFactory === undefined;
   const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost).pipe(
@@ -424,6 +442,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const runtimeCapabilities = capabilities.pipe(
     Effect.map((resolved) => {
       const logSourceBinding = makeProviderLogSourceBinding({
+        ...(DOCKER_CTX.redactor === undefined ? {} : { redactor: DOCKER_CTX.redactor }),
         providerId: PROVIDER_ID,
         logFileAccess: options.logFileAccess,
         helperTarget: resolved.hostProxy?.containerTargets[0],
@@ -452,7 +471,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
-      redactDetails,
+      redactDetails: (value) => redactDetails(value, DOCKER_CTX.redactor),
       volumeCreationLabels,
       providerName: "Docker",
       ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
@@ -567,9 +586,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           platform,
           daemonUrl: resolvedDockerHost,
           ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-          ...(applyOptions.serviceEnvironment === undefined
+          ...(applyOptions.resolveServiceEnvironment === undefined
             ? {}
-            : { serviceEnvironment: applyOptions.serviceEnvironment }),
+            : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
@@ -621,7 +640,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               }
 
               return Stream.fromEffect(
-                discoverContainers(dockerApi, APP_LABEL).pipe(
+                discoverContainers(dockerApi, APP_LABEL, DOCKER_CTX).pipe(
                   Effect.flatMap((containers) => {
                     const container = containers.find(
                       (c) => c.labels[APP_LABEL] === target.app && c.labels[SERVICE_LABEL] === target.service,
@@ -646,7 +665,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         ),
       list: Effect.fn("RuntimeProvider.list")((filter) =>
-        discoverContainers(dockerApi, APP_LABEL).pipe(
+        discoverContainers(dockerApi, APP_LABEL, DOCKER_CTX).pipe(
           Effect.flatMap((containers) =>
             Effect.forEach(
               containers.filter((container) => {

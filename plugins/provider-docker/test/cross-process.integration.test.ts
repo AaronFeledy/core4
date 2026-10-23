@@ -57,6 +57,7 @@ const web: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Cross Process App",
   slug: "crossprocessapp",

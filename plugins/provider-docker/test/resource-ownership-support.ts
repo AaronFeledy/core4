@@ -38,6 +38,7 @@ const fixtureAt = (directory: string) => {
   );
   const store = makeResourceOwnershipStore("docker", state);
   const plan: AppPlan = {
+    valueModel: 1,
     id: AppId.make("owned"),
     slug: "owned",
     name: "owned",

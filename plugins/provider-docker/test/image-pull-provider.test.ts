@@ -43,6 +43,7 @@ const makeService = (name: string, ref: string, compose?: Record<string, unknown
 });
 
 const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Mailpit App",
   slug: "mailpit-app",
@@ -192,13 +193,13 @@ describe("provider-docker pullArtifact", () => {
     },
   );
 
-  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+  test("apply forwards the complete resolved environment callback", async () => {
     // Given
     const service = {
       ...makeService("mailpit", mailpitRef),
       environment: {
         PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } as const,
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       },
     };
@@ -221,7 +222,8 @@ describe("provider-docker pullArtifact", () => {
       Effect.scoped(
         provider.apply(makePlan([service]), {
           reconcile: false,
-          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+          resolveServiceEnvironment: () =>
+            Effect.succeed({ ...service.environment, TOKEN: "resolved-canary" }),
         }),
       ),
     );

@@ -51,6 +51,7 @@ const healthyDb = service("db", {
 });
 
 const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Bring Up Order App",
   slug: "bring-up-order-app",
