@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, symfony, php, postgres, redis]
 
 # Run the Symfony recipe
 
+Run Symfony with PHP, Postgres, and Redis. These commands create the environment from your host terminal; add the Symfony application afterward.
+
 ```sh
 lando init --recipe symfony --name=symfony-demo --yes
 cd symfony-demo
@@ -16,6 +18,26 @@ lando start
 The named init creates `symfony-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, PostgreSQL 16, Composer 2, and webroot `public`. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
 
 Default PHP is 8.4, so `symfony new` / `symfony/skeleton` can install the current 8.x line. Pass `--answer=php=8.3` if you want the 7.4 LTS line.
+
+## Run console, Composer, and the clients
+
+Composer will not install into a directory that already has `.lando.yml`:
+
+```sh
+lando composer create-project symfony/skeleton tmp-app --no-interaction
+```
+
+Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
+
+```sh
+lando console --version
+lando console about
+lando composer --version
+lando redis-cli ping
+lando psql
+```
+
+`lando console` is `php bin/console` on `appserver`. Swap `symfony-demo` for your app name anywhere you pass the database name yourself.
 
 ## See what the recipe writes
 
@@ -60,26 +82,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
   </Scenario>
 </Guide>
 
-## Run console, Composer, and the clients
-
-Composer will not install into a directory that already has `.lando.yml`:
-
-```sh
-lando composer create-project symfony/skeleton tmp-app --no-interaction
-```
-
-Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
-
-```sh
-lando console --version
-lando console about
-lando composer --version
-lando redis-cli ping
-lando psql
-```
-
-`lando console` is `php bin/console` on `appserver`. Swap `symfony-demo` for your app name anywhere you pass the database name yourself.
-
 ## Connect Doctrine and Redis
 
 `appserver` already has the connection strings:
@@ -89,7 +91,13 @@ lando psql
 | `DATABASE_URL` | `postgresql://lando:<password>@database:5432/symfony-demo?serverVersion=16&charset=utf8` | `mysql://lando:lando@database:3306/symfony-demo?serverVersion=11.4.0-MariaDB&charset=utf8mb4` |
 | `REDIS_URL` | `redis://cache:6379` | `redis://cache:6379` |
 
-Doctrine reads `DATABASE_URL`, so the skeleton's `config/packages/doctrine.yaml` needs no edits and `lando console doctrine:database:create` connects first try. Symfony's Dotenv never overrides a real environment variable, so the injected value wins over whatever `.env` ships with. Leave the `DATABASE_URL` line in `.env` alone or delete it; either way `appserver` uses Lando's.
+The minimal `symfony/skeleton` project does not include Doctrine. From the app root, install the ORM pack before using Doctrine configuration or commands:
+
+```sh
+lando composer require symfony/orm-pack
+```
+
+Doctrine reads `DATABASE_URL`, so its `config/packages/doctrine.yaml` can use the injected connection settings. Symfony's Dotenv never overrides a real environment variable, so the injected value wins over whatever `.env` ships with. Leave the `DATABASE_URL` line in `.env` alone or delete it; either way `appserver` uses Lando's.
 
 Do not paste the Postgres password into `.env.local`. The Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild. `lando info` shows the user and database name and redacts the password. `lando exec appserver -- printenv DATABASE_URL` masks the user and password in what it prints, so the Postgres default shows as `postgresql://[redacted]@database:5432/symfony-demo?serverVersion=16&charset=utf8`. Symfony inside `appserver` still gets the real value.
 

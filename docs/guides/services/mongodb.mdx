@@ -7,7 +7,7 @@ tags: [beta, docs, mongodb, service]
 
 # Add MongoDB
 
-Put `type: mongodb` in your services block. Lando pulls `mongo:7` and listens on `27017`:
+Add `type: mongodb` under `services` in `.lando.yml`. Lando pulls `mongo:7` and listens on `27017`:
 
 ```yaml
 name: mongodb-demo
@@ -16,7 +16,7 @@ services:
     type: mongodb
 ```
 
-Set `creds:` when you want explicit values. Defaults are `lando` / `lando` via `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
+Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
 
 ```yaml
 services:
@@ -94,6 +94,8 @@ lando mongosh --eval 'db.runCommand({ping:1})'
 ```
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` to use `mongo:6` or `mongo:8` instead of `mongo:7`:
 

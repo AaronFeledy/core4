@@ -8,7 +8,10 @@ tags: [beta, docs, subsystems, networking, dns]
 
 # Reach services by name
 
-Start the app, then connect with the service key. Open `lando info` URLs only in the host browser.
+Use a service key such as `database` when one service connects to another in the
+same app. Browser URLs and cross-app names serve different purposes; the table
+below shows which name belongs in each context. From the app directory on the
+host, start the app and inspect its browser URLs:
 
 ```sh
 lando start
@@ -31,7 +34,10 @@ Use the service key inside the app. Use `<service>.<app>.internal` across apps a
 
 ## Connect with the service key
 
-Point MySQL at `database`. Do not send that traffic through `*.lndo.site`.
+Configure the MySQL client in your app service to connect to `database`. Do not
+send that traffic through `*.lndo.site`. The Landofile below shows the host in the
+`db-query` tooling command; use the database's configured credentials when running
+your client.
 
 Recipe and service connection tables use the same host: the service key, not `127.0.0.1` or `localhost` (see [Add MariaDB](../services/mariadb.mdx)).
 

@@ -8,7 +8,9 @@ tags: [beta, docs, plugins, compatibility]
 
 # Declare SDK compatibility
 
-Put the core range on the plugin manifest. The supported pin is exact: `"@lando/core": "^4.0.0"`.
+Declare `requires["@lando/core"]` as `"^4.0.0"` in your plugin manifest and set
+`api` to `4`. The contract requires that exact range string; it does not accept
+other spellings of a compatible-looking range.
 
 `nolint` on the fence: this is a plugin manifest, not a Landofile, so Landofile schema checks do not apply.
 
@@ -21,7 +23,8 @@ requires:
   "@lando/core": "^4.0.0"
 ```
 
-`api` is `4`. Close-enough ranges are not close enough.
+Keep this declaration in `package.json` under `landoPlugin`, which install and
+authoring commands read first. The scaffold also writes it to `plugin.yaml`.
 
 ## Where it lives
 

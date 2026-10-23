@@ -8,13 +8,13 @@ tags: [beta, docs, providers, setup, selection]
 
 # Pick a container provider
 
-Run `lando setup`, then `lando doctor`. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
+Choose a provider for your host, then run setup and verify it with `lando doctor`. The default provider is `lando` (Lando-managed Podman), which does not need system Docker or Podman.
 
-On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Run setup with Docker Desktop. That is the live path on that host, not a Linux-only fallback.
+On an Intel Mac (`darwin-x64`), install and start Docker Desktop, then run `lando setup --provider=docker`. The managed `lando` provider is not supported on that host. On other supported hosts, start with `lando setup`.
 
 On Linux, if default setup fails, switch to system Docker. That is the supported fallback, not an advanced preference.
 
-This page owns the provider rules. Other pages link here instead of restating them.
+After setup succeeds, run `lando doctor` and check that it names the provider you selected.
 
 ## Run setup with Docker or Podman
 
@@ -109,7 +109,7 @@ Pick one:
 
 ## Switch providers
 
-Use setup for a deliberate switch. Nothing else moves global services.
+Use setup for a deliberate switch. Nothing else moves global services. Export any data you need on the new provider before switching: setup does not copy data volumes, and they remain on the old provider. The poweroff command below also removes scratch apps and their disposable data unless you pass `--keep-scratch`.
 
 1. Stop apps before switching:
 
@@ -144,7 +144,7 @@ lando setup --provider=lando
 
 ## Recover an app left on another provider
 
-Changing the default never moves an applied app. When `lando start` fails with `AppPlacementError`, retire the old copy from the app directory, then start on the current provider:
+Changing the default never moves an applied app or copies its data. Export any data you need before retiring the old copy. When `lando start` fails with `AppPlacementError`, run the following from the app directory, replacing `lando` in `--provider=lando` with the old provider named by the error:
 
 ```sh
 lando destroy --provider=lando --yes

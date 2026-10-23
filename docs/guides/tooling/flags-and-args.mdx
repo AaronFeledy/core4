@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, flags]
 
 # Declare flags and args on a tooling task
 
-Add `flags:` and `args:` to a task when you want Lando to validate input before the command runs. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name.
+Add `flags:` and `args:` to a task in your `.lando.yml` when you want Lando to validate input before the command runs. The following fragment assumes your app has a service named `web`. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name.
 
 ```yaml
 tooling:
@@ -31,7 +31,7 @@ tooling:
     cmd: echo greeting
 ```
 
-With that in place:
+Save the file and run `lando app:cache:refresh` from the app directory. Check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
 
 ```sh
 lando greet dev -n team

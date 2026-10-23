@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, defaults]
 
 # Set tooling defaults and command aliases
 
-Use `toolingDefaults` when most commands run in the same service, directory, or environment. Each task inherits those values, then its own `service`, `dir`, `env`, and `vars` win where they overlap.
+Add `toolingDefaults` to your `.lando.yml` when most commands run in the same service, directory, or environment. The fragment below assumes your app defines `web` and `worker` services with the shown directories and Bun package scripts. Each task inherits those values, then its own `service`, `dir`, `env`, and `vars` win where they overlap.
 
 ```yaml
 toolingDefaults:
@@ -28,6 +28,8 @@ tooling:
       APP_ENV: ci
     cmd: bun run lint
 ```
+
+Save the Landofile, run `lando app:cache:refresh` from the app directory, and start the services before executing the tasks.
 
 Here, `build` uses every default. `lint` targets `worker`, runs from `/app/tools`, and replaces `APP_ENV`, while still inheriting `MODE`. A task's `dir` is the working directory inside its target service. Lando does not resolve it against the host app directory.
 

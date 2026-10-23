@@ -8,23 +8,23 @@ tags: [beta, docs, mcp, agent]
 
 # Drive Lando through MCP
 
-An MCP client starts `lando mcp` as a child process and owns its stdin and stdout
-pipes. The server speaks MCP over newline-delimited JSON-RPC and runs until the
-client closes stdin. Keep stdin open until every outstanding request id has
-answered; closing early interrupts in-flight tool calls. Serve mode writes
-protocol frames only; it does not wrap startup or shutdown in a Lando
-command-result envelope.
-
-Configure the MCP client to launch `lando mcp` with piped stdin and stdout.
-Audit the effective catalog without starting the long-running server with
-`lando mcp --list --format=json`.
+Configure your MCP client to launch `lando mcp` as a child process with piped
+stdin and stdout. For app-scoped tools and resources, start it in the app directory.
+Before connecting, inspect the tools the server will expose without starting the
+long-running session:
 
 ```sh
 lando mcp --list --format=json
 ```
 
 Check that the catalog includes the tools you intend to expose before connecting
-the client.
+the client. Do not launch serve mode directly in a terminal or add `--format=json`
+to it; that format is for the terminating `--list` command.
+
+The server speaks MCP over newline-delimited JSON-RPC and runs until the client
+closes stdin. Keep stdin open until every outstanding request id has an answer;
+closing early interrupts in-flight tool calls. Serve mode writes protocol frames
+only, not a Lando command-result envelope for startup or shutdown.
 
 ## Initialize the client
 

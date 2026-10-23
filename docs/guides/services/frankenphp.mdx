@@ -65,7 +65,7 @@ On the 2026-10-01 live check, `lando php -v` printed `PHP 8.4.26 (cli)` and `lan
 
 ## Add Composer with a Dockerfile
 
-The stock `dunglas/frankenphp` image does not ship Composer. Bake it in with a tiny Dockerfile, then point the service at `build:` instead of `image:`:
+The stock `dunglas/frankenphp` image does not ship Composer. Save the following `Dockerfile` in the app root to add Composer, then replace the service's `image:` with `build: .` in `.lando.yml`:
 
 ```dockerfile
 FROM dunglas/frankenphp:1.12.7-php8.4

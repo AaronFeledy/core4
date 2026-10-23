@@ -7,7 +7,7 @@ tags: [beta, docs, landofile, events]
 
 # Run tasks at app lifecycle events
 
-Use `events:` when work must run every time an app reaches a lifecycle point:
+Add `events:` to your `.lando.yml` when work must run every time an app reaches a lifecycle point. This example runs preparation on the host and a cache task inside the web service:
 
 ```yaml
 name: events-demo
@@ -26,6 +26,8 @@ tooling:
     service: web
     cmd: echo "Cache ready"
 ```
+
+Save the file, then run `lando start` from the app directory. The preparation command runs before service startup; `warm-cache` runs after startup succeeds. These hooks run again on later starts, so make real setup tasks safe to repeat.
 
 `pre-*` failures stop the lifecycle operation before it starts. `post-start` and `post-stop` failures warn; other `post-*` failures fail the operation with a tagged `LandofileEventStepFailedError` and a redacted output tail. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
 
