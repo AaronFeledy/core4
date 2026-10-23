@@ -276,8 +276,8 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
       return yield* contractFailure("native snapshot providers implement removeVolumeSnapshot", provider.id);
     }
     yield* provider
-      .removeVolumeSnapshot(snapshot)
-      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds")));
+      .removeVolumeSnapshot(snapshot, { startRuntime: false })
+      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds without runtime startup")));
     yield* provider
       .removeVolumeSnapshot(snapshot)
       .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot is idempotent")));
@@ -437,7 +437,14 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
   buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),
-  pullArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: spec.ref }),
+  pullArtifact: (spec) => {
+    const digest = spec.ref.includes("@") ? spec.ref.slice(spec.ref.lastIndexOf("@") + 1) : undefined;
+    return Effect.succeed({
+      providerId: TEST_PROVIDER_ID,
+      ref: spec.ref,
+      ...(digest === undefined ? {} : { digest }),
+    });
+  },
   removeArtifact: (_ref) => Effect.void,
 
   apply: (plan, options) =>

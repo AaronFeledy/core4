@@ -104,6 +104,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   inspect: () => Effect.die("runtime provider stub cannot inspect services"),
   list: () => Effect.succeed([]),
   snapshotVolume: () => Effect.die("runtime provider stub cannot snapshot volumes"),
+  removeVolumeSnapshot: () => Effect.die("runtime provider stub cannot remove volume snapshots"),
   restoreVolume: () => Effect.die("runtime provider stub cannot restore volumes"),
   locateVolume: () => Effect.die("runtime provider stub cannot locate volumes"),
   listVolumes: () => Effect.die("runtime provider stub cannot list volumes"),

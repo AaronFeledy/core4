@@ -198,6 +198,7 @@ const makeProvider = (
       Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),

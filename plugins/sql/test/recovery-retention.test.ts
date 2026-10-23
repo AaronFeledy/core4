@@ -5,7 +5,7 @@ import { TestClock } from "effect/testing";
 
 import { SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { AbsolutePath, AppId, type PrunePolicy, ServiceName } from "@lando/sdk/schema";
+import { AppId, type PrunePolicy, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps } from "./support/fakes.ts";
@@ -17,7 +17,7 @@ describe("automatic SQL recovery retention", () => {
   for (const action of ["import", "reset", "restore"] as const) {
     test(`${action} keeps three recovery points and leaves other buckets and owners untouched`, async () => {
       // Given: five old recovery points plus manual snapshots and unrelated ownership scopes.
-      const fixture = makeRetentionTestDeps();
+      const fixture = await makeRetentionTestDeps();
       const outcome = await Effect.runPromise(
         Effect.gen(function* () {
           const old: string[] = [];
@@ -32,7 +32,7 @@ describe("automatic SQL recovery retention", () => {
           for (const scope of [
             { store: "sql-app_other_data" },
             { root: join(fixture.harness.root, "other-worktree") },
-            { ownerKey: "owner:other" },
+            { root: join(fixture.harness.root, "other-owner") },
             { service: "other-service" },
             { app: "other-app" },
           ])
@@ -65,7 +65,7 @@ describe("automatic SQL recovery retention", () => {
 
     test(`${action} failure preserves every recovery point including the reported undo point`, async () => {
       // Given: old recovery snapshots and a mutation that will fail after capture.
-      const fixture = makeRetentionTestDeps({ password: "lando", execFails: true, restoreFails: true });
+      const fixture = await makeRetentionTestDeps({ password: "lando", execFails: true, restoreFails: true });
       const outcome = await Effect.runPromise(
         Effect.gen(function* () {
           const old: string[] = [];
@@ -107,7 +107,7 @@ describe("automatic SQL recovery retention", () => {
     "keeps the just-captured undo point under %s",
     async (timing) => {
       // Given: five existing snapshots at the same instant or in the future.
-      const fixture = makeRetentionTestDeps();
+      const fixture = await makeRetentionTestDeps();
       const listed = await Effect.runPromise(
         Effect.gen(function* () {
           yield* TestClock.setTime(10000);
@@ -129,7 +129,7 @@ describe("automatic SQL recovery retention", () => {
 
   test("restore keeps the automatic recovery snapshot it restored from", async () => {
     // Given: five automatic recovery points, the oldest of which is the restore source.
-    const fixture = makeRetentionTestDeps();
+    const fixture = await makeRetentionTestDeps();
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const old: string[] = [];
@@ -155,7 +155,7 @@ describe("automatic SQL recovery retention", () => {
 
   test("retention failure emits a warning without failing the completed reset", async () => {
     // Given: pruning is unavailable after a successful reset.
-    const fixture = makeRetentionTestDeps();
+    const fixture = await makeRetentionTestDeps();
     const deps = { ...fixture.deps, pruneSnapshots: () => Effect.fail(new FakeRestoreError()) };
 
     // When: SQL completes the mutation and attempts retention.
@@ -173,7 +173,7 @@ describe("automatic SQL recovery retention", () => {
 
   test("retention is root-scoped when the plan has no owner identity", async () => {
     // Given: an identity-less plan and a snapshot from a same-name app in another worktree.
-    const fixture = makeRetentionTestDeps();
+    const fixture = await makeRetentionTestDeps();
     const { identity: _identity, ...plan } = fixture.deps.plan;
     const policies: PrunePolicy[] = [];
     const deps = {
@@ -195,7 +195,7 @@ describe("automatic SQL recovery retention", () => {
     expect(policies[0]?.filter).toEqual({
       app: AppId.make("sql-app"),
       store: "sql-app_database_data",
-      sourceRoot: AbsolutePath.make(fixture.harness.root),
+      ownerKey: appIdentityKey("owner", fixture.harness.root),
       service: ServiceName.make("database"),
     });
     expect(fixture.removed).not.toContain(other.id);
@@ -203,7 +203,7 @@ describe("automatic SQL recovery retention", () => {
 
   test("manual snapshots do not trigger automatic retention", async () => {
     // Given: recovery snapshots beyond the automatic retention budget.
-    const fixture = makeRetentionTestDeps();
+    const fixture = await makeRetentionTestDeps();
     for (let index = 0; index < 5; index += 1) await Effect.runPromise(fixture.snapshot("reset"));
 
     // When: the user captures a manual snapshot.

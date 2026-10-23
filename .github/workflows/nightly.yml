@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -49,6 +57,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -68,6 +83,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -87,6 +109,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -106,6 +135,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -126,6 +162,13 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -257,9 +300,9 @@ jobs:
         run: |
           podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
           echo "$!" > /tmp/podman-service.pid
-          for i in {1..30}; do test -S /tmp/podman.sock && exit 0; sleep 1; done
-          cat /tmp/podman-service.log
-          exit 1
+          for i in {1..30}; do test -S /tmp/podman.sock && break; sleep 1; done
+          curl --fail --max-time 5 --unix-socket /tmp/podman.sock http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
 
       - name: Build Linux x64 binary
         run: |
@@ -275,14 +318,12 @@ jobs:
         env:
           LANDO_GUIDE_E2E: "1"
           LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Run live integration suites
         run: |
           bun test core/test/live
         env:
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Teardown Podman
@@ -320,6 +361,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -375,7 +423,7 @@ jobs:
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -399,14 +447,14 @@ jobs:
       - name: Verify the published bundle downloaded, verified, and installed
         run: |
           for _ in {1..30}; do
-            test -S "$HOME/.local/share/lando/runtime/run/podman.sock" && break
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
             sleep 1
           done
-          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
-          test -x "$HOME/.local/share/lando/runtime/bin/podman"
-          if ldd "$HOME/.local/share/lando/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          test -x "$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          if ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
             echo "::error title=runtime-bundle-portability::managed podman has non-portable or missing shared libraries"
-            ldd "$HOME/.local/share/lando/runtime/bin/podman" || true
+            ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" || true
             exit 1
           fi
 
@@ -414,8 +462,8 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
@@ -425,6 +473,13 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -545,12 +600,6 @@ jobs:
           ./dist/lando --version
           test "$(uname -m)" = aarch64
 
-      - name: Isolate Lando roots
-        run: |
-          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
-
       - name: Configure rootless overlay storage
         run: |
           cat > "$RUNNER_TEMP/lando-storage.conf" <<EOF
@@ -558,7 +607,7 @@ jobs:
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$RUNNER_TEMP/lando-data/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$RUNNER_TEMP/lando-storage.conf" >> "$GITHUB_ENV"
 

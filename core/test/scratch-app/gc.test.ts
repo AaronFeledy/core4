@@ -159,6 +159,7 @@ const makeLayer = (
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => die("removeVolume"),
@@ -188,6 +189,11 @@ const makeLayer = (
     ScratchResourceScanner.of({
       listScratchIds: Effect.succeed(labelIds),
       pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
+      prepareScratch: (id) =>
+        Effect.succeed({
+          stop: Effect.succeed(false),
+          destroy: (pruneScratch?.(id) ?? Effect.sync(() => pruned.push(id))).pipe(Effect.as(true)),
+        }),
     }),
   );
   const scratchDeps = Layer.mergeAll(
@@ -201,6 +207,7 @@ const makeLayer = (
     scannerLive,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,

@@ -25,9 +25,13 @@ tooling:
   composer:
     service: appserver
     cmd: [composer]
+    dir: /app
+    env:
+      COMPOSER_ALLOW_SUPERUSER: "1"
     description: Run Composer inside the appserver service.
   magento:
     service: appserver
     cmd: [php, bin/magento]
+    dir: /app
     user: www-data
     description: Run bin/magento inside the appserver service.
