@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -40,7 +41,7 @@ export const collectAppIdsFromAppliedState = (value: unknown): ReadonlyArray<str
 };
 
 const pluginStateRoots = async (pluginsDir: string): Promise<ReadonlyArray<string>> => {
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(pluginsDir, { withFileTypes: true });
   } catch {
@@ -54,7 +55,7 @@ const pluginStateRoots = async (pluginsDir: string): Promise<ReadonlyArray<strin
       roots.push(full);
       continue;
     }
-    let scoped: Awaited<ReturnType<typeof readdir>>;
+    let scoped: Dirent[];
     try {
       scoped = await readdir(full, { withFileTypes: true });
     } catch {

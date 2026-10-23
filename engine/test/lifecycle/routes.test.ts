@@ -130,7 +130,7 @@ describe("applyAppRoutes", () => {
   }
 
   test("forwards the plan ownerKey when publishing routes", async () => {
-    const received: Array<{ readonly app: AppPlan["id"]; readonly ownerKey?: string }> = [];
+    const received: Array<{ readonly app: AppPlan["id"]; readonly ownerKey: string | undefined }> = [];
     const base = makeTestRouterService();
     const plan: AppPlan = {
       ...cachedPlan,
