@@ -152,7 +152,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   const ref = target.app;
   const { provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions } =
     prepared ?? (yield* preflightStopApp(target));
-  const eventPlan = yield* resolveLandofileEventPlan(target);
+  const { plan: eventPlan, outcome: landofileEvents } = yield* resolveLandofileEventPlan(target);
 
   if (runInitEvents) yield* runAppInitEvents(eventPlan);
 
@@ -223,7 +223,11 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   yield* publishAndRunPostAppEvent(eventPlan, "post-stop", postStop);
 
   return {
-    result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },
+    result: {
+      app: plan.name,
+      servicesStopped: services.map((service) => String(service.name)),
+      landofileEvents,
+    },
     plan,
   };
 });

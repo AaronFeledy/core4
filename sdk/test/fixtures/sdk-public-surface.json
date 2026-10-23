@@ -624,6 +624,7 @@
       "LandofileEventInvocationDepthError",
       "LandofileEventLifecycleReentryError",
       "LandofileEventStepFailedError",
+      "LandofileEventsSkippedError",
       "LandofileExpressionEvalError",
       "LandofileExpressionForbiddenError",
       "LandofileExpressionParseError",

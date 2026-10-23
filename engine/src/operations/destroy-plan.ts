@@ -16,7 +16,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
-import { withTeardownAuthoredEvents } from "./teardown-authored-events.ts";
+import { type LandofileEventPlan, resolveLandofileEventPlan } from "./landofile-events.ts";
 
 /** Read-only evidence for one invocation, never a fabricated desired/applied plan. */
 export type TeardownPlan = {
@@ -25,6 +25,8 @@ export type TeardownPlan = {
   readonly name: string;
   readonly refs: ReadonlyArray<AppRef>;
   readonly applied: ResolvedAppTarget | undefined;
+  /** The Landofile hooks for an applied teardown, resolved from the Landofile at the applied root. */
+  readonly authored: LandofileEventPlan | undefined;
   readonly retained: ResolvedAppTarget | undefined;
   readonly target: ResolvedAppTarget | undefined;
   readonly groups: ReadonlyArray<AppliedOrphanGroup>;
@@ -140,8 +142,8 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
   }
   if (desiredResult !== undefined && Result.isFailure(desiredResult) && !landofilePresent)
     return yield* Effect.fail(desiredResult.failure);
-  if (applied !== undefined && retained === undefined && request.missingRoot !== true)
-    applied = yield* withTeardownAuthoredEvents(applied, request.desired);
+  const authored =
+    applied !== undefined && retained === undefined ? yield* resolveLandofileEventPlan(applied) : undefined;
   const registry = yield* RuntimeProviderRegistry;
   const disposal = retained ?? applied;
   const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);
@@ -173,6 +175,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
       applied?.plan.name ?? retained?.plan.name ?? recorded[0]?.id ?? desired?.plan.name ?? basename(root),
     refs,
     applied,
+    authored,
     retained,
     target,
     groups,

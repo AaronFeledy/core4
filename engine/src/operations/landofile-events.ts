@@ -1,8 +1,16 @@
-import { DateTime, Effect, Option, Result } from "effect";
+import { DateTime, Effect, Option, Result, Schema } from "effect";
 
+import type { LandofileEventsOutcome } from "@lando/sdk/app";
+import { LandofileEventsSkippedError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { AppPlan } from "@lando/sdk/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  EventService,
+  InteractionService,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { presentLandofileLayers, representativeLandofileLayer } from "@lando/landofile/layers";
 import { RedactionService } from "@lando/redaction/service";
@@ -82,6 +90,19 @@ const planLandofileEvents = Effect.fnUntraced(function* (
   return planned;
 });
 
+export const LandofileEventsOutcomeSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("ran") }),
+  Schema.Struct({ status: Schema.Literal("skipped"), reason: Schema.String }),
+]);
+
+export interface LandofileEventPlan {
+  /** The plan whose steps the operation runs; carries no events when they were skipped. */
+  readonly plan: AppPlan;
+  readonly outcome: LandofileEventsOutcome;
+  /** `warn` when a Landofile is present but unusable; `info` when there is none to use. */
+  readonly skipLevel?: "info" | "warn";
+}
+
 /**
  * The plan whose Landofile `events:` and `hostEvents` steps a lifecycle operation runs.
  *
@@ -90,14 +111,18 @@ const planLandofileEvents = Effect.fnUntraced(function* (
  * rather than from whatever was applied: this plans the Landofile at the applied root and
  * returns it when it still describes the applied app. Otherwise it publishes one notice and
  * returns the applied plan with no events, so the operation runs its lifecycle without
- * Landofile steps.
+ * Landofile steps and reports that in its result.
  */
 export const resolveLandofileEventPlan = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
-): Effect.fn.Return<AppPlan, never, AppPlanner | EventService | LandofileService | RuntimeProviderRegistry> {
-  if (target.landofile !== undefined) return target.plan;
+): Effect.fn.Return<
+  LandofileEventPlan,
+  never,
+  AppPlanner | EventService | LandofileService | RuntimeProviderRegistry
+> {
+  if (target.landofile !== undefined) return { plan: target.plan, outcome: { status: "ran" } };
   const source = yield* planLandofileEvents(target);
-  if (source.kind === "plan") return source.plan;
+  if (source.kind === "plan") return { plan: source.plan, outcome: { status: "ran" } };
   const events = yield* EventService;
   const redaction = yield* Effect.serviceOption(RedactionService);
   // Without a redactor the loader text stays out of the notice rather than risk leaking a value.
@@ -110,7 +135,8 @@ export const resolveLandofileEventPlan = Effect.fnUntraced(function* (
             redactionTokens: collectAppPlanRedactionTokens(target.plan),
           })
         ).redactString(source.detail)}`;
-  const body = `Skipping Landofile events for ${target.plan.name}: ${source.reason}${detail}.`;
+  const reason = `${source.reason}${detail}`;
+  const body = `Skipping Landofile events for ${target.plan.name}: ${reason}.`;
   const timestamp = DateTime.nowUnsafe();
   yield* events
     .publish(
@@ -119,5 +145,48 @@ export const resolveLandofileEventPlan = Effect.fnUntraced(function* (
         : MessageInfoEvent.make({ body, timestamp }),
     )
     .pipe(Effect.ignore);
-  return { ...target.plan, events: {} };
+  return {
+    plan: { ...target.plan, events: {} },
+    outcome: { status: "skipped", reason },
+    skipLevel: source.level,
+  };
+});
+
+const skippedError = (reason: string, message: string) =>
+  new LandofileEventsSkippedError({
+    message,
+    reason,
+    remediation:
+      "Fix the Landofile so its pre-destroy steps can run, or rerun with --yes to remove the data without them.",
+  });
+
+/**
+ * A present Landofile that cannot source hooks may declare a `pre-destroy` backup step. When
+ * destroy would also remove data, that is a decision for the caller: `--yes` accepts it, an
+ * interactive session is asked, and anything else fails closed.
+ */
+export const confirmDestroyWithoutLandofileEvents = Effect.fnUntraced(function* (
+  outcome: LandofileEventsOutcome,
+  yes: boolean,
+): Effect.fn.Return<void, LandofileEventsSkippedError> {
+  if (yes || outcome.status !== "skipped") return;
+  const interaction = yield* Effect.serviceOption(InteractionService);
+  if (Option.isNone(interaction) || !(yield* interaction.value.isInteractive)) {
+    return yield* skippedError(
+      outcome.reason,
+      `Landofile events cannot run (${outcome.reason}), and this destroy removes data.`,
+    );
+  }
+  const confirmed = yield* interaction.value
+    .confirm({
+      message: `Landofile events cannot run (${outcome.reason}). Remove this app's data without them?`,
+      default: false,
+    })
+    .pipe(
+      Effect.scoped,
+      Effect.catch(() => Effect.succeed(false)),
+    );
+  if (!confirmed) {
+    return yield* skippedError(outcome.reason, "Destroy cancelled. The app was not changed.");
+  }
 });

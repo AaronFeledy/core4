@@ -91,7 +91,10 @@ const runtime = (input: {
       RuntimeProviderRegistry.of({
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        appliedPlansFor: () => Effect.succeed([]),
         select: () => Effect.succeed(TestRuntimeProvider),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
       }),
     ),
     Layer.succeed(
@@ -134,7 +137,8 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved).toBe(desired);
+    expect(resolved.plan).toBe(desired);
+    expect(resolved.outcome).toEqual({ status: "ran" });
     expect(published).toEqual([]);
   });
 
@@ -151,7 +155,8 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events?.["pre-stop"]?.map((step) => step.step)).toEqual(["echo from-landofile"]);
+    expect(resolved.plan.events?.["pre-stop"]?.map((step) => step.step)).toEqual(["echo from-landofile"]);
+    expect(resolved.outcome).toEqual({ status: "ran" });
     expect(published).toEqual([]);
   });
 
@@ -166,10 +171,11 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events).toEqual({});
+    expect(resolved.plan.events).toEqual({});
     expect(notices(published)).toEqual([
       ["message.info", `Skipping Landofile events for hooked: no Landofile in ${root}.`],
     ]);
+    expect(resolved.outcome).toEqual({ status: "skipped", reason: `no Landofile in ${root}` });
   });
 
   test("a Landofile in a parent folder does not count as the applied app's Landofile", async () => {
@@ -185,10 +191,11 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events).toEqual({});
+    expect(resolved.plan.events).toEqual({});
     expect(notices(published)).toEqual([
       ["message.info", `Skipping Landofile events for hooked: no Landofile in ${nested}.`],
     ]);
+    expect(resolved.outcome).toEqual({ status: "skipped", reason: `no Landofile in ${nested}` });
   });
 
   test("a Landofile that fails to load skips with a warning that carries the reason", async () => {
@@ -209,13 +216,17 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events).toEqual({});
+    expect(resolved.plan.events).toEqual({});
     expect(notices(published)).toEqual([
       [
         "message.warn",
         `Skipping Landofile events for hooked: the Landofile in ${root} could not be loaded. bad indentation.`,
       ],
     ]);
+    expect(resolved.outcome).toEqual({
+      status: "skipped",
+      reason: `the Landofile in ${root} could not be loaded. bad indentation`,
+    });
   });
 
   test("loader text in the notice is redacted, and dropped when no redactor is available", async () => {
@@ -291,13 +302,17 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events).toEqual({});
+    expect(resolved.plan.events).toEqual({});
     expect(notices(published)).toEqual([
       [
         "message.warn",
         `Skipping Landofile events for hooked: the Landofile in ${root} could not be loaded. Both ${join(root, ".lando.yml")} and ${join(root, ".lando.ts")} are present for the canonical Landofile layer.`,
       ],
     ]);
+    expect(resolved.outcome).toEqual({
+      status: "skipped",
+      reason: `the Landofile in ${root} could not be loaded. Both ${join(root, ".lando.yml")} and ${join(root, ".lando.ts")} are present for the canonical Landofile layer`,
+    });
   });
 
   test("a Landofile that describes another app skips with a warning", async () => {
@@ -313,13 +328,17 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events).toEqual({});
+    expect(resolved.plan.events).toEqual({});
     expect(notices(published)).toEqual([
       [
         "message.warn",
         `Skipping Landofile events for hooked: the Landofile in ${root} describes app renamed but hooked is applied.`,
       ],
     ]);
+    expect(resolved.outcome).toEqual({
+      status: "skipped",
+      reason: `the Landofile in ${root} describes app renamed but hooked is applied`,
+    });
   });
 
   test("a Landofile that selects another provider skips with a warning", async () => {
@@ -335,12 +354,16 @@ describe("resolveLandofileEventPlan", () => {
     );
 
     // Then
-    expect(resolved.events).toEqual({});
+    expect(resolved.plan.events).toEqual({});
     expect(notices(published)).toEqual([
       [
         "message.warn",
         `Skipping Landofile events for hooked: the Landofile in ${root} selects provider docker but test is applied.`,
       ],
     ]);
+    expect(resolved.outcome).toEqual({
+      status: "skipped",
+      reason: `the Landofile in ${root} selects provider docker but test is applied`,
+    });
   });
 });
