@@ -5,11 +5,10 @@ import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
-  compiledEventsForPlan,
   effectiveEventsForPlan,
   hostEventStatusesForApp,
+  withEventsPlan,
 } from "../../src/planner/effective-events.ts";
 
 const plan = (): AppPlan => ({
@@ -40,7 +39,7 @@ describe("compileEffectiveEvents host steps", () => {
       ["host", "active"],
       ["project", "active"],
     ]);
-    expect(effectiveEventsForPlan(attachEffectiveEvents(plan(), compiled))?.["post-start"]).toEqual([
+    expect(effectiveEventsForPlan(withEventsPlan(plan(), compiled))?.["post-start"]).toEqual([
       { cmd: "echo host", service: ":host" },
       { cmd: "echo hi" },
     ]);
@@ -115,26 +114,21 @@ describe("compileEffectiveEvents host steps", () => {
     });
   });
 
-  test("reattaching compiled events keeps provenance on both cache-shaped paths", () => {
+  test("events travel with the plan value through spreads and re-attachment", () => {
     const compiled = compileEffectiveEvents({
       landofile: { events: { "pre-stop": ["echo project"] } },
       hostEvents: { "pre-stop": [{ cmd: "echo host", service: ":host" }] },
       services: { web: { primary: true } },
     });
-    const fresh = attachEffectiveEvents(plan(), compiled);
-    const cached = attachEffectiveEvents(
-      { ...plan(), id: AppId.make("adopted") },
-      compiledEventsForPlan(fresh) ?? {},
-    );
-    expect(compiledEventsForPlan(fresh)?.["pre-stop"]?.[0]).toMatchObject({
-      source: "host",
-      sourceIndex: 0,
-      status: "active",
-    });
-    expect(compiledEventsForPlan(cached)?.["pre-stop"]?.[0]).toMatchObject({
-      source: "host",
-      sourceIndex: 0,
-      status: "active",
-    });
+    const fresh = withEventsPlan(plan(), compiled);
+    const spread = { ...fresh, fileSync: [] };
+    const cached = withEventsPlan({ ...plan(), id: AppId.make("adopted") }, fresh.events ?? {});
+    for (const candidate of [fresh, spread, cached]) {
+      expect(candidate.events?.["pre-stop"]?.[0]).toMatchObject({
+        source: "host",
+        sourceIndex: 0,
+        status: "active",
+      });
+    }
   });
 });

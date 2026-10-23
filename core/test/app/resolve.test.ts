@@ -38,6 +38,9 @@ const testProviderLayers = [
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(TestRuntimeProvider),
@@ -69,7 +72,9 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const withTempUserCache = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-runtime-cache-")));
   try {
-    return await withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir));
+    return await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () =>
+      withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir)),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -254,6 +259,9 @@ describe("resolveApp", () => {
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      resolveAppliedPlan: () => Effect.succeed(undefined),
+                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
                       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                       select: () => Effect.succeed(TestRuntimeProvider),

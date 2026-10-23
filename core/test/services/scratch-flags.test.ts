@@ -207,12 +207,16 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     landofileServiceLayer,
@@ -222,6 +226,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLayer.layer,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,

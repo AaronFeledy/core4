@@ -5,6 +5,7 @@ import type { Effect } from "effect";
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
+  AppPlacementError,
   AppResolveError,
   CapabilityError,
   ConfigExpressionError,
@@ -27,6 +28,7 @@ import type {
   ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouteProviderMismatchError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
@@ -60,6 +62,8 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | RouteProviderMismatchError
+  | AppPlacementError
   | LandofileCompileError
   | CapabilityError
   | HomePathCapabilityError
@@ -77,6 +81,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
@@ -96,6 +101,7 @@ type LegacyOrphanTeardownError =
   | StateStoreError;
 
 type LegacyGlobalInstallChannel =
+  | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
@@ -106,6 +112,8 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | RouteProviderMismatchError
+  | AppPlacementError
   | LandofileCompileError
   | ServiceNotReadyError
   | HomePathCapabilityError
@@ -135,6 +143,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | RouteProviderMismatchError
   | RemoteSyncError
   | UserLandofileError
   | CapabilityError
@@ -147,6 +156,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | RouteProviderMismatchError
   | UserLandofileError
   | CapabilityError
   | HomePathCapabilityError
@@ -183,6 +193,7 @@ describe("Engine plan-carrying error channels", () => {
         | ProviderSelectionError
         | FileSystemError
         | GlobalAppError
+        | AppPlacementError
         | LandofileParseError
       >
     >(true);

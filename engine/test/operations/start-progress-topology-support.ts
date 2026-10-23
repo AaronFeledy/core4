@@ -11,6 +11,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  AppPlan as AppPlanSchema,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -22,6 +23,7 @@ import {
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
+  GlobalAppService,
   LandofileService,
   PathsService,
   PluginRegistry,
@@ -121,9 +123,14 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
     .map((event) => event.parentId)
     .filter((parentId) => parentId.startsWith("start-"));
 
+/** Round-trips a plan through JSON the way provider applied state does, dropping Landofile events. */
+export const appliedPlanRecord = ({ events: _events, ...plan }: AppPlan): AppPlan =>
+  Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))));
+
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly appliedPlans?: ReadonlyArray<AppPlan>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
@@ -279,14 +286,22 @@ export const makeHarness = (
     logs: options.logs ?? (() => Stream.empty),
   };
   const runtimeProviderRegistry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed((options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root)),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
     select: options.selectProvider ?? (() => Effect.succeed(provider)),
-    resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)),
-    ...(options.resolveTeardownEvidence === undefined
-      ? {}
-      : { resolveTeardownEvidence: options.resolveTeardownEvidence }),
+    // What a provider really hands back: a decoded record, never the planner's object, with no events.
+    resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))),
+    resolveTeardownEvidence:
+      options.resolveTeardownEvidence ??
+      ((root: AbsolutePath) =>
+        (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root).pipe(
+          Effect.map((plan) =>
+            plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+          ),
+        )),
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
@@ -352,8 +367,15 @@ export const makeHarness = (
     ),
     LandoConfigService.layer,
     BunFileSystem.layer,
-    GlobalAppServiceLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    Layer.effect(
+      GlobalAppService,
+      Effect.map(GlobalAppService, (service) => ({ ...service, providerId: Effect.succeed(providerId) })),
+    ).pipe(
+      Layer.provide(
+        GlobalAppServiceLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+        ),
+      ),
     ),
     Layer.succeed(
       RouterService,

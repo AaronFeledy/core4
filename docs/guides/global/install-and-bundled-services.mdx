@@ -22,7 +22,11 @@ lando global:install
 
 `--yes` is accepted for consistency with `lando setup --yes`. Global install does not prompt.
 
-Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand.
+Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand. An app with no routes never starts the router, so a database-only or worker app comes up on a host where the router cannot.
+
+## Where the global app runs
+
+Traefik, Mailpit, and the ssh-agent sidecar run on the host provider that `lando setup` selected. A Landofile `provider:` never moves them, and routed apps must share that provider. Only `lando setup --provider=<new>` switches an existing global app. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs), [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider), and [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
 ## Override a bundled service
 

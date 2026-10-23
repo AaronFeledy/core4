@@ -35,10 +35,10 @@ An override that fails validation stops every command that needs config with a `
 Highest-precedence source wins. Env overrides sit above `config.yml` and `config.d/*.yml` drop-ins; see [the layer table](../config/global-config.mdx#choose-the-effective-value). A command flag overrides an env-resolved value:
 
 ```sh
-lando start --provider=docker
+lando setup --provider=docker
 ```
 
-That flag wins over `LANDO_PROVIDER=podman` for that command. `LANDO_PROVIDER` does not persist. After a successful `lando setup --provider=docker`, later commands stay on Docker without repeating the flag.
+That flag wins over `LANDO_PROVIDER=podman` for that command. The flag persists; the env var does not. See [What persists](../setup/provider-selection.mdx#what-persists).
 
 A local Landofile overrides the main Landofile during merge.
 

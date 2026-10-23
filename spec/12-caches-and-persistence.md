@@ -62,6 +62,7 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userConfRoot>/config.yml`, `config.d/*.yml` | Global configuration layers. |
 | `<userConfRoot>/global.config.yml` | Global-service enablement map (§20.3.1). |
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
+| `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
 | `<userCacheRoot>/cwd-app-map.bin` | Router-phase CWD index. |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |
@@ -83,8 +84,8 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userDataRoot>/plugins/@lando/file-sync-mutagen/sessions/mutagen.json` | Plugin-private ledger of the bundled process client (§12.7.3): durable session ownership and app drain/disposal receipts. Survives stop, rebuild, and plan-cache invalidation; verified disposal retires the app's entries (§10.6.2). |
 | `<userCacheRoot>/file-sync/sessions/` | Opaque embedded-Mutagen daemon history, the configured `MUTAGEN_DATA_DIRECTORY`. Durable, not a regenerable cache: stop, rebuild, and plan-cache invalidation MUST preserve it; uninstall owns final removal. |
 | `<userDataRoot>/builds/<app-id>/...`, `builds/global/...`, `builds/scratch/...` | Per-step build transcripts, never telemetry; user/global retention follows build policy and scratch transcripts disappear at destroy (§6.13.6). |
-| `<userDataRoot>/snapshots/<app-id>/<store>/<snapshot-id>.<format>` | Snapshot archives and `SnapshotInfo` sidecars; survive ordinary destroy, and explicit purge and pruning, including automatic recovery retention, remove them (§10.11.2). |
-| `<userDataRoot>/snapshots/<app-id>/index.bin` | `StateStore` snapshot index. |
+| `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json` | Owner-keyed `SnapshotInfo` catalog sidecars, one fail-closed version-1 JSON `StateStore` bucket per snapshot; no separate index (§10.11.2). |
+| `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.<format>` | Copy-mode snapshot archives beside their sidecars. Snapshots survive ordinary destroy; explicit purge and pruning, including automatic recovery retention, remove them (§10.11.2). |
 | `<userDataRoot>/managed-files/<app-id>/ledger.json` | `ManagedFileService` ownership ledger through `StateStore` (§10.13). |
 | `<systemPluginRoot>/plugins/` | Read-only system-installed plugins. |
 | State-store transaction journal | Owner-only managed-file transaction plan and recovery state. |
@@ -122,7 +123,7 @@ This durable provider-private identity record lets stop, destroy, and a convergi
 | Corruption or version mismatch | Fail closed. Do not treat the hint as absent. |
 | Payload | Container, private-network, and volume identities and digests only, with expected app, provider, root, and owner, and the actual physical name. No raw config, no per-value hashes, no resolved secret values. |
 
-`ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the Lando-managed provider (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
+`ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the realized global provider, or the host provider when no applied global plan exists (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
 
 ### 12.5 Hot-path read budgets
 
@@ -162,7 +163,7 @@ Hot-path caches remain under their existing readers and MAY adopt `StateStore` o
 
 #### 12.7.2 Reference consumers
 
-The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec in an unlocked bucket, and its writers re-read and merge under a host-wide `StateStore.withLock` operation lock so no lock file lands beside it; snapshot indexes use app-scoped buckets; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
+The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec in an unlocked bucket, and its writers re-read and merge under a host-wide `StateStore.withLock` operation lock so no lock file lands beside it; snapshot sidecars use owner/store-scoped, version-1 JSON buckets that fail on corruption or version mismatch, with per-snapshot removal locks; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
 
 #### 12.7.3 Plugins and embedding hosts
 

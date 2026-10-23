@@ -411,6 +411,10 @@
       "digest": "0259f2d81b5170c7da88d33f880c1ce1280f79531320126f20daa2360d2394a3"
     },
     {
+      "fixture": "docs/guides/magento/fixtures/mageos",
+      "digest": "38f33cdb00154f4eb689bb0165048fb525d2ca5c946fb11b18e4f5d492179db6"
+    },
+    {
       "fixture": "docs/guides/mailpit/fixtures/invalid-target",
       "digest": "1a813e0ee00435605c4d9dce72db846f0e6ce9f86b7674510df1547ec4a4baf6"
     },
@@ -432,7 +436,7 @@
     },
     {
       "fixture": "docs/guides/meilisearch/fixtures/meilisearch-demo",
-      "digest": "bcc1c9b80cbdbb4548afa41e05380dce69a9095ecf92a9f691c42ee1f7242723"
+      "digest": "8d53de362d1d5a37948315af12d944a5b4f4a7956ffdfc36a1220f3a5d937924"
     },
     {
       "fixture": "docs/guides/memcached/fixtures/memcached-demo",
@@ -489,8 +493,20 @@
       "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
     },
     {
+      "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",
+      "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+    },
+    {
       "fixture": "docs/guides/node-postgres-scaffold/fixtures/invalid-service-type",
       "digest": "5d44c18a040b444d7daef194e8a3ca0c400bdc8e2e0748e1ab2fa456c3829bfd"
+    },
+    {
+      "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
+      "digest": "1f4813468c80736bda3387e6792eca52e54c70db64b943ffcbfb8bc2e02d9a1e"
+    },
+    {
+      "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
+      "digest": "887220566337da45e239ee73f19c6b4b153f625a98b40840f969dea892403786"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -539,6 +555,10 @@
     {
       "fixture": "docs/guides/offline-dev/fixtures/offline-dev-demo",
       "digest": "d4ca26563b33f554f10a29552e6b81f010f86a5d92365d7bfa70fd275734709a"
+    },
+    {
+      "fixture": "docs/guides/ollama/fixtures/ollama-demo",
+      "digest": "9191a0b49df33e43ab8e9de2cc600a19888178d59c1598f147fbdd2a5444ff56"
     },
     {
       "fixture": "docs/guides/opensearch/fixtures/opensearch-demo",

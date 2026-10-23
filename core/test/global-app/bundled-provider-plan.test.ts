@@ -3,6 +3,7 @@ import "../../src/runtime/engine-composition.ts";
 import { Effect, Schema } from "effect";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import { bundledFirstGlobalServiceLoader } from "@lando/engine/services/bundled-global-service-loader";
 import { materializeGlobalServices } from "@lando/engine/services/global-services";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -28,7 +29,7 @@ const cases = bundledProviders.flatMap(([id, capabilitiesFor]) =>
   platforms.map((platform) => [id, platform, capabilitiesFor(platform)] as const),
 );
 
-// The global app can run on any bundled provider, so every bundled global service must plan on each of them.
+// The global app follows the host provider, so every bundled global service must plan on every bundled provider.
 describe("bundled global services on bundled providers", () => {
   test.each(cases)(
     "plan every contributed global service on %s (%s)",
@@ -55,7 +56,12 @@ describe("bundled global services on bundled providers", () => {
         // When
         const plan = yield* (yield* AppPlanner).plan(landofile, capabilities);
         return { contributed, planned: Object.keys(plan.services), plan };
-      }).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
+      }).pipe(
+        // The global app is always planned on the host provider.
+        Effect.provideService(HostProviderOverride, providerId),
+        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(PluginRegistryLayer.layer),
+      );
 
       const { contributed, planned, plan } = await Effect.runPromise(program);
 

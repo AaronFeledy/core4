@@ -23,17 +23,20 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
   RedactionService,
+  createPayloadValues,
   createStandaloneRedactor,
   registerRedactionValues,
+  resetRegisteredRedactionValuesForTesting,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
+import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const metadata = {
@@ -71,11 +74,13 @@ const harness = (input: {
   readonly failOn?: string;
   readonly omitEventRuntime?: boolean;
   readonly live?: boolean;
+  readonly failureOutput?: ReadonlyArray<string | Uint8Array>;
+  readonly appSecrets?: (executed: ReadonlyArray<string>) => ReadonlyArray<string>;
 }) => {
   const executed: string[] = [];
   const frames: StreamFrameSinkFrame[] = [];
   const selections: string[] = [];
-  const plan: AppPlan = {
+  const basePlan: AppPlan = {
     id: AppId.make("tooling-events"),
     name: "tooling-events",
     slug: "tooling-events",
@@ -89,8 +94,8 @@ const harness = (input: {
     metadata,
     extensions: {},
   };
+  const plan = input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events);
   attachEffectiveTooling(plan, input.tooling);
-  if (input.events !== undefined) attachEffectiveEvents(plan, input.events);
 
   const record = (label: string) => {
     executed.push(label);
@@ -100,6 +105,13 @@ const harness = (input: {
     ...TestRuntimeProvider,
     execStream: (_target: ExecTarget, spec: CommandSpec) =>
       Stream.make({ exitCode: record(executedLabel(spec.command, "exec")) }),
+    readAppEnvironment: () =>
+      Effect.sync(() => (input.appSecrets?.(executed) ?? []).map((value) => Redacted.make(value))),
+    exec: (_target: ExecTarget, spec: CommandSpec) =>
+      Effect.sync(() => {
+        const exitCode = record(executedLabel(spec.command, "exec"));
+        return { exitCode, stdout: exitCode === 0 ? "" : Object.values(spec.env ?? {}).join(""), stderr: "" };
+      }),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const eventRuntime =
@@ -111,7 +123,7 @@ const harness = (input: {
             RedactionService,
             RedactionService.of({
               registerValues: registerRedactionValues,
-              payloadValues: () => Effect.succeed(() => []),
+              payloadValues: () => Effect.succeed(createPayloadValues([])),
               forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
             }),
           ),
@@ -123,14 +135,21 @@ const harness = (input: {
       ToolingEngine,
       ToolingEngine.of({
         id: "recording",
-        run: (invocation) =>
+        run: (invocation, _plan, selected) =>
           Effect.gen(function* () {
-            const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
-            const output = exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join("");
+            const { exitCode, stdout: output } = yield* selected.exec(
+              { app: plan.id, service: service.name, plan },
+              {
+                command: invocation.commands[0] ?? [invocation.tool],
+                ...(invocation.env === undefined ? {} : { env: invocation.env }),
+              },
+            );
             // A live sink receives provider output directly, so the result carries none of it.
             const sink = yield* Effect.serviceOption(StreamFrameSink);
             if (Option.isSome(sink) && output.length > 0) {
-              yield* sink.value.emit({ _tag: "stdout", chunk: output, raw: true });
+              for (const chunk of input.failureOutput ?? [output]) {
+                yield* sink.value.emit({ _tag: "stdout", chunk, raw: true });
+              }
             }
             return {
               tool: invocation.tool,
@@ -160,12 +179,15 @@ const harness = (input: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([service.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () =>
           Effect.sync(() => {
             selections.push("select");
-            return provider;
+            return outputRegisteredTestProvider(provider, plan);
           }),
       }),
     ),
@@ -304,6 +326,55 @@ test("a failing post bracket keeps the output tail when its output streamed live
   }
   expect(result.failure.outputTail).toContain("[redacted]");
   expect(result.failure.outputTail).not.toContain(secret);
+});
+
+test("redacts a split registered secret before clipping a live failure tail", async () => {
+  // Given: raw output whose 4,000-character tail would start inside a registered secret.
+  const secret = "live-tail-private-value";
+  const padding = "x".repeat(4_000 - secret.length + 1);
+  const h = harness({
+    tooling: { build: { service: "web", cmd: "echo body" } },
+    events: { "post-build": [{ cmd: "echo after", service: "web", env: { SECRET: secret } }] },
+    failOn: "echo after",
+    live: true,
+    failureOutput: [new TextEncoder().encode(secret.slice(0, 8)), `${secret.slice(8)}${padding}`],
+  });
+  await Effect.runPromise(registerRedactionValues([secret]));
+  try {
+    // When: the post bracket streams its output and fails.
+    const result = await h.run("build");
+    // Then: clipping retains the mask, not an unmatched raw secret suffix.
+    if (result._tag !== "Failure" || result.failure._tag !== "LandofileEventStepFailedError") {
+      throw new Error("expected LandofileEventStepFailedError");
+    }
+    expect(result.failure.outputTail).toBe(`[redacted]${padding}`);
+    expect(result.failure.outputTail).not.toContain(secret.slice(1));
+    expect(h.frames.map((frame) => frame.chunk)).toEqual([
+      new TextEncoder().encode(secret.slice(0, 8)),
+      `${secret.slice(8)}${padding}`,
+    ]);
+  } finally {
+    resetRegisteredRedactionValuesForTesting();
+  }
+});
+
+test("registers container secrets for the task body after its pre bracket runs", async () => {
+  // Given: a pre step after which the container holds a rotated secret.
+  const rotated = "rotated-after-pre-private";
+  const h = harness({
+    tooling: { build: { service: "web", cmd: "echo body" } },
+    events: { "pre-build": [{ cmd: "echo before", service: "web" }] },
+    appSecrets: (executed) => (executed.includes("echo before") ? [rotated] : ["stale-before-pre-private"]),
+  });
+  try {
+    // When: the task runs.
+    const result = await h.run("build");
+    // Then: the body's read happened after the pre bracket, so the rotated value is masked.
+    expect(result._tag).toBe("Success");
+    expect(createStandaloneRedactor("secrets").redactString(rotated)).toBe("[redacted]");
+  } finally {
+    resetRegisteredRedactionValuesForTesting();
+  }
 });
 
 test("runs an unbracketed task without requiring the event runtime", async () => {

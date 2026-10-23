@@ -8,7 +8,12 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { ConfigService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  ConfigService,
+  GlobalAppService,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
@@ -19,6 +24,7 @@ import {
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { globalAppForProvider } from "../_support/global-provider.ts";
 
 const inputs = () => ({
   globalConfig: {},
@@ -294,10 +300,14 @@ describe("SSH agent doctor posture", () => {
         return yield* Fiber.join(fiber);
       }).pipe(
         Effect.provideService(RuntimeProviderRegistry, {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([provider.id]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
         }),
+        Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
         Effect.provide(TestClock.layer()),
       ),
     );

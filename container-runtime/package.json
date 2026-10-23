@@ -28,6 +28,7 @@
     "./log-file-access": "./src/log-file-access.ts",
     "./log-source-binding": "./src/log-source-binding.ts",
     "./data-plane": "./src/data-plane.ts",
+    "./provider-images": "./src/generated/provider-images.ts",
     "./capabilities": "./src/capabilities.ts",
     "./applied-state": "./src/applied-state.ts",
     "./applied-plan-cache": "./src/applied-plan-cache.ts",

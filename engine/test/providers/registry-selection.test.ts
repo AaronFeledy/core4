@@ -26,6 +26,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import * as ConfigLayer from "../../src/services/config";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
@@ -54,6 +55,7 @@ test.each([
   { target: undefined, expected: "ConfigError", kind: "invalid configuration", invalidConfig: true },
   { target: undefined, expected: "requested", kind: "captured environment", invalidConfig: false },
   { target: undefined, expected: "configured-default", kind: "disabled environment", invalidConfig: false },
+  { target: undefined, expected: "requested", kind: "scoped host override", invalidConfig: false },
 ])("selects $expected with $kind", async ({ target, expected, invalidConfig, kind }) => {
   // Given: the configured default differs from the explicit target.
   const initialized: string[] = [];
@@ -131,6 +133,7 @@ test.each([
   const selected = await Effect.runPromise(
     Effect.result(
       Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(target)).pipe(
+        Effect.provideService(HostProviderOverride, kind === "scoped host override" ? requested : undefined),
         Effect.provide(
           makeRuntimeProviderRegistry(modules, {
             enforce: async () => undefined,

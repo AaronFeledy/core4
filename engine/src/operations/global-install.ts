@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import {
+  type AppPlacementError,
   GlobalAppError,
   type GlobalDistConflictError,
   type GlobalLandofilePathConflictError,
@@ -10,7 +11,7 @@ import {
 import type { GlobalAppPaths, GlobalDistResult, ProviderSelectionError } from "@lando/sdk/services";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
+import { globalCreateProviderId } from "../global-app/placement.ts";
 import { bundledFirstGlobalServiceLoader } from "../services/bundled-global-service-loader.ts";
 import { materializeGlobalServices } from "../services/global-services.ts";
 
@@ -55,6 +56,7 @@ export const globalInstall = Effect.fn("AppOperation.globalInstall")(function* (
 ): Effect.fn.Return<
   GlobalInstallResult,
   | GlobalAppError
+  | AppPlacementError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
@@ -70,7 +72,7 @@ export const globalInstall = Effect.fn("AppOperation.globalInstall")(function* (
   const pluginRegistry = yield* PluginRegistry;
   const registry = yield* RuntimeProviderRegistry;
   const manifests = yield* pluginRegistry.list;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(yield* globalCreateProviderId());
   const services = yield* materializeGlobalServices({
     manifests,
     providerCapabilities: provider.capabilities,

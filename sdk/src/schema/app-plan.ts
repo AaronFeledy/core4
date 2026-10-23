@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
 import {
@@ -179,6 +180,10 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);
 
+/** Resolve ownership from a planned identity or an older plan's canonical root. */
+export const planAppIdentity = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
+  plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
+
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),
   ownerKey: Schema.String.annotate({
@@ -216,6 +221,13 @@ export const AppPlan = Schema.Struct({
    * accelerated mounts on a slow provider).
    */
   fileSync: Schema.Array(FileSyncPlan),
+  /**
+   * Effective Landofile `events:` and `config.yml hostEvents` steps compiled
+   * by the planner. Omitted on hand-built plans. Provider applied state never
+   * records it: lifecycle operations resolve Landofile events from the current
+   * Landofile, not from what was applied.
+   */
+  events: Schema.optionalKey(EventsPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
   router: Schema.optionalKey(

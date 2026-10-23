@@ -1,7 +1,7 @@
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
-import { Effect, Option, Predicate } from "effect";
+import { Predicate } from "effect";
 
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { collectSecretEnvValues } from "@lando/redaction/service";
 import { isLandofileOverride, isLandofileReset } from "@lando/sdk/landofile";
 
 type EnvMap = Readonly<Record<string, unknown>> | undefined;
@@ -40,17 +40,6 @@ export const collectAppPlanRedactionTokens = (
       ...collectSecretEnvValues(stringEnv(labels)),
     ];
   });
-
-/** Registered plan secrets reach generation-aware redactors already built by stream sinks. */
-export const registerAppPlanRedactionTokens = Effect.fnUntraced(function* (
-  plan: AppPlan,
-): Effect.fn.Return<void> {
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  yield* Option.match(redaction, {
-    onNone: () => Effect.void,
-    onSome: (service) => service.registerValues(collectAppPlanRedactionTokens(plan)),
-  });
-});
 
 export const collectLandofileRedactionTokens = (
   landofile: LandofileTokenSource | LandofileShape,

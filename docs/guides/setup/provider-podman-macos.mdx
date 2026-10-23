@@ -16,7 +16,7 @@ When a macOS binary ships, you need a running Podman Desktop machine first. Then
 lando setup --provider=podman
 ```
 
-`--yes` consents to confirmation. It does not switch providers. `LANDO_PROVIDER=podman` does not persist.
+`--yes` consents to confirmation. It does not switch providers. See [What persists](./provider-selection.mdx#what-persists).
 
 The default machine socket is `$HOME/.local/share/containers/podman/machine/podman-machine-default/podman.sock`. Override the machine name, for example to target a rootful machine, without editing config:
 

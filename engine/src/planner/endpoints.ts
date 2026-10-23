@@ -22,10 +22,6 @@ import {
 } from "@lando/sdk/schema";
 
 import { validationIssue } from "@lando/sdk/schema";
-import {
-  promoteRoutableEndpointsForHostProxy,
-  usesManagedProxyNetwork,
-} from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
@@ -381,9 +377,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       routes: routeRefs.filter(
         (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
       ),
-      endpoints: usesManagedProxyNetwork(input.provider)
-        ? servicePlanWithHome.endpoints
-        : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
     };
 
     if (

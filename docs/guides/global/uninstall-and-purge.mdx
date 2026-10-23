@@ -53,6 +53,16 @@ A plugin argument is not available yet. It fails with `GlobalAppError` before an
 lando global:destroy --yes
 ```
 
+Destroy acts on the provider where the global app actually runs. If multiple providers hold applied global plans, target the unwanted copy explicitly:
+
+```sh
+lando global:destroy --provider=lando --yes
+```
+
+This reads and cleans up only the selected provider. Volumes stay unless you pass `--purge`.
+
+To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
+
 Volumes stay unless you also pass `--purge`:
 
 ```sh
