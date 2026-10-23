@@ -1,8 +1,13 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { unified } from "@astrojs/markdown-remark";
 import mdx from "@astrojs/mdx";
 import starlight from "@astrojs/starlight";
 import AutoImport from "astro-auto-import";
 import { defineConfig } from "astro/config";
+
+import { createSourceLinkInventory, publishSchemaAssets } from "./src/lib/source-links.ts";
+import { remarkSourceLinks } from "./src/plugins/remark-source-links.ts";
 
 import { guideComponentVocabulary } from "./src/components/vocabulary.ts";
 import { remarkDropLeadingHeading } from "./src/plugins/remark-drop-leading-heading.ts";
@@ -12,13 +17,30 @@ import { sidebar } from "./src/sidebar.ts";
 
 const REFERENCE_MDX_PATTERN = /\/docs\/reference\/.*\.mdx$/;
 
+const base = "/core4/";
+const links = await createSourceLinkInventory(fileURLToPath(new URL("../", import.meta.url)), base);
+
 export default defineConfig({
   site: "https://aaronfeledy.github.io",
-  base: "/core4/",
+  base,
   markdown: {
-    processor: unified({ remarkPlugins: [remarkGuideContext, remarkDropLeadingHeading] }),
+    processor: unified({
+      remarkPlugins: [remarkGuideContext, remarkDropLeadingHeading, [remarkSourceLinks, links]],
+    }),
   },
   integrations: [
+    {
+      name: "lando-schema-assets",
+      hooks: {
+        "astro:build:start": () => {
+          if (links.schemas.size === 0)
+            throw new Error(
+              "Generated schema assets are missing. Run bun run docs:build from the repository root.",
+            );
+        },
+        "astro:build:done": async ({ dir }) => publishSchemaAssets(links, fileURLToPath(dir)),
+      },
+    },
     starlight({
       title: "Lando",
       logo: { src: "./src/assets/lando-logo.svg" },
@@ -33,6 +55,28 @@ export default defineConfig({
   ],
   vite: {
     plugins: [
+      {
+        name: "lando-schema-assets-dev",
+        configureServer(server) {
+          const assets = new Map();
+          for (const [source, asset] of links.schemas) {
+            assets.set(`/${asset}`, source);
+            assets.set(`${base}${asset}`, source);
+          }
+          server.middlewares.use(async (request, response, next) => {
+            if (request.method !== "GET" && request.method !== "HEAD") return next();
+            const source = assets.get(new URL(request.url ?? "/", "http://localhost").pathname);
+            if (source === undefined) return next();
+            try {
+              const bytes = await readFile(source);
+              response.setHeader("Content-Type", "application/json");
+              response.end(request.method === "HEAD" ? undefined : bytes);
+            } catch (error) {
+              next(error);
+            }
+          });
+        },
+      },
       {
         name: "reference-mdx-placeholders",
         enforce: "pre",
