@@ -37,7 +37,9 @@ export const remoteEnvArg = Args.string({
 export const remoteSkeletonFlags = {
   remote: Flags.string({ description: "Remote name." }),
   only: Flags.string({ description: "Comma-separated dataset kinds." }),
-  "no-snapshot": Flags.boolean({ description: "Skip the safety snapshot before applying pulled data." }),
+  "no-snapshot": Flags.boolean({
+    description: "Skip the safety snapshot before applying pulled data. Has no effect on push.",
+  }),
   force: Flags.boolean({ description: "Confirm protected remote operations." }),
   yes: yesFlag("Answer yes to confirmation prompts."),
   "no-interactive": Flags.boolean({ description: "Disable interactive confirmation prompts." }),
