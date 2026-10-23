@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   appliedPlanPath,
@@ -7,7 +7,9 @@ import {
   makeAppliedPlanStore,
 } from "@lando/container-runtime/applied-state";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId } from "@lando/sdk/schema";
+import { AppPlan } from "@lando/sdk/schema";
+import { legacyPlan, service } from "./fixtures/environment-values.ts";
 
 interface OpenCall {
   readonly key: string;
@@ -40,6 +42,58 @@ const recordingStateStore = (calls: OpenCall[]): PluginStateStore => ({
 });
 
 describe("applied plan state layouts", () => {
+  test.each(["per-app", "record"] as const)(
+    "%s layout reads historical identity without inventing execution authority",
+    async (layout) => {
+      // Given
+      const legacy = {
+        ...legacyPlan(),
+        services: {
+          [service.name]: {
+            ...service,
+            environment: { TOKEN: "${secret:TOKEN}" },
+            environmentSecrets: { TOKEN: "DRAFT" },
+          },
+        },
+      };
+      const encoded = {
+        ...Schema.encodeSync(AppPlan)(legacy),
+        services: {
+          [service.name]: {
+            ...Schema.encodeSync(AppPlan)(legacy).services[service.name],
+            environmentSecrets: { TOKEN: "DRAFT" },
+          },
+        },
+      };
+      const raw = JSON.parse(JSON.stringify(layout === "per-app" ? encoded : { [legacy.id]: encoded }));
+      const state: PluginStateStore = {
+        open: (spec) =>
+          Effect.succeed({
+            path: AbsolutePath.make("/tmp/lando-values/applied.json"),
+            get: Schema.decodeUnknownEffect(spec.schema)(raw).pipe(Effect.orDie),
+            exists: Effect.succeed(true),
+            set: () => Effect.die("read-only fixture"),
+            update: () => Effect.die("read-only fixture"),
+            modify: () => Effect.die("read-only fixture"),
+            remove: Effect.die("read-only fixture"),
+          }),
+        withLock: (_key, body) => body,
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "docker", layout })
+          : makeAppliedPlanStore({ providerId: "podman", layout });
+      // When
+      const observed = await Effect.runPromise(store.loadAppliedPlan(state, legacy.id));
+      // Then
+      expect(observed?.id).toBe(legacy.id);
+      expect(observed?.root).toBe(legacy.root);
+      expect(observed?.services[service.name]?.environment).toEqual({ TOKEN: "${secret:TOKEN}" });
+      expect(observed).not.toHaveProperty("valueModel");
+      expect(observed?.services[service.name]).not.toHaveProperty("environmentSecrets");
+    },
+  );
+
   test("per-app layout preserves the namespaced file format", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });

@@ -52,6 +52,7 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     extensions: {},
   };
   return {
+    valueModel: 1,
     id: appId,
     name: "Recreate Ports",
     slug: "recreate-ports",
@@ -305,14 +306,19 @@ describe("Podman publish-port recreate", () => {
     if (service === undefined) throw new Error("Test service is missing.");
     const plan: AppPlan = {
       ...base,
-      services: { [serviceName]: { ...service, environment: { PASSWORD: "${secret:db/password}" } } },
+      services: {
+        [serviceName]: {
+          ...service,
+          environment: { PASSWORD: { _tag: "SecretRef", reference: "PASSWORD" } },
+        },
+      },
     };
     const fake = makeFakeApi({ deleteStatus: 204, containerExists: false });
     await Effect.runPromise(
       bringUp(plan, {
         api: fake.api,
         ctx,
-        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-before" } },
+        resolveServiceEnvironment: () => Effect.succeed({ PASSWORD: "resolved-before" }),
       }),
     );
     // When the resolved bytes change without a desired reference change.
@@ -320,7 +326,7 @@ describe("Podman publish-port recreate", () => {
       bringUp(plan, {
         api: fake.api,
         ctx,
-        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-after" } },
+        resolveServiceEnvironment: () => Effect.succeed({ PASSWORD: "resolved-after" }),
       }),
     );
     // Then actual create received the secret, but its label contains only the desired opaque digest.

@@ -55,6 +55,7 @@ const planWithPublication = (publication: EndpointPublication): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: "Publish Ports",
     slug: "publish-ports",
     root: AbsolutePath.make("/tmp/lando-publish-ports"),

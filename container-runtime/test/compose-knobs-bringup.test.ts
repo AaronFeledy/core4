@@ -76,6 +76,7 @@ const planWithCompose = (
   };
   return {
     id: appId,
+    valueModel: 1,
     name: "Compose Knob Bringup",
     slug: "compose-knob-bringup",
     root: AbsolutePath.make("/tmp/lando-compose-knob-bringup"),

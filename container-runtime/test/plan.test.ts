@@ -15,6 +15,7 @@ import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 
 const plan = {
+  valueModel: 1,
   id: "app-id",
   name: "myapp",
   slug: "myapp",

@@ -39,6 +39,7 @@ const metadata = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("compose-knob-transport"),
   name: "Compose Knob Transport",
   slug: "compose-knob-transport",
