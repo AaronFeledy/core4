@@ -78,7 +78,7 @@ All app kinds use one placement rule. Desired placement is the selected provider
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
 
 1. No applied plan, no owned runtime resources, no nonempty cleanup inventory, and no unfinished accelerated-start journal at the root: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. A nonempty inventory requires provider verification even when every recorded resource returns absent. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
-2. An applied plan exists: tear down from the applied plan.
+2. An applied plan exists: tear down from the applied plan. Landofile `events:` and `hostEvents` steps for that teardown come from the Landofile at the applied root at command time (§8.5.7); a Landofile that is missing, fails to load, or names another app or provider skips those steps with a notice. That tolerance is for hook sourcing only; the ownership and unfinished-accelerated-start checks below still fail closed.
 3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
 
 Destroy plans before it executes. Identity, inventory, capability, journal, and file-sync checks are read-only and run before the `pre-destroy` bracket (§3.5); every mutation, and any validation that depends on quiescing retained writers, runs inside it.
@@ -228,6 +228,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
 | `networks`, `stores` | Provider-neutral network and storage intent. |
 | `networking` | Explicit per-app bridge (or `null`) and optional shared-network membership with service aliases. |
+| `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 

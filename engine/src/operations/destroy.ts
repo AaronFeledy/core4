@@ -36,6 +36,7 @@ import {
 import { executeTeardown } from "./destroy-execute.ts";
 import { planUserTeardown } from "./destroy-plan.ts";
 import { resolveMissingDestroyRoot } from "./destroy-resolution.ts";
+import { LandofileEventsOutcomeSchema } from "./landofile-events.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -49,7 +50,6 @@ type DestroyAppServices =
   | PrivateFileAccessService
   | StateStore
   | RuntimeProviderRegistry;
-type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
 export const DestroyAppResultSchema = Schema.Struct({
   app: Schema.String,
@@ -57,6 +57,7 @@ export const DestroyAppResultSchema = Schema.Struct({
   servicesDestroyed: Schema.Array(Schema.String),
   volumesRemoved: Schema.Boolean,
   snapshotsRemoved: Schema.Number,
+  landofileEvents: Schema.optionalKey(LandofileEventsOutcomeSchema),
 });
 
 const runTeardown = Effect.fnUntraced(function* <E, R>(
@@ -88,7 +89,7 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
   afterSuccess?: Effect.Effect<void>,
-): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> {
+): Effect.fn.Return<DestroyAppResult, SdkDestroyAppError, DestroyAppServices> {
   return yield* withAppMutationLock(
     target.app,
     Effect.gen(function* () {

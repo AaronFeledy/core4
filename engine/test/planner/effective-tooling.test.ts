@@ -14,10 +14,10 @@ import { validEventNames } from "../../src/planner/event-names.ts";
 
 import { runAppEvent } from "../../src/operations/events.ts";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
   eventStepsFromCompiled,
+  withProjectEvents,
 } from "../../src/planner/effective-events.ts";
 import * as toolingForPlan from "../../src/planner/effective-tooling.ts";
 import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
@@ -217,17 +217,16 @@ describe("compileEffectiveEvents", () => {
     });
   });
 
-  test("plans with the same id and root do not inherit another plan's events", () => {
+  test("events are a plan value: a spread keeps them and a plan built without them has none", () => {
     // Given
-    const shared = eventPlan();
-    const first = { ...shared };
-    const second = { ...shared };
+    const first = withProjectEvents(eventPlan(), { "pre-start": ["echo first"] });
 
     // When
-    attachEffectiveEvents(first, { "pre-start": ["echo first"] });
+    const spread = { ...first, fileSync: [] };
+    const second = eventPlan();
 
     // Then
-    expect(effectiveEventsForPlan(first)?.["pre-start"]).toEqual(["echo first"]);
+    expect(effectiveEventsForPlan(spread)?.["pre-start"]).toEqual(["echo first"]);
     expect(effectiveEventsForPlan(second)).toBeUndefined();
   });
 
