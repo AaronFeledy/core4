@@ -62,7 +62,7 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
         plan,
         root: plan.root,
         app: { kind: "user", id: plan.id, root: plan.root },
-        landofile: { name: plan.name, services: {} },
+        landofile: literalTestLandofile({ name: plan.name, services: {} }),
       },
       { skipInitEvents: true },
     ).pipe(Effect.provide(harness.layer)),
@@ -136,7 +136,7 @@ for (const operation of ["stop", "destroy"] as const) {
       plan,
       root: plan.root,
       app: { kind: "user" as const, id: plan.id, root: plan.root },
-      landofile: { name: plan.name, services: {} },
+      landofile: literalTestLandofile({ name: plan.name, services: {} }),
     };
     // When
     const outcome = await Effect.runPromise(
@@ -243,3 +243,4 @@ for (const operation of ["stop", "destroy"] as const) {
     expect(outcome).toBe("unchanged");
   });
 }
+import { literalTestLandofile } from "../compiled-landofile.ts";

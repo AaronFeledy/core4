@@ -38,6 +38,7 @@ import {
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
@@ -48,8 +49,8 @@ import { applyAppRoutes } from "../lifecycle/routes.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
 import { startedServiceRow } from "./authority-url.ts";
@@ -94,6 +95,7 @@ export const StartAppResultSchema = Schema.Struct({
 });
 
 type StartAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -262,7 +264,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   const neededGlobalServices = requiredGlobalServicesForPlan(plan);
   if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
     const defaultDomain = yield* resolveProxyDefaultDomain;
-    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.router);
+    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.document.router);
     yield* proxy.prepare({ defaultDomain, router, routerPin });
   }
   if (neededGlobalServices.length > 0) {
@@ -308,7 +310,6 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 builds.build(applyPlan, execution.buildOptions),
                 provider,
               );
-              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
               const serviceList = Object.values(builtPlan.services);
               const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
                 app: ref,
@@ -325,9 +326,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 yield* verifyActiveVolumeCoordination(provider);
                 if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
                 yield* Effect.scoped(
-                  provider.apply(builtPlan, {
+                  applyWithResolvedEnvironment(provider, builtPlan, {
                     reconcile: resolvedOptions.reconcile ?? false,
-                    serviceEnvironment,
                     onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
                     ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                   }),
@@ -358,7 +358,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 provider,
               );
 
-              const applyRoutes = applyAppRoutes(proxy, builtPlan, target.landofile?.router);
+              const applyRoutes = applyAppRoutes(proxy, builtPlan, target.landofile?.document.router);
               const proxyResult = yield* builtPlan.routes.length === 0
                 ? applyRoutes
                 : withRoutesStartProgress({ events, plan, work: applyRoutes });

@@ -5,7 +5,7 @@ import {
   LandofileParseError,
   SshAgentTransportError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, GlobalConfig, type LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 import { Effect, Layer, Result, Schema } from "effect";
 import { type ResolvedAppTarget, userAppRef } from "../../src/landofile/app-resolution.ts";
@@ -16,6 +16,7 @@ import { gpgAgentPlanExtension, resolveGpgAgentIntent } from "../../src/subsyste
 import { gpgAgentEligibleServices } from "../../src/subsystems/gpg-agent/overlay.ts";
 import { sshAgentEligibleServices } from "../../src/subsystems/ssh-agent/overlay.ts";
 import { resolveSshAgentIntent, sshAgentPlanExtension } from "../../src/subsystems/ssh/intent.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 import { plan } from "../subsystems/gpg-agent/fixture.ts";
 
 const ssh = resolveStartAgentIntent({
@@ -63,12 +64,12 @@ const cases: readonly {
     fallback: { forward: true },
   },
 ];
-const landofile: LandofileShape = {
+const landofile = literalTestLandofile({
   name: "agent",
   services: {},
   sshAgent: { sidecar: false, socket: "/app/agent" },
   gpgAgent: { forward: true, socket: "/app/agent" },
-};
+});
 const globalConfig = Schema.decodeUnknownSync(GlobalConfig)({
   sshAgent: { sidecar: true, socket: "/global/agent" },
   gpgAgent: { forward: false, socket: "/global/agent" },

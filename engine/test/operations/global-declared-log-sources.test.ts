@@ -46,7 +46,7 @@ test.each(["node:22", "compose"])("merges global declared logs before decoding (
     // Then omitted override fields retain authored values rather than decoding defaults early.
     expect(loaded.materialized).toBe(true);
     if (!loaded.materialized) throw new Error("Expected a materialized global Landofile");
-    expect(loaded.landofile.services?.[ServiceName.make("app")]?.logs).toEqual([
+    expect(loaded.landofile.document.services?.[ServiceName.make("app")]?.logs).toEqual([
       {
         id: LogSourceId.make("applog"),
         path: AbsolutePath.make("/tmp/app.log"),

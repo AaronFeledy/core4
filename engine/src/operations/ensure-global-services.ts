@@ -25,9 +25,11 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import type { EnvironmentValueResolutionError, PlanReplanRequiredError } from "@lando/sdk/errors";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { waitForServiceReadiness } from "./service-readiness.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
@@ -55,6 +57,8 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | EnvironmentValueResolutionError
+  | PlanReplanRequiredError
   | ServiceNotReadyError
   | LoadGlobalPlanError
   | BuildError
@@ -69,6 +73,7 @@ export type EnsureGlobalServicesError =
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -162,14 +167,12 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
   // Managed global service configuration is generated locally and has no sync session lifecycle.
   const realizedPlan = withOrdinaryMounts(planToApply);
   const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
-  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
   yield* Effect.scoped(
-    provider.apply(builtPlan, {
+    applyWithResolvedEnvironment(provider, builtPlan, {
       reconcile: false,
       recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
       ...(options.signal === undefined ? {} : { signal: options.signal }),
-      serviceEnvironment,
       onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
     }),
   );

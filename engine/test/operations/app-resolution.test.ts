@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { type Context, Effect } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
 import {
@@ -15,14 +15,15 @@ import {
   loadUserLandofileFile,
 } from "../../src/landofile/app-resolution.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const testStateStoreLayer = makeTestStateStore().layer;
 
-const landofile = (name?: string): LandofileShape =>
-  (name === undefined ? {} : { name }) as unknown as LandofileShape;
+const landofile = (name?: string): LandofileShape => (name === undefined ? {} : { name });
 
-const fakeLandofileService = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> =>
-  ({ discover: Effect.succeed(shape) }) as Context.Service.Shape<typeof LandofileService>;
+const fakeLandofileService = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> => ({
+  discover: Effect.succeed(literalTestLandofile(shape)),
+});
 
 describe("user-app reserved-id guard", () => {
   test("assertUserAppIdNotReserved fails for the reserved id global", async () => {
@@ -51,7 +52,7 @@ describe("user-app reserved-id guard", () => {
   test("loadUserLandofile returns the discovered Landofile for a normal app", async () => {
     const result = await Effect.runPromise(loadUserLandofile(fakeLandofileService(landofile("myapp"))));
 
-    expect(result.name).toBe("myapp");
+    expect(result.document.name).toBe("myapp");
   });
 });
 
@@ -69,7 +70,7 @@ describe("loadUserLandofile includes", () => {
           Effect.provide(testStateStoreLayer),
         ),
       );
-      const actual: unknown = result;
+      const actual: unknown = result.document;
 
       expect(actual).toEqual({ name: "myapp", services: { web: { type: "node" } } });
     } finally {
@@ -89,7 +90,7 @@ describe("loadUserLandofile includes", () => {
       const result = await Effect.runPromise(
         loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(testStateStoreLayer)),
       );
-      const actual: unknown = result;
+      const actual: unknown = result.document;
 
       expect(actual).toEqual({ name: "custom", services: { web: { type: "node" } } });
     } finally {
@@ -106,7 +107,7 @@ describe("loadUserLandofile includes", () => {
       const result = await Effect.runPromise(
         loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(testStateStoreLayer)),
       );
-      const actual: unknown = result;
+      const actual: unknown = result.document;
 
       expect(actual).toEqual({ name: "custom", services: { web: { type: "node" } } });
     } finally {
@@ -156,13 +157,13 @@ describe("loadUserLandofileAt root-aware seam", () => {
       const service = {
         discover: Effect.sync(() => {
           observedCwd = process.cwd();
-          return landofile("at-root");
+          return literalTestLandofile(landofile("at-root"));
         }),
-      } as Context.Service.Shape<typeof LandofileService>;
+      } satisfies Context.Service.Shape<typeof LandofileService>;
 
       const result = await Effect.runPromise(loadUserLandofileAt(service, right));
 
-      expect(result.name).toBe("at-root");
+      expect(result.document.name).toBe("at-root");
       expect(observedCwd).toBe(right);
       expect(process.cwd()).toBe(left);
     } finally {
@@ -180,7 +181,7 @@ describe("loadUserLandofileAt root-aware seam", () => {
       const service = fakeLandofileService(landofile("here"));
       const result = await Effect.runPromise(loadUserLandofileAt(service, dir));
 
-      expect(result.name).toBe("here");
+      expect(result.document.name).toBe("here");
       expect(process.cwd()).toBe(dir);
     } finally {
       process.chdir(previous);
@@ -193,8 +194,8 @@ describe("loadUserLandofileAt root-aware seam", () => {
     const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-right-")));
     let releaseFirst: (() => void) | undefined;
     let allowSecondObserve: (() => void) | undefined;
-    let first: Promise<LandofileShape> | undefined;
-    let second: Promise<LandofileShape> | undefined;
+    let first: Promise<LoadScopedLandofile> | undefined;
+    let second: Promise<LoadScopedLandofile> | undefined;
     process.chdir(left);
     try {
       const firstCanRestore = new Promise<void>((resolve) => {
@@ -213,16 +214,16 @@ describe("loadUserLandofileAt root-aware seam", () => {
         discover: Effect.promise(async () => {
           firstEntered();
           await firstCanRestore;
-          return landofile("first");
+          return literalTestLandofile(landofile("first"));
         }),
-      } as Context.Service.Shape<typeof LandofileService>;
+      } satisfies Context.Service.Shape<typeof LandofileService>;
       const secondService = {
         discover: Effect.promise(async () => {
           await secondMayObserve;
           secondObserved = process.cwd();
-          return landofile("second");
+          return literalTestLandofile(landofile("second"));
         }),
-      } as Context.Service.Shape<typeof LandofileService>;
+      } satisfies Context.Service.Shape<typeof LandofileService>;
 
       first = Effect.runPromise(loadUserLandofileAt(firstService, right));
       await firstInDiscover;
@@ -234,7 +235,7 @@ describe("loadUserLandofileAt root-aware seam", () => {
       if (second === undefined) throw new Error("second resolution never started");
       const secondResult = await second;
 
-      expect(secondResult.name).toBe("second");
+      expect(secondResult.document.name).toBe("second");
       expect(secondObserved).toBe(right);
       expect(process.cwd()).toBe(left);
     } finally {

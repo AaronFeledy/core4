@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from "effect";
 
 import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -24,6 +25,7 @@ export const layer = Layer.effect(
     const registry = yield* RuntimeProviderRegistry;
     const context = Context.make(GlobalAppService, globalApp).pipe(
       Context.add(AppPlanner, yield* AppPlanner),
+      Context.add(EnvironmentValueResolver, yield* EnvironmentValueResolver),
       Context.add(BuildOrchestrator, yield* BuildOrchestrator),
       Context.add(ConfigService, yield* ConfigService),
       Context.add(EventService, yield* EventService),

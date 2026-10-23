@@ -38,6 +38,7 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "@lando/container-runtime/podman/bring-up-recreate";
 import type { RedactionService } from "@lando/redaction/service";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
@@ -68,6 +69,7 @@ export const RestartAppResultSchema = Schema.Struct({
 });
 
 type RestartAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService

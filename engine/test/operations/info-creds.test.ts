@@ -5,7 +5,9 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortNumber,
   ProviderId,
+  type ServiceConnection,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -24,7 +26,10 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const makeService = (environment: Readonly<Record<string, string>>): ServicePlan => ({
+const makeService = (
+  environment: Readonly<Record<string, string>>,
+  connection?: ServiceConnection,
+): ServicePlan => ({
   name: ServiceName.make("postgres"),
   type: "postgres",
   provider: providerId,
@@ -32,6 +37,7 @@ const makeService = (environment: Readonly<Record<string, string>>): ServicePlan
   artifact: { kind: "ref", ref: "postgres:16-alpine" },
   command: ["postgres"],
   environment,
+  ...(connection === undefined ? {} : { connection }),
   mounts: [],
   storage: [],
   endpoints: [],
@@ -42,8 +48,8 @@ const makeService = (environment: Readonly<Record<string, string>>): ServicePlan
   extensions: {},
 });
 
-const makePlan = (environment: Readonly<Record<string, string>>): AppPlan => {
-  const service = makeService(environment);
+const makePlan = (environment: Readonly<Record<string, string>>, connection?: ServiceConnection): AppPlan => {
+  const service = makeService(environment, connection);
   return {
     id: AppId.make("info-creds-app"),
     name: "info-creds-app",
@@ -85,19 +91,31 @@ const provide = (plan: AppPlan) => {
   );
 };
 
-const infoForEnvironment = (environment: Readonly<Record<string, string>>) => {
-  const plan = makePlan(environment);
+const infoForEnvironment = (
+  environment: Readonly<Record<string, string>>,
+  connection?: ServiceConnection,
+) => {
+  const plan = makePlan(environment, connection);
   return Effect.runPromise(infoForPlan(plan).pipe(Effect.provide(provide(plan))));
 };
 
-describe("infoForPlan creds from LANDO_DB_*", () => {
-  test("emits redacted creds when LANDO_DB_USER, PASSWORD, and NAME are present", async () => {
-    const result = await infoForEnvironment({
-      LANDO_DB_USER: "dbuser",
-      LANDO_DB_PASSWORD: SECRET_VALUE,
-      LANDO_DB_NAME: "appdb",
-      POSTGRES_PASSWORD: SECRET_VALUE,
-    });
+const connection: ServiceConnection = {
+  family: "postgres",
+  port: PortNumber.make(5544),
+  creds: { user: "dbuser", database: "appdb", password: { _tag: "SecretRef", reference: "TEST" } },
+};
+
+describe("infoForPlan creds from connection facts", () => {
+  test("emits redacted connection creds without a SecretStore", async () => {
+    const result = await infoForEnvironment(
+      {
+        LANDO_DB_USER: "dbuser",
+        LANDO_DB_PASSWORD: SECRET_VALUE,
+        LANDO_DB_NAME: "appdb",
+        POSTGRES_PASSWORD: SECRET_VALUE,
+      },
+      connection,
+    );
 
     expect(result.services[0]?.creds).toEqual({
       user: "dbuser",
@@ -107,13 +125,19 @@ describe("infoForPlan creds from LANDO_DB_*", () => {
     expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
   });
 
-  test("includes redacted rootPassword when LANDO_DB_ROOT_PASSWORD is defined", async () => {
-    const result = await infoForEnvironment({
-      LANDO_DB_USER: "dbuser",
-      LANDO_DB_PASSWORD: SECRET_VALUE,
-      LANDO_DB_NAME: "appdb",
-      LANDO_DB_ROOT_PASSWORD: SECRET_VALUE,
-    });
+  test("includes redacted rootPassword from a connection", async () => {
+    const result = await infoForEnvironment(
+      {
+        LANDO_DB_USER: "dbuser",
+        LANDO_DB_PASSWORD: SECRET_VALUE,
+        LANDO_DB_NAME: "appdb",
+        LANDO_DB_ROOT_PASSWORD: SECRET_VALUE,
+      },
+      {
+        ...connection,
+        creds: { ...connection.creds, rootPassword: { _tag: "SecretRef", reference: "ROOT" } },
+      },
+    );
 
     expect(result.services[0]?.creds).toEqual({
       user: "dbuser",
@@ -135,16 +159,12 @@ describe("infoForPlan creds from LANDO_DB_*", () => {
     expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
   });
 
-  test("fills missing user or database with empty string when emitting creds", async () => {
+  test("does not infer a connection from historical credential environment strings", async () => {
     const result = await infoForEnvironment({
       LANDO_DB_PASSWORD: SECRET_VALUE,
     });
 
-    expect(result.services[0]?.creds).toEqual({
-      user: "",
-      password: REDACTED,
-      database: "",
-    });
+    expect(result.services[0]?.creds).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
   });
 });

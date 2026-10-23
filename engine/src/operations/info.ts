@@ -10,11 +10,12 @@ import type {
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import {
   type AppPlan,
-  type LandofileShape,
+  type LoadScopedLandofile,
   type PublishedEndpoint,
-  ServiceCreds,
+  ServiceCredsDisplay,
   type ServiceName,
   type ServicePlan,
+  encodeUriComponent,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
@@ -67,7 +68,7 @@ export const AppInfoServiceSchema = Schema.Struct({
   status: InfoServiceStatusSchema,
   endpoints: Schema.Array(Schema.String),
   logSources: Schema.optionalKey(Schema.Array(AppInfoLogSourceSchema)),
-  creds: Schema.optionalKey(ServiceCreds),
+  creds: Schema.optionalKey(ServiceCredsDisplay),
 });
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
@@ -108,10 +109,16 @@ const endpointText = (
   endpoint: PublishedEndpoint & MaterializedPublishedEndpoint,
 ): ReadonlyArray<string> => {
   if (service.type === "postgres") {
-    const user = service.environment.POSTGRES_USER ?? "lando";
-    const database = service.environment.POSTGRES_DB ?? "postgres";
+    const user = service.connection?.creds.user;
+    const database = service.connection?.creds.database;
     const url = publishedEndpointUrl(endpoint, "postgresql");
-    return url === undefined ? [] : [`${url.replace("postgresql://", `postgresql://${user}@`)}/${database}`];
+    return url === undefined
+      ? []
+      : [
+          user === undefined || database === undefined
+            ? url
+            : `${url.replace("postgresql://", `postgresql://${encodeUriComponent(user)}@`)}/${encodeUriComponent(database)}`,
+        ];
   }
   if (service.type === "memcached" && endpoint.protocol === "tcp") {
     const url = publishedEndpointUrl(endpoint, "memcached");
@@ -126,18 +133,13 @@ const endpointText = (
   return url === undefined ? [] : [url];
 };
 
-const credsFromEnvironment = (environment: ServicePlan["environment"]): InfoAppService["creds"] => {
-  const user = environment.LANDO_DB_USER;
-  const password = environment.LANDO_DB_PASSWORD;
-  const database = environment.LANDO_DB_NAME;
-  const rootPassword = environment.LANDO_DB_ROOT_PASSWORD;
-  if (user === undefined && password === undefined && database === undefined) {
-    return undefined;
-  }
+const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
+  if (connection === undefined) return undefined;
+  const { user, database, rootPassword } = connection.creds;
   return {
-    user: user ?? "",
-    password: password === undefined ? "" : REDACTED,
-    database: database ?? "",
+    user,
+    password: REDACTED,
+    database,
     ...(rootPassword === undefined ? {} : { rootPassword: REDACTED }),
   };
 };
@@ -162,7 +164,7 @@ const toServiceInfo = (
         "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.",
     };
   });
-  const creds = credsFromEnvironment(service.environment);
+  const creds = credsFromConnection(service.connection);
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -225,7 +227,7 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
   const landofileService = yield* LandofileService;
 
   let plan: AppPlan;
-  let landofile: LandofileShape | undefined;
+  let landofile: LoadScopedLandofile | undefined;
   const observedTarget = target ?? (yield* resolveAppliedStateTarget);
   if (observedTarget !== undefined) {
     plan = observedTarget.plan;
@@ -240,6 +242,6 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
   const selectedPlan = yield* selectInfoPlan(yield* observedAppPlan(plan), options?.services);
   const result = yield* infoForPlan(selectedPlan);
   if (options?.deep !== true) return result;
-  const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
+  const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);
   return { ...result, agentEnv };
 });

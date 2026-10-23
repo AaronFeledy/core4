@@ -357,7 +357,9 @@ const makeLayer = (input: {
           desiredLoads.push("discover");
           return input.desiredPlan === undefined
             ? Effect.fail(invalidDesiredConfig)
-            : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+            : Effect.succeed(
+                literalTestLandofile({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape),
+              );
         }),
       }),
     ),
@@ -367,7 +369,7 @@ const makeLayer = (input: {
         plan: () =>
           input.desiredPlan === undefined
             ? Effect.die("desired planning must not run")
-            : Effect.succeed(input.desiredPlan),
+            : Effect.succeed(currentTestPlan(input.desiredPlan)),
       }),
     ),
     Layer.succeed(RuntimeProviderRegistry, registry),
@@ -1190,3 +1192,5 @@ describe("applied-state teardown", () => {
     });
   });
 });
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { currentTestPlan } from "../current-plan.ts";

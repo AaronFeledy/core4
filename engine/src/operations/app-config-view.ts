@@ -112,7 +112,7 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
     }
     case "resolved": {
       const service = yield* LandofileService;
-      const landofile = yield* loadUserLandofile(service);
+      const landofile = (yield* loadUserLandofile(service)).document;
       const metadata = {
         app: landofile.name ?? "",
         sources: getLandofileIncludeSources(landofile),
