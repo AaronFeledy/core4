@@ -1,8 +1,7 @@
 import { McpCommandExecutor } from "@lando/mcp/port";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Schema, Stream } from "effect";
 
@@ -26,12 +25,12 @@ export const serverLayer = (
           McpCommandExecutor,
           McpCommandExecutor.of({ execute: (command) => Effect.exit(command) }),
         ),
-        Layer.succeed(
+        Layer.effect(
           RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => secrets),
-            forProfile: () => Effect.succeed(createRedactor("secrets", { values: secrets })),
+          Effect.gen(function* () {
+            const service = makeRedactionService();
+            yield* service.registerValues(secrets);
+            return service;
           }),
         ),
       ),
